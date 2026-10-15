@@ -7,10 +7,9 @@
 //! prefixes through `source_layout_lookup`, and hand resolve an index whose
 //! `source_files` *are* that closure.
 //!
-//! Remaining tree-scale reads on this path: none. Host typecheck uses the
-//! acquired closure only (`same_tree_bare_underlay` is off). Unique-bare
-//! same-tree fill stays on compile/floor (`gunbc.resolver_cost_frontier`
-//! `symbol_index_with_bare_fill`). `gunbc compile` still walks the tree.
+//! Remaining whole-tree index: none. Unique-bare fill runs over the acquired
+//! same-root files (`tree_bare_census_for_root` on that index), not a walk of
+//! `--source-root`. `gunbc compile` still walks the tree.
 //!
 //! Seed-growth receipt: `gunbc.run_demand_acquire_seed_growth`
 //! `run_demand_acquire_seed_growth_justification`.
@@ -366,44 +365,76 @@ mod tests {
         v
     }
 
+    fn function_result(
+        graph: &crate::v1_compiler_compile::ResolvedGraph,
+        si: std::rc::Rc<im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>>,
+        function: &str,
+    ) -> String {
+        let ctx = crate::cli_run::make_eval_context(
+            graph,
+            si,
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        );
+        let tag = match crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true) {
+            Ok(_) => "ok".to_string(),
+            Err(crate::v1_interpreter::InterpError::NoSuchFunction { name }) => {
+                format!("NoSuchFunction:{name}")
+            }
+            Err(e) => format!("{e:?}"),
+        };
+        std::mem::forget(ctx);
+        tag
+    }
+
     /// Whole-tree `resolve_entry_graph` vs demand acquire. Ignored: the tree arm builds the
-    /// shared index (~8 GiB). Run on a memory-capped remote, not in the default lib suite.
+    /// shared index (~8 GiB). Run on a memory-capped host, not in the default lib suite.
     #[test]
-    #[ignore = "whole-tree shared index; remote memory-capped only"]
+    #[ignore = "whole-tree shared index; memory-capped only"]
     fn demand_matches_whole_tree_resolve_on_selected_entries() {
         let root = repo_root();
         let prev = std::env::current_dir().expect("cwd");
         std::env::set_current_dir(&root).expect("chdir");
         let roots = ["dag".to_string(), "src/v2".to_string()];
-        // boot_run / sol_notice omitted: the tree arm typechecks the shared index until
-        // the remote 45m cap; admission already covers a machine_intake gunbc run entry.
         let entries = [
-            "dag/gunbc/source_layout.dag",
-            "dag/extdeps/network/ipv4.dag",
+            "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
+            "dag/gunbc/machine_intake/mtcollins1_boot_run.dag",
+            "dag/gunbc/machine_intake/mtcollins1_sol_notice.dag",
             "dag/std/optional.dag",
             "dag/std/syllogism.dag",
-            "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
+            "dag/extdeps/network/ipv4.dag",
+            "dag/gunbc/source_layout.dag",
+            "dag/gunbc/v1/v1_maintenance_standing.dag",
         ];
+        let function = "__no_such_function__";
         let mut failed = Vec::new();
+        eprintln!("eq_table entry\tresolve\tdiags\tfunction");
         for rel in entries {
             let entry = root.join(rel).to_string_lossy().into_owned();
             let demand = super::resolve_entry_graph_demand_acquired(&roots, &entry);
             let tree = crate::cli_run::resolve_entry_graph(&roots, &entry);
-            let ok = match (&demand, &tree) {
-                (Ok((gd, _)), Ok((gt, _))) => diag_msgs(gd) == diag_msgs(gt),
-                (Err(a), Err(b)) => a == b,
-                _ => false,
+            let (resolve_match, diag_match, fn_match, fn_d, fn_t) = match (&demand, &tree) {
+                (Ok((gd, sd)), Ok((gt, st))) => {
+                    let d_ok = diag_msgs(gd) == diag_msgs(gt);
+                    let fd = function_result(gd, sd.clone(), function);
+                    let ft = function_result(gt, st.clone(), function);
+                    (true, d_ok, fd == ft, fd, ft)
+                }
+                (Err(a), Err(b)) => (a == b, true, true, a.clone(), b.clone()),
+                _ => (
+                    false,
+                    false,
+                    false,
+                    format!("demand={demand:?}"),
+                    format!("tree={tree:?}"),
+                ),
             };
+            let ok = resolve_match && diag_match && fn_match;
             eprintln!(
-                "eq {rel} demand_ok={} tree_ok={} match={ok}",
-                demand.is_ok(),
-                tree.is_ok()
+                "eq {rel} resolve_match={resolve_match} diags_match={diag_match} fn_match={fn_match} demand_fn={fn_d} tree_fn={fn_t} ok={ok}"
             );
             if !ok {
                 failed.push(format!(
-                    "{rel}: demand_ok={} tree_ok={}",
-                    demand.is_ok(),
-                    tree.is_ok()
+                    "{rel}: resolve_match={resolve_match} diags_match={diag_match} fn_match={fn_match} demand_fn={fn_d} tree_fn={fn_t}"
                 ));
             }
         }

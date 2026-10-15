@@ -1548,7 +1548,6 @@ fn multi_entry_index_shell_body(
     source_roots: &[String],
     acquired_facts: Option<ModuleGraphFactsLive>,
 ) -> MultiEntryIndex {
-    let same_tree_bare_underlay = acquired_facts.is_none();
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
@@ -1572,7 +1571,6 @@ fn multi_entry_index_shell_body(
         pool_parse: RefCell::new(None),
         reference_pool_names: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
-        same_tree_bare_underlay,
         #[cfg(any(test, feature = "interp_test_witness"))]
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),

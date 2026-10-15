@@ -12937,11 +12937,6 @@ pub struct MultiEntryIndex {
     /// census when it typechecks (bare = own tree; cross-tree bare reach stays
     /// refused). Keyed by source root, built lazily.
     tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
-    /// Compile/gate unique-bare underlay (`gunbc.resolver_cost_frontier`
-    /// `symbol_index_with_bare_fill`). False on a demand-acquired `gunbc run`
-    /// index: typecheck uses the acquired closure only (D / #13925). Floor
-    /// preparation still warms this for the whole-tree compile consumer.
-    same_tree_bare_underlay: bool,
     /// Previous resolved whole-pool reading, kept only as a differential oracle and
     /// explicit memory-decomposition instrument. Production uses closure_name_censuses.
     #[cfg(any(test, feature = "interp_test_witness"))]
@@ -16906,15 +16901,15 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                // Same-tree unique-bare underlay is compile/gate parity
-                                // (`gunbc.resolver_cost_frontier` `symbol_index_with_bare_fill`),
-                                // not a `gunbc run` input (#13925). Demand-acquired indexes
-                                // type from the closure census.
+                                // Same-tree unique-bare underlay for the module being typechecked
+                                // (bare = own tree); out-of-root modules keep the
+                                // closure-only bare universe. Qualified names come from
+                                // the closure census, not a whole-pool fill (#13925).
+                                // Demand-acquired indexes still use this over *acquired*
+                                // same-root files (not a whole-tree walk). Without it,
+                                // unique-bares such as `join` refuse on mtcollins1_boot_run.
                                 let (module_symbol_index, module_variant_base) =
                                     match source_tree_root_of(&index.source_roots, &decl_file) {
-                                        Some(_) if !index.same_tree_bare_underlay => {
-                                            (symbol_index.clone(), closure_variant_base.clone())
-                                        }
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
                                             Some(hit) => hit.clone(),
                                             None => {
