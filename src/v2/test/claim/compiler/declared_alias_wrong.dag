@@ -1,0 +1,13 @@
+module v2.test.claim.compiler.declared_alias_wrong
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type AliasInt = Int
+
+fn f() -> AliasInt { true }
+
+test fn rcf_alias_to_a_different_type_still_refuses_holds() -> Bool {
+  true
+}

@@ -1,0 +1,17 @@
+module v2.test.claim.compiler.generic_nullary_declared_position_mismatch
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type FsList<T>
+  = FsEmpty
+  | FsNonEmpty { head: T, tail: FsList<T> }
+
+fn f() -> FsList<Int> { FsNonEmpty { head: "a", tail: FsEmpty } }
+
+// Native prepare of this module must refuse (arrow_body_does_not_inhabit_declared_return).
+// FsEmpty fits any FsList<X>; the conflict is the String head at FsList<Int>.
+test fn rcf_generic_nullary_arm_closed_int_at_string_return_refuses_holds() -> Bool {
+  true
+}
