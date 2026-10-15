@@ -33,9 +33,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // part kind, so the kind is carried with the figure rather than left implicit: a MOSFET's
 // drain-source maximum is a breakdown limit, a fuse's rated voltage is the highest it can safely
 // interrupt, a capacitor's is its rated working voltage. Each one bounds the rail the part sits on
-// from above; none of them says what that rail IS. vendor_application_statements are the vendor's
-// own words, verbatim: a part designed for one application is weak evidence of the circuit it sits
-// in, and the evidence is the vendor's sentence rather than a summary of it. current_rating is the
+// from above; none of them says what that rail IS. A TVS diode's reverse standoff is the highest
+// voltage it holds off without conducting, so it bounds its rail's normal operating voltage the same
+// way. vendor_application_statements are the vendor's own words, verbatim: a part designed for one
+// application is weak evidence of the circuit it sits in, and the evidence is the vendor's sentence
+// rather than a summary of it. current_rating is the
 // part's datasheet current limit where it has one (a MOSFET's drain current, a fuse's rated current);
 // it is Absent where the kind has none the board reading uses -- a capacitor's datasheet gives a
 // ripple rating, a different quantity, so it is not carried under this name.
@@ -43,6 +45,7 @@ type VoltageRatingKind
   = DrainSourceMaximum
   | FuseInterruptRating
   | CapacitorRatedVoltage
+  | TvsReverseStandoff
 
 type ComponentVoltageRating {
   kind: VoltageRatingKind

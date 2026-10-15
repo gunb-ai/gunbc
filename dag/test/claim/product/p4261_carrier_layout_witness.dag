@@ -39,13 +39,16 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
   }
 }
 
-// The auxiliary path's capacitors are now identified by datasheet marking (Panasonic EEH-ZU1J151,
-// 63 V), so their rating is observed -- and still bounds nothing, because continuity did NOT show them
-// on J20's rail (a one-way junction separates them). An identified rating is not a placed one.
+// The auxiliary path's capacitors (Panasonic EEH-ZU1J151, 63 V) and D2 (5.0SMDJ60A by code, 60 V
+// standoff) are now identified by datasheet marking, so their ratings are observed -- and still bound
+// nothing: neither is shown across J20's rail (continuity found a one-way junction between the caps
+// and J20's supply; D2's terminals are unread). An identified rating is not a placed one.
 test fn identified_capacitors_are_observed_and_bound_nothing() -> Bool {
   match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
     NoEstablishedBound { observed_ratings: rs } =>
-      count(rs) == 1 && any(rs, r => (r as String).contains("63 V capacitor rated voltage, placed by adjacency only"))
+      count(rs) == 2
+        && any(rs, r => (r as String).contains("63 V capacitor rated voltage, placed by adjacency only"))
+        && any(rs, r => (r as String).contains("60 V TVS reverse standoff, placed by adjacency only"))
     BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
   }
 }

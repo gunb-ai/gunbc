@@ -13,6 +13,7 @@ import extdeps.electronic_component.types {
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
+import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of one unit, kept in
@@ -35,9 +36,10 @@ import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 // across the part's rated terminals, which is the only relation under which a rating bounds a rail.
 //
 // GH200-P9 (2026-10-15): THE OPERATOR'S OWN BENCH READINGS of a received carrier. The operator read
-// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it. Which of
-// the two received carriers was read is not recorded; both are P4261 boards, and J20's continuity
-// is a property of the board design rather than of one unit. A continuity reading is stronger than
+// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it, on the
+// carrier the operator believes is the one bought from Central Valley (not this K1). Both are P4261
+// boards, and J20's continuity is a property of the board design rather than of one unit; the unit
+// identity matters for lot codes and labels, which are recorded with that caveat. A continuity reading is stronger than
 // adjacency (it says two points are joined, or are not) and weaker than a traced net under power (a
 // switch that is open while unpowered hides the rail behind it).
 
@@ -122,7 +124,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     "sticker on the top edge between the two grey blocks: 'REV. 215-EV1 / SN.1582023110033' (photograph supplied by the operator 2026-10-15; the serial is one of the two in the listing photographs). '215' matches the module part number 699-2G530-0215; whether it names the module variant the board is built for is not established",
   ],
   module_receptacles: ["J3", "J4"],
-  main_input_connectors: "two large grey blind-mate blocks on the top edge, J2 silkscreened beside the left one, each a grid of small contacts (4 rows of 8 to 9 cells as photographed) under a row of larger openings; maker, part number and pin assignment unread. That they carry the main input is itself not established: the main-stage fuse and FETs sit beside them by adjacency, and on the Ng reference board (a sibling two-module NVIDIA board, not a P4261) similar edge connectors are unoccupied in the working build",
+  main_input_connectors: "two large grey blind-mate blocks on the top edge, J2 silkscreened beside the left one, each a grid of small contacts (4 rows of 8 to 9 cells as photographed) under a row of larger openings -- a mixed power-and-signal board-to-board layout by eye (TE's MULTI-BEAM XLE family has been proposed as a visual candidate, unconfirmed); maker, part number and pin assignment unread. If they are blind-mate connectors, they mated a power-distribution or midplane board that is not in hand. That they carry the main input is itself not established: the main-stage fuse and FETs sit beside them by adjacency, and on the Ng reference board (a sibling two-module NVIDIA board, not a P4261) similar edge connectors are unoccupied in the working build",
   auxiliary_connector: "J20, a black shrouded 2 x 9 power receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (auxiliary_connector_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Its voltage is unread, and which physical row is which was not recorded: re-read polarity before any connection",
   auxiliary_connector_positions: 18,
   auxiliary_connector_rows: [
@@ -167,11 +169,19 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     },
     ObservedComponent {
       designators: ["D2"],
-      quantity: 2,
-      role: "diodes in SMA/SMB-class packages, one in the main stage and D2 beside J20",
-      identification: MarkingUnresolved { marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread)", discriminator: "the maker's marking table for code 5PGK; the logo is not identified" },
+      quantity: 1,
+      role: "unidirectional TVS diode beside J20, in an SMC-class package",
+      identification: IdentifiedByDatasheetMarking { row: tvs_5_0smdj60a, marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread). 5PGK is 5.0SMDJ60A in Bourns's marking table; the logo is not Bourns-identified, so the match is by code" },
       path: AuxiliaryInputPath,
       membership: k1_adjacency_aux,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "diode in the main input stage, SMA/SMB-class package",
+      identification: MarkingUnresolved { marking_read: "not read separately; the 2026-10-04 transcription '5P0X / ZCNSU' may have been of D2", discriminator: "a close-up of this diode's own marking" },
+      path: MainInputPath,
+      membership: k1_adjacency_main,
     },
     ObservedComponent {
       designators: ["F1"],
@@ -220,7 +230,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
     "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
     "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
-    "U522, an 8-pin MSOP-class part beside J20's end, reads 'TI 31 / T275' (2026-10-15): a Texas Instruments part by its marking, code T275 not decoded. Its place beside the J20 shunt and switch fits a hot-swap controller, which is a hypothesis only",
+    "U522, beside J20's end, reads 'TI 31 / T275' (2026-10-15): TI's TMP275 datasheet ordering table gives T275 as the marking of TMP275 in the 8-pin DGK (VSSOP) package -- a digital temperature sensor on I2C/SMBus with an ALERT output, not a power controller. Where its SDA, SCL and ALERT pins go (J20, the grey edge connectors, U4) is unread, and is a lead to the board's management path",
     "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up",
   ],
 }
@@ -268,6 +278,7 @@ fn rating_kind_text(k: VoltageRatingKind) -> String {
     DrainSourceMaximum => "drain-source maximum"
     FuseInterruptRating => "fuse voltage rating"
     CapacitorRatedVoltage => "capacitor rated voltage"
+    TvsReverseStandoff => "TVS reverse standoff"
   }
 }
 
