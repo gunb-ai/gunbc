@@ -311,8 +311,12 @@ test fn witness_spec_targets_srv1() -> Bool {
 
 test fn witness_spec_uses_apt_package_manager() -> Bool {
   match deployment_spec_srv1().target.os_package_manager {
-    Apt => true
-    _ => false
+    Absent => false
+    Present { value: m } =>
+      match m {
+        Apt => true
+        _ => false
+      }
   }
 }
 

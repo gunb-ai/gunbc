@@ -41,12 +41,16 @@ type WorkerSandboxClaim
   | ClaimsSystemManagerConfinement
   | ClaimsNoConfinement
 
+type WorkerSandboxRefusal
+  = WorkerSandboxUnobserved { obligation: NonEmptyStr }
+  | WorkerSandboxSysctlUnreadable { value: Int }
+
 type WorkerSandboxSelection
   = WorkerSandboxSelected {
       realization: WorkerSandboxRealization
       claim: WorkerSandboxClaim
     }
-  | WorkerSandboxRefused { cause: NonEmptyStr }
+  | WorkerSandboxRefused { cause: WorkerSandboxRefusal }
 
 type LabDeployPlanRefusal
   = LabOsUnobserved { obligation: NonEmptyStr }
@@ -68,9 +72,10 @@ type LabDeployPlan
 
 fn select_worker_sandbox(surface: HostSoftwareSurface) -> WorkerSandboxSelection {
   match user_manager_sandbox_enforcement(surface: surface) {
-    UserManagerSandboxUnobserved { obligation: o } => WorkerSandboxRefused { cause: o }
+    UserManagerSandboxUnobserved { obligation: o } =>
+      WorkerSandboxRefused { cause: WorkerSandboxUnobserved { obligation: o } }
     UserManagerSandboxSysctlUnreadable { value: n } =>
-      WorkerSandboxRefused { cause: join(["apparmor userns sysctl was not 0 or 1: ", to_string(n)], "") as NonEmptyStr }
+      WorkerSandboxRefused { cause: WorkerSandboxSysctlUnreadable { value: n } }
     UserManagerDoesNotEnforceSandbox => WorkerSandboxSelected {
       realization: SystemManagerLauncherRealization,
       claim: ClaimsSystemManagerConfinement,
@@ -87,7 +92,13 @@ fn lab_deploy_plan_from_software(surface: HostSoftwareSurface) -> LabDeployPlan 
     HostPackageManagerUnobserved { obligation: o } => LabPlanRefused { cause: LabOsUnobserved { obligation: o } }
     HostPackageManagerKnown { manager: manager } =>
       match select_worker_sandbox(surface: surface) {
-        WorkerSandboxRefused { cause: c } => LabPlanRefused { cause: LabSandboxUnobserved { obligation: c } }
+        WorkerSandboxRefused { cause: c } =>
+          match c {
+            WorkerSandboxUnobserved { obligation: o } =>
+              LabPlanRefused { cause: LabSandboxUnobserved { obligation: o } }
+            WorkerSandboxSysctlUnreadable { value: n } =>
+              LabPlanRefused { cause: LabSandboxSysctlUnreadable { value: n } }
+          }
         WorkerSandboxSelected { realization: r, claim: c } =>
           match surface.toolchain_paths.value.git {
             Absent => LabPlanRefused {
@@ -202,4 +213,3 @@ fn package_manager_is_apt(m: OsPackageManager) -> Bool {
 // preflight stays a reading of the bytes on PATH. Dissolve-on: dispatch preflight takes a
 // HostSoftwareSurface and checks the live --version output against the typed label as an
 // inhabitance claim, at which point the substring needles can go.
-data dispatch_host_environment_probes_remain_live_preflight: NonEmptyStr = "DispatchHostEnvironment.identity_contains stays a live substring probe of the executable about to run; host software versions are the planning authority. They are not the same question."

@@ -162,6 +162,7 @@ fn srv1_software_inhabitance_probe_commands() -> List<NonEmptyStr> {
     srv1_systemd_probe,
     srv1_cgroup_delegation_probe,
     srv1_tailscale_probe,
+    srv1_toolchain_which_probe,
   ]
 }
 

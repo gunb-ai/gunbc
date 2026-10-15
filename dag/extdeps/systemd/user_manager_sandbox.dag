@@ -1,6 +1,6 @@
 module extdeps.systemd.user_manager_sandbox
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int }
 import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.uri { Uri, Https }
@@ -57,4 +57,3 @@ fn user_manager_enforces_protect_home_under_userns_sysctl(sysctl_value: Int) -> 
   }
 }
 
-data user_manager_sandbox_properties_note: NonEmptyStr = "ProtectHome, ProtectSystem, and ReadWritePaths on a --user unit are the properties this derivation is about. A plan that claims a user-manager realization confines a worker is claiming these fire. PID 1 remains the manager that still enforces them when the user manager cannot."

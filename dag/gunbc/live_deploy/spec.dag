@@ -7,6 +7,7 @@ import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
+import std.optional { Present }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.package_managers.apt {
   package_tailscale,
@@ -254,7 +255,7 @@ type DeploymentHostTarget {
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
   tailnet_domain: NonEmptyStr?
-  os_package_manager: OsPackageManager
+  os_package_manager: OsPackageManager?
   tailscale_client: TailscaleServeCapability
   host_directories: List<OwnedDirectoryTarget>
 }
@@ -1043,10 +1044,10 @@ fn ubuntu_noble_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-fn srv1_host_os_package_manager() -> OsPackageManager {
+fn srv1_host_os_package_manager() -> OsPackageManager? {
   match host_os_package_manager(surface: srv1_software_surface()) {
-    HostPackageManagerKnown { manager: m } => m
-    HostPackageManagerUnobserved { obligation: _ } => ubuntu_noble_os_package_manager()
+    HostPackageManagerKnown { manager: m } => Present { value: m }
+    HostPackageManagerUnobserved { obligation: _ } => none
   }
 }
 

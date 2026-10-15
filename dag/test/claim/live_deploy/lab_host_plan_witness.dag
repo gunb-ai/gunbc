@@ -53,7 +53,10 @@ test fn srv1_as_data_yields_apt_and_the_declared_git_path() -> Bool {
           Present { value: p } => p == declared_srv1_toolchain_git()
           Absent => false
         }
-        && deployment_srv1_target().os_package_manager == m
+        && match deployment_srv1_target().os_package_manager {
+          Present { value: pm } => pm == m
+          Absent => false
+        }
         && srv1_lab_desired_deployment().target.host.identity == srv1_host.identity
   }
 }
@@ -150,6 +153,38 @@ test fn unobserved_apparmor_with_known_os_refuses_sandbox_rather_than_defaulting
         LabOsUnobserved { obligation: _ } => false
         LabToolchainUnobserved { obligation: _ } => false
         LabSandboxSysctlUnreadable { value: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn unreadable_apparmor_sysctl_refuses_as_sysctl_unreadable_not_unobserved() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 2 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    procps: srv1_software_surface().procps.value,
+    coreutils: srv1_software_surface().coreutils.value,
+    git: blank_tool(kind: GitTool, probe: "git --version"),
+    jq: blank_tool(kind: JqTool, probe: "jq --version"),
+    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
+    tailscale: srv1_software_surface().tailscale.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandboxSysctlUnreadable { value: n } => n == 2
+        LabSandboxUnobserved { obligation: _ } => false
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
       }
     LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
   }

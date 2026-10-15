@@ -134,7 +134,7 @@ test fn srv1_timeout_expired_is_coreutils_124() -> Bool {
 
 test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
   let cmds = srv1_software_inhabitance_probe_commands()
-  cmds.length() == 11
+  cmds.length() == 12
     && cmds[0] == Present { value: srv1_os_release_probe }
     && any(cmds, c => (c as String) == "uname -r")
     && any(cmds, c => (c as String) == "sysctl -n kernel.apparmor_restrict_unprivileged_userns")
@@ -144,6 +144,7 @@ test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
     && any(cmds, c => (c as String) == "git --version")
     && any(cmds, c => (c as String) == "jq --version")
     && any(cmds, c => (c as String) == "systemctl --version")
+    && any(cmds, c => (c as String) == "command -v git; command -v jq; command -v timeout; command -v systemd-run")
 }
 
 test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
