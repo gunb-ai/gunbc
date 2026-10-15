@@ -1,9 +1,10 @@
 module test.claim.live_deploy.user_work_slice_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, GitRef, FilePath }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.git
 import extdeps.filesystem.filesystem_io
 import extdeps.exec.command { argv_words }
 import extdeps.systemd { systemd_unit_property_wire }
@@ -33,9 +34,9 @@ import gunbc.compute.unit_bounds {
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   user_work_scope_user_slice_cgroup_needle, user_work_scope_service_unit_suffix,
   user_work_scope_slice_unit_suffix,
-  system_service_unit_from_cgroup, user_work_scope_standing_before_system_unit_exempt,
-  user_work_scope_standing_for_wrap, user_work_scope_standing_for_wrap_before_slice_gate,
-  user_work_wrap_envelope_properties, user_work_wrap_envelope_properties_before_tighten,
+  system_service_unit_from_cgroup,
+  user_work_scope_standing_for_wrap,
+  user_work_wrap_envelope_properties,
   user_work_wrap_ready_properties,
   MemoryCapped, MemoryUnbounded,
   UserWorkSliceNotInstalled, UserWorkSliceUncappedInstall, UserWorkSliceInstalled,
@@ -67,6 +68,19 @@ import gunbc.live_deploy.spec {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_scope.rs"
+// b6ea4672: modeled-capped Exempt (the tightening). Wrap still Slice=+SwapMax only.
+data wrap_envelope_parent_commit: GitRef = "b6ea4672333ce4ef9b4d39bcfe0fd99e96f46827" as GitRef
+// 2c5a4e01: wide system-unit Exempt, no UncappedSystemSlice.
+data modeled_cap_exempt_parent_commit: GitRef = "2c5a4e018c7a82010ad47ee2b7ba3fd002320a96" as GitRef
+
+fn seed_at_commit(commit: GitRef) -> String {
+  let shown = git.Core.Show(ref: commit, path: seed_user_work_scope_path as FilePath)
+  if shown.success {
+    shown.content
+  } else {
+    ""
+  }
+}
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
   props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
@@ -338,21 +352,22 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
   }
 }
 
-test fn the_exempt_control_fails_at_the_parent_fold() -> Bool {
-  let cg = join([
-    "0::/",
-    gunbc_repository_convergence_slice_unit_name as String,
-    "/",
-    gunbc_tree_sync_unit_name as String,
-  ], "")
-  match user_work_scope_standing_before_system_unit_exempt(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
-    UserSessionAbsent =>
-      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
-        ExemptSystemUnit { unit: _, slice: _ } => true
-        _ => false
-      }
-    _ => false
-  }
+test fn the_exempt_control_fails_at_the_parent_commit() -> Bool {
+  let parent = seed_at_commit(commit: modeled_cap_exempt_parent_commit)
+  parent != ""
+    && string_contains(s: parent, pattern: "ExemptSystemUnit { unit }")
+    && !string_contains(s: parent, pattern: "UncappedSystemSlice")
+    && !string_contains(s: parent, pattern: "MODELED_CAPPED_SYSTEM_SLICES")
+    && match user_work_scope_standing(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") },
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+    ) {
+      UncappedSystemSlice { unit: _, slice: sl } => sl == "system.slice"
+      _ => false
+    }
 }
 
 test fn declared_system_slice_caps_are_the_slice_bound_rows() -> Bool {
@@ -470,14 +485,18 @@ test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Boo
 }
 
 test fn wrap_keeps_the_tighter_of_caller_and_slice() -> Bool {
+  let parent = seed_at_commit(commit: wrap_envelope_parent_commit)
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
       let slice_max = user_work_slice_memory_max_of(slots: slots)
       let caller_max = byte_size(8589934592)
       let slice = UserWorkSliceInstalled { memory_max: slice_max, memory_high: MemoryUnbounded }
       let caller = CallerEnvelopeObserved { memory_max: MemoryCapped { bytes: caller_max }, memory_high: MemoryUnbounded }
-      byte_size_count(b: slice_max) > byte_size_count(b: caller_max)
-        && !has_property(props: user_work_wrap_envelope_properties_before_tighten(), needle: "MemoryMax=")
+      parent != ""
+        && string_contains(s: parent, pattern: "--property=Slice={USER_WORK_SLICE}")
+        && string_contains(s: parent, pattern: "--property=MemorySwapMax={USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES}")
+        && !string_contains(s: parent, pattern: "--property=MemoryMax=")
+        && byte_size_count(b: slice_max) > byte_size_count(b: caller_max)
         && has_property(
           props: user_work_wrap_ready_properties(slice: slice, caller: caller),
           needle: join(["MemoryMax=", to_string(byte_size_count(b: caller_max))], ""),
@@ -490,40 +509,36 @@ test fn wrap_keeps_the_tighter_of_caller_and_slice() -> Bool {
   }
 }
 
-test fn absent_slice_wraps_at_the_parent_gate() -> Bool {
+test fn absent_slice_wraps_at_the_parent_commit() -> Bool {
+  let parent = seed_at_commit(commit: wrap_envelope_parent_commit)
   let caller = CallerEnvelopeObserved { memory_max: MemoryUnbounded, memory_high: MemoryUnbounded }
-  match user_work_scope_standing_for_wrap_before_slice_gate(standing: UserManagerOwed, slice: UserWorkSliceNotInstalled, caller: caller) {
-    UserManagerOwed =>
-      match user_work_scope_standing_effect(s: UserManagerOwed) {
-        WrapIntoUserWorkSlice =>
-          match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceNotInstalled, caller: caller) {
-            UserWorkSliceAbsent =>
-              match user_work_scope_standing_effect(s: UserWorkSliceAbsent) {
-                RefuseUserWorkScope { standing: UserWorkSliceAbsent } => true
-                _ => false
-              }
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
+  parent != ""
+    && string_contains(s: parent, pattern: "UserWorkScopeStanding::UserManagerOwed => wrap_now()")
+    && !string_contains(s: parent, pattern: "UserWorkSliceAbsent")
+    && match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceNotInstalled, caller: caller) {
+      UserWorkSliceAbsent =>
+        match user_work_scope_standing_effect(s: UserWorkSliceAbsent) {
+          RefuseUserWorkScope { standing: UserWorkSliceAbsent } => true
+          _ => false
+        }
+      _ => false
+    }
 }
 
-test fn uncapped_slice_wraps_at_the_parent_gate() -> Bool {
+test fn uncapped_slice_wraps_at_the_parent_commit() -> Bool {
+  let parent = seed_at_commit(commit: wrap_envelope_parent_commit)
   let caller = CallerEnvelopeObserved { memory_max: MemoryUnbounded, memory_high: MemoryUnbounded }
-  match user_work_scope_standing_for_wrap_before_slice_gate(standing: UserManagerOwed, slice: UserWorkSliceUncappedInstall, caller: caller) {
-    UserManagerOwed =>
-      match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceUncappedInstall, caller: caller) {
-        UserWorkSliceUncapped =>
-          match user_work_scope_standing_effect(s: UserWorkSliceUncapped) {
-            RefuseUserWorkScope { standing: UserWorkSliceUncapped } => true
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
+  parent != ""
+    && string_contains(s: parent, pattern: "UserWorkScopeStanding::UserManagerOwed => wrap_now()")
+    && !string_contains(s: parent, pattern: "UserWorkSliceUncapped")
+    && match user_work_scope_standing_for_wrap(standing: UserManagerOwed, slice: UserWorkSliceUncappedInstall, caller: caller) {
+      UserWorkSliceUncapped =>
+        match user_work_scope_standing_effect(s: UserWorkSliceUncapped) {
+          RefuseUserWorkScope { standing: UserWorkSliceUncapped } => true
+          _ => false
+        }
+      _ => false
+    }
 }
 
 test fn installed_capped_slice_admits_wrap() -> Bool {

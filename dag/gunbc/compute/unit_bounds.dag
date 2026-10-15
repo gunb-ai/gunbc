@@ -248,39 +248,6 @@ fn user_work_scope_standing(
   }
 }
 
-// THE STANDING AT THE PARENT OF THE MODELED-CAP EXEMPT (4242613b / #13966). Same observations,
-// no system-unit arm: a tree-sync cgroup is UserSessionAbsent. Discriminating RED for
-// tree_sync_under_its_declared_slice_is_exempt.
-fn user_work_scope_standing_before_system_unit_exempt(
-  unit_test: Bool,
-  github_actions: Bool,
-  cgroup: UserWorkScopeCgroupRead,
-  user_manager_reachable: Bool,
-  xdg_runtime_dir: Bool,
-) -> UserWorkScopeStanding {
-  if unit_test {
-    UnitTestExempt
-  } else if github_actions {
-    CiExempt
-  } else {
-    match cgroup {
-      CgroupReadFailed => CgroupUnreadable
-      CgroupText { text } =>
-        if string_contains(s: text, pattern: user_work_slice_unit_name as String) {
-          AlreadyInSlice
-        } else if string_contains(s: text, pattern: runner_unit_prefix) {
-          RunnerSlotExempt
-        } else if user_manager_reachable {
-          UserManagerOwed
-        } else if xdg_runtime_dir {
-          UserManagerProbeFailed
-        } else {
-          UserSessionAbsent
-        }
-    }
-  }
-}
-
 fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
   match s {
     AlreadyInSlice => "AlreadyInSlice"
@@ -375,12 +342,6 @@ fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryB
   )
 }
 
-// PARENT (#13966 wrap): Slice= and MemorySwapMax=0 only. systemd creates a missing
-// slice UNCAPPED; a bounded caller whose cap is tighter than the slice is widened.
-fn user_work_wrap_envelope_properties_before_tighten() -> List<SystemdRunProperty> {
-  user_work_slice_binding_properties()
-}
-
 fn user_work_scope_standing_for_wrap(
   standing: UserWorkScopeStanding,
   slice: UserWorkSliceInstall,
@@ -401,24 +362,6 @@ fn user_work_scope_standing_for_wrap(
         }
     }
     other => other
-  }
-}
-
-// PARENT: wrap was owed whenever the user manager answered, even if the target slice
-// was missing or MemoryMax=infinity. Discriminating RED for UserWorkSliceAbsent /
-// UserWorkSliceUncapped.
-fn user_work_scope_standing_for_wrap_before_slice_gate(
-  standing: UserWorkScopeStanding,
-  slice: UserWorkSliceInstall,
-  caller: CallerMemoryEnvelope,
-) -> UserWorkScopeStanding {
-  match slice {
-    UserWorkSliceNotInstalled => standing
-    UserWorkSliceUncappedInstall => standing
-    UserWorkSliceInstalled { memory_max: _, memory_high: _ } => match caller {
-      CallerEnvelopeReadFailed => standing
-      CallerEnvelopeObserved { memory_max: _, memory_high: _ } => standing
-    }
   }
 }
 
