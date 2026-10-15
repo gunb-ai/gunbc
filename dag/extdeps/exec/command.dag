@@ -167,6 +167,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.xz", decl_name: "xz_decompress_keep_command"),
     decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_root_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_preserve_if_absent_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_hash_object_command"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_run_release_manifest_offline_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_control_fields_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),

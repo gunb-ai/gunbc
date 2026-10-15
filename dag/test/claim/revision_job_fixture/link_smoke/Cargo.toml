@@ -1,0 +1,12 @@
+[package]
+name = "revision-job-link-smoke"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+cc = "=1.2.62"
+
+# Its own workspace root: this fixture is built by the revision job's link-smoke claim, never as a
+# member of the repository workspace above it.
+[workspace]
