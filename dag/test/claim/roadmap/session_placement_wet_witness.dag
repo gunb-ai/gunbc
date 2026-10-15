@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
   session_placement_observation_of, session_placement_observe_at,
@@ -328,6 +328,7 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   charged && opened && released_unit(s: s) == unit_a() && bound
 }
@@ -358,6 +359,7 @@ test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bo
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   let s = settlement_of(p: session_placement_settle_pass_at(stores: stores, host: host, lifecycle_of: lifecycle_absent, now: 99999))
   let rel = release_text(dir: dir)

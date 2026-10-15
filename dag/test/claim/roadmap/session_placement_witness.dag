@@ -27,7 +27,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
   session_placement_observation_of, session_placement_observe_at,
@@ -179,6 +179,7 @@ test fn a_bound_placement_reads_back_its_slot_grant_and_release() -> Bool {
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
 }
 
@@ -201,18 +202,21 @@ test fn a_record_or_release_from_another_attempt_or_fence_is_refused() -> Bool {
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   let wrong_fence = match observe_a(slot: held(rec: slot_a(opened: 1000)), record: planted(name: rec_name(), content: record_bytes(node_id: node_a, attempt_key: key_a)), released: planted(name: rel_name(), content: release_for(node_id: node_a, attempt_key: key_a, grant_identity: "evt-7", fence: "8"))) {
     SessionPlacementObserved { slot: _, grant: _, returned } => release_unreadable_naming(r: returned, needle: "fence")
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   let no_slot = match observe_a(slot: AttemptSlotAbsent, record: missing(name: rec_name()), released: missing(name: rel_name())) {
     SessionPlacementAbsent { unit } => unit == unit_a()
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   foreign && wrong_fence && no_slot
 }
@@ -280,6 +284,7 @@ test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool {
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   let accepted = match observe_record(content: good) {
     SessionPlacementObserved { slot: _, grant, returned: _ } => match grant {
@@ -291,6 +296,7 @@ test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool {
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
+    SessionPlacementUnnameable { detail: _ } => false
   }
   bad != good && refused && accepted
 }
@@ -315,8 +321,8 @@ fn placement_of_node(node_id: String) -> SessionPlacementObservation {
 
 test fn an_empty_node_id_is_an_unreadable_session_placement() -> Bool {
   match placement_of_node(node_id: "") {
-    SessionPlacementUnreadable { unit, detail } =>
-      unit == "" && string_contains(s: detail, pattern: "empty")
+    SessionPlacementUnnameable { detail } => string_contains(s: detail, pattern: "empty")
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false
@@ -325,8 +331,8 @@ test fn an_empty_node_id_is_an_unreadable_session_placement() -> Bool {
 
 test fn an_overlong_node_id_is_an_unreadable_session_placement() -> Bool {
   match placement_of_node(node_id: unit_name_overlong_node()) {
-    SessionPlacementUnreadable { unit, detail } =>
-      unit == "" && string_contains(s: detail, pattern: "255")
+    SessionPlacementUnnameable { detail } => string_contains(s: detail, pattern: "255")
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementForeign { unit: _, detail: _ } => false

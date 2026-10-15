@@ -655,7 +655,7 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
   session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
   session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
-  session_placement_observe_for_attempt, SessionPlacementUnreadable,
+  session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap.roadmap_workflow_command {
@@ -6227,7 +6227,7 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     },
     review: review_report_standing_for_pointer(pointer_state: pointer_state),
     goal_audit: [],
-    session_placement: SessionPlacementUnreadable { unit: "", detail: placement_detail },
+    session_placement: SessionPlacementUnnameable { detail: placement_detail },
   }
 }
 

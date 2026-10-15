@@ -847,6 +847,7 @@ type SessionPlacementObservation
   | SessionPlacementAbsent { unit: String }
   | SessionPlacementUnreadable { unit: String, detail: String }
   | SessionPlacementForeign { unit: String, detail: String }
+  | SessionPlacementUnnameable { detail: String }
 
 // THE PURE FOLD over what the caller read, so witnesses supply planted readings and the reader below
 // supplies real ones.
@@ -857,8 +858,7 @@ fn session_placement_observation_of(
   release_path: String, released: FilesystemFileObservation,
 ) -> SessionPlacementObservation {
   match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => SessionPlacementUnreadable {
-      unit: "",
+    Absent => SessionPlacementUnnameable {
       detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
     }
     Present { value: named } => {
@@ -899,8 +899,7 @@ fn session_placement_file(dir: String, name: String) -> FilesystemFileObservatio
 
 fn session_placement_observe_at(stores: SessionPlacementStores, host: String, node_id: String, attempt_key: String) -> SessionPlacementObservation {
   match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => SessionPlacementUnreadable {
-      unit: "",
+    Absent => SessionPlacementUnnameable {
       detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
     }
     Present { value: unit } => {
@@ -920,8 +919,7 @@ fn session_placement_observe_at(stores: SessionPlacementStores, host: String, no
 // properties applied) and its release, for THIS node's THIS attempt.
 fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionPlacementObservation {
   match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => SessionPlacementUnreadable {
-      unit: "",
+    Absent => SessionPlacementUnnameable {
       detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
     }
     Present { value: unit } =>
@@ -1007,6 +1005,7 @@ fn session_worker_start_standing(observation: SessionPlacementObservation) -> At
     SessionPlacementAbsent { unit: _ } => AttemptUnitNeverStarted
     SessionPlacementUnreadable { unit: _, detail } => AttemptUnitStartUnread { reason: detail }
     SessionPlacementForeign { unit: _, detail } => AttemptUnitStartUnread { reason: detail }
+    SessionPlacementUnnameable { detail } => AttemptUnitStartUnread { reason: detail }
   }
 }
 
@@ -1129,6 +1128,7 @@ fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String
             SessionPlacementAbsent { unit: _ } => false
             SessionPlacementUnreadable { unit: _, detail: _ } => false
             SessionPlacementForeign { unit: _, detail: _ } => false
+            SessionPlacementUnnameable { detail: _ } => false
           }
       }
     AttemptSlotAbsent => false
@@ -1169,6 +1169,7 @@ fn session_settle_release(stores: SessionPlacementStores, host: String, unit: No
     SessionPlacementAbsent { unit: _ } => none
     SessionPlacementUnreadable { unit: _, detail: _ } => none
     SessionPlacementForeign { unit: _, detail: _ } => none
+    SessionPlacementUnnameable { detail: _ } => none
   }
   let why = join(["settled: ", reason], "") as NonEmptyStr
   let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
