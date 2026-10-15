@@ -8,17 +8,11 @@ use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
 use self::TypeSummaryQuestion::*;
-pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
-pub use crate::std_literal_elaboration::kernel_mint_declaration_for;
-pub use crate::std_literal_elaboration::KernelMintDeclarationLookup;
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
-    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
-};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -730,27 +724,6 @@ pub fn type_decl_qualifier_declarer(index: Rc<TypeDeclIndex>, authored: String) 
     }
 }
 
-pub fn type_decl_kernel_mint_declarer(index: Rc<TypeDeclIndex>, leaf: String) -> Option<String> {
-    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
-        kernel_mint_declaration_rows(),
-        leaf.clone(),
-    ))
-    .clone()
-    {
-        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
-            let identity = type_decl_identity(d.module_path.clone(), d.decl_name.clone());
-            match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
-                Some(_) => Some(identity.clone()),
-                std::option::Option::None => std::option::Option::None,
-            }
-        }
-        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => std::option::Option::None,
-        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
-            std::option::Option::None
-        }
-    }
-}
-
 pub fn type_decl_spelling_route(
     index: Rc<TypeDeclIndex>,
     authored: String,
@@ -788,9 +761,7 @@ pub fn type_decl_occurrence_identity(
         TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
             identity: identity, ..
         } => Some(identity.clone()),
-        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
-            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
-        }
+        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => std::option::Option::None,
         TypeDeclOccurrenceBinding::OccurrenceImported {
             identity: identity, ..
         } => Some(identity.clone()),
