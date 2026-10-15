@@ -58,21 +58,30 @@ type ControllerCapability sole_constructor {
   graphical_console: CapabilityFactStanding
 }
 
-// THE PROJECTION: derive the controller's capabilities from its raw capability row.
+// THE PROJECTION: derive the controller's capabilities from its raw capability row. The
+// virtual-media fact is the only one that disjunctions across more than one value, so it is
+// factored into its own helper (virtual_media_established) rather than an inline multi-line
+// argument.
 fn controller_capability(row: BmcFirmwareReleaseCapabilityRow) -> ControllerCapability {
   ControllerCapability {
     power_read_write: standing_of(present: release_row_has_capability(row: row, cap: CapabilityPowerControl)),
     one_shot_boot_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
     persistent_boot_selection: CapabilityUnestablished,
-    virtual_media: standing_of(present:
-      release_row_has_capability(row: row, cap: CapabilityVirtualMedia)
-      || release_row_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia)
-      || release_row_has_capability(row: row, cap: CapabilityOemRemoteMedia)
-    ),
+    virtual_media: standing_of(present: virtual_media_established(row: row)),
     pxe_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
     serial_console: standing_of(present: release_row_has_capability(row: row, cap: CapabilitySerialConsole)),
     graphical_console: CapabilityUnestablished,
   }
+}
+
+// THE VIRTUAL-MEDIA FACT: the row establishes a media-attach surface when it carries ANY of the
+// virtual-media values — Redfish virtual media, NBD-proxy virtual media, or OEM remote media. All
+// three are media-attach surfaces; any one of them can carry the boot image a virtual-media boot
+// attaches.
+fn virtual_media_established(row: BmcFirmwareReleaseCapabilityRow) -> Bool {
+  release_row_has_capability(row: row, cap: CapabilityVirtualMedia)
+  || release_row_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia)
+  || release_row_has_capability(row: row, cap: CapabilityOemRemoteMedia)
 }
 
 // A BOOLEAN "IS THE VALUE PRESENT" INTO A STANDING: Present maps to established, absent maps to
