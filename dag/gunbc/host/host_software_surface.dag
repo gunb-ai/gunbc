@@ -35,11 +35,12 @@ import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
   apparmor_unprivileged_userns_restricted,
 }
-import extdeps.systemd.user_manager_sandbox {
-  user_manager_enforces_protect_home_under_userns_sysctl,
-}
-import extdeps.procps.kill { procps_ng_4_0_4_label, procps_ng_kill_term_pgid_argv }
-import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.procps.kill { procps_ng_4_0_4_label, procps_ng_kill_term_pgid_argv, kill_program }
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code, timeout_program }
 import gunbc.fleet.fleet_posix_accounts {
   GroundedPosixPrincipal,
   fleet_posix_operator_principal,
@@ -50,6 +51,7 @@ import extdeps.tailscale.serve {
   TailscaleServeCapability,
   ScopedRemovalUnobserved,
   tailscale_scoped_removal_capability,
+  tailscale_program,
 }
 
 // PER-HOST SOFTWARE, KEYED BY THE SAME HostIdentity ComputeHost already carries (DESIGN 3: do not
@@ -84,17 +86,10 @@ type HostSysctlFact {
   standing: CitedFigureStanding
 }
 
-type HostToolKind
-  = ProcpsNgTool
-  | GnuCoreutilsTool
-  | GitTool
-  | JqTool
-  | SystemdTool
-  | TailscaleTool
-
-type HostToolVersionFact {
-  kind: HostToolKind
+type HostProgramVersionFact {
+  program: ProgramIdentity
   version_label: NonEmptyStr?
+  package_version_label: NonEmptyStr?
   standing: CitedFigureStanding
 }
 
@@ -122,12 +117,7 @@ type HostSoftwareSurface {
   os_release: HostResource<OsReleaseRole, HostOsReleaseFact>
   kernel_release: HostResource<KernelReleaseRole, HostKernelReleaseFact>
   apparmor_userns: HostResource<SysctlRole, HostSysctlFact>
-  procps: HostResource<ToolVersionRole, HostToolVersionFact>
-  coreutils: HostResource<ToolVersionRole, HostToolVersionFact>
-  git: HostResource<ToolVersionRole, HostToolVersionFact>
-  jq: HostResource<ToolVersionRole, HostToolVersionFact>
-  systemd: HostResource<ToolVersionRole, HostToolVersionFact>
-  tailscale: HostResource<ToolVersionRole, HostToolVersionFact>
+  programs: HostResource<ToolVersionRole, List<HostProgramVersionFact>>
   sudo_policy: HostResource<SudoPolicyRole, HostSudoPolicyFact>
   user_cgroup_delegation: HostResource<CgroupDelegationRole, HostCgroupDelegationFact>
   toolchain_paths: HostResource<ToolchainPathsRole, HostToolchainPathFact>
@@ -210,12 +200,7 @@ fn occurrence_ids_for_host() -> List<ResourceOccurrenceId> {
   let m4 = alloc_resource_occurrence(alloc: m3.alloc)
   let m5 = alloc_resource_occurrence(alloc: m4.alloc)
   let m6 = alloc_resource_occurrence(alloc: m5.alloc)
-  let m7 = alloc_resource_occurrence(alloc: m6.alloc)
-  let m8 = alloc_resource_occurrence(alloc: m7.alloc)
-  let m9 = alloc_resource_occurrence(alloc: m8.alloc)
-  let m10 = alloc_resource_occurrence(alloc: m9.alloc)
-  let m11 = alloc_resource_occurrence(alloc: m10.alloc)
-  [m0.id, m1.id, m2.id, m3.id, m4.id, m5.id, m6.id, m7.id, m8.id, m9.id, m10.id, m11.id]
+  [m0.id, m1.id, m2.id, m3.id, m4.id, m5.id, m6.id]
 }
 
 fn occurrence_at(ids: List<ResourceOccurrenceId>, index: Int) -> ResourceOccurrenceId {
@@ -230,12 +215,7 @@ fn software_surface(
   os: HostOsReleaseFact,
   kernel: HostKernelReleaseFact,
   apparmor: HostSysctlFact,
-  procps: HostToolVersionFact,
-  coreutils: HostToolVersionFact,
-  git: HostToolVersionFact,
-  jq: HostToolVersionFact,
-  systemd: HostToolVersionFact,
-  tailscale: HostToolVersionFact,
+  programs: List<HostProgramVersionFact>,
   sudo_policy: HostSudoPolicyFact,
   cgroup: HostCgroupDelegationFact,
   toolchain: HostToolchainPathFact,
@@ -258,48 +238,23 @@ fn software_surface(
       role: Sysctl,
       value: apparmor,
     },
-    procps: HostResource {
+    programs: HostResource {
       identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 3) },
       role: ToolVersion,
-      value: procps,
-    },
-    coreutils: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 4) },
-      role: ToolVersion,
-      value: coreutils,
-    },
-    git: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 5) },
-      role: ToolVersion,
-      value: git,
-    },
-    jq: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 6) },
-      role: ToolVersion,
-      value: jq,
-    },
-    systemd: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 7) },
-      role: ToolVersion,
-      value: systemd,
-    },
-    tailscale: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 8) },
-      role: ToolVersion,
-      value: tailscale,
+      value: programs,
     },
     sudo_policy: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 9) },
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 4) },
       role: SudoPolicy,
       value: sudo_policy,
     },
     user_cgroup_delegation: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 10) },
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 5) },
       role: CgroupDelegation,
       value: cgroup,
     },
     toolchain_paths: HostResource {
-      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 11) },
+      identity: HostResourceIdentity { host: host, occurrence: occurrence_at(ids: ids, index: 6) },
       role: ToolchainPaths,
       value: toolchain,
     },
@@ -330,11 +285,37 @@ fn blank_apparmor() -> HostSysctlFact {
   }
 }
 
-fn blank_tool(kind: HostToolKind, probe: NonEmptyStr) -> HostToolVersionFact {
-  HostToolVersionFact {
-    kind: kind,
+fn blank_program(program: ProgramIdentity, probe: NonEmptyStr) -> HostProgramVersionFact {
+  HostProgramVersionFact {
+    program: program,
     version_label: none,
+    package_version_label: none,
     standing: unobserved_standing(probe: probe),
+  }
+}
+
+fn unobserved_programs() -> List<HostProgramVersionFact> {
+  [
+    blank_program(program: kill_program(), probe: srv1_procps_probe),
+    blank_program(program: timeout_program(), probe: srv1_timeout_probe),
+    blank_program(program: git_program(), probe: srv1_git_probe),
+    blank_program(program: jq_program(), probe: srv1_jq_probe),
+    blank_program(program: systemctl_path_resolved_program(), probe: srv1_systemd_probe),
+    blank_program(program: tailscale_program(), probe: srv1_tailscale_probe),
+  ]
+}
+
+fn observed_program(
+  program: ProgramIdentity,
+  version_label: NonEmptyStr,
+  package_version_label: NonEmptyStr?,
+  standing: CitedFigureStanding,
+) -> HostProgramVersionFact {
+  HostProgramVersionFact {
+    program: program,
+    version_label: Present { value: version_label },
+    package_version_label: package_version_label,
+    standing: standing,
   }
 }
 
@@ -369,12 +350,7 @@ fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
     os: blank_os(),
     kernel: blank_kernel(),
     apparmor: blank_apparmor(),
-    procps: blank_tool(kind: ProcpsNgTool, probe: srv1_procps_probe),
-    coreutils: blank_tool(kind: GnuCoreutilsTool, probe: srv1_timeout_probe),
-    git: blank_tool(kind: GitTool, probe: srv1_git_probe),
-    jq: blank_tool(kind: JqTool, probe: srv1_jq_probe),
-    systemd: blank_tool(kind: SystemdTool, probe: srv1_systemd_probe),
-    tailscale: blank_tool(kind: TailscaleTool, probe: srv1_tailscale_probe),
+    programs: unobserved_programs(),
     sudo_policy: blank_sudo(),
     cgroup: blank_cgroup(),
     toolchain: blank_toolchain(),
@@ -403,36 +379,14 @@ fn srv1_software_surface() -> HostSoftwareSurface {
       value: Present { value: apparmor_unprivileged_userns_restricted },
       standing: standing,
     },
-    procps: HostToolVersionFact {
-      kind: ProcpsNgTool,
-      version_label: Present { value: procps_ng_4_0_4_label },
-      standing: standing,
-    },
-    coreutils: HostToolVersionFact {
-      kind: GnuCoreutilsTool,
-      version_label: Present { value: "9.4" },
-      standing: standing,
-    },
-    git: HostToolVersionFact {
-      kind: GitTool,
-      version_label: Present { value: "2.43.0" },
-      standing: standing,
-    },
-    jq: HostToolVersionFact {
-      kind: JqTool,
-      version_label: Present { value: "jq-1.7" },
-      standing: standing,
-    },
-    systemd: HostToolVersionFact {
-      kind: SystemdTool,
-      version_label: Present { value: "255 (255.4-1ubuntu8.17)" },
-      standing: standing,
-    },
-    tailscale: HostToolVersionFact {
-      kind: TailscaleTool,
-      version_label: Present { value: "1.102.2" },
-      standing: standing,
-    },
+    programs: [
+      observed_program(program: kill_program(), version_label: procps_ng_4_0_4_label, package_version_label: Present { value: "2:4.0.4-4ubuntu3.2" }, standing: standing),
+      observed_program(program: timeout_program(), version_label: "9.4", package_version_label: Present { value: "9.4-3ubuntu6.3" }, standing: standing),
+      observed_program(program: git_program(), version_label: "2.43.0", package_version_label: Present { value: "1:2.43.0-1ubuntu7.3" }, standing: standing),
+      observed_program(program: jq_program(), version_label: "jq-1.7", package_version_label: Present { value: "1.7.1-3ubuntu0.24.04.2" }, standing: standing),
+      observed_program(program: systemctl_path_resolved_program(), version_label: "255 (255.4-1ubuntu8.17)", package_version_label: Present { value: "255.4-1ubuntu8.17" }, standing: standing),
+      observed_program(program: tailscale_program(), version_label: "1.102.2", package_version_label: Present { value: "1.102.2" }, standing: standing),
+    ],
     sudo_policy: HostSudoPolicyFact {
       principal: fleet_posix_operator_principal(),
       observed_listing: Present { value: "(ALL) NOPASSWD: ALL" },
@@ -510,6 +464,34 @@ type UserManagerSandboxEnforcement
   | UserManagerSandboxUnobserved { obligation: NonEmptyStr }
   | UserManagerSandboxSysctlUnreadable { value: Int }
 
+fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) -> HostProgramVersionFact? {
+  fold(surface.programs.value, init: none, f: (acc, p) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if p.program.invocation == program.invocation {
+          Present { value: p }
+        } else {
+          none
+        }
+    }
+  )
+}
+
+fn host_program_version_label(surface: HostSoftwareSurface, program: ProgramIdentity) -> NonEmptyStr? {
+  match host_program_version(surface: surface, program: program) {
+    Absent => none
+    Present { value: fact } => fact.version_label
+  }
+}
+
+// OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
+// unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
+// That this happens because Ubuntu's apparmor userns sysctl is 1 is the bet: systemd.exec does not
+// state that coupling. Sysctl 1 on this host is DoesNotEnforce (observed). Sysctl 0 is treated as
+// the enforcing variant as a bet, not as CitedToAuthority. Any other sysctl is unreadable.
+data srv1_user_manager_protect_home_wrote_into_home_receipt: NonEmptyStr = "github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334"
+
 fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManagerSandboxEnforcement {
   match surface.apparmor_userns.value.value {
     Absent => UserManagerSandboxUnobserved {
@@ -519,45 +501,47 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
       }
     }
     Present { value: n } =>
-      match user_manager_enforces_protect_home_under_userns_sysctl(sysctl_value: n) {
-        Absent => UserManagerSandboxSysctlUnreadable { value: n }
-        Present { value: enforces } =>
-          if enforces {
-            UserManagerEnforcesSandbox
-          } else {
-            UserManagerDoesNotEnforceSandbox
-          }
+      if n == apparmor_unprivileged_userns_restricted {
+        UserManagerDoesNotEnforceSandbox
+      } else if n == 0 {
+        UserManagerEnforcesSandbox
+      } else {
+        UserManagerSandboxSysctlUnreadable { value: n }
       }
   }
 }
 
 fn host_tailscale_client(surface: HostSoftwareSurface) -> TailscaleServeCapability {
-  match surface.tailscale.value.version_label {
-    Absent => ScopedRemovalUnobserved {
-      reason: match cited_figure_obligation(standing: surface.tailscale.value.standing) {
-        Present { value: o } => o as String
-        Absent => srv1_tailscale_probe as String
-      }
-    }
-    Present { value: label } =>
-      match semver_version_parse(cps: chars(s: label as String)) {
+  match host_program_version(surface: surface, program: tailscale_program()) {
+    Absent => ScopedRemovalUnobserved { reason: srv1_tailscale_probe as String }
+    Present { value: fact } =>
+      match fact.version_label {
         Absent => ScopedRemovalUnobserved {
-          reason: "the observed tailscale version label failed to parse"
+          reason: match cited_figure_obligation(standing: fact.standing) {
+            Present { value: o } => o as String
+            Absent => srv1_tailscale_probe as String
+          }
         }
-        Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+        Present { value: label } =>
+          match semver_version_parse(cps: chars(s: label as String)) {
+            Absent => ScopedRemovalUnobserved {
+              reason: "the observed tailscale version label failed to parse"
+            }
+            Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
+          }
       }
   }
 }
 
 fn host_procps_kill_term_pgid_argv(surface: HostSoftwareSurface, pgid: Int) -> List<String>? {
-  match surface.procps.value.version_label {
+  match host_program_version_label(surface: surface, program: kill_program()) {
     Absent => none
     Present { value: _ } => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
   }
 }
 
 fn host_coreutils_timeout_expired_exit_code(surface: HostSoftwareSurface) -> Int? {
-  match surface.coreutils.value.version_label {
+  match host_program_version_label(surface: surface, program: timeout_program()) {
     Absent => none
     Present { value: _ } => Present { value: coreutils_timeout_expired_exit_code }
   }

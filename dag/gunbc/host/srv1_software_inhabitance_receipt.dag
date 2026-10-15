@@ -1,6 +1,11 @@
 module gunbc.host.srv1_software_inhabitance_receipt
 
-import std.types { String }
+import std.types { String, NonEmptyStr, Int }
+
+data srv1_software_inhabitance_observer_login: NonEmptyStr = "briansrls"
+data srv1_software_inhabitance_observer_uid: Int = 1000
+data srv1_software_inhabitance_observed_at: NonEmptyStr = "2026-10-15T01:17:54Z"
+data srv1_software_inhabitance_parent_transcript_sha256: NonEmptyStr = "0ff37aa1418aafdc17cd3cd7d44d8577ab758e549fa98b5ad773152a1d3de9b2"
 
 // Verbatim inhabitance transcript from srv1 as briansrls at 2026-10-15T01:17:54Z
 // (parent bright-moth-475). Standing is minted by srv1_software_inhabitance_ground

@@ -11,12 +11,9 @@ import gunbc.host.host_software_surface {
   unobserved_software_surface,
   software_surface,
   blank_kernel,
-  blank_tool,
   blank_cgroup,
   HostSysctlFact,
-  GitTool,
-  JqTool,
-  SystemdTool,
+  host_program_version,
   host_operating_system_surface,
   host_os_package_manager,
   HostPackageManagerKnown,
@@ -38,7 +35,16 @@ import extdeps.linux.apparmor_userns {
   apparmor_unprivileged_userns_restricted,
   apparmor_userns_restriction_standing,
 }
-import extdeps.systemd.user_manager_sandbox { user_manager_sandbox_standing }
+import extdeps.systemd.user_manager_sandbox { systemd_exec_protect_home_standing }
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.tailscale.serve { tailscale_program }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  srv1_software_inhabitance_observer_login,
+  srv1_software_inhabitance_observer_uid,
+  srv1_software_inhabitance_observed_at,
+  srv1_software_inhabitance_parent_transcript_sha256,
+}
 import extdeps.procps.kill {
   procps_ng_kill_term_pgid_argv,
   procps_ng_kill_term_pgid_without_end_of_options_argv,
@@ -104,12 +110,7 @@ test fn a_sysctl_zero_host_is_the_enforcing_variant() -> Bool {
       value: Present { value: 0 },
       standing: srv1_software_surface().apparmor_userns.value.standing,
     },
-    procps: srv1_software_surface().procps.value,
-    coreutils: srv1_software_surface().coreutils.value,
-    git: blank_tool(kind: GitTool, probe: "git --version"),
-    jq: blank_tool(kind: JqTool, probe: "jq --version"),
-    systemd: blank_tool(kind: SystemdTool, probe: "systemctl --version"),
-    tailscale: srv1_software_surface().tailscale.value,
+    programs: srv1_software_surface().programs.value,
     sudo_policy: srv1_software_surface().sudo_policy.value,
     cgroup: blank_cgroup(),
     toolchain: srv1_software_surface().toolchain_paths.value,
@@ -173,19 +174,34 @@ fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
 }
 
 test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
-  standing_is_cited_to_authority(s: user_manager_sandbox_standing())
+  standing_is_cited_to_authority(s: systemd_exec_protect_home_standing())
     && standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
     && standing_is_cited_to_authority(s: procps_kill_standing())
 }
 
 test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
-  match srv1_software_surface().tailscale.value.standing {
+  match srv1_software_surface().os_release.value.standing {
     ObservedByReceipt { observed: o } =>
       (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_receipt_text"
-        && srv1_software_surface().tailscale.value.version_label == Present { value: "1.102.2" }
-        && srv1_software_surface().jq.value.version_label == Present { value: "jq-1.7" }
+        && match host_program_version(surface: srv1_software_surface(), program: tailscale_program()) {
+          Present { value: ts } => ts.version_label == Present { value: "1.102.2" }
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: jq_program()) {
+          Present { value: jq } =>
+            jq.version_label == Present { value: "jq-1.7" }
+              && jq.package_version_label == Present { value: "1.7.1-3ubuntu0.24.04.2" }
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: git_program()) {
+          Present { value: g } => g.program.invocation == git_program().invocation
+          Absent => false
+        }
         && srv1_software_surface().kernel_release.value.kernel_release_label == Present { value: "6.8.0-138-generic" }
         && srv1_software_surface().os_release.value.pretty_name == Present { value: "Ubuntu 24.04.4 LTS" }
+        && (srv1_software_inhabitance_observer_login as String) == "briansrls"
+        && srv1_software_inhabitance_observer_uid == 1000
+        && (srv1_software_inhabitance_observed_at as String) == "2026-10-15T01:17:54Z"
     CitedToAuthority { authority: _ } => false
     TranscribedUncited { read_obligation: _ } => false
   }

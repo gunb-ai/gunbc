@@ -1,28 +1,15 @@
 module extdeps.systemd.user_manager_sandbox
 
-import std.types { Bool, Int }
-import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.linux.apparmor_userns { apparmor_unprivileged_userns_restricted }
 
-// systemd.exec(5) documents ProtectHome=, ProtectSystem=, ReadWritePaths= as execution-environment
-// sandboxing. The USER manager can apply those properties only when it can create a user namespace
-// for the unit. Ubuntu's kernel.apparmor_restrict_unprivileged_userns=1 denies that namespace to an
-// unprivileged user manager, so the properties are accepted and recorded and do not confine; PID 1
-// (the system manager) still enforces them. That consequence is THIS cited derivation, not a
-// boolean authored on a host row. The host carries only the sysctl reading; this module answers
-// what systemd does with that reading.
+// systemd.exec(5) documents ProtectHome= as an execution-environment sandbox property of a unit.
+// THIS MODULE OWNS THAT PROPERTY'S EXISTENCE IN systemd. It does not own what Ubuntu's AppArmor
+// userns sysctl does to the user manager: that join is an observation-plus-bet in
+// gunbc.host.host_software_surface (DESIGN 4d, DESIGN 3 external upstream decomposition).
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html"
-  }
-}
-
-data systemd_exec_protect_home_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#ProtectHome="
@@ -33,27 +20,16 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.systemd.user_manager_sandbox",
-      decl_name: "user_manager_enforces_protect_home_under_userns_sysctl",
+      decl_name: "systemd_exec_protect_home_property",
       field: WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [systemd_exec_protect_home_authority]
+  further_citations: []
 }
 
-fn user_manager_sandbox_standing() -> CitedFigureStanding {
+data systemd_exec_protect_home_property: Bool = true
+
+fn systemd_exec_protect_home_standing() -> CitedFigureStanding {
   CitedToAuthority { authority: extdeps_external_authority_anchor }
 }
-
-// 1 (restricted) => the user manager does not enforce; 0 => it can. Any other value is not a
-// documented Ubuntu reading of this sysctl and is not answered as a Bool.
-fn user_manager_enforces_protect_home_under_userns_sysctl(sysctl_value: Int) -> Bool? {
-  if sysctl_value == apparmor_unprivileged_userns_restricted {
-    Present { value: false }
-  } else if sysctl_value == 0 {
-    Present { value: true }
-  } else {
-    none
-  }
-}
-
