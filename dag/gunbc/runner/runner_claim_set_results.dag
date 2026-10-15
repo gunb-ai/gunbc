@@ -11,7 +11,7 @@ import extdeps.bazel.label { Label, render_label }
 import std.measure { ByteSize, byte_size_count }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
-import gunbc.durable_cas_file_store { cas_name_is_digits }
+import std.decimal { decimal_digits_only }
 
 // THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
 //
@@ -71,7 +71,6 @@ type ClaimSetResultsUndecodable
   | ResultsCountMissing
   | ResultsCountMalformed { line: String }
   | ResultsRecordMalformed { index: Int, line: String }
-  | ResultsExitMalformed { index: Int, exit: String }
   | ResultsTruncated { declared: Int, present: Int }
   | ResultsDigestMissing
   | ResultsDigestMismatch { stated: String, recomputed: String }
@@ -103,16 +102,13 @@ fn claim_set_results_frame(results: List<ClaimSetResult>) -> String {
   ], "")
 }
 
-fn is_decimal_digits(s: String) -> Bool {
-  cas_name_is_digits(s: s)
-}
 
 fn decode_claim_set_record(index: Int, line: String) -> ClaimSetResult? {
   let parts: List<String> = line.split(delimiter: " ")
   if count(parts) != 5 { none } else {
     match parts {
       Cons { head: tag, tail: Cons { head: label, tail: Cons { head: exit, tail: Cons { head: commit, tail: Cons { head: tree, tail: _ } } } } } =>
-        if tag != "claim" || label == "" || commit == "" || tree == "" || !is_decimal_digits(s: exit) { none }
+        if tag != "claim" || label == "" || commit == "" || tree == "" || exit == "" || !decimal_digits_only(s: exit) { none }
         else { match parse_int(s: exit) {
           Absent => none
           Present { value: e } => Present { value: ClaimSetResult { label: label as NonEmptyStr, exit: e, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr } }
@@ -161,7 +157,7 @@ fn decode_claim_set_frame(frame: String) -> ClaimSetResultsDecode {
           if !count_line.starts_with("claims ") { ClaimSetResultsRefused { cause: ResultsCountMissing } }
           else {
             let declared_text = substring(s: count_line, start: length("claims "), end: length(count_line))
-            if !is_decimal_digits(s: declared_text) { ClaimSetResultsRefused { cause: ResultsCountMalformed { line: count_line } } }
+            if declared_text == "" || !decimal_digits_only(s: declared_text) { ClaimSetResultsRefused { cause: ResultsCountMalformed { line: count_line } } }
             else { match parse_int(s: declared_text) {
               Absent => ClaimSetResultsRefused { cause: ResultsCountMalformed { line: count_line } }
               Present { value: declared } => decode_claim_set_body(declared: declared, body: body)
