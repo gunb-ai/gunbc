@@ -1,0 +1,45 @@
+module gunbc.host.host_effect_argv_stdio
+
+import std.types { String, List, NonEmptyStr }
+import std.algebra { list_map }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.process { PosixProcessStdio, PosixProcessStdioUnchanged, PosixProcessStdoutAndStderrToFile }
+import gunbc.remote_shell_command {
+  RemoteExecCommandOutcome,
+  RemoteExecCommandInterpretation,
+  openssh_login_shell_interpretation,
+  remote_exec_command_string,
+  remote_exec_command_string_with_stdout_and_stderr_to_file,
+}
+
+// TYPED STDIO BESIDE TYPED ARGV, for the host-effect transports whose far side is an OpenSSH login
+// shell (SshShell, FleetSsh). LocalExec sets fds; this module does not wrap LocalShell in `sh -c`.
+// The RFC 4254 command string is the realization of PosixProcessStdio over that shell.
+// S3c launch-leg wiring (flip RentedDetachRefusedNoStdoutToFileRoute) is a follow-up: that arm is
+// not in this tree (#14109 not landed here).
+
+fn argv_as_remote_words(command: ArgvCommand) -> List<NonEmptyStr> {
+  list_map(xs: argv_words(command: command), f: fn(w) { w as NonEmptyStr })
+}
+
+fn host_effect_openssh_login_shell_interpretation() -> RemoteExecCommandInterpretation {
+  openssh_login_shell_interpretation
+}
+
+fn host_effect_argv_stdio_remote_command(
+  command: ArgvCommand,
+  stdio: PosixProcessStdio,
+) -> RemoteExecCommandOutcome {
+  let argv = argv_as_remote_words(command: command)
+  let interpretation = host_effect_openssh_login_shell_interpretation()
+  match stdio {
+    PosixProcessStdioUnchanged =>
+      remote_exec_command_string(argv: argv, interpretation: interpretation)
+    PosixProcessStdoutAndStderrToFile { path: path } =>
+      remote_exec_command_string_with_stdout_and_stderr_to_file(
+        argv: argv,
+        path: path,
+        interpretation: interpretation,
+      )
+  }
+}

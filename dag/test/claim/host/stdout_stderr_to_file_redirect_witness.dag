@@ -1,0 +1,95 @@
+module test.claim.host.stdout_stderr_to_file_redirect_witness
+
+import std.types { String, Bool }
+import extdeps.tools.gnu_coreutils { true_command }
+import extdeps.posix.process { PosixProcessStdioUnchanged, PosixProcessStdoutAndStderrToFile }
+import extdeps.posix.shell_command_language {
+  RedirectPathContainsNul,
+  RedirectPathContainsNewline,
+  RedirectPathEmpty,
+}
+import gunbc.remote_shell_command {
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  RedirectPathRefused,
+  SimpleCommandArgvRefused,
+  RemoteExecInterpretationUnknown,
+  remote_exec_command_rendered,
+  remote_exec_command_string,
+  PosixShellInterpreted,
+}
+import gunbc.host.host_effect_argv_stdio { host_effect_argv_stdio_remote_command }
+
+fn today_no_redirect() -> String {
+  match remote_exec_command_string(argv: ["true"], interpretation: PosixShellInterpreted) {
+    RemoteExecCommandRefused { cause: _ } => "REFUSED"
+    RemoteExecCommandBuilt { command: c } => remote_exec_command_rendered(command: c) as String
+  }
+}
+
+test fn stdout_and_stderr_to_serve_log_is_byte_exact() -> Bool {
+  match host_effect_argv_stdio_remote_command(
+    command: true_command(),
+    stdio: PosixProcessStdoutAndStderrToFile { path: "/root/serve/serve.log" },
+  ) {
+    RemoteExecCommandRefused { cause: _ } => false
+    RemoteExecCommandBuilt { command: c } =>
+      remote_exec_command_rendered(command: c) as String == "'true' >'/root/serve/serve.log' 2>&1"
+  }
+}
+
+test fn a_path_that_needs_quoting_renders_safely() -> Bool {
+  match host_effect_argv_stdio_remote_command(
+    command: true_command(),
+    stdio: PosixProcessStdoutAndStderrToFile { path: "/root/serve/it's a log.log" },
+  ) {
+    RemoteExecCommandRefused { cause: _ } => false
+    RemoteExecCommandBuilt { command: c } =>
+      remote_exec_command_rendered(command: c) as String == "'true' >'/root/serve/it'\\''s a log.log' 2>&1"
+  }
+}
+
+test fn embedded_nul_path_refuses_typed() -> Bool {
+  match host_effect_argv_stdio_remote_command(
+    command: true_command(),
+    stdio: PosixProcessStdoutAndStderrToFile { path: concat("/root/serve/", concat("\u{0}", "x.log")) },
+  ) {
+    RemoteExecCommandBuilt { command: _ } => false
+    RemoteExecCommandRefused { cause: c } => match c {
+      RedirectPathRefused { cause: inner } => match inner {
+        RedirectPathContainsNul => true
+        RedirectPathContainsNewline => false
+        RedirectPathEmpty => false
+      }
+      SimpleCommandArgvRefused { cause: _ } => false
+      RemoteExecInterpretationUnknown => false
+    }
+  }
+}
+
+test fn embedded_newline_path_refuses_typed() -> Bool {
+  match host_effect_argv_stdio_remote_command(
+    command: true_command(),
+    stdio: PosixProcessStdoutAndStderrToFile { path: "/root/serve/\nlog" },
+  ) {
+    RemoteExecCommandBuilt { command: _ } => false
+    RemoteExecCommandRefused { cause: c } => match c {
+      RedirectPathRefused { cause: inner } => match inner {
+        RedirectPathContainsNewline => true
+        RedirectPathContainsNul => false
+        RedirectPathEmpty => false
+      }
+      SimpleCommandArgvRefused { cause: _ } => false
+      RemoteExecInterpretationUnknown => false
+    }
+  }
+}
+
+test fn no_redirect_renders_byte_identical_to_today() -> Bool {
+  match host_effect_argv_stdio_remote_command(command: true_command(), stdio: PosixProcessStdioUnchanged) {
+    RemoteExecCommandRefused { cause: _ } => false
+    RemoteExecCommandBuilt { command: c } =>
+      remote_exec_command_rendered(command: c) as String == today_no_redirect()
+        && today_no_redirect() == "'true'"
+  }
+}

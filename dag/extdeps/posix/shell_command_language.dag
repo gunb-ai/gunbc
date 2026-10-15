@@ -1,7 +1,7 @@
 module extdeps.posix.shell_command_language
 
 import std.types { String, NonEmptyStr, Bool, Char }
-import std.algebra { Cons, Empty, FreeMonoid, contains, for_all }
+import std.algebra { Cons, Empty, FreeMonoid, contains, for_all, string_contains }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -194,4 +194,42 @@ fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
   } else {
     PosixShellNameRefused { spelling: spelling }
   }
+}
+
+// IEEE 1003.1-2017 XCU 2.7 (Redirection): a redirection `word` names a pathname. Admission is the
+// pathname wall, not a second quoting rule. posix_single_quote (2.2.2) is total on every admitted
+// word; what cannot inhabit a pathname, or cannot inhabit one RFC 4254 command string without
+// becoming a second command, refuses here rather than being encoded.
+//
+// Empty: not a pathname. NUL: XBD Pathname / execve. Newline: representable inside single quotes,
+// but a newline in the ssh command STRING is line discipline / a second command; fail-closed.
+
+type PosixRedirectPathRefusal
+  = RedirectPathEmpty
+  | RedirectPathContainsNul
+  | RedirectPathContainsNewline
+
+type PosixRedirectPathAdmission
+  = PosixRedirectPathAdmitted { path: NonEmptyStr }
+  | PosixRedirectPathRefused { cause: PosixRedirectPathRefusal }
+
+fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
+  if path == "" {
+    PosixRedirectPathRefused { cause: RedirectPathEmpty }
+  } else if string_contains(s: path, pattern: "\u{0}") {
+    PosixRedirectPathRefused { cause: RedirectPathContainsNul }
+  } else if string_contains(s: path, pattern: "\n") {
+    PosixRedirectPathRefused { cause: RedirectPathContainsNewline }
+  } else {
+    PosixRedirectPathAdmitted { path: path as NonEmptyStr }
+  }
+}
+
+// XCU 2.7.2 Redirecting Output (`[n]>word`) then 2.7.5 Duplicating (`[n]>&word`). Order is the
+// contract: stdout to the file first, then stderr onto stdout. Spacing matches the existing
+// bash_fold golden `'true' >/dev/null 2>&1` (no space after `>`). The path is a word, so it is
+// posix_single_quote-wrapped rather than left bare.
+
+fn posix_stdout_to_file_stderr_dup_suffix(path: NonEmptyStr) -> String {
+  concat(" >", concat(posix_single_quote(spelling: path as String), " 2>&1"))
 }

@@ -2,7 +2,14 @@ module gunbc.remote_shell_command
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
 import std.algebra { list_map }
-import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.posix.shell_command_language {
+  posix_single_quote,
+  admit_posix_redirect_pathname,
+  posix_stdout_to_file_stderr_dup_suffix,
+  PosixRedirectPathAdmitted,
+  PosixRedirectPathRefused,
+  PosixRedirectPathRefusal,
+}
 
 // CliSurface -> shell simple-command tree -> shell-word serialization -> one RFC 4254 command
 // string. This is the SECOND handler for the class typed_argv_exec.dag's portable-word allowlist
@@ -113,11 +120,10 @@ fn emit_remote_shell(command: ShellSimpleCommand) -> NonEmptyStr {
   join(list_map(xs: command.words, f: fn(w) { shell_quote_word(word: w) as String }), " ") as NonEmptyStr
 }
 
-// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the single
-// admitted route is remote_exec_command_string below, which takes a typed argv vector and an
-// observed interpretation and emits the grammar-owned single-quote encoding. A recipient at the
-// transport boundary unwraps via remote_exec_command_rendered to obtain the NonEmptyStr for the
-// physical exec channel — a construction gate, not a validation check.
+// THE ONE CARRIER FOR AN RFC 4254 COMMAND STRING. Only this module may construct one: the admitted
+// routes are remote_exec_command_string and its stdout/stderr-to-file sibling below. A recipient
+// at the transport boundary unwraps via remote_exec_command_rendered to obtain the NonEmptyStr for
+// the physical exec channel — a construction gate, not a validation check.
 type RemoteExecCommand sole_constructor {
   rendered: NonEmptyStr
 }
@@ -125,6 +131,7 @@ type RemoteExecCommand sole_constructor {
 type RemoteExecCommandRefusalCause
   = SimpleCommandArgvRefused { cause: SimpleCommandRefusalCause }
   | RemoteExecInterpretationUnknown
+  | RedirectPathRefused { cause: PosixRedirectPathRefusal }
 
 type RemoteExecCommandOutcome
   = RemoteExecCommandBuilt { command: RemoteExecCommand }
@@ -155,6 +162,33 @@ fn remote_exec_command_string(
         SimpleCommandBuilt { command: cmd } =>
           RemoteExecCommandBuilt {
             command: RemoteExecCommand { rendered: emit_remote_shell(command: cmd) }
+          }
+      }
+  }
+}
+
+fn remote_exec_command_string_with_stdout_and_stderr_to_file(
+  argv: List<NonEmptyStr>,
+  path: String,
+  interpretation: RemoteExecCommandInterpretation
+) -> RemoteExecCommandOutcome {
+  match interpretation {
+    Unknown => RemoteExecCommandRefused { cause: RemoteExecInterpretationUnknown }
+    PosixShellInterpreted =>
+      match admit_posix_redirect_pathname(path: path) {
+        PosixRedirectPathRefused { cause: c } => RemoteExecCommandRefused { cause: RedirectPathRefused { cause: c } }
+        PosixRedirectPathAdmitted { path: admitted } =>
+          match simple_command(argv: argv) {
+            SimpleCommandRefused { cause: c } => RemoteExecCommandRefused { cause: SimpleCommandArgvRefused { cause: c } }
+            SimpleCommandBuilt { command: cmd } =>
+              RemoteExecCommandBuilt {
+                command: RemoteExecCommand {
+                  rendered: concat(
+                    emit_remote_shell(command: cmd) as String,
+                    posix_stdout_to_file_stderr_dup_suffix(path: admitted),
+                  ) as NonEmptyStr
+                }
+              }
           }
       }
   }

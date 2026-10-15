@@ -84,6 +84,15 @@ type ProcessReapOutcome
   | Signaled { signal: Int }
   | ReapRefused { cause: NonEmptyStr }
 
+// STDIO DESTINATIONS BESIDE AN ARGV, not inside it. ArgvCommand is execve (program + arguments).
+// Where both standard streams go to one file — the detached-serve case — is this carrier; LocalExec
+// realizes it as spawn file actions (StartDetached already names stdout_file and stderr_file);
+// OpenSSH realizes it as XCU 2.7 text over the login shell (gunbc.remote_shell_command).
+
+type PosixProcessStdio
+  = PosixProcessStdioUnchanged
+  | PosixProcessStdoutAndStderrToFile { path: String }
+
 service posix.Process {
   operation StartDetached {
     requires opaque
