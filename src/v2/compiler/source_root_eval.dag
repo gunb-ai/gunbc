@@ -5656,6 +5656,12 @@ type CensusRunDiffFinding
   | CensusDiffNewlyRefusing { after: CensusComparableRow }
   | CensusDiffIncompleteEvidence { member: Optional<String> }
   | CensusDiffLocationUpdate { before: CensusComparableRow, after: CensusComparableRow }
+  // REFUSED AT THE SAME STAGE BEFORE AND AFTER, FOR A DIFFERENT FATAL. Neutral on purpose: a
+  // comparable row keeps only the fatal selected from the obligation's first chain, so a changed
+  // fatal does not show the earlier one cleared (it may survive in a later chain) or the later one
+  // newly exposed (the chains may only have reordered). Cleared-and-exposed is claimed only across
+  // stages, where the earlier stage passing is the identity that supports it.
+  | CensusDiffRefusalChanged { before: CensusComparableRow, after: CensusComparableRow }
   | CensusDiffMemberAdded { member: String }
   | CensusDiffMemberRemoved { member: String }
   | CensusDiffDuplicateObligation { module: String, stage: NativeCensusCauseStage }
@@ -6092,10 +6098,9 @@ fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComp
               [CensusDiffLocationUpdate { before: before_row, after: after_row }]
             }
           } else {
-            // Refused at this stage before and after, for a different fatal: the earlier fatal
-            // cleared and the next one is exposed (a dependency's refusal giving way to the
-            // module's own). Not a regression -- that is Passed to Refused, below.
-            [CensusDiffClearedAndNewlyExposed { cleared: before_row, newly_exposed: after_row }]
+            // A different fatal at the same stage: changed, neither cleared nor a regression
+            // (Passed to Refused, below, is the only newly-refusing case).
+            [CensusDiffRefusalChanged { before: before_row, after: after_row }]
           }
         CensusComparablePassed => []
       }
