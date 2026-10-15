@@ -3,7 +3,7 @@ module test.claim.machine_intake.mtcollins1_census_medium_readback_witness
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.host.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.host.boot_medium { BootImageExport, BootMedium, BootMediumVolumeLabel, stock_installer_boot_medium, bmc_boot_image_export, boot_image_export_eq }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
@@ -13,8 +13,9 @@ import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium,
   mtcollins1_census_console_device, mtcollins1_census_grub_cmdline, mtcollins1_census_halt_command,
   mtcollins1_census_image_stem, mtcollins1_census_machine, mtcollins1_census_nocloud_dir,
   mtcollins1_census_program_file, mtcollins1_census_volume_id, census_seeded_image_input,
+  census_medium_qualification, CensusMediumQualified, CensusMediumNotCensus,
 }
-import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, ubuntu_seeded_install_media_image_name }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
   CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
   census_medium_readback,
@@ -203,14 +204,14 @@ test fn only_an_agreed_readback_lets_the_boot_proceed() -> Bool {
   let diverged = census_medium_readback_from_answers(medium: census, host: srv2, image: mtcollins1_census_image, record: record_ok(), measure: ok(stdout: concat(other, "  x\n")))
   let disagrees = census_medium_readback_from_answers(medium: census, host: srv2, image: mtcollins1_census_image, record: ok(stdout: concat(other, "\n")), measure: measure_ok())
   let unreadable = census_medium_readback_from_answers(medium: census, host: srv2, image: mtcollins1_census_image, record: refused(reason: "ssh: connect refused"), measure: measure_ok())
-  (match census_readback_refusal(readback: agreed) { Absent => true  Present { value: _ } => false })
-    && (match census_readback_refusal(readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: recorded as String) && string_contains(s: w, pattern: other as String)  Absent => false })
-    && (match census_readback_refusal_before_filing(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "controller untouched") && !string_contains(s: w, pattern: "SOL")  Absent => false })
-    && (match census_readback_refusal_before_attach(readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "after grant, before attach") && string_contains(s: w, pattern: "media attach, boot selection and power untouched") && string_contains(s: w, pattern: "SOL session had been acquired") && !string_contains(s: w, pattern: "controller untouched")  Absent => false })
-    && (match census_readback_refusal_before_attach(readback: agreed) { Absent => true  Present { value: _ } => false })
-    && (match census_readback_refusal(readback: disagrees) { Present { value: w } => string_contains(s: w, pattern: "does not describe the current derivation")  Absent => false })
-    && (match census_readback_refusal(readback: unreadable) { Present { value: w } => string_contains(s: w, pattern: "connect refused")  Absent => false })
-    && (match census_readback_refusal(readback: CensusMediumReadbackNotCensus) { Present { value: _ } => true  Absent => false })
+  (match census_readback_refusal(subject: mtcollins1_census_machine, host: srv2, readback: agreed) { Absent => true  Present { value: _ } => false })
+    && (match census_readback_refusal(subject: mtcollins1_census_machine, host: srv2, readback: diverged) { Present { value: w } => !string_contains(s: w, pattern: "untouched") && string_contains(s: w, pattern: recorded as String) && string_contains(s: w, pattern: other as String)  Absent => false })
+    && (match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, host: srv2, readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "controller untouched") && !string_contains(s: w, pattern: "SOL")  Absent => false })
+    && (match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, host: srv2, readback: diverged) { Present { value: w } => string_contains(s: w, pattern: "after grant, before attach") && string_contains(s: w, pattern: "media attach, boot selection and power untouched") && string_contains(s: w, pattern: "SOL session had been acquired") && !string_contains(s: w, pattern: "controller untouched")  Absent => false })
+    && (match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, host: srv2, readback: agreed) { Absent => true  Present { value: _ } => false })
+    && (match census_readback_refusal(subject: mtcollins1_census_machine, host: srv2, readback: disagrees) { Present { value: w } => string_contains(s: w, pattern: "does not describe the current derivation")  Absent => false })
+    && (match census_readback_refusal(subject: mtcollins1_census_machine, host: srv2, readback: unreadable) { Present { value: w } => string_contains(s: w, pattern: "connect refused")  Absent => false })
+    && (match census_readback_refusal(subject: mtcollins1_census_machine, host: srv2, readback: CensusMediumReadbackNotCensus) { Present { value: _ } => true  Absent => false })
 }
 
 // INHABITANCE OF THE ADAPTER (DESIGN §3, the pairing obligation): remote_answer_of is the one seam
@@ -246,15 +247,15 @@ fn exporter_unsupported_naming(r: CensusMediumReadback, endpoint: String, princi
 // the real route; the answers composition shows the healthy answers cannot buy agreement.
 test fn a_census_medium_naming_another_exporter_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_at_other_endpoint()
-  exporter_unsupported_naming(r: census_medium_readback(medium: m, image: mtcollins1_census_image), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
-    && (match census_readback_refusal_before_filing(readback: census_medium_readback(medium: m, image: mtcollins1_census_image)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
+  exporter_unsupported_naming(r: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+    && (match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, host: srv2, readback: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
 }
 
 // RED: ANOTHER PRINCIPAL AT THE SAME ENDPOINT. The same host reached as another account is another
 // export (the account decides what may be read and written), so it is refused the same way.
 test fn a_census_medium_naming_another_principal_at_the_same_endpoint_is_refused_not_read_back() -> Bool {
   let m = census_as_other_principal()
-  exporter_unsupported_naming(r: census_medium_readback(medium: m, image: mtcollins1_census_image), endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
+  exporter_unsupported_naming(r: census_medium_readback(host: srv2, attempt: "mtcollins1-census-readback", medium: m, image: mtcollins1_census_image), endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
 }
 
 // THE SAME TWO REDS OVER THE PURE COMPOSITION: the record and the image answer exactly as the supported
@@ -273,6 +274,98 @@ test fn the_census_medium_at_its_supported_export_is_admitted_and_agrees() -> Bo
   let m = census_at(address: census.export.target.address, principal: census.export.target.principal as String)
   match census_medium_readback_from_answers(medium: m, host: srv2, image: mtcollins1_census_image, record: record_ok(), measure: measure_ok()) {
     CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: r, image_name: _, served_path: _, measured_digest: d } => (r as String) == (recorded as String) && (d as String) == (recorded as String)
+    _ => false
+  }
+}
+
+// =============================================================================
+// DISCRIMINATING CONTROLS (review #80603 / manager msg 3fb13889). These test the
+// GENERALIZATION itself on a constructed SECOND subject (supplied values, not
+// mtcollins1's rows): (a) a non-mtcollins1 subject derives its own image and
+// medium plan (its own stem and digest); (b) a medium whose stem does not match
+// the image it is read back for refuses at census_medium_qualification before
+// any leg. Both are executed, pure, and leg-free: (b)'s refusal is decided by
+// census_medium_qualification inside the producer before it ever prepares an
+// SSH agent context, so the test never touches a controller.
+// =============================================================================
+
+// The second subject's supplied facts. Deliberately NOT mtcollins1's: a distinct
+// stem, a distinct volume id, and a distinct derivation-record digest. The build
+// key is derived from the build input (stem + volume + seeds + dates), so the
+// same digest over a different stem gives a different build key.
+data second_subject_stem: NonEmptyStr = "gunbc-census2-ubuntu-24.04.3-arm64"
+data second_subject_volume_id: NonEmptyStr = "GUNBC_CENSUS2_2404_3"
+data second_subject_digest: NonEmptyStr = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+data second_subject_image_name: NonEmptyStr = ubuntu_seeded_install_media_image_name(image_stem: second_subject_stem, output_digest: second_subject_digest)
+// The mtcollins1 build key the chain claim above asserts (a second subject MUST differ from it).
+data mtcollins1_census_build_key: NonEmptyStr = "c001ac127d718e72"
+
+// The second subject's medium: a genuine name, digest and directory derived from
+// its OWN stem, with the matching volume label and the supported export.
+fn second_subject_medium() -> BootMedium {
+  census_boot_medium(image_stem: second_subject_stem, volume_id: second_subject_volume_id, output_digest: second_subject_digest)
+}
+
+// The second subject's image: its build input, with the same stem + volume +
+// program as the derivation would produce. The record path and build key derive
+// from this input, so the medium and the image agree on artifact identity.
+fn second_subject_image() -> CensusImage {
+  CensusImageDerived { input: census_seeded_image_input(
+    image_stem: second_subject_stem,
+    volume_id: second_subject_volume_id,
+    user_data_body: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
+    grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+    nocloud_dir: mtcollins1_census_nocloud_dir,
+    program_file: mtcollins1_census_program_file,
+    program_content: census_capture_program(machine: second_subject_stem, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages),
+  ) }
+}
+
+// CONTROL (a): A NON-MTCOLLINS1 SUBJECT DERIVES ITS OWN IMAGE AND MEDIUM PLAN.
+// Its medium and image agree (qualification admits), and the plan it derives is
+// mtcollins1's own -- its own stem, its own digest, and a build key distinct from
+// mtcollins1's -- so the generalization is what is tested, not a re-read of the
+// mtcollins1 row. Pure: no leg, no effect.
+test fn control_a_non_mtcollins1_subject_derives_its_own_image_and_medium_plan() -> Bool {
+  let m = second_subject_medium()
+  let img = second_subject_image()
+  match img {
+    CensusImageDerived { input: input } =>
+      match census_medium_qualification(image_stem: input.image_stem, volume_id: input.volume_id, medium: m) {
+        CensusMediumQualified { digest: _, export: _ } =>
+          (m.image_name as String) == (second_subject_image_name as String)
+          && (input.image_stem as String) == (second_subject_stem as String)
+          && (m.digest as String) == (second_subject_digest as String)
+          && (second_subject_image_name as String) != (census.image_name as String)
+          && (input.image_stem as String) != (mtcollins1_census_image_stem as String)
+          && (m.digest as String) != (recorded as String)
+          && (census_build_key(input: input) as String) != (mtcollins1_census_build_key as String)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// CONTROL (b): A MEDIUM WHOSE STEM DOES NOT MATCH ITS IMAGE REFUSES. The mtcollins1
+// image is read back for a medium whose name (and hence stem) is the SECOND subject's,
+// with the matching volume label and the supported export. The only thing wrong is the
+// stem: the producer's census_medium_qualification sees the medium's image_name does not
+// equal the image it was asked to read back for, and refuses with
+// CensusMediumReadbackNotCensus BEFORE it prepares any SSH agent context or runs a leg.
+// This is the control the PR title promises: a mismatched binding refuses before any
+// effect, and the refusal names the SUBJECT and EXECUTOR, not one baked-in host.
+test fn control_b_medium_whose_stem_does_not_match_its_image_refuses_before_any_effect() -> Bool {
+  // A medium carrying the SECOND subject's stem+digest but labelled with mtcollins1's
+  // volume id and export -- the caller is asking to read the mtcollins1 image back for
+  // bytes that were derived from a different stem. The name disagrees; that is the fault.
+  let wrong_stem_medium = BootMedium {
+    image_name: second_subject_image_name,
+    digest: second_subject_digest,
+    export: bmc_boot_image_export,
+    terminal: BootMediumVolumeLabel { label: mtcollins1_census_volume_id },
+  }
+  match census_medium_readback(medium: wrong_stem_medium, image: mtcollins1_census_image, host: srv2, attempt: "census2-readback") {
+    CensusMediumReadbackNotCensus => true
     _ => false
   }
 }

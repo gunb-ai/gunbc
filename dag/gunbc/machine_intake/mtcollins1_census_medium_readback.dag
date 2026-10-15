@@ -6,8 +6,6 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
-import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
-import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -176,34 +174,39 @@ fn census_medium_readback_from_answers(
   }
 }
 
-// STAGE-NEUTRAL CAUSE. What the boot has and has not touched differs between the two call sites,
-// so the sentence about that is the caller's wrapper below, never this renderer's.
-fn census_readback_refusal(readback: CensusMediumReadback) -> String? {
+// STAGE-NEUTRAL CAUSE. The SUBJECT'S label and the EXECUTOR host the readback ran on are
+// parameters, never a spelling baked into the text: a refusal produced for another subject must
+// blame that subject, not one specific machine, and the named executor is the host that actually
+// took the leg, not a constant (DESIGN 3 -- a materially different contract needs a materially
+// different name; DESIGN 5 -- no fabricated output, so the receipt names the host that read it).
+// What the boot has and has not touched differs between the two call sites, so the sentence about
+// that is the caller's wrapper below, never this renderer's.
+fn census_readback_refusal(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
   match readback {
     CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: _, image_name: _, served_path: _, measured_digest: _ } => none
-    CensusMediumReadbackNotCensus => Present { value: "mtcollins1 boot: the medium is not the census image, so there is no served digest to read back" }
+    CensusMediumReadbackNotCensus => Present { value: concat(subject as String, " boot: the medium is not the census image, so there is no served digest to read back") }
     CensusMediumReadbackExporterUnsupported { supported: sup, named: n } =>
-      Present { value: concat("mtcollins1 boot: the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
+      Present { value: concat(subject as String, " boot: the census medium names the exporter ", boot_image_export_text(export: n), " but the census is published to and read back from ", boot_image_export_text(export: sup), "; refusing rather than reading back bytes the medium does not name") }
     CensusMediumReadbackRecordUnreadable { record_path: p, reason: why } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " could not be read on srv2 (", why, "); refusing rather than trusting the publication receipt") }
+      Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " could not be read on ", host as String, " (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackRecordMalformed { record_path: p, content: c } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " is not exactly one sha256 digest (", c, "); refusing") }
+      Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " is not exactly one sha256 digest (", c, "); refusing") }
     CensusMediumReadbackRecordDisagrees { record_path: p, recorded: r, selected: sel } =>
-      Present { value: concat("mtcollins1 boot: the census derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation") }
+      Present { value: concat(subject as String, " boot: the census derivation record ", p as String, " names ", r as String, " but the medium row selects ", sel as String, "; the row does not describe the current derivation") }
     CensusMediumReadbackImageUnreadable { served_path: p, reason: why } =>
-      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " could not be re-measured on srv2 (", why, "); refusing rather than trusting the publication receipt") }
+      Present { value: concat(subject as String, " boot: the served census image ", p as String, " could not be re-measured on ", host as String, " (", why, "); refusing rather than trusting the publication receipt") }
     CensusMediumReadbackMeasureMalformed { served_path: p, content: c } =>
-      Present { value: concat("mtcollins1 boot: sha256sum over ", p as String, " answered no sha256 digest (", c, "); refusing") }
+      Present { value: concat(subject as String, " boot: sha256sum over ", p as String, " answered no sha256 digest (", c, "); refusing") }
     CensusMediumReadbackDiverged { served_path: p, recorded: r, measured: m } =>
-      Present { value: concat("mtcollins1 boot: the served census image ", p as String, " reads ", m as String, " but its derivation record and the medium row say ", r as String, "; refusing to mint a subject over bytes the row does not describe") }
+      Present { value: concat(subject as String, " boot: the served census image ", p as String, " reads ", m as String, " but its derivation record and the medium row say ", r as String, "; refusing to mint a subject over bytes the row does not describe") }
     CensusMediumReadbackInputUnderived { reason: why } =>
-      Present { value: concat("mtcollins1 boot: the census build input has no derivation (", why, "), so there is no build key to find a record by; refusing") }
+      Present { value: concat(subject as String, " boot: the census build input has no derivation (", why, "), so there is no build key to find a record by; refusing") }
   }
 }
 
 // Before the approval request is filed nothing has been claimed: the controller is untouched.
-fn census_readback_refusal_before_filing(readback: CensusMediumReadback) -> String? {
-  match census_readback_refusal(readback: readback) {
+fn census_readback_refusal_before_filing(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
+  match census_readback_refusal(subject: subject, host: host, readback: readback) {
     Absent => none
     Present { value: why } => Present { value: concat(why, " -- controller untouched") }
   }
@@ -212,8 +215,8 @@ fn census_readback_refusal_before_filing(readback: CensusMediumReadback) -> Stri
 // After the grant the boot has claimed the capability and acquired the SOL session; only the
 // media attach, boot selection and power are still untouched, and the SOL session follows the
 // existing settle/release path.
-fn census_readback_refusal_before_attach(readback: CensusMediumReadback) -> String? {
-  match census_readback_refusal(readback: readback) {
+fn census_readback_refusal_before_attach(subject: NonEmptyStr, host: NonEmptyStr, readback: CensusMediumReadback) -> String? {
+  match census_readback_refusal(subject: subject, host: host, readback: readback) {
     Absent => none
     Present { value: why } => Present { value: concat("after grant, before attach: ", why, " -- media attach, boot selection and power untouched; the SOL session had been acquired and follows the settle/release path") }
   }
@@ -240,7 +243,12 @@ fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
 // (the stem and the volume label); a mismatched binding -- a medium that names a stem or volume
 // different from the image it is read back for -- is refused as not the census before either leg runs,
 // which is control (b).
-fn census_medium_readback(medium: BootMedium, image: CensusImage) -> CensusMediumReadback
+fn census_medium_readback(
+  medium: BootMedium,
+  image: CensusImage,
+  host: NonEmptyStr,
+  attempt: NonEmptyStr,
+) -> CensusMediumReadback
 {
   match image {
     CensusImageRefused { reason: r } => CensusMediumReadbackInputUnderived { reason: r }
@@ -249,7 +257,7 @@ fn census_medium_readback(medium: BootMedium, image: CensusImage) -> CensusMediu
         CensusMediumNotCensus => CensusMediumReadbackNotCensus
         CensusMediumExporterUnsupported { supported: sup, named: n } => CensusMediumReadbackExporterUnsupported { supported: sup, named: n }
         CensusMediumQualified { digest: _, export: export } =>
-          match prepare_fleet_ssh_agent_context(attempt_raw: mtcollins1_census_readback_attempt_raw) {
+          match prepare_fleet_ssh_agent_context(attempt_raw: attempt) {
             FleetSshContextRefused { cause: c } =>
               CensusMediumReadbackRecordUnreadable { record_path: census_record_path(input: input), reason: c }
             FleetSshContextReady { context: context, receipt: _ } => {
@@ -259,7 +267,7 @@ fn census_medium_readback(medium: BootMedium, image: CensusImage) -> CensusMediu
                 CensusRecordRefused { readback: r } => r
                 CensusRecordAdmitted { recorded: recorded } => {
                   let measure = remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: census_readback_argv(path: census_medium_served_path(medium: medium))))
-                  census_measure_join(medium: medium, input: input, host: operator_host_srv2 as NonEmptyStr, recorded: recorded, measure: measure)
+                  census_measure_join(medium: medium, input: input, host: host, recorded: recorded, measure: measure)
                 }
               }
             }
