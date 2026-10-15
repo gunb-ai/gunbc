@@ -9,11 +9,16 @@ import product.p4261_carrier_layout {
   ObservedComponent,
   PathMembership,
   RatingPrintedOnBody,
+  ResistanceCodeRead,
   MarkingUnresolved,
   MainInputPath,
   AuxiliaryInputPath,
   OnPathByAdjacency,
   RatingAcrossInputRail,
+  IdentifiedByDatasheetMarking,
+  PinRowContinuity,
+  ToGround,
+  ToFuse,
   BoundByRatedParts,
   NoEstablishedBound,
   p4261_k1_layout,
@@ -34,25 +39,87 @@ test fn the_photographs_establish_no_input_bound() -> Bool {
   }
 }
 
-// The auxiliary path's rated-looking parts are the 12 A fuse (no voltage printed) and capacitors whose
-// code is NOT decoded: nothing rated, so nothing observed and nothing bounded.
-test fn undecoded_capacitors_bound_nothing() -> Bool {
+// The auxiliary path's capacitors are now identified by datasheet marking (Panasonic EEH-ZU1J151,
+// 63 V), so their rating is observed -- and still bounds nothing, because continuity did NOT show them
+// on J20's rail (a one-way junction separates them). An identified rating is not a placed one.
+test fn identified_capacitors_are_observed_and_bound_nothing() -> Bool {
   match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
-    NoEstablishedBound { observed_ratings: rs } => count(rs) == 0
+    NoEstablishedBound { observed_ratings: rs } =>
+      count(rs) == 1 && any(rs, r => (r as String).contains("63 V capacitor rated voltage, placed by adjacency only"))
     BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
   }
 }
 
+fn is_capacitor_row(c: ObservedComponent) -> Bool {
+  match c.identification {
+    IdentifiedByDatasheetMarking { row: r, marking_read: _ } => (r.ordering_code as String).contains("EEH-ZU1J151")
+    RatingPrintedOnBody { voltage: _, current: _, marking_read: _ } => false
+    ResistanceCodeRead { milliohms: _, marking_read: _ } => false
+    MarkingUnresolved { marking_read: _, discriminator: _ } => false
+  }
+}
+
+// THE SAME CAPACITORS, PLACED ACROSS THE RAIL, WOULD BOUND IT AT 63 V: the RED for the rule above. The
+// row is the live one, so this fails if the cited rating drifts from 63 V.
+test fn the_capacitors_placed_across_the_rail_would_bound_it() -> Bool {
+  let caps = filter(p4261_k1_layout.power_components, c => is_capacitor_row(c: c))
+  let placed = map(caps, c => ObservedComponent {
+    designators: c.designators,
+    quantity: c.quantity,
+    role: c.role,
+    identification: c.identification,
+    path: c.path,
+    membership: RatingAcrossInputRail { evidence: "supplied: positive terminal joined to J20's supply under power" },
+  })
+  let bounded = match path_bound(layout: with_components(cs: placed), path: AuxiliaryInputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
+    NoEstablishedBound { observed_ratings: _ } => false
+  }
+  count(caps) == 1 && bounded
+}
+
+fn is_ground_row(r: PinRowContinuity) -> Bool {
+  match r.tied_to {
+    ToGround => true
+    ToFuse { designator: _ } => false
+  }
+}
+
+fn is_f1_row(r: PinRowContinuity) -> Bool {
+  match r.tied_to {
+    ToGround => false
+    ToFuse { designator: d } => d == "F1"
+  }
+}
+
+// J20 IS A POWER INPUT BY CONTINUITY: 18 positions, nine to ground and nine joined to F1, and the
+// rendered reading says so while still stating the voltage contract unknown.
+test fn j20_reads_as_a_fused_power_input() -> Bool {
+  let rows = p4261_k1_layout.auxiliary_connector_rows
+  let r = carrier_input_reading(layout: p4261_k1_layout)
+  p4261_k1_layout.auxiliary_connector_positions == 18
+    && count(filter(rows, x => is_ground_row(r: x) && x.pins == 9)) == 1
+    && count(filter(rows, x => is_f1_row(r: x) && x.pins == 9 && x.tied_together)) == 1
+    && fold(rows, init: 0, f: (acc, x) => acc + x.pins) == p4261_k1_layout.auxiliary_connector_positions
+    && r.contains("9 pins joined, to ground; 9 pins joined, to fuse F1")
+    && r.contains("The input voltage contract is unknown")
+}
+
 fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
+  with_components(cs: concat(p4261_k1_layout.power_components, [c]))
+}
+
+fn with_components(cs: List<ObservedComponent>) -> CarrierLayoutObservation {
   CarrierLayoutObservation {
     labels: p4261_k1_layout.labels,
     module_receptacles: p4261_k1_layout.module_receptacles,
     main_input_connectors: p4261_k1_layout.main_input_connectors,
     auxiliary_connector: p4261_k1_layout.auxiliary_connector,
     auxiliary_connector_positions: p4261_k1_layout.auxiliary_connector_positions,
+    auxiliary_connector_rows: p4261_k1_layout.auxiliary_connector_rows,
     edge_high_speed_connectors: p4261_k1_layout.edge_high_speed_connectors,
     management_io_observed: p4261_k1_layout.management_io_observed,
-    power_components: concat(p4261_k1_layout.power_components, [c]),
+    power_components: cs,
     unresolved_parts: p4261_k1_layout.unresolved_parts,
   }
 }
@@ -93,6 +160,7 @@ test fn only_a_rating_across_the_input_rail_bounds_it() -> Bool {
     main_input_connectors: one.main_input_connectors,
     auxiliary_connector: one.auxiliary_connector,
     auxiliary_connector_positions: one.auxiliary_connector_positions,
+    auxiliary_connector_rows: one.auxiliary_connector_rows,
     edge_high_speed_connectors: one.edge_high_speed_connectors,
     management_io_observed: one.management_io_observed,
     power_components: concat(one.power_components, [rated_part(volts: 63, kind_is_fuse: false, membership: across)]),

@@ -12,6 +12,7 @@ import extdeps.electronic_component.types {
   CapacitorRatedVoltage,
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of one unit, kept in
@@ -32,6 +33,13 @@ import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 // Which circuit a part sits on is a fourth fact, and from a photograph it is ADJACENCY, not traced
 // copper. Adjacency places a part in a region of the board; it does not say what voltage appears
 // across the part's rated terminals, which is the only relation under which a rating bounds a rail.
+//
+// GH200-P9 (2026-10-15): THE OPERATOR'S OWN BENCH READINGS of a received carrier. The operator read
+// J20 and its neighbourhood with a multimeter, unpowered, and photographed the parts beside it. Which of
+// the two received carriers was read is not recorded; both are P4261 boards, and J20's continuity
+// is a property of the board design rather than of one unit. A continuity reading is stronger than
+// adjacency (it says two points are joined, or are not) and weaker than a traced net under power (a
+// switch that is open while unpowered hides the rail behind it).
 
 type ComponentIdentification
   = IdentifiedByDatasheetMarking { row: ElectronicComponentRow, marking_read: NonEmptyStr }
@@ -60,6 +68,18 @@ type ObservedComponent {
   membership: PathMembership
 }
 
+// J20'S PINS BY CONTINUITY, unpowered. Each row of pins is read against ground and against the fuse
+// beside the connector; tied_together says every pin in the row beeps to every other.
+type ContinuityTarget
+  = ToGround
+  | ToFuse { designator: NonEmptyStr }
+
+type PinRowContinuity {
+  pins: Nat
+  tied_to: ContinuityTarget
+  tied_together: Bool
+}
+
 type ConnectorCensus
   = CensusComplete { count: Nat, family: NonEmptyStr }
   | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr }
@@ -70,6 +90,7 @@ type CarrierLayoutObservation {
   main_input_connectors: NonEmptyStr
   auxiliary_connector: NonEmptyStr
   auxiliary_connector_positions: Nat
+  auxiliary_connector_rows: List<PinRowContinuity>
   edge_high_speed_connectors: ConnectorCensus
   management_io_observed: List<NonEmptyStr>
   power_components: List<ObservedComponent>
@@ -86,20 +107,31 @@ data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
   basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
 }
 
-data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
+// THE CAPACITORS' RAIL IS NOT SHOWN TO BE J20'S. Their rating is now a cited fact (63 V); what is not
+// established is that the rail they sit on is J20's input, so they stay placed by adjacency and bound
+// nothing. The reading that would place them: their positive terminal shown joined to J20's supply
+// pins with the board powered, or the board's schematic.
+data k1_aux_caps_membership: PathMembership = OnPathByAdjacency {
+  basis: "operator continuity readings, unpowered, 2026-10-15: each can's negative terminal is tied to ground; its positive terminal is NOT tied to J20's supply pins, and a diode-mode reading between them gives 0.523 V one way and open the other -- a one-way junction separates them, consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
+}
 
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   labels: [
     "sticker: Model: P4261, 694-24261-0000-100 K1, Made In USA. The listing photographs show TWO serials on this label, S/N 1582023110038 in one close-up and S/N 1582023110033 in another, so the listing photographed more than one unit (or one was misread); the received unit's serial is unread",
     "silkscreen: 'Rework' above '180-14261-DAAF-A01' -- a printed marking; whether rework was performed is unknown",
+    "sticker on the top edge between the two grey blocks: 'REV. 215-EV1 / SN.1582023110033' (photograph supplied by the operator 2026-10-15; the serial is one of the two in the listing photographs). '215' matches the module part number 699-2G530-0215; whether it names the module variant the board is built for is not established",
   ],
   module_receptacles: ["J3", "J4"],
-  main_input_connectors: "two large grey pluggable terminal blocks on the top edge; position count, rating and pin assignment unread",
-  auxiliary_connector: "J20, a black shrouded two-row power-style receptacle on the left edge; rating and pin assignment unread",
-  auxiliary_connector_positions: 16,
+  main_input_connectors: "two large grey blind-mate blocks on the top edge, J2 silkscreened beside the left one, each a grid of small contacts (4 rows of 8 to 9 cells as photographed) under a row of larger openings; maker, part number and pin assignment unread. That they carry the main input is itself not established: the main-stage fuse and FETs sit beside them by adjacency, and on the Ng reference board (a sibling two-module NVIDIA board, not a P4261) similar edge connectors are unoccupied in the working build",
+  auxiliary_connector: "J20, a black shrouded 2 x 9 power receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (auxiliary_connector_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Its voltage is unread, and which physical row is which was not recorded: re-read polarity before any connection",
+  auxiliary_connector_positions: 18,
+  auxiliary_connector_rows: [
+    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true },
+    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true },
+  ],
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 10,
-    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
+    obligation: "confirm the count on this unit and photograph each J-number. FAMILY READ 2026-10-15: one housing's marking on the operator's board reads 'G97V22332HR / 2248 / Amphenol', which DigiKey lists as Amphenol's Mini Cool Edge IO series, a 74-position dual-row receptacle at 0.60 mm pitch -- the MCIO family; the other receptacles are assumed alike until read. Before that reading, the leading candidate was vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
   },
   management_io_observed: [
     "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
@@ -120,7 +152,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       identification: RatingPrintedOnBody {
         voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
         current: Present { value: ampere(count: 100) },
-        marking_read: "75V 100A (leading maker glyph not legible)",
+        marking_read: "LF 75V 100A (the 'LF' maker glyph read 2026-10-15; Littelfuse's 881 series sells a 75 VDC / 100 A part, 0881100, and a sibling 881 part is listed with the marking 'LF 75V 60A' -- a pattern, the 100 A marking itself not read from a Littelfuse table)",
       },
       path: MainInputPath,
       membership: k1_adjacency_main,
@@ -137,7 +169,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       designators: ["D2"],
       quantity: 2,
       role: "diodes in SMA/SMB-class packages, one in the main stage and D2 beside J20",
-      identification: MarkingUnresolved { marking_read: "5P0X / ZCNSU (as read)", discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" },
+      identification: MarkingUnresolved { marking_read: "5PGK / ZCN5U under a boxed maker logo (read 2026-10-15 from an in-focus close-up; the earlier reading '5P0X / ZCNSU' was a misread)", discriminator: "the maker's marking table for code 5PGK; the logo is not identified" },
       path: AuxiliaryInputPath,
       membership: k1_adjacency_aux,
     },
@@ -145,7 +177,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       designators: ["F1"],
       quantity: 1,
       role: "fuse beside J20",
-      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "12A (leading maker glyph not legible)" },
+      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "LF 12A (read 2026-10-15; the same 'LF' maker glyph as F300)" },
       path: AuxiliaryInputPath,
       membership: k1_adjacency_aux,
     },
@@ -168,8 +200,16 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     ObservedComponent {
       designators: ["C10_P5", "C12_P5"],
       quantity: 3,
-      role: "SMD polymer/aluminium capacitors, 150 uF by their first line; the third sits below J20 by U522",
-      identification: MarkingUnresolved { marking_read: "150 / J ZU / 29AH on all three (C10_P5 is photographed upside down)", discriminator: polymer_cap_discriminator },
+      role: "SMD hybrid polymer capacitors, 150 uF 63 V; the third sits below J20 by U522",
+      identification: IdentifiedByDatasheetMarking { row: eeh_zu1j151, marking_read: "150 / J ZU / 26AL on the two cans beside J20 (operator close-ups, 2026-10-15; an earlier transcription from listing photographs gave the lot line as 29AH)" },
+      path: AuxiliaryInputPath,
+      membership: k1_aux_caps_membership,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "switch candidate between the R010 shunt and the capacitors, in a flat leadless power package; Q1_P1, Q4_P1 and Q6_P1 are silkscreened beside it",
+      identification: MarkingUnresolved { marking_read: "...08N10 / SWAC (partly legible, photographed upside down, 2026-10-15)", discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" },
       path: AuxiliaryInputPath,
       membership: k1_adjacency_aux,
     },
@@ -180,7 +220,8 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
     "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
     "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
-    "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
+    "U522, an 8-pin MSOP-class part beside J20's end, reads 'TI 31 / T275' (2026-10-15): a Texas Instruments part by its marking, code T275 not decoded. Its place beside the J20 shunt and switch fits a hot-swap controller, which is a hypothesis only",
+    "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up",
   ],
 }
 
@@ -313,10 +354,24 @@ fn hypothesis_text(h: InvestigationHypothesis) -> String {
 
 // THE READING the bench plan consumes: what the photographs establish about the carrier's power
 // input, and what they leave open.
+fn continuity_target_text(t: ContinuityTarget) -> String {
+  match t {
+    ToGround => "ground"
+    ToFuse { designator: d } => join(["fuse ", d as String], "")
+  }
+}
+
+fn rows_text(rows: List<PinRowContinuity>) -> String {
+  match rows.first() {
+    Absent => "pin continuity unread"
+    Present { value: _ } => join(map(rows, r => join([to_string(r.pins), " pins ", if r.tied_together { "joined, " } else { "" }, "to ", continuity_target_text(t: r.tied_to)], "")), "; ")
+  }
+}
+
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "main input: ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", hypothesis_text(h: p4261_main_bus_hypothesis),
-    ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions): ",
+    ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions; ", rows_text(rows: layout.auxiliary_connector_rows), "): ",
     bound_text(b: path_bound(layout: layout, path: AuxiliaryInputPath)),
     ". The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
