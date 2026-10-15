@@ -315,6 +315,80 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "BoundedContainerUncapped")
     && string_contains(s: seed, pattern: "BoundedContainerUnreadable")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`")
+    && string_contains(s: seed, pattern: "fn standing_from_supplied")
+    && string_contains(s: seed, pattern: "mod standing_fixture_tests")
+}
+
+fn seed_fixture_assert_eq(seed: String, wire: String) -> Bool {
+  string_contains(s: seed, pattern: concat("\"", concat(wire, "\"")))
+    && string_contains(s: seed, pattern: "assert_eq!")
+}
+
+test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let sessions = join([
+    "0::",
+    user_work_scope_user_slice_cgroup_needle,
+    "user-1000.slice/user@1000.service/app.slice/",
+    gunbc_oomd_sessions_slice as String,
+    "/docker-deadbeef.scope",
+  ], "")
+  let system_svc = join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "")
+  let sessions_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: sessions },
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      slice_memory: RootMemoryUnreadable,
+    ),
+  )
+  let system_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: system_svc },
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      slice_memory: RootMemoryUnreadable,
+    ),
+  )
+  let capped_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing_with_root_memory(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: "0::/" },
+      systemd_manager_present: false,
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      root_memory: RootMemoryCapped { bytes: byte_size(25769803776) },
+      buildbuddy_run_id: BuildBuddyRunIdAbsent,
+    ),
+  )
+  let unbounded_wire = user_work_scope_standing_wire(
+    s: user_work_scope_standing_with_root_memory(
+      unit_test: false,
+      github_actions: false,
+      cgroup: CgroupText { text: "0::/" },
+      systemd_manager_present: false,
+      user_manager_reachable: false,
+      xdg_runtime_dir: false,
+      root_memory: RootMemoryUnbounded,
+      buildbuddy_run_id: BuildBuddyRunIdAbsent,
+    ),
+  )
+  string_contains(s: seed, pattern: sessions)
+    && string_contains(s: seed, pattern: system_svc)
+    && string_contains(s: seed, pattern: "0::/")
+    && seed_fixture_assert_eq(seed: seed, wire: sessions_wire)
+    && seed_fixture_assert_eq(seed: seed, wire: system_wire)
+    && seed_fixture_assert_eq(seed: seed, wire: capped_wire)
+    && seed_fixture_assert_eq(seed: seed, wire: unbounded_wire)
+    && sessions_wire == "UserSessionAbsent"
+    && system_wire == "UncappedSystemSlice:system.slice:gunbc-tree-sync.service"
+    && capped_wire == "ExemptBoundedContainer:25769803776"
+    && unbounded_wire == "BoundedContainerUncapped"
 }
 
 test fn a_path_segment_without_a_dot_suffix_is_not_a_unit() -> Bool {

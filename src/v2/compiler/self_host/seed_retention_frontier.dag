@@ -2,7 +2,7 @@ module v2.compiler.self_host.seed_retention_frontier
 
 import std.types { List }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { DissolutionCondition, unbound_dissolution, bound_dissolution }
 import std.algebra { length, list_map }
 import v2.std.integer { Int }
 import v2.std.text { String }
@@ -196,8 +196,8 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
     crate_relative_path: "src/cli_run/user_work_scope.rs",
     cause: SupportDirectoryMemberSource,
     reason: ReasonDeclaredHere {
-      detail: "Test/Run wrap trampoline, including MODELED_CAPPED_SYSTEM_SLICES, the wrap-time census of gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes. Seed cannot eval that fold; the_seed_trampoline_mirrors_the_declared_wrap_standing is the join.",
-      dissolution: unbound_dissolution(description: "Test/Run wrap is emitted from gunbc.compute.unit_bounds so this file and the mirrored census delete")
+      detail: "Test/Run wrap trampoline, including MODELED_CAPPED_SYSTEM_SLICES, the wrap-time census of gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
+      dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.compute.unit_bounds", decl_name: "gunbc_user_work_scope_native_wrap"))
     }
   },
   retained_support_dir_member(path: "src/module_path_index/index.rs"),

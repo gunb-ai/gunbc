@@ -349,14 +349,31 @@ fn cgroup_rel_through_segment(text: &str, segment: &str) -> Option<String> {
     None
 }
 
+enum RootMemoryRead {
+    Capped(u64),
+    Unbounded,
+    Unreadable,
+}
+
+fn root_memory_from_file(bound: Option<MemoryBound>) -> RootMemoryRead {
+    match bound {
+        Some(MemoryBound::Capped(n)) if n > 0 => RootMemoryRead::Capped(n),
+        Some(MemoryBound::Capped(_)) | Some(MemoryBound::Unbounded) => RootMemoryRead::Unbounded,
+        None => RootMemoryRead::Unreadable,
+    }
+}
+
 // SEED MIRROR of `gunbc.compute.unit_bounds live_modeled_slice_standing`
-fn live_modeled_slice_standing(unit: String, slice: String, cg: &str) -> UserWorkScopeStanding {
-    let rel = cgroup_rel_through_segment(cg, &slice).unwrap_or_else(|| format!("/{slice}"));
-    match read_cgroup_memory_file(&rel, "memory.max") {
-        Some(MemoryBound::Capped(n)) if n > 0 => {
-            UserWorkScopeStanding::ExemptSystemUnit { unit, slice }
+fn live_modeled_slice_standing(
+    unit: String,
+    slice: String,
+    slice_memory: RootMemoryRead,
+) -> UserWorkScopeStanding {
+    match slice_memory {
+        RootMemoryRead::Capped(_) => UserWorkScopeStanding::ExemptSystemUnit { unit, slice },
+        RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
+            UserWorkScopeStanding::UncappedSystemSlice { unit, slice }
         }
-        _ => UserWorkScopeStanding::UncappedSystemSlice { unit, slice },
     }
 }
 
@@ -379,69 +396,224 @@ fn system_service_unit_from_cgroup(text: &str) -> Option<(String, String)> {
     Some((unit, slice))
 }
 
-fn user_work_scope_standing() -> UserWorkScopeStanding {
-    if cfg!(test) {
-        return UserWorkScopeStanding::UnitTestExempt;
+fn namespaced_root_standing(
+    root_memory: RootMemoryRead,
+    buildbuddy_run_id: Option<&str>,
+) -> UserWorkScopeStanding {
+    // SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`
+    match root_memory {
+        RootMemoryRead::Capped(n) => UserWorkScopeStanding::ExemptBoundedContainer { bytes: n },
+        RootMemoryRead::Unbounded => UserWorkScopeStanding::BoundedContainerUncapped,
+        RootMemoryRead::Unreadable => match buildbuddy_run_id {
+            Some(id) if !id.is_empty() => UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id: id.to_string(),
+            },
+            _ => UserWorkScopeStanding::BoundedContainerUnreadable,
+        },
     }
-    let cg_read = std::fs::read_to_string("/proc/self/cgroup");
-    if let Ok(cg) = &cg_read {
-        if cg.contains(USER_WORK_SLICE) {
-            return UserWorkScopeStanding::AlreadyInSlice;
-        }
-        if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
-            return UserWorkScopeStanding::RunnerSlotExempt;
-        }
-        let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
-        let is_root = matches!(cgroup_v2_rel_path(cg).as_deref(), Some("/") | Some(""));
-        if is_root && !systemd_manager {
-            // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
-            // SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`
-            let memory = read_cgroup_memory_file("/", "memory.max");
-            return match memory {
-                Some(MemoryBound::Capped(n)) if n > 0 => {
-                    UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
-                }
-                Some(_) => UserWorkScopeStanding::BoundedContainerUncapped,
-                None => match std::env::var(BUILDBUDDY_RUN_ID_ENV) {
-                    Ok(id) if !id.is_empty() => {
-                        UserWorkScopeStanding::ExternallyBoundedExecutor { run_id: id }
-                    }
-                    _ => UserWorkScopeStanding::BoundedContainerUnreadable,
-                },
-            };
-        }
+}
+
+fn cgroup_text_is_root(text: &str) -> bool {
+    matches!(cgroup_v2_rel_path(text).as_deref(), Some("/") | Some(""))
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing`
+// SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_standing_with_root_memory`
+fn standing_from_supplied(
+    github_actions: bool,
+    cgroup: Option<&str>,
+    systemd_manager_present: bool,
+    user_manager_reachable: bool,
+    xdg_runtime_dir: bool,
+    root_memory: RootMemoryRead,
+    slice_memory: RootMemoryRead,
+    buildbuddy_run_id: Option<&str>,
+) -> UserWorkScopeStanding {
+    if cgroup.is_some_and(cgroup_text_is_root) && !systemd_manager_present {
+        return namespaced_root_standing(root_memory, buildbuddy_run_id);
     }
-    if std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some() {
+    if github_actions {
         return UserWorkScopeStanding::CiExempt;
     }
-    let cg = match cg_read {
-        Ok(s) => s,
-        Err(_) => return UserWorkScopeStanding::CgroupUnreadable,
+    let Some(cg) = cgroup else {
+        return UserWorkScopeStanding::CgroupUnreadable;
     };
-    if let Some(slice) = innermost_modeled_capped_slice(&cg) {
-        let unit = last_cgroup_unit_with_suffix(&cg, SCOPE_UNIT_SUFFIX)
-            .or_else(|| last_cgroup_unit_with_suffix(&cg, SERVICE_UNIT_SUFFIX))
-            .unwrap_or_default();
-        return live_modeled_slice_standing(unit, slice, &cg);
+    if cg.contains(USER_WORK_SLICE) {
+        return UserWorkScopeStanding::AlreadyInSlice;
     }
-    if let Some((unit, slice)) = system_service_unit_from_cgroup(&cg) {
+    if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
+        return UserWorkScopeStanding::RunnerSlotExempt;
+    }
+    if let Some(slice) = innermost_modeled_capped_slice(cg) {
+        let unit = last_cgroup_unit_with_suffix(cg, SCOPE_UNIT_SUFFIX)
+            .or_else(|| last_cgroup_unit_with_suffix(cg, SERVICE_UNIT_SUFFIX))
+            .unwrap_or_default();
+        return live_modeled_slice_standing(unit, slice, slice_memory);
+    }
+    if let Some((unit, slice)) = system_service_unit_from_cgroup(cg) {
         if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {
-            return live_modeled_slice_standing(unit, slice, &cg);
+            return live_modeled_slice_standing(unit, slice, slice_memory);
         }
         return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
     }
-    let probe_ok = Command::new("systemctl")
+    if user_manager_reachable {
+        UserWorkScopeStanding::UserManagerOwed
+    } else if xdg_runtime_dir {
+        UserWorkScopeStanding::UserManagerProbeFailed
+    } else {
+        UserWorkScopeStanding::UserSessionAbsent
+    }
+}
+
+fn live_slice_memory(cg: &str, slice: &str) -> RootMemoryRead {
+    let rel = cgroup_rel_through_segment(cg, slice).unwrap_or_else(|| format!("/{slice}"));
+    root_memory_from_file(read_cgroup_memory_file(&rel, "memory.max"))
+}
+
+fn user_manager_reachable() -> bool {
+    Command::new("systemctl")
         .args(["--user", "show-environment"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
-        .unwrap_or(false);
-    if probe_ok {
-        UserWorkScopeStanding::UserManagerOwed
-    } else if std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some() {
-        UserWorkScopeStanding::UserManagerProbeFailed
+        .unwrap_or(false)
+}
+
+fn user_work_scope_standing() -> UserWorkScopeStanding {
+    if cfg!(test) {
+        return UserWorkScopeStanding::UnitTestExempt;
+    }
+    let cg_read = std::fs::read_to_string("/proc/self/cgroup");
+    let cg = cg_read.as_deref().ok();
+    let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
+    let github_actions = std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some();
+    let xdg_runtime_dir = std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some();
+    let buildbuddy_run_id = std::env::var(BUILDBUDDY_RUN_ID_ENV)
+        .ok()
+        .filter(|id| !id.is_empty());
+    let namespaced_root = cg.is_some_and(cgroup_text_is_root) && !systemd_manager;
+    let root_memory = if namespaced_root {
+        root_memory_from_file(read_cgroup_memory_file("/", "memory.max"))
     } else {
-        UserWorkScopeStanding::UserSessionAbsent
+        RootMemoryRead::Unreadable
+    };
+    let modeled = cg.and_then(innermost_modeled_capped_slice);
+    let service_slice = cg.and_then(system_service_unit_from_cgroup).map(|(_, s)| s);
+    let slice_for_live = modeled
+        .or_else(|| service_slice.filter(|s| MODELED_CAPPED_SYSTEM_SLICES.contains(&s.as_str())));
+    let slice_memory = match (cg, slice_for_live.as_deref()) {
+        (Some(text), Some(slice)) => live_slice_memory(text, slice),
+        _ => RootMemoryRead::Unreadable,
+    };
+    let need_user_manager = !namespaced_root
+        && !github_actions
+        && cg.is_some_and(|text| {
+            !text.contains(USER_WORK_SLICE)
+                && !text.contains(RUNNER_SLOT_CGROUP_NEEDLE)
+                && innermost_modeled_capped_slice(text).is_none()
+                && system_service_unit_from_cgroup(text).is_none()
+        });
+    standing_from_supplied(
+        github_actions,
+        cg,
+        systemd_manager,
+        need_user_manager && user_manager_reachable(),
+        xdg_runtime_dir,
+        root_memory,
+        slice_memory,
+        buildbuddy_run_id.as_deref(),
+    )
+}
+
+#[cfg(test)]
+mod standing_fixture_tests {
+    use super::*;
+
+    fn wire(
+        github_actions: bool,
+        cgroup: Option<&str>,
+        systemd_manager_present: bool,
+        user_manager_reachable: bool,
+        xdg_runtime_dir: bool,
+        root_memory: RootMemoryRead,
+        slice_memory: RootMemoryRead,
+        buildbuddy_run_id: Option<&str>,
+    ) -> String {
+        standing_wire(&standing_from_supplied(
+            github_actions,
+            cgroup,
+            systemd_manager_present,
+            user_manager_reachable,
+            xdg_runtime_dir,
+            root_memory,
+            slice_memory,
+            buildbuddy_run_id,
+        ))
+    }
+
+    #[test]
+    fn sessions_slice_scope_refuses_as_user_session_absent() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(got, "UserSessionAbsent");
+    }
+
+    #[test]
+    fn system_slice_service_refuses_uncapped() {
+        let cg = "0::/system.slice/gunbc-tree-sync.service";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:system.slice:gunbc-tree-sync.service"
+        );
+    }
+
+    #[test]
+    fn namespaced_root_finite_memory_max_skips() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Capped(25769803776),
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(got, "ExemptBoundedContainer:25769803776");
+    }
+
+    #[test]
+    fn namespaced_root_unbounded_memory_max_refuses() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Unbounded,
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(got, "BoundedContainerUncapped");
     }
 }
