@@ -66,11 +66,24 @@ fn list_int_equals_freemonoid_int() {
 fn applied_head(
     decl: std::rc::Rc<v1_compiler::std_decl_ref::DeclarationRef>,
 ) -> std::rc::Rc<v1_compiler::v1_std_core::Node> {
+    applied_named(
+        decl.decl_name.clone(),
+        decl,
+        v1_compiler::v1_std_core::int_type(),
+    )
+}
+
+fn applied_named(
+    name: String,
+    decl: std::rc::Rc<v1_compiler::std_decl_ref::DeclarationRef>,
+    elem: std::rc::Rc<v1_compiler::v1_std_core::Node>,
+) -> std::rc::Rc<v1_compiler::v1_std_core::Node> {
     let mut n = (*v1_compiler::v1_std_core::unit_type()).clone();
     n.connective = v1_compiler::v1_std_core::Connective::NoConnective;
-    n.name = decl.decl_name.clone();
+    n.name = name.clone();
+    n.ident_span = Some(v1_compiler::v1_std_core::kernel_span(name));
     n.declaration = Some(decl);
-    n.children = std::rc::Rc::new(im::vector![v1_compiler::v1_std_core::unit_type()]);
+    n.children = std::rc::Rc::new(im::vector![elem]);
     std::rc::Rc::new(n)
 }
 
@@ -138,6 +151,63 @@ fn type_heads_agree_uses_alias_declaration_not_list_spelling() {
     assert!(
         !v1_compiler::v1_compiler_infer_types::type_heads_agree(local, std_list, text),
         "module-local List must not agree with std.types.List by last-segment carrier"
+    );
+}
+
+#[test]
+fn list_int_node_equals_freemonoid_int() {
+    let fm_decl = v1_compiler::std_decl_ref::decl_ref("std.algebra".into(), "FreeMonoid".into());
+    let std_list_decl = v1_compiler::std_decl_ref::decl_ref("std.types".into(), "List".into());
+    let mut fm_rhs = (*v1_compiler::v1_std_core::unit_type()).clone();
+    fm_rhs.declaration = Some(fm_decl.clone());
+    fm_rhs.name = "FreeMonoid".into();
+    let list_binding = std::rc::Rc::new(v1_compiler::v1_compiler_infer_env::TypeBinding {
+        name: "List".into(),
+        resolved: v1_compiler::v1_std_core::unit_type(),
+        provenance: std::rc::Rc::new(v1_compiler::std_induction::SubValueRelation::SubValueUnknown),
+        alias_rhs: Some(std::rc::Rc::new(fm_rhs)),
+    });
+    let mut std_bindings = im::HashMap::new();
+    std_bindings.insert("List".into(), list_binding);
+    let std_types = empty_env("std.types", std_bindings, im::vector![]);
+    let text = std::rc::Rc::new(
+        v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+            env: empty_env("use", im::HashMap::new(), im::vector![std_types]),
+        },
+    );
+    let list = applied_named(
+        "List".into(),
+        std_list_decl,
+        v1_compiler::v1_std_core::int_type(),
+    );
+    let fm = applied_named(
+        "FreeMonoid".into(),
+        fm_decl,
+        v1_compiler::v1_std_core::int_type(),
+    );
+    let indices = v1_compiler::v1_rt::rc_empty_map();
+    assert!(
+        v1_compiler::v1_compiler_infer_types::node_is_element_collection(
+            list.clone(),
+            indices.clone()
+        ),
+        "List is the alias spelling; both-container must fail against FreeMonoid"
+    );
+    assert!(
+        !v1_compiler::v1_compiler_infer_types::node_is_element_collection(
+            fm.clone(),
+            indices.clone()
+        ),
+        "FreeMonoid is not a container alias spelling"
+    );
+    assert!(
+        v1_compiler::v1_compiler_infer_types::node_type_equals(
+            list,
+            fm,
+            indices,
+            text
+        ),
+        "List<Int> equals FreeMonoid<Int> through the applied arm after containers; extra seed exclusions would skip that arm and fail here"
     );
 }
 
