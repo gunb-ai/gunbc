@@ -10896,7 +10896,18 @@ fn parent_name_is_std_optional(parent_name: String) -> Bool {
 // declaration; a binder carries a TypeParameter/NamedField field and is not a whole declaration.
 fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarationReading {
   let spelling = qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: n))
-  let carried = match n.declaration {
+  let carried = declaration_carried_through_resolution(n: n, hops: 3)
+  match carried {
+    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
+  }
+}
+
+// THE IDENTITY A REFERENCE CARRIES: a type application's resolved node is stamped with the
+// declaration it applies (generic_declaration_application), and the reference reads it through
+// `inferred`. A use-site reference's own span declares nothing, so the span join cannot recover it.
+fn whole_declaration_carried(n: Node) -> DeclarationRef? {
+  match n.declaration {
     Present { value: d } =>
       match d.field {
         WholeDeclaration => Present { value: d }
@@ -10905,9 +10916,18 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
       }
     Absent => none
   }
-  match carried {
-    Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-    Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
+}
+
+fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
+  match whole_declaration_carried(n: n) {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      if hops <= 0 { none } else {
+        match n.inferred {
+          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
+          _ => none
+        }
+      }
   }
 }
 
@@ -10915,19 +10935,22 @@ fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> O
   match type_reference_declaration_reading(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     TypeReferenceNamesDeclaration { declaration: d } =>
       if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-    TypeReferenceIsKernelType { name: kernel } =>
-      match kernel_mint_parent_identity(minted_name: kernel) {
-        VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
-          if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-        VariantParentIdentified { key: _ } => IsOtherType
-        VariantParentUnrecovered { cause: _ } =>
-          if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
-        VariantParentBeforeInference =>
-          if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
-      }
+    TypeReferenceIsKernelType { name: kernel } => optional_reading_of_kernel_mint(kernel: kernel)
     TypeReferenceIsTypeVariable { id: _ } => IsOtherType
     TypeReferenceUnidentified { authored: _, resolved: _ } =>
       if spelling == "Optional" { OptionalUnrecovered { spelling: spelling } } else { IsOtherType }
+  }
+}
+
+fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading {
+  match kernel_mint_parent_identity(minted_name: kernel) {
+    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
+      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
+    VariantParentIdentified { key: _ } => IsOtherType
+    VariantParentUnrecovered { cause: _ } =>
+      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
+    VariantParentBeforeInference =>
+      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
   }
 }
 

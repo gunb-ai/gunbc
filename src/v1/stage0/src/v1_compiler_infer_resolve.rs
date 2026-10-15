@@ -2038,36 +2038,50 @@ Rc::new(NodeResolveResult {
                                                 ident: None,
                                             });
                                             Rc::new(NodeResolveResult {
-                                                resolved: stamp_kernel_collection(Rc::new(Node {
-                                                    occurrence_identity: n
-                                                        .occurrence_identity
-                                                        .clone(),
-                                                    name: type_name.clone(),
-                                                    span: n.span.clone(),
-                                                    ident_span: n.ident_span.clone(),
-                                                    children: Rc::new(vec![resolved_child.clone()]),
-                                                    connective: n.connective.clone(),
-                                                    params: n.params.clone(),
-                                                    inferred: std::option::Option::None,
-                                                    return_cardinality: n
-                                                        .return_cardinality
-                                                        .clone(),
-                                                    uses: n.uses.clone(),
-                                                    body: n.body.clone(),
-                                                    transport: n.transport.clone(),
-                                                    properties: n.properties.clone(),
-                                                    type_annotation: n.type_annotation.clone(),
-                                                    is_self_recursive: false,
-                                                    has_non_tail_self_call: false,
-                                                    match_pattern: std::option::Option::None,
-                                                    module_item_kind: n.module_item_kind.clone(),
-                                                    declaration_marker: n
-                                                        .declaration_marker
-                                                        .clone(),
-                                                    declaration: n.declaration.clone(),
-                                                    expr_data: Rc::new(ExprData::NoExprData),
-                                                    ident: None,
-                                                })),
+                                                resolved: stamp_kernel_collection(
+                                                    reference_with_declaration(
+                                                        Rc::new(Node {
+                                                            occurrence_identity: n
+                                                                .occurrence_identity
+                                                                .clone(),
+                                                            name: type_name.clone(),
+                                                            span: n.span.clone(),
+                                                            ident_span: n.ident_span.clone(),
+                                                            children: Rc::new(vec![
+                                                                resolved_child.clone()
+                                                            ]),
+                                                            connective: n.connective.clone(),
+                                                            params: n.params.clone(),
+                                                            inferred: std::option::Option::None,
+                                                            return_cardinality: n
+                                                                .return_cardinality
+                                                                .clone(),
+                                                            uses: n.uses.clone(),
+                                                            body: n.body.clone(),
+                                                            transport: n.transport.clone(),
+                                                            properties: n.properties.clone(),
+                                                            type_annotation: n
+                                                                .type_annotation
+                                                                .clone(),
+                                                            is_self_recursive: false,
+                                                            has_non_tail_self_call: false,
+                                                            match_pattern:
+                                                                std::option::Option::None,
+                                                            module_item_kind: n
+                                                                .module_item_kind
+                                                                .clone(),
+                                                            declaration_marker: n
+                                                                .declaration_marker
+                                                                .clone(),
+                                                            declaration: n.declaration.clone(),
+                                                            expr_data: Rc::new(
+                                                                ExprData::NoExprData,
+                                                            ),
+                                                            ident: None,
+                                                        }),
+                                                        env.clone(),
+                                                    ),
+                                                ),
                                                 diagnostics: el_diags.clone(),
                                             })
                                         }

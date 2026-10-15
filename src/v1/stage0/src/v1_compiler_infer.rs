@@ -17391,14 +17391,7 @@ pub fn optional_declaration_reading(
                 scope.type_env.clone().source_indices.clone(),
                 n.clone(),
             ));
-        let carried = match n.declaration.clone() {
-            Some(d) => match (*d.field.clone()).clone() {
-                DeclField::WholeDeclaration => Some(d.clone()),
-                DeclField::NamedField { field_name: _, .. } => std::option::Option::None,
-                DeclField::TypeParameter { name: _, .. } => std::option::Option::None,
-            },
-            std::option::Option::None => std::option::Option::None,
-        };
+        let carried = declaration_carried_through_resolution(n.clone(), 3);
         match carried.clone() {
             Some(d) => {
                 if declaration_is_std_optional(d.clone()) {
@@ -17409,6 +17402,52 @@ pub fn optional_declaration_reading(
             }
             std::option::Option::None => {
                 optional_reading_by_census(n.clone(), scope.clone(), spelling.clone())
+            }
+        }
+    }
+}
+
+pub fn whole_declaration_carried(n: Rc<Node>) -> Option<Rc<DeclarationRef>> {
+    match n.declaration.clone() {
+        Some(d) => match (*d.field.clone()).clone() {
+            DeclField::WholeDeclaration => Some(d.clone()),
+            DeclField::NamedField { field_name: _, .. } => std::option::Option::None,
+            DeclField::TypeParameter { name: _, .. } => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn declaration_carried_through_resolution(
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_hops: i64,
+) -> Option<Rc<DeclarationRef>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut hops = __tco_loop_hops;
+        match whole_declaration_carried(n.clone()) {
+            Some(d) => {
+                break Some(d.clone());
+            }
+            std::option::Option::None => {
+                if (hops.clone() <= 0) {
+                    break std::option::Option::None;
+                } else {
+                    match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: r, .. }) => {
+                            let __tco_0 = r.clone();
+                            let __tco_1 = v1_rt::int_sub(hops, 1);
+                            __tco_loop_n = __tco_0;
+                            __tco_loop_hops = __tco_1;
+                            continue;
+                        }
+                        _ => {
+                            break std::option::Option::None;
+                        }
+                    }
+                }
             }
         }
     }
@@ -17436,42 +17475,7 @@ pub fn optional_reading_by_census(
             }
         }
         TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: kernel, .. } => {
-            match (*kernel_mint_parent_identity(kernel.clone())).clone() {
-                VariantParentIdentity::VariantParentIdentified { ref key, .. } => {
-                    match key.as_ref() {
-                        VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                            if declaration_is_std_optional(d.clone()) {
-                                Rc::new(OptionalDeclarationReading::IsStdOptional)
-                            } else {
-                                Rc::new(OptionalDeclarationReading::IsOtherType)
-                            }
-                        }
-                        _ => Rc::new(OptionalDeclarationReading::IsOtherType),
-                    }
-                }
-                VariantParentIdentity::VariantParentUnrecovered { cause: _, .. } => {
-                    if (crate::v1_std_core::qualified_last_segment(kernel.clone())
-                        == "Optional".to_string())
-                    {
-                        Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
-                            spelling: kernel.clone(),
-                        })
-                    } else {
-                        Rc::new(OptionalDeclarationReading::IsOtherType)
-                    }
-                }
-                VariantParentIdentity::VariantParentBeforeInference => {
-                    if (crate::v1_std_core::qualified_last_segment(kernel.clone())
-                        == "Optional".to_string())
-                    {
-                        Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
-                            spelling: kernel.clone(),
-                        })
-                    } else {
-                        Rc::new(OptionalDeclarationReading::IsOtherType)
-                    }
-                }
-            }
+            optional_reading_of_kernel_mint(kernel.clone())
         }
         TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: _, .. } => {
             Rc::new(OptionalDeclarationReading::IsOtherType)
@@ -17480,6 +17484,43 @@ pub fn optional_reading_by_census(
             if (spelling.clone() == "Optional".to_string()) {
                 Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
                     spelling: spelling.clone(),
+                })
+            } else {
+                Rc::new(OptionalDeclarationReading::IsOtherType)
+            }
+        }
+    }
+}
+
+pub fn optional_reading_of_kernel_mint(kernel: String) -> Rc<OptionalDeclarationReading> {
+    match (*kernel_mint_parent_identity(kernel.clone())).clone() {
+        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
+            VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
+                if declaration_is_std_optional(d.clone()) {
+                    Rc::new(OptionalDeclarationReading::IsStdOptional)
+                } else {
+                    Rc::new(OptionalDeclarationReading::IsOtherType)
+                }
+            }
+            _ => Rc::new(OptionalDeclarationReading::IsOtherType),
+        },
+        VariantParentIdentity::VariantParentUnrecovered { cause: _, .. } => {
+            if (crate::v1_std_core::qualified_last_segment(kernel.clone())
+                == "Optional".to_string())
+            {
+                Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
+                    spelling: kernel.clone(),
+                })
+            } else {
+                Rc::new(OptionalDeclarationReading::IsOtherType)
+            }
+        }
+        VariantParentIdentity::VariantParentBeforeInference => {
+            if (crate::v1_std_core::qualified_last_segment(kernel.clone())
+                == "Optional".to_string())
+            {
+                Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
+                    spelling: kernel.clone(),
                 })
             } else {
                 Rc::new(OptionalDeclarationReading::IsOtherType)
