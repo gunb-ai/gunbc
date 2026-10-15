@@ -429,11 +429,7 @@ fn host_usable_ram_from_census_capture_text(capture: String) -> HostUsableRam {
         ObservationEstablished { observed: r } => r
         ObservationRefused { cause: _ } => HostUsableRamUnmeasured
       }
-    HostCaptureOpen { envelope: e } =>
-      match host_usable_ram_from_capture(envelope: e) {
-        ObservationEstablished { observed: r } => r
-        ObservationRefused { cause: _ } => HostUsableRamUnmeasured
-      }
+    HostCaptureOpen { envelope: _ } => HostUsableRamUnmeasured
     HostCaptureNotBegun => HostUsableRamUnmeasured
     HostCaptureUnbound { reason: _ } => HostUsableRamUnmeasured
   }
@@ -446,11 +442,7 @@ fn host_fixed_overhead_from_census_capture_text(capture: String) -> HostFixedOve
         ObservationEstablished { observed: o } => o
         ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
       }
-    HostCaptureOpen { envelope: e } =>
-      match host_fixed_overhead_from_capture(envelope: e) {
-        ObservationEstablished { observed: o } => o
-        ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
-      }
+    HostCaptureOpen { envelope: _ } => HostFixedOverheadUnmeasured
     HostCaptureNotBegun => HostFixedOverheadUnmeasured
     HostCaptureUnbound { reason: _ } => HostFixedOverheadUnmeasured
   }
