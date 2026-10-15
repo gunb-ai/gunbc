@@ -258,7 +258,11 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_start_request_from_plan,
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
-  attempt_system_unit_launch_host_argv, attempt_system_unit_read_answer,
+  attempt_system_unit_launch_host_argv, attempt_system_unit_launch_argv_refused_detail,
+  attempt_system_unit_host_exec_from_launch_argv,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
+  AttemptSystemUnitLaunchArgvRevisionUnreadable,
+  attempt_system_unit_read_answer,
   attempt_system_unit_harness_start_from_launcher_exit,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
 }
@@ -1517,28 +1521,41 @@ fn belt_session_container_create(
                         step: "harness-unit-start",
                         detail: join(["a request for this attempt already exists at ", entry], ""),
                       }
-                    AttemptSystemUnitEnqueued { entry } => {
-                      let launched_exec = belt_exec(
-                        cmd: attempt_system_unit_launch_host_argv(instance: instance),
-                        workdir: workdir,
-                      )
-                      let exit_code = match launched_exec {
-                        ExecOk { stdout: _ } => 0
-                        ExecFailed { program: _, exit_code: c, stderr: _ } => c
-                        ExecRefused { program: _, reason: _ } => 1
+                    AttemptSystemUnitEnqueued { entry } =>
+                      match attempt_system_unit_launch_host_argv(instance: instance) {
+                        AttemptSystemUnitLaunchArgvRefused { cause } =>
+                          ExecStepFailed {
+                            step: "harness-unit-start",
+                            detail: attempt_system_unit_launch_argv_refused_detail(cause: cause),
+                          }
+                        AttemptSystemUnitLaunchArgvRevisionUnreadable =>
+                          ExecStepFailed {
+                            step: "harness-unit-start",
+                            detail: "attempt-system-unit launcher revision receipt is unreadable",
+                          }
+                        AttemptSystemUnitLaunchArgvReady { argv: launch_argv } => {
+                          let launched_exec = belt_exec(
+                            cmd: attempt_system_unit_host_exec_from_launch_argv(argv: launch_argv),
+                            workdir: workdir,
+                          )
+                          let exit_code = match launched_exec {
+                            ExecOk { stdout: _ } => 0
+                            ExecFailed { program: _, exit_code: c, stderr: _ } => c
+                            ExecRefused { program: _, reason: _ } => 1
+                          }
+                          match attempt_system_unit_harness_start_from_launcher_exit(
+                            exit_code: exit_code,
+                            reading: attempt_system_unit_read_answer(
+                              instance_root: instance.instance_root as String,
+                              entry: entry,
+                            ),
+                          ) {
+                            AttemptSystemUnitHarnessStarted => ExecStepsOk
+                            AttemptSystemUnitHarnessFailed { detail } =>
+                              ExecStepFailed { step: "harness-unit-start", detail: detail }
+                          }
+                        }
                       }
-                      match attempt_system_unit_harness_start_from_launcher_exit(
-                        exit_code: exit_code,
-                        reading: attempt_system_unit_read_answer(
-                          instance_root: instance.instance_root as String,
-                          entry: entry,
-                        ),
-                      ) {
-                        AttemptSystemUnitHarnessStarted => ExecStepsOk
-                        AttemptSystemUnitHarnessFailed { detail } =>
-                          ExecStepFailed { step: "harness-unit-start", detail: detail }
-                      }
-                    }
                   }
               }
           }

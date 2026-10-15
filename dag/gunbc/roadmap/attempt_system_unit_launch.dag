@@ -455,56 +455,92 @@ fn attempt_system_unit_start_request_fields(verb: AttemptSystemUnitStartVerb, li
 }
 
 fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgumentAdmission {
-  admit_named_argument(name: "instance_root", value: instance_root)
+  if string_contains(s: instance_root, pattern: "=") {
+    NamedArgumentNameHoldsSeparator { name: "instance_root" }
+  } else {
+    admit_named_argument(name: "instance_root", value: instance_root)
+  }
 }
 
-fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<NonEmptyStr> {
+// THE LAUNCHER ARGV IS A TYPED READING (review 80423). A refused named argument used to collapse
+// to [] then `/usr/bin/false`, so every future empty path was the same untyped degradation.
+type AttemptSystemUnitLaunchArgv
+  = AttemptSystemUnitLaunchArgvReady { argv: List<String> }
+  | AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentAdmission }
+  | AttemptSystemUnitLaunchArgvRevisionUnreadable
+
+fn attempt_system_unit_launch_argv_refused_detail(cause: NamedArgumentAdmission) -> String {
+  match cause {
+    NamedArgumentAdmitted { argument: _ } => "instance_root named argument was admitted"
+    NamedArgumentNameEmpty => "instance_root named argument name is empty"
+    NamedArgumentNameHoldsSeparator { name } =>
+      join(["instance_root named argument holds the separator: ", name], "")
+  }
+}
+
+fn attempt_system_unit_host_exec_from_launch_argv(argv: List<String>) -> HostExecArgv {
+  match argv.first() {
+    Absent => host_exec_argv(program: "", args: [])
+    Present { value: program } => host_exec_argv(program: program, args: skip(xs: argv, n: 1))
+  }
+}
+
+fn attempt_system_unit_launch_gunbc_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
   let dir = attempt_system_unit_launcher_dir(instance: instance, revision: revision)
   match attempt_system_unit_launch_named_argument(instance_root: instance.instance_root as String) {
-    NamedArgumentNameEmpty => []
-    NamedArgumentNameHoldsSeparator { name: _ } => []
+    NamedArgumentNameEmpty => AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameEmpty }
+    NamedArgumentNameHoldsSeparator { name } =>
+      AttemptSystemUnitLaunchArgvRefused { cause: NamedArgumentNameHoldsSeparator { name: name } }
     NamedArgumentAdmitted { argument: arg } =>
-      concat(
-        gunbc_entry_run_argv(
-          workspace_root: dir as NonEmptyStr,
-          binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
-          source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
-          entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
-          function: attempt_system_unit_launch_function as NonEmptyStr,
+      AttemptSystemUnitLaunchArgvReady {
+        argv: map(
+          concat(
+            gunbc_entry_run_argv(
+              workspace_root: dir as NonEmptyStr,
+              binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
+              source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+              entry: join([dir, "/", attempt_system_unit_launch_entry], "") as NonEmptyStr,
+              function: attempt_system_unit_launch_function as NonEmptyStr,
+            ),
+            ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
+          ),
+          w => w as String,
         ),
-        ["--arg" as NonEmptyStr, join([arg.name, "=", arg.value], "") as NonEmptyStr],
-      )
+      }
   }
 }
 
-fn attempt_system_unit_launch_flocked_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> List<String> {
-  let gunbc_argv = attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision)
-  if count(gunbc_argv) == 0 {
-    [] as List<String>
-  } else {
-    flock_exclusive_wait_words(
-      lock_path: attempt_unit_spool_drain_lock_path(instance_root: instance.instance_root as String) as NonEmptyStr,
-      wait: attempt_system_unit_launcher_flock_wait,
-      conflict_exit_code: attempt_system_unit_launcher_busy_exit,
-      command: map(gunbc_argv, w => w as String),
-    )
+fn attempt_system_unit_launch_flocked_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitLaunchArgvRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => AttemptSystemUnitLaunchArgvRevisionUnreadable
+    AttemptSystemUnitLaunchArgvReady { argv: gunbc_argv } =>
+      AttemptSystemUnitLaunchArgvReady {
+        argv: flock_exclusive_wait_words(
+          lock_path: attempt_unit_spool_drain_lock_path(instance_root: instance.instance_root as String) as NonEmptyStr,
+          wait: attempt_system_unit_launcher_flock_wait,
+          conflict_exit_code: attempt_system_unit_launcher_busy_exit,
+          command: gunbc_argv,
+        ),
+      }
   }
 }
 
-fn attempt_system_unit_launch_host_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> HostExecArgv {
-  let flocked = attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision)
-  if count(flocked) == 0 {
-    host_exec_argv(program: "/usr/bin/false", args: ["attempt-system-unit-launch-argv-refused"])
-  } else {
-    let elevated = sudo_elevate(command: flocked)
-    host_exec_argv(program: elevated.bin_path, args: elevated.args)
+fn attempt_system_unit_launch_host_argv_at(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitLaunchArgv {
+  match attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitLaunchArgvRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => AttemptSystemUnitLaunchArgvRevisionUnreadable
+    AttemptSystemUnitLaunchArgvReady { argv: flocked } => {
+      let elevated = sudo_elevate(command: flocked)
+      AttemptSystemUnitLaunchArgvReady { argv: concat([elevated.bin_path], elevated.args) }
+    }
   }
 }
 
-fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> HostExecArgv {
+fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> AttemptSystemUnitLaunchArgv {
   let read = Filesystem.Read(path: attempt_system_unit_launcher_revision_receipt_path(instance: instance))
   if !read.success {
-    host_exec_argv(program: "/usr/bin/false", args: ["attempt-system-unit-launcher-revision-unreadable"])
+    AttemptSystemUnitLaunchArgvRevisionUnreadable
   } else {
     attempt_system_unit_launch_host_argv_at(
       instance: instance,
@@ -513,26 +549,44 @@ fn attempt_system_unit_launch_host_argv(instance: HostDashboardInstance) -> Host
   }
 }
 
-fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
-  join([
-    instance.directory_owner.user as String,
-    " ALL=(",
-    executor_sudoers_run_as as String,
-    ") NOPASSWD: ",
-    join(map(attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision), w => sudoers_argument_word(w: w)), " "),
-  ], "")
+type AttemptSystemUnitSudoersText
+  = AttemptSystemUnitSudoersReady { text: String }
+  | AttemptSystemUnitSudoersRefused { cause: NamedArgumentAdmission }
+
+fn attempt_system_unit_sudoers_line(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitSudoersText {
+  match attempt_system_unit_launch_flocked_argv_at(instance: instance, revision: revision) {
+    AttemptSystemUnitLaunchArgvRefused { cause } => AttemptSystemUnitSudoersRefused { cause: cause }
+    AttemptSystemUnitLaunchArgvRevisionUnreadable =>
+      AttemptSystemUnitSudoersRefused { cause: NamedArgumentNameEmpty }
+    AttemptSystemUnitLaunchArgvReady { argv: flocked } =>
+      AttemptSystemUnitSudoersReady {
+        text: join([
+          instance.directory_owner.user as String,
+          " ALL=(",
+          executor_sudoers_run_as as String,
+          ") NOPASSWD: ",
+          join(map(flocked, w => sudoers_argument_word(w: w)), " "),
+        ], ""),
+      }
+  }
 }
 
 fn attempt_system_unit_sudoers_path(instance: HostDashboardInstance) -> String {
   join(["/etc/sudoers.d/gunbc-attempt-system-unit-", instance.instance_id as String], "")
 }
 
-fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> String {
-  join([
-    "# GENERATED by gunbc.roadmap.attempt_system_unit_launch — do not hand-edit",
-    attempt_system_unit_sudoers_line(instance: instance, revision: revision),
-    "",
-  ], "\n")
+fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: ReleaseRevisionBinding) -> AttemptSystemUnitSudoersText {
+  match attempt_system_unit_sudoers_line(instance: instance, revision: revision) {
+    AttemptSystemUnitSudoersRefused { cause } => AttemptSystemUnitSudoersRefused { cause: cause }
+    AttemptSystemUnitSudoersReady { text: line } =>
+      AttemptSystemUnitSudoersReady {
+        text: join([
+          "# GENERATED by gunbc.roadmap.attempt_system_unit_launch — do not hand-edit",
+          line,
+          "",
+        ], "\n"),
+      }
+  }
 }
 
 type AttemptSystemUnitEnqueue

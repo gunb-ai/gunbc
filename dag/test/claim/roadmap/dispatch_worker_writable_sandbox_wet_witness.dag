@@ -36,7 +36,10 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
   attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
   AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
-  attempt_system_unit_launch_host_argv, attempt_system_unit_claim_entry,
+  attempt_system_unit_launch_host_argv, attempt_system_unit_host_exec_from_launch_argv,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
+  AttemptSystemUnitLaunchArgvRevisionUnreadable,
+  attempt_system_unit_claim_entry,
   AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimSymlink,
   AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
@@ -344,12 +347,17 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         ) {
           AttemptSystemUnitEnqueueRefused { detail: _ } => SandboxTouchUnrunnable
           AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
-          AttemptSystemUnitEnqueued { entry: _ } => {
-        let cmd = attempt_system_unit_launch_host_argv(instance: instance)
-        SandboxTouchRan {
-          exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
-        }
-          }
+          AttemptSystemUnitEnqueued { entry: _ } =>
+            match attempt_system_unit_launch_host_argv(instance: instance) {
+              AttemptSystemUnitLaunchArgvRefused { cause: _ } => SandboxTouchUnrunnable
+              AttemptSystemUnitLaunchArgvRevisionUnreadable => SandboxTouchUnrunnable
+              AttemptSystemUnitLaunchArgvReady { argv } => {
+                let cmd = attempt_system_unit_host_exec_from_launch_argv(argv: argv)
+                SandboxTouchRan {
+                  exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
+                }
+              }
+            }
         }
       }
     }
@@ -511,8 +519,14 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
 }
 
 fn launcher_run_refused(instance: HostDashboardInstance) -> Bool {
-  let cmd = attempt_system_unit_launch_host_argv(instance: instance)
-  shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code != 0
+  match attempt_system_unit_launch_host_argv(instance: instance) {
+    AttemptSystemUnitLaunchArgvRefused { cause: _ } => true
+    AttemptSystemUnitLaunchArgvRevisionUnreadable => true
+    AttemptSystemUnitLaunchArgvReady { argv } => {
+      let cmd = attempt_system_unit_host_exec_from_launch_argv(argv: argv)
+      shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code != 0
+    }
+  }
 }
 
 fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
