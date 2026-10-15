@@ -16,7 +16,7 @@ import gunbc.runner.runner_width_transition { transition_population_agreement, T
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   CgroupOccupancy,
@@ -50,11 +50,12 @@ import gunbc.runner.runner_unit_file {
   runner_job_user_uid_reading,
 }
 import gunbc.typed_remote_file_write {
+  typed_remote_file_compare_argv,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
 import extdeps.exec.command { argv_words }
-import extdeps.tools.stat { stat_file_type_command }
+import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
 import gunbc.runner.runner_host_file_converge {
   RunnerHostFileDesired,
@@ -117,6 +118,11 @@ import gunbc.runner.runner_host_file_converge {
   PathsNotApplicable,
   runner_host_path_ancestors,
   runner_host_root_only_find_argv,
+  ctrl_jobserver_retired_residue,
+  classify_runner_slot_population_with_fabric,
+  runner_host_fabric_member_units,
+  SlotFabricMemberNotARunner,
+  SlotFabricMemberRunsARunner,
   classify_root_only_paths,
   RunnerHostFileObservation,
   HostFileLeaveInPlace,
@@ -483,8 +489,8 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
     Present { value: f } => {
       let path = f.path as String
       let sent = runner_host_file_metadata_probe_argv(path: path)
-      sent == argv_words(command: stat_file_type_command(path: path))
-        && sent == ["/usr/bin/stat", "-c", "%F", "--", path]
+      sent == argv_words(command: stat_default_report_command(path: path))
+        && sent == ["/usr/bin/stat", "--", path]
         && !any(sent, w => w == "test" || w == "-e")
     }
   }
@@ -585,6 +591,8 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotTeardownEffective => "effective"
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
     SlotAllocationNotEffective { detail: d } => concat("allocation-not-effective:", d)
+    SlotFabricMemberNotARunner { load_state: l } => concat("fabric-not-runner:", l)
+    SlotFabricMemberRunsARunner => "fabric-runs-runner"
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
     SlotRetiredAsDeclared => "retired"
@@ -1326,4 +1334,75 @@ test fn absent_residue_forbids_makeflags_without_the_fragment() -> Bool {
   let cleaned = runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: true)
   starts_with(s: allocation_wire(cpu: "7s", env: "MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo", expect: cleaned), prefix: "allocation-not-effective:")
     && allocation_wire(cpu: "7s", env: "RUNNER_DIR=/opt/x", expect: cleaned) == "effective"
+}
+
+// ── Every leg the observe route sends must cross the SSH edge ──────────────────────────────────────
+
+fn crosses_the_edge(argv: List<String>) -> Bool {
+  match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true }
+}
+
+// THE WALL THE PRODUCTION RUNS HIT (observe 38662663858 / 38662666227 / 38662668957): every file leg
+// and the residue leg were NOT attempted because the metadata probe carried `%F`. Now every argv the
+// observe route issues for every production desired file, every residue path and the residue unit
+// is admitted by the transport, and the comparison leg is too.
+test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
+  match srv1_desired_population() {
+    RunnerHostFilesDesiredRefused { cause: _ } => false
+    RunnerHostFilesDesired { files: fs, withheld: _ } =>
+      length(fs) > 0
+        && all(fs, f => crosses_the_edge(argv: runner_host_file_metadata_probe_argv(path: f.path as String))
+          && crosses_the_edge(argv: runner_host_root_only_find_argv(paths: [f.path as String], kind: "f"))
+          && crosses_the_edge(argv: runner_host_root_only_find_argv(paths: runner_host_path_ancestors(path: f.path as String), kind: "d"))
+          && (match runner_host_file_write_admission(file: f) {
+            TypedRemoteFileWriteAdmitted { write: w } => crosses_the_edge(argv: typed_remote_file_compare_argv(write: w))
+            TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+          }))
+        && all(concat(ctrl_jobserver_retired_residue.files, ctrl_jobserver_retired_residue.directories), p => crosses_the_edge(argv: runner_host_file_metadata_probe_argv(path: p)))
+        && crosses_the_edge(argv: systemctl_show_load_state_argv(unit: ctrl_jobserver_retired_residue.unit))
+  }
+}
+
+// RED: the probe this replaced is refused by the same transport check.
+test fn the_percent_format_stat_probe_is_refused_by_the_transport() -> Bool {
+  !crosses_the_edge(argv: argv_words(command: stat_file_type_command(path: "/etc/default/ctrl-jobserver")))
+}
+
+// ── Fabric execution members are not runner slots (observe run 38662663858, srv1-13) ──────────────
+
+fn srv1_fabric_show() -> String {
+  join([
+    "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+    "Id=actions-runner@srv1-13.service\nLoadState=masked\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=infinity\nEnvironment=",
+  ], "\n\n")
+}
+
+fn fabric_population(show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved {
+    units: classify_runner_slot_population_with_fabric(
+      units: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-13.service" as NonEmptyStr],
+      fabric: runner_host_fabric_member_units(host: operator_host_srv1),
+      retirements: [],
+      show_stdout: show,
+      expect: fixture_expect(),
+    ),
+  }
+}
+
+// POSITIVE CONTROL: srv1's real fabric roster names slot 13, and its masked runner unit is the
+// declared state, so the host is effective; without the fabric join the same reading refuses.
+test fn a_masked_fabric_member_runner_unit_is_the_declared_state() -> Bool {
+  any(runner_host_fabric_member_units(host: operator_host_srv1), u => (u as String) == "actions-runner@srv1-13.service")
+    && runner_slot_population_effective(population: fabric_population(show: srv1_fabric_show()))
+    && population_holds(pop: fabric_population(show: srv1_fabric_show()), unit: "actions-runner@srv1-13.service", wire: "fabric-not-runner:masked")
+}
+
+// RED: a fabric member still running a runner unit is a runner on a slot the model gave to fabric.
+test fn a_loaded_runner_on_a_fabric_member_refuses() -> Bool {
+  let show = join([
+    "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+    "Id=actions-runner@srv1-13.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+  ], "\n\n")
+  !runner_slot_population_effective(population: fabric_population(show: show))
+    && population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "fabric-runs-runner")
 }

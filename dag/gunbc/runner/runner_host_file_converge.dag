@@ -44,7 +44,7 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.exec.command { argv_words }
-import extdeps.tools.stat { stat_file_type_command }
+import extdeps.tools.stat { stat_default_report_command }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.live_deploy.member_observe {
   EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate,
@@ -96,6 +96,8 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -364,6 +366,7 @@ type RunnerHostFileSubject {
   target: SshTarget
   desired_units: List<NonEmptyStr>
   retired_units: List<NonEmptyStr>
+  fabric_units: List<NonEmptyStr>
 }
 
 type RunnerHostFileSubjectAdmission
@@ -445,9 +448,21 @@ fn runner_host_file_subject_over_obligation(
           target: administrator_ssh_target(host: host),
           desired_units: units,
           retired_units: retired,
+          fabric_units: runner_host_fabric_member_units(host: host),
         },
       }
   }
+}
+
+// THE SLOTS THIS HOST LENDS TO FABRIC EXECUTION ARE NOT RUNNER SLOTS (gunbc.runner.runner_slot_allocation
+// fabric_execution_slot_identities: srv1's microvm shakedown slot 13, srv3/srv4 slots 6 and 7). Their
+// actions-runner@ unit is not desired, so a masked or absent one is the declared state and a loaded
+// one is a runner occupying a slot the model gave to fabric -- neither is "a desired slot masked by
+// mistake", which is how observe run 38662663858 misread srv1-13.
+fn runner_host_fabric_member_units(host: HostIdentity) -> List<NonEmptyStr> {
+  fabric_execution_slot_identities()
+    |> filter(id => (id.host as String) == (host as String))
+    |> map(id => runner_slot_unit_name(slot: id))
 }
 
 // ── File observation and plan (pure) ─────────────────────────────────────────────────────────────
@@ -475,7 +490,7 @@ type RunnerHostFileMetadataReading
 // nameless kind -- the same separation gunbc.fabric.fabric_cell_acquire draws over this operation.
 fn classify_host_file_metadata(exit_code: Int, stdout: String, stderr: String) -> RunnerHostFileMetadataReading {
   if exit_code == 0 {
-    let w = trim(s: stdout)
+    let w = trim(s: match split(s: stdout, delimiter: "\n").first() { Absent => "" Present { value: l } => l })
     if w == "" {
       HostFileMetadataUnread { cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered" }
     } else {
@@ -522,8 +537,13 @@ fn runner_host_file_settled_standing(st: RunnerHostFilePathStanding) -> RunnerHo
   }
 }
 
+// THE PROBE MUST CROSS THE EDGE IT RUNS OVER. It was `stat -c %F`, and `%` is outside the fleet SSH
+// portability alphabet, so every file leg and every residue leg reported "NOT attempted" on every
+// host (observe runs 38350252200, 38662663858, 38662666227, 38662668957) while a witness pinned the
+// refused words as correct. The default report needs no format word; only success and the first line
+// are read, which is all classify_host_file_metadata ever used.
 fn runner_host_file_metadata_probe_argv(path: String) -> List<String> {
-  argv_words(command: stat_file_type_command(path: path))
+  argv_words(command: stat_default_report_command(path: path))
 }
 
 // WHO CAN CHANGE A FILE IS PART OF WHAT THE FILE IS, when root evaluates it. A byte-exact needrestart
@@ -713,6 +733,8 @@ type RunnerSlotUnitStanding
   = SlotTeardownEffective
   | SlotTeardownNotEffective { kill_mode: String, exit_type: String }
   | SlotAllocationNotEffective { detail: String }
+  | SlotFabricMemberNotARunner { load_state: String }
+  | SlotFabricMemberRunsARunner
   | SlotReloadPending
   | SlotUnitNotLoaded { load_state: String }
   | SlotRetiredAsDeclared
@@ -759,6 +781,8 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
     SlotTeardownEffective => "effective"
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => join(["NOT-EFFECTIVE KillMode=", k, " ExitType=", e], "")
     SlotAllocationNotEffective { detail: d } => concat("ALLOCATION-NOT-EFFECTIVE ", d)
+    SlotFabricMemberNotARunner { load_state: l } => concat("fabric-member-not-a-runner LoadState=", l)
+    SlotFabricMemberRunsARunner => "FABRIC-MEMBER-RUNS-A-RUNNER LoadState=loaded"
     SlotReloadPending => "RELOAD-PENDING"
     SlotUnitNotLoaded { load_state: l } => concat("NOT-LOADED LoadState=", l)
     SlotRetiredAsDeclared => "retired-as-declared LoadState=masked"
@@ -851,6 +875,32 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
 
 // Each requested unit is joined to the block that NAMES it; a unit with no block of its own is UNREAD,
 // never borrowed from a neighbour's.
+// A fabric member's runner unit is judged before anything else: absent, masked or not-found is the
+// declared state; loaded is a runner on a slot the model gave to fabric, and it refuses by name.
+fn classify_fabric_member_unit(reading: RunnerSlotUnitReading) -> RunnerSlotUnitStanding {
+  if trim(s: reading.load_state) == "loaded" { SlotFabricMemberRunsARunner } else { SlotFabricMemberNotARunner { load_state: trim(s: reading.load_state) } }
+}
+
+fn classify_runner_slot_population_with_fabric(units: List<NonEmptyStr>, fabric: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, expect: RunnerSlotExpectation) -> List<RunnerSlotUnitResult> {
+  map(classify_runner_slot_population(units: units, retirements: retirements, show_stdout: show_stdout, expect: expect), r =>
+    if any(fabric, f => (f as String) == (r.unit as String)) {
+      RunnerSlotUnitResult {
+        unit: r.unit,
+        standing: match parse_runner_slot_reading_for(unit: r.unit, show_stdout: show_stdout) {
+          Absent => SlotFabricMemberNotARunner { load_state: "unlisted" }
+          Present { value: rd } => classify_fabric_member_unit(reading: rd)
+        },
+      }
+    } else { r })
+}
+
+fn parse_runner_slot_reading_for(unit: NonEmptyStr, show_stdout: String) -> RunnerSlotUnitReading? {
+  fold(split(s: show_stdout, delimiter: "\n\n"), init: none, f: (acc, b) => match parse_runner_slot_show_block(block: b) {
+    Present { value: r } => if (r.unit as String) == (unit as String) { Present { value: r } } else { acc }
+    Absent => acc
+  })
+}
+
 fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, expect: RunnerSlotExpectation) -> List<RunnerSlotUnitResult> {
   let readings = flat_map(split(s: show_stdout, delimiter: "\n\n"), b => match parse_runner_slot_show_block(block: b) {
     Present { value: r } => [r]
@@ -871,7 +921,7 @@ fn runner_slot_population_owes_reload(population: RunnerSlotPopulation) -> Bool 
       any(us, r => match r.standing {
         SlotReloadPending => true
         SlotTeardownEffective => false
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false
         SlotUnitNotLoaded { load_state: _ } => false
         SlotRetiredAsDeclared => false
         SlotRetirementIncomplete { cause: _ } => false
@@ -884,13 +934,14 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
-      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
+      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
         && all(us, r => match r.standing {
         SlotTeardownEffective => true
         SlotRetiredAsDeclared => true
+        SlotFabricMemberNotARunner { load_state: _ } => true
         SlotRetirementIncomplete { cause: _ } => false
         SlotReloadPending => false
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberRunsARunner => false
         SlotUnitNotLoaded { load_state: _ } => false
         SlotUnitUnread => false
       })
@@ -905,7 +956,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
         SlotUnitUnread => false
         SlotTeardownEffective => true
         SlotReloadPending => true
-        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true
+        SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true SlotAllocationNotEffective { detail: _ } => true SlotFabricMemberNotARunner { load_state: _ } => true SlotFabricMemberRunsARunner => true
         SlotUnitNotLoaded { load_state: _ } => true
         SlotRetiredAsDeclared => true
         SlotRetirementIncomplete { cause: _ } => true
@@ -1182,7 +1233,7 @@ fn observe_runner_slot_population(
                   }
               }
               let retirements = runner_retiree_standings(readings: readings, batch: batch)
-              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, expect: expect) }
+              SlotPopulationObserved { units: classify_runner_slot_population_with_fabric(units: units, fabric: subject.fabric_units, retirements: retirements, show_stdout: shown.stdout, expect: expect) }
             }
         }
       }
@@ -1743,8 +1794,8 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
     SlotPopulationObserved { units: us } =>
       join([
         "slots observed=", to_string(length(us)),
-        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
-        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
+        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
+        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotAllocationNotEffective { detail: _ } => false SlotFabricMemberNotARunner { load_state: _ } => false SlotFabricMemberRunsARunner => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
         "\n",
         join(map(us, r => join(["slot ", r.unit as String, " ", runner_slot_unit_standing_wire(standing: r.standing), "\n"], "")), ""),
       ], "")
