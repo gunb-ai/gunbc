@@ -1,0 +1,469 @@
+module gunbc.host.boot_attempt
+
+// THE NEUTRAL BOOT-ATTEMPT RECORDS (managed-host untangle, cut 4d-ii; operator ruling 2026-10-14:
+// one physical machine boot transaction, physical and guest control remain distinct). This module is
+// the LOWER half of the boot attempt: the records every machine's boot produces, described by facts
+// that do not depend on which controller protocol (MegaRAC/IPMI/Redfish) read them. Adapters depend
+// on the core, never the core on an adapter: the controller-specific readings (SEL, SDR, sensors,
+// inventory, param5, chassis power, the Redfish URLs) and the MegaRAC-shaped diagnostic live in the
+// controller's adapter module (gunbc.machine_intake.megarac_boot_diagnostic_bundle), which imports
+// THIS module. So this module imports no controller-protocol type: no extdeps.bmc.ipmi*, no
+// megarac_*, and the run record carries the adapter's diagnostic BY REFERENCE (the retained artifact
+// path plus its digest, and the neutral findings), not by the adapter's reading type.
+//
+// THE BY-REFERENCE POINTER (operator ruling 2026-10-14). The attempt record is the same value for a
+// MegaRAC machine and for the next controller (srv3), so it must not name a MegaRAC reading. It names
+// where the adapter retained its diagnostic (a path under the attempt's retained-artifact prefix) and
+// the neutral findings that follow from it; the adapter reads its own diagnostic back from that path.
+// A different controller's adapter writes a different diagnostic to its own prefix and the same record
+// shape names it.
+//
+// THE TERMINAL IS THE CONSUMER'S, NOT THE BOOT'S (operator ruling 2026-10-14). The power-after state
+// only says what terminal it observed. Whether that terminal was the diagnostic census's END is the
+// census consumer's fact (it reads its own census END marker); the boot records a terminal marker it
+// saw and classifies the power against it, terminal-neutral.
+//
+// MINTED ON PROVEN ABSENCE (operator ruling 2026-10-14, correction 1): the neutral power state is
+// minted here because I checked host_reset_return (no power-state type), host_control_route (none),
+// std (none), and extdeps.bmc.types (RedfishPowerState = On|Off|PoweringOn|PoweringOff — a Redfish-
+// shaped 4-state with no unread arm, protocol-specific, not the on/off/unread the boot power-after
+// needs). No protocol-neutral on/off vocabulary to extend, so this one is minted.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.optional { Present, Absent }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
+// concat / join / starts_with / string_contains / count / filter / trim are built-in globals (no import),
+// as in the rest of the corpus.
+
+// ── THE NEUTRAL POWER STATE ───────────────────────────────────────────────────────────────────────
+// The on/off the boot observes, protocol-agnostic: the controller's raw reading (MegaRAC's
+// ChassisPowerObservation, a future controller's own) maps to this. Unread carries why, so a state the
+// boot could not establish says which read failed. (Correction 1: minted on proven absence.)
+
+type HostPowerState
+  = PowerOn
+  | PowerOff
+  | PowerUnread { reason: NonEmptyStr }
+
+fn host_power_text(state: HostPowerState) -> String {
+  match state {
+    PowerOn => "on"
+    PowerOff => "off"
+    PowerUnread { reason: r } => concat("unobserved: ", r as String)
+  }
+}
+
+// THE MEDIA PRESENTATION STATE, protocol-agnostic: is the medium the attempt wants actually being
+// served. (The MegaRAC adapter maps its MegaRacAttachResult to this.)
+
+type BootPresentation
+  = Presented
+  | PresentationNotAttempted { reason: NonEmptyStr }
+  | PresentationUnread { reason: NonEmptyStr }
+
+// ── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ────────────────────────────────────────────────────
+// The handoff is gated on this record, and the run record carries the same record (side chat on
+// gunbc#12425). What the boot was gated on — which intended medium and its verified digest, the
+// redirection wire, when — reaches the actuation, the attempt and this record as a value, including
+// the refusal and timeout arms, never as a bare exit.
+//
+// NEUTRAL (managed-host untangle, cut 4d-ii): the raw MegaRAC evidence (the attempt's transport log,
+// the chassis power reading, the MegaRacAttachResult) lives in the adapter; this record keeps the
+// classification — which medium (name + verified digest), the power state around the attach, whether
+// a stale medium was powered off first, and the presentation state after. `ready` is NOT a stored
+// field (correction 2): it is derivable from the record's own presentation field, so it is a fn.
+
+type StaleMediumPowerOff
+  = StalePowerOffNotNeeded { reason: NonEmptyStr }
+  | StalePowerOffObserved { stale_image: String, before: HostPowerState }
+  | StalePowerOffCommandRefused { stale_image: String, before: HostPowerState }
+  | StalePowerOffNotObserved { stale_image: String, before: HostPowerState, last: HostPowerState }
+
+fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
+  match record {
+    StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
+    StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", host_power_text(state: b), ") to replace stale '", i, "', observed off"], "")
+    StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by the controller"], "")
+    StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", host_power_text(state: l)], "")
+  }
+}
+
+type MediaAttachRecord
+  = MediaAttachNotAttempted { reason: NonEmptyStr }
+  | MediaAttachAttempted {
+      medium_image_name: NonEmptyStr,
+      medium_image_sha256: NonEmptyStr,
+      power: HostPowerState,
+      stale_power_off: StaleMediumPowerOff,
+      presentation: BootPresentation
+    }
+
+// `ready` is a DERIVATION from the record's own presentation field, not a stored second
+// representation (correction 2).
+
+fn media_attach_ready(record: MediaAttachRecord) -> Bool {
+  match record {
+    MediaAttachNotAttempted { reason: _ } => false
+    MediaAttachAttempted { medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p } => match p {
+      Presented => true
+      PresentationNotAttempted { reason: _ } => false
+      PresentationUnread { reason: _ } => false
+    }
+  }
+}
+
+fn media_attach_text(record: MediaAttachRecord) -> String {
+  match record {
+    MediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MediaAttachAttempted { medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: s, presentation: pr } =>
+      join([
+        "'", n, "' (sha256: ", h, ") ",
+        if (host_power_text(state: p) as String) == "off" { "attached with the host off" } else { "attached (host was " + (host_power_text(state: p) as String) + ")" },
+        "; ", (stale_power_off_text(record: s) as String),
+        "; presentation: ",
+        match pr {
+          Presented => "presented"
+          PresentationNotAttempted { reason: rr } => join(["not attempted: ", rr as String], "")
+          PresentationUnread { reason: rr } => join(["unread: ", rr as String], "")
+        }
+      ], "")
+  }
+}
+
+// THE HANDOFF. The boot hands off to the OS, then reads back the presentation to confirm the medium
+// the OS is actually booting from is the one it attached. The adapter's raw readback is its fact; this
+// record keeps the neutral outcome (confirmed / attempted-unconfirmed / refused) and the presentation
+// state after.
+
+type HandoffCallResult
+  = HandoffConfirmed
+  | HandoffAttemptedUnconfirmed { reason: NonEmptyStr }
+  | HandoffRefused { reason: NonEmptyStr }
+
+type HandoffMedia
+  = HandoffMediaNotReached { reason: NonEmptyStr }
+  | HandoffMediaWithheldAtRecheck { reason: NonEmptyStr }
+  | HandoffMediaAttempted {
+      handoff: HandoffCallResult,
+      after: BootPresentation
+    }
+
+fn handoff_media_text(record: HandoffMedia) -> String {
+  match record {
+    HandoffMediaNotReached { reason: r } => concat("not reached: ", r as String)
+    HandoffMediaWithheldAtRecheck { reason: r } => concat("withheld at re-check: ", r as String)
+    HandoffMediaAttempted { handoff: h, after: a } =>
+      join(["attempted: ",
+        match h {
+          HandoffConfirmed => "confirmed"
+          HandoffAttemptedUnconfirmed { reason: rr } => join(["attempted, unconfirmed: ", rr as String], "")
+          HandoffRefused { reason: rr } => join(["refused: ", rr as String], "")
+        },
+        "; presentation after: ",
+        match a {
+          Presented => "presented"
+          PresentationNotAttempted { reason: rr } => join(["not attempted: ", rr as String], "")
+          PresentationUnread { reason: rr } => join(["unread: ", rr as String], "")
+        }], "")
+  }
+}
+
+// THE END MEDIA. The final presentation look, taken after the OS has come up, as its own record. The
+// adapter's raw read is its fact; this keeps the neutral presentation state.
+
+type EndMedia
+  = EndMediaNotTaken { reason: NonEmptyStr }
+  | EndMediaObserved { look: BootPresentation }
+
+fn end_media_text(record: EndMedia) -> String {
+  match record {
+    EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
+    EndMediaObserved { look: l } =>
+      match l {
+        Presented => "end look: presented"
+        PresentationNotAttempted { reason: rr } => join(["end look not attempted: ", rr as String], "")
+        PresentationUnread { reason: rr } => join(["end look unread: ", rr as String], "")
+      }
+  }
+}
+
+// ── THE POWER AFTER THE ATTEMPT, TERMINAL-NEUTRAL ─────────────────────────────────────────────────
+// (Correction 3.) The terminal is the consumer's, not the boot's: the diagnostic census's END marker
+// is the census consumer's fact. The boot records the power state it observed and the terminal marker
+// it saw (if any), and classifies the power against it. Whether that terminal was the census's END is
+// the census consumer's mapping (it reads its own census END marker). PoweredOffAfterTerminal /
+// PoweredOffWithoutTerminal replace the census-specific arm names.
+
+type TerminalObserved
+  = TerminalMarker { marker: NonEmptyStr }
+  | TerminalNotObserved
+
+fn terminal_text(t: TerminalObserved) -> String {
+  match t {
+    TerminalMarker { marker: m } => join(["terminal observed: '", m, "'"], "")
+    TerminalNotObserved => "no terminal observed"
+  }
+}
+
+type PowerAfterAttempt
+  = PoweredOffAfterTerminal
+  | PoweredOffWithoutTerminal
+  | PoweredOnAfterAttempt
+  | PowerAfterUnobserved { power: HostPowerState }
+  | PowerAfterNotTaken { reason: NonEmptyStr }
+
+// THE CLASSIFICATION, from the power state and whether a terminal marker was observed. The census
+// consumer passes its own census END marker (or TerminalNotObserved if the marker was not seen); the
+// boot does not know the census exists.
+
+fn power_after_attempt(power: HostPowerState, terminal: TerminalObserved) -> PowerAfterAttempt {
+  match power {
+    PowerOn => PoweredOnAfterAttempt
+    PowerOff =>
+      match terminal {
+        TerminalMarker { marker: _ } => PoweredOffAfterTerminal
+        TerminalNotObserved => PoweredOffWithoutTerminal
+      }
+    PowerUnread { reason: r } => PowerAfterUnobserved { power: PowerUnread { reason: r } }
+  }
+}
+
+fn power_after_text(p: PowerAfterAttempt) -> String {
+  match p {
+    PoweredOffAfterTerminal => "off after the observed terminal marker (expected: the attempt's image ends with a power-off)"
+    PoweredOffWithoutTerminal => "off without an observed terminal marker"
+    PoweredOnAfterAttempt => "on"
+    PowerAfterUnobserved { power: o } => concat("unobserved: ", host_power_text(state: o))
+    PowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
+  }
+}
+
+// ── THE BOOT OVERRIDE CONSUMPTION, NEUTRAL ────────────────────────────────────────────────────────
+// (Correction 6.) The input is the pending-before and pending-after classification, not the raw IPMI
+// param5 read: the controller's adapter reads its param5 and classifies pending/not-pending, and the
+// core derives the consumption from the two Booleans plus whether the boot went through the override's
+// device. No IPMI type crosses into this module.
+
+type BootOverrideConsumption
+  = OverrideConsumedByAttempt
+  | OverrideNoLongerPendingAfterAttempt
+  | OverridePendingBeforeAttempt
+  | OverrideStillPendingAfterAttempt
+  | OverrideNotHandedOff { reason: NonEmptyStr }
+  | OverrideConsumptionUnread { reason: NonEmptyStr }
+
+fn boot_override_consumption(pending_before: Bool, pending_after: Bool, booted_through_override_device: Bool) -> BootOverrideConsumption {
+  if pending_before {
+    OverridePendingBeforeAttempt
+  } else {
+    if pending_after {
+      OverrideStillPendingAfterAttempt
+    } else if booted_through_override_device {
+      OverrideConsumedByAttempt
+    } else {
+      OverrideNoLongerPendingAfterAttempt
+    }
+  }
+}
+
+fn override_consumption_text(c: BootOverrideConsumption) -> String {
+  match c {
+    OverrideConsumedByAttempt => "consumed by this attempt: cleared after a terminal marker, which only a boot of the override's device prints"
+    OverrideNoLongerPendingAfterAttempt => "no longer pending after the attempt, but no boot through the override's device was observed, so consumption by this attempt is not established"
+    OverridePendingBeforeAttempt => "ALREADY PENDING before this attempt set it; consumption not attributable"
+    OverrideStillPendingAfterAttempt => "STILL PENDING after the attempt; not consumed"
+    OverrideNotHandedOff { reason: r } => concat("not handed off: ", r as String)
+    OverrideConsumptionUnread { reason: r } => concat("undetermined: ", r as String)
+  }
+}
+
+// ── THE ATTEMPT IDENTITY ───────────────────────────────────────────────────────────────────────────
+// The attempt's own identity (run id), or why it could not be read.
+
+type AttemptIdentityReading
+  = AttemptRunId { run_id: NonEmptyStr }
+  | AttemptIdentityUnavailable { variable: NonEmptyStr, detail: String }
+
+fn attempt_identity_text(a: AttemptIdentityReading) -> String {
+  match a {
+    AttemptRunId { run_id: r } => r as String
+    AttemptIdentityUnavailable { variable: v, detail: d } => concat("UNAVAILABLE: ", v as String, " could not be read: ", d)
+  }
+}
+
+// ── THE ADAPTER'S DIAGNOSTIC, BY REFERENCE ────────────────────────────────────────────────────────
+// The by-reference pointer (operator ruling 2026-10-14). The run record does not carry the adapter's
+// diagnostic by its MegaRAC type; it names where the adapter retained it (a path under the attempt's
+// retained-artifact prefix) and the neutral findings. The adapter reads its own diagnostic back from
+// that path.
+
+type DiagnosticRef
+  = DiagnosticRetained {
+      path: NonEmptyStr,
+      digest: Sha256FileDigest,
+      findings: List<BootFinding>
+    }
+  | DiagnosticNotRetained { reason: NonEmptyStr }
+  | DiagnosticUnavailable { reason: NonEmptyStr }
+
+fn diagnostic_ref_text(d: DiagnosticRef) -> String {
+  match d {
+    DiagnosticRetained { path: p, digest: dg, findings: _ } => concat("retained at ", p)
+    DiagnosticNotRetained { reason: r } => concat("not retained: ", r as String)
+    DiagnosticUnavailable { reason: r } => concat("unavailable: ", r as String)
+  }
+}
+
+// ── THE NEUTRAL FINDINGS ──────────────────────────────────────────────────────────────────────────
+// The typed findings the run record carries (correction 4: no stringly catch-all; every arm is a
+// named, typed fact about the attempt). Findings the boot could not type (a controller-specific read
+// failure, a raw reading) stay in the adapter's findings, not here.
+
+type BootFinding
+  = EveryReadFailed { count: Int, channels: List<NonEmptyStr> }
+  | MediaAttachNotReady { record: MediaAttachRecord }
+  | MediaAttachSessionHeld { record: MediaAttachRecord }
+  | HandoffWithheldAtRecheck { handoff: HandoffMedia }
+  | HandoffUnconfirmed { handoff: HandoffMedia }
+  | OverrideNotConsumed { consumption: BootOverrideConsumption }
+  | PoweredOffWithoutTerminalMarker
+  | CredentialMayRemain
+  | PresentationAfterHandoff { presentation: BootPresentation }
+  | ConsoleNotRetained { path: NonEmptyStr }
+
+// THE MEDIA LOSS AFTER HANDOFF, as a finding: whether the medium the OS is booting from was still the
+// one attached after the handoff (the presentation read after the handoff says so).
+
+type MediaLossPhase
+  = MediaLossAfterHandoffPhase
+  | MediaLossAtEndLook
+
+type MediaLossAfterHandoff
+  = MediaLossAffirmed { phase: MediaLossPhase, reason: NonEmptyStr }
+  | MediaLossNotAffirmed
+
+fn media_loss_text(loss: MediaLossAfterHandoff) -> String {
+  match loss {
+    MediaLossAffirmed { phase: ph, reason: r } =>
+      join([
+        "media loss affirmed after the ",
+        match ph {
+          MediaLossAfterHandoffPhase => "handoff"
+          MediaLossAtEndLook => "end look"
+        },
+        ": ", r as String
+      ], "")
+    MediaLossNotAffirmed => "no media loss affirmed after the handoff (the presentation read back as served)"
+  }
+}
+
+// ── THE RUN RECORD ────────────────────────────────────────────────────────────────────────────────
+// THE RECORD OF ONE BOOT ATTEMPT, neutral (operator ruling 2026-10-14). It carries the attempt's
+// classifications (media, handoff, end media, power-after, override), the attempt's own timing
+// instrument, the attempt identity, and the BY-REFERENCE pointer to the adapter's diagnostic plus the
+// neutral findings. It does NOT carry: the raw controller readings (they live in the adapter), the
+// Ampere SMpro readings (Ampere is a platform capability, cut 2 — snappy-seal-211), or the raw IPMI
+// param5 (the override consumption is a classification, correction 6).
+
+type BootRunRecord {
+  terminal: TerminalObserved,
+  end_media: EndMedia,
+  handoff_media: HandoffMedia,
+  media: MediaAttachRecord,
+  override: BootOverrideConsumption,
+  power_after: PowerAfterAttempt,
+  timing: BootPhaseTiming,
+  identity: AttemptIdentityReading,
+  diagnostic: DiagnosticRef,
+  findings: List<BootFinding>
+}
+
+// THE NOT-TAKEN RUN RECORD: a boot that never reached the run section (the actuation refused, the
+// medium attach failed before the handoff). Every field is its not-taken arm.
+
+fn run_record_not_taken(reason: NonEmptyStr) -> BootRunRecord {
+  BootRunRecord {
+    terminal: TerminalNotObserved,
+    end_media: EndMediaNotTaken { reason: reason },
+    handoff_media: HandoffMediaNotReached { reason: reason },
+    media: MediaAttachNotAttempted { reason: reason },
+    override: OverrideNotHandedOff { reason: reason },
+    power_after: PowerAfterNotTaken { reason: reason },
+    timing: boot_phase_timing_not_taken(reason: reason),
+    identity: AttemptIdentityUnavailable { variable: "attempt run id", detail: (reason as String) },
+    diagnostic: DiagnosticNotRetained { reason: reason },
+    findings: []
+  }
+}
+
+// ── THE RUN RECORD, AS A FINDINGS LIST AND AS TEXT ────────────────────────────────────────────────
+
+// The run record's own findings, in the order the harness checks them. The findings list the harness
+// emits is the run record's `findings` field; this fn derives the ones the record's own fields imply
+// (a not-ready attach, a withheld handoff, an unconfirmed handoff, an unconsumed override, a
+// powered-off-without-terminal power-after) so the harness does not re-derive them.
+
+fn run_record_findings(record: BootRunRecord) -> List<BootFinding> {
+  let attach = if media_attach_ready(record: record.media) { [] } else { [MediaAttachNotReady { record: record.media }] }
+  let handoff =
+    match record.handoff_media {
+      HandoffMediaNotReached { reason: _ } => []
+      HandoffMediaWithheldAtRecheck { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
+      HandoffMediaAttempted { handoff: h, after: _ } =>
+        match h {
+          HandoffConfirmed => []
+          HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
+          HandoffRefused { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
+        }
+    }
+  let override =
+    match record.override {
+      OverrideConsumedByAttempt => []
+      OverrideNoLongerPendingAfterAttempt => []
+      OverridePendingBeforeAttempt => [OverrideNotConsumed { consumption: record.override }]
+      OverrideStillPendingAfterAttempt => [OverrideNotConsumed { consumption: record.override }]
+      OverrideNotHandedOff { reason: _ } => []
+      OverrideConsumptionUnread { reason: _ } => []
+    }
+  let power =
+    match record.power_after {
+      PoweredOffWithoutTerminal => [PoweredOffWithoutTerminalMarker]
+      _ => []
+    }
+  join_list(join_list(join_list(join_list(record.findings, attach), handoff), override), power)
+}
+
+fn join_list(a: List<T>, b: List<T>) -> List<T> {
+  a + b
+}
+
+// THE RUN RECORD, RENDERED. The run section's text, one line per classification, in the order the
+// harness reads it.
+
+fn run_record_text(record: BootRunRecord) -> String {
+  join([
+    "run id: ", (attempt_identity_text(a: record.identity) as String),
+    "\nterminal: ", (terminal_text(t: record.terminal) as String),
+    "\nmedia: ", (media_attach_text(record: record.media) as String),
+    "\nhandoff: ", (handoff_media_text(record: record.handoff_media) as String),
+    "\nend media: ", (end_media_text(record: record.end_media) as String),
+    "\noverride: ", (override_consumption_text(c: record.override) as String),
+    "\npower after: ", (power_after_text(p: record.power_after) as String),
+    "\ndiagnostic: ", (diagnostic_ref_text(d: record.diagnostic) as String),
+    "\ntiming: ", (boot_phase_timing_text(t: record.timing) as String)
+  ], "")
+}
+
+// ── THE NEUTRAL BUDGETS (correction 5: only the console bound and the publish allowance are core;
+// the Redfish read budgets belong to the adapter) ──────────────────────────────────────────────────
+// The bound on the retained console capture, a policy row on artifact size (OBSERVED by the console
+// read, which reports an over-bound capture rather than clipping it — the collector does not truncate).
+
+data console_bound: ByteSize = byte_size(count: 16777216)
+
+// The allowance for the medium publish (the time the medium image is written to the medium before the
+// attach is read back as served). A policy bound, not a mtcollins1 measurement.
+
+data publish_allowance_seconds: Int = 60
