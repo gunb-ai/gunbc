@@ -299,3 +299,8 @@ test fn kpm_projected_field_absent_from_value() -> Bool { kpa_reason() != Presen
 test fn kpm_projection_receiver_absent() -> Bool { kpa_reason() != Present { value: ^eval_rejected_projection_receiver_absent } }
 test fn kpm_projection_receiver_not_aggregate() -> Bool { kpa_reason() != Present { value: ^eval_rejected_projection_receiver_not_aggregate } }
 test fn kpm_roundtrip_precondition() -> Bool { kpa_reason() != Present { value: ^eval_rejected_roundtrip_precondition } }
+fn kpi_int() -> Optional<Int> { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kps2_src()), name: ^width_of)) }
+test fn kpi_is_a_value() -> Bool { kpi_int() != Absent }
+test fn kpi_is_not_8() -> Bool { kpi_int() != Present { value: 8 } }
+test fn kpi_is_not_0() -> Bool { kpi_int() != Present { value: 0 } }
+test fn kpi_reason_present() -> Bool { kpa_reason() != Absent }
