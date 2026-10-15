@@ -71,7 +71,6 @@ data attempt_system_unit_name_prefix: String = "gunbc-attempt-"
 data attempt_system_unit_name_suffix: String = ".service"
 data attempt_system_unit_launcher_helpers_root: String = "/opt/gunbc/attempt-system-unit-helpers"
 data attempt_system_unit_launcher_revision_receipt_name: String = "installed-revision"
-data attempt_system_unit_source_roots: List<NonEmptyStr> = ["dag" as NonEmptyStr, "src/v2" as NonEmptyStr]
 
 fn attempt_system_unit_launcher_locus(instance: HostDashboardInstance) -> HelperLocus {
   HelperLocus {
@@ -89,7 +88,7 @@ fn attempt_system_unit_launcher_revision_receipt_path(instance: HostDashboardIns
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start, stop, or reset-failed one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
@@ -121,15 +120,6 @@ fn attempt_system_unit_name_admitted(unit: NonEmptyStr) -> Bool {
     && !string_contains(s: unit as String, pattern: "..")
 }
 
-fn attempt_system_unit_matches_identity(unit: NonEmptyStr, node_id: String, attempt_key: String) -> Bool {
-  (unit as String) == (dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) as String)
-}
-
-type AttemptSystemUnitVerb
-  = AttemptSystemUnitStart
-  | AttemptSystemUnitStop
-  | AttemptSystemUnitResetFailed
-
 type AttemptSystemUnitStartFacts {
   node_id: String
   attempt_key: String
@@ -144,7 +134,7 @@ type AttemptSystemUnitStartFacts {
 }
 
 type AttemptSystemUnitAdmission
-  = AttemptSystemUnitAdmitted { verb: AttemptSystemUnitVerb, unit: NonEmptyStr, facts: AttemptSystemUnitStartFacts? }
+  = AttemptSystemUnitAdmitted { unit: NonEmptyStr, facts: AttemptSystemUnitStartFacts }
   | AttemptSystemUnitRefused { reason: String }
 
 fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
@@ -160,17 +150,9 @@ fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: At
         if program != (instance.serve_binary as String) {
           AttemptSystemUnitRefused { reason: "ExecStart program is not the instance gunbc binary" }
         } else {
-          AttemptSystemUnitAdmitted { verb: AttemptSystemUnitStart, unit: unit, facts: Present { value: facts } }
+          AttemptSystemUnitAdmitted { unit: unit, facts: facts }
         }
     }
-  }
-}
-
-fn attempt_system_unit_control_admitted(verb: AttemptSystemUnitVerb, unit: NonEmptyStr) -> AttemptSystemUnitAdmission {
-  if !attempt_system_unit_name_admitted(unit: unit) {
-    AttemptSystemUnitRefused { reason: "unit name is not a gunbc-attempt-*.service identity" }
-  } else {
-    AttemptSystemUnitAdmitted { verb: verb, unit: unit, facts: none }
   }
 }
 
@@ -238,15 +220,6 @@ fn attempt_system_unit_encode_start_tagged(tag: String, facts: AttemptSystemUnit
     facts.exit_hook as String,
     join(facts.inner_argv, "\u{1f}"),
   ], "\n")
-}
-
-fn attempt_system_unit_encode_control(verb: AttemptSystemUnitVerb, unit: NonEmptyStr) -> String {
-  let tag = match verb {
-    AttemptSystemUnitStart => "start"
-    AttemptSystemUnitStop => "stop"
-    AttemptSystemUnitResetFailed => "reset-failed"
-  }
-  join([tag, unit as String], "\n")
 }
 
 fn attempt_system_unit_launch_named_argument(instance_root: String) -> NamedArgumentAdmission {
@@ -393,7 +366,7 @@ fn attempt_system_unit_cli_start(instance: HostDashboardInstance, lines: List<St
                                               }
                                               match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
                                                 AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
-                                                AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
+                                                AttemptSystemUnitAdmitted { unit: unit, facts: _ } =>
                                                   attempt_system_unit_run_admitted_start(instance: instance, facts: facts, unit: unit, wait: wait)
                                               }
                                             }
@@ -458,32 +431,12 @@ fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
         match lines.first() {
           Absent => exit_failure(reason: "pending request is empty")
           Present { value: tag } =>
-            if tag == "stop" {
-              match lines[1] {
-                Absent => exit_failure(reason: "control request has no unit")
-                Present { value: unit_s } =>
-                  match attempt_system_unit_control_admitted(verb: AttemptSystemUnitStop, unit: unit_s as NonEmptyStr) {
-                    AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
-                    AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
-                      if systemd.Systemctl.Stop(unit: unit).success { ExitSuccess } else { exit_failure(reason: "systemctl stop refused") }
-                  }
-              }
-            } else if tag == "reset-failed" {
-              match lines[1] {
-                Absent => exit_failure(reason: "control request has no unit")
-                Present { value: unit_s } =>
-                  match attempt_system_unit_control_admitted(verb: AttemptSystemUnitResetFailed, unit: unit_s as NonEmptyStr) {
-                    AttemptSystemUnitRefused { reason: why } => exit_failure(reason: why)
-                    AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: _ } =>
-                      if systemd.Systemctl.ResetFailedUnit(unit: unit).success { ExitSuccess } else { exit_failure(reason: "systemctl reset-failed refused") }
-                  }
-              }
-            } else if tag == "start" {
+            if tag == "start" {
               attempt_system_unit_cli_start(instance: instance, lines: lines, wait: false)
             } else if tag == "start-wait" {
               attempt_system_unit_cli_start(instance: instance, lines: lines, wait: true)
             } else {
-              exit_failure(reason: "pending request verb is not start, start-wait, stop, or reset-failed")
+              exit_failure(reason: "pending request verb is not start or start-wait")
             }
         }
       }

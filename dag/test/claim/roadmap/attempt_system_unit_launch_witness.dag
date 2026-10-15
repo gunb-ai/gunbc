@@ -21,8 +21,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartFacts, AttemptSystemUnitAdmitted, AttemptSystemUnitRefused,
-  attempt_system_unit_start_admitted, attempt_system_unit_control_admitted,
-  AttemptSystemUnitStop, attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
+  attempt_system_unit_start_admitted,
+  attempt_system_unit_privileged_effect, attempt_system_unit_sudoers_body,
   attempt_system_unit_sudoers_path, attempt_system_unit_name_admitted,
   attempt_system_unit_systemd_run_command, attempt_system_unit_plan_from_facts,
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_dir,
@@ -53,7 +53,7 @@ test fn a_start_with_the_instance_binary_and_user_is_admitted() -> Bool {
       inner_argv: [inst.serve_binary as String, "run"],
     },
   ) {
-    AttemptSystemUnitAdmitted { verb: _, unit: u, facts: _ } =>
+    AttemptSystemUnitAdmitted { unit: u, facts: _ } =>
       attempt_system_unit_name_admitted(unit: u)
     AttemptSystemUnitRefused { reason: _ } => false
   }
@@ -77,7 +77,7 @@ test fn a_start_with_another_program_is_refused() -> Bool {
     },
   ) {
     AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "gunbc binary")
-    AttemptSystemUnitAdmitted { verb: _, unit: _, facts: _ } => false
+    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
   }
 }
 
@@ -99,14 +99,7 @@ test fn a_start_with_another_user_is_refused() -> Bool {
     },
   ) {
     AttemptSystemUnitRefused { reason: why } => string_contains(s: why, pattern: "service user")
-    AttemptSystemUnitAdmitted { verb: _, unit: _, facts: _ } => false
-  }
-}
-
-test fn stop_of_a_foreign_unit_name_is_refused() -> Bool {
-  match attempt_system_unit_control_admitted(verb: AttemptSystemUnitStop, unit: "sshd.service" as NonEmptyStr) {
-    AttemptSystemUnitRefused { reason: _ } => true
-    AttemptSystemUnitAdmitted { verb: _, unit: _, facts: _ } => false
+    AttemptSystemUnitAdmitted { unit: _, facts: _ } => false
   }
 }
 
@@ -242,7 +235,7 @@ fn launcher_execstoppost_argv_keeps_single_dollar(instance: HostDashboardInstanc
   }
   match attempt_system_unit_start_admitted(instance: instance, facts: facts) {
     AttemptSystemUnitRefused { reason: _ } => false
-    AttemptSystemUnitAdmitted { verb: _, unit: unit, facts: admitted } =>
+    AttemptSystemUnitAdmitted { unit: unit, facts: admitted } =>
       match attempt_system_unit_systemd_run_command(
         instance: instance,
         plan: attempt_system_unit_plan_from_facts(facts: admitted, unit: unit),

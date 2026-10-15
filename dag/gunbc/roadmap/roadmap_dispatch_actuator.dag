@@ -3082,19 +3082,6 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
   )
 }
 
-// THE WORKER START IS NOT THIS COMMAND. systemd-run --user drops Protect* on srv1. The one start
-// is gunbc.roadmap.attempt_system_unit_launch through the granted launcher. Belt starts through
-// that launcher. This fold remains the typed property list plus the user-work-slice property
-// wrapper for other transients; it must not be the attempt-worker start.
-fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
-  gunbc_user_work_transient_command(
-    unit: plan.unit,
-    properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
-    setenv_bindings: [],
-    command_argv: plan.inner_argv,
-  )
-}
-
 type DispatchSessionContainerPlan
   = DispatchSessionContainerReady { container: DispatchSessionContainer }
   | DispatchSessionContainerUnavailable { step: NonEmptyStr, detail: String }
