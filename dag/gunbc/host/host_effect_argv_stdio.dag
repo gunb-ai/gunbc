@@ -2,6 +2,9 @@ module gunbc.host.host_effect_argv_stdio
 
 import std.types { List, NonEmptyStr }
 import std.algebra { list_map }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.posix.process { PosixProcessStdio }
 import gunbc.remote_shell_command {
@@ -12,8 +15,7 @@ import gunbc.remote_shell_command {
 
 // Carries an ArgvCommand and the posix.process stdio value into the OpenSSH login-shell render.
 // Does not mint a second stdio type (DESIGN §3). LocalExec sets fds; this does not wrap LocalShell
-// in `sh -c`. S3c launch-leg wiring (flip RentedDetachRefusedNoStdoutToFileRoute) is a follow-up:
-// #14109 is not landed.
+// in `sh -c`.
 
 fn argv_as_remote_words(command: ArgvCommand) -> List<NonEmptyStr> {
   list_map(xs: argv_words(command: command), f: fn(w) { w as NonEmptyStr })
@@ -29,3 +31,13 @@ fn host_effect_argv_stdio_remote_command(
     interpretation: openssh_login_shell_interpretation,
   )
 }
+
+data s3c_launch_stdio_file_wiring_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_effect_argv_stdio", decl_name: "host_effect_argv_stdio_remote_command"),
+    reason: "S3c rented-card launch does not consume this render; #14109 still refuses typed at RentedDetachRefusedNoStdoutToFileRoute.",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: the #14109 S3c launch leg consumes host_effect_argv_stdio_remote_command so a detached ninfer-serve over FleetSsh has stdout and stderr set to a file. SUFFICIENT FOR: RentedDetachRefusedNoStdoutToFileRoute dissolves. NOT satisfied by this render existing unused." as NonEmptyStr
+    )
+  )
+]

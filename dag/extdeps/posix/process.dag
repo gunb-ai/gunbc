@@ -2,7 +2,9 @@ module extdeps.posix.process
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { PosixRedirectPathname }
 
@@ -95,9 +97,6 @@ type ProcessReapOutcome
 // Open mode is stated, not implied: Truncate is XCU 2.7.2 `>|` (overrides noclobber; run.sh's `>`
 // intent without depending on the login shell's `set -C`). Append is XCU 2.7.3 `>>`.
 //
-// StartDetached still takes stdout_file and stderr_file as two NonEmptyStr params (two opens).
-data start_detached_adopts_posix_process_stdio: String = "frontier: StartDetached adopts PosixProcessStdio when a spawn consumer needs OneFile-versus-separate at that boundary; this change names the type and does not migrate the operation"
-
 type PosixFileOpenMode
   = PosixFileTruncate
   | PosixFileAppend
@@ -111,6 +110,16 @@ type PosixProcessStdio
       stdout_mode: PosixFileOpenMode,
       stderr_mode: PosixFileOpenMode,
     }
+
+data posix_process_stdio_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "extdeps.posix.process", decl_name: "PosixProcessStdio"),
+    reason: "StartDetached still takes stdout_file and stderr_file as two NonEmptyStr params (two opens). PosixProcessStdio is the shared typed stdio; StartDetached has not adopted it.",
+    dissolution: unbound_dissolution(
+      description: "TRIGGER: posix.Process StartDetached input is PosixProcessStdio, distinguishing ToOneFile from ToSeparateFiles. SUFFICIENT FOR: deleting this row; the two NonEmptyStr params are gone. NOT satisfied by documenting the type beside the old params." as NonEmptyStr
+    )
+  )
+]
 
 service posix.Process {
   operation StartDetached {
