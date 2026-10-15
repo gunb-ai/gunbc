@@ -11775,36 +11775,6 @@ pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
 // typed store was deleted as test-only, 2026-10-04); `typed_module_cache` is included so the
 // decomposition states every per-worker term.
 
-/// Force the lazily-built pool terms, one at a time, in dependency order. Each
-/// returns after populating exactly one field so a caller can snapshot between them.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_pool_parse_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    pool_parse(index).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_tree_bare_census_for_test(
-    index: &MultiEntryIndex,
-    source_root: &str,
-) -> Result<(), String> {
-    tree_bare_census_for_root(index, source_root).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_pool_bare_census_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    pool_bare_census(index).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn force_both_closure_edges_for_test(index: &MultiEntryIndex) -> Result<(), String> {
-    whole_pool_closure_edge_index(index).map(|_| ())
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn index_source_roots_for_test(index: &MultiEntryIndex) -> Vec<String> {
-    index.source_roots.clone()
-}
-
 /// Population counts per term — reported beside the byte deltas so a term's size
 /// can be read per entry, never to derive bytes from counts.
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -12051,33 +12021,6 @@ struct PoolParse {
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
-static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-// Union-resolve receipt tests reset/read process-wide oracles (`TYPECHECK_COMPUTE_COUNT`,
-// repeated-typecheck attribution probe state). `cargo test` runs `#[test]` fns in parallel
-// by default — serialize those oracles (not production use).
-static UNION_RESOLVE_PROCESS_RECEIPT_LOCK: Mutex<()> = Mutex::new(());
-
-/// Run a counter-based receipt test with exclusive access to `TYPECHECK_COMPUTE_COUNT`.
-pub fn with_typecheck_compute_count_receipt<R>(f: impl FnOnce() -> R) -> R {
-    let _guard = UNION_RESOLVE_PROCESS_RECEIPT_LOCK
-        .lock()
-        .expect("union resolve process receipt lock poisoned");
-    f()
-}
-
-pub fn typecheck_compute_count() -> usize {
-    TYPECHECK_COMPUTE_COUNT.load(Ordering::SeqCst)
-}
-
-pub fn reset_typecheck_compute_count() {
-    TYPECHECK_COMPUTE_COUNT.store(0, Ordering::SeqCst);
-}
-
-fn bump_typecheck_compute_count() {
-    TYPECHECK_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-}
-
 /// The typed-module content key for `resolved` — the Rust realization of
 /// `std.interface_summary.typed_module_key` over the live store's inputs
 /// (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed 2026-07-16):
@@ -15051,8 +14994,6 @@ fn reconcile_with_typed_cache(
                                         .typed_cache_readmissions
                                         .set(index.typed_cache_readmissions.get() + 1);
                                 }
-                                // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
-                                bump_typecheck_compute_count();
                                 if phase_profile::phase_profile_enabled() {
                                     let _ = TYPECHECK_ATTRIBUTION_CENSUS_MARKER;
                                     eprintln!(
