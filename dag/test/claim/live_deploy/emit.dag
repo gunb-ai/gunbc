@@ -10,12 +10,12 @@ import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
 import std.types { Bool, String, List, NonEmptyStr, Int }
-import std.os.types { Apt }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
   HoldsNoRoleSingleton,
   DeploymentArtifactStep,
@@ -71,6 +71,8 @@ import gunbc.live_deploy.spec {
   deployment_publication_service_unit_name,
 }
 import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment }
+import gunbc.live_deploy.lab_host_plan { LabPlanRefused, LabSandbox }
+import gunbc.host.host_software_surface { UserManagerSandboxEnforcementUnobserved }
 import gunbc.host.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
@@ -130,6 +132,8 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison, deployment_directory_demands }
+import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
+import gunbc.live_deploy.emit { live_deploy_belt_credential_recovery_timer_unit_file }
 import gunbc.live_deploy.emit {
   composed_artifact_upsert,
   deploy_retract_stage_cleanup_frame_script,
@@ -312,8 +316,12 @@ test fn witness_spec_targets_srv1() -> Bool {
 
 test fn witness_spec_uses_apt_package_manager() -> Bool {
   match deployment_spec_srv1().target.os_package_manager {
-    Apt => true
-    _ => false
+    Absent => false
+    Present { value: m } =>
+      match m {
+        Apt => true
+        _ => false
+      }
   }
 }
 
@@ -1221,7 +1229,7 @@ test fn twin_retract_offs_its_own_endpoint_and_not_productions() -> Bool {
     && !string_contains(s: twin_retract, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
 }
 
-data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
+data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.102.2 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
 
 fn unmeasured_client_target() -> DeploymentHostTarget {
   let t = deployment_srv1_target()
@@ -1230,6 +1238,7 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
+    lab_plan: t.lab_plan,
     os_package_manager: t.os_package_manager,
     tailscale_client: ScopedRemovalUnobserved { reason: "host never probed for a tailscale client version" },
     host_directories: t.host_directories,
@@ -1249,8 +1258,29 @@ fn preserve_removal_client_target() -> DeploymentHostTarget {
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
+    lab_plan: t.lab_plan,
     os_package_manager: t.os_package_manager,
     tailscale_client: client,
+    host_directories: t.host_directories,
+  }
+}
+
+fn sandbox_refused_ready_client_target() -> DeploymentHostTarget {
+  let t = deployment_srv1_target()
+  DeploymentHostTarget {
+    host: t.host,
+    ssh_host: t.ssh_host,
+    tailscale_endpoint: t.tailscale_endpoint,
+    tailnet_domain: t.tailnet_domain,
+    lab_plan: LabPlanRefused {
+      cause: LabSandbox {
+        cause: UserManagerSandboxEnforcementUnobserved {
+          obligation: "sysctl is 0" as NonEmptyStr,
+        },
+      },
+    },
+    os_package_manager: t.os_package_manager,
+    tailscale_client: t.tailscale_client,
     host_directories: t.host_directories,
   }
 }
@@ -1277,6 +1307,25 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
     && !string_contains(s: too_old, pattern: emitted_tailscale_binary_word())
     && !string_contains(s: measured, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: measured, pattern: tailscale_off_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
+}
+
+test fn a_lab_plan_refusal_is_not_an_unobserved_tailscale_client() -> Bool {
+  let sandbox = live_deploy_retract_script_for(spec: spec_with_target(target: sandbox_refused_ready_client_target()), access: ci_deploy_srv1_access)
+  let srv2 = live_deploy_retract_script_for(spec: selected_deployment_spec(row: srv2_deploy_desired_deployment()), access: ci_deploy_srv1_access)
+  match sandbox_refused_ready_client_target().os_package_manager {
+    Absent => false
+    Present { value: pm } =>
+      match pm {
+        Apt =>
+          string_contains(s: sandbox, pattern: "lab plan refused")
+            && string_contains(s: sandbox, pattern: "sysctl is 0")
+            && !string_contains(s: sandbox, pattern: "tailscale client version is UNOBSERVED")
+            && string_contains(s: srv2, pattern: "lab plan refused")
+            && !string_contains(s: srv2, pattern: "tailscale client version is UNOBSERVED")
+        Winget => false
+        HomebrewDeFacto => false
+      }
+  }
 }
 
 // Fleet converge timer is RETIRED from live_deploy apply membership (sleek-heron-218).
@@ -2276,15 +2325,26 @@ test fn leftover_timer_retire_removes_a_present_unit_and_is_noop_when_absent() -
     })
 }
 
+fn occurrence_count(s: String, pattern: String) -> Int {
+  count(split(s: s, sep: pattern)) - 1
+}
+
+// The workspace is event-driven (#13709): the apply installs no inactivity poller. The one
+// admitted exception is the belt credential-recovery backstop (#13952), which by construction
+// cannot be triggered by the belt it backstops. So every OnUnitInactiveSec= in the apply must be
+// that timer's own, and a second poller is red.
 test fn apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path() -> Bool {
   let spec = deployment_spec_srv1()
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  let backstop = serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec))
   let pub_path = systemd_unit_file_lines(file: live_deploy_publication_path_unit_file(spec: spec))
   !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: ".timer"))
     && string_contains(s: live, pattern: deployment_retired_belt_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_timer_unit_name(names: spec.names) as String)
     && string_contains(s: live, pattern: deployment_publication_path_unit_name(names: spec.names) as String)
-    && !string_contains(s: live, pattern: "OnUnitInactiveSec=")
+    && string_contains(s: live, pattern: deployment_belt_credential_recovery_timer_unit_name(names: spec.names) as String)
+    && occurrence_count(s: backstop, pattern: "OnUnitInactiveSec=") == 1
+    && occurrence_count(s: live, pattern: "OnUnitInactiveSec=") == occurrence_count(s: backstop, pattern: "OnUnitInactiveSec=")
     && any(pub_path, l => string_contains(s: l, pattern: "DirectoryNotEmpty="))
     && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitIntervalSec="))
     && any(pub_path, l => string_contains(s: l, pattern: "TriggerLimitBurst="))

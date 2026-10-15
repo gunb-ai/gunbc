@@ -6,6 +6,10 @@ import std.algebra { trim, string_contains }
 import std.measure { second }
 import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
 import product.fabric.identity { FabricIdentity, ReceiptKey }
 import product.fabric.execution { Receipt, ExecutionReceipt, LeaseIdentity }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
@@ -65,4 +69,34 @@ test fn the_document_states_a_non_qualifying_standing_for_an_unobserved_claim() 
         && !string_contains(s: body, pattern: "true")
     }
   }
+}
+
+// A RECEIPT ADDRESS THAT ALREADY HOLDS OTHER BYTES REFUSES, AND NOTHING IS INDEXED. The address is
+// learned from a publication into a separate root; the second root's address is pre-filled with
+// different content, and publishing there must refuse at the link with no by-commit entry written.
+test fn a_disagreeing_receipt_address_refuses_and_writes_no_index_entry_by_real_execution() -> Bool {
+  let probe = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_receipt.XXXXXX").path
+  let verdict = match document(exit: 0).first() {
+    Absent => false
+    Present { value: d } => match publish_revision_job_receipt(store_root: probe, staging_path: concat(probe, "/staging.json"), d: d) {
+      RevisionJobPublished { address: a, index_entry: _ } => {
+        let made = match run_shell_command_capture(command: mkdir_parents_command(path: concat(root, "/receipts")), transport: LocalExec) {
+          ProcessRefused { exit_code: _, stderr: _ } => false
+          _ => true
+        }
+        let squatted = made && Filesystem.Write(path: join([root, "/receipts/", a as String, ".json"], ""), content: "not this receipt").success
+        let refused = match publish_revision_job_receipt(store_root: root, staging_path: concat(root, "/staging.json"), d: d) {
+          RevisionJobPublicationRefused { step: s, detail: _ } => (s as String) == "link-receipt"
+          _ => false
+        }
+        let unindexed = !Filesystem.Read(path: join([root, "/by-commit/", commit, "/", a as String], "")).success
+        squatted && refused && unindexed
+      }
+      _ => false
+    }
+  }
+  let r1 = shell.Remove.RecursiveForce(path: probe)
+  let r2 = shell.Remove.RecursiveForce(path: root)
+  verdict && r1.success && r2.success
 }

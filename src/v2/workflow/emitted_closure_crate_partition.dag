@@ -27,7 +27,8 @@ import v2.lens.module_graph {
   dependency_resolution_facts_live,
   module_declaration_facts_live
 }
-import v2.std.collection { empty_map, map_get_checked, map_insert }
+import std.algebra { empty_map, map_insert }
+import v2.std.witness { map_get_checked }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.compilation_unit { ModuleDag }

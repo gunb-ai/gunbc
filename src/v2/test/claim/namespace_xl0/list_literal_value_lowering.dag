@@ -23,12 +23,12 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Authored, Edge, Node, Positional, Symbol, Transform, node_subtree_nodes, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_node }
-import v2.std.collection { list_at_optional }
+
 import v2.extdeps.languages.dag { dag_language_model }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.body_lowering { Application, ApplicationRefused, NotApplication, application_read }
 import std.occurrence_identity { OccurrenceSynthetic }
