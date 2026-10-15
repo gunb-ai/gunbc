@@ -26,7 +26,7 @@ import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceO
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
 import v2.std.node { BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, node_positional_child_targets, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
@@ -66,6 +66,9 @@ type ResolvedTree {
   // THE CLOSURE'S PUBLICATION ROSTER. Includes DeclarationAvailable rows; unavailability is
   // read from it by ClosureProviderRefusal (unavailable_provider_for_path).
   module_outcomes: List<ModuleOutcome>
+  // THE ROSTER GROUPED ONCE PER CLOSURE (module_outcome_index), carried from the closure to every infer read
+  // of unavailable_provider_for_path; infer does not regroup module_outcomes per lookup.
+  outcome_index: ModuleOutcomeIndex
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
   constructing_module: Optional<Symbol>
@@ -131,35 +134,79 @@ fn module_outcomes_provider_refusals(outcomes: List<ModuleOutcome>) -> List<Clos
   })
 }
 
-fn unavailable_declaration_refusal(
-  providers: List<ModuleOutcome>,
-  path: QualifiedName
-) -> Optional<ClosureProviderRefusal> {
-  fold_list(xs: providers, empty: optional_absent(), cons: fn(acc, o) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match o {
-          ModuleUnavailable { module: _, refusal: _ } => acc
-          ModuleObserved { module: m, declarations: ds } =>
-            fold_list(xs: ds, empty: optional_absent(), cons: fn(hit, d) {
-              match hit {
-                Present { value: _ } => hit
-                Absent =>
-                  match d {
-                    DeclarationAvailable { path: _ } => hit
-                    DeclarationRefused { path: p, refusal: r } =>
-                      if p == path {
-                        optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
-                      } else {
-                        hit
-                      }
-                  }
-              }
-            })
+// THE PATH-KEYED GROUPING OF THE ROSTER. A reference lookup asks about one path or one module, so
+// the roster is grouped once per closure (module_outcome_index) and every per-name read is a map
+// lookup; scanning the list per name cost O(outcomes) per reference. unavailable_modules is keyed by
+// the ModuleUnavailable module, refused_declarations by the DeclarationRefused path; the first row
+// for a key wins, as the list scan's first hit did.
+type ModuleOutcomeIndex {
+  unavailable_modules: Map<QualifiedName, ClosureProviderRefusal>
+  refused_declarations: Map<QualifiedName, ClosureProviderRefusal>
+}
+
+fn empty_module_outcome_index() -> ModuleOutcomeIndex {
+  ModuleOutcomeIndex { unavailable_modules: empty_map(), refused_declarations: empty_map() }
+}
+
+fn module_outcome_index_insert_first(
+  m: Map<QualifiedName, ClosureProviderRefusal>,
+  key: QualifiedName,
+  value: ClosureProviderRefusal
+) -> Map<QualifiedName, ClosureProviderRefusal> {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => m
+    Absent => map_insert(m: m, key: key, value: value)
+  }
+}
+
+fn module_outcome_index(outcomes: List<ModuleOutcome>) -> ModuleOutcomeIndex {
+  fold_list(xs: outcomes, empty: empty_module_outcome_index(), cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } =>
+        ModuleOutcomeIndex {
+          unavailable_modules: module_outcome_index_insert_first(
+            m: acc.unavailable_modules,
+            key: m,
+            value: ClosureProviderRefusal { module: m, refusal: r }
+          ),
+          refused_declarations: acc.refused_declarations
         }
+      ModuleObserved { module: m, declarations: ds } =>
+        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
+          match d {
+            DeclarationAvailable { path: _ } => a
+            DeclarationRefused { path: p, refusal: r } =>
+              ModuleOutcomeIndex {
+                unavailable_modules: a.unavailable_modules,
+                refused_declarations: module_outcome_index_insert_first(
+                  m: a.refused_declarations,
+                  key: p,
+                  value: ClosureProviderRefusal { module: m, refusal: r }
+                )
+              }
+          }
+        })
     }
   })
+}
+
+// A row belonging to `except` (the subject being walked) is never read: that walk is how the row was recorded.
+fn closure_provider_unless_module(
+  hit: Optional<ClosureProviderRefusal>,
+  except: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match hit {
+    Present { value: p } => if p.module == except { optional_absent() } else { hit }
+    Absent => hit
+  }
+}
+
+fn unavailable_declaration_refusal(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.refused_declarations, key: path), except: except)
 }
 
 // THE ONE READ every closure-index miss consults: a DeclarationRefused at this exact path, else a
@@ -167,49 +214,30 @@ fn unavailable_declaration_refusal(
 // would attribute v2.p.child.R to refused parent v2.p. A miss with neither stays the bare miss.
 fn unavailable_provider_for_path(
   index: SymbolIndex,
-  providers: List<ModuleOutcome>,
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
   path: QualifiedName
 ) -> Optional<ClosureProviderRefusal> {
-  match unavailable_declaration_refusal(providers: providers, path: path) {
+  match unavailable_declaration_refusal(providers: providers, except: except, path: path) {
     Present { value: p } => optional_present(value: p)
     Absent =>
       match symbol_index_owning_module_of(index: index, path: path) {
-        Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
+        Present { value: owner } => unavailable_provider_for_module(providers: providers, except: except, module: owner)
         Absent => optional_absent()
       }
   }
 }
 
-fn unavailable_provider_for_module(providers: List<ModuleOutcome>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(providers, init: optional_absent(), f: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match p {
-          ModuleUnavailable { module: m, refusal: r } =>
-            if m == module {
-              optional_present(value: ClosureProviderRefusal { module: m, refusal: r })
-            } else {
-              acc
-            }
-          ModuleObserved { module: _, declarations: _ } => acc
-        }
-    }
-  })
-}
-
-fn module_outcomes_except_subject(providers: List<ModuleOutcome>, subject: QualifiedName) -> List<ModuleOutcome> {
-  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
-    if module_outcome_module(o: p) == subject {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: p)
-    }
-  })
+fn unavailable_provider_for_module(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  module: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.unavailable_modules, key: module), except: except)
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.module_outcomes, path: path)
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.outcome_index, except: Empty, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -251,6 +279,7 @@ fn resolved_tree_of(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
@@ -261,6 +290,7 @@ fn resolved_tree_of(
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
     module_outcomes: module_outcomes,
+    outcome_index: outcome_index,
     member_kinds: member_kinds,
     type_declaration_modifiers: type_declaration_modifiers,
     constructing_module: resolved_tree_constructing_module_of(root: root)
@@ -389,10 +419,10 @@ type Namespace {
   // the row was recorded). An imported name whose declaration is DeclarationRefused, or
   // whose module is ModuleUnavailable, refuses with that chain, not as unbound
   // (resolve_reason_declarer_refused).
-  module_outcomes: List<ModuleOutcome>
+  module_outcomes: ModuleOutcomeIndex
 }
 
-fn namespace_with_module_outcomes(namespace: Namespace, providers: List<ModuleOutcome>) -> Namespace {
+fn namespace_with_module_outcomes(namespace: Namespace, providers: ModuleOutcomeIndex) -> Namespace {
   Namespace {
     bindings: namespace.bindings,
     canonical_symbols: namespace.canonical_symbols,
@@ -427,7 +457,7 @@ type Scope
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
   | LexicalFrame { binders: Map<Symbol, LexicalBinding> }
-  | TypeParameterFrame
+  | TypeParameterFrame { binders: Map<Symbol, QualifiedName> }
 
 // A LEXICAL BINDER, AS THE FRAME THAT INTRODUCES IT RECORDED IT. A `let`, a match-arm pattern binder
 // and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
@@ -518,7 +548,7 @@ fn empty_namespace() -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -829,7 +859,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     ),
     declared_in: declared_in,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -1786,7 +1816,7 @@ fn resolve_reference_path_miss(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -1865,7 +1895,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2028,7 +2058,7 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
     Present { value: origin } =>
-      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, module: origin) {
+      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, module: origin) {
         Present { value: provider } =>
           Rejected {
             diagnostics: rejected_with_pending(
@@ -2083,7 +2113,7 @@ fn resolve_frame_bound_reference(
   pending: Diagnostics
 ) -> Outcome<ResolvedAtom> {
   match kind {
-    TypeParameterFrame =>
+    TypeParameterFrame { binders: _ } =>
       Accepted {
         value: ResolvedAtom { node: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id), lexical: [] },
         diagnostics: pending
@@ -2230,7 +2260,29 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           ))
-        ScopeUnbound => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+        ScopeUnbound =>
+          match resolve_type_parameter_value_reading(ctx: ctx, identity: identity) {
+            Present { value: path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+                Present { value: _ } =>
+                  Accepted {
+                    value: ResolvedAtom { node: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id), lexical: [] },
+                    diagnostics: pending
+                  }
+                Absent =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: pending,
+                      rejected: diagnostics_singleton(d: Diagnostic {
+                        reason: ^resolve_reason_parameter_path_not_indexed,
+                        at: node_locus(node: n),
+                        correction: Unavailable { reason: UserInputBoundary }
+                      })
+                    )
+                  }
+              }
+            Absent => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+          }
       }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
@@ -2446,13 +2498,14 @@ fn resolved_tree_outcome(
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
   module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, outcome_index: outcome_index, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -3978,7 +4031,7 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
       match found {
         BoundInFrame { canonical: _, kind: k } =>
           match k {
-            TypeParameterFrame => true
+            TypeParameterFrame { binders: _ } => true
             ParameterFrame { arrow_path: _ } => false
             LexicalFrame { binders: _ } => false
           }
@@ -4344,7 +4397,7 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true => lexical_frame(fb: arrow_domain_frame_binders(n: n), outer: scope_type)
     false => scope_type
@@ -4399,7 +4452,7 @@ fn resolve_children_homogeneous_scope(
 // It is not a style rule: v2.compiler.infer recognizes a type variable by the callee Arrow's own
 // type-parameter edge (v2.std.type_binder type_param_names), and that reading is sound only because
 // no `T` inside the Arrow can mean anything but its binder.
-fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
+fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition) -> Scope {
   match type_param_names(n: n) {
     Empty => outer
     Cons { head: _, tail: _ } =>
@@ -4408,8 +4461,56 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
           map_insert(acc, name, name)
         }),
         outer: outer,
-        kind: TypeParameterFrame
+        kind: TypeParameterFrame { binders: type_param_value_binders(n: n, declaring: declaring) }
       }
+  }
+}
+
+// A KINDED BINDER IS ALSO READABLE AS A VALUE: ONE DECLARATION, TWO READINGS (A0-1). The binder stays
+// the single entry of this frame; a kinded one additionally records the path its value reading is
+// keyed by, <declaring path>.<name> -- the same key a value parameter of this fn has
+// (resolve_frame_bound_reference ParameterFrame), so binder identity is the declaring path plus the
+// name. A value parameter of the same spelling would be the SAME key, so it is refused
+// (resolve_type_params_slot); a body `let` cannot capture it (lexical frames, not that key).
+// "Kinded" is the existing language-level literal rule, not a per-kind roster
+// (std.machine_constraints machine_width_literal_roster_frontier). An unkinded binder, or a binder
+// with no declaring path (a lambda, an anonymous arrow), records nothing, so its value read keeps
+// refusing resolve_reason_type_parameter_in_value_position.
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head: the seed is a typed let because an
+// untyped empty_map() in the fold init is emitted with the bare FreeMonoid alias head (E0107).
+fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol, QualifiedName> {
+  match declaring {
+    DeclaringAt { path: path } =>
+      let seed: Map<Symbol, QualifiedName> = empty_map()
+      fold(kinded_type_param_names(n: n), init: seed, f: fn(acc, name) {
+        map_insert(acc, name, qualified_name_snoc(qn: path, segment: name))
+      })
+    DeclaringInSpine { path: _, body: _ } => empty_map()
+    NotDeclaring => empty_map()
+  }
+}
+
+// THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the path its frame recorded.
+fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
+  match lookup_chain(s: ctx.type_scope, name: identity) {
+    Accepted { value: binding, diagnostics: _ } => type_parameter_binding_value_reading(binding: binding)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: this and resolve_type_parameter_value_reading
+// are two single-level matches because one match nesting a variant under Accepted is emitted with every
+// arm guarded (E0004).
+fn type_parameter_binding_value_reading(binding: ScopeBinding) -> Optional<QualifiedName> {
+  match binding {
+    BoundInFrame { canonical: canonical, kind: kind } =>
+      match kind {
+        TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
+        LexicalFrame { binders: _ } => optional_absent()
+        ParameterFrame { arrow_path: _ } => optional_absent()
+      }
+    BoundAtRoot { canonical: _ } => optional_absent()
+    ScopeUnbound => optional_absent()
   }
 }
 
@@ -4484,7 +4585,7 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   resolve_arrow_node_in(
     outer_ctx: ctx,
-    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope)),
+    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope, declaring: ctx.declaring)),
     n: n
   )
 }
@@ -4570,8 +4671,31 @@ fn resolve_arrow_slot_scope(
   }
 }
 
+// A KINDED TYPE PARAMETER AND A VALUE PARAMETER OF ONE ARROW MAY NOT SHARE A SPELLING. Both are indexed at
+// <fn path>.<name> (v2.compiler.symbol_index_fill symbol_index_fill_kinded_type_params), so the two would
+// be one key holding two declarations and the later insert would overwrite the earlier. The type-parameter
+// shadow check sees only the OUTER scope, so the same-arrow collision is refused here, where both sets are
+// visible, located at the type-parameter set, and the fill never meets it.
+fn resolve_type_params_slot(ctx: ResolveContext, arrow: Node, value_params: FrameBinders, conj: Node) -> ResolveNodeWalk {
+  let collides = fold(kinded_type_param_names(n: arrow), init: false, f: fn(acc, name) {
+    if acc {
+      true
+    } else {
+      match map_lookup(m: value_params.binders, key: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  })
+  if collides {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: conj)))
+  } else {
+    resolve_type_params_conj(ctx: ctx, conj: conj)
+  }
+}
+
 fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let value_params = arrow_domain_frame_binders(n: n)
   let frame_kind = match ctx.declaring {
     DeclaringAt { path: path } => ParameterFrame { arrow_path: path }
@@ -4590,7 +4714,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
     )
     match slot {
       ArrowTypeParamsSlot =>
-        child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+        child_walk_step(w: acc, e: e, r: resolve_type_params_slot(ctx: outer_ctx, arrow: n, value_params: value_params, conj: e.target))
       ArrowCarriedSlot =>
         child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
       ArrowResourceRequirementsSlot =>
@@ -4875,6 +4999,7 @@ fn resolve_with_namespace_policy(
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
     module_outcomes: [],
+    outcome_index: empty_module_outcome_index(),
     member_kinds: channel,
     type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )
