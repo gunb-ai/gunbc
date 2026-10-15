@@ -2,7 +2,7 @@ module gunbc.runner.runner_revision_job_launch
 
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, Mebibyte, mebibyte, byte_size_count, gibibyte_to_byte_size, mebibyte_to_byte_size }
+import std.measure { ByteSize, Mebibyte, mebibyte, mebibyte_count, mebibyte_ceiling, byte_size_count, gibibyte_to_byte_size, mebibyte_to_byte_size, HardwareThreadCount, hardware_thread_count_value }
 import product.fabric.work { Work }
 import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.runner.runner_microvm_attempt { MicroVmAttempt, runner_microvm_attempt_jail_base, runner_microvm_attempt_slice_property }
@@ -10,7 +10,7 @@ import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_a
 import gunbc.runner.runner_microvm_network { runner_slot_network }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.runner.runner_attempt_launch {
-  AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
+  LaunchWithdrawn, AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
   LaunchRefusedUnauthorized, LaunchAuthorizedByCellGrant, CellGrantAuthorization, CellGrantAuthorizes,
   ClaimSetLaunchPayload, BootstrapDeviceStaging, StagedInputDrive, cell_grant_agreement,
   attempt_jail_chroot_root, jail_kernel_path, jail_rootfs_path, jail_workspace_path, jail_config_path,
@@ -20,6 +20,7 @@ import gunbc.runner.runner_revision_job_stage { RevisionJobStaged }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, FirecrackerBootSource, FirecrackerDrive, FirecrackerMachineConfig,
   firecracker_requires_kvm_device, firecracker_block_sector_size,
+  firecracker_vcpu_count_admission, firecracker_vcpu_range_v1_16_1, VcpuCountAdmitted, VcpuCountUnsupported,
 }
 import extdeps.tools.gnu_coreutils { cp_command, install_empty_file_command, install_file_owned_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -60,12 +61,14 @@ type RevisionJobGuestImage {
   rootfs: String
 }
 
-fn revision_job_guest_memory_mib() -> Int {
-  byte_size_count(b: gunbc_runner_slot_memory_max) / 1048576 + byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_os_allowance)) / 1048576
+// THE GUEST'S RAM: the claims' envelope, rounded up to whole MiB (std.measure mebibyte_ceiling), plus
+// the guest-OS allowance -- both typed, converted once.
+fn revision_job_guest_memory() -> Mebibyte {
+  mebibyte(count: mebibyte_count(m: mebibyte_ceiling(b: gunbc_runner_slot_memory_max)) + mebibyte_count(m: revision_job_guest_os_allowance))
 }
 
 
-fn revision_job_vm_config(vcpus: Int) -> FirecrackerVmConfig {
+fn revision_job_vm_config(vcpus: HardwareThreadCount) -> FirecrackerVmConfig {
   FirecrackerVmConfig {
     boot_source: FirecrackerBootSource {
       kernel_image_path: jail_kernel_path,
@@ -80,7 +83,7 @@ fn revision_job_vm_config(vcpus: Int) -> FirecrackerVmConfig {
       FirecrackerDrive { drive_id: "revision-job-work", path_on_host: jail_workspace_path, is_root_device: false, is_read_only: false },
     ],
     network_interfaces: [],
-    machine_config: FirecrackerMachineConfig { vcpu_count: vcpus, mem_size_mib: revision_job_guest_memory_mib() },
+    machine_config: FirecrackerMachineConfig { vcpu_count: hardware_thread_count_value(t: vcpus), mem_size_mib: mebibyte_count(m: revision_job_guest_memory()) },
   }
 }
 
@@ -91,7 +94,7 @@ fn revision_job_launch_plan(
   allocation_generation: Int,
   staged: RevisionJobStaged,
   image: RevisionJobGuestImage,
-  vcpus: Int,
+  vcpus: HardwareThreadCount,
   ground: AttemptGround,
   jailer_binary: String,
   firecracker_binary: String,
@@ -101,7 +104,9 @@ fn revision_job_launch_plan(
     holder: snapshot.holder, work: work, attempt: attempt, allocation_generation: allocation_generation,
   )
   match authorization {
-    CellGrantAuthorizes { grant: grant } => match ground {
+    CellGrantAuthorizes { grant: grant } => match firecracker_vcpu_count_admission(range: firecracker_vcpu_range_v1_16_1, count: vcpus) {
+    VcpuCountUnsupported { requested: _, minimum: _, maximum: _ } => LaunchWithdrawn { reason: "the requested vCPU count is outside the Firecracker release's admitted range" }
+    VcpuCountAdmitted { count: admitted } => match ground {
       GroundOccupied => LaunchRefusedPriorResources
       GroundClear => {
         let jail_root = attempt_jail_chroot_root(attempt: attempt, firecracker_binary: firecracker_binary)
@@ -117,9 +122,9 @@ fn revision_job_launch_plan(
           workspace_grant: mebibyte_to_byte_size(m: revision_job_work_disk),
           lease_expires_unix: none,
           runtime_properties: [
-            SystemdRunProperty { property: MemoryMax, value: to_string(revision_job_guest_memory_mib() * 1048576 + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
+            SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
             SystemdRunProperty { property: MemorySwapMax, value: "0" },
-            SystemdRunProperty { property: CPUQuota, value: concat(to_string(vcpus * 100), "%") as NonEmptyStr },
+            SystemdRunProperty { property: CPUQuota, value: concat(to_string(hardware_thread_count_value(t: admitted) * 100), "%") as NonEmptyStr },
           ],
           tap_device: runner_slot_network(slot: attempt.slot).tap_device,
           guest_ip_boot_arg: "",
@@ -137,7 +142,7 @@ fn revision_job_launch_plan(
           workspace_create: busybox_dd_sparse_image_command(busybox_bin: host_busybox_bin, image_path: work_disk, size: revision_job_work_disk),
           workspace_format: mke2fs_format_command(fs: Ext2, image_path: work_disk),
           kvm_device: firecracker_requires_kvm_device,
-          vm_config: revision_job_vm_config(vcpus: vcpus),
+          vm_config: revision_job_vm_config(vcpus: admitted),
           jailer: bounded_jailer_command(
             jailer_binary: jailer_binary,
             jailer_id: attempt.attempt_id.value as String,
@@ -146,6 +151,7 @@ fn revision_job_launch_plan(
           ),
         }
       }
+    }
     }
     refused => LaunchRefusedUnauthorized { authorization: LaunchAuthorizedByCellGrant { authorization: refused } }
   }
