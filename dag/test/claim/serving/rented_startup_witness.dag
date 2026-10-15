@@ -6,7 +6,8 @@ import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { rm_force_command }
-import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, ninfer_serve_launch_argv }
+import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import gunbc.serving.rented_ninfer_source {
   rented_engine_source, rented_ninfer_81c8ce09_sm120_engine_artifact, rented_weights_source, rented_qwen3_8_27b_nvfp4_weights_placement,
@@ -120,4 +121,14 @@ test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
   (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { RentedServeRefused { cause: _ } => true  _ => false })
     && (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { RentedServeRefused { cause: _ } => true  _ => false })
     && (match rented_serve_decision(launch: operator_pod_ninfer_launch, reading: RentedServeUnreadable { cause: "timeout" as NonEmptyStr }) { RentedServeRefused { cause: _ } => true  _ => false })
+}
+
+// THE LAUNCH ARGV: every flag the card's line carries, and neither unread one, and no credential.
+test fn the_launch_argv_has_every_read_flag_and_omits_the_unread_ones() -> Bool {
+  let argv = ninfer_serve_launch_argv(launch: operator_pod_ninfer_launch, model_path: "/root/serve/model/model.ninfer" as NonEmptyStr, listen_port: operator_pod_listen_port)
+  let has = fn(f) { any(xs: argv, predicate: fn(a) { a == f }) }
+  has("--host") && has("--port") && has("--model-id") && has("--max-context") && has("--kv-capacity") && has("--max-concurrency")
+    && has("--kv-dtype") && has("--device-state-slots") && has("--spec") && has("--draft-tokens") && has("--lm-head-draft")
+    && has("--preserve-thinking") && has("--host-context-mib")
+    && !has("--max-pending-requests") && !has("--pending-timeout-ms") && !has("--default-max-tokens") && !has("--api-key")
 }
