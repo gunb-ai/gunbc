@@ -1,6 +1,8 @@
 module test.claim.fleet.fleet_ssh_shaper_recorder
 
 import std.types { String, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import gunbc.fleet.fleet_ssh_locus { fleet_automation_principal_login }
@@ -28,4 +30,13 @@ fn fleet_ssh_shaper_renders() -> String {
           }), "")
       }
   }
+}
+
+// THE RECORDING AS A FILE. The bytes are written whole to one path and the run's verdict is whether
+// that write held; the rendering is never carried inside a refusal message.
+data fleet_ssh_shaper_renders_path: String = "target/fleet-ssh-shaper-renders.txt"
+
+fn fleet_ssh_shaper_renders_record() -> ProcessExit {
+  let w = Filesystem.Write(path: fleet_ssh_shaper_renders_path, content: fleet_ssh_shaper_renders())
+  if w.success { ExitSuccess } else { exit_failure(reason: join(["recorder write failed: ", w.error], "")) }
 }
