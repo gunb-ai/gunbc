@@ -669,20 +669,9 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_occurrence_id_optional(node: a.at) {
+      match node_authored_span_optional(node: a.at, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
-        Present { value: id } =>
-          match span_index_textual_locus_optional(index: spans, id: id) {
-            Absent => FileRefusalAtUnresolvedNode
-            Present { value: resolved } =>
-              match resolved {
-                Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
-                SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
-                NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
-                InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
-                DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
-              }
-          }
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
   }
 }
@@ -1883,11 +1872,16 @@ fn native_lane_universe_of_facts(
   population: List<String>,
   pattern: TargetPattern
 ) -> Outcome<NativeLaneUniverse> {
-  match native_lane_label_universe(facts: facts) {
-    NativeLaneLabelRefused { identity: identity } =>
+  match native_lane_population_unformable_identity(population: population) {
+    Present { value: identity } =>
       native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
-    NativeLaneLabeled { sources: sources } =>
-      native_lane_universe_after_labels(pattern: pattern, facts: facts, population: population, sources: sources)
+    Absent =>
+      match native_lane_label_universe(facts: facts) {
+        NativeLaneLabelRefused { identity: identity } =>
+          native_lane_refused(reason: ^native_lane_identity_label_refused, detail: identity)
+        NativeLaneLabeled { sources: sources } =>
+          native_lane_universe_after_labels(pattern: pattern, facts: facts, population: population, sources: sources)
+      }
   }
 }
 
@@ -2580,8 +2574,7 @@ fn native_module_resolve_verdict(
                     root: resolved,
                     symbol_index: shared.symbol_index,
                     closure_declarations: closure.declarations,
-                    module_outcomes: closure.module_outcomes,
-                    outcome_index: closure.outcome_index,
+                    module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index,
                     member_kinds: no_member_declaration_kinds(),
                     type_declaration_modifiers: shared.type_declaration_modifiers,
                     lexical: lexical
@@ -2932,14 +2925,14 @@ fn native_demand_census_read(
           match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
             Rejected { diagnostics: d } =>
               NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
                 authored: state.authored,
                 file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
                 unreadable: state.unreadable
               }
             Accepted { value: scoped, diagnostics: _ } =>
               NativeDemandCensusFoldState {
-                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+                context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: span_index_in_scope(index: artifact.span_index, scope: scope)),
                 authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
                 file_refused: state.file_refused,
                 unreadable: state.unreadable
@@ -2984,18 +2977,39 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
     Accepted { value: module_qn, diagnostics: _ } =>
       let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
       let step = native_test_resolve_module(context: w.context, module: module_qn)
+      let outcomes = native_demand_census_closure_outcomes(context: step.context)
       match step.resolved {
         Rejected { diagnostics: d } =>
+          // A Rejected module always files the refused standing, even when every census-authored
+          // function is declaration_available (empty split.refused). Omitting it undercounts
+          // resolve_refused_modules. Available authored still get DemandModuleResolved beside it.
+          let split = native_demand_census_split_authored(mine: mine, outcomes: outcomes)
+          let with_refused = list_snoc_item(
+            xs: w.standings,
+            item: native_demand_census_resolve_refused(
+              context: step.context,
+              module_qn: module_qn,
+              authored: split.refused,
+              d: d
+            )
+          )
           NativeDemandCensusWalk {
             context: step.context,
             functions: w.functions,
             operations: w.operations,
             audited: w.audited,
-            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
-              authored: mine,
-              first_reason: diagnostics_fatal_reason(d: d),
-              first_unbound: demand_census_unbound_locus_from_diagnostics(d: d)
-            })
+            standings: match length(xs: split.available) > 0 {
+              true =>
+                list_snoc_item(xs: with_refused, item: DemandModuleResolved {
+                  readings: fold_list(xs: split.available, empty: Empty, cons: fn(acc, a) {
+                    list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                      authored: a,
+                      readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                    })
+                  })
+                })
+              false => with_refused
+            }
           }
         Accepted { value: resolved, diagnostics: _ } =>
           let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
@@ -4830,61 +4844,72 @@ fn native_demand_execute(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
-) -> DemandState<NativeDemandValue> {
+) -> NativeDemandExecuteResult {
   match subject {
     NativeResolveSubject { entry: entry } =>
-      DemandAvailable {
-        value: NativeResolveValue {
-          resolution: native_lane_module_resolution(
-            context: context,
-            refusal_index: refusal_index,
-            entry: entry
-          ).resolution
-        }
+      let step = native_lane_module_resolution(
+        context: context,
+        refusal_index: refusal_index,
+        entry: entry
+      )
+      NativeDemandExecuteResult {
+        state: DemandAvailable {
+          value: NativeResolveValue { resolution: step.resolution }
+        },
+        context: step.context
       }
     NativeInferSubject { entry: entry } =>
-      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
-        Absent => DemandRefused
-        Present { value: resolution } =>
-          match resolution {
-            NativeLaneModuleResolved { resolved: resolved } =>
-              DemandAvailable {
-                value: NativeInferValue {
-                  preparation: native_lane_module_inference(entry: entry, resolved: resolved)
+      NativeDemandExecuteResult {
+        state: match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+          Absent => DemandRefused
+          Present { value: resolution } =>
+            match resolution {
+              NativeLaneModuleResolved { resolved: resolved } =>
+                DemandAvailable {
+                  value: NativeInferValue {
+                    preparation: native_lane_module_inference(entry: entry, resolved: resolved)
+                  }
                 }
-              }
-            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
-            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
-          }
+              NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+              NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+            }
+        },
+        context: context
       }
     NativeOccurrenceCensusSubject { entry: entry } =>
-      match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
-        Absent => DemandRefused
-        Present { value: resolution } =>
-          match resolution {
-            NativeLaneModuleResolved { resolved: resolved } =>
-              DemandAvailable {
-                value: NativeOccurrenceCensusValue {
-                  row: native_lane_occurrence_census_row(entry: entry, resolved: resolved)
+      NativeDemandExecuteResult {
+        state: match native_demand_resolved_tree(engine: run.engine, module: entry.module, compiler: compiler) {
+          Absent => DemandRefused
+          Present { value: resolution } =>
+            match resolution {
+              NativeLaneModuleResolved { resolved: resolved } =>
+                DemandAvailable {
+                  value: NativeOccurrenceCensusValue {
+                    row: native_lane_occurrence_census_row(entry: entry, resolved: resolved)
+                  }
                 }
-              }
-            NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
-            NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
-          }
+              NativeLaneModuleContextRowsDecided { rows: _ } => DemandRefused
+              NativeLaneModuleResolveRowsDecided { rows: _ } => DemandRefused
+            }
+        },
+        context: context
       }
     NativeEvalSubject { module: module, declaration: declaration } =>
-      match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
-        Absent => DemandRefused
-        Present { value: prepared } =>
-          DemandAvailable {
-            value: NativeEvalValue {
-              row: native_lane_identity_row(
-                prepared: prepared,
-                module: module,
-                declaration: declaration
-              )
+      NativeDemandExecuteResult {
+        state: match native_demand_prepared(engine: run.engine, module: module, compiler: compiler) {
+          Absent => DemandRefused
+          Present { value: prepared } =>
+            DemandAvailable {
+              value: NativeEvalValue {
+                row: native_lane_identity_row(
+                  prepared: prepared,
+                  module: module,
+                  declaration: declaration
+                )
+              }
             }
-          }
+        },
+        context: context
       }
   }
 }
@@ -4970,14 +4995,14 @@ fn native_demand_step(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
-) -> NativeDemandRun {
+) -> NativeDemandStepResult {
   let lookup_started = observed_thread_cpu_nanos("native-demand-binding-lookup-start")
   match native_demand_binding(plan: plan, id: identity) {
-    Absent => run
+    Absent => NativeDemandStepResult { run: run, context: context }
     Present { value: subject } =>
       let lookup_finished = observed_thread_cpu_nanos("native-demand-binding-lookup-finish")
       let started = observed_thread_cpu_nanos("native-demand-step-start")
-      let settled = native_demand_execute(
+      let executed = native_demand_execute(
         run: run,
         subject: subject,
         context: context,
@@ -4987,22 +5012,25 @@ fn native_demand_step(
       let finished = observed_thread_cpu_nanos("native-demand-step-finish")
       let elapsed = elapsed_observation(start: started, finish: finished)
       let settle_started = observed_thread_cpu_nanos("native-demand-settle-start")
-      let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: settled)
-      let collected_rows = native_demand_collect_rows(rows: run.rows, settled: settled)
+      let settled_engine = demand_engine_settle(e: run.engine, id: identity, state: executed.state)
+      let collected_rows = native_demand_collect_rows(rows: run.rows, settled: executed.state)
       let settle_finished = observed_thread_cpu_nanos("native-demand-settle-finish")
-      NativeDemandRun {
-        engine: settled_engine,
-        transitions: list_snoc_item(
-          xs: run.transitions,
-          item: NativeDemandTransition {
-            identity: identity,
-            elapsed: elapsed
-          }
-        ),
-        rows: collected_rows,
-        scheduling_nanos: run.scheduling_nanos
-          + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
-          + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
+      NativeDemandStepResult {
+        run: NativeDemandRun {
+          engine: settled_engine,
+          transitions: list_snoc_item(
+            xs: run.transitions,
+            item: NativeDemandTransition {
+              identity: identity,
+              elapsed: elapsed
+            }
+          ),
+          rows: collected_rows,
+          scheduling_nanos: run.scheduling_nanos
+            + native_demand_bookkeeping_nanos(start: lookup_started, finish: lookup_finished)
+            + native_demand_bookkeeping_nanos(start: settle_started, finish: settle_finished)
+        },
+        context: executed.context
       }
   }
 }
@@ -5021,9 +5049,9 @@ fn native_demand_drain(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput,
   fuel: Int
-) -> NativeDemandRun {
+) -> NativeDemandStepResult {
   if fuel <= 0 {
-    run
+    NativeDemandStepResult { run: run, context: context }
   } else {
     let select_started = observed_thread_cpu_nanos("native-demand-select-start")
     let admission = native_demand_next(run: run, seats: 1)
@@ -5033,19 +5061,20 @@ fn native_demand_drain(
       nanos: native_demand_bookkeeping_nanos(start: select_started, finish: select_finished)
     )
     match admission {
-      DemandNotAdmitted { cause: _ } => selected
+      DemandNotAdmitted { cause: _ } => NativeDemandStepResult { run: selected, context: context }
       DemandAdmitted { identity: identity } =>
-        native_demand_drain(
-          run: native_demand_step(
-            run: selected,
-            plan: plan,
-            identity: identity,
-            context: context,
-            refusal_index: refusal_index,
-            compiler: compiler
-          ),
+        let stepped = native_demand_step(
+          run: selected,
           plan: plan,
+          identity: identity,
           context: context,
+          refusal_index: refusal_index,
+          compiler: compiler
+        )
+        native_demand_drain(
+          run: stepped.run,
+          plan: plan,
+          context: stepped.context,
           refusal_index: refusal_index,
           compiler: compiler,
           fuel: fuel - 1
@@ -5119,20 +5148,12 @@ fn native_demand_schedule_universe(
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
   compiler: DeclaredInput
 ) -> NativeDemandRun {
-  let plan_started = observed_thread_cpu_nanos("native-demand-plan-start")
-  let plan = native_demand_plan(modules: modules, compiler: compiler)
-  let plan_finished = observed_thread_cpu_nanos("native-demand-plan-finish")
-  native_demand_drain(
-    run: native_demand_run_with_scheduling_nanos(
-      run: native_demand_run_empty(plan: plan),
-      nanos: native_demand_bookkeeping_nanos(start: plan_started, finish: plan_finished)
-    ),
-    plan: plan,
+  native_demand_schedule_universe_step(
+    modules: modules,
     context: context,
     refusal_index: refusal_index,
-    compiler: compiler,
-    fuel: native_demand_plan_size(plan: plan) + 1
-  )
+    compiler: compiler
+  ).run
 }
 
 // THE DECLARED INPUT THE DRIVER CAN TRUTHFULLY SUPPLY TODAY, AND ITS NAME SAYS WHICH FACT IT IS.
@@ -5790,7 +5811,7 @@ fn census_obligation_rows_from_infer(
         resolve: census_refused_from_diagnostics(first: first, rest: rest),
         infer: census_unobserved_behind(stage: NativeCensusCauseResolve)
       )
-    NativeInferCensusInferred { resolved: _, inferred: _, frontier: _ } =>
+    NativeInferCensusInferred { resolved: _, inferred: _ } =>
       census_three_stage_rows(
         module: module,
         front_end: CensusObligationPassed,
@@ -6420,3 +6441,118 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "native_demand_resolved_tree" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "native_demand_rollup_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
+
+type NativeDemandCensusAuthoredSplit {
+  available: List<AuthoredUsesFunction>
+  refused: List<AuthoredUsesFunction>
+}
+
+type NativeDemandStepResult {
+  run: NativeDemandRun
+  context: NativeTestContext
+}
+
+// THE THREE PRODUCERS ARE CALLED HERE EXACTLY AS THE DISPLACED LOOP CALLED THEM. Same functions,
+// same arguments, same order. That is what makes "verdicts preserved" a structural claim rather
+// than an empirical hope.
+// A RESOLVE STEP'S RETURNED CONTEXT IS CARRIED INTO THE NEXT DEMAND. native_module_resolve_verdict
+// demands the closure index on the shared ResolutionContext and returns the updated context
+// (v2.compiler.name_resolve closure_declarations_demand). Dropping that update would make the next
+// module re-derive the same index (DESIGN section 2 step 1: carry the produced value first).
+type NativeDemandExecuteResult {
+  state: DemandState<NativeDemandValue>
+  context: NativeTestContext
+}
+
+fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines: SourcePositionIndex) -> FileRefusalAt {
+  match resolved {
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+    InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+    DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+  }
+}
+
+fn native_demand_census_split_authored(
+  mine: List<AuthoredUsesFunction>,
+  outcomes: List<ModuleOutcome>
+) -> NativeDemandCensusAuthoredSplit {
+  fold_list(
+    xs: mine,
+    empty: NativeDemandCensusAuthoredSplit { available: Empty, refused: Empty },
+    cons: fn(acc, a) {
+      if native_demand_census_function_available(outcomes: outcomes, authored: a) {
+        NativeDemandCensusAuthoredSplit {
+          available: list_snoc_item(xs: acc.available, item: a),
+          refused: acc.refused
+        }
+      } else {
+        NativeDemandCensusAuthoredSplit {
+          available: acc.available,
+          refused: list_snoc_item(xs: acc.refused, item: a)
+        }
+      }
+    }
+  )
+}
+
+// A refused resolve is filed at its root. When the module's import target was refused at ingest, every
+// name it imports is unbound only because the target never entered the member index, so the standing names
+// the refused importee and its cause (native_import_target_attribution, the same decision the production
+// lane reports as native_prepare_reason_import_target_file_refused); only otherwise is the first unbound
+// name the finding.
+fn native_demand_census_resolve_refused(context: NativeTestContext, module_qn: QualifiedName, authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  match native_import_target_attribution(context: context, module: module_qn) {
+    NativeImportTargetRefused { target: t } =>
+      DemandModuleImporteeRefused { authored: authored, importee_file: t.path, importee_cause: native_test_file_refusal_fatal_reason(fr: t) }
+    NativeImportTargetsAdmitted => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetsUnreadable { reason: _ } => native_demand_census_unbound_standing(authored: authored, d: d)
+    NativeImportTargetNotAsked => native_demand_census_unbound_standing(authored: authored, d: d)
+  }
+}
+
+fn native_demand_census_unbound_standing(authored: List<AuthoredUsesFunction>, d: NonEmptyDiagnostics) -> DemandCensusModuleStanding {
+  DemandModuleResolveRefused { authored: authored, first_reason: diagnostics_fatal_reason(d: d), first_unbound: demand_census_unbound_locus_from_diagnostics(d: d) }
+}
+
+fn native_demand_census_closure_outcomes(context: NativeTestContext) -> List<ModuleOutcome> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: shared, diagnostics: _ } => closure_declarations_demand(shared: shared).module_outcomes
+  }
+}
+
+fn native_demand_census_function_available(outcomes: List<ModuleOutcome>, authored: AuthoredUsesFunction) -> Bool {
+  match authored.name {
+    Absent => false
+    Present { value: name } =>
+      declaration_available(outcomes: outcomes, path: qualified_name_snoc(qn: authored.owner, segment: name))
+  }
+}
+
+// THE ENTRY POINT THE DRIVER CALLS IN PLACE OF ITS MODULE LOOP.
+// THE STEP FORM RETURNS THE CONTEXT THE DRAIN ENDED WITH, so a consumer can observe that a
+// later resolve demand read the closure index the first one wrote (DESIGN section 5: the
+// discriminating input). The driver still takes only the run.
+fn native_demand_schedule_universe_step(
+  modules: List<NativeLaneUniverseModule>,
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  compiler: DeclaredInput
+) -> NativeDemandStepResult {
+  let plan_started = observed_thread_cpu_nanos("native-demand-plan-start")
+  let plan = native_demand_plan(modules: modules, compiler: compiler)
+  let plan_finished = observed_thread_cpu_nanos("native-demand-plan-finish")
+  native_demand_drain(
+    run: native_demand_run_with_scheduling_nanos(
+      run: native_demand_run_empty(plan: plan),
+      nanos: native_demand_bookkeeping_nanos(start: plan_started, finish: plan_finished)
+    ),
+    plan: plan,
+    context: context,
+    refusal_index: refusal_index,
+    compiler: compiler,
+    fuel: native_demand_plan_size(plan: plan) + 1
+  )
+}
