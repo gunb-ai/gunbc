@@ -37854,6 +37854,7 @@ pub fn emit_transport_call(
             op_node.clone(),
             source_indices.clone(),
             env.clone(),
+            shared_types.clone(),
         ),
         BoundOperation::FileBound {
             verb: v,
@@ -39274,6 +39275,7 @@ pub fn emit_shell_call(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
+    shared_types: Rc<BTreeSet<String>>,
 ) -> String {
     {
         let argv = transport.children.clone();
@@ -39302,27 +39304,7 @@ pub fn emit_shell_call(
                 )
             },
         );
-        let list_params = Rc::new({
-            let mut __result = Vec::new();
-            for p in op_node.params.clone().iter().cloned() {
-                if shell_argv_param_is_word_list(p.clone(), source_indices.clone()) {
-                    __result.push(p);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()),
-                    true,
-                )
-            },
-        );
+        let argv_scope = shell_argv_emit_scope(env.clone(), registry.clone());
         let has_stdin =
             match crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone()) {
                 Some(_) => true,
@@ -39377,7 +39359,7 @@ pub fn emit_shell_call(
                     __result.push(
                         if shell_argv_element_is_word_list(
                             arg.clone(),
-                            list_params.clone(),
+                            argv_scope.clone(),
                             source_indices.clone(),
                         ) {
                             v1_rt::concat(
@@ -39385,12 +39367,20 @@ pub fn emit_shell_call(
                                     "    .args(".to_string(),
                                     emit_shell_argv_word_list_element(
                                         arg.clone(),
+                                        registry.clone(),
+                                        argv_scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
                                         source_indices.clone(),
                                     ),
                                 ),
                                 ".iter())".to_string(),
                             )
-                        } else {
+                        } else if shell_argv_element_is_string_word(
+                            arg.clone(),
+                            argv_scope.clone(),
+                            source_indices.clone(),
+                        ) {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     "    .arg(".to_string(),
@@ -39398,6 +39388,29 @@ pub fn emit_shell_call(
                                         arg.clone(),
                                         optional_params.clone(),
                                         source_indices.clone(),
+                                    ),
+                                ),
+                                ")".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    .arg(".to_string(),
+                                    crate::v1_compiler_emit::emit_error_expr(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "argv element is not String or List<String> at "
+                                                        .to_string(),
+                                                    arg.span.file.clone(),
+                                                ),
+                                                ":".to_string(),
+                                            ),
+                                            crate::v1_compiler_emit_core_support::to_string(
+                                                arg.span.start.clone(),
+                                            ),
+                                        ),
+                                        RenderTarget::Rust,
                                     ),
                                 ),
                                 ")".to_string(),
@@ -39584,33 +39597,102 @@ pub fn shell_argv_param_is_word_list(
     )
 }
 
+pub fn shell_argv_emit_scope(
+    env: Rc<TypeEnv>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<InferScope> {
+    let empty = crate::v1_compiler_emit::empty_emit_scope();
+    Rc::new(InferScope {
+        type_env: env.clone(),
+        func_env: empty.func_env.clone(),
+        locals: empty.locals.clone(),
+        body_locals: empty.body_locals.clone(),
+        match_bound_names: empty.match_bound_names.clone(),
+        module_name: env.module_path.clone(),
+        service_registry: empty.service_registry.clone(),
+        item_registry: registry,
+        lambda_param_provenance: empty.lambda_param_provenance.clone(),
+        caller_decl_name: empty.caller_decl_name.clone(),
+        in_flight_lambda_param_names: empty.in_flight_lambda_param_names.clone(),
+        enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names.clone(),
+    })
+}
+
+pub fn hop_argv_element_type(rt: Rc<Node>, scope: Rc<InferScope>, fuel: i64) -> Rc<Node> {
+    match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel) {
+        Some(next) => hop_argv_element_type(next, scope, v1_rt::int_sub(fuel, 1)),
+        std::option::Option::None => rt,
+    }
+}
+
+pub fn argv_element_type_after_alias_hop(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    match arg.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            Some(hop_argv_element_type(rt, scope, fuel))
+        }
+        _ => std::option::Option::None,
+    }
+}
+
 pub fn shell_argv_element_is_word_list(
     arg: Rc<Node>,
-    list_params: Rc<HashMap<String, bool>>,
+    scope: Rc<InferScope>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match argv_element_type_after_alias_hop(arg, scope, 8) {
+        Some(t) => type_node_is_ordered_element_run(t, source_indices),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn shell_argv_element_is_string_word(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => match v1_rt::map_get(
-            &list_params,
-            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
-        ) {
-            Some(_) => true,
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+        {
+            true
+        }
+        ExprData::ExprStringInterp => true,
+        _ => match argv_element_type_after_alias_hop(arg, scope, 8) {
+            Some(t) => is_rust_string_like(t, source_indices),
             std::option::Option::None => false,
         },
-        _ => false,
     }
 }
 
 pub fn emit_shell_argv_word_list_element(
     arg: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    crate::v1_compiler_emit::emit_ident(
-        crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
-        RenderTarget::Rust,
-    )
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => crate::v1_compiler_emit::emit_ident(
+            crate::v1_std_core::expr_var_name_at(arg, source_indices),
+            RenderTarget::Rust,
+        ),
+        _ => emit_typed_expr(
+            arg,
+            registry,
+            scope,
+            depth,
+            shared_types,
+            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+            1024,
+        ),
+    }
 }
 
 pub fn emit_shell_argv_element(

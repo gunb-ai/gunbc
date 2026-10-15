@@ -1,0 +1,21 @@
+module fixture.closure.rustc_argv_non_string_element_probe
+
+import std.types { Bool, String, Int }
+
+// A non-list non-string argv element must refuse at emit (located compile_error), never
+// emit_simple_expr leftover. rustc compiling this probe is the RED of that class.
+service fixture.NonStringArgv {
+  operation IntWord {
+    input { n: Int }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", n] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+}

@@ -258,7 +258,7 @@ import v1.compiler.emit {
   emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
-  module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
+  empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport,
@@ -16684,7 +16684,7 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
   match bound {
     RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
-    ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env)
+    ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
     LocalBound => emit_local_call(op_name: op_name)
@@ -17246,14 +17246,12 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
 // Capture order: bind/validate the authored policy BEFORE spawn; start both drains
 // immediately; write stdin concurrently; join; then project BoundedTail or refuse
 // Complete overflow.
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, shared_types: Set<String>) -> String {
   let argv = transport.children
   let optional_params = op_node.params
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
     |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
-  let list_params = op_node.params
-    |> filter(p => shell_argv_param_is_word_list(param: p, source_indices: source_indices))
-    |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
+  let argv_scope = shell_argv_emit_scope(env: env, registry: registry)
   let has_stdin = match transport_stdin(t: transport, source_indices: source_indices) {
     Present { value: _ } => true
     Absent => false
@@ -17273,10 +17271,12 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      if shell_argv_element_is_word_list(arg: arg, list_params: list_params, source_indices: source_indices) {
-        concat("    .args(", emit_shell_argv_word_list_element(arg: arg, source_indices: source_indices), ".iter())")
-      } else {
+      if shell_argv_element_is_word_list(arg: arg, scope: argv_scope, source_indices: source_indices) {
+        concat("    .args(", emit_shell_argv_word_list_element(arg: arg, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices), ".iter())")
+      } else if shell_argv_element_is_string_word(arg: arg, scope: argv_scope, source_indices: source_indices) {
         concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_indices: source_indices), ")")
+      } else {
+        concat("    .arg(", emit_error_expr(message: concat("argv element is not String or List<String> at ", arg.span.file, ":", to_string(arg.span.start)), target: Rust), ")")
       }
     )
   } else { [] }
@@ -17321,52 +17321,78 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
 }
 
-// AN ARGV ELEMENT CAN BE ONE WORD OR A RUN OF WORDS, AND THE DECLARED INPUT SAYS WHICH. A
-// `List<String>` input spliced into an argv literal -- `argv: ["cargo", "clippy", extra_args, "--",
-// lint_args]` in `extdeps.rust.cargo_build` `Clippy` -- was emitted as `Command::arg(extra_args)`,
-// one argument holding a list, which rustc refuses as E0277 `Rc<im::Vector<String>>: AsRef<OsStr>`
-// (seventeen sites on the 00_compile closure). `Command::args` is the shape that was always meant:
-// the run of words is spliced into the argv where the literal put it, with no argument of the
-// transport's own invented to carry the list.
+// AN ARGV ELEMENT IS ONE WORD OR A RUN OF WORDS ACCORDING TO ITS INFERRED TYPE, not according to
+// whether it is an ExprVar naming an operation input. A produced List<String> --
+// git_diff_range_argv(..) in DiffUnified0 -- is ExprCall and was therefore routed through
+// Command::arg(emit_simple_expr leftover), which is not a located argv refusal. is_list_typed_expr
+// already answers the same question for append; argv uses that discriminator after the alias hop
+// so an alias of List<String> still splices.
 //
-// The operation's OWN input declaration answers the question, not the element's inferred node: that
-// is the same authority `optional_params` beside this already reads, and it is the one the author
-// wrote. An element that is not a bare variable naming an input -- a literal, an interpolation -- is
-// one word by construction and never reaches the splice arm.
-//
-// THE TWO ARMS ARE COUPLED THROUGH A FUNCTION ONLY ONE OF THEM CALLS, and that is worth stating
-// because the coupling is invisible at the site that would break it (review 64440 on gunbc#11154).
-// The one-word arm routes each element through emit_rust_dag_string_to_host_via_seam; the word-list
-// arm emits the binding and lets Command::args iterate it. Those agree only while that seam is the
-// identity it is today. If it ever becomes a real dag-String-to-host-String conversion, every word
-// spliced through the list arm silently skips the conversion every word through the one-word arm
-// receives -- silently, because both arms still compile and the splice still produces the right
-// NUMBER of words. A lane changing the seam has no reason to read this function, and this function
-// does not name the seam. TRIGGER: the first change that makes that seam non-identity routes this
-// arm's elements through it too, per element, or states why a spliced run of words is exempt.
-//
-// AN OPTIONAL WORD LIST IS OUT OF SCOPE AND STAYS LOUD. `List<String>?` is excluded by the
-// cardinality conjunct in type_node_is_ordered_element_run, so such an element keeps the one-word arm and keeps earning rustc's
-// refusal; no site in the corpus declares one, and admitting it would mean deciding what an absent
-// run of words splices to -- zero words or a refusal -- which is a modelling question this change
-// does not answer. The trigger is the first operation that declares one.
+// A string-like element (including aliases of String / NonEmptyStr) is one word. Anything else
+// refuses at emit, located, and never falls through emit_simple_expr.
+fn shell_argv_emit_scope(env: TypeEnv, registry: Map<String, ItemInfo>) -> InferScope {
+  let empty = empty_emit_scope()
+  InferScope {
+    type_env: env,
+    func_env: empty.func_env,
+    locals: empty.locals,
+    body_locals: empty.body_locals,
+    match_bound_names: empty.match_bound_names,
+    module_name: env.module_path,
+    service_registry: empty.service_registry,
+    item_registry: registry,
+    lambda_param_provenance: empty.lambda_param_provenance,
+    caller_decl_name: empty.caller_decl_name,
+    in_flight_lambda_param_names: empty.in_flight_lambda_param_names,
+    enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names
+  }
+}
+
+fn argv_element_type_after_alias_hop(arg: Node, scope: InferScope, fuel: Int) -> Node? {
+  match arg.inferred {
+    Present { value: Resolved { node: rt } } =>
+      Present { value: hop_argv_element_type(rt: rt, scope: scope, fuel: fuel) }
+    _ => none
+  }
+}
+
+fn hop_argv_element_type(rt: Node, scope: InferScope, fuel: Int) -> Node {
+  match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
+    Present { value: next } => hop_argv_element_type(rt: next, scope: scope, fuel: fuel - 1)
+    Absent => rt
+  }
+}
+
 fn shell_argv_param_is_word_list(param: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   type_node_is_ordered_element_run(n: param_node_type_expr(n: param), source_indices: source_indices)
 }
 
-fn shell_argv_element_is_word_list(arg: Node, list_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match arg.expr_data {
-    ExprVar { binding_kind: _ } =>
-      match map_get(list_params, expr_var_name_at(texpr: arg, source_indices: source_indices)) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    _ => false
+fn shell_argv_element_is_word_list(arg: Node, scope: InferScope, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match argv_element_type_after_alias_hop(arg: arg, scope: scope, fuel: 8) {
+    Present { value: t } => type_node_is_ordered_element_run(n: t, source_indices: source_indices)
+    Absent => false
   }
 }
 
-fn emit_shell_argv_word_list_element(arg: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  emit_ident(name: expr_var_name_at(texpr: arg, source_indices: source_indices), target: Rust)
+fn shell_argv_element_is_string_word(arg: Node, scope: InferScope, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match arg.expr_data {
+    ExprLiteral { value: LitStr { value: _ } } => true
+    ExprStringInterp => true
+    _ =>
+      match argv_element_type_after_alias_hop(arg: arg, scope: scope, fuel: 8) {
+        Present { value: t } => is_rust_string_like(n: t, source_indices: source_indices)
+        Absent => false
+      }
+  }
+}
+
+fn emit_shell_argv_word_list_element(arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match arg.expr_data {
+    ExprVar { binding_kind: _ } =>
+      emit_ident(name: expr_var_name_at(texpr: arg, source_indices: source_indices), target: Rust)
+    _ =>
+      emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: empty_emit_graph_info(), fuel: 1024)
+  }
 }
 
 fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
