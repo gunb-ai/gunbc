@@ -218,12 +218,12 @@ fn verify_toolchain_index(dir: String, keyring: String) -> ToolchainIndexChain {
     ToolchainIndexRefused { step: "fetch-inrelease", detail: base }
   } else if !file_matches(path: inrelease, expected: toolchain_inrelease_sha256) {
     ToolchainIndexRefused { step: "inrelease-pin", detail: "InRelease does not match its pinned SHA-256" }
+  } else if !shell.PosixCommandV.Check(command: "gpgv" as NonEmptyStr).exists {
+    // Checked before the spawn: an absent verifier is a missing host requirement, not a bad signature,
+    // and spawning it would abort the run rather than return a refusal.
+    ToolchainIndexRefused { step: "verifier-missing", detail: "gpgv is not on this host's PATH" }
   } else { match run_shell_command_capture(command: gpgv_verify_cleartext_command(keyring: keyring, signed_file: inrelease, output: verified_path), transport: LocalExec) {
-    // 127 is the shell's "command not found": the host does not carry the verifier, which is a
-    // missing host requirement, not a bad signature.
-    ProcessRefused { exit_code: c, stderr: e } =>
-      if c == 127 { ToolchainIndexRefused { step: "verifier-missing", detail: "gpgv is not on this host's PATH" } }
-      else { ToolchainIndexRefused { step: "signature", detail: join(["gpgv exit ", to_string(c), ": ", e], "") } }
+    ProcessRefused { exit_code: c, stderr: e } => ToolchainIndexRefused { step: "signature", detail: join(["gpgv exit ", to_string(c), ": ", e], "") }
     ProcessOutputAbsent => ToolchainIndexRefused { step: "signature", detail: "gpgv printed no status" }
     // Exit 0 alone is not enough: gpgv writes the output even on a bad signature, so the signed text is
     // read only once the pinned PRIMARY key has a VALIDSIG in this run's status.
