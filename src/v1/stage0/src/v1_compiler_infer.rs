@@ -24267,9 +24267,93 @@ pub fn unify_generics(
                         }
                     }
                 } else {
-                    break acc.clone();
+                    if ((((formal.children.clone().len() as i64) >= 2)
+                        && ((formal.children.clone().len() as i64)
+                            == (actual.children.clone().len() as i64)))
+                        && unify_children_heads_agree(
+                            formal.clone(),
+                            actual.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
+                        break unify_generic_children(
+                            formal.children.clone(),
+                            actual.children.clone(),
+                            generic_names.clone(),
+                            source_indices.clone(),
+                            acc.clone(),
+                        );
+                    } else {
+                        break acc.clone();
+                    }
                 }
             }
+        }
+    }
+}
+
+pub fn unify_children_heads_agree(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let formal_name = type_node_label(formal.clone(), source_indices.clone());
+        ((formal_name.clone() != "".to_string())
+            && (crate::v1_std_core::qualified_last_segment(formal_name.clone())
+                == crate::v1_std_core::qualified_last_segment(type_node_label(
+                    actual.clone(),
+                    source_indices.clone(),
+                ))))
+    }
+}
+
+pub fn unify_generic_children(
+    mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut formals = __tco_loop_formals;
+        #[allow(unused_mut)]
+        let mut actuals = __tco_loop_actuals;
+        #[allow(unused_mut)]
+        let mut generic_names = __tco_loop_generic_names;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match formals.clone().first().cloned() {
+            std::option::Option::None => {
+                break acc.clone();
+            }
+            Some(f) => match actuals.clone().first().cloned() {
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+                Some(a) => {
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&formals, 1));
+                    let __tco_1 = Rc::new(v1_rt::list_skip(&actuals, 1));
+                    let __tco_2 = generic_names.clone();
+                    let __tco_3 = source_indices.clone();
+                    let __tco_4 = unify_generics(
+                        crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                        crate::v1_compiler_infer_types::child_type_node(a.clone()),
+                        generic_names.clone(),
+                        source_indices.clone(),
+                        acc,
+                    );
+                    __tco_loop_formals = __tco_0;
+                    __tco_loop_actuals = __tco_1;
+                    __tco_loop_generic_names = __tco_2;
+                    __tco_loop_source_indices = __tco_3;
+                    __tco_loop_acc = __tco_4;
+                    continue;
+                }
+            },
         }
     }
 }

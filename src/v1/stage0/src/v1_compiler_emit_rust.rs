@@ -62,7 +62,7 @@ pub use crate::v1_compiler_emit::{rust_literal_for_pattern, emit_literal, emit_b
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{InferScope};
-pub use crate::v1_compiler_infer::{is_lambda_expr, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
+pub use crate::v1_compiler_infer::{is_lambda_expr, unify_generics, type_node_label, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
@@ -19231,12 +19231,38 @@ crate::v1_compiler_trait_bound_witness::v1_call_forwarding_bound_wrapper_param_n
                     }
                     __result
                 });
+                let unified = Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in callee_value_params.iter().cloned() {
+                        __result.extend((*match v1_rt::map_get(&arg_by_name, cp.name.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(arg_node) => {
+                    let solved = crate::v1_compiler_infer::unify_generics(crate::v1_std_core::param_node_type_expr(cp.clone()), crate::v1_compiler_infer_types::resolved_type(arg_node.clone()), callee_generic_param_names.clone(), si.clone(), v1_rt::rc_empty_map::<String, Rc<Node>>());
+Rc::new({ let mut __result = Vec::new(); for g in callee_bound_param_names.iter().cloned() { __result.extend((*match v1_rt::map_get(&solved, g.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(bound_to) => {
+                        let wn = crate::v1_compiler_infer::type_node_label(bound_to.clone(), si.clone());
+if { let mut __found = false; for w in wrapper_generic_param_names.iter().cloned() { if (w.clone() == wn.clone()) { __found = true; break; } } __found } {
+                            Rc::new(vec![wn.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        }
+},
+}).iter().cloned()); } __result })
+},
+}).iter().cloned());
+                    }
+                    __result
+                });
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                        Rc::new(vec![]),
-                        forwarded.clone(),
+                        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                            Rc::new(vec![]),
+                            forwarded.clone(),
+                        ),
+                        arrow_forwarded.clone(),
                     ),
-                    arrow_forwarded.clone(),
+                    unified.clone(),
                 )
             }
         }
