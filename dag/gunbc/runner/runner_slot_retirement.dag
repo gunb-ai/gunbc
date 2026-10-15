@@ -503,7 +503,7 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 // A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
 //
 // required_retirees_for_host derives its set from a WIDTH TRANSITION: prior committed identities
-// minus target committed identities, so srv1's 07..11 at width 7 (prior 12) and srv4 empty at
+// minus target committed identities, so srv1's 07..12 and 14..50 at width 7 (priors 50 and 12) and srv4 empty at
 // width 21 (prior 21). That covers a slot the host stops having. It does not
 // cover a slot the host still has whose PURPOSE changed -- and gunbc.runner.runner_slot_allocation
 // reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
