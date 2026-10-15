@@ -104,7 +104,7 @@ fn fresh_root_path() -> String {
 }
 
 fn opened(root: MaterializationStoreRoot) -> LocalStoreCapability? {
-  match local_store_initialize(root: root, instance_label: "wet-witness", budgets: witness_family_budgets) {
+  match local_store_initialize(root: root, scope_root: "", instance_label: "wet-witness", budgets: witness_family_budgets) {
     LocalStoreInitialized { opening: o } => match o {
       LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
       LocalStoreUnavailable { root_path: _, cause: _ } => none

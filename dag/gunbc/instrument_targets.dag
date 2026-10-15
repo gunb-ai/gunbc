@@ -19,6 +19,7 @@ import gunbc.target_binding {
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
   NativeServeProgramProducer,
+  CliWireProgramProducer,
   native_claim_deadline_if_entry,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
@@ -685,6 +686,50 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+fn compute_run_unit_cold_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold" } }
+}
+
+fn compute_run_unit_cold_entry() -> String {
+  "dag/gunbc/instruments/compute_run_unit_cold.dag"
+}
+
+fn compute_run_unit_cold_function() -> String {
+  "compute_run_unit_cold_exit"
+}
+
+fn compute_run_unit_cold_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() } }
+}
+
+fn compute_wrong_capture_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-wrong-capture" } }
+}
+
+fn compute_wrong_capture_entry() -> String {
+  "dag/gunbc/instruments/compute_wrong_capture.dag"
+}
+
+fn compute_wrong_capture_function() -> String {
+  "compute_wrong_capture_exit"
+}
+
+fn compute_wrong_capture_binding() -> TargetBinding {
+  TargetBinding { target: compute_wrong_capture_label() producer: CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() } }
+}
+
+fn compute_run_unit_sccache_probe_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-sccache-probe" } }
+}
+
+fn compute_run_unit_sccache_probe_function() -> String {
+  "compute_run_unit_sccache_probe_exit"
+}
+
+fn compute_run_unit_sccache_probe_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_sccache_probe_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_sccache_probe_function() } }
+}
+
 fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
@@ -909,6 +954,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
+    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
@@ -929,6 +975,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
+    compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),

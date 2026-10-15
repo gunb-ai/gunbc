@@ -27,7 +27,15 @@ import std.materialization_provider {
   output_universe_test_identity_population, output_universe_module_import_closures,
   output_native_compiler_executable, output_native_compiler_build_diagnostics,
 }
-import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolumeRoot }
+import std.materialization_store_grant {
+  WitnessScratchRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
+  materialization_store_root_path, materialization_store_durability, materialization_store_host_volume_path,
+  materialization_store_admissible, materialization_store_persistent_macbook_scope,
+  materialization_store_persistent_srv2_scope,
+  DurableAcrossRuns, EphemeralToFrame,
+}
+import std.access { Permit, Deny }
+import std.effect_grant { Read, Write }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import std.materialization_object {
   ArtifactPayload, payload_part,
@@ -504,22 +512,22 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
   let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
   let two = [budget_row(family: "zeta", bytes: 7), budget_row(family: "alpha", bytes: 4096)]
   let marker = store_marker_content(root: root, instance_label: "witness", budgets: two)
-  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: two) {
+  let opened = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: two) {
     LocalStorePreOpened { pre: p, durability: _ } =>
       p.binding.store.provider == materialization_store_local_id
         && (p.binding.budgets |> map(b => b.family as String)) == ["alpha", "zeta"]
         && (p.binding.budgets |> map(b => measure_count(m: b.budget))) == [4096, 7]
     LocalStorePreOpenRefused { root_path: _, cause: _ } => false
   }
-  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }, budgets: two) {
+  let uninitialized = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathAbsent { path: "/m" }, budgets: two) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness", budgets: two) }, budgets: two) {
+  let foreign = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolume, instance_label: "witness", budgets: two) }, budgets: two) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let duplicate_offer = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: [budget_row(family: "alpha", bytes: 4096), budget_row(family: "alpha", bytes: 4096), budget_row(family: "zeta", bytes: 7)]) {
+  let duplicate_offer = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: [budget_row(family: "alpha", bytes: 4096), budget_row(family: "alpha", bytes: 4096), budget_row(family: "zeta", bytes: 7)]) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreCatalogInadmissible { detail: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
@@ -827,6 +835,40 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
         }
       }
   }
+}
+
+test fn durable_volume_and_job_workspace_paths_are_constructed() -> Bool {
+  let scope = "/job-workspace"
+  (materialization_store_root_path(root: DurableHostVolume, scope_root: "/tmp/x") == materialization_store_host_volume_path)
+    && (materialization_store_root_path(root: PersistentInstanceWorkspace, scope_root: scope) == "/job-workspace/materialization-store")
+    && (materialization_store_root_path(root: FrameJobWorkspace, scope_root: scope) == "/job-workspace/materialization-store")
+    && match materialization_store_durability(root: DurableHostVolume) {
+      DurableAcrossRuns => true
+      EphemeralToFrame => false
+    }
+    && match materialization_store_durability(root: PersistentInstanceWorkspace) {
+      DurableAcrossRuns => true
+      EphemeralToFrame => false
+    }
+    && match materialization_store_durability(root: FrameJobWorkspace) {
+      EphemeralToFrame => true
+      DurableAcrossRuns => false
+    }
+}
+
+test fn persistent_instance_workspace_admission_refuses_an_undeclared_scope() -> Bool {
+  match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: "/tmp", verb: Read) {
+    Permit => false
+    Deny { refusal: _ } => true
+  }
+    && match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: materialization_store_persistent_macbook_scope, verb: Read) {
+      Permit => true
+      Deny { refusal: _ } => false
+    }
+    && match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: materialization_store_persistent_srv2_scope, verb: Write) {
+      Permit => true
+      Deny { refusal: _ } => false
+    }
 }
 
 test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {

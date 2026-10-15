@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dashboard_instance_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
+import std.materialization_store_grant { FrameJobWorkspace }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.auth.session_store { session_store_directory }
@@ -775,6 +776,7 @@ fn witness_production_slot(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
+    materialization_store_root: FrameJobWorkspace,
   }
 }
 
@@ -1130,6 +1132,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    materialization_store_root: live.materialization_store_root,
   }
 }
 
