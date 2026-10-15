@@ -111,8 +111,12 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cg.contains(RUNNER_SLOT_CGROUP_NEEDLE) {
         return UserWorkScopeStanding::RunnerSlotExempt;
     }
-    if observed_cgroup_bound(&cg) {
-        return UserWorkScopeStanding::BoundedByObservedCgroup;
+    match observed_cgroup_bound(&cg) {
+        CgroupBound::Bounded => return UserWorkScopeStanding::BoundedByObservedCgroup,
+        fallthrough => eprintln!(
+            "user_work_scope: observed-bound arm did not admit ({})",
+            cgroup_bound_fallthrough_wire(fallthrough)
+        ),
     }
     let probe_ok = Command::new("systemctl")
         .args(["--user", "show-environment"])
@@ -133,10 +137,27 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
 // SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`: the process's unified-hierarchy
 // cgroup (`0::<path>`) and each ancestor to the root; bounded when one carries a finite memory.max
 // AND memory.swap.max = 0. An unreadable chain is not a bound.
-fn observed_cgroup_bound(proc_self_cgroup: &str) -> bool {
+#[derive(Clone, Copy)]
+enum CgroupBound {
+    Bounded,
+    Unbounded,
+    Unread,
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`
+fn cgroup_bound_fallthrough_wire(b: CgroupBound) -> &'static str {
+    match b {
+        CgroupBound::Bounded => "chain-bounded",
+        CgroupBound::Unbounded => "chain-unbounded",
+        CgroupBound::Unread => "chain-unread",
+    }
+}
+
+fn observed_cgroup_bound(proc_self_cgroup: &str) -> CgroupBound {
     let Some(path) = proc_self_cgroup.lines().find_map(|l| l.strip_prefix("0::")) else {
-        return false;
+        return CgroupBound::Unread;
     };
+    let mut any_read = false;
     let mut current = path.trim().trim_end_matches('/').to_string();
     loop {
         let dir = format!("/sys/fs/cgroup{current}");
@@ -145,12 +166,19 @@ fn observed_cgroup_bound(proc_self_cgroup: &str) -> bool {
         let swap =
             std::fs::read_to_string(format!("{dir}/memory.swap.max")).map(|s| s.trim().to_string());
         if let (Ok(max), Ok(swap)) = (max, swap) {
+            any_read = true;
             if swap == "0" && !max.is_empty() && max.bytes().all(|b| b.is_ascii_digit()) {
-                return true;
+                return CgroupBound::Bounded;
             }
         }
         match current.rfind('/') {
-            Some(0) | None => return false,
+            Some(0) | None => {
+                return if any_read {
+                    CgroupBound::Unbounded
+                } else {
+                    CgroupBound::Unread
+                };
+            }
             Some(i) => current.truncate(i),
         }
     }

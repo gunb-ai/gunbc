@@ -171,6 +171,17 @@ fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
   }
 }
 
+// WHY THE OBSERVED-BOUND ARM DID NOT ADMIT, named on the wrap's or the refusal's diagnostic so a
+// guest that unexpectedly lost its MemoryMax= reads as "chain unbounded, wrapped" or "refused", not
+// silence. Rendered once here; the seed trampoline prints the same two words.
+fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
+  match bound {
+    CgroupBoundedBy { cgroup: _, memory_max: _ } => "chain-bounded"
+    CgroupChainUnbounded => "chain-unbounded"
+    CgroupChainNotObserved { detail: _ } => "chain-unread"
+  }
+}
+
 type UserWorkScopeStanding
   = AlreadyInSlice
   | BoundedByObservedCgroup { cgroup: String, memory_max: Int }

@@ -30,7 +30,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   CgroupText, CgroupReadFailed,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
-  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainRead, CgroupChainUnread, CgroupLimitReading,
+  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainUnbounded, CgroupChainNotObserved, cgroup_bound_fallthrough_wire, CgroupChainRead, CgroupChainUnread, CgroupLimitReading,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -239,6 +239,9 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UserManagerOwed))
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`")
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainUnbounded), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainNotObserved { detail: "" }), "\"")))
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_standing_wire(s: BoundedByObservedCgroup { cgroup: "", memory_max: 0 }), "\"")))
     && string_contains(s: seed, pattern: "std::process::exit(2)")
 }
