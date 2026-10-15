@@ -31,7 +31,7 @@ pub fn occurrence_identity_scope_law() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AuthoredTokenOrdinalSpace {
     pub allocator: OccurrenceIdAllocator,
 }
@@ -42,7 +42,9 @@ pub fn authored_token_ordinal_space_initial() -> Rc<AuthoredTokenOrdinalSpace> {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct AuthoredTokenOrdinal {
     pub value: i64,
 }
@@ -72,7 +74,16 @@ pub struct OccurrenceContainmentPath {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCategory {
@@ -85,7 +96,7 @@ pub enum OccurrenceCategory {
     MethodOccurrence,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCategoryModuleScopeExposureVerdict {
     OccurrenceCategoryModuleScopeExposed,
@@ -134,7 +145,7 @@ pub fn occurrence_category_module_scope_exposure_verdict(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCategoryClauseEDependencyInducingVerdict {
     OccurrenceCategoryClauseEDependencyInducing,
@@ -170,7 +181,16 @@ pub fn occurrence_category_clause_e_dependency_inducing_verdict(
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum OccurrenceRole {
@@ -178,7 +198,7 @@ pub enum OccurrenceRole {
     ReferenceRole,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OccurrenceProjection {
     pub occurrence: OccurrenceId,
     pub authored_name: String,
@@ -219,7 +239,7 @@ pub struct OccurrenceTransport {
     pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OccurrenceIdentityAcceptanceLaw {
     pub id: String,
     pub required_receipt: String,
@@ -289,7 +309,7 @@ pub fn occurrence_identity_acceptance_laws() -> Rc<Vec<Rc<OccurrenceIdentityAcce
     CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityAcceptanceLaw>>>| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceTransportRefusal {
     MissingAuthoredOccurrenceIdentity {
@@ -318,7 +338,7 @@ pub enum OccurrenceTransportRefusal {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ScopedOccurrenceRef {
     pub scope: Rc<Fnv1a64Structural>,
     pub occurrence: OccurrenceId,
@@ -338,7 +358,7 @@ pub fn scoped_occurrence_ref_in_scope(
     (occurrence_ref.scope.clone().digest.clone() == scope.digest.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum NodeOccurrenceIdentity {
     OccurrenceSynthetic,
@@ -354,12 +374,14 @@ pub enum NodeOccurrenceIdentity {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct OccurrenceIdAllocator {
     pub next_id: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OccurrenceIdAllocResult {
     pub id: OccurrenceId,
     pub alloc: OccurrenceIdAllocator,
@@ -422,13 +444,13 @@ pub fn node_occurrence_identity_projected(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ScopedOccurrenceAllocator {
     pub alloc: OccurrenceIdAllocator,
     pub scope: Rc<Fnv1a64Structural>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ProjectedOccurrenceAllocation {
     pub identity: Rc<NodeOccurrenceIdentity>,
     pub allocator: Rc<ScopedOccurrenceAllocator>,
@@ -521,7 +543,7 @@ pub fn occurrence_containment_ancestors_as_list(
     ))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OccurrenceIdListPrefixAcc {
     pub path_remaining: Rc<Vec<OccurrenceId>>,
     pub ok: bool,

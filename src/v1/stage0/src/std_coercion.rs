@@ -26,7 +26,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TypeCheckpoint {
     pub dag_name: String,
     pub target_type: String,
@@ -36,7 +36,7 @@ pub struct TypeCheckpoint {
     pub literal_suffix: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeDeclarationProvenance {
     CorpusDeclared { decl_file: String },
@@ -45,7 +45,16 @@ pub enum TypeDeclarationProvenance {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum TextRepresentation {
@@ -55,7 +64,7 @@ pub enum TextRepresentation {
     TextRepresentationUnidentified,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeReferenceIdentity {
     ReferenceResolvedToDeclaration {
@@ -73,7 +82,16 @@ pub enum TypeReferenceIdentity {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ReferenceIdentityUnavailableCause {
@@ -82,7 +100,7 @@ pub enum ReferenceIdentityUnavailableCause {
     DeclarationNodeCarriesNoSpan,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum RealizationRefusalCause {
     DeclarationIdentityUnavailable,
@@ -103,7 +121,16 @@ pub fn realization_refusal_label(cause: Rc<RealizationRefusalCause>) -> String {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum RealizationGround {
@@ -112,7 +139,7 @@ pub enum RealizationGround {
     GroundedByUnidentifiedBareRow,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeRealizationDecision {
     Realized {
@@ -125,7 +152,7 @@ pub enum TypeRealizationDecision {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct InhabitantDecl {
     pub algebra: String,
     pub template: String,
@@ -135,7 +162,7 @@ pub struct InhabitantDecl {
     pub is_copy: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CallableRepr {
     pub template: String,
     pub param_separator: String,
@@ -143,20 +170,20 @@ pub struct CallableRepr {
     pub import_path: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CastRule {
     pub from_type: String,
     pub to_type: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct RefinementCastRule {
     pub from_type: String,
     pub to_type: String,
     pub to_declaration: Rc<DeclarationRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CastSyntax {
     pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
@@ -210,7 +237,7 @@ pub fn dag_cast_requires_proof(source_type: String, target_type: String) -> bool
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum SubtractionRefinement {
     SubtractionStaysInOperandAlgebra,
@@ -296,7 +323,7 @@ pub fn is_dag_cast_domain_type(name: String) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ConversionPhase {
     UnfoldPhase { row: Rc<LiteralHomomorphism> },
@@ -311,7 +338,7 @@ impl ConversionPhase {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ConversionEndpoint {
     KernelMintedCarrier {
@@ -323,7 +350,7 @@ pub enum ConversionEndpoint {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ConversionPlan {
     pub route: Rc<DeclarationRef>,
     pub phase: Rc<ConversionPhase>,
@@ -387,7 +414,7 @@ pub fn conversion_plan_target(plan: Rc<ConversionPlan>) -> Rc<ConversionEndpoint
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ConversionPlanJudgment {
     ConversionPlanAdmitted {
@@ -529,7 +556,7 @@ pub fn code_point_sequence_endpoint() -> Rc<ConversionEndpoint> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TextPlanEndpoint {
     TextPlanEndpointKeyed { endpoint: Rc<ConversionEndpoint> },

@@ -29,7 +29,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GenericIdentityContext {
     pub module_file: String,
     pub enclosing: String,
@@ -39,7 +39,16 @@ pub struct GenericIdentityContext {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ForeignParameterReading {
@@ -50,7 +59,7 @@ pub enum ForeignParameterReading {
     ForeignParameterValueArgumentUndecided,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GenericIdentityRow {
     pub module_file: String,
     pub enclosing: String,
@@ -66,7 +75,7 @@ pub struct GenericIdentityRow {
     pub foreign: ForeignParameterReading,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GenericIdentityUnobserved {
     pub population: String,
     pub reason: String,
@@ -1277,7 +1286,7 @@ pub fn generic_identity_census_summary_from_sources(sources: Rc<Vec<Rc<SourceFil
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ResultCarrierObservation {
     ResultCarrierUnobserved {
@@ -1417,7 +1426,7 @@ pub fn gi_result_carrier_observation(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GenericIdentityContextItem {
     pub module_file: String,
     pub item: Rc<Node>,

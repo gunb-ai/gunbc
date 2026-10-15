@@ -65,7 +65,7 @@ pub struct AbelianGroup<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GroupCompletion<M: Clone> {
     pub pos: M,
     pub neg: M,
@@ -134,7 +134,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct FieldOfFractions<R: Clone> {
     pub num: R,
     pub denom: R,
@@ -311,7 +311,7 @@ pub struct FinitelySupportedFunction<K: std::cmp::Eq + std::hash::Hash, V> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct MapIntroductionEntry<K: Clone, V: Clone> {
     pub key: K,
     pub value: V,
@@ -350,7 +350,16 @@ pub struct TotalPolicy<K, Context, RowTemplate> {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum Ordering {
@@ -359,7 +368,7 @@ pub enum Ordering {
     Greater,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct OrderingFold<R: Clone> {
     pub less: R,
     pub equal: R,
@@ -388,7 +397,16 @@ pub fn ordering_is_less(o: Ordering) -> bool {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum AlgebraProfile {
@@ -404,7 +422,7 @@ pub enum AlgebraProfile {
     FinitelySupportedFunctionProfile,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ContainerSource {
     SameAsReceiver,
@@ -419,7 +437,7 @@ impl ContainerSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum AlgebraTypeTemplate {
     ReceiverSelf,
@@ -453,7 +471,16 @@ pub enum AlgebraTypeTemplate {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
@@ -463,7 +490,16 @@ pub enum CollectionSizeEffect {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum CostShape {
@@ -473,7 +509,7 @@ pub enum CostShape {
     ShapeSortBody,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AlgebraFieldTemplate {
     pub name: String,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
@@ -701,7 +737,9 @@ pub fn collection_sort_by_shape() -> Rc<AlgebraFieldTemplate> {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash,
+)]
 pub struct StepPositionScan {
     pub next: i64,
     pub found: Option<i64>,
@@ -816,7 +854,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum CarrierRowMembership {
     RowPresent,
@@ -831,7 +869,7 @@ impl CarrierRowMembership {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CarrierSpelling {
     pub text: String,
     pub method_surface: Rc<CarrierRowMembership>,
@@ -841,7 +879,7 @@ pub struct CarrierSpelling {
     pub container_arity_row: Rc<CarrierRowMembership>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct AlgebraCarrier {
     pub name: String,
     pub profile: AlgebraProfile,
@@ -1206,7 +1244,16 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum AlgebraSupportAxis {
@@ -2597,7 +2644,7 @@ pub fn take_prefix<T: Clone>(xs: Rc<FreeMonoid<T>>, n: i64) -> Rc<FreeMonoid<T>>
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SortKeyed<T: Clone, K: Clone> {
     pub key: K,
     pub item: T,
@@ -2773,7 +2820,7 @@ pub fn list_at_optional<T: Clone>(xs: Rc<FreeMonoid<T>>, index: i64) -> Option<T
     v1_rt::list_get_optional(&xs, index.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ListAtLookup<T> {
     ListAtMissing { remaining: i64 },

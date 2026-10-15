@@ -22,7 +22,7 @@ pub fn primitive_identity_slug_prefix() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct PrimitiveIdentity {
     pub slug: NonEmptyStr,
 }
@@ -44,7 +44,7 @@ pub fn primitive_identity_runtime_name(identity: Rc<PrimitiveIdentity>) -> Strin
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ProjectionFidelity {
     HostRealizedSeam,
@@ -63,14 +63,14 @@ impl ProjectionFidelity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct PrimitiveProjection {
     pub primitive: Rc<PrimitiveIdentity>,
     pub declaration: Rc<DeclarationRef>,
     pub fidelity: Rc<ProjectionFidelity>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum PrimitiveProjectionAnswer {
     DeclarationProjectsPrimitive {

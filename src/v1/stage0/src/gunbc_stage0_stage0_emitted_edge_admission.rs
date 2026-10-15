@@ -23,14 +23,14 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0EmittedTreePackages {
     pub rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
     pub host_shell_package_name: String,
     pub host_shell_dependencies: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0EmittedModuleOwner {
     Stage0EmittedModuleOwned { package_name: String },
@@ -50,7 +50,7 @@ impl Stage0EmittedModuleOwner {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0EmittedEdgeCrossing {
     pub from_module: String,
     pub to_module: String,
@@ -59,14 +59,14 @@ pub struct Stage0EmittedEdgeCrossing {
     pub provenance: EmittedEdgeProvenance,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0EmittedEdgeUncovered {
     pub module: String,
     pub edge_from: String,
     pub provenance: EmittedEdgeProvenance,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0EmittedEdgeAdmission {
     Stage0EmittedEdgesAdmitted {
@@ -195,7 +195,7 @@ pub fn stage0_package_reachable(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0PackageReach {
     pub package_name: String,
     pub reachable: Rc<Vec<String>>,

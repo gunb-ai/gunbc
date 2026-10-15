@@ -17,7 +17,16 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum RenderTarget {
@@ -28,7 +37,16 @@ pub enum RenderTarget {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ArtifactKind {
@@ -38,7 +56,7 @@ pub enum ArtifactKind {
     GeneratedSupport,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum RustModuleRenderSelection {
     RenderEveryModule,
@@ -55,7 +73,7 @@ impl RustModuleRenderSelection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
@@ -66,7 +84,16 @@ pub struct Artifact {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum BoundaryKind {
@@ -77,7 +104,7 @@ pub enum BoundaryKind {
     FileProtocol,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Boundary {
     pub from_artifact: String,
     pub to_artifact: String,
@@ -85,13 +112,13 @@ pub struct Boundary {
     pub contract: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ArtifactPlan {
     pub artifacts: Rc<Vec<Rc<Artifact>>>,
     pub boundaries: Rc<Vec<Rc<Boundary>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum PartitionRule {
     Explicit { artifacts: Rc<Vec<Rc<Artifact>>> },
@@ -117,7 +144,7 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ArtifactOutput {
     pub artifact: Rc<Artifact>,
     pub files: Rc<Vec<Rc<TextFile>>>,
@@ -153,7 +180,7 @@ pub fn selected_artifact_plan(
 
 pub type DagNodeId = String;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
@@ -168,14 +195,14 @@ pub enum DagInferredRecord {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DagModuleRef {
     pub module: DagNodeId,
     pub items: Rc<Vec<DagNodeId>>,
     pub item_registry_keys: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DagDiagnosticRecord {
     pub severity: String,
     pub message: String,
@@ -184,7 +211,7 @@ pub struct DagDiagnosticRecord {
     pub category: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DagArtifact {
     pub version: String,
     pub nodes: Rc<HashMap<DagNodeId, String>>,

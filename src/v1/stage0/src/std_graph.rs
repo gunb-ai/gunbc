@@ -11,30 +11,30 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GraphEdge {
     pub caller: String,
     pub callee: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CallGraph {
     pub edges: Rc<Vec<Rc<GraphEdge>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CallGraphAdjacencyViews {
     pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct DfsFinishAcc {
     pub visited: Rc<BTreeSet<String>>,
     pub order: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccComponentAcc {
     pub visited: Rc<BTreeSet<String>>,
     pub members: Rc<Vec<String>>,
@@ -199,7 +199,7 @@ pub fn dfs_collect_component(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SccComponentsAcc {
     pub visited: Rc<BTreeSet<String>>,
     pub components: Rc<Vec<Rc<Vec<String>>>>,

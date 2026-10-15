@@ -60,7 +60,7 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -79,7 +79,7 @@ pub struct TypeEnv {
     pub unit_variant_index_observed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
@@ -87,7 +87,7 @@ pub struct TypeBinding {
     pub alias_rhs: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct UnitVariantContribution {
     pub count: i64,
     pub variant: Rc<Node>,
@@ -311,13 +311,13 @@ pub fn global_bare_fallback_invariant() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GlobalBareCandidate {
     pub module_path: String,
     pub binding: Rc<TypeBinding>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum GlobalBareLookupState {
     GlobalBareUniqueBinding {
@@ -329,26 +329,26 @@ pub enum GlobalBareLookupState {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ImportBinding {
     pub name: String,
     pub resolved: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ScopeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ServiceCensusEntry {
     pub module_path: String,
     pub item: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
@@ -359,7 +359,7 @@ pub struct SymbolIndex {
     pub module_named_imports: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Scope {
     pub locals: Rc<HashMap<String, Rc<ScopeBinding>>>,
 }
@@ -412,7 +412,7 @@ pub fn overlay_skips_kernel_name(name: String) -> bool {
         || (name.clone() == "Absent".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum BareOccurrenceBinding {
     BareOccurrenceDeclaredInItsFile {
@@ -777,7 +777,7 @@ pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TypeEnvCache {
     pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -794,7 +794,7 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct TypeEnvCacheMergeConflict {
     pub name: String,
     pub import_path: String,
@@ -837,7 +837,7 @@ pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
     (source_tree_of(c.existing_site.clone()) != source_tree_of(c.incoming_site.clone()))
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GuardedTypeEnvCacheMerge {
     pub cache: Rc<TypeEnvCache>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
@@ -1017,7 +1017,7 @@ pub fn guarded_union_str_bindings(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GuardedStrBindingsUnion {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
@@ -1341,7 +1341,7 @@ pub fn lookup_qualified_module_projection(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct SegmentLcpScan {
     pub remaining: Rc<Vec<String>>,
     pub matched: i64,
@@ -1389,14 +1389,14 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GlobalBareNearestScan {
     pub best_lcp: i64,
     pub best: Option<Rc<TypeBinding>>,
     pub tie: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct GlobalBareNearestCandidateScan {
     pub best_lcp: i64,
     pub best: Option<Rc<GlobalBareCandidate>>,
@@ -2059,7 +2059,7 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum UnitVariantPhantomLookup {
     UnitVariantPhantomPresent { variant: Rc<Node> },
@@ -2740,7 +2740,7 @@ pub fn operand_declaration_from_qualified_name(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeNodeDeclarationReading {
     TypeNodeNamesDeclaration {
@@ -2751,7 +2751,7 @@ pub enum TypeNodeDeclarationReading {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeNodeUnidentifiedCause {
     TypeNodeAuthoredNameEmpty,
@@ -2906,7 +2906,7 @@ pub fn declaration_ref_of_type_node(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum TypeReferenceDeclarationReading {
     TypeReferenceNamesDeclaration {

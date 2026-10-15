@@ -31,7 +31,16 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedClosureCapability {
@@ -44,7 +53,16 @@ pub enum ReferenceDerivedClosureCapability {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedClosureScenarioFailure {
@@ -56,7 +74,7 @@ pub enum ReferenceDerivedClosureScenarioFailure {
     UnrelatedLoadedFileDependencyLeaked,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 pub struct ReferenceDerivedClosureAcceptanceReceipt {
     capability: ReferenceDerivedClosureCapability,
 }
@@ -66,7 +84,7 @@ impl ReferenceDerivedClosureAcceptanceReceipt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedClosureAdmission {
     ReferenceDerivedClosureEstablished {
@@ -83,7 +101,16 @@ pub enum ReferenceDerivedClosureAdmission {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedClosureTrigger {

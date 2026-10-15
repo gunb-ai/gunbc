@@ -56,7 +56,16 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum Stage0CrateKind {
@@ -66,7 +75,7 @@ pub enum Stage0CrateKind {
     FacadeCrate,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0CrateSpec {
     pub package_name: String,
     pub crate_dir: String,
@@ -81,7 +90,7 @@ pub struct Stage0CrateSpec {
     pub partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct Stage0CratePlan {
     pub crates: Rc<Vec<Rc<Stage0CrateSpec>>>,
 }
@@ -159,7 +168,7 @@ pub fn partition_crate_dep_path(from_crate_dir: String, to_crate_dir: String) ->
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0ModuleOwnerRefusalCause {
     Stage0ModuleOwnerMissing { module_basename: String },
@@ -175,7 +184,7 @@ impl Stage0ModuleOwnerRefusalCause {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0ModuleOwnerLookup {
     Stage0ModuleOwnerFound {
@@ -186,7 +195,7 @@ pub enum Stage0ModuleOwnerLookup {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0PackageCrateDirRefusalCause {
     Stage0PackageCrateDirMissing { package_name: String },
@@ -202,7 +211,7 @@ impl Stage0PackageCrateDirRefusalCause {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0PackageCrateDirLookup {
     Stage0PackageCrateDirFound {
@@ -213,7 +222,7 @@ pub enum Stage0PackageCrateDirLookup {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0ReexportPathDepsOutcome {
     Stage0ReexportPathDepsOk {
@@ -224,7 +233,7 @@ pub enum Stage0ReexportPathDepsOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0EmitShellReexportsOutcome {
     Stage0EmitShellReexportsOk {
@@ -238,7 +247,7 @@ pub enum Stage0EmitShellReexportsOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0PartitionRowDepsOutcome {
     Stage0PartitionRowDepsOk {
@@ -249,7 +258,7 @@ pub enum Stage0PartitionRowDepsOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0PartitionRowSpecOutcome {
     Stage0PartitionRowSpecOk {
@@ -260,7 +269,7 @@ pub enum Stage0PartitionRowSpecOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0CratePlanOutcome {
     Stage0CratePlanOk {
@@ -274,7 +283,7 @@ pub enum Stage0CratePlanOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0CrateLibEmitOutcome {
     Stage0CrateLibEmitOk {
@@ -288,14 +297,14 @@ pub enum Stage0CrateLibEmitOutcome {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0ReexportLinesOutcome {
     Stage0ReexportLinesOk { lines: Rc<Vec<String>> },
     Stage0ReexportLinesIdentUnbound { package_name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0CrateBoundaryEmitRefusalCause {
     Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: String },
@@ -304,7 +313,7 @@ pub enum Stage0CrateBoundaryEmitRefusalCause {
     Stage0CrateBoundaryEmitPackageIdentUnbound { package_name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum Stage0CrateBoundaryEmitOutcome {
     Stage0CrateBoundaryEmitOk {

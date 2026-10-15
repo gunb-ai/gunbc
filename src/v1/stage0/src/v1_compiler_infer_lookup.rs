@@ -118,7 +118,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct KnownMethodResolution {
     pub semantics: Option<Rc<MethodSemantics>>,
     pub result_type: Option<Rc<Node>>,
@@ -161,7 +161,16 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum AuthorNamedVisibility {
@@ -501,13 +510,13 @@ pub fn func_env_declared_func_sig(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct BorrowedCensusDecl {
     pub owner_module_path: String,
     pub node: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum BorrowedCensusDeclLookup {
     BorrowedCensusDeclFound {
@@ -588,13 +597,13 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct ExactDeclarationIdentity {
     pub owner_module_path: String,
     pub decl_name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DeclarationLookupFailure {
     DeclarationNotIndexedAtQualifiedName { qualified_name: String },
@@ -610,7 +619,7 @@ impl DeclarationLookupFailure {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum ConstructorDeclarationLookup {
     ExactConstructorDeclaration {
@@ -1419,7 +1428,7 @@ pub fn field_summary_for_type(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct MethodFieldResult {
     pub field_node: Rc<Node>,
     pub result_type: Rc<Node>,
@@ -1428,7 +1437,7 @@ pub struct MethodFieldResult {
     pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct StructuralMethodLookup {
     pub resolution: Option<Rc<MethodFieldResult>>,
     pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -1637,7 +1646,7 @@ pub fn lookup_structural_method(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum DeclaredArgContract {
     ContractKnown { types: Rc<Vec<Rc<Node>>> },

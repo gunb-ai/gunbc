@@ -62,7 +62,16 @@ pub enum StructuralBindingResolution {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum ReferenceBindingProductionGap {
@@ -71,7 +80,7 @@ pub enum ReferenceBindingProductionGap {
     ReferenceBindingNamedDeclarationAbsent,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum StructuralObservationSubjectModule {
     SubjectModuleProduced { module_path: String },

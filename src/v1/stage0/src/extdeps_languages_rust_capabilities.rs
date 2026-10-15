@@ -194,7 +194,16 @@ pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapabi
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum RustCapability {
@@ -495,7 +504,7 @@ pub fn phantom_opaque_carrier_derive_traits() -> Rc<Vec<RustCapability>> {
     })
 }
 
-pub fn map_key_required_derive_traits() -> Rc<Vec<RustCapability>> {
+pub fn eq_hash_capability_derive_traits() -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __cons_v = (*Rc::new({
             let mut __cons_v = (*Rc::new(vec![])).clone();

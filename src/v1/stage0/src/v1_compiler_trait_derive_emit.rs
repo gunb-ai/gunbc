@@ -8,11 +8,10 @@ use crate::extdeps_languages_rust_capabilities::RustCapability::{
     RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
 };
 pub use crate::extdeps_languages_rust_capabilities::{
-    derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
-    map_key_required_derive_traits, nullary_coproduct_derive_traits,
-    payload_coproduct_derive_traits, record_derive_traits_copy, record_derive_traits_heap,
-    rust_capability_shape_table, rust_traits_for_construction_contract,
-    symbol_wrapped_ord_carrier_derive_traits,
+    derive_traits_union, eq_hash_capability_derive_traits, fn_field_derive_traits,
+    kernel_int_arithmetic_traits, nullary_coproduct_derive_traits, payload_coproduct_derive_traits,
+    record_derive_traits_copy, record_derive_traits_heap, rust_capability_shape_table,
+    rust_traits_for_construction_contract, symbol_wrapped_ord_carrier_derive_traits,
 };
 pub use crate::extdeps_languages_rust_derive_contracts::RustVecSupplementalGenericBoundRow;
 pub use crate::extdeps_languages_rust_derive_contracts::{
@@ -46,8 +45,10 @@ use crate::v1_compiler_infer_emit_info::TypeDeclResolution::{
 pub use crate::v1_compiler_infer_emit_info::{
     resolve_type_decl_leaf, resolve_type_decl_reference, type_decl_identities_of_leaf,
 };
-pub use crate::v1_compiler_infer_emit_info::{TypeDeclIndex, TypeDeclResolution};
-pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
+pub use crate::v1_compiler_infer_emit_info::{TypeDeclIndex, TypeDeclResolution, TypeSummaryIndex};
+pub use crate::v1_compiler_infer_types::{
+    child_type_node, is_coproduct_type, is_declared_container_alias_spelling, resolved_type,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
@@ -121,7 +122,7 @@ pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: String
         })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct StructCapabilityEmit {
     pub derive_attr: String,
     pub impl_bodies: String,
@@ -197,21 +198,21 @@ pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
     }
 }
 
-pub fn v1_with_map_key_requirement(
+pub fn v1_with_eq_hash_capability(
     base: Rc<Vec<RustCapability>>,
-    map_key_required: bool,
+    eq_hash_capable: bool,
 ) -> Rc<Vec<RustCapability>> {
-    if map_key_required.clone() {
+    if eq_hash_capable.clone() {
         crate::extdeps_languages_rust_capabilities::derive_traits_union(
             base.clone(),
-            crate::extdeps_languages_rust_capabilities::map_key_required_derive_traits(),
+            crate::extdeps_languages_rust_capabilities::eq_hash_capability_derive_traits(),
         )
     } else {
         base.clone()
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum KeyedMapVerdict {
     KeyedMap,
@@ -419,79 +420,217 @@ pub fn v1_type_expr_head_declared_identities(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MapKeyRequirementRound {
+pub fn eq_hash_capable_kernel_leaf_names() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["Int".to_string(), "Bool".to_string(), "Unit".to_string(), "String".to_string(), "Bytes".to_string(), "Secret".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn v1_type_expr_has_eq_hash_incapable_leaf(
+    type_expr: Rc<Node>,
+    generic_names: Rc<Vec<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (type_expr.connective.clone() == Connective::Arrow) {
+            return true;
+        }
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
+        let own = if ((name.clone() == "".to_string()) || {
+            let mut __found = false;
+            for g in generic_names.iter().cloned() {
+                if (g.clone() == name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) {
+            false
+        } else {
+            match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                type_decl_items.clone(),
+                type_expr.clone(),
+                source_indices.clone(),
+            ))
+            .clone()
+            {
+                TypeDeclResolution::TypeDeclResolved { .. } => false,
+                TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => false,
+                TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => false,
+                TypeDeclResolution::TypeDeclNotDeclared => {
+                    !(crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
+                        name.clone(),
+                    ) || {
+                        let mut __found = false;
+                        for k in eq_hash_capable_kernel_leaf_names().iter().cloned() {
+                            if (k.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    })
+                }
+            }
+        };
+        (own.clone() || {
+            let mut __found = false;
+            for ch in type_expr.children.clone().iter().cloned() {
+                if v1_type_expr_has_eq_hash_incapable_leaf(
+                    crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                    generic_names.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    })
+}
+
+pub fn v1_item_is_eq_hash_incapable_locally(
+    item: Rc<Node>,
+    identity: String,
+    type_summaries: Rc<TypeSummaryIndex>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let reaches_fn = match v1_rt::map_get(&type_summaries.by_key.clone(), identity.clone()) {
+            Some(summary) => summary.has_fn_fields.clone(),
+            std::option::Option::None => false,
+        };
+        if reaches_fn.clone() {
+            return true;
+        }
+        let generic_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
+        let hand_path = ((((v1_freemonoid_element_params(
+            generic_names.clone(),
+            field_type_exprs.clone(),
+            source_indices.clone(),
+        )
+        .len() as i64)
+            > 0)
+            || ((v1_set_element_params(
+                generic_names.clone(),
+                field_type_exprs.clone(),
+                source_indices.clone(),
+            )
+            .len() as i64)
+                > 0))
+            || ((v1_item_ord_propagated_param_names(
+                generic_names.clone(),
+                field_type_exprs.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+            .len() as i64)
+                > 0));
+        (hand_path.clone() || {
+            let mut __found = false;
+            for te in field_type_exprs.iter().cloned() {
+                if v1_type_expr_has_eq_hash_incapable_leaf(
+                    te.clone(),
+                    generic_names.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
+pub struct EqHashIncapableRound {
     pub names: Rc<BTreeSet<String>>,
     pub added: i64,
 }
 
-pub fn v1_map_key_round_add(
-    round: Rc<MapKeyRequirementRound>,
-    name: String,
-) -> Rc<MapKeyRequirementRound> {
-    if ((name.clone() == "".to_string()) || v1_rt::set_contains(&round.names.clone(), name.clone()))
-    {
+pub fn v1_eq_hash_incapable_round_add(
+    round: Rc<EqHashIncapableRound>,
+    identity: String,
+) -> Rc<EqHashIncapableRound> {
+    if v1_rt::set_contains(&round.names.clone(), identity.clone()) {
         round.clone()
     } else {
-        Rc::new(MapKeyRequirementRound {
-            names: v1_rt::rc_set_insert(round.names.clone(), name.clone()),
+        Rc::new(EqHashIncapableRound {
+            names: v1_rt::rc_set_insert(round.names.clone(), identity.clone()),
             added: v1_rt::int_add(round.added.clone(), 1),
         })
     }
 }
 
-pub fn map_key_alias_hop_gap_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_leaf_type_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn map_key_alias_hop_reconciliation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn v1_map_key_propagate_round(
-    round: Rc<MapKeyRequirementRound>,
+pub fn v1_eq_hash_incapable_propagate_round(
+    round: Rc<EqHashIncapableRound>,
     declared_type_names: Rc<Vec<String>>,
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<MapKeyRequirementRound> {
+) -> Rc<EqHashIncapableRound> {
     declared_type_names.iter().cloned().fold(
         round.clone(),
-        |acc: Rc<MapKeyRequirementRound>, type_name: String| {
-            if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
+        |acc: Rc<EqHashIncapableRound>, identity: String| {
+            if v1_rt::set_contains(&acc.names.clone(), identity.clone()) {
                 acc.clone()
             } else {
-                match v1_rt::map_get(&type_decl_items.by_identity.clone(), type_name.clone()) {
-                    Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone())
-                        .iter()
-                        .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                                v1_type_expr_head_declared_identities(
-                                    te.clone(),
-                                    type_decl_items.clone(),
-                                    source_indices.clone(),
-                                )
+                match v1_rt::map_get(&type_decl_items.by_identity.clone(), identity.clone()) {
+                    Some(item) => {
+                        let reaches_incapable = {
+                            let mut __found = false;
+                            for te in v1_item_field_type_exprs(item.clone(), source_indices.clone())
                                 .iter()
                                 .cloned()
-                                .fold(
-                                    inner,
-                                    |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                        v1_map_key_round_add(deep, head.clone())
-                                    },
-                                )
-                            },
-                        ),
+                            {
+                                if {
+                                    let mut __found = false;
+                                    for head in v1_type_expr_head_declared_identities(
+                                        te.clone(),
+                                        type_decl_items.clone(),
+                                        source_indices.clone(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        if v1_rt::set_contains(&acc.names.clone(), head.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        };
+                        if reaches_incapable.clone() {
+                            v1_eq_hash_incapable_round_add(acc.clone(), identity.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
                     std::option::Option::None => acc.clone(),
                 }
             }
@@ -499,8 +638,8 @@ pub fn v1_map_key_propagate_round(
     )
 }
 
-pub fn v1_map_key_fixpoint_loop(
-    mut __tco_loop_round: Rc<MapKeyRequirementRound>,
+pub fn v1_eq_hash_incapable_fixpoint_loop(
+    mut __tco_loop_round: Rc<EqHashIncapableRound>,
     mut __tco_loop_declared_type_names: Rc<Vec<String>>,
     mut __tco_loop_type_decl_items: Rc<TypeDeclIndex>,
     mut __tco_loop_remaining: i64,
@@ -520,8 +659,8 @@ pub fn v1_map_key_fixpoint_loop(
         if (remaining.clone() <= 0) {
             break round.names.clone();
         } else {
-            let next = v1_map_key_propagate_round(
-                Rc::new(MapKeyRequirementRound {
+            let next = v1_eq_hash_incapable_propagate_round(
+                Rc::new(EqHashIncapableRound {
                     names: round.names.clone(),
                     added: 0,
                 }),
@@ -550,96 +689,69 @@ pub fn v1_map_key_fixpoint_loop(
     }
 }
 
-pub fn v1_map_key_required_type_names(
-    seed_type_exprs: Rc<Vec<Rc<Node>>>,
-    extra_seed_names: Rc<Vec<String>>,
+pub fn v1_eq_hash_capable_type_names(
     type_decl_items: Rc<TypeDeclIndex>,
+    type_summaries: Rc<TypeSummaryIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
         let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items.by_identity.clone()));
-        let scanned = seed_type_exprs.iter().cloned().fold(
-            Rc::new(MapKeyRequirementRound {
+        let seeded = declared_type_names.iter().cloned().fold(
+            Rc::new(EqHashIncapableRound {
                 names: v1_rt::rc_empty_set::<String>(),
                 added: 0,
             }),
-            |acc: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                v1_map_key_head_type_exprs(te.clone(), source_indices.clone())
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: Rc<MapKeyRequirementRound>, key: Rc<Node>| {
-                        v1_type_expr_map_key_declared_identities(
-                            key.clone(),
-                            type_decl_items.clone(),
-                            source_indices.clone(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            inner,
-                            |deep: Rc<MapKeyRequirementRound>, identity: String| {
-                                v1_map_key_round_add(deep, identity.clone())
-                            },
-                        )
-                    })
-            },
-        );
-        let seeded = extra_seed_names.iter().cloned().fold(
-            scanned.clone(),
-            |acc: Rc<MapKeyRequirementRound>, key_name: String| {
-                match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_leaf(
-                    type_decl_items.clone(),
-                    key_name.clone(),
-                ))
-                .clone()
-                {
-                    TypeDeclResolution::TypeDeclResolved { identity, .. } => {
-                        v1_map_key_round_add(acc.clone(), identity.clone())
+            |acc: Rc<EqHashIncapableRound>, identity: String| match v1_rt::map_get(
+                &type_decl_items.by_identity.clone(),
+                identity.clone(),
+            ) {
+                Some(item) => {
+                    if v1_item_is_eq_hash_incapable_locally(
+                        item.clone(),
+                        identity.clone(),
+                        type_summaries.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        v1_eq_hash_incapable_round_add(acc.clone(), identity.clone())
+                    } else {
+                        acc.clone()
                     }
-                    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => {
-                        crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
-                            type_decl_items.clone(),
-                            leaf.clone(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<MapKeyRequirementRound>, identity: String| {
-                                v1_map_key_round_add(inner, identity.clone())
-                            },
-                        )
-                    }
-                    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: leaf, .. } => {
-                        crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
-                            type_decl_items.clone(),
-                            leaf.clone(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<MapKeyRequirementRound>, identity: String| {
-                                v1_map_key_round_add(inner, identity.clone())
-                            },
-                        )
-                    }
-                    TypeDeclResolution::TypeDeclNotDeclared => acc.clone(),
                 }
+                std::option::Option::None => acc.clone(),
             },
         );
-        v1_map_key_fixpoint_loop(
+        let incapable = v1_eq_hash_incapable_fixpoint_loop(
             seeded.clone(),
             declared_type_names.clone(),
             type_decl_items.clone(),
             v1_rt::int_add((declared_type_names.clone().len() as i64), 1),
             source_indices.clone(),
+        );
+        declared_type_names.iter().cloned().fold(
+            v1_rt::rc_empty_set::<String>(),
+            |acc: Rc<BTreeSet<String>>, identity: String| {
+                if v1_rt::set_contains(&incapable, identity.clone()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_set_insert(acc.clone(), identity.clone())
+                }
+            },
         )
     }
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum V1FreeMonoidSupplementalRoute {
@@ -2386,12 +2498,12 @@ pub fn v1_emit_struct_derives(
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
-    map_key_required: bool,
+    eq_hash_capable: bool,
     deserialize_forbidden: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if has_fn_fields.clone() {
-        if map_key_required.clone() {
+        if eq_hash_capable.clone() {
             v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat("trait_derive_emit: '".to_string(), name.clone()), "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster".to_string()))
         } else {
             crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
@@ -2406,7 +2518,7 @@ pub fn v1_emit_struct_derives(
                     children.clone(),
                     source_indices.clone(),
                 );
-                let traits = v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::symbol_wrapped_ord_carrier_derive_traits(), map_key_required.clone());
+                let traits = v1_with_eq_hash_capability(crate::extdeps_languages_rust_capabilities::symbol_wrapped_ord_carrier_derive_traits(), eq_hash_capable.clone());
                 if crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(
                     crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
                     traits.clone(),
@@ -2424,20 +2536,20 @@ pub fn v1_emit_struct_derives(
         } else {
             if v1_rt::set_contains(&shared_types, name.clone()) {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    v1_with_map_key_requirement(
+                    v1_with_eq_hash_capability(
                         v1_record_derive_traits_heap_for_construction(
                             deserialize_forbidden.clone(),
                         ),
-                        map_key_required.clone(),
+                        eq_hash_capable.clone(),
                     ),
                 )
             } else {
                 crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    v1_with_map_key_requirement(
+                    v1_with_eq_hash_capability(
                         v1_record_derive_traits_copy_for_construction(
                             deserialize_forbidden.clone(),
                         ),
-                        map_key_required.clone(),
+                        eq_hash_capable.clone(),
                     ),
                 )
             }
@@ -2448,7 +2560,7 @@ pub fn v1_emit_struct_derives(
 pub fn v1_emit_enum_derives(
     children: Rc<Vec<Rc<Node>>>,
     has_fn_fields: bool,
-    map_key_required: bool,
+    eq_hash_capable: bool,
     deserialize_forbidden: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2456,7 +2568,7 @@ pub fn v1_emit_enum_derives(
     {
         if has_fn_fields.clone() {
             {
-                if map_key_required.clone() {
+                if eq_hash_capable.clone() {
                     return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster".to_string());
                 }
                 return crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
@@ -2464,7 +2576,7 @@ pub fn v1_emit_enum_derives(
                 );
             }
         }
-        let fm_params = if map_key_required.clone() {
+        let fm_params = if eq_hash_capable.clone() {
             Rc::new(vec![])
         } else {
             v1_freemonoid_element_params(
@@ -2476,7 +2588,7 @@ pub fn v1_emit_enum_derives(
         if ((fm_params.clone().len() as i64) > 0) {
             return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_freemonoid_unroutable_row_refusal(), crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(crate::extdeps_languages_rust_capabilities::rust_traits_for_construction_contract(crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits(), deserialize_forbidden.clone())))), "\n".to_string()), v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()));
         }
-        let set_params = if map_key_required.clone() {
+        let set_params = if eq_hash_capable.clone() {
             Rc::new(vec![])
         } else {
             v1_set_element_params(
@@ -2491,17 +2603,17 @@ pub fn v1_emit_enum_derives(
         );
         let nullary_traits =
             crate::extdeps_languages_rust_capabilities::rust_traits_for_construction_contract(
-                v1_with_map_key_requirement(
+                v1_with_eq_hash_capability(
                     crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(),
-                    map_key_required.clone(),
+                    eq_hash_capable.clone(),
                 ),
                 deserialize_forbidden.clone(),
             );
         let payload_traits =
             crate::extdeps_languages_rust_capabilities::rust_traits_for_construction_contract(
-                v1_with_map_key_requirement(
+                v1_with_eq_hash_capability(
                     crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits(),
-                    map_key_required.clone(),
+                    eq_hash_capable.clone(),
                 ),
                 deserialize_forbidden.clone(),
             );
@@ -4078,7 +4190,7 @@ pub fn v1_item_clone_undecided_head(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 pub struct CloneBoundRound {
     pub bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub added: i64,
@@ -4674,7 +4786,7 @@ pub fn v1_emit_struct_from_capability_table(
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
-    map_key_required: bool,
+    eq_hash_capable: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     header_clone_param_names: Rc<Vec<String>>,
@@ -4689,7 +4801,7 @@ pub fn v1_emit_struct_from_capability_table(
             }
             __result
         });
-        let fm_params = if (((has_fn_fields.clone() || map_key_required.clone())
+        let fm_params = if (((has_fn_fields.clone() || eq_hash_capable.clone())
             || rust_symbol_wrapped_ord_carrier_shape_eligible(
                 children.clone(),
                 source_indices.clone(),
@@ -4759,7 +4871,7 @@ pub fn v1_emit_struct_from_capability_table(
         } else {
             {
                 let ord_propagated_params = if (((has_fn_fields.clone()
-                    || map_key_required.clone())
+                    || eq_hash_capable.clone())
                     || rust_symbol_wrapped_ord_carrier_shape_eligible(
                         children.clone(),
                         source_indices.clone(),
@@ -4829,7 +4941,7 @@ pub fn v1_emit_struct_from_capability_table(
                             children.clone(),
                             shared_types.clone(),
                             has_fn_fields.clone(),
-                            map_key_required.clone(),
+                            eq_hash_capable.clone(),
                             deserialize_forbidden.clone(),
                             source_indices.clone(),
                         );

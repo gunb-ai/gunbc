@@ -59,7 +59,7 @@ pub type Int = i64;
 
 pub type UInt = i64;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum UInt8Result {
     UInt8Ready { value: i64 },
@@ -85,7 +85,7 @@ pub fn uint8_of_int(value: Int) -> Rc<UInt8Result> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 pub struct QualifiedOctets {
     members: Rc<Vec<i64>>,
 }
@@ -95,7 +95,7 @@ impl QualifiedOctets {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum QualifiedOctetsResult {
     QualifiedOctetsReady { value: Rc<QualifiedOctets> },
@@ -146,7 +146,16 @@ pub fn qualified_octet_members(q: Rc<QualifiedOctets>) -> Rc<Vec<i64>> {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum Signedness {
@@ -155,7 +164,16 @@ pub enum Signedness {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    std::hash::Hash,
 )]
 #[serde(tag = "_variant")]
 pub enum OverflowReturnValueRule {
@@ -163,7 +181,7 @@ pub enum OverflowReturnValueRule {
     ReturnSaturating,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Eq, std::hash::Hash)]
 #[serde(tag = "_variant")]
 pub enum IntegerOverflowSemantics<E> {
     OverflowReturns { value_rule: OverflowReturnValueRule },
