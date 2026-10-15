@@ -1,5 +1,7 @@
 module v1.tests.claim.checkpoint_identity_keying_witness_test
 
+import std.optional { Present, Absent, Optional }
+
 import v1.compiler.emit_rust { rust_scalar_checkpoint_reference_base, rust_scalar_checkpoint_grounding_base }
 import v1.compiler.coercion { literal_suffix, type_realization_decision }
 import std.coercion { CorpusDeclared, DeclarationIdentityAbsent }

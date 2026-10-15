@@ -1,5 +1,7 @@
 module v1.compiler.parse
 
+import std.optional { Present, Absent, Optional }
+
 import std.target_representation { VariantParentBeforeInference }
 import v1.std.core { Unmarked, TestMarked,
   module_node, import_node,
@@ -174,8 +176,8 @@ type ParseContext {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
   occurrence_index: OccurrenceIndex?
-  declaration_occurrences: List<DeclarationOccurrence>?
-  reference_occurrences: List<ReferenceOccurrence>?
+  declaration_occurrences: List<DeclarationOccurrence>
+  reference_occurrences: List<ReferenceOccurrence>
   heads_only: Bool
   env: ParseEnvironment
   source_extents: ParseSourceExtentState
@@ -575,27 +577,21 @@ fn parse_context_occurrence_index(ctx: ParseContext) -> OccurrenceIndex {
 fn parse_context_declaration_occurrences(
   ctx: ParseContext
 ) -> List<DeclarationOccurrence> {
-  match ctx.declaration_occurrences {
-    Present { value: occurrences } => occurrences
-    Absent => []
-  }
+  ctx.declaration_occurrences
 }
 
 fn parse_context_reference_occurrences(
   ctx: ParseContext
 ) -> List<ReferenceOccurrence> {
-  match ctx.reference_occurrences {
-    Present { value: occurrences } => occurrences
-    Absent => []
-  }
+  ctx.reference_occurrences
 }
 
 fn parse_context_with_occurrence_state(
   ctx: ParseContext,
   occurrence_allocator: OccurrenceIdAllocator,
   occurrence_index: OccurrenceIndex?,
-  declaration_occurrences: List<DeclarationOccurrence>?,
-  reference_occurrences: List<ReferenceOccurrence>?
+  declaration_occurrences: List<DeclarationOccurrence>,
+  reference_occurrences: List<ReferenceOccurrence>
 ) -> ParseContext {
   ParseContext {
     source_indices: ctx.source_indices,
@@ -1957,8 +1953,7 @@ fn parse_context_record_occurrence(
         ctx: ctx,
         occurrence_allocator: ctx.occurrence_allocator,
         occurrence_index: ctx.occurrence_index,
-        declaration_occurrences: Present {
-          value: list_push(
+        declaration_occurrences: list_push(
             parse_context_declaration_occurrences(ctx: ctx),
             DeclarationOccurrence {
               occurrence: occurrence,
@@ -1967,7 +1962,6 @@ fn parse_context_record_occurrence(
               diagnostic_span: diagnostic_span,
             }
           ),
-        },
         reference_occurrences: ctx.reference_occurrences
       )
     ParsedOccurrenceReference { category: category } =>
@@ -1976,8 +1970,7 @@ fn parse_context_record_occurrence(
         occurrence_allocator: ctx.occurrence_allocator,
         occurrence_index: ctx.occurrence_index,
         declaration_occurrences: ctx.declaration_occurrences,
-        reference_occurrences: Present {
-          value: list_push(
+        reference_occurrences: list_push(
             parse_context_reference_occurrences(ctx: ctx),
             ReferenceOccurrence {
               occurrence: occurrence,
@@ -1986,7 +1979,6 @@ fn parse_context_record_occurrence(
               diagnostic_span: diagnostic_span,
             }
           ),
-        },
       )
     ParsedOccurrenceUnclassified => ctx
   }
@@ -2373,8 +2365,8 @@ fn parse_context_for_tokens(
     occurrence_index: Present {
       value: OccurrenceIndex { entries: [] },
     },
-    declaration_occurrences: Present { value: [] },
-    reference_occurrences: Present { value: [] },
+    declaration_occurrences: [],
+    reference_occurrences: [],
     heads_only: heads_only,
     env: env,
     source_extents: parse_source_extent_state_empty(),

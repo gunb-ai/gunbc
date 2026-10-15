@@ -1,5 +1,7 @@
 module v1.compiler.infer_env
 
+import std.optional { Present, Absent, Optional }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import v1.std.core { Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
@@ -269,9 +271,6 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
   is_kernel_type(name: name)
     || is_container_type(name: name)
     || name == "Unit"
-    || name == "Optional"
-    || name == "Present"
-    || name == "Absent"
 }
 
 // WHAT A BARE NAME DENOTES AT ONE UNSTAMPED OCCURRENCE, in the order the typechecker binds a

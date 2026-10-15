@@ -1,5 +1,7 @@
 module v1.compiler.compile
 
+import std.optional { Present, Absent, Optional }
+
 import extdeps.languages.dag.syntax { dag_parse_environment }
 
 import std.syntax { LiteralValue, BinOp, ParseEnvironment }

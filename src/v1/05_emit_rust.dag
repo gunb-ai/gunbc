@@ -1,5 +1,7 @@
 module v1.compiler.emit_rust
 
+import std.optional { Present, Absent, Optional }
+
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }

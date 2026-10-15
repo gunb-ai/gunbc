@@ -23,6 +23,7 @@ pub use crate::std_occurrence_identity::{
 pub use crate::std_occurrence_identity::{
     NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_source_annotation::{
     source_annotation_graph_concat, source_annotation_graph_empty,
 };

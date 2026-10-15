@@ -67,6 +67,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransportRefusal,
 };
 pub use crate::std_operator_realization::OperandDeclaration;
+pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };

@@ -1,5 +1,7 @@
 module v1.compiler.infer_types
 
+import std.optional { Present, Absent, Optional }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity }

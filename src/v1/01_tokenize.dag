@@ -1,5 +1,7 @@
 module v1.compiler.tokenize
 
+import std.optional { Present, Absent, Optional }
+
 import std.types { SourceSpan }
 import std.source_annotation {
   AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken,

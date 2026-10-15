@@ -25,6 +25,7 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
+pub use crate::std_optional::Optional;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{is_container_type, is_kernel_type};
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
@@ -401,12 +402,9 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
 }
 
 pub fn overlay_skips_kernel_name(name: String) -> bool {
-    (((((crate::std_types::is_kernel_type(name.clone())
+    ((crate::std_types::is_kernel_type(name.clone())
         || crate::std_types::is_container_type(name.clone()))
         || (name.clone() == "Unit".to_string()))
-        || (name.clone() == "Optional".to_string()))
-        || (name.clone() == "Present".to_string()))
-        || (name.clone() == "Absent".to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

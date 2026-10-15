@@ -1,5 +1,7 @@
 module v1.compiler.emit
 
+import std.optional { Present, Absent, Optional }
+
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.compiler_entry {
   CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
