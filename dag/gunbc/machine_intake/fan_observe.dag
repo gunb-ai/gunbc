@@ -96,8 +96,8 @@ fn fan_observe_from_standing(standing: ManagedHostBindingStanding) -> FanObserve
 fn fan_observe_admission(lookup: ManagedHostLookup) -> FanObserveAdmission {
   match lookup {
     ManagedHostNotManaged { host: h } => FanObserveRefused { cause: FanHostNotManaged { host: h } }
-    ManagedHostFound { standing: s } => fan_observe_from_standing(standing: s)
-    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } =>
+    ManagedHostFound { standing: s, control: _ } => fan_observe_from_standing(standing: s)
+    ManagedHostFoundUnderDeclaredDrop { standing: s, control: _, drop: _, standing_subject: _, current_subject: _ } =>
       fan_observe_from_standing(standing: s)
   }
 }

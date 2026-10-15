@@ -25,6 +25,7 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
@@ -496,10 +497,17 @@ fn managed_hosts() -> List<ManagedHost> {
 // A MANAGED HOST BY LABEL, AS ITS WHOLE BINDING STANDING. A caller that knows only a host's name reaches
 // the row's join here, and gets the standing -- bound with its observed endpoint and account together,
 // or the refusal -- never an account on its own.
+// THE FLEET'S SECURED CONTROL ROUTE FOR THE ROW (gunbc.host.bmc_control_binding), decided from the
+// row's access observation and secure standing alone. Every found arm carries it beside the legacy
+// binding standing, so a consumer that only needs to know "can I drive this controller" takes the
+// control standing and never lifts the ManagedHost row. The legacy standing stays for the consumers
+// that still read the account, the observation, or the board facts off the binding (fan observe,
+// reset-return, boot handoff); it retires with the row.
 type ManagedHostLookup
-  = ManagedHostFound { standing: ManagedHostBindingStanding }
+  = ManagedHostFound { standing: ManagedHostBindingStanding, control: BmcControlStanding }
   | ManagedHostFoundUnderDeclaredDrop {
       standing: ManagedHostBindingStanding
+      control: BmcControlStanding
       drop: DeclarationRef
       standing_subject: MachineIntakeSubject
       current_subject: MachineIntakeSubject
@@ -511,10 +519,15 @@ fn managed_host_binding_for(host: NonEmptyStr) -> ManagedHostLookup {
     Absent => ManagedHostNotManaged { host: host }
     Present { value: m } =>
       match m {
-        OrdinaryMember { host: h } => ManagedHostFound { standing: managed_host_binding(host: h) }
+        OrdinaryMember { host: h } =>
+          ManagedHostFound {
+            standing: managed_host_binding(host: h),
+            control: bmc_control_binding(observed: h.access, secured: h.secure),
+          }
         MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
           ManagedHostFoundUnderDeclaredDrop {
             standing: managed_host_binding(host: h),
+            control: bmc_control_binding(observed: h.access, secured: h.secure),
             drop: d,
             standing_subject: standing,
             current_subject: current,
@@ -540,8 +553,8 @@ fn account_driving_standing(standing: ManagedHostBindingStanding, endpoint: BmcC
 fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControllerEndpoint) -> NonEmptyStr? {
   match lookup {
     ManagedHostNotManaged { host: _ } => none
-    ManagedHostFound { standing: s } => account_driving_standing(standing: s, endpoint: endpoint)
-    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } =>
+    ManagedHostFound { standing: s, control: _ } => account_driving_standing(standing: s, endpoint: endpoint)
+    ManagedHostFoundUnderDeclaredDrop { standing: s, control: _, drop: _, standing_subject: _, current_subject: _ } =>
       account_driving_standing(standing: s, endpoint: endpoint)
   }
 }

@@ -1,0 +1,70 @@
+// gunbc.host.bmc_control_binding — a host's SECURED baseboard-control route, sealed.
+//
+// cut 2 of the managed-host untangle. The BMC route was previously an ad-hoc bundle
+// (gunbc.host.managed_host.ManagedHostBinding) that lifted the whole ManagedHost row -- board facts,
+// capability row, unit-hold policy, SMpro site -- just to say "this unit's controller was reached and
+// its secured credential still answers at this endpoint". The route only needs three facts:
+//
+//   the endpoint it was observed at,
+//   the unit whose credential secured it, and
+//   the secured standing (secured endpoint + account + the policy it was adjudicated under).
+//
+// The join and its endpoint-mismatch refusal move here, unchanged in semantics from
+// gunbc.host.managed_host.managed_host_binding: the observed endpoint must equal the secured endpoint,
+// or the route is refused (RED3). The join reads the access observation and the secured standing as
+// INPUTS -- it does not lift them off a ManagedHost row, so this standing stands for an unenrolled
+// unit whose subject is valid (crisp-newt-630 cut 1) and does not require a host identity.
+//
+// ControlledHost (gunbc.host.host_control_route) consumes this standing: its BmcControlRoute carries a
+// BmcControlBinding unchanged.
+
+module gunbc.host.bmc_control_binding
+
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding, BmcSecureOutcome, BmcSecured, BmcSecureRefused, BmcSecureRefusalCause }
+import gunbc.machine_intake.subject { UnitKey }
+
+// THE SECURED ROUTE. sole_constructor: it is minted only on the bound arm of the join below, from the
+// endpoint the access observation read and the secured standing that proved the credential reaches it.
+// endpoint is the observed controller endpoint (the join key); unit is the unit of the secured subject
+// (never a separately authored field); secured carries the secured endpoint, the account reference, and
+// the policy the standing was adjudicated under.
+type BmcControlBinding sole_constructor {
+  endpoint: BmcControllerEndpoint
+  unit: UnitKey
+  secured: BmcSecureStanding
+}
+
+// THE ROUTE'S STANDING. A refusal carries its cause unchanged rather than a re-coined one; the
+// endpoint-mismatch arm names both endpoints so the caller can say which was observed and which was
+// secured. (This is the refusal that moved out of gunbc.host.managed_host.)
+type BmcControlStanding
+  = BmcControlBound { binding: BmcControlBinding }
+  | BmcControlAccessUnobserved { endpoint: BmcControllerEndpoint }
+  | BmcControlNotSecured { cause: BmcSecureRefusalCause }
+  | BmcControlEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+// THE JOIN. From an access observation and a secured standing, decide whether the unit's controller is
+// a bound, secured control route. The observed endpoint must equal the secured endpoint; otherwise the
+// route is refused with both endpoints named. The unit is read off the secured subject -- there is no
+// separately minted unit field to swap.
+fn bmc_control_binding(observed: BmcAccessObservationStanding, secured: BmcSecureStanding) -> BmcControlStanding {
+  match secured.outcome {
+    BmcSecureRefused { cause: c } => BmcControlNotSecured { cause: c }
+    BmcSecured { endpoint: secured_endpoint, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      match observed {
+        BmcAccessUnobserved { endpoint: e } => BmcControlAccessUnobserved { endpoint: e }
+        BmcAccessObserved { observation: o } =>
+          if (o.endpoint.host as String) == (secured_endpoint.host as String) {
+            BmcControlBound { binding: BmcControlBinding {
+              endpoint: o.endpoint,
+              unit: secured.subject.subject.unit_key,
+              secured: secured,
+            } }
+          } else {
+            BmcControlEndpointMismatch { observed: o.endpoint, secured: secured_endpoint }
+          }
+      }
+  }
+}

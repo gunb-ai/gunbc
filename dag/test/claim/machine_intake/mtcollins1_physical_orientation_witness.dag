@@ -62,7 +62,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn mtcollins1_oriented(anchors: List<DimmPlacementAnchor>) -> DimmOrientedHost? {
   match managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr) {
     ManagedHostNotManaged { host: _ } => Absent
-    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => match s {
+    ManagedHostFoundUnderDeclaredDrop { standing: s, control: _, drop: _, standing_subject: _, current_subject: _ } => match s {
       ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
         HostDimmOriented { oriented: o } => Present { value: o }
         HostDimmBoardUnmodeled { host: _, board: _ } => Absent
@@ -71,7 +71,7 @@ fn mtcollins1_oriented(anchors: List<DimmPlacementAnchor>) -> DimmOrientedHost? 
       ManagedHostNotSecured { cause: _ } => Absent
       ManagedHostEndpointMismatch { observed: _, secured: _ } => Absent
     }
-    ManagedHostFound { standing: s } => match s {
+    ManagedHostFound { standing: s, control: _ } => match s {
       ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
         HostDimmOriented { oriented: o } => Present { value: o }
         HostDimmBoardUnmodeled { host: _, board: _ } => Absent

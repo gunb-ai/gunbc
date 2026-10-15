@@ -11,6 +11,7 @@ import gunbc.host.managed_host {
   ManagedHost, managed_host_fixture, managed_hosts, ManagedHostAccessUnobserved, ManagedHostEndpointMismatch,
   ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_account_driving,
 }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
 import std.types { EpochMs }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
@@ -229,7 +230,7 @@ test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> B
     BmcAccessObserved { observation: o } => {
       let lookup = managed_host_binding_for(host: h.host as NonEmptyStr)
       let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      let crossed_lookup = ManagedHostFound { standing: managed_host_binding(host: crossed) }
+      let crossed_lookup = ManagedHostFound { standing: managed_host_binding(host: crossed), control: bmc_control_binding(observed: crossed.access, secured: crossed.secure) }
       (match managed_host_account_driving(lookup: lookup, endpoint: o.endpoint) { Present { value: a } => (a as String) == "gunbc"  Absent => false })
         && (match managed_host_account_driving(lookup: lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
         && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
