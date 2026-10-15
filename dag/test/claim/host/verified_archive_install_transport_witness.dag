@@ -26,6 +26,7 @@ import test.claim.host.verified_archive_install_local_shell_recorder {
 }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
+import gunbc.runner.runner_browser_toolchain { node_release_archive, runner_browser_toolchain_node }
 import gunbc.runner.runner_microvm_host_ready {
   firecracker_fetch_commands, firecracker_install_commands, firecracker_install_root,
 }
@@ -201,10 +202,31 @@ test fn qemu_fetch_and_install_argv_match_the_main_standing_oracle() -> Bool {
 
 test fn firecracker_fetch_and_install_programs_match_the_main_host_ready_oracle() -> Bool {
   let root = firecracker_install_root(executor_home: "/home/x")
-  let fetch = firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
-  let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
-  map(fetch, c => c.program.invocation as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
-    && map(install, c => c.program.invocation as String) == ["tar", "cp"]
+  let fetch = map(firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s"), c => join(argv_words(command: c), " "))
+  let install = map(firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s"), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /home/x/s",
+    "/usr/bin/mkdir -p /home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64",
+    "curl -fsL -o /home/x/s/firecracker-v1.16.1-aarch64.tgz https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-aarch64.tgz",
+  ]
+    && install == [
+      "tar xf /home/x/s/firecracker-v1.16.1-aarch64.tgz -C /home/x/s --strip-components=0",
+      "cp /home/x/s/release-v1.16.1-aarch64/firecracker-v1.16.1-aarch64 /home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64/firecracker",
+    ]
+}
+
+test fn browser_node_fetch_and_install_argv_match_the_published_node_archive() -> Bool {
+  let a = node_release_archive(n: runner_browser_toolchain_node)
+  let fetch = map(staged_archive_fetch_commands(archives_dir: "/b/archives", a: a), c => join(argv_words(command: c), " "))
+  let install = map(staged_archive_install_commands(archives_dir: "/b/archives", tree: "/b/staging.X", a: a), c => join(argv_words(command: c), " "))
+  fetch == [
+    "/usr/bin/mkdir -p /b/archives",
+    "curl -fsL -o /b/archives/node-v24.21.0-linux-arm64.tar.xz https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.xz",
+  ]
+    && install == [
+      "/usr/bin/mkdir -p /b/staging.X/node",
+      "tar xf /b/archives/node-v24.21.0-linux-arm64.tar.xz -C /b/staging.X/node --strip-components=1",
+    ]
 }
 
 test fn fleet_ssh_argv_goes_through_the_host_effect_dispatcher() -> Bool {
