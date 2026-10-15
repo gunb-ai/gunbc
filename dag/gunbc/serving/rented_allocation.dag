@@ -89,8 +89,8 @@ type RentedEndCondition
   = RentedEndsOnOperatorRelease { decided_by: PrincipalRef }
   | RentedEndsBy { at: EpochMs }
 
-// THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a pinned release (extdeps.ninfer.ninfer_serve
-// rented_ninfer_source ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
+// THE ENGINE THE CARD IS MEANT TO RUN: ninfer-serve at a pinned release (gunbc.serving.rented_ninfer_source
+// ninfer_serve_81c8ce09_sm120_release: source revision, build target, object, installed-file pins) with its launch flags and listen
 // port. One arm because one engine is consumed; vLLM (gunbc.serving.rented_replica rented_replica_launch)
 // joins as an arm when an allocation that runs it is enrolled. The probe, not this field, decides the wire
 // behaviour a turn sees (gunbc.harness.harness_reasoning_wire HarnessServingUnit).

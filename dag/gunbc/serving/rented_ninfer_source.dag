@@ -14,10 +14,10 @@ import gunbc.cloudflare.r2_origin { fleet_cloudflare_account_id, OriginCredentia
 
 // WHERE A RENTED CARD FETCHES THE NINFER ARTIFACTS FROM, AND UNDER WHAT CREDENTIAL. Both artifacts (the engine
 // tarball and the weights container) were read, from the live card on 2026-10-15, to come from one Cloudflare
-// R2 bucket, `models`, on this fleet's account, through credentialed S3 and not a public URL. The PINS are not
-// here: the engine's are extdeps.ninfer.ninfer_serve ninfer_serve_81c8ce09_sm120_release and the weights' are
-// extdeps.ninfer.qwen3_8_27b_nvfp4 qwen3_8_27b_nvfp4_row, and this module reuses both rather than minting a
-// second copy. It adds only the location and the credential binding.
+// R2 bucket, `models`, on this fleet's account, through credentialed S3 and not a public URL. The engine's
+// pins are created below (ninfer_serve_81c8ce09_sm120_release); the weights' pin is
+// extdeps.ninfer.qwen3_8_27b_nvfp4 qwen3_8_27b_nvfp4_row, which this module reuses rather than minting a second
+// copy. It adds the location and the credential binding.
 //
 // STATED DIVERGENCE (DESIGN 3b): `models` is not a gunbc.cloudflare.r2_origin BucketPurpose and no
 // R2OriginBucket is built for it. That roster is the injective, fleet-allocated fabric buckets, each with a
