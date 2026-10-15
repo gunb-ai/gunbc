@@ -440,6 +440,29 @@ test fn census_diff_passed_to_refused_on_a_common_member_is_newly_refusing() -> 
   findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_newly_refusing)
 }
 
+// A module refused at resolve before and after, for a different fatal: a dependency refusal
+// (declarer refused) gave way to the module's own unbound name once the dependency was repaired.
+// The earlier fatal cleared and the next is exposed; it is not newly refusing.
+test fn census_diff_same_stage_different_fatal_is_cleared_and_exposed_not_newly_refusing() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_declarer_refused, at: planted_at(line: 4), occurrence: occ(n: 1)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 12), occurrence: occ(n: 7)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
 test fn census_diff_location_movement_is_not_churn() -> Bool {
   let before_rows = census_three_stage_rows(
     module: "a",

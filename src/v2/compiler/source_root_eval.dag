@@ -6092,7 +6092,10 @@ fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComp
               [CensusDiffLocationUpdate { before: before_row, after: after_row }]
             }
           } else {
-            [CensusDiffNewlyRefusing { after: after_row }]
+            // Refused at this stage before and after, for a different fatal: the earlier fatal
+            // cleared and the next one is exposed (a dependency's refusal giving way to the
+            // module's own). Not a regression -- that is Passed to Refused, below.
+            [CensusDiffClearedAndNewlyExposed { cleared: before_row, newly_exposed: after_row }]
           }
         CensusComparablePassed => []
       }
