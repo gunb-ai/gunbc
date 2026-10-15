@@ -50,7 +50,11 @@ import extdeps.filesystem.filesystem_io {
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
 }
 import extdeps.shell
-import extdeps.tools.stat { stat_file_type_reading, StatFileTypeRead, StatFileTypeUnanswered, SymbolicLinkKind, DirectoryKind }
+import extdeps.tools.stat {
+  stat_file_type_reading, StatFileTypeRead, StatFileTypeUnanswered, StatFileKind,
+  SymbolicLinkKind, DirectoryKind, RegularFileKind, FifoKind, SocketKind,
+  CharacterDeviceKind, BlockDeviceKind, UnknownKind,
+}
 import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
@@ -158,19 +162,6 @@ fn attempt_system_unit_answer_path(instance_root: String, entry: String) -> Stri
 
 fn attempt_system_unit_request_body_path(dir: String) -> String {
   join([dir, "/", attempt_system_unit_request_body_name], "")
-}
-
-fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
-  fold(
-    [
-      attempt_unit_spool_staging_dir(instance_root: instance_root),
-      attempt_unit_spool_request_dir(instance_root: instance_root),
-      attempt_unit_spool_claimed_dir(instance_root: instance_root),
-      attempt_unit_spool_answer_dir(instance_root: instance_root),
-    ],
-    init: true,
-    f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
-  )
 }
 
 fn attempt_system_unit_name_admitted(unit: NonEmptyStr) -> Bool {
@@ -513,6 +504,50 @@ fn attempt_system_unit_enqueue_start_wait(instance_root: String, request: Attemp
   )
 }
 
+type AttemptSystemUnitBodyAdmission
+  = AttemptSystemUnitBodyRegular
+  | AttemptSystemUnitBodyRefused { reason: String }
+
+type AttemptSystemUnitClaimedBody
+  = AttemptSystemUnitClaimedBodyRead { content: String }
+  | AttemptSystemUnitClaimedBodyRefused { reason: String }
+
+fn attempt_system_unit_admit_body_kind(kind: StatFileKind) -> AttemptSystemUnitBodyAdmission {
+  match kind {
+    RegularFileKind => AttemptSystemUnitBodyRegular
+    SymbolicLinkKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a symlink" }
+    FifoKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a fifo" }
+    DirectoryKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a directory" }
+    SocketKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a socket" }
+    CharacterDeviceKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a character device" }
+    BlockDeviceKind => AttemptSystemUnitBodyRefused { reason: "claimed request body is a block device" }
+    UnknownKind { word } => AttemptSystemUnitBodyRefused { reason: join(["claimed request body has unrecognized file type ", word], "") }
+  }
+}
+
+fn attempt_system_unit_admit_body_path(path: String) -> AttemptSystemUnitBodyAdmission {
+  let t = stat.File.FileType(path: path)
+  match stat_file_type_reading(success: t.success, output: t.file_type) {
+    StatFileTypeUnanswered { cause } =>
+      AttemptSystemUnitBodyRefused { reason: join(["claimed request body stat was unreadable: ", cause], "") }
+    StatFileTypeRead { kind } => attempt_system_unit_admit_body_kind(kind: kind)
+  }
+}
+
+fn attempt_system_unit_read_claimed_body(path: String) -> AttemptSystemUnitClaimedBody {
+  match attempt_system_unit_admit_body_path(path: path) {
+    AttemptSystemUnitBodyRefused { reason } => AttemptSystemUnitClaimedBodyRefused { reason: reason }
+    AttemptSystemUnitBodyRegular => {
+      let read = Filesystem.Read(path: path)
+      if !read.success {
+        AttemptSystemUnitClaimedBodyRefused { reason: "claimed request body unreadable" }
+      } else {
+        AttemptSystemUnitClaimedBodyRead { content: read.content }
+      }
+    }
+  }
+}
+
 fn attempt_system_unit_claimed_kind_is_symlink(path: String) -> Bool {
   let t = stat.File.FileType(path: path)
   match stat_file_type_reading(success: t.success, output: t.file_type) {
@@ -684,16 +719,17 @@ fn attempt_system_unit_run_admitted_start(instance: HostDashboardInstance, facts
 }
 
 fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String) -> ProcessExit {
-  let read = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: path))
-  if !read.success {
-    let _ = attempt_system_unit_write_answer(
-      instance_root: instance.instance_root as String,
-      entry: entry,
-      answer: AttemptSystemUnitRefusedAnswer { reason: "claimed request body unreadable" },
-    )
-    exit_failure(reason: "claimed request body unreadable")
-  } else {
-    let lines = split(s: read.content, delimiter: "\n")
+  match attempt_system_unit_read_claimed_body(path: attempt_system_unit_request_body_path(dir: path)) {
+    AttemptSystemUnitClaimedBodyRefused { reason: why } => {
+      let _ = attempt_system_unit_write_answer(
+        instance_root: instance.instance_root as String,
+        entry: entry,
+        answer: AttemptSystemUnitRefusedAnswer { reason: why },
+      )
+      exit_failure(reason: why)
+    }
+    AttemptSystemUnitClaimedBodyRead { content } => {
+    let lines = split(s: content, delimiter: "\n")
     match lines.first() {
       Absent => {
         let _ = attempt_system_unit_write_answer(
@@ -755,6 +791,7 @@ fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: S
           }
         }
       }
+    }
     }
   }
 }

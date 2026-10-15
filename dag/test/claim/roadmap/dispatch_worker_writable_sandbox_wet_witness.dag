@@ -1,6 +1,6 @@
 module test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem { path_parent_directory }
@@ -42,13 +42,18 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   attempt_system_unit_request_body_path, attempt_system_unit_request_path,
-  attempt_system_unit_request_entry_name, attempt_system_unit_spool_prepare,
+  attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
+  AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   AttemptProcessExitedWith,
 }
-import gunbc.host.host_layout { attempt_exit_inbox_dir }
+import gunbc.host.host_layout {
+  attempt_exit_inbox_dir,
+  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+}
 import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
 
@@ -502,6 +507,19 @@ fn launcher_run_refused(instance: HostDashboardInstance) -> Bool {
   shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code != 0
 }
 
+fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
+  fold(
+    [
+      attempt_unit_spool_staging_dir(instance_root: instance_root),
+      attempt_unit_spool_request_dir(instance_root: instance_root),
+      attempt_unit_spool_claimed_dir(instance_root: instance_root),
+      attempt_unit_spool_answer_dir(instance_root: instance_root),
+    ],
+    init: true,
+    f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
+  )
+}
+
 fn wet_start_body(node_id: String, attempt_key: String, argv_word: String) -> String {
   attempt_system_unit_encode_start_wait(
     request: AttemptSystemUnitStartRequest {
@@ -608,4 +626,43 @@ test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
         AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
       }
   }
+}
+
+fn claimed_body_refused_after_plant(plant: fn(String) -> Bool, needle: String) -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let dir = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    let body = attempt_system_unit_request_body_path(dir: dir)
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && shell.Mkdir.NewOwnerOnly(path: dir as FilePath).success
+      && plant(body)
+      && match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
+        AttemptSystemUnitClaimed { entry: _, path } =>
+          match attempt_system_unit_read_claimed_body(path: attempt_system_unit_request_body_path(dir: path)) {
+            AttemptSystemUnitClaimedBodyRefused { reason } => string_contains(s: reason, pattern: needle)
+            AttemptSystemUnitClaimedBodyRead { content: _ } => false
+          }
+        AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+        AttemptSystemUnitClaimSymlink { entry: _ } => false
+        AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
+      }
+  }
+}
+
+test fn a_fifo_request_body_is_refused_without_reading() -> Bool {
+  claimed_body_refused_after_plant(
+    plant: (body) => shell.Exec.RunArgv(program: "mkfifo", arguments: ["--", body]).exit_code == 0,
+    needle: "fifo",
+  )
+}
+
+test fn a_symlinked_request_body_is_refused_without_following() -> Bool {
+  claimed_body_refused_after_plant(
+    plant: (body) => shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/dev/zero", body]).exit_code == 0,
+    needle: "symlink",
+  )
 }

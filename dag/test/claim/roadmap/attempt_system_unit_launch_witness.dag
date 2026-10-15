@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, List, String }
 import std.optional { Present }
 import std.measure { kibibyte }
 import extdeps.exec.command { argv_words }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
@@ -35,6 +36,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
+  attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -390,4 +392,24 @@ test fn a_started_answer_decodes() -> Bool {
     AttemptSystemUnitAnswerMissing => false
     AttemptSystemUnitAnswerUnreadable { detail: _ } => false
   }
+}
+
+fn body_kind_refused_with(kind: StatFileKind, needle: String) -> Bool {
+  match attempt_system_unit_admit_body_kind(kind: kind) {
+    AttemptSystemUnitBodyRegular => false
+    AttemptSystemUnitBodyRefused { reason } => string_contains(s: reason, pattern: needle)
+  }
+}
+
+test fn a_regular_file_body_is_admitted() -> Bool {
+  match attempt_system_unit_admit_body_kind(kind: RegularFileKind) {
+    AttemptSystemUnitBodyRegular => true
+    AttemptSystemUnitBodyRefused { reason: _ } => false
+  }
+}
+
+test fn a_fifo_or_symlink_body_kind_is_refused() -> Bool {
+  body_kind_refused_with(kind: FifoKind, needle: "fifo")
+    && body_kind_refused_with(kind: SymbolicLinkKind, needle: "symlink")
+    && body_kind_refused_with(kind: DirectoryKind, needle: "directory")
 }
