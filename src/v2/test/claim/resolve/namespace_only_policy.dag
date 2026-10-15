@@ -49,7 +49,7 @@ fn policy_pilot_namespace_with_index(
     test_code: test_code_index_empty(),
     declared_in: module_qn,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
 }
 

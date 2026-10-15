@@ -279,7 +279,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, unavailable_providers: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }

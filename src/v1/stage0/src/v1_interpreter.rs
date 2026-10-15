@@ -25101,7 +25101,8 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),
             ))),
             arm "free_call.complexity_linearity_wildcard_facts" { "complexity_linearity_wildcard_facts" } => {
-                let facts = crate::cli_run::complexity_linearity_wildcard_facts();
+                let facts = crate::cli_run::complexity_linearity_wildcard_facts()
+                    .map_err(|msg| InterpError::TypeError { msg })?;
                 let mut items: Vec<Value> = Vec::new();
                 for f in facts {
                     items.push(Value::Record {

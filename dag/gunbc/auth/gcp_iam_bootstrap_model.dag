@@ -125,6 +125,18 @@ fn iam_bootstrap_capability_bindings() -> List<IamBootstrapBinding> {
   distinct_by_key(xs: apply + observe + custody + submission, key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
 }
 
+// Every secret the capabilities stage binds a role on: grant-set custody secrets, every target's
+// granted secrets and the job's own. The identities stage creates each one bare when absent, so a
+// binding never meets an absent subject because one roster omitted it.
+fn iam_bootstrap_bound_secrets() -> List<NonEmptyStr> {
+  distinct_by_key(xs: flat_map(iam_bootstrap_capability_bindings(), b => match b.resource {
+    BootstrapSecret { secret } => [secret]
+    BootstrapProject => []
+    BootstrapPool { pool: _ } => []
+    BootstrapAccount { account: _ } => []
+  }), key: s => s as String)
+}
+
 // Workload trust is a separate final stage, after deny and resource-local permission readbacks.
 fn iam_bootstrap_trust_bindings() -> List<IamBootstrapBinding> {
   flat_map(filter(iam_bootstrap_identity_population(), i => i.own_trust), i =>

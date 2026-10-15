@@ -383,7 +383,7 @@ fn req_refusal_reason(resources: FreeMonoid<Symbol>) -> Symbol {
     test_code: test_code_index_empty(),
     declared_in: module_qn,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: []
   }
   match resolve_node(
     ctx: ResolveContext {
