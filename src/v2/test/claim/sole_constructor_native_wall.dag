@@ -7,7 +7,7 @@
 
 module v2.test.claim.sole_constructor_native_wall
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import std.optional { Absent, Present, optional_absent, optional_present }
 import v2.compiler.body_lowering_fold {
@@ -21,7 +21,7 @@ import v2.compiler.infer { infer_coproduct_path_of_variant_arm, infer_sole_const
 import v2.std.node_query { construct_node }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { empty_map, map_insert }
+
 import v2.std.diagnostic { None, Some, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }

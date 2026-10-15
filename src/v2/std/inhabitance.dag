@@ -38,11 +38,11 @@ import v2.std.node {
   node_subtree_nodes,
   node_synthetic
 }
-import std.algebra { Empty, list_append, list_snoc_item }
+import std.algebra { Empty, list_append, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 import std.nat { Succ, Zero }
-import v2.std.collection { empty_map, list_at_optional, map_insert, map_lookup }
+
 import v2.std.arrow_signature {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,

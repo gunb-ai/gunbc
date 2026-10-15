@@ -27652,11 +27652,12 @@ pub fn build_type_env(
             }
             __result
         });
+        let local_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
         let local_bindings = crate::v1_std_core::module_items(module.module.clone())
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                local_bindings_seed.clone(),
                 |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
                         match namespace_alias_target_path(item.clone(), source_indices.clone()) {
@@ -27704,11 +27705,12 @@ pub fn build_type_env(
                     }
                 },
             );
+        let param_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
         let param_bindings = crate::v1_std_core::module_items(module.module.clone())
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                param_bindings_seed.clone(),
                 |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                     let is_type_decl = match v1_rt::map_get(
                         &local_bindings,
@@ -27757,11 +27759,12 @@ pub fn build_type_env(
                     }
                 },
             );
+        let local_name_seed = v1_rt::rc_empty_map::<i64, bool>();
         let local_name_set = Rc::new(v1_rt::map_keys(&local_bindings))
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<i64, bool>(),
+                local_name_seed.clone(),
                 |acc: Rc<HashMap<i64, bool>>, ident: i64| {
                     v1_rt::rc_map_insert(acc, ident.clone(), true)
                 },
@@ -27780,11 +27783,12 @@ pub fn build_type_env(
         );
         let ancestry_cache = ancestry_precedence.cache.clone();
         let binding_forks = ancestry_precedence.conflicts.clone();
+        let deps_seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
         let local_deps_map = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                deps_seed.clone(),
                 |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
                     v1_rt::rc_map_insert(
                         acc,
@@ -27793,11 +27797,12 @@ pub fn build_type_env(
                     )
                 },
             );
+        let local_str_seed = v1_rt::rc_empty_map::<String, Rc<TypeBinding>>();
         let local_str_bindings = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                local_str_seed.clone(),
                 |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
@@ -27808,8 +27813,9 @@ pub fn build_type_env(
             all_deps_map.clone(),
             local_str_bindings.clone(),
         );
+        let cycle_set_seed = v1_rt::rc_empty_map::<String, bool>();
         let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            cycle_set_seed.clone(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
@@ -27883,11 +27889,12 @@ pub fn build_type_env(
             local_inductive_fields.clone(),
         );
         let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
+        let svn_local_seed = v1_rt::rc_empty_map::<String, bool>();
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<String, bool>(),
+                svn_local_seed.clone(),
                 |acc: Rc<HashMap<String, bool>>, n: String| {
                     v1_rt::rc_map_insert(acc, n.clone(), true)
                 },
@@ -28210,11 +28217,12 @@ pub fn build_type_env_unresolved(
             __result
         });
         let scope_parents = v1_rt::concat(import_parents.clone(), Rc::new(vec![kernel.clone()]));
+        let local_bindings_seed = v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>();
         let local_bindings = crate::v1_std_core::module_items(module.module.clone())
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                local_bindings_seed.clone(),
                 |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                     if is_namespace_alias_item(item.clone(), source_indices.clone()) {
                         acc.clone()
@@ -28387,11 +28395,12 @@ pub fn build_type_env_unresolved(
             kernel_cache.clone(),
         );
         let ancestry_cache = ancestry_precedence.cache.clone();
+        let deps_seed = v1_rt::rc_empty_map::<String, Rc<Vec<String>>>();
         let local_deps_map = Rc::new(v1_rt::map_values(&local_bindings))
             .iter()
             .cloned()
             .fold(
-                v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                deps_seed.clone(),
                 |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
                     v1_rt::rc_map_insert(
                         acc,
@@ -28415,8 +28424,9 @@ pub fn build_type_env_unresolved(
             all_deps_map.clone(),
             local_str_bindings.clone(),
         );
+        let cycle_set_seed = v1_rt::rc_empty_map::<String, bool>();
         let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            cycle_set_seed.clone(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
@@ -32662,8 +32672,9 @@ pub fn rewire_type_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
+        let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let index = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
                     acc,
@@ -32781,8 +32792,9 @@ pub fn rewire_func_env_parent_links(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
+        let index_seed = v1_rt::rc_empty_map::<String, Rc<TypedModule>>();
         let index = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            index_seed.clone(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
                 v1_rt::rc_map_insert(
                     acc,

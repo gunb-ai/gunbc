@@ -6,7 +6,7 @@ import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, empty_map, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -15,7 +15,7 @@ import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positiona
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
 import std.types { List, Map }
 import v2.compiler.body_lowering_fold { body_lower_rename_fresh_type_variables }
-import v2.std.collection { empty_map, map_insert }
+
 import v2.std.node { type_binder_conj_conforms }
 import v2.std.type_binder { binder_conj_names }
 
