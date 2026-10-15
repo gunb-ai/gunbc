@@ -313,7 +313,16 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // of the population this arm exists to serve. The call position is what establishes that the name
 // is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
 // a DATA row, none of which a call may target.
+// THE CENSUS NEVER SERVES AN ALGEBRA METHOD-TEMPLATE NAME. `func_sig_from_global_bare` already
+// answers Unresolved for those names so the ExprCall known-method bridge types them. Returning a
+// census identity here made CallTargetOutcome look like a declaration, so constructor admission
+// ran on an owner the product did not acquire and the method bridge never ran (public main
+// regression after pool_qualified_fill deletion: bare `map`/`join` as InternalError not-found,
+// plus borrowed generic T field misses).
 fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
+  if algebra_method_template_name(name: func_name) {
+    Absent
+  } else {
   match borrowed_census_decl(type_env: type_env, name: func_name) {
     BorrowedCensusDeclFound { declaration: bd } =>
       match item_kind(item: bd.node) {
@@ -324,6 +333,7 @@ fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> Borrowed
       }
     BorrowedCensusDeclAmbiguous { candidates: _ } => Absent
     BorrowedCensusDeclNotFound => Absent
+  }
   }
 }
 

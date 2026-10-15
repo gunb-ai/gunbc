@@ -490,75 +490,6 @@ fn floor_decl_parse_memo_store(
     });
 }
 
-fn inventory_entry_under_abs_roots(
-    rel_path: &str,
-    abs_roots: &[String],
-    ws: &std::path::Path,
-) -> bool {
-    let abs = ws.join(rel_path.replace('\\', "/"));
-    abs_roots.iter().any(|root| {
-        let root_path = std::path::Path::new(root);
-        abs == *root_path || abs.starts_with(root_path)
-    })
-}
-
-fn decls_parse_only_from_inventory(
-    inventory: &[crate::cli_run::PreparedSourceView],
-    roots: &[String],
-    files: &[String],
-    want_kinds: &[ItemKind],
-    caller: &str,
-) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
-    let ws = workspace_root();
-    let declared_files: std::collections::BTreeSet<PathBuf> = files
-        .iter()
-        .map(|f| ws.join(f.replace('\\', "/")))
-        .collect();
-    let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
-        .iter()
-        .filter(|e| {
-            let abs = ws.join(e.source.path.replace('\\', "/"));
-            inventory_entry_under_abs_roots(&e.source.path, roots, &ws)
-                || declared_files.contains(&abs)
-        })
-        .collect();
-    entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
-    let module_count = entries.len();
-    let mut out = Vec::new();
-    for entry in entries {
-        let filename = entry
-            .source
-            .path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&entry.source.path);
-        let parsed = parse_dag_content(&entry.source.content, filename).ok_or_else(|| {
-            format!(
-                "{caller}: failed to parse `{path}` from prepared inventory (fail-closed; no silent skip)",
-                path = entry.source.path
-            )
-        })?;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            if !want_kinds.contains(&item_kind(item.clone())) {
-                continue;
-            }
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            out.push(ParsedTypeDecl {
-                module_path: entry.module_path.clone(),
-                rel_path: entry.source.path.clone(),
-                name,
-                item: item.clone(),
-                source_indices: si.clone(),
-            });
-        }
-    }
-    Ok((out, module_count))
-}
-
 fn decls_parse_only_from_disk(
     roots: &[String],
     files: &[String],
@@ -647,62 +578,6 @@ fn decls_parse_only_from_disk(
 /// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
 /// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
 /// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
-/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
-/// on a walk that silently skips a file, so both callers share this one.
-/// Every `.dag` file the named roots contain on disk, by absolute path. The roots are already
-/// absolute here; this is the same walk `build_module_path_index` performs, without the parse.
-fn dag_files_under_abs_roots(abs_roots: &[String]) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for root in abs_roots {
-        let root_path = PathBuf::from(root);
-        if root_path.is_dir() {
-            collect_dag_files_tolerant(&root_path, &mut files)
-                .unwrap_or_else(|cause| panic!("acquiring {root}: {cause}"));
-        }
-    }
-    let mut files: Vec<PathBuf> = files.iter().map(|f| f.path().to_path_buf()).collect();
-    files.sort();
-    files
-}
-
-/// WHETHER THE PREPARED INVENTORY CAN ANSWER FOR THIS SUBJECT AT ALL, and it frequently cannot.
-///
-/// The floor registers the REQUIRED-GATE CLOSURE as its prepared inventory, not the full index --
-/// `run_required_floor` takes `full_inventory` out for the discovery phase and hands
-/// `prepared_sources` to the guard. So the inventory is a SUBSET of the tree whose membership is
-/// decided by what preparation admitted, which is an input no caller declares and none can state.
-/// Filtering it by a caller's roots therefore answers with whatever part of the subject happened to
-/// be prepared, and a subject prepared not at all answers EMPTY.
-///
-/// THAT IS THE SILENT-NARROWING FAILURE THIS MODULE EXISTS TO REFUSE, one layer below the one
-/// gunbc#10245 closed in `fn_arrow_decl_facts_live`: the producer takes a declared subject, and the
-/// answer was still a function of an undeclared one. It was found by execution rather than by
-/// reading -- the vacuity controls on that producer's witnesses went red on the required floor while
-/// every discrimination row beside them stayed green, because an empty population satisfies an
-/// exclusion trivially. Nothing asserted non-emptiness before, so the same hole was already open for
-/// `concept_decl_facts` and `data_decl_type_facts` and reported nothing.
-///
-/// COVERAGE IS DECIDABLE, so this is a cache-miss test and not a confidence threshold: the roots
-/// name a set of files on disk, and the inventory either contains all of them or does not. A miss
-/// falls through to the disk walk, which is the SAME ANSWER computed the slower way -- not a wider
-/// one, not a default, and not a degraded one. Answering from a subset would be the fail-open arm.
-fn inventory_covers_subject(
-    inventory: &[crate::cli_run::PreparedSourceView],
-    abs_roots: &[String],
-    files: &[String],
-) -> bool {
-    let ws = workspace_root();
-    let present: std::collections::BTreeSet<PathBuf> = inventory
-        .iter()
-        .map(|e| ws.join(e.source.path.replace('\\', "/")))
-        .collect();
-    dag_files_under_abs_roots(abs_roots)
-        .iter()
-        .all(|f| present.contains(f))
-        && files
-            .iter()
-            .all(|f| present.contains(&ws.join(f.replace('\\', "/"))))
-}
 
 fn decls_parse_only_fail_closed(
     roots: &[String],
@@ -713,13 +588,7 @@ fn decls_parse_only_fail_closed(
     if let Some(cached) = floor_decl_parse_memo_lookup(roots, files, want_kinds) {
         return Ok(cached);
     }
-    let inventory = crate::cli_run::floor_prepared_inventory_snapshot()
-        .filter(|inv| inventory_covers_subject(inv, roots, files));
-    let result = if let Some(inventory) = inventory {
-        decls_parse_only_from_inventory(&inventory, roots, files, want_kinds, caller)?
-    } else {
-        decls_parse_only_from_disk(roots, files, want_kinds, caller)?
-    };
+    let result = decls_parse_only_from_disk(roots, files, want_kinds, caller)?;
     floor_decl_parse_memo_store(roots, files, want_kinds, &result);
     Ok(result)
 }
@@ -2679,23 +2548,6 @@ mod parse_only_uppercase_variant_regression_tests {
         assert!(
             production.contains("should_emit_nullary_variant_value_atom"),
             "parse-only skeleton must gate on infer-stamped VariantValueBinding only"
-        );
-    }
-}
-
-#[cfg(test)]
-mod inventory_root_prefix_tests {
-    use super::inventory_entry_under_abs_roots;
-    use std::path::Path;
-
-    #[test]
-    fn sibling_directory_sharing_a_prefix_is_not_under_the_root() {
-        let ws = Path::new("/repo");
-        let roots = vec!["/repo/dag".to_string()];
-        assert!(inventory_entry_under_abs_roots("dag/mod.dag", &roots, ws));
-        assert!(
-            !inventory_entry_under_abs_roots("dag_something/foo.dag", &roots, ws),
-            "a sibling whose name merely starts with the root basename must not be counted"
         );
     }
 }

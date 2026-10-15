@@ -26,7 +26,7 @@ import v2.std.node {
   LabeledChildHash,
   content_hash_of_children,
 }
-import v2.std.collection { map_lookup }
+import std.algebra { map_lookup }
 
 // WHY A NODE IS STORED DECOMPOSED RATHER THAN WHOLE, which is the whole point of the slice and not
 // an implementation preference. Storing each node as (kind, [(label, child identity)]) is what makes

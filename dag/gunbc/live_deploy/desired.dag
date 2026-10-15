@@ -33,7 +33,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv2_deploy_dashboard_instance,
 }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.deployment_risk { ProdRoleSelection }
 import gunbc.live_deploy.spec {
   DeploymentSpec,

@@ -1,6 +1,6 @@
 module v2.test.claim.manual.eval_runtime
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
@@ -19,11 +19,7 @@ import v2.compiler.infer {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
-import v2.std.collection {
-  Map,
-  empty_map,
-  list_nth
-}
+import std.algebra { empty_map }
 import std.optional {
   Optional,
   Present,
@@ -104,7 +100,8 @@ import v2.std.verification {
 import v2.std.witness {
   Holds,
   Violates,
-  Witness
+  Witness,
+  list_nth
 }
 
 fn eval_byte() -> Byte {

@@ -81,18 +81,6 @@ fn v1_interpreter_nested_compile_reaches() -> List<NestedCompileReach> {
       arm_identity: "free_call.witness_layer_roots_compile_clean_check",
       nested_compile_entry: "cli_run.witness_gates.witness_layer_roots_compile_clean_check",
     },
-    NestedCompileReach {
-      arm_identity: "free_call.witness_layer_roots_compile_clean_emit_check",
-      nested_compile_entry: "cli_run.witness_gates.witness_layer_roots_compile_clean_emit_check",
-    },
-    NestedCompileReach {
-      arm_identity: "free_call.install_or_consume_floor_compile_clean_gate_receipt",
-      nested_compile_entry: "cli_run.install_or_consume_floor_compile_clean_gate_receipt",
-    },
-    NestedCompileReach {
-      arm_identity: "free_call.witness_compile_clean_cli_floor_verdicts_agree",
-      nested_compile_entry: "cli_run.compile_clean.compile_clean_cli_floor_verdicts_agree",
-    },
   ]
 }
 

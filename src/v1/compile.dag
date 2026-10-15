@@ -1449,32 +1449,29 @@ fn census_heads_module_node(module: Node) -> Node {
   )
 }
 
-type CensusFillParse {
+type ParsedRevisionDeclarations {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
 }
 
-// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
-// imports live in the compile closure or a different tree view; resolving against a fill-only pool
-// fabricates unresolved-import diagnostics about the view, not the modules). Fill diagnostics are
-// not an entry-compile verdict: whole-corpus body grammaticality belongs to `run_dag_parse_sweep`.
+// Parse-grade reader of one revision's sources under THAT revision's grammar: tokenize + parse,
+// NEVER resolve. Consumers reconstruct declaration records and occurrence transport from the
+// modules; they are not an entry-compile verdict. Named consumers:
+//   - `namespace_baseline::base_records` — another revision, caller-supplied environment
+//   - `run_dag_parse_sweep` — the running corpus, `dag_parse_environment` named at the call site
+// The sweep moves onto this reader rather than keeping a census-named entry: it is the same
+// declaration reconstruction, under the head grammar. Whole-corpus body grammaticality is the
+// sweep's refusal of this reader's diagnostics, not a second parse.
 
-// TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The census fill's population is the
-// WHOLE indexed pool minus the compile closure, so for an `--entry` compile it is ~5.4k modules
-// the entry never references. Materializing `prepared` first held every one of those modules'
-// token streams resident simultaneously, for a fold that consumes each exactly once and in order
-// — the token stream for module N was alive for the entire parse of modules N+1..5400 with no
-// consumer. Fusing the tokenize into the fold frees each module's tokens before the next is read,
-// which is DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape:
-// the same work, the same order, the same results, held for the interval it is actually used.
-// The instrument that re-derives the size of this term, rather than a number copied out of it
-// (DESIGN §6): `gunbc compile --source-root dag --source-root src/v2 --entry
-// src/v2/workflow/floor2_prepared_subject.dag --output-dir <dir> --target dag`, reading VmHWM
-// from /proc/<pid>/status while it runs. The entry is chosen because its reference-derived
-// closure is a handful of files while the census population is the whole pool, so peak RSS there
-// is dominated by this fold rather than by the closure being compiled.
+// TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The sweep's population is the walked
+// `.dag` corpus (~5.4k modules). Materializing `prepared` first held every module's token stream
+// resident simultaneously, for a fold that consumes each exactly once and in order — the token
+// stream for module N was alive for the entire parse of modules N+1..5400 with no consumer.
+// Fusing the tokenize into the fold frees each module's tokens before the next is read, which is
+// DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape: the same
+// work, the same order, the same results, held for the interval it is actually used.
 //
 // THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a
 // separate decision: it existed only because the token lists were already all in hand. Interning
@@ -1484,18 +1481,14 @@ type CensusFillParse {
 // ORDER ids are assigned in, which no consumer reads: names are resolved positionally through
 // `authored_name_at` against the newline index, never by intern id.
 //
-// Out-of-closure body grammaticality is owned by the corpus parse sweep, not by this fill.
-// A planted `fn body_probe(x: Int) -> Int { let = = = 9 }` outside an entry's closure must
-// leave that entry compile unchanged and refuse only at `run_dag_parse_sweep` with
-// `expected name, found Eq`.
 // THE ENVIRONMENT AXIS EXISTS because reading one revision's sources means reading them under THAT
-// revision's grammar. `dag_parse_environment` is named in the wrappers and nowhere in the core, so a
-// base-reading caller cannot pick up head rules by omission -- the defect
+// revision's grammar. There is no defaulting wrapper: a forgetful base-side caller cannot pick up
+// head rules by omission -- the defect
 // gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names.
-fn parse_census_fill_sources_with(
+fn parse_revision_declarations_with_environment(
   sources: List<SourceFile>,
   environment: ParseEnvironment
-) -> CensusFillParse {
+) -> ParsedRevisionDeclarations {
   let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
@@ -1540,7 +1533,7 @@ fn parse_census_fill_sources_with(
   )
   let parse_results = parsed.parse_results
   let module_inputs = parsed.module_inputs
-  CensusFillParse {
+  ParsedRevisionDeclarations {
     modules: module_inputs |> map(input =>
       module_occurrence_input_node(input: input)
     ),
@@ -1552,30 +1545,6 @@ fn parse_census_fill_sources_with(
       )
     ),
   }
-}
-
-// THE TWO WRAPPERS. Every ordinary consumer parses the running binary's own corpus, so naming the
-// environment at every call site would be noise; these are the only places `dag_parse_environment`
-// is named on the census path. A caller reading ANOTHER revision must reach the environment form --
-// arriving here with base-side sources is precisely the silent head-rules read the parameter exists
-// to prevent.
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
-  parse_census_fill_sources_with(
-    sources: sources,
-    environment: dag_parse_environment
-  )
-}
-
-// Base-side readers select the grammar, because a baseline compared against the head must carry
-// the same declaration detail the head side carries.
-fn parse_census_fill_sources_with_environment(
-  sources: List<SourceFile>,
-  environment: ParseEnvironment
-) -> CensusFillParse {
-  parse_census_fill_sources_with(
-    sources: sources,
-    environment: environment
-  )
 }
 
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
