@@ -3229,7 +3229,15 @@ fn emit_rust_block_stmts(remaining: List<Node>, text: List<String>,
   match remaining |> first {
     Absent => BlockEmitState { text: text, scope: scope }
     Present { value: stmt } =>
-      let line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let raw_line = emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      // A non-final statement-position match is a statement, not the block's value: Rust types a
+      // bare `match {..}` statement as (), so a non-unit arm beside a returning arm is E0308 unless
+      // the statement is terminated and its value discarded.
+      let is_discarded_match = match stmt.expr_data {
+        ExprMatch => (remaining |> skip(1) |> first) != none
+        _ => false
+      }
+      let line = if is_discarded_match { concat(raw_line, ";") } else { raw_line }
       let next_scope = scope_after_expr(texpr: stmt, scope: scope)
       emit_rust_block_stmts(remaining: remaining |> skip(1),
         text: list_push(text, line), scope: next_scope,
