@@ -24,7 +24,7 @@ import gunbc.compute.attempt_lifecycle {
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit, session_attempt_record,
+  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
@@ -55,8 +55,18 @@ data node_b: String = "g5-node-b"
 data key_b: String = "0123456789abcdef"
 data host: String = "srv2"
 
-fn unit_a() -> String { session_unit(node_id: node_a, attempt_key: key_a) as String }
-fn unit_b() -> String { session_unit(node_id: node_b, attempt_key: key_b) as String }
+fn unit_a() -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+fn unit_b() -> String {
+  match session_unit_wire(node_id: node_b, attempt_key: key_b) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
 
 fn fresh_dir(tag: String) -> String {
   shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_g5_", tag, ".XXXXXX"], "")).path
@@ -118,9 +128,15 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: session_unit(node_id: node_id, attempt_key: attempt_key),
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: u } => u
+      Absent => "unnameable" as NonEmptyStr
+    },
     lease: LeaseGrant {
-      reference: session_unit(node_id: node_id, attempt_key: attempt_key),
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Present { value: u } => u
+        Absent => "unnameable" as NonEmptyStr
+      },
       fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
@@ -172,7 +188,10 @@ fn held(rec: AttemptRecord) -> AttemptSlotReading { AttemptSlotHeld { record: re
 
 fn release_for(node_id: String, attempt_key: String, grant_identity: String, fence: String) -> String {
   join(["{\"schema\":\"gunbc.session-placement/v1\",\"node_id\":\"", node_id, "\",\"attempt_key\":\"", attempt_key,
-    "\",\"reference\":\"", session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: u } => u as String
+      Absent => ""
+    },
     "\",\"outcome\":\"released\",\"reason\":\"session unit exited 0\",\"detail\":\"released\",\"grant\":{\"grant_identity\":\"", grant_identity, "\",\"fence_generation\":", fence, "}}"], "")
 }
 

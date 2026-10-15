@@ -34,6 +34,11 @@ import gunbc.compute.work_class_grant {
 import gunbc.compute.unit_bounds { UnitProcessBounds }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import extdeps.systemd {
+  systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
+  SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
+}
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_unit_name,
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
@@ -149,15 +154,31 @@ fn session_attempt_identity(node_id: String, attempt_key: String) -> String {
   join([node_id, ":", attempt_key], "")
 }
 
-fn session_unit(node_id: String, attempt_key: String) -> NonEmptyStr {
+fn session_unit(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
   dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+}
+
+fn session_unit_wire(node_id: String, attempt_key: String) -> NonEmptyStr? {
+  match session_unit(node_id: node_id, attempt_key: attempt_key) {
+    SystemdUnitNameAdmitted { name } => Present { value: systemd_unit_name_wire(name: name) }
+    SystemdUnitNameStemEmpty => none
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
+    SystemdUnitNameOverlong { length: _ } => none
+  }
+}
+
+fn session_unit_unnameable_detail(node_id: String, attempt_key: String) -> String {
+  systemd_unit_name_refusal_detail(admission: session_unit(node_id: node_id, attempt_key: attempt_key))
 }
 
 // THE BINDING CHECK, ONE FOLD FOR EVERY READER. A slot is this attempt's only if its reference, its
 // unit and its identity all name the same attempt; a mismatch is FOREIGN, and a foreign slot is never
 // released by anyone reading it under this attempt's name.
 fn session_slot_binding_mismatch(record: AttemptRecord, node_id: String, attempt_key: String) -> String {
-  let expected = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
+    Present { value: expected_unit } => {
+  let expected = expected_unit as String
   if record.reference != expected {
     join(["the slot's reference is ", record.reference, " and this attempt's unit is ", expected], "")
   } else if record.unit != expected {
@@ -166,6 +187,8 @@ fn session_slot_binding_mismatch(record: AttemptRecord, node_id: String, attempt
     join(["the slot binds ", record.identity, " and this attempt is ", session_attempt_identity(node_id: node_id, attempt_key: attempt_key)], "")
   } else {
     ""
+  }
+    }
   }
 }
 
@@ -250,8 +273,14 @@ type SessionPlacementAcquisition
 fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
   AttemptRecord {
     identity: session_attempt_identity(node_id: node_id, attempt_key: attempt_key),
-    reference: session_unit(node_id: node_id, attempt_key: attempt_key) as String,
-    unit: session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: unit } => unit as String
+      Absent => ""
+    },
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: unit } => unit as String
+      Absent => ""
+    },
     granted: granted,
     opened_at: now,
     launch_deadline: now + compute_pre_launch_ceiling_seconds,
@@ -260,6 +289,14 @@ fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyt
 }
 
 fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
+  match session_unit(node_id: node_id, attempt_key: attempt_key) {
+    SystemdUnitNameStemEmpty =>
+      SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
+    SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+      SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) }
+    SystemdUnitNameOverlong { length: n } =>
+      SessionPlacementRefused { detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
+    SystemdUnitNameAdmitted { name: _ } =>
   match session_placement_pool() {
     Absent => SessionPlacementRefused { detail: "the session pool has no size" }
     Present { value: pool } => {
@@ -288,6 +325,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
         }
       }
     }
+  }
   }
 }
 
@@ -528,7 +566,10 @@ fn session_placement_release_write(records_dir: String, node_id: String, attempt
     json_kv(key: "schema", value: json_string(s: session_placement_schema)),
     json_kv(key: "node_id", value: json_string(s: node_id)),
     json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
-    json_kv(key: "reference", value: json_string(s: session_unit(node_id: node_id, attempt_key: attempt_key) as String)),
+    json_kv(key: "reference", value: json_string(s: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: unit } => unit as String
+      Absent => ""
+    })),
     json_kv(key: "outcome", value: json_string(s: session_release_outcome_wire(r: freed))),
     json_kv(key: "reason", value: json_string(s: reason as String)),
     json_kv(key: "detail", value: json_string(s: session_release_detail(r: freed))),
@@ -639,7 +680,10 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
 
 // THE PLACEMENT RECORD'S BINDING, checked against the asking attempt.
 fn session_record_binding_mismatch(r: SessionPlacementRecord, node_id: String, attempt_key: String, host: String) -> String {
-  let expected = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key)
+    Present { value: expected_unit } => {
+  let expected = expected_unit as String
   if r.schema != session_placement_schema {
     join(["the placement record's schema is ", r.schema, ", not ", session_placement_schema], "")
   } else if r.node_id != node_id || r.attempt_key != attempt_key {
@@ -650,6 +694,8 @@ fn session_record_binding_mismatch(r: SessionPlacementRecord, node_id: String, a
     join(["the placement record was written on host ", r.host, ", not ", host], "")
   } else {
     ""
+  }
+    }
   }
 }
 
@@ -752,7 +798,10 @@ fn session_release_observation_of(path: String, obs: FilesystemFileObservation, 
             Absent => {
               let mismatch = if session_string_or(r: nd) != node_id || session_string_or(r: ak) != attempt_key {
                 join(["the release belongs to ", session_string_or(r: nd), ":", session_string_or(r: ak), ", not ", node_id, ":", attempt_key], "")
-              } else if session_string_or(r: rf) != (session_unit(node_id: node_id, attempt_key: attempt_key) as String) {
+              } else if session_string_or(r: rf) != (match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+                Present { value: unit } => unit as String
+                Absent => ""
+              }) {
                 join(["the release names reference ", session_string_or(r: rf), ", not this attempt's unit"], "")
               } else {
                 session_release_grant_mismatch(doc: doc, grant: grant)
@@ -807,7 +856,13 @@ fn session_placement_observation_of(
   record_path: String, record: FilesystemFileObservation,
   release_path: String, released: FilesystemFileObservation,
 ) -> SessionPlacementObservation {
-  let unit = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => SessionPlacementUnreadable {
+      unit: "",
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+    }
+    Present { value: named } => {
+  let unit = named as String
   match slot {
     AttemptSlotAbsent => SessionPlacementAbsent { unit: unit }
     AttemptSlotUnreadable { detail } => SessionPlacementUnreadable { unit: unit, detail: detail }
@@ -826,6 +881,8 @@ fn session_placement_observation_of(
       }
     }
   }
+    }
+  }
 }
 
 fn session_placement_file(dir: String, name: String) -> FilesystemFileObservation {
@@ -841,22 +898,37 @@ fn session_placement_file(dir: String, name: String) -> FilesystemFileObservatio
 }
 
 fn session_placement_observe_at(stores: SessionPlacementStores, host: String, node_id: String, attempt_key: String) -> SessionPlacementObservation {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => SessionPlacementUnreadable {
+      unit: "",
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+    }
+    Present { value: unit } => {
   let record_name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key)
   let release_name = session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)
   session_placement_observation_of(
     node_id: node_id, attempt_key: attempt_key, host: host,
-    slot: attempt_slot_read(root: stores.slots_root, reference: session_unit(node_id: node_id, attempt_key: attempt_key)),
+    slot: attempt_slot_read(root: stores.slots_root, reference: unit),
     record_path: join([stores.records_dir, "/", record_name], ""), record: session_placement_file(dir: stores.records_dir, name: record_name),
     release_path: join([stores.records_dir, "/", release_name], ""), released: session_placement_file(dir: stores.records_dir, name: release_name),
   )
+    }
+  }
 }
 
 // THE STAGE READER: the worker session's slot (its lifecycle), its grant (identity, fence, unit
 // properties applied) and its release, for THIS node's THIS attempt.
 fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionPlacementObservation {
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+    Absent => SessionPlacementUnreadable {
+      unit: "",
+      detail: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key),
+    }
+    Present { value: unit } =>
   match session_placement_stores(instance: instance) {
-    SessionStoresUnresolved { detail } => SessionPlacementUnreadable { unit: session_unit(node_id: node_id, attempt_key: attempt_key) as String, detail: detail }
+    SessionStoresUnresolved { detail } => SessionPlacementUnreadable { unit: unit as String, detail: detail }
     SessionStoresResolved { stores } => session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key)
+  }
   }
 }
 
@@ -910,7 +982,12 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
         unit: unit,
         loaded: loaded,
         record: attempt_exit_record_matching(
-          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
+          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+            SystemdUnitNameStemEmpty => false
+            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+            SystemdUnitNameOverlong { length: _ } => false
+          }),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
@@ -937,7 +1014,15 @@ fn session_worker_start_standing(observation: SessionPlacementObservation) -> At
 // both are silent -- whether it was ever started. Each later read is taken only when the earlier one
 // could not answer, so a running worker costs one manager read as before.
 fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> AttemptUnitObservation {
-  let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+  match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+    SystemdUnitNameStemEmpty =>
+      AttemptUnitUnreadable { reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) }
+    SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+      AttemptUnitUnreadable { reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) }
+    SystemdUnitNameOverlong { length: n } =>
+      AttemptUnitUnreadable { reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) }
+    SystemdUnitNameAdmitted { name } => {
+  let unit = systemd_unit_name_wire(name: name)
   let loaded = attempt_unit_observation(unit: unit)
   match loaded {
     AttemptUnitAbsent => {
@@ -952,6 +1037,8 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
     AttemptUnitActive => loaded
     AttemptUnitFinished { exit_status: _ } => loaded
     AttemptUnitUnreadable { reason: _ } => loaded
+  }
+    }
   }
 }
 

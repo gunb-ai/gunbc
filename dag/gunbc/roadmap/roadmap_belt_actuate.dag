@@ -267,7 +267,12 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_harness_start_from_launcher_exit,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
 }
-import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
+import extdeps.systemd {
+  ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax,
+  systemd_time_span_of_seconds, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
@@ -5629,13 +5634,26 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent => {
-          let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
-          worker_process_from_attempt_unit(
-            observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-            unit: unit,
-          )
-        }
+        Absent =>
+          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+            SystemdUnitNameStemEmpty =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
+              }
+            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
+              }
+            SystemdUnitNameOverlong { length: n } =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
+              }
+            SystemdUnitNameAdmitted { name } =>
+              worker_process_from_attempt_unit(
+                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+                unit: systemd_unit_name_wire(name: name),
+              )
+          }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }

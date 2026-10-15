@@ -626,6 +626,17 @@ fn systemd_service_unit_name(stem: String) -> SystemdUnitNameAdmission {
   }
 }
 
+fn systemd_unit_name_refusal_detail(admission: SystemdUnitNameAdmission) -> String {
+  match admission {
+    SystemdUnitNameAdmitted { name: _ } => "systemd unit name was admitted"
+    SystemdUnitNameStemEmpty => "systemd unit name stem is empty"
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } =>
+      join(["systemd unit name has a character systemd.unit(5) disallows: ", ch], "")
+    SystemdUnitNameOverlong { length: n } =>
+      join(["systemd unit name length ", to_string(n), " exceeds 255"], "")
+  }
+}
+
 // THE DIRECTORY sd_booted(3) TESTS: it exists exactly when systemd is the running service manager
 // (PID 1), which is what systemd-run needs to start a transient unit.
 data systemd_booted_runtime_dir: String = "/run/systemd/system"

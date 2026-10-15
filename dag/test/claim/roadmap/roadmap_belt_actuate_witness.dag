@@ -6,6 +6,7 @@ import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_fi
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
+  attempt_process_for_node, BeltAttemptPanesObserved,
 }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -13,7 +14,7 @@ import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
-import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -3521,4 +3522,42 @@ test fn a_mismatched_gitfile_or_commondir_is_untrusted() -> Bool {
     && belt_commit_commondir_points_at(contents: "../..\n", expected_common: expected_common)
     && belt_commit_commondir_points_at(contents: expected_common, expected_common: expected_common)
     && !belt_commit_commondir_points_at(contents: "/tmp/evil\n", expected_common: expected_common)
+}
+
+fn unit_name_overlong_node() -> String {
+  join([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ], "")
+}
+
+fn belt_unit_process(node_id: String) -> WorkerProcessEvidence {
+  attempt_process_for_node(
+    instance: srv1_live_dashboard_instance(),
+    panes: BeltAttemptPanesObserved { panes: [] },
+    node_id: node_id,
+    attempt_key: "k",
+  )
+}
+
+test fn an_empty_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: "") {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "empty")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: unit_name_overlong_node()) {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "255")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
 }

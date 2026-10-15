@@ -16,18 +16,22 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_worker_unit_properties,
+  AttemptUnitUnreadable, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished,
+}
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit, session_attempt_record,
+  SessionPlacementGrant, SessionPlacementStores, session_process_bounds, session_unit_wire, session_attempt_record,
   session_placement_record_of, session_placement_record_json, session_placement_record_write,
   session_placement_record_basename, session_placement_release_basename, session_placement_note_basename,
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
   session_placement_observation_of, session_placement_observe_at,
+  attempt_worker_unit_observe_for_instance,
   SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide,
   SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at,
   SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
@@ -57,8 +61,18 @@ data node_b: String = "g5-node-b"
 data key_b: String = "0123456789abcdef"
 data host: String = "srv2"
 
-fn unit_a() -> String { session_unit(node_id: node_a, attempt_key: key_a) as String }
-fn unit_b() -> String { session_unit(node_id: node_b, attempt_key: key_b) as String }
+fn unit_a() -> String {
+  match session_unit_wire(node_id: node_a, attempt_key: key_a) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+fn unit_b() -> String {
+  match session_unit_wire(node_id: node_b, attempt_key: key_b) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
 
 fn stores_at(dir: String) -> SessionPlacementStores {
   SessionPlacementStores {
@@ -73,9 +87,15 @@ fn grant_for(node_id: String, attempt_key: String, slot: AttemptRecord) -> Sessi
   SessionPlacementGrant {
     node_id: node_id,
     attempt_key: attempt_key,
-    unit: session_unit(node_id: node_id, attempt_key: attempt_key),
+    unit: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: u } => u
+      Absent => "unnameable" as NonEmptyStr
+    },
     lease: LeaseGrant {
-      reference: session_unit(node_id: node_id, attempt_key: attempt_key),
+      reference: match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+        Present { value: u } => u
+        Absent => "unnameable" as NonEmptyStr
+      },
       fence: LeaseFence { grant: "evt-7" as NonEmptyStr as GrantIdentity, generation: 7 },
       granted_at: 1000,
       maximum_duration_seconds: 14400,
@@ -118,7 +138,10 @@ fn held(rec: AttemptRecord) -> AttemptSlotReading { AttemptSlotHeld { record: re
 
 fn release_for(node_id: String, attempt_key: String, grant_identity: String, fence: String) -> String {
   join(["{\"schema\":\"gunbc.session-placement/v1\",\"node_id\":\"", node_id, "\",\"attempt_key\":\"", attempt_key,
-    "\",\"reference\":\"", session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    "\",\"reference\":\"", match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+      Present { value: u } => u as String
+      Absent => ""
+    },
     "\",\"outcome\":\"released\",\"reason\":\"session unit exited 0\",\"detail\":\"released\",\"grant\":{\"grant_identity\":\"", grant_identity, "\",\"fence_generation\":", fence, "}}"], "")
 }
 
@@ -267,4 +290,68 @@ test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool {
     SessionPlacementForeign { unit: _, detail: _ } => false
   }
   bad != good && refused && accepted
+}
+
+fn unit_name_overlong_node() -> String {
+  join([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ], "")
+}
+
+fn placement_of_node(node_id: String) -> SessionPlacementObservation {
+  session_placement_observation_of(
+    node_id: node_id, attempt_key: "k", host: host,
+    slot: AttemptSlotAbsent,
+    record_path: "/state/r", record: missing("r"),
+    release_path: "/state/x", released: missing("x"),
+  )
+}
+
+test fn an_empty_node_id_is_an_unreadable_session_placement() -> Bool {
+  match placement_of_node(node_id: "") {
+    SessionPlacementUnreadable { unit, detail } =>
+      unit == "" && string_contains(s: detail, pattern: "empty")
+    SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_is_an_unreadable_session_placement() -> Bool {
+  match placement_of_node(node_id: unit_name_overlong_node()) {
+    SessionPlacementUnreadable { unit, detail } =>
+      unit == "" && string_contains(s: detail, pattern: "255")
+    SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+  }
+}
+
+test fn an_empty_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
+  match attempt_worker_unit_observe_for_instance(
+    instance: srv2_deploy_dashboard_instance(),
+    node_id: "",
+    attempt_key: "k",
+  ) {
+    AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "empty")
+    AttemptUnitAbsent => false
+    AttemptUnitActive => false
+    AttemptUnitFinished { exit_status: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_is_an_unreadable_worker_unit_observation() -> Bool {
+  match attempt_worker_unit_observe_for_instance(
+    instance: srv2_deploy_dashboard_instance(),
+    node_id: unit_name_overlong_node(),
+    attempt_key: "k",
+  ) {
+    AttemptUnitUnreadable { reason } => string_contains(s: reason, pattern: "255")
+    AttemptUnitAbsent => false
+    AttemptUnitActive => false
+    AttemptUnitFinished { exit_status: _ } => false
+  }
 }

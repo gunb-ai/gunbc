@@ -58,9 +58,9 @@ import extdeps.systemd {
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty,
   RemainAfterExitProperty, ExecStopPostProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
-  systemd_service_unit_name, systemd_unit_name_wire, systemd_service_unit_suffix,
-  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
-  SystemdUnitNameOverlong,
+  systemd_service_unit_name, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
+  SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
@@ -2935,22 +2935,11 @@ fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
   join(["gunbc-attempt-", node_id, "-", attempt_key], "")
 }
 
-// FRONTIER: this function still returns NonEmptyStr for callers that have not yet consumed
-// SystemdUnitNameAdmission: gunbc.roadmap.roadmap_dispatch_actuator (SystemdUnitContainer plan.unit),
-// gunbc.roadmap.roadmap_belt_actuate (worker_process_from_attempt_unit),
-// gunbc.roadmap.roadmap_session_placement (session_unit and the two identity-match sites),
-// test.claim.roadmap.roadmap_dispatch_actuator_witness. Trigger: those sites take SystemdUnitName
-// (or match SystemdUnitNameAdmission) so the return type here becomes the admission and the
-// refused-name residual join below is deleted. Until then an admitted name is only the wire of
-// systemd_service_unit_name; a refused stem still has to produce a string for those callers.
-fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
-  let stem = dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key)
-  match systemd_service_unit_name(stem: stem) {
-    SystemdUnitNameAdmitted { name } => systemd_unit_name_wire(name: name)
-    SystemdUnitNameStemEmpty => join([stem, systemd_service_unit_suffix], "") as NonEmptyStr
-    SystemdUnitNameDisallowedCharacter { stem: s, character: _ } =>
-      join([s, systemd_service_unit_suffix], "") as NonEmptyStr
-    SystemdUnitNameOverlong { length: _ } => join([stem, systemd_service_unit_suffix], "") as NonEmptyStr
+fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> SystemdUnitNameAdmission {
+  if node_id == "" {
+    SystemdUnitNameStemEmpty
+  } else {
+    systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key))
   }
 }
 
@@ -3200,25 +3189,43 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-        AttemptExitHookRefused { reason } =>
-          DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
-        AttemptExitHookRendered { exec_line } =>
-          DispatchSessionContainerReady {
-            container: SystemdUnitContainer {
-              plan: DispatchWorkerUnitPlan {
-                systemd_run_program: program,
-                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-                node_id: node_id,
-                attempt_key: attempt_key,
-                working_directory: pane_working_directory,
-                attempt_worktree: worktree_path,
-                stdout_path: stdout_path,
-                stderr_path: stderr_path,
-                inner_argv: provider_inner,
-                exit_hook: exec_line,
-              },
-            },
+      match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+        SystemdUnitNameStemEmpty =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty),
+          }
+        SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }),
+          }
+        SystemdUnitNameOverlong { length: n } =>
+          DispatchSessionContainerUnavailable {
+            step: "attempt-unit-name" as NonEmptyStr,
+            detail: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }),
+          }
+        SystemdUnitNameAdmitted { name } =>
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+            AttemptExitHookRefused { reason } =>
+              DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
+            AttemptExitHookRendered { exec_line } =>
+              DispatchSessionContainerReady {
+                container: SystemdUnitContainer {
+                  plan: DispatchWorkerUnitPlan {
+                    systemd_run_program: program,
+                    unit: systemd_unit_name_wire(name: name),
+                    node_id: node_id,
+                    attempt_key: attempt_key,
+                    working_directory: pane_working_directory,
+                    attempt_worktree: worktree_path,
+                    stdout_path: stdout_path,
+                    stderr_path: stderr_path,
+                    inner_argv: provider_inner,
+                    exit_hook: exec_line,
+                  },
+                },
+              }
           }
       }
   }
