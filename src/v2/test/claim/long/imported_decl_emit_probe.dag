@@ -4,7 +4,7 @@
 module v2.test.claim.long.imported_decl_emit_probe
 
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Empty, FreeMonoid, fold_list, length, list_find_first, list_map }
+import std.algebra { Empty, FreeMonoid, fold_list, length, list_find_first, list_map, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.name_resolve {
@@ -95,7 +95,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data probe_a_source: String = "module v2.test.probe_a\n\ntype Color = Red | Blue\n"
 
-data probe_b_source: String = "module v2.test.probe_b\n\nimport v2.test.probe_a { Color, Red }\n\ndata painted: Color = Red\n"
+data probe_b_source: String = "module v2.test.probe_b\n\nimport v2.test.probe_a { Color, Red, Blue }\n\ndata painted: Color = Red\n\nfn pick() -> Color { if true { Red } else { Blue } }\n"
 
 fn probe_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -208,6 +208,22 @@ fn probe_member_is_b(q: QualifiedName) -> Bool {
   qualified_name_to_dotted_string(qn: q) == "v2.test.probe_b"
 }
 
+fn probe_b_emitted_text(modules: FreeMonoid<ClosureMemberEmission>) -> String {
+  match list_find_first(xs: modules, predicate: fn(m) {
+    match m {
+      ClosureMemberEmitted { module: q, text: _ } => probe_member_is_b(q: q)
+      ClosureMemberRefused { module: q, diagnostics: _ } => probe_member_is_b(q: q)
+    }
+  }) {
+    Absent => ""
+    Present { value: m } =>
+      match m {
+        ClosureMemberEmitted { module: _, text: t } => t
+        ClosureMemberRefused { module: _, diagnostics: _ } => ""
+      }
+  }
+}
+
 fn probe_b_arm_reason(modules: FreeMonoid<ClosureMemberEmission>) -> Optional<Symbol> {
   match list_find_first(xs: modules, predicate: fn(m) {
     match m {
@@ -249,6 +265,7 @@ type ProbeBundle {
   emit_red_declaring_raw: String
   native_red_declaring_raw: String
   emit_b_reason: String
+  emit_b_text: String
   native_b_reason: String
   emit_refusal_located: String
   emit_infer_reason: String
@@ -325,6 +342,10 @@ fn probe_bundle() -> Optional<ProbeBundle> {
             Rejected { diagnostics: d } => Present { value: diagnostics_fatal_reason(d: d) }
             Accepted { value: e, diagnostics: _ } => probe_b_arm_reason(modules: e.modules)
           }
+          let emit_b_text = match emit_located.outcome {
+            Rejected { diagnostics: _ } => ""
+            Accepted { value: e, diagnostics: _ } => probe_b_emitted_text(modules: e.modules)
+          }
           let emit_refusal_located = match emit_located.outcome {
             Rejected { diagnostics: d } =>
               concat("whole:", lens_verdict_diagnostics_located_chain_text_in_spans(d: d, index: emit_located.spans))
@@ -354,6 +375,7 @@ fn probe_bundle() -> Optional<ProbeBundle> {
               emit_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: emit_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
               native_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: native_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
               emit_b_reason: probe_reason_text(o: emit_door_reason),
+              emit_b_text: emit_b_text,
               native_b_reason: probe_reason_text(o: native_reason),
               emit_refusal_located: emit_refusal_located,
               emit_infer_reason: emit_infer_reason,
@@ -423,6 +445,16 @@ test fn imported_nullary_coproduct_data_rhs_emits_holds() -> Bool {
   match probe_bundle() {
     Absent => false
     Present { value: b } => b.emit_b_reason == "accepted"
+  }
+}
+
+test fn imported_two_nullary_arms_in_one_body_both_emitted_holds() -> Bool {
+  match probe_bundle() {
+    Absent => false
+    Present { value: b } =>
+      (b.emit_b_reason == "accepted")
+        && string_contains(s: b.emit_b_text, pattern: "Red")
+        && string_contains(s: b.emit_b_text, pattern: "Blue")
   }
 }
 

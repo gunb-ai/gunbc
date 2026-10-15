@@ -73,13 +73,10 @@ type InferredTree {
 // has parameters, otherwise the coproduct's declaration-reference Atom (not the Disj node).
 // Emit reads this; it does not re-derive constructor typing.
 fn inferred_facts_nullary_coproduct_arm(facts: InferredFacts) -> Bool {
-  if !inferred_facts_coproduct_value_type(facts: facts) {
-    false
-  } else {
-    match facts.denotation {
-      Absent => true
-      Present { value: declared } => inferred_facts_empty_product_shape(declared: declared)
-    }
+  match facts.denotation {
+    Absent => false
+    Present { value: declared } =>
+      inferred_facts_empty_product_shape(declared: declared) && inferred_facts_coproduct_value_type(facts: facts)
   }
 }
 

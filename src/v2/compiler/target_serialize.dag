@@ -6,6 +6,7 @@ import std.occurrence_identity {
   OccurrenceSynthetic
 }
 import v2.compiler.inferred_tree {
+  InferredFacts,
   InferredTree,
   authored_occurrence_id,
   inferred_facts_nullary_coproduct_arm
@@ -29,7 +30,9 @@ import v2.std.compilers.target_model {
   canonical_operation_from_wire_node,
   target_bodied_arrow_compose_statement_tokens,
   target_project_arrow_body_to_value_expression,
+  target_value_expr_project_body_subexpression,
   target_value_expression_binding_ref,
+  target_value_expression_conditional,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
   target_transform_operator_child,
@@ -82,11 +85,13 @@ import v2.std.node {
   TypeNode,
   UnsupportedArrowBody,
   classify_arrow_body_form,
+  declaration_reference_body_marked,
   fold_node,
   NodeFold,
   node_subtree_count,
   Arrow,
   Occupancy,
+  Branch,
   ComputationNode,
   Disj,
   Instantiation,
@@ -835,14 +840,6 @@ fn nullary_coproduct_arm_binding_spelling(body: Node) -> Optional<Symbol> {
   }
 }
 
-fn optional_node_when(pred: Bool, node: Node) -> Optional<Node> {
-  if pred {
-    optional_present(value: node)
-  } else {
-    optional_absent()
-  }
-}
-
 fn optional_node_first_present(left: Optional<Node>, right: Optional<Node>) -> Optional<Node> {
   match left {
     Present { value: found } => Present { value: found }
@@ -850,83 +847,266 @@ fn optional_node_first_present(left: Optional<Node>, right: Optional<Node>) -> O
   }
 }
 
-fn first_nullary_coproduct_arm_at_node(tree: InferredTree, node: Node) -> Optional<Node> {
-  match tree.facts.lookup(node) {
-    Present { value: facts } =>
-      optional_node_when(pred: inferred_facts_nullary_coproduct_arm(facts: facts), node: node)
-    Absent => Absent
-  }
-}
-
-fn first_nullary_coproduct_arm_node(tree: InferredTree, n: Node) -> Optional<Node> {
+fn inferred_tree_node_at_occurrence(tree: InferredTree, want: OccurrenceId) -> Optional<Node> {
   fold_node(
-    n: n,
+    n: tree.root,
     algebra: NodeFold {
-      init: fn(node) { first_nullary_coproduct_arm_at_node(tree: tree, node: node) },
+      init: fn(node) {
+        match authored_occurrence_id(n: node) {
+          Absent => optional_absent()
+          Present { value: id } =>
+            if id.value == want.value {
+              optional_present(value: node)
+            } else {
+              optional_absent()
+            }
+        }
+      },
       step: fn(acc, e, child_r) { optional_node_first_present(left: acc, right: child_r) }
     }
   )
 }
 
-fn node_has_occurrence(n: Node, want: OccurrenceId) -> Bool {
-  match authored_occurrence_id(n: n) {
-    Absent => false
-    Present { value: id } => id.value == want.value
-  }
-}
-
-fn subtree_has_occurrence(root: Node, want: OccurrenceId) -> Bool {
-  fold_node(
-    n: root,
-    algebra: NodeFold {
-      init: fn(node) { node_has_occurrence(n: node, want: want) },
-      step: fn(acc, e, child_r) { acc || child_r }
-    }
-  )
-}
-
-fn declaration_reference_leaf(node: Node) -> Optional<Symbol> {
-  match declaration_reference_path_optional(node: node) {
-    Absent => optional_absent()
-    Present { value: path } => qualified_name_last_segment(qn: path)
-  }
-}
-
-fn declaration_reference_leaf_eq(a: Node, b: Node) -> Bool {
-  match declaration_reference_leaf(node: a) {
-    Absent => false
-    Present { value: sa } =>
-      match declaration_reference_leaf(node: b) {
-        Absent => false
-        Present { value: sb } => sa == sb
-      }
-  }
-}
-
-fn first_nullary_coproduct_arm_in_tree(tree: InferredTree) -> Optional<Node> {
-  first_nullary_coproduct_arm_node(tree: tree, n: tree.root)
-}
-
-fn first_nullary_coproduct_arm_for_body(tree: InferredTree, body: Node) -> Optional<Node> {
-  match first_nullary_coproduct_arm_node(tree: tree, n: body) {
-    Present { value: found } => optional_present(value: found)
+fn inferred_facts_for_projected_node(tree: InferredTree, node: Node) -> Optional<InferredFacts> {
+  match tree.facts.lookup(node) {
+    Present { value: facts } => Present { value: facts }
     Absent =>
-      match fold_node(
-        n: tree.root,
-        algebra: NodeFold {
-          init: fn(node) {
-            if declaration_reference_leaf_eq(a: node, b: body) {
-              first_nullary_coproduct_arm_at_node(tree: tree, node: node)
-            } else {
-              optional_absent()
-            }
-          },
-          step: fn(acc, e, child_r) { optional_node_first_present(left: acc, right: child_r) }
-        }
-      ) {
-        Present { value: found } => optional_present(value: found)
-        Absent => first_nullary_coproduct_arm_in_tree(tree: tree)
+      match authored_occurrence_id(n: node) {
+        Absent => Absent
+        Present { value: id } =>
+          match inferred_tree_node_at_occurrence(tree: tree, want: id) {
+            Absent => Absent
+            Present { value: keyed } => tree.facts.lookup(keyed)
+          }
       }
+  }
+}
+
+fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
+  match nullary_coproduct_arm_binding_spelling(body: node) {
+    Present { value: binding } =>
+      outcome_accepted(target_value_expression_binding_ref(binding: binding))
+    Absent =>
+      outcome_rejected(d: emit_nullary_coproduct_arm_path_absent_diagnostic(body: node))
+  }
+}
+
+fn project_value_node_from_inferred_facts(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match inferred_facts_for_projected_node(tree: tree, node: node) {
+    Present { value: facts } =>
+      if inferred_facts_nullary_coproduct_arm(facts: facts) {
+        project_nullary_arm_binding(node: node)
+      } else {
+        project_value_node_structurally(
+          arrow: arrow,
+          node: node,
+          target: target,
+          tree: tree,
+          handle_transform: handle_transform
+        )
+      }
+    Absent =>
+      project_value_node_structurally(
+        arrow: arrow,
+        node: node,
+        target: target,
+        tree: tree,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_occupancy_carrier_from_inferred_facts(
+  arrow: Node,
+  occupancy: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match fold_list(
+    xs: node_positional_child_targets(node: occupancy),
+    empty: Absent,
+    cons: fn(_acc, child) { Present { value: child } }
+  ) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_arrow_body_form_unsupported,
+          node: occupancy
+        )
+      )
+    Present { value: inner } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: inner,
+        target: target,
+        tree: tree,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_branch_from_inferred_facts(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+    Present { value: cond } =>
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+        Absent =>
+          outcome_rejected(
+            d: target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        Present { value: then_arm } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Absent =>
+              outcome_rejected(
+                d: target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: body
+                )
+              )
+            Present { value: else_arm } =>
+              bind_outcome(
+                o: project_value_node_from_inferred_facts(
+                  arrow: arrow,
+                  node: cond,
+                  target: target,
+                  tree: tree,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_cond) {
+                  bind_outcome(
+                    o: project_value_node_from_inferred_facts(
+                      arrow: arrow,
+                      node: then_arm,
+                      target: target,
+                      tree: tree,
+                      handle_transform: handle_transform
+                    ),
+                    f: fn(projected_then) {
+                      bind_outcome(
+                        o: project_value_node_from_inferred_facts(
+                          arrow: arrow,
+                          node: else_arm,
+                          target: target,
+                          tree: tree,
+                          handle_transform: handle_transform
+                        ),
+                        f: fn(projected_else) {
+                          outcome_accepted(
+                            target_value_expression_conditional(
+                              condition: projected_cond,
+                              then_arm: projected_then,
+                              else_arm: projected_else
+                            )
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+          }
+      }
+  }
+}
+
+fn project_value_node_structurally(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Branch } =>
+      project_branch_from_inferred_facts(
+        arrow: arrow,
+        body: node,
+        target: target,
+        tree: tree,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Occupancy } =>
+      project_occupancy_carrier_from_inferred_facts(
+        arrow: arrow,
+        occupancy: node,
+        target: target,
+        tree: tree,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Conj } =>
+      if declaration_reference_body_marked(target: node) {
+        outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: node))
+      } else {
+        target_value_expr_project_body_subexpression(
+          arrow: arrow,
+          node: node,
+          target: target,
+          source_bool_form: dag_value_expression_projection().bool_literal_form,
+          handle_transform: handle_transform
+        )
+      }
+    ComputationNode { behavior: _ } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Atom { identity: _ } } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Disj } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Arrow } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Instantiation } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
   }
 }
 
@@ -939,31 +1119,13 @@ fn project_arrow_body_from_inferred_facts(
   match find_arrow_body_child(root: arrow) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: body, diagnostics: _ } =>
-      match first_nullary_coproduct_arm_for_body(tree: tree, body: body) {
-        Present { value: arm } =>
-          match nullary_coproduct_arm_binding_spelling(body: arm) {
-            Present { value: binding } =>
-              outcome_accepted(target_value_expression_binding_ref(binding: binding))
-            Absent =>
-              match nullary_coproduct_arm_binding_spelling(body: body) {
-                Present { value: binding } =>
-                  outcome_accepted(target_value_expression_binding_ref(binding: binding))
-                Absent =>
-                  outcome_rejected(d: emit_nullary_coproduct_arm_path_absent_diagnostic(body: arm))
-              }
-          }
-        Absent =>
-          if arrow_body_form_is_declaration_reference(form: classify_arrow_body_form(target: body)) {
-            outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: body))
-          } else {
-            target_project_arrow_body_to_value_expression(
-              arrow: arrow,
-              target: target,
-              source_bool_form: dag_value_expression_projection().bool_literal_form,
-              handle_transform: handle_transform
-            )
-          }
-      }
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: body,
+        target: target,
+        tree: tree,
+        handle_transform: handle_transform
+      )
   }
 }
 
