@@ -35,7 +35,7 @@ import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results
 // frame alone would make a stand-in file and the device differ. Writing exactly the declared size
 // makes them byte-identical, and a frame larger than the device refuses rather than being cut.
 
-data claim_set_guest_spec_env: NonEmptyStr = "GUNBC_CLAIM_SET_SPEC"
+data claim_set_guest_claims_env: NonEmptyStr = "GUNBC_CLAIM_SET_CLAIMS"
 data claim_set_guest_commit_env: NonEmptyStr = "GUNBC_CLAIM_SET_COMMIT"
 data claim_set_guest_tree_env: NonEmptyStr = "GUNBC_CLAIM_SET_TREE"
 data claim_set_guest_device_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_DEVICE"
@@ -73,19 +73,12 @@ fn write_claim_set_frame(records: List<ClaimSetResult>, device: String, device_b
 
 // ── running the claims ─────────────────────────────────────────────────────────────────────────
 
-// The spec names the claims one per line, `claim <label>`, in the Work's declared order (the host
-// renders it from the Work's FreeSemigroup<Label>; S4b-2's launch plan).
+// The claims arrive as one environment value, space-separated labels in the Work's declared order:
+// the host renders the spec environment file from the Work's FreeSemigroup<Label> (the launch plan),
+// and systemd loads it from the read-only spec device. An empty value names no claims.
 fn claim_set_spec_labels(text: String) -> List<String>? {
-  let lines = filter(text.split(delimiter: "\n"), l => trim(s: l) != "")
-  fold(lines, init: Present { value: [] }, f: (acc, line) => match acc {
-    Absent => none
-    Present { value: labels } =>
-      if !trim(s: line).starts_with("claim ") { none }
-      else {
-        let label = trim(s: substring(s: trim(s: line), start: length("claim "), end: length(trim(s: line))))
-        if label == "" || count(label.split(delimiter: " ")) != 1 { none } else { Present { value: labels + [label] } }
-      }
-  })
+  let labels = filter(text.split(delimiter: " "), l => l != "")
+  if count(labels) == 0 { none } else { Present { value: labels } }
 }
 
 type ClaimRun
@@ -124,18 +117,16 @@ fn claim_set_guest_env(name: NonEmptyStr) -> String {
 }
 
 fn claim_set_guest_main() -> ProcessExit {
-  let spec = claim_set_guest_env(name: claim_set_guest_spec_env)
+  let claims = claim_set_guest_env(name: claim_set_guest_claims_env)
   let commit = claim_set_guest_env(name: claim_set_guest_commit_env)
   let tree = claim_set_guest_env(name: claim_set_guest_tree_env)
   let device = claim_set_guest_env(name: claim_set_guest_device_env)
   let bytes_text = claim_set_guest_env(name: claim_set_guest_device_bytes_env)
-  if spec == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
-    exit_failure(reason: "claim_set_guest: GUNBC_CLAIM_SET_SPEC, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
+  if claims == "" || commit == "" || tree == "" || device == "" || !cas_name_is_digits(s: bytes_text) {
+    exit_failure(reason: "claim_set_guest: GUNBC_CLAIM_SET_CLAIMS, _COMMIT, _TREE, _RESULTS_DEVICE and a decimal _RESULTS_BYTES must all be set")
   } else {
-    let read = Filesystem.Read(path: spec)
-    if !read.success { exit_failure(reason: join(["claim_set_guest: spec unreadable at ", spec, ": ", read.error], "")) }
-    else { match claim_set_spec_labels(text: read.content) {
-      Absent => exit_failure(reason: "claim_set_guest: the spec is not one `claim <label>` per line")
+    match claim_set_spec_labels(text: claims) {
+      Absent => exit_failure(reason: "claim_set_guest: GUNBC_CLAIM_SET_CLAIMS names no claims")
       Present { value: labels } => match run_claim_set(labels: labels, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr) {
         ClaimSetGuestClaimRefused { label: l, detail: d } => exit_failure(reason: join(["claim_set_guest: claim ", l, " refused: ", d], ""))
         ClaimSetGuestRan { records: rs } => match parse_int(s: bytes_text) {
@@ -151,7 +142,7 @@ fn claim_set_guest_main() -> ProcessExit {
           }
         }
       }
-    } }
+    }
   }
 }
 

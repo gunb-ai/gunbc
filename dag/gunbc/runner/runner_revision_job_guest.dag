@@ -9,7 +9,8 @@ import extdeps.tools.tar { tar_extract_command }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command, git_diff_tree_equal_command,
 }
-import extdeps.rust.cargo_build { cargo_build_release_bins_offline_command }
+import extdeps.rust.cargo_build { cargo_build_release_bin_offline_command }
+import gunbc.repo.repo_self_build { repo_self_build_package }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
   Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
@@ -40,7 +41,8 @@ import gunbc.runner.runner_guest_image {
 //   1. the tree: unpack, then prove it equal to the admitted tree object (extdeps.git's staged-tree
 //      steps) -- BEFORE anything from the tree executes. A mismatch is diff-tree's nonzero exit;
 //   2. the crates: unpack the vendor set;
-//   3. the build: cargo, release, --locked --offline (extdeps.rust.cargo_build), from the verified
+//   3. the build: the one binary the guest runs (cargo -p v1-compiler --bin gunbc, the seed build's
+//      own selection), release, --locked --offline (extdeps.rust.cargo_build), from the verified
 //      tree, with the image's /work/.cargo/config.toml pointing crates-io at /work/vendor;
 //   4. ExecStart: the built gunbc runs gunbc.runner.runner_claim_set_guest claim_set_guest_main,
 //      which runs each claim and frames the exits onto /dev/vde.
@@ -81,7 +83,7 @@ fn revision_job_vendor_steps(vendor_archive: String, vendor_dir: String) -> List
 fn revision_job_pre_steps() -> List<ArgvCommand> {
   revision_job_tree_steps(tree_archive: revision_job_tree_device, work_dir: revision_job_tree_dir, tree: systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
     + revision_job_vendor_steps(vendor_archive: revision_job_vendor_device, vendor_dir: revision_job_vendor_dir)
-    + [cargo_build_release_bins_offline_command()]
+    + [cargo_build_release_bin_offline_command(package: repo_self_build_package as String, bin: gunbc_bin_name as String)]
 }
 
 // ── the systemd command line ───────────────────────────────────────────────────────────────────

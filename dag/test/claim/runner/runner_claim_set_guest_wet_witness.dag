@@ -84,11 +84,9 @@ test fn no_claims_writes_nothing_and_the_host_reads_unwritten_by_real_execution(
   staged && refused && verdict == "unwritten" && removed.success
 }
 
-test fn the_spec_is_one_claim_per_line_or_nothing() -> Bool {
-  let good = claim_set_spec_labels(text: "claim //gunbc/instruments:self-host\nclaim //gunbc/instruments:v2-native-cli\n")
-  let bad = claim_set_spec_labels(text: "claim //gunbc/instruments:self-host\nrun everything\n")
-  let spaced = claim_set_spec_labels(text: "claim a b\n")
-  (match good { Present { value: ls } => count(ls) == 2  Absent => false })
-    && (match bad { Present { value: _ } => false  Absent => true })
-    && (match spaced { Present { value: _ } => false  Absent => true })
+test fn the_claims_value_is_the_labels_in_order_or_nothing() -> Bool {
+  let good = claim_set_spec_labels(text: "//gunbc/instruments:self-host //gunbc/instruments:v2-native-cli")
+  let empty = claim_set_spec_labels(text: "   ")
+  (match good { Present { value: ls } => count(ls) == 2 && (match ls.first() { Present { value: f } => f == "//gunbc/instruments:self-host"  Absent => false })  Absent => false })
+    && (match empty { Present { value: _ } => false  Absent => true })
 }
