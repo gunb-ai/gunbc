@@ -387,19 +387,90 @@ fn observe_sccache_host_probe() -> String {
   let host_out = observe_argv(program: "/usr/bin/hostname", args: [])
   let ps_out = observe_argv(program: "/usr/bin/ps", args: ["-eo", "user,uid,pid,args"])
   let ss_out = observe_argv(program: "/usr/bin/ss", args: ["-ltnp", "sport = :4226"])
+  let mgr_env = observe_argv(program: "/usr/bin/systemctl", args: ["--user", "show-environment"])
+  let sock_stat = observe_argv(
+    program: "/usr/bin/stat",
+    args: ["-c", "%U %u %a %n", "/var/lib/ctrl/sccache-ci/server.sock"],
+  )
+  let ss_unix = observe_argv(program: "/usr/bin/ss", args: ["-xlp"])
   join([
     "=== id ===\n", id_out, "\n",
     "=== hostname ===\n", host_out, "\n",
     "=== ps /usr/local/bin/sccache (user,uid,pid,args) ===\n",
     lines_with_needle(text: ps_out, needle: "/usr/local/bin/sccache"), "\n",
     "=== ss -ltnp sport = :4226 ===\n", ss_out, "\n",
+    "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
+    lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
+    lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
+    "=== stat CI UDS /var/lib/ctrl/sccache-ci/server.sock ===\n", sock_stat, "\n",
+    "=== ss -xlp sccache/server.sock ===\n",
+    lines_with_needle(text: ss_unix, needle: "sccache"), "\n",
+    lines_with_needle(text: ss_unix, needle: "server.sock"), "\n",
     "=== SCCACHE_LOG=debug sccache --show-stats ===\n", observe_sccache_stats_debug(), "\n",
   ], "")
 }
 
+fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes) -> String {
+  let workspace = observe_workspace(
+    instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes),
+  )
+  let identity = observe_run_identity()
+  if (workspace == "") || (identity == "") || path_is_under_opt_gunbc(path: workspace) {
+    "unit printenv skipped: workspace or identity unusable\n"
+  } else {
+    let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
+    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
+    let layout = compute_layout(instance: instance, identity_hex: identity)
+    let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+      && mkdir_ok(instance: instance, path: layout.work_dir)
+      && mkdir_ok(instance: instance, path: layout.checkout)
+      && mkdir_ok(instance: instance, path: layout.target_dir)
+    if !roots_ok {
+      "unit printenv skipped: layout mkdir failed\n"
+    } else {
+      match compute_run_unit(
+        instance: instance,
+        layout: layout,
+        identity_hex: identity,
+        argv: ["/usr/bin/printenv"],
+        env: concat(
+          hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
+          hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+        ),
+        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+        granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
+      ) {
+        ComputeUnitRunRefused { cause: _ } => "unit printenv: launch refused\n"
+        ComputeUnitRunExecuted { run: unit_run } => join([
+          "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit, no extra sccache setenv) ===\n",
+          match unit_run.exec {
+            ComputeExecOk { stdout, stderr: _ } => join([
+              lines_with_needle(text: stdout, needle: "SCCACHE"),
+              "\n",
+              lines_with_needle(text: stdout, needle: "RUSTC_WRAPPER"),
+              "\n",
+            ], "")
+            ComputeExecFailed { exit_code, stdout, stderr } =>
+              join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
+          },
+        ], "")
+      }
+    }
+  }
+}
+
 fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
+  let host = observe_sccache_host_probe()
+  let unit_env = match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent => "unit printenv skipped: user session bus absent\n"
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent => "unit printenv skipped: ToolchainHomesNotIsolated\n"
+        Present { value: homes } => observe_unit_printenv(runtime_dir: runtime_dir, toolchain_homes: homes)
+      }
+  }
   CliWirePrintable {
-    bytes: join(["compute-run-unit-sccache-probe\n", observe_sccache_host_probe()], ""),
+    bytes: join(["compute-run-unit-sccache-probe\n", host, unit_env], ""),
     exit: ExitSuccess,
   }
 }
