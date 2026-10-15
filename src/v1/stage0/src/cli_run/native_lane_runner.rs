@@ -4326,6 +4326,15 @@ pub struct NativeCensusScopedRun {
 /// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
 /// `subject_label` must be the label this instrument bound, so a run is never reported as another
 /// subject's.
+///
+/// COLD AND WARM COST ARE NOT YET REPORTED APART -- A DECLARED FRONTIER (DESIGN §4b). Current
+/// ceiling: a scoped run can be timed by hand, and native-product reuse records hit/miss standing
+/// separately (`native_product_cache::record_outcome`), but no one receipt binds this run's
+/// preparation disposition to its whole-command wall time, so a measured wall mixes the driver
+/// build in. Next rung: each scoped-run receipt names cold build versus verified hit, restored or
+/// refused preparation, and carries whole-command wall time, enough to compare an eligible
+/// same-input warm run against a cold one. Trigger: the next planning decision that needs a warm
+/// census figure.
 pub fn run_v2_native_census_scoped(
     subject_label: &str,
     source_roots: &[String],
