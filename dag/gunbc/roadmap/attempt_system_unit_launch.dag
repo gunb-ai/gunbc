@@ -11,12 +11,15 @@ module gunbc.roadmap.attempt_system_unit_launch
 // sudoers matches one exact `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root
 // pinned. DESIGN §3 replacement: no --user dual path.
 //
-// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The pending file is
-// written by the requester, so it carries only the attempt's identity (node id, attempt key), the
-// memory grant and the worker argv. User=, the working directory, the writable worktree and log
-// paths and the ExecStopPost exit hook are derived here from the instance and that identity, with the
-// same functions the belt plans with. A request cannot name a `+`-prefixed exit hook (which systemd
-// runs with full privileges) or widen ReadWritePaths: those fields do not exist in it.
+// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). Each request is
+// one create-only directory named from (node id, attempt key), staged then renamed into `requests/`.
+// It carries only the attempt's identity, the memory grant and the worker argv. User=, the working
+// directory, the writable worktree and log paths and the ExecStopPost exit hook are derived here
+// from the instance and that identity, with the same functions the belt plans with. A request cannot
+// name a `+`-prefixed exit hook (which systemd runs with full privileges) or widen ReadWritePaths:
+// those fields do not exist in it. The launcher claims by rename into `claimed/` (requester cannot
+// write that directory) and writes `answers/<entry>`. Two overlapping sudo launches cannot share one
+// body; a second write for the same attempt refuses (review 80347).
 //
 // ONE SUDOERS FILE PER INSTANCE, installed only by that instance's deploy
 // (`/etc/sudoers.d/gunbc-attempt-system-unit-<instance_id>`). A host-global file that named both
@@ -37,10 +40,21 @@ import gunbc.live_deploy.release_locus {
   release_revision_execstart_text,
 }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.human_intervention { EveryProvision }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_listing_observation,
+  filesystem_listing_entry_names,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+}
+import extdeps.shell
+import extdeps.tools.stat { stat_file_type_reading, StatFileTypeRead, StatFileTypeUnanswered, SymbolicLinkKind, DirectoryKind }
+import gunbc.host.host_layout {
+  attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+}
 import extdeps.systemd { User }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, MintsNoCredential,
@@ -71,12 +85,15 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_pane_working_directory, GunbcHarnessProvider,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
+  attempt_exit_entry_separator,
+}
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
-data attempt_system_unit_pending_child: String = "attempt-unit-spool/pending"
+data attempt_system_unit_request_body_name: String = "request"
 data attempt_system_unit_name_prefix: String = "gunbc-attempt-"
 data attempt_system_unit_name_suffix: String = ".service"
 data attempt_system_unit_launcher_helpers_root: String = "/opt/gunbc/attempt-system-unit-helpers"
@@ -119,8 +136,41 @@ fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
   }
 }
 
-fn attempt_system_unit_pending_path(instance_root: String) -> String {
-  join([instance_root, "/", attempt_system_unit_pending_child], "")
+fn attempt_system_unit_request_entry_name(node_id: String, attempt_key: String) -> String {
+  join([node_id, attempt_exit_entry_separator, attempt_key], "")
+}
+
+fn attempt_system_unit_request_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_request_dir(instance_root: instance_root), "/", entry], "")
+}
+
+fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_staging_dir(instance_root: instance_root), "/", entry, ".staging"], "")
+}
+
+fn attempt_system_unit_claimed_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_claimed_dir(instance_root: instance_root), "/", entry], "")
+}
+
+fn attempt_system_unit_answer_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_answer_dir(instance_root: instance_root), "/", entry], "")
+}
+
+fn attempt_system_unit_request_body_path(dir: String) -> String {
+  join([dir, "/", attempt_system_unit_request_body_name], "")
+}
+
+fn attempt_system_unit_spool_prepare(instance_root: String) -> Bool {
+  fold(
+    [
+      attempt_unit_spool_staging_dir(instance_root: instance_root),
+      attempt_unit_spool_request_dir(instance_root: instance_root),
+      attempt_unit_spool_claimed_dir(instance_root: instance_root),
+      attempt_unit_spool_answer_dir(instance_root: instance_root),
+    ],
+    init: true,
+    f: (ok, dir) => ok && shell.Mkdir.Parents(path: dir as FilePath).success,
+  )
 }
 
 fn attempt_system_unit_name_admitted(unit: NonEmptyStr) -> Bool {
@@ -395,8 +445,180 @@ fn attempt_system_unit_sudoers_body(instance: HostDashboardInstance, revision: R
   ], "\n")
 }
 
-fn attempt_system_unit_write_pending(instance_root: String, body: String) -> Bool {
-  Filesystem.Write(path: attempt_system_unit_pending_path(instance_root: instance_root), content: body).success
+type AttemptSystemUnitEnqueue
+  = AttemptSystemUnitEnqueued { entry: String }
+  | AttemptSystemUnitEnqueueOccupied { entry: String }
+  | AttemptSystemUnitEnqueueRefused { detail: String }
+
+type AttemptSystemUnitClaim
+  = AttemptSystemUnitClaimed { entry: String, path: String }
+  | AttemptSystemUnitAlreadyClaimed { entry: String }
+  | AttemptSystemUnitClaimSymlink { entry: String }
+  | AttemptSystemUnitClaimRefused { entry: String, reason: String }
+
+type AttemptSystemUnitAnswer
+  = AttemptSystemUnitStarted
+  | AttemptSystemUnitRefusedAnswer { reason: String }
+
+type AttemptSystemUnitAnswerRead
+  = AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitAnswer }
+  | AttemptSystemUnitAnswerMissing
+  | AttemptSystemUnitAnswerUnreadable { detail: String }
+
+type AttemptSystemUnitHarnessStart
+  = AttemptSystemUnitHarnessStarted
+  | AttemptSystemUnitHarnessFailed { detail: String }
+
+fn attempt_system_unit_rename_exact(source: String, destination: String) -> Bool {
+  shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
+}
+
+fn attempt_system_unit_enqueue_request(instance_root: String, node_id: String, attempt_key: String, body: String) -> AttemptSystemUnitEnqueue {
+  if !path_segment_is_safe(raw: node_id) || !path_segment_is_safe(raw: attempt_key) {
+    AttemptSystemUnitEnqueueRefused { detail: "node id or attempt key is not one safe path segment" }
+  } else {
+    let entry = attempt_system_unit_request_entry_name(node_id: node_id, attempt_key: attempt_key)
+    let staging = attempt_system_unit_staging_path(instance_root: instance_root, entry: entry)
+    let dest = attempt_system_unit_request_path(instance_root: instance_root, entry: entry)
+    if !shell.Mkdir.NewOwnerOnly(path: staging as FilePath).success {
+      AttemptSystemUnitEnqueueRefused { detail: join(["could not create-only the staging directory ", staging], "") }
+    } else {
+      let wrote = Filesystem.Write(path: attempt_system_unit_request_body_path(dir: staging), content: body)
+      if !wrote.success {
+        AttemptSystemUnitEnqueueRefused { detail: join(["could not write the staged request body at ", staging], "") }
+      } else if attempt_system_unit_rename_exact(source: staging, destination: dest) {
+        AttemptSystemUnitEnqueued { entry: entry }
+      } else {
+        AttemptSystemUnitEnqueueOccupied { entry: entry }
+      }
+    }
+  }
+}
+
+fn attempt_system_unit_enqueue_start(instance_root: String, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitEnqueue {
+  attempt_system_unit_enqueue_request(
+    instance_root: instance_root,
+    node_id: request.node_id,
+    attempt_key: request.attempt_key,
+    body: attempt_system_unit_encode_start(request: request),
+  )
+}
+
+fn attempt_system_unit_enqueue_start_wait(instance_root: String, request: AttemptSystemUnitStartRequest) -> AttemptSystemUnitEnqueue {
+  attempt_system_unit_enqueue_request(
+    instance_root: instance_root,
+    node_id: request.node_id,
+    attempt_key: request.attempt_key,
+    body: attempt_system_unit_encode_start_wait(request: request),
+  )
+}
+
+fn attempt_system_unit_claimed_kind_is_symlink(path: String) -> Bool {
+  let t = stat.File.FileType(path: path)
+  match stat_file_type_reading(success: t.success, output: t.file_type) {
+    StatFileTypeUnanswered { cause: _ } => false
+    StatFileTypeRead { kind: SymbolicLinkKind } => true
+    StatFileTypeRead { kind: _ } => false
+  }
+}
+
+fn attempt_system_unit_claimed_kind_is_directory(path: String) -> Bool {
+  let t = stat.File.FileType(path: path)
+  match stat_file_type_reading(success: t.success, output: t.file_type) {
+    StatFileTypeUnanswered { cause: _ } => false
+    StatFileTypeRead { kind: DirectoryKind } => true
+    StatFileTypeRead { kind: _ } => false
+  }
+}
+
+fn attempt_system_unit_claim_entry(instance_root: String, entry: String) -> AttemptSystemUnitClaim {
+  if entry == "" || string_contains(s: entry, pattern: "/") || string_contains(s: entry, pattern: "..") {
+    AttemptSystemUnitClaimRefused { entry: entry, reason: "request entry name is not one path segment" }
+  } else {
+    let source = attempt_system_unit_request_path(instance_root: instance_root, entry: entry)
+    let dest = attempt_system_unit_claimed_path(instance_root: instance_root, entry: entry)
+    if attempt_system_unit_rename_exact(source: source, destination: dest) {
+      if attempt_system_unit_claimed_kind_is_symlink(path: dest) {
+        AttemptSystemUnitClaimSymlink { entry: entry }
+      } else if !attempt_system_unit_claimed_kind_is_directory(path: dest) {
+        AttemptSystemUnitClaimRefused { entry: entry, reason: "claimed entry is not a directory" }
+      } else {
+        AttemptSystemUnitClaimed { entry: entry, path: dest }
+      }
+    } else {
+      AttemptSystemUnitAlreadyClaimed { entry: entry }
+    }
+  }
+}
+
+fn attempt_system_unit_encode_answer(answer: AttemptSystemUnitAnswer) -> String {
+  match answer {
+    AttemptSystemUnitStarted => "started\n"
+    AttemptSystemUnitRefusedAnswer { reason } => join(["refused\n", reason, "\n"], "")
+  }
+}
+
+fn attempt_system_unit_write_answer(instance_root: String, entry: String, answer: AttemptSystemUnitAnswer) -> Bool {
+  Filesystem.WriteCreateNew(
+    path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry),
+    content: attempt_system_unit_encode_answer(answer: answer),
+  ).success
+}
+
+fn attempt_system_unit_decode_answer(content: String) -> AttemptSystemUnitAnswerRead {
+  let lines = split(s: content, delimiter: "\n")
+  match lines.first() {
+    Absent => AttemptSystemUnitAnswerUnreadable { detail: "answer is empty" }
+    Present { value: tag } =>
+      if tag == "started" {
+        AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted }
+      } else if tag == "refused" {
+        match lines[1] {
+          Absent => AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: "refused without a cause" } }
+          Present { value: reason } => AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: reason } }
+        }
+      } else {
+        AttemptSystemUnitAnswerUnreadable { detail: join(["answer verb is not started or refused: ", tag], "") }
+      }
+  }
+}
+
+fn attempt_system_unit_read_answer(instance_root: String, entry: String) -> AttemptSystemUnitAnswerRead {
+  let read = Filesystem.Read(path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry))
+  if !read.success {
+    AttemptSystemUnitAnswerMissing
+  } else {
+    attempt_system_unit_decode_answer(content: read.content)
+  }
+}
+
+fn attempt_system_unit_harness_start_from_answer(reading: AttemptSystemUnitAnswerRead) -> AttemptSystemUnitHarnessStart {
+  match reading {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => AttemptSystemUnitHarnessStarted
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason } } =>
+      AttemptSystemUnitHarnessFailed { detail: reason }
+    AttemptSystemUnitAnswerMissing =>
+      AttemptSystemUnitHarnessFailed { detail: "attempt-system-unit answer missing after the launcher exited" }
+    AttemptSystemUnitAnswerUnreadable { detail } =>
+      AttemptSystemUnitHarnessFailed { detail: detail }
+  }
+}
+
+type AttemptSystemUnitRequestListing
+  = AttemptSystemUnitRequestNames { names: List<String> }
+  | AttemptSystemUnitRequestListRefused { reason: String }
+
+fn attempt_system_unit_list_request_entries(instance_root: String) -> AttemptSystemUnitRequestListing {
+  let dir = attempt_unit_spool_request_dir(instance_root: instance_root)
+  let listed = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) =>
+      AttemptSystemUnitRequestNames { names: filesystem_listing_entry_names(listing: admitted) }
+    FilesystemDirectoryListingRefused { directory, error } =>
+      AttemptSystemUnitRequestListRefused { reason: join(["request spool could not be listed at ", directory as String, ": ", error], "") }
+    FilesystemDirectorySubjectRefused { directory, cause } =>
+      AttemptSystemUnitRequestListRefused { reason: join(["request spool is not an admissible directory ", directory, ": ", cause], "") }
+  }
 }
 
 fn attempt_system_unit_instance_for_root(instance_root: String) -> HostDashboardInstance? {
@@ -461,26 +683,116 @@ fn attempt_system_unit_run_admitted_start(instance: HostDashboardInstance, facts
   }
 }
 
+fn attempt_system_unit_process_claimed(instance: HostDashboardInstance, entry: String, path: String) -> ProcessExit {
+  let read = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: path))
+  if !read.success {
+    let _ = attempt_system_unit_write_answer(
+      instance_root: instance.instance_root as String,
+      entry: entry,
+      answer: AttemptSystemUnitRefusedAnswer { reason: "claimed request body unreadable" },
+    )
+    exit_failure(reason: "claimed request body unreadable")
+  } else {
+    let lines = split(s: read.content, delimiter: "\n")
+    match lines.first() {
+      Absent => {
+        let _ = attempt_system_unit_write_answer(
+          instance_root: instance.instance_root as String,
+          entry: entry,
+          answer: AttemptSystemUnitRefusedAnswer { reason: "pending request is empty" },
+        )
+        exit_failure(reason: "pending request is empty")
+      }
+      Present { value: tag } => {
+        let wait = tag == "start-wait"
+        if tag != "start" && !wait {
+          let _ = attempt_system_unit_write_answer(
+            instance_root: instance.instance_root as String,
+            entry: entry,
+            answer: AttemptSystemUnitRefusedAnswer { reason: "pending request verb is not start or start-wait" },
+          )
+          exit_failure(reason: "pending request verb is not start or start-wait")
+        } else {
+          match attempt_system_unit_start_request_decode(lines: lines) {
+            AttemptSystemUnitStartRequestMalformed { reason: why } => {
+              let _ = attempt_system_unit_write_answer(
+                instance_root: instance.instance_root as String,
+                entry: entry,
+                answer: AttemptSystemUnitRefusedAnswer { reason: why },
+              )
+              exit_failure(reason: why)
+            }
+            AttemptSystemUnitStartRequestDecoded { request } =>
+              if attempt_system_unit_request_entry_name(node_id: request.node_id, attempt_key: request.attempt_key) != entry {
+                let why = "request body identity does not match the entry name"
+                let _ = attempt_system_unit_write_answer(
+                  instance_root: instance.instance_root as String,
+                  entry: entry,
+                  answer: AttemptSystemUnitRefusedAnswer { reason: why },
+                )
+                exit_failure(reason: why)
+              } else {
+                let started = attempt_system_unit_cli_start(instance: instance, lines: lines, wait: wait)
+                match started {
+                  ExitSuccess => {
+                    let _ = attempt_system_unit_write_answer(
+                      instance_root: instance.instance_root as String,
+                      entry: entry,
+                      answer: AttemptSystemUnitStarted,
+                    )
+                    started
+                  }
+                  ExitFailure { code: _, reason: why } => {
+                    let _ = attempt_system_unit_write_answer(
+                      instance_root: instance.instance_root as String,
+                      entry: entry,
+                      answer: AttemptSystemUnitRefusedAnswer { reason: why },
+                    )
+                    started
+                  }
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn attempt_system_unit_launch_cli(instance_root: String) -> ProcessExit {
   match attempt_system_unit_instance_for_root(instance_root: instance_root) {
     Absent => exit_failure(reason: "instance_root is not a declared dashboard instance")
     Present { value: instance } => {
-      let read = Filesystem.Read(path: attempt_system_unit_pending_path(instance_root: instance_root))
-      if !read.success {
-        exit_failure(reason: "pending attempt-system-unit request unreadable")
-      } else {
-        let lines = split(s: read.content, delimiter: "\n")
-        match lines.first() {
-          Absent => exit_failure(reason: "pending request is empty")
-          Present { value: tag } =>
-            if tag == "start" {
-              attempt_system_unit_cli_start(instance: instance, lines: lines, wait: false)
-            } else if tag == "start-wait" {
-              attempt_system_unit_cli_start(instance: instance, lines: lines, wait: true)
-            } else {
-              exit_failure(reason: "pending request verb is not start or start-wait")
+      match attempt_system_unit_list_request_entries(instance_root: instance_root) {
+        AttemptSystemUnitRequestListRefused { reason } => exit_failure(reason: reason)
+        AttemptSystemUnitRequestNames { names: entries } =>
+          fold(entries, init: ExitSuccess, f: (acc, entry) =>
+            match acc {
+              ExitSuccess =>
+                match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
+                  AttemptSystemUnitAlreadyClaimed { entry: _ } => ExitSuccess
+                  AttemptSystemUnitClaimSymlink { entry: e } => {
+                    let _ = attempt_system_unit_write_answer(
+                      instance_root: instance_root,
+                      entry: e,
+                      answer: AttemptSystemUnitRefusedAnswer { reason: "request entry is a symlink" },
+                    )
+                    exit_failure(reason: "request entry is a symlink")
+                  }
+                  AttemptSystemUnitClaimRefused { entry: e, reason: why } => {
+                    let _ = attempt_system_unit_write_answer(
+                      instance_root: instance_root,
+                      entry: e,
+                      answer: AttemptSystemUnitRefusedAnswer { reason: why },
+                    )
+                    exit_failure(reason: why)
+                  }
+                  AttemptSystemUnitClaimed { entry: e, path: p } =>
+                    attempt_system_unit_process_claimed(instance: instance, entry: e, path: p)
+                }
+              ExitFailure { code: _, reason: _ } => acc
             }
-        }
+          )
       }
     }
   }

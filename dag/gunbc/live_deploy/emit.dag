@@ -238,6 +238,8 @@ import gunbc.host.host_layout {
   publication_refused_dir,
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+  attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -1094,6 +1096,53 @@ data publication_spool_request_mode: FileMode = FileMode {
 
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
+data attempt_unit_spool_answer_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: true, write: false, execute: true },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  let root_principal = approval_broker_helper_root_principal
+  let service = spec.service.service_user
+  let instance_root = spec.service.instance_root as String
+  [
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse),
+      owner: root_principal,
+      group: root_principal,
+      path: attempt_unit_spool_root(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_staging_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_request_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerOnly),
+      owner: root_principal,
+      group: root_principal,
+      path: attempt_unit_spool_claimed_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: attempt_unit_spool_answer_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_answer_dir(instance_root: instance_root),
+    )),
+  ]
+}
+
 data attempt_system_unit_grant_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant has no HostDashboardInstance for this spec.instance_id, so it will not install a host-global file or another instance's grant. instance="
 data attempt_system_unit_grant_revision_unbound_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit launcher grant was asked to install under RevisionNotInstalled; a sha-addressed root-owned release has no path that could mean.\n"
 
@@ -1110,12 +1159,7 @@ fn attempt_system_unit_grant_steps_for_instance(
   let readback = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-readback"], "")
   let rev_stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-revision"], "")
   concat(
-    [
-      deploy_raw(command: install_d_owned_command(
-        spec: spec,
-        path: join([spec.service.instance_root as String, "/attempt-unit-spool"], ""),
-      )),
-    ],
+    apply_attempt_unit_spool_steps(spec: spec),
     concat(
       root_owned_helper_snapshot_steps(locus: locus, revision: revision),
       [

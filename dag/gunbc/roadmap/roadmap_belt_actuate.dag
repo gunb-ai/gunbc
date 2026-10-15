@@ -255,8 +255,12 @@ import gunbc.dispatch_selection { default_provider_selection_request, SizingProf
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap.attempt_system_unit_launch {
-  attempt_system_unit_start_request_from_plan, attempt_system_unit_encode_start,
-  attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
+  attempt_system_unit_start_request_from_plan,
+  attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
+  AttemptSystemUnitEnqueueRefused,
+  attempt_system_unit_launch_host_argv, attempt_system_unit_read_answer,
+  attempt_system_unit_harness_start_from_answer,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
 }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
@@ -1502,18 +1506,40 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  if !attempt_system_unit_write_pending(
+                  match attempt_system_unit_enqueue_start(
                     instance_root: instance.instance_root as String,
-                    body: attempt_system_unit_encode_start(
-                      request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
-                    ),
+                    request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
                   ) {
-                    ExecStepFailed { step: "harness-unit-start", detail: "pending attempt-system-unit request could not be written" }
-                  } else {
-                    belt_exec_steps(
-                      steps: [BeltExecStep { step: "harness-unit-start", command: attempt_system_unit_launch_host_argv(instance: instance) }],
-                      workdir: workdir,
-                    )
+                    AttemptSystemUnitEnqueueRefused { detail } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: detail }
+                    AttemptSystemUnitEnqueueOccupied { entry } =>
+                      ExecStepFailed {
+                        step: "harness-unit-start",
+                        detail: join(["a request for this attempt already exists at ", entry], ""),
+                      }
+                    AttemptSystemUnitEnqueued { entry } => {
+                      let launched_exec = belt_exec_steps(
+                        steps: [BeltExecStep { step: "harness-unit-start", command: attempt_system_unit_launch_host_argv(instance: instance) }],
+                        workdir: workdir,
+                      )
+                      match attempt_system_unit_harness_start_from_answer(
+                        reading: attempt_system_unit_read_answer(
+                          instance_root: instance.instance_root as String,
+                          entry: entry,
+                        ),
+                      ) {
+                        AttemptSystemUnitHarnessStarted => ExecStepsOk
+                        AttemptSystemUnitHarnessFailed { detail } =>
+                          match launched_exec {
+                            ExecStepsOk => ExecStepFailed { step: "harness-unit-start", detail: detail }
+                            ExecStepFailed { step: _, detail: exec_detail } =>
+                              ExecStepFailed {
+                                step: "harness-unit-start",
+                                detail: join([detail, "; launcher: ", exec_detail], ""),
+                              }
+                          }
+                      }
+                    }
                   }
               }
           }

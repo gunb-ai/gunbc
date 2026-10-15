@@ -30,6 +30,11 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartDerived, AttemptSystemUnitStartUnderivable,
   attempt_system_unit_encode_start, attempt_system_unit_start_request_decode,
   AttemptSystemUnitStartRequestDecoded, AttemptSystemUnitStartRequestMalformed,
+  attempt_system_unit_request_entry_name,
+  attempt_system_unit_decode_answer, attempt_system_unit_harness_start_from_answer,
+  AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
+  AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -226,10 +231,10 @@ test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Boo
   )
 }
 
-// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The requester writes
-// the pending file, so the claims below supply request values at that interface and read what the
-// launcher derives: the exit hook is attempt_exit_hook's render for the attempt, User= is the
-// instance's, and the writable worktree and log paths are the belt's own derivations.
+// THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). The requester
+// writes one per-attempt spool entry, so the claims below supply request values at that interface
+// and read what the launcher derives: the exit hook is attempt_exit_hook's render for the attempt,
+// User= is the instance's, and the writable worktree and log paths are the belt's own derivations.
 fn claim_request(node_id: String, attempt_key: String) -> AttemptSystemUnitStartRequest {
   AttemptSystemUnitStartRequest {
     node_id: node_id,
@@ -352,5 +357,37 @@ test fn the_launcher_execstoppost_uses_short_property_words_and_keeps_a_single_d
     AttemptExitHookRefused { reason: _ } => false
     AttemptExitHookRendered { exec_line } =>
       launcher_execstoppost_argv_keeps_single_dollar(instance: inst, exec_line: exec_line)
+  }
+}
+
+test fn two_attempts_never_share_one_request_entry_name() -> Bool {
+  attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
+    != attempt_system_unit_request_entry_name(node_id: "n-b", attempt_key: "k1")
+    && attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k1")
+      != attempt_system_unit_request_entry_name(node_id: "n-a", attempt_key: "k2")
+}
+
+test fn a_refused_answer_is_not_harness_started() -> Bool {
+  match attempt_system_unit_harness_start_from_answer(
+    reading: AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: "occupied" } },
+  ) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => detail == "occupied"
+  }
+}
+
+test fn a_missing_answer_is_not_harness_started() -> Bool {
+  match attempt_system_unit_harness_start_from_answer(reading: AttemptSystemUnitAnswerMissing) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "missing")
+  }
+}
+
+test fn a_started_answer_decodes() -> Bool {
+  match attempt_system_unit_decode_answer(content: "started\n") {
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
+    AttemptSystemUnitAnswerMissing => false
+    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
   }
 }

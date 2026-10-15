@@ -34,7 +34,15 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest, attempt_system_unit_encode_start_wait,
-  attempt_system_unit_write_pending, attempt_system_unit_launch_host_argv,
+  attempt_system_unit_enqueue_start_wait, attempt_system_unit_enqueue_request,
+  AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied, AttemptSystemUnitEnqueueRefused,
+  attempt_system_unit_launch_host_argv, attempt_system_unit_claim_entry,
+  AttemptSystemUnitClaimed, AttemptSystemUnitAlreadyClaimed, AttemptSystemUnitClaimSymlink,
+  AttemptSystemUnitClaimRefused, attempt_system_unit_read_answer,
+  AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
+  AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
+  attempt_system_unit_request_body_path, attempt_system_unit_request_path,
+  attempt_system_unit_request_entry_name, attempt_system_unit_spool_prepare,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
@@ -314,16 +322,21 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
         granted: kibibyte(count: 65536),
         inner_argv: inner,
       }
-      if !prepare_launcher_probe(instance: instance, unit_key: unit_key)
-        || !attempt_system_unit_write_pending(
-        instance_root: instance.instance_root as String,
-        body: attempt_system_unit_encode_start_wait(request: request),
-      ) {
+      if !prepare_launcher_probe(instance: instance, unit_key: unit_key) {
         SandboxTouchUnrunnable
       } else {
+        match attempt_system_unit_enqueue_start_wait(
+          instance_root: instance.instance_root as String,
+          request: request,
+        ) {
+          AttemptSystemUnitEnqueueRefused { detail: _ } => SandboxTouchUnrunnable
+          AttemptSystemUnitEnqueueOccupied { entry: _ } => SandboxTouchUnrunnable
+          AttemptSystemUnitEnqueued { entry: _ } => {
         let cmd = attempt_system_unit_launch_host_argv(instance: instance)
         SandboxTouchRan {
           exit_code: shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code,
+        }
+          }
         }
       }
     }
@@ -471,12 +484,128 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
   ], "\n")
   launcher_marker_absent()
     && prepare_launcher_probe(instance: inst, unit_key: "roothook")
-    && attempt_system_unit_write_pending(instance_root: inst.instance_root as String, body: wide)
-    && launcher_run_refused(instance: inst)
-    && launcher_marker_absent()
+    && match attempt_system_unit_enqueue_request(
+      instance_root: inst.instance_root as String,
+      node_id: wet_probe_node as String,
+      attempt_key: launcher_probe_key(unit_key: "roothook"),
+      body: wide,
+    ) {
+      AttemptSystemUnitEnqueued { entry: _ } =>
+        launcher_run_refused(instance: inst) && launcher_marker_absent()
+      AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+      AttemptSystemUnitEnqueueRefused { detail: _ } => false
+    }
 }
 
 fn launcher_run_refused(instance: HostDashboardInstance) -> Bool {
   let cmd = attempt_system_unit_launch_host_argv(instance: instance)
   shell.Exec.RunArgv(program: cmd.program, arguments: cmd.args).exit_code != 0
+}
+
+fn wet_start_body(node_id: String, attempt_key: String, argv_word: String) -> String {
+  attempt_system_unit_encode_start_wait(
+    request: AttemptSystemUnitStartRequest {
+      node_id: node_id,
+      attempt_key: attempt_key,
+      granted: kibibyte(count: 1),
+      inner_argv: [argv_word],
+    },
+  )
+}
+
+test fn two_request_entries_keep_distinct_bodies() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && match attempt_system_unit_enqueue_request(instance_root: root, node_id: "n-a", attempt_key: "k1", body: wet_start_body(node_id: "n-a", attempt_key: "k1", argv_word: "one")) {
+        AttemptSystemUnitEnqueued { entry: a } =>
+          match attempt_system_unit_enqueue_request(instance_root: root, node_id: "n-b", attempt_key: "k1", body: wet_start_body(node_id: "n-b", attempt_key: "k1", argv_word: "two")) {
+            AttemptSystemUnitEnqueued { entry: b } => {
+              let ra = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: a)))
+              let rb = Filesystem.Read(path: attempt_system_unit_request_body_path(dir: attempt_system_unit_request_path(instance_root: root, entry: b)))
+              ra.success && rb.success && ra.content != rb.content && a != b
+            }
+            AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+            AttemptSystemUnitEnqueueRefused { detail: _ } => false
+          }
+        AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+        AttemptSystemUnitEnqueueRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn a_second_request_for_the_same_attempt_is_occupied() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let body = wet_start_body(node_id: "n1", attempt_key: "k1", argv_word: "x")
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && match attempt_system_unit_enqueue_request(instance_root: root, node_id: "n1", attempt_key: "k1", body: body) {
+        AttemptSystemUnitEnqueued { entry: _ } =>
+          match attempt_system_unit_enqueue_request(instance_root: root, node_id: "n1", attempt_key: "k1", body: body) {
+            AttemptSystemUnitEnqueueOccupied { entry } =>
+              entry == attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+            AttemptSystemUnitEnqueued { entry: _ } => false
+            AttemptSystemUnitEnqueueRefused { detail: _ } => false
+          }
+        AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+        AttemptSystemUnitEnqueueRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn a_claimed_entry_is_processed_once_across_two_claim_runs() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && match attempt_system_unit_enqueue_request(
+        instance_root: root,
+        node_id: "n1",
+        attempt_key: "k1",
+        body: wet_start_body(node_id: "n1", attempt_key: "k1", argv_word: "x"),
+      ) {
+        AttemptSystemUnitEnqueued { entry } =>
+          match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
+            AttemptSystemUnitClaimed { entry: _, path: _ } =>
+              match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
+                AttemptSystemUnitAlreadyClaimed { entry: again } => again == entry
+                AttemptSystemUnitClaimed { entry: _, path: _ } => false
+                AttemptSystemUnitClaimSymlink { entry: _ } => false
+                AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
+              }
+            AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+            AttemptSystemUnitClaimSymlink { entry: _ } => false
+            AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
+          }
+        AttemptSystemUnitEnqueueOccupied { entry: _ } => false
+        AttemptSystemUnitEnqueueRefused { detail: _ } => false
+      }
+  }
+}
+
+test fn a_symlinked_request_entry_is_refused_by_the_claim() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
+    let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
+    attempt_system_unit_spool_prepare(instance_root: root)
+      && shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
+      && match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
+        AttemptSystemUnitClaimSymlink { entry: got } => got == entry
+        AttemptSystemUnitClaimed { entry: _, path: _ } => false
+        AttemptSystemUnitAlreadyClaimed { entry: _ } => false
+        AttemptSystemUnitClaimRefused { entry: _, reason: _ } => false
+      }
+  }
 }
