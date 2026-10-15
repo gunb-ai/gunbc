@@ -7,6 +7,8 @@ import gunbc.host.host_effect {
   HostEffectTransport, FleetSsh, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation,
 }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import extdeps.network.endpoint { socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
@@ -38,7 +40,7 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data fixture_ssh_target: SshTarget = SshTarget {
-  endpoint: "verified-archive-install-fixture" as NonEmptyStr,
+  address: socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["verified-archive-install-fixture" as DnsLabel] }, qualification: PartiallyQualified }), port: 22),
   principal: "gunbc-automation" as NonEmptyStr,
 }
 
