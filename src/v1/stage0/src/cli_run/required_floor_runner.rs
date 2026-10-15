@@ -115,14 +115,6 @@ pub(crate) fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -
     h
 }
 
-pub fn floor_compile_clean_receipt_installed() -> bool {
-    FLOOR_COMPILE_CLEAN_RECEIPT
-        .lock()
-        .ok()
-        .map(|g| g.is_some())
-        .unwrap_or(false)
-}
-
 /// Why the discovery authority's per-file fold produced no roster. Three causes, three repairs: a
 /// source's test-marked declarations could not be READ (it does not parse, so which of its
 /// declarations are tests is undeterminable), the authority could not be EVALUATED (a frame or

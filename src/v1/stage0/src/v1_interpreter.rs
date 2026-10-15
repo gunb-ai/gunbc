@@ -25020,11 +25020,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
             ))),
 
-            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
-                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
-                $ctx,
-            ))),
-
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
                 if let [Value::Str(detail)] = $positional.as_slice() {
                     crate::cli_run::record_generated_artifact_drift_gate_failure_detail(detail.to_string());

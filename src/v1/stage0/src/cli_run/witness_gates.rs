@@ -325,8 +325,7 @@ pub(crate) fn compile_clean_whole_tree_sources_and_index(
     eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
     let roots = witness_layer_roots();
     let mei = build_multi_entry_index_primary_precedence(&roots);
-    let mut sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
-    append_test_floor_compile_clean_inject(&mut sources);
+    let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
     Ok((sources, mei))
 }
 

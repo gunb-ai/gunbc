@@ -1554,10 +1554,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![]),
         returns: bool_type(),
     }));
-                __m.insert("install_or_consume_floor_compile_clean_gate_receipt".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: type_variable_node("gate_receipt_result".to_string()),
-    }));
                 __m.insert("record_generated_artifact_drift_gate_failure_detail".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "detail".to_string(),

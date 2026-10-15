@@ -500,8 +500,7 @@ pub(crate) fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
 }
 
 pub(crate) fn compile_clean_scoping_active() -> bool {
-    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
-        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
         || std::env::var("GITHUB_ACTIONS")
             .map(|v| v == "true")
             .unwrap_or(false)
@@ -541,12 +540,6 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     }
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, departed_paths)) => {
-            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(
-                    &changed_paths,
-                    &departed_paths,
-                );
-            }
             match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
