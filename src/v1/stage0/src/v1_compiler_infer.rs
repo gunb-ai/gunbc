@@ -8621,7 +8621,7 @@ pub fn callable_signature_substitution(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let f_params = callable_value_params(formal.clone(), source_indices.clone());
         let a_params = callable_value_params(actual.clone(), source_indices.clone());
@@ -8637,42 +8637,29 @@ pub fn callable_signature_substitution(
         .iter()
         .cloned()
         .fold(
-            unify_generics_acc_ok(acc.clone()),
-            |st: Rc<UnifyGenericsAcc>, pair: (i64, Rc<Node>)| match a_params
+            acc.clone(),
+            |st: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| match a_params
                 .clone()
                 .get((pair.0.clone()) as usize)
                 .cloned()
             {
-                Some(ap) => {
-                    let step = callable_leaf_substitution(
-                        callable_param_type(pair.1.clone()),
-                        callable_param_type(ap.clone()),
-                        generic_names.clone(),
-                        source_indices.clone(),
-                        st.subst.clone(),
-                    );
-                    Rc::new(UnifyGenericsAcc {
-                        subst: step.subst.clone(),
-                        diagnostics: v1_rt::concat(
-                            st.diagnostics.clone(),
-                            step.diagnostics.clone(),
-                        ),
-                    })
-                }
+                Some(ap) => callable_leaf_substitution(
+                    callable_param_type(pair.1.clone()),
+                    callable_param_type(ap.clone()),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    st.clone(),
+                ),
                 std::option::Option::None => st.clone(),
             },
         );
-        let ret = callable_leaf_substitution(
+        callable_leaf_substitution(
             crate::v1_compiler_infer_types::resolved_type(formal.clone()),
             crate::v1_compiler_infer_types::resolved_type(actual.clone()),
             generic_names.clone(),
             source_indices.clone(),
-            after_params.subst.clone(),
-        );
-        Rc::new(UnifyGenericsAcc {
-            subst: ret.subst.clone(),
-            diagnostics: v1_rt::concat(after_params.diagnostics.clone(), ret.diagnostics.clone()),
-        })
+            after_params.clone(),
+        )
     }
 }
 
@@ -8682,7 +8669,7 @@ pub fn callable_leaf_substitution(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     if ((formal_part.connective.clone() == Connective::Arrow)
         && (actual_part.connective.clone() == Connective::Arrow))
     {
@@ -8700,10 +8687,6 @@ pub fn callable_leaf_substitution(
             generic_names.clone(),
             source_indices.clone(),
             acc.clone(),
-            Rc::new(TextJudgment::TextNotAsked {
-                reason: TextNotAskedReason::TextNotAskedForCallableComponentResidue,
-            }),
-            "".to_string(),
         )
     }
 }
@@ -8828,12 +8811,7 @@ pub fn callable_signature_mismatch(
                     source_indices.clone(),
                     v1_rt::rc_empty_map::<String, Rc<Node>>(),
                 );
-                callable_arrow_mismatch(
-                    f.clone(),
-                    a.clone(),
-                    subst.subst.clone(),
-                    source_indices.clone(),
-                )
+                callable_arrow_mismatch(f.clone(), a.clone(), subst.clone(), source_indices.clone())
             }
         }
     }
@@ -8953,85 +8931,6 @@ pub fn type_node_is_arrow(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Arrow)
 }
 
-fn unify_position_is_type_variable(n: Rc<Node>) -> bool {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => true,
-        _ => false,
-    }
-}
-
-fn unify_walk_heads_agree(
-    formal: Rc<Node>,
-    actual: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    let formal_name = crate::v1_std_core::authored_name_at(source_indices.clone(), formal.clone());
-    let actual_name = crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone());
-    formal_name != "".to_string()
-        && crate::v1_std_core::qualified_last_segment(formal_name.clone())
-            == crate::v1_std_core::qualified_last_segment(actual_name)
-}
-
-fn unify_concrete_heads_or_arity_disagree(
-    formal: Rc<Node>,
-    actual: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<crate::v1_compiler_infer_types::TextJudgment>,
-) -> bool {
-    if unify_position_is_type_variable(formal.clone())
-        || unify_position_is_type_variable(actual.clone())
-    {
-        false
-    } else if type_node_is_arrow(formal.clone()) && type_node_is_arrow(actual.clone()) {
-        callable_signature_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-    } else {
-        let f_n = formal.children.clone().len() as i64;
-        let a_n = actual.children.clone().len() as i64;
-        if (f_n == a_n)
-            && (f_n > 0)
-            && unify_walk_heads_agree(formal.clone(), actual.clone(), source_indices.clone())
-        {
-            let mut disagree = false;
-            for pair in formal
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-            {
-                match actual.children.clone().get((pair.0) as usize).cloned() {
-                    Some(ac) => {
-                        if unify_concrete_heads_or_arity_disagree(
-                            crate::v1_compiler_infer_types::child_type_node(pair.1.clone()),
-                            crate::v1_compiler_infer_types::child_type_node(ac),
-                            source_indices.clone(),
-                            text.clone(),
-                        ) {
-                            disagree = true;
-                            break;
-                        }
-                    }
-                    std::option::Option::None => {
-                        disagree = true;
-                        break;
-                    }
-                }
-            }
-            disagree
-        } else if (f_n == 0) && (a_n == 0) {
-            !crate::v1_compiler_infer_types::node_type_equals(
-                formal.clone(),
-                actual.clone(),
-                source_indices.clone(),
-                text.clone(),
-            )
-        } else {
-            true
-        }
-    }
-}
-
 pub fn direct_call_arg_type_mismatch(
     formal: Rc<Node>,
     substitution_basis: Rc<Node>,
@@ -9065,50 +8964,51 @@ pub fn direct_call_arg_type_mismatch(
                         type_env.clone(),
                     ))
                 } else {
-                    if unify_concrete_heads_or_arity_disagree(
-                        substitution_basis.clone(),
-                        actual.clone(),
-                        source_indices.clone(),
-                        Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
-                            env: type_env.clone(),
-                        }),
-                    ) {
-                        true
+                    if (direct_call_formal_has_unbound_type_variable(substitution_basis.clone())
+                        || direct_call_formal_has_unbound_type_variable(actual.clone()))
+                    {
+                        false
                     } else {
-                        if produced_is_kernel_grounded_carrier_or_its_alias(
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                formal.clone(),
-                            ),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                actual.clone(),
-                            ),
-                            type_env.clone(),
-                        ) {
+                        if (type_node_is_callable(formal.clone())
+                            || type_node_is_callable(actual.clone()))
+                        {
                             false
                         } else {
-                            (((crate::v1_compiler_infer_env::text_crossing_by_identity(
-                                formal.clone(),
-                                actual.clone(),
+                            if produced_is_kernel_grounded_carrier_or_its_alias(
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    formal.clone(),
+                                ),
+                                crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    actual.clone(),
+                                ),
                                 type_env.clone(),
-                            ) || nominal_call_arg_brand_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                type_env.clone(),
-                                source_indices.clone(),
-                            )) || container_element_nominal_brand_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                type_env.clone(),
-                                module_name.clone(),
-                                source_indices.clone(),
-                            )) || kernel_value_declared_type_mismatch(
-                                formal.clone(),
-                                actual.clone(),
-                                type_env.clone(),
-                                source_indices.clone(),
-                            ))
+                            ) {
+                                false
+                            } else {
+                                (((crate::v1_compiler_infer_env::text_crossing_by_identity(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                ) || nominal_call_arg_brand_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                    source_indices.clone(),
+                                )) || container_element_nominal_brand_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                )) || kernel_value_declared_type_mismatch(
+                                    formal.clone(),
+                                    actual.clone(),
+                                    type_env.clone(),
+                                    source_indices.clone(),
+                                ))
+                            }
                         }
                     }
                 }
@@ -9154,8 +9054,8 @@ pub fn borrowed_callable_call_type(
                 .iter()
                 .cloned()
                 .fold(
-                    unify_generics_acc_ok(v1_rt::rc_empty_map::<String, Rc<Node>>()),
-                    |acc: Rc<UnifyGenericsAcc>, pair: (i64, Rc<Node>)| {
+                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                    |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                         let formal_raw = crate::v1_std_core::param_node_type_expr(pair.1.clone());
                         let param_name = crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
@@ -9183,33 +9083,20 @@ pub fn borrowed_callable_call_type(
                             }
                         };
                         match matched_arg.clone() {
-                            Some(ta) => {
-                                let step = unify_generics(
-                                    formal_raw.clone(),
-                                    crate::v1_compiler_infer_types::resolved_type(
-                                        crate::v1_std_core::arg_value(ta.clone()),
-                                    ),
-                                    tp_names.clone(),
-                                    source_indices.clone(),
-                                    acc.subst.clone(),
-                                    Rc::new(TextJudgment::TextJudgedIn {
-                                        env: scope.type_env.clone(),
-                                    }),
-                                    scope.module_name.clone(),
-                                );
-                                Rc::new(UnifyGenericsAcc {
-                                    subst: step.subst.clone(),
-                                    diagnostics: v1_rt::concat(
-                                        acc.diagnostics.clone(),
-                                        step.diagnostics.clone(),
-                                    ),
-                                })
-                            }
+                            Some(ta) => unify_generics(
+                                formal_raw.clone(),
+                                crate::v1_compiler_infer_types::resolved_type(
+                                    crate::v1_std_core::arg_value(ta.clone()),
+                                ),
+                                tp_names.clone(),
+                                source_indices.clone(),
+                                acc.clone(),
+                            ),
                             std::option::Option::None => acc.clone(),
                         }
                     },
                 );
-                substitute_generics(base.clone(), subst.subst.clone(), source_indices.clone())
+                substitute_generics(base.clone(), subst.clone(), source_indices.clone())
             }
         }
     }
@@ -9828,7 +9715,10 @@ match app.matched_argument_index.clone() {
     Some(arg_index) => match typed_args.clone().get((arg_index.clone()) as usize).cloned() {
     Some(ta) => {
                 let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-if false {
+if match (*actual_expr.expr_data.clone()).clone() {
+    ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+    _ => false,
+} {
                     Rc::new(vec![])
                 } else {
                     {
@@ -12091,7 +11981,6 @@ pub fn infer_call_arguments_generic_pass(
         Rc::new(ArgGenericFoldState {
             results: Rc::new(vec![]),
             subst: init_subst.clone(),
-            unify_diagnostics: Rc::new(vec![]),
         }),
         |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
             let a = pair.1.clone();
@@ -12224,32 +12113,24 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
-            let unify_step = if !has_formal.clone() {
-                unify_generics_acc_ok(st.subst.clone())
+            let next_subst = if !has_formal.clone() {
+                st.subst.clone()
             } else {
                 if is_lambda_expr(crate::v1_std_core::arg_value(a.clone())) {
                     if v1_rt::map_is_empty(&init_subst) {
-                        let solved = unify_generics(
-                            formal_raw.clone(),
-                            lambda_callable_type(ar.typed.clone()),
-                            generic_names.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                            Rc::new(TextJudgment::TextJudgedIn {
-                                env: scope.type_env.clone(),
-                            }),
-                            scope.module_name.clone(),
-                        );
-                        Rc::new(UnifyGenericsAcc {
-                            subst: unify_lambda_solves(
-                                solved.subst.clone(),
+                        unify_lambda_solves(
+                            unify_generics(
+                                formal_raw.clone(),
+                                lambda_callable_type(ar.typed.clone()),
                                 generic_names.clone(),
-                                st.subst.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, Rc<Node>>(),
                             ),
-                            diagnostics: solved.diagnostics.clone(),
-                        })
+                            generic_names.clone(),
+                            st.subst.clone(),
+                        )
                     } else {
-                        unify_generics_acc_ok(st.subst.clone())
+                        st.subst.clone()
                     }
                 } else {
                     if should_unify_record_lit_generics(
@@ -12272,10 +12153,6 @@ pub fn infer_call_arguments_generic_pass(
                             generic_names.clone(),
                             scope.type_env.clone().source_indices.clone(),
                             st.subst.clone(),
-                            Rc::new(TextJudgment::TextJudgedIn {
-                                env: scope.type_env.clone(),
-                            }),
-                            scope.module_name.clone(),
                         )
                     }
                 }
@@ -12297,11 +12174,7 @@ pub fn infer_call_arguments_generic_pass(
                         diagnostics: ar.diagnostics.clone(),
                     })]),
                 ),
-                subst: unify_step.subst.clone(),
-                unify_diagnostics: v1_rt::concat(
-                    st.unify_diagnostics.clone(),
-                    unify_step.diagnostics.clone(),
-                ),
+                subst: next_subst.clone(),
             })
         },
     )
@@ -13768,7 +13641,6 @@ Rc::new(InferResult {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
                                     results: Rc::new(vec![]),
-                                    unify_diagnostics: Rc::new(vec![]),
                                 }),
                                 |st: Rc<ArgGenericFoldState>, a: Rc<Node>| {
                                     let st = v1_rt::take_owned(st);
@@ -13780,7 +13652,6 @@ Rc::new(InferResult {
                                         );
                                         Rc::new(ArgGenericFoldState {
                                             subst: st.subst,
-                                            unify_diagnostics: st.unify_diagnostics,
                                             results: v1_rt::concat(
                                                 st.results,
                                                 Rc::new(vec![Rc::new(ArgInferResult {
@@ -13814,7 +13685,6 @@ Rc::new(InferResult {
                             {
                                 Rc::new(ArgGenericFoldState {
                                     subst: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                                    unify_diagnostics: Rc::new(vec![]),
                                     results: match call_args.clone().first().cloned() {
                                         Some(first_arg) => {
                                             let first_result = infer_expr(
@@ -13883,22 +13753,14 @@ Rc::new(InferResult {
                                         generic_names.clone(),
                                         first_pass.subst.clone(),
                                     ) {
-                                        let second_pass = infer_call_arguments_generic_pass(
+                                        infer_call_arguments_generic_pass(
                                             call_args.clone(),
                                             value_params.clone(),
                                             resolved_formals.clone(),
                                             generic_names.clone(),
                                             first_pass.subst.clone(),
                                             scope.clone(),
-                                        );
-                                        Rc::new(ArgGenericFoldState {
-                                            results: second_pass.results.clone(),
-                                            subst: second_pass.subst.clone(),
-                                            unify_diagnostics: v1_rt::concat(
-                                                first_pass.unify_diagnostics.clone(),
-                                                second_pass.unify_diagnostics.clone(),
-                                            ),
-                                        })
+                                        )
                                     } else {
                                         first_pass.clone()
                                     }
@@ -13980,18 +13842,14 @@ Rc::new(InferResult {
                         };
                         let arg_diags = v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for air in arg_infer_results.iter().cloned() {
-                                            __result
-                                                .extend((*air.diagnostics.clone()).iter().cloned());
-                                        }
-                                        __result
-                                    }),
-                                    local_call_diags.clone(),
-                                ),
-                                arg_call.unify_diagnostics.clone(),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for air in arg_infer_results.iter().cloned() {
+                                        __result.extend((*air.diagnostics.clone()).iter().cloned());
+                                    }
+                                    __result
+                                }),
+                                local_call_diags.clone(),
                             ),
                             function_value_call_named_arg_diags(
                                 func_name.clone(),
@@ -24122,20 +23980,6 @@ pub fn is_type_variable_name(name: String) -> bool {
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
     pub subst: Rc<HashMap<String, Rc<Node>>>,
-    pub unify_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-#[derive(Clone)]
-pub struct UnifyGenericsAcc {
-    pub subst: Rc<HashMap<String, Rc<Node>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-pub fn unify_generics_acc_ok(subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<UnifyGenericsAcc> {
-    Rc::new(UnifyGenericsAcc {
-        subst: subst.clone(),
-        diagnostics: Rc::new(vec![]),
-    })
 }
 
 pub fn type_node_label(
@@ -24339,24 +24183,13 @@ pub fn param_is_generic_decl(
     }
 }
 
-pub fn generic_binding_is_self(
-    n: Rc<Node>,
-    bind_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (((n.children.clone().len() as i64) == 0) && (n.connective.clone() == Connective::NoConnective))
-        && (type_node_label(n.clone(), source_indices.clone()) == bind_name.clone())
-}
-
 pub fn unify_generics(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
     mut __tco_loop_generic_names: Rc<Vec<String>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
-    mut __tco_loop_text: Rc<TextJudgment>,
-    mut __tco_loop_module_name: String,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     loop {
         #[allow(unused_mut)]
         let mut formal = __tco_loop_formal;
@@ -24368,10 +24201,6 @@ pub fn unify_generics(
         let mut source_indices = __tco_loop_source_indices;
         #[allow(unused_mut)]
         let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut module_name = __tco_loop_module_name;
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
             && (formal.connective.clone() == Connective::NoConnective));
@@ -24393,95 +24222,10 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    break unify_generics_acc_ok(v1_rt::rc_map_insert(
-                        acc.clone(),
-                        bind_name.clone(),
-                        actual.clone(),
-                    ));
+                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
-                Some(bound) => {
-                    if unify_binding_is_uninformative(bound.clone()) {
-                        if unify_binding_is_uninformative(actual.clone()) {
-                            break unify_generics_acc_ok(acc.clone());
-                        } else {
-                            break unify_generics_acc_ok(v1_rt::rc_map_insert(
-                                acc.clone(),
-                                bind_name.clone(),
-                                actual.clone(),
-                            ));
-                        }
-                    } else if unify_binding_is_uninformative(actual.clone()) {
-                        break unify_generics_acc_ok(acc.clone());
-                    } else if generic_binding_is_self(
-                        bound.clone(),
-                        bind_name.clone(),
-                        source_indices.clone(),
-                    ) {
-                        break unify_generics_acc_ok(v1_rt::rc_map_insert(
-                            acc.clone(),
-                            bind_name.clone(),
-                            actual.clone(),
-                        ));
-                    } else if generic_binding_is_self(
-                        actual.clone(),
-                        bind_name.clone(),
-                        source_indices.clone(),
-                    ) {
-                        break unify_generics_acc_ok(acc.clone());
-                    } else if crate::v1_compiler_infer_types::node_type_equals(
-                        bound.clone(),
-                        actual.clone(),
-                        source_indices.clone(),
-                        text.clone(),
-                    ) {
-                        break unify_generics_acc_ok(acc.clone());
-                    } else {
-                        if std::env::var("GUNBC_OBSERVE_C_REFUSALS").is_ok() {
-                            eprintln!(
-                                "C_REBIND module={} generic={} expected={} got={}",
-                                module_name,
-                                bind_name,
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    bound.clone(),
-                                    source_indices.clone(),
-                                ),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    actual.clone(),
-                                    source_indices.clone(),
-                                ),
-                            );
-                        }
-                        break Rc::new(UnifyGenericsAcc {
-                            subst: acc.clone(),
-                            diagnostics: Rc::new(vec![type_mismatch_error(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "type variable ".to_string(),
-                                            bind_name.clone(),
-                                        ),
-                                        " bound as ".to_string(),
-                                    ),
-                                    v1_rt::concat(
-                                        crate::v1_compiler_infer_types::node_type_shape(
-                                            bound.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                        " (first argument)".to_string(),
-                                    ),
-                                ),
-                                v1_rt::concat(
-                                    crate::v1_compiler_infer_types::node_type_shape(
-                                        actual.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                    " (later argument)".to_string(),
-                                ),
-                                actual.span.clone(),
-                                module_name.clone(),
-                            )]),
-                        });
-                    }
+                Some(_) => {
+                    break acc.clone();
                 }
             }
         } else {
@@ -24494,68 +24238,36 @@ pub fn unify_generics(
                     generic_names.clone(),
                     source_indices.clone(),
                     acc.clone(),
-                    text.clone(),
-                    module_name.clone(),
                 );
             } else {
-                if (((formal.children.clone().len() as i64)
-                    == (actual.children.clone().len() as i64))
-                    && ((formal.children.clone().len() as i64) > 0)
-                    && unify_walk_heads_agree(
-                        formal.clone(),
-                        actual.clone(),
-                        source_indices.clone(),
-                    ))
+                if (((formal.children.clone().len() as i64) == 1)
+                    && ((actual.children.clone().len() as i64) == 1))
                 {
-                    break unify_callable_param_pairs(
-                        formal.children.clone(),
-                        actual.children.clone(),
-                        generic_names,
-                        source_indices,
-                        acc,
-                        text,
-                        module_name,
-                    );
-                } else if unify_concrete_heads_or_arity_disagree(
-                    formal.clone(),
-                    actual.clone(),
-                    source_indices.clone(),
-                    text.clone(),
-                ) {
-                    if std::env::var("GUNBC_OBSERVE_C_REFUSALS").is_ok() {
-                        eprintln!(
-                            "C_WALK module={} expected={} got={}",
-                            module_name,
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                formal.clone(),
-                                source_indices.clone(),
-                            ),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                actual.clone(),
-                                source_indices.clone(),
-                            ),
-                        );
+                    match formal.children.clone().first().cloned() {
+                        Some(fc) => match actual.children.clone().first().cloned() {
+                            Some(ac) => {
+                                let __tco_0 = fc.clone();
+                                let __tco_1 = ac.clone();
+                                let __tco_2 = generic_names;
+                                let __tco_3 = source_indices;
+                                let __tco_4 = acc;
+                                __tco_loop_formal = __tco_0;
+                                __tco_loop_actual = __tco_1;
+                                __tco_loop_generic_names = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                __tco_loop_acc = __tco_4;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break acc.clone();
+                            }
+                        },
+                        std::option::Option::None => {
+                            break acc.clone();
+                        }
                     }
-                    break Rc::new(UnifyGenericsAcc {
-                        subst: acc.clone(),
-                        diagnostics: Rc::new(vec![type_mismatch_error(
-                            v1_rt::concat(
-                                "concrete position ".to_string(),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    formal.clone(),
-                                    source_indices.clone(),
-                                ),
-                            ),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                actual.clone(),
-                                source_indices.clone(),
-                            ),
-                            actual.span.clone(),
-                            module_name.clone(),
-                        )]),
-                    });
                 } else {
-                    break unify_generics_acc_ok(acc.clone());
+                    break acc.clone();
                 }
             }
         }
@@ -24568,9 +24280,7 @@ pub fn unify_callable_generics(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     acc: Rc<HashMap<String, Rc<Node>>>,
-    text: Rc<TextJudgment>,
-    module_name: String,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let with_params = unify_callable_param_pairs(
             formal.params.clone(),
@@ -24578,8 +24288,6 @@ pub fn unify_callable_generics(
             generic_names.clone(),
             source_indices.clone(),
             acc.clone(),
-            text.clone(),
-            module_name.clone(),
         );
         match formal.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
@@ -24587,24 +24295,13 @@ pub fn unify_callable_generics(
             }) => match actual.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: actual_ret, ..
-                }) => {
-                    let ret = unify_generics(
-                        formal_ret.clone(),
-                        actual_ret.clone(),
-                        generic_names.clone(),
-                        source_indices.clone(),
-                        with_params.subst.clone(),
-                        text.clone(),
-                        module_name.clone(),
-                    );
-                    Rc::new(UnifyGenericsAcc {
-                        subst: ret.subst.clone(),
-                        diagnostics: v1_rt::concat(
-                            with_params.diagnostics.clone(),
-                            ret.diagnostics.clone(),
-                        ),
-                    })
-                }
+                }) => unify_generics(
+                    formal_ret.clone(),
+                    actual_ret.clone(),
+                    generic_names.clone(),
+                    source_indices.clone(),
+                    with_params.clone(),
+                ),
                 _ => with_params.clone(),
             },
             _ => with_params.clone(),
@@ -24620,43 +24317,52 @@ pub fn lambda_callable_type(lambda: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn unify_callable_param_pairs(
-    formals: Rc<Vec<Rc<Node>>>,
-    actuals: Rc<Vec<Rc<Node>>>,
-    generic_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    acc: Rc<HashMap<String, Rc<Node>>>,
-    text: Rc<TextJudgment>,
-    module_name: String,
-) -> Rc<UnifyGenericsAcc> {
-    match formals.clone().first().cloned() {
-        Some(f) => match actuals.clone().first().cloned() {
-            Some(a) => {
-                let step = unify_generics(
-                    crate::v1_compiler_infer_types::child_type_node(f.clone()),
-                    crate::v1_compiler_infer_types::child_type_node(a.clone()),
-                    generic_names.clone(),
-                    source_indices.clone(),
-                    acc.clone(),
-                    text.clone(),
-                    module_name.clone(),
-                );
-                let rest = unify_callable_param_pairs(
-                    Rc::new(v1_rt::list_skip(&formals, 1)),
-                    Rc::new(v1_rt::list_skip(&actuals, 1)),
-                    generic_names.clone(),
-                    source_indices.clone(),
-                    step.subst.clone(),
-                    text.clone(),
-                    module_name.clone(),
-                );
-                Rc::new(UnifyGenericsAcc {
-                    subst: rest.subst.clone(),
-                    diagnostics: v1_rt::concat(step.diagnostics.clone(), rest.diagnostics.clone()),
-                })
+    mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_generic_names: Rc<Vec<String>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_acc: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut formals = __tco_loop_formals;
+        #[allow(unused_mut)]
+        let mut actuals = __tco_loop_actuals;
+        #[allow(unused_mut)]
+        let mut generic_names = __tco_loop_generic_names;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match formals.clone().first().cloned() {
+            Some(f) => match actuals.clone().first().cloned() {
+                Some(a) => {
+                    let __tco_0 = Rc::new(v1_rt::list_skip(&formals, 1));
+                    let __tco_1 = Rc::new(v1_rt::list_skip(&actuals, 1));
+                    let __tco_2 = generic_names.clone();
+                    let __tco_3 = source_indices.clone();
+                    let __tco_4 = unify_generics(
+                        crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                        crate::v1_compiler_infer_types::child_type_node(a.clone()),
+                        generic_names.clone(),
+                        source_indices.clone(),
+                        acc,
+                    );
+                    __tco_loop_formals = __tco_0;
+                    __tco_loop_actuals = __tco_1;
+                    __tco_loop_generic_names = __tco_2;
+                    __tco_loop_source_indices = __tco_3;
+                    __tco_loop_acc = __tco_4;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+            },
+            std::option::Option::None => {
+                break acc.clone();
             }
-            std::option::Option::None => unify_generics_acc_ok(acc.clone()),
-        },
-        std::option::Option::None => unify_generics_acc_ok(acc.clone()),
+        }
     }
 }
 
@@ -24749,10 +24455,10 @@ pub fn unify_record_lit_field_walk(
     generic_names: Rc<Vec<String>>,
     scope: Rc<InferScope>,
     acc: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     struct_fields.iter().cloned().fold(
-        unify_generics_acc_ok(acc.clone()),
-        |st: Rc<UnifyGenericsAcc>, sf: Rc<Node>| {
+        acc.clone(),
+        |st: Rc<HashMap<String, Rc<Node>>>, sf: Rc<Node>| {
             let field_name = crate::v1_std_core::authored_name_at(
                 scope.type_env.clone().source_indices.clone(),
                 sf.clone(),
@@ -24780,42 +24486,20 @@ pub fn unify_record_lit_field_walk(
                         _ => crate::v1_std_core::field_node_type_expr(sf.clone()),
                     };
                     match crate::v1_std_core::record_lit_expr_optional(actual_value.clone()) {
-                        Some(nested_record) => {
-                            let step = unify_record_lit_generics(
-                                field_formal.clone(),
-                                nested_record.clone(),
-                                generic_names.clone(),
-                                scope.clone(),
-                                st.subst.clone(),
-                            );
-                            Rc::new(UnifyGenericsAcc {
-                                subst: step.subst.clone(),
-                                diagnostics: v1_rt::concat(
-                                    st.diagnostics.clone(),
-                                    step.diagnostics.clone(),
-                                ),
-                            })
-                        }
-                        std::option::Option::None => {
-                            let step = unify_generics(
-                                field_formal.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(actual_value.clone()),
-                                generic_names.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                                st.subst.clone(),
-                                Rc::new(TextJudgment::TextJudgedIn {
-                                    env: scope.type_env.clone(),
-                                }),
-                                scope.module_name.clone(),
-                            );
-                            Rc::new(UnifyGenericsAcc {
-                                subst: step.subst.clone(),
-                                diagnostics: v1_rt::concat(
-                                    st.diagnostics.clone(),
-                                    step.diagnostics.clone(),
-                                ),
-                            })
-                        }
+                        Some(nested_record) => unify_record_lit_generics(
+                            field_formal.clone(),
+                            nested_record.clone(),
+                            generic_names.clone(),
+                            scope.clone(),
+                            st.clone(),
+                        ),
+                        std::option::Option::None => unify_generics(
+                            field_formal.clone(),
+                            crate::v1_compiler_infer_types::resolved_type(actual_value.clone()),
+                            generic_names.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            st.clone(),
+                        ),
                     }
                 }
                 std::option::Option::None => st.clone(),
@@ -24830,7 +24514,7 @@ pub fn unify_record_lit_generics(
     generic_names: Rc<Vec<String>>,
     scope: Rc<InferScope>,
     acc: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<UnifyGenericsAcc> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     if ((formal.children.clone().len() as i64) == 0) {
         {
             let formal_name = type_node_label(
@@ -24854,10 +24538,6 @@ pub fn unify_record_lit_generics(
                     generic_names.clone(),
                     scope.type_env.clone().source_indices.clone(),
                     acc.clone(),
-                    Rc::new(TextJudgment::TextJudgedIn {
-                        env: scope.type_env.clone(),
-                    }),
-                    scope.module_name.clone(),
                 )
             } else {
                 match crate::v1_std_core::record_lit_expr_optional(record.clone()) {
@@ -24886,10 +24566,6 @@ pub fn unify_record_lit_generics(
                                 generic_names.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                                 acc.clone(),
-                                Rc::new(TextJudgment::TextJudgedIn {
-                                    env: scope.type_env.clone(),
-                                }),
-                                scope.module_name.clone(),
                             )
                         }
                     }
@@ -24899,10 +24575,6 @@ pub fn unify_record_lit_generics(
                         generic_names.clone(),
                         scope.type_env.clone().source_indices.clone(),
                         acc.clone(),
-                        Rc::new(TextJudgment::TextJudgedIn {
-                            env: scope.type_env.clone(),
-                        }),
-                        scope.module_name.clone(),
                     ),
                 }
             }
