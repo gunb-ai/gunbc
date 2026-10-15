@@ -255,7 +255,10 @@ type BootCredentialStanding
   = BootCredentialSourceSelected { source: BootCredentialSource }
   | BootCredentialSourceRefused { cause: NonEmptyStr }
 
-data boot_credential_source_emit_refused_poison: String = "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__ select_boot_credential_source did not admit PatternSelected FederatedScopedGrant or OperatorApprovedCapability; this marker is not a WIF provider or service account, so google-github-actions/auth refuses at the boot job rather than federating a fabricated identity (DESIGN §5: refuse, never widen). The required merge job does not compare this YAML to its .dag; drift-watch is not a merge wall (review 80563)."
+// Emitted into the boot job's WIF fields when select_boot_credential_source is Refused, so
+// google-github-actions/auth fails instead of federating a fabricated identity. Not a merge-blocking
+// drift gate: the required job does not compare this YAML to its .dag (review 80563).
+data boot_credential_source_emit_refused_poison: String = "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__"
 
 fn dedicated_boot_workload_identity() -> WorkloadIdentityStanding {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
