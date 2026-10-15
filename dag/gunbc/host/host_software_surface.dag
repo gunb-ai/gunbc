@@ -444,10 +444,18 @@ fn host_program_version_label(surface: HostSoftwareSurface, program: ProgramIden
 
 // OBSERVATION PLUS A BET, NOT A CITED systemd FACT (DESIGN 4d). srv1 on 2026-10-14: a user-manager
 // unit with ProtectHome wrote into home (github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334).
-// That receipt is THIS HOST's observation: DoesNotEnforce is minted only when surface.host is srv1
-// and sysctl is 1. The same sysctl on another host is not that observation. Sysctl 0 is only a bet
-// that the user manager would enforce. Any other sysctl is unreadable.
-data srv1_user_manager_protect_home_wrote_into_home_receipt: NonEmptyStr = "github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334"
+// DoesNotEnforce is an identity join: surface.host equals the observation's host, and sysctl is 1.
+// The same sysctl on another host is not that observation. Sysctl 0 is only a bet that the user
+// manager would enforce. Any other sysctl is unreadable.
+type UserManagerWroteIntoHomeObservation {
+  host: HostIdentity
+  receipt: NonEmptyStr
+}
+
+data srv1_user_manager_protect_home_wrote_into_home: UserManagerWroteIntoHomeObservation = UserManagerWroteIntoHomeObservation {
+  host: operator_host_srv1,
+  receipt: "github.com/gunb-ai/gunbc/issues/13942#issuecomment-6175000334",
+}
 data user_manager_protect_home_enforcement_read_obligation: NonEmptyStr = "ProtectHome confinement observed on this host (sysctl 0 is a bet, not that observation)"
 data user_manager_wrote_into_home_observed_on_this_host_obligation: NonEmptyStr = "ProtectHome wrote-into-home observed on this host (the srv1 2026-10-14 receipt is not this host's)"
 
@@ -461,9 +469,10 @@ fn user_manager_sandbox_enforcement(surface: HostSoftwareSurface) -> UserManager
     }
     Present { value: n } =>
       if n == apparmor_unprivileged_userns_restricted {
-        if host_identity_eq(a: surface.host, b: operator_host_srv1) {
+        let observed = srv1_user_manager_protect_home_wrote_into_home
+        if host_identity_eq(a: surface.host, b: observed.host) {
           UserManagerDoesNotEnforceSandbox {
-            wrote_into_home: srv1_user_manager_protect_home_wrote_into_home_receipt
+            wrote_into_home: observed.receipt
           }
         } else {
           UserManagerSandboxEnforcementUnobserved {

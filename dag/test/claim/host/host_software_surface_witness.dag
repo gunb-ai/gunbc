@@ -27,7 +27,7 @@ import gunbc.host.host_software_surface {
   host_procps_kill_term_pgid_argv,
   host_coreutils_timeout_expired_exit_code,
   srv1_software_inhabitance_probe_commands,
-  srv1_user_manager_protect_home_wrote_into_home_receipt,
+  srv1_user_manager_protect_home_wrote_into_home,
   user_manager_wrote_into_home_observed_on_this_host_obligation,
 }
 import extdeps.linux.apparmor_userns {
@@ -92,7 +92,8 @@ test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bo
     UserManagerDoesNotEnforceSandbox { wrote_into_home: receipt } =>
       srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
         && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
-        && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home_receipt as String)
+        && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home.receipt as String)
+        && host_identity_eq(a: srv1_user_manager_protect_home_wrote_into_home.host, b: srv1_software_surface().host)
     UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
