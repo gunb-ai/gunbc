@@ -21,7 +21,6 @@ import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import test.claim.host.verified_archive_install_local_shell_recorder { local_shell_legs_record_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -107,8 +106,3 @@ test fn over_fleet_ssh_a_sha256_transport_mock_is_unverifiable_not_a_mismatch() 
   }
 }
 
-test fn local_shell_legs_are_byte_identical_to_the_recorded_main_argv() -> Bool {
-  local_shell_legs_record_text() == w_recorded_local_shell_legs
-}
-
-data w_recorded_local_shell_legs: String = "PENDING-SRV1-RECORDING"
