@@ -290,18 +290,28 @@ fn boot_credential_effect_off_reviewed_main() -> PrivilegedEffect {
   boot_credential_effect(on_reviewed_main: false)
 }
 
-fn boot_credential_source_from_pattern(p: AuthorizationPattern) -> BootCredentialSource {
+fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationPattern) -> BootCredentialSource {
   match p {
-    FederatedScopedGrant => ReviewedMainDedicatedFederation
-    OperatorApprovedCapability => RunScopedApprovedGrant
+    FederatedScopedGrant =>
+      if on_reviewed_main {
+        ReviewedMainDedicatedFederation
+      } else {
+        BootCredentialSourceRefused { cause: "FederatedScopedGrant is the reviewed-main dedicated identity; a branch run cannot bind it" as NonEmptyStr }
+      }
+    OperatorApprovedCapability =>
+      if on_reviewed_main {
+        BootCredentialSourceRefused { cause: "OperatorApprovedCapability is the run-scoped grant; reviewed main uses the dedicated identity" as NonEmptyStr }
+      } else {
+        RunScopedApprovedGrant
+      }
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
   }
 }
 
-fn boot_credential_source_from_selection(s: AuthorizationPatternSelection) -> BootCredentialSource {
+fn boot_credential_source_from_selection(on_reviewed_main: Bool, s: AuthorizationPatternSelection) -> BootCredentialSource {
   match s {
-    PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(p: p)
+    PatternSelected { pattern: p, receipt: _ } => boot_credential_source_from_pattern(on_reviewed_main: on_reviewed_main, p: p)
     ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "authorization selection requires a manual step" as NonEmptyStr }
     NoAdmissiblePattern { causes: _, scope: _ } => BootCredentialSourceRefused { cause: "authorization selection found no admissible pattern" as NonEmptyStr }
     PatternSelectionNeedsEvidence { needs: _ } => BootCredentialSourceRefused { cause: "authorization selection needs evidence it does not have" as NonEmptyStr }
@@ -311,5 +321,5 @@ fn boot_credential_source_from_selection(s: AuthorizationPatternSelection) -> Bo
 }
 
 fn select_boot_credential_source(on_reviewed_main: Bool) -> BootCredentialSource {
-  boot_credential_source_from_selection(s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
+  boot_credential_source_from_selection(on_reviewed_main: on_reviewed_main, s: select_authorization_pattern(e: boot_credential_effect(on_reviewed_main: on_reviewed_main)))
 }

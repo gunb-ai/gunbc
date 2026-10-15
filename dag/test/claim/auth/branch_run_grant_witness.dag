@@ -22,7 +22,7 @@ import gunbc.auth.branch_dispatch_federation {
 }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
-  OperatorOwnSession, PatternSelectionRefused,
+  OperatorOwnSession, PatternSelectionRefused, PatternSelectionNeedsEvidence,
 }
 import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, Conforms }
 import gunbc.auth.branch_run_grant {
@@ -284,12 +284,27 @@ test fn the_run_key_parses_only_its_own_shape() -> Bool {
 // become a credential source. Before this, every such arm fell through to RunScopedApprovedGrant,
 // so a refused or undecided selection still emitted the run-scoped account into the boot job.
 test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool {
-  match boot_credential_source_from_pattern(p: OperatorOwnSession) {
+  match boot_credential_source_from_pattern(on_reviewed_main: false, p: OperatorOwnSession) {
     BootCredentialSourceRefused { cause: _ } => true
     ReviewedMainDedicatedFederation => false
     RunScopedApprovedGrant => false
   }
-    && match boot_credential_source_from_selection(s: PatternSelectionRefused { defects: [] }) {
+    && match boot_credential_source_from_selection(on_reviewed_main: false, s: PatternSelectionRefused { defects: [] }) {
+      BootCredentialSourceRefused { cause: _ } => true
+      ReviewedMainDedicatedFederation => false
+      RunScopedApprovedGrant => false
+    }
+    && match boot_credential_source_from_selection(on_reviewed_main: false, s: PatternSelectionNeedsEvidence { needs: [] }) {
+      BootCredentialSourceRefused { cause: _ } => true
+      ReviewedMainDedicatedFederation => false
+      RunScopedApprovedGrant => false
+    }
+    && match boot_credential_source_from_pattern(on_reviewed_main: false, p: FederatedScopedGrant) {
+      BootCredentialSourceRefused { cause: _ } => true
+      ReviewedMainDedicatedFederation => false
+      RunScopedApprovedGrant => false
+    }
+    && match boot_credential_source_from_pattern(on_reviewed_main: true, p: OperatorApprovedCapability) {
       BootCredentialSourceRefused { cause: _ } => true
       ReviewedMainDedicatedFederation => false
       RunScopedApprovedGrant => false
