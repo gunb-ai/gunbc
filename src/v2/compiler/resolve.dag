@@ -3986,10 +3986,46 @@ fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk:
       child_walk_step(
         w: acc,
         e: e,
-        r: resolve_child_edge(ctx: resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: acc.ordinal), e: e)
+        r: resolve_instantiation_argument_edge(ctx: ctx, kinds: kinds, ordinal: acc.ordinal, e: e)
       )
     }
   }))
+}
+
+// ONE ARGUMENT OF A TYPE APPLICATION. A coproduct-kinded position admits only constructors of that
+// coproduct (and a literal or an enclosing type parameter), so a kernel TYPE written there is a category
+// error -- the right kind of thing to ask the position for was a constructor -- and refuses as the
+// reference category mismatch, located at the argument, not as a constructor of the wrong coproduct
+// (type_argument_kind_not_inhabited), which is the right category and the wrong kind.
+fn resolve_instantiation_argument_edge(ctx: ResolveContext, kinds: List<Optional<Node>>, ordinal: Int, e: Edge) -> ResolveNodeWalk {
+  let arg_ctx = resolve_instantiation_argument_ctx(ctx: ctx, kinds: kinds, ordinal: ordinal)
+  if resolve_instantiation_argument_is_kinded(kinds: kinds, ordinal: ordinal) && resolve_argument_is_kernel_type(n: e.target) {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: resolve_type_application_diagnostic(reason: ^resolve_reason_reference_category_mismatch, at: e.target)))
+  } else {
+    resolve_child_edge(ctx: arg_ctx, e: e)
+  }
+}
+
+fn resolve_instantiation_argument_is_kinded(kinds: List<Optional<Node>>, ordinal: Int) -> Bool {
+  match list_at_optional(xs: kinds, index: ordinal - 1) {
+    Absent => false
+    Present { value: admitted } =>
+      match admitted {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+fn resolve_argument_is_kernel_type(n: Node) -> Bool {
+  match type_binder_atom_identity_optional(n: n) {
+    Absent => false
+    Present { value: id } =>
+      match resolve_kernel_type_atom_optional(n: n, identity: id) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
 }
 
 // The kind each declared binder ADMITS, in authored order: Present where the kind names a coproduct (it

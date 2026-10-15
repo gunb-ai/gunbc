@@ -106,7 +106,7 @@ test fn tak_kinded_parameter_refuses_a_variant_of_another_coproduct() -> Bool {
 }
 
 test fn tak_kinded_parameter_refuses_a_kernel_type() -> Bool {
-  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_type_argument_kind_not_inhabited)
+  tak_refuses_with(o: tak_kind_kernel_type(), reason: ^resolve_reason_reference_category_mismatch)
 }
 
 test fn tak_arguments_pair_with_parameters_in_authored_order() -> Bool {
