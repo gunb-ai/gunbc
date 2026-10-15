@@ -3445,7 +3445,8 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
 }
 
 fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
-  diags |> fold(init: empty_map(), f: (acc, en) =>
+  let seed: Map<String, List<String>> = empty_map()
+  diags |> fold(init: seed, f: (acc, en) =>
     match en.diagnostic {
       UnlistedImportUse { name: nm, span: _ } =>
         let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
@@ -6028,14 +6029,16 @@ type ModuleIndex {
 }
 
 fn build_module_index(modules: List<TypedModule>, leaf_owner_modules: Map<String, LeafOwner>) -> ModuleIndex {
-  let by_name = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_name_seed: Map<String, TypedModule> = empty_map()
+  let by_name = modules |> fold(init: by_name_seed, f: (acc, tm) =>
     let nm = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     match map_get(acc, nm) {
       Present { value: _ } => acc
       Absent => map_insert(acc, nm, tm)
     }
   )
-  let by_filename = modules |> fold(init: empty_map(), f: (acc, tm) =>
+  let by_filename_seed: Map<String, List<TypedModule>> = empty_map()
+  let by_filename = modules |> fold(init: by_filename_seed, f: (acc, tm) =>
     let fname = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     match map_get(acc, fname) {
       Present { value: prior } => map_insert(acc, fname, list_push(prior, tm))
@@ -8878,7 +8881,8 @@ fn v1_fn_bounds_by_param(
   set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
-  let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
+  let bounds_seed: Map<String, List<String>> = empty_map()
+  let with_clone = clone_param_names |> fold(init: bounds_seed, f: (m, n) => map_insert(m, n, ["Clone"]))
   let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))

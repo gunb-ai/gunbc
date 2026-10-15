@@ -1,8 +1,10 @@
 module v2.std.witness
 
-import v2.std.diagnostic { Diagnostic }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, outcome_accepted, invariant_port_locus }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
+import std.algebra { fold_list, map_lookup }
+import std.types { List, Map }
 
 type Witness<C>
   = Holds { value: C }
@@ -34,4 +36,44 @@ type StructuralPropertyWitness {
 type HomomorphismWitness {
   rule: Symbol
   evidence: Node
+}
+
+fn optional_absent_unwrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^optional_absent_unwrap,
+    at: invariant_port_locus(port: ^optional_present_witness_port, invariant: ^optional_absent_unwrap),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
+  witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
+}
+
+type IndexedLookup<T> {
+  index: Int
+  value: Witness<T>
+}
+
+fn map_get_checked<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
+  outcome_accepted(value: map_lookup(m: m, key: key))
+}
+fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
+  fold_list(
+    xs: xs,
+    empty: IndexedLookup {
+      index: 0,
+      value: witness_violates(diagnostic: absent)
+    },
+    cons: fn(acc, item) {
+      IndexedLookup {
+        index: acc.index + 1,
+        value: if acc.index == wanted {
+          Holds { value: item }
+        } else {
+          acc.value
+        }
+      }
+    }
+  ).value
 }

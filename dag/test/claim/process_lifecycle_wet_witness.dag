@@ -7,7 +7,7 @@ import extdeps.http.client
 import extdeps.tools.sleep
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
-import v2.std.collection { list_at_optional }
+import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.emit_host_transport {
   node_http_serve_port_seed,

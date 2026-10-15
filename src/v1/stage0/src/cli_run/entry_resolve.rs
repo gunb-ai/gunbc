@@ -101,7 +101,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
 /// it live -- reads one entry, so it must not pay a copy of every entry to ask. `build_module_path_index`
 /// hands its caller an owned index and therefore clones the cached one on every call; a keyed read
 /// made once per visited module or per edge target turned that into corpus-sized work per step.
-/// This is the same cache, the same fill and the same hit accounting, lent for the duration of `f`.
+/// This is the same cache, lent for the duration of `f`.
 pub fn with_module_path_index<R>(
     source_roots: &[String],
     f: impl FnOnce(&HashMap<String, String>) -> R,
@@ -112,13 +112,8 @@ pub fn with_module_path_index<R>(
         .collect::<Vec<_>>()
         .join("\u{1f}");
     let cached = MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow().contains_key(&key));
-    if cached {
-        shared_fill::record_hit("module_path_index", &key);
-    } else {
-        shared_fill::begin_fill();
-        let start = std::time::Instant::now();
+    if !cached {
         let index = build_module_path_index_uncached(source_roots);
-        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), index));
     }
     MODULE_PATH_INDEX_CACHE.with(|cache| {
@@ -173,12 +168,6 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     let mut excludes = witness_exclusion_substrings();
     excludes.extend(whole_tree_strict_resolve_exclusion_substrings());
     excludes
-}
-
-/// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
-/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
-pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
-    census_exclude_derive::whole_tree_probe_exclusion_substrings()
 }
 
 pub fn build_module_path_index_from_witness_roots() -> HashMap<String, String> {
@@ -778,17 +767,9 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
-            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
-        shared_fill::begin_fill();
-        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
-        shared_fill::record_fill(
-            "module_graph_facts",
-            &key,
-            start.elapsed().as_nanos() as u64,
-        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -1467,39 +1448,6 @@ pub fn resolve_entry_graph_shared(
     Ok(resolved)
 }
 
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_len_for_test(index: &MultiEntryIndex) -> usize {
-    index.typed_module_cache.borrow().len()
-}
-
-/// Test-only projection of the durable typed-cache authority: the content keys whose
-/// computations populated this private index. A fresh, non-evicting test index makes
-/// this exactly the distinct-computation set without retaining request attribution.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_content_keys_for_test(
-    index: &MultiEntryIndex,
-) -> std::collections::BTreeSet<String> {
-    index.typed_module_cache.borrow().keys().cloned().collect()
-}
-
-/// Test witness for the sample-once cap: exposes the same accessor runtime
-/// call sites use, so a test can observe that repeated calls against one
-/// `index` return the identical value even as the underlying signal moves —
-/// the property the 2026-07-21 fleet OOM fix depends on.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
-    typed_module_cache_cap(index)
-}
-
-/// Keys currently in `resolved_graph_memo`. The harness diffs this across one resolve to
-/// recover that entry's subject key, which is what `index_schedule_entry_completed` needs
-/// to drop the entry's assembled graph — recovered by observation rather than by
-/// re-deriving the subject digest in a second place.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String> {
-    index.resolved_graph_memo.borrow().keys().cloned().collect()
-}
-
 /// Empty caches over an already-indexed `source_files` map. Recorded as
 /// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
 /// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
@@ -1550,7 +1498,6 @@ fn multi_entry_index_shell_body(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
         reference_pool_names: RefCell::new(None),
@@ -2312,13 +2259,6 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
-        // The refused graph is discarded here either way; attributing it takes the only
-        // owner, so an `Rc` another holder keeps reports itself as unattributable.
-        if let Ok(owned) = Rc::try_unwrap(result) {
-            if let Some(graph) = owned.graph {
-                typed_graph_byte_attribution("strict-refused", graph);
-            }
-        }
         return Err(format!(
             "blocking_diagnostics={}\n{}",
             msgs.len(),
@@ -2406,226 +2346,6 @@ pub fn whole_tree_resolved_ctx(
         ),
         modules_resolved,
         modules_excluded,
-    })
-}
-
-/// THE RETAINED SET BY STRUCTURE, AT A FLOOR SEAM. The seam beats (`floor_seam`) say how many
-/// bytes a phase left resident; they cannot say WHICH structure holds them. This census can, at
-/// entry grain: for every typed module held by the named graphs it sums each typecheck-env map's
-/// size (`retained`, what is resident if each module's spine were its own allocation) and each
-/// distinct `Rc` spine once (`distinct`, what is actually allocated). `dup = retained/distinct`
-/// is the per-module materialization factor; a factor well above 1 on the ancestry maps is the
-/// quadratic retention the M0 probe was written to locate, and
-/// this is that probe moved onto the graphs the floor really holds instead of a second whole-tree
-/// resolve nobody called.
-///
-/// ENTRIES, NOT BYTES. These maps are `im::HashMap` -- persistent HAMTs -- and a module's map is
-/// built by merging its parents', which shares internal nodes. `distinct` dedupes the map ROOT,
-/// not the nodes under it, so it counts shared structure once per root and overstates bytes by
-/// an amount it cannot itself report.
-///
-/// It also answers the overlap question across graphs at identity grain: `module_paths` counts
-/// distinct module identities, `typed_modules` distinct `TypedModule` allocations. More
-/// allocations than identities means one module was typechecked into two resident copies, which
-/// is authored duplication (DESIGN §2) rather than sharing. A pure reader: O(modules), no clone.
-pub(crate) fn floor_retention_census(
-    seam: &str,
-    graphs: &[(&str, &v1_compiler_compile::ResolvedGraph)],
-) {
-    struct FieldTally {
-        name: &'static str,
-        retained: usize,
-        distinct: usize,
-        spines: HashSet<usize>,
-    }
-    impl FieldTally {
-        fn add<T>(&mut self, spine: &Rc<T>, entries: usize) {
-            self.retained += entries;
-            if self.spines.insert(Rc::as_ptr(spine) as *const () as usize) {
-                self.distinct += entries;
-            }
-        }
-    }
-    let mut tallies: Vec<FieldTally> = [
-        "tec.str_bindings",
-        "tec.deps_map",
-        "tec.variant_locals",
-        "te.str_bindings",
-        "te.ancestry_str_bindings",
-        "te.bindings",
-        "te.source_visible_names",
-        "te.inductive_fields",
-        "module_item_registry",
-        "module_items",
-    ]
-    .iter()
-    .map(|name| FieldTally {
-        name,
-        retained: 0,
-        distinct: 0,
-        spines: HashSet::new(),
-    })
-    .collect();
-    let mut typed_modules: HashSet<usize> = HashSet::new();
-    let mut module_paths: HashSet<String> = HashSet::new();
-    let mut held = 0usize;
-    for (_, graph) in graphs {
-        for m in graph.modules.iter() {
-            held += 1;
-            if !typed_modules.insert(Rc::as_ptr(m) as usize) {
-                continue;
-            }
-            module_paths.insert(m.type_env.module_path.clone());
-            let (te, tec) = (&m.type_env, &m.type_env_cache);
-            tallies[0].add(&tec.str_bindings, tec.str_bindings.len());
-            tallies[1].add(&tec.deps_map, tec.deps_map.len());
-            tallies[2].add(&tec.variant_locals, tec.variant_locals.len());
-            tallies[3].add(&te.str_bindings, te.str_bindings.len());
-            tallies[4].add(&te.ancestry_str_bindings, te.ancestry_str_bindings.len());
-            tallies[5].add(&te.bindings, te.bindings.len());
-            tallies[6].add(&te.source_visible_names, te.source_visible_names.len());
-            tallies[7].add(&te.inductive_fields, te.inductive_fields.len());
-            tallies[8].add(&m.item_registry, m.item_registry.len());
-            tallies[9].add(&m.items, m.items.len());
-        }
-    }
-    // THE ENTRY-INDEPENDENCE DIFFERENTIAL, over every module path held by more than one
-    // allocation. Each graph's assembly rewires its own copy (`finish_resolved_graph_assembly`);
-    // sharing one wired copy per module at the pool's index is lawful only if every copy is the
-    // same wiring. Compared at IDENTITY grain -- which node each binding resolves to, by `Rc`
-    // pointer, and which module each parent link names -- not by content, so an equal-looking
-    // copy that binds a different declaration reads as differing. A derived `==` would recurse
-    // through every parent environment without a pointer short-cut.
-    let mut copies: BTreeMap<String, Vec<&Rc<crate::v1_compiler_infer_items::TypedModule>>> =
-        BTreeMap::new();
-    let mut seen: HashSet<usize> = HashSet::new();
-    for (_, graph) in graphs {
-        for m in graph.modules.iter() {
-            if seen.insert(Rc::as_ptr(m) as usize) {
-                // KEYED BY SOURCE, NOT ONLY BY MODULE PATH: the planning row reads the diff base's
-                // version of a changed module from a separate checkout, and two SOURCES under one
-                // module path are two modules, which legitimately wire differently.
-                copies
-                    .entry(format!("{}@{}", m.type_env.module_path, m.module.span.file))
-                    .or_default()
-                    .push(m);
-            }
-        }
-    }
-    let mut identical = 0usize;
-    let mut differing: Vec<String> = Vec::new();
-    for (path, ms) in copies.iter().filter(|(_, ms)| ms.len() > 1) {
-        let prints: Vec<[u64; 6]> = ms.iter().map(|m| wiring_identity(m)).collect();
-        let parts = [
-            "module",
-            "type_bindings",
-            "ancestry",
-            "type_parents",
-            "func_local",
-            "func_parents",
-        ];
-        let diff: Vec<&str> = (0..6)
-            .filter(|i| prints.iter().any(|p| p[*i] != prints[0][*i]))
-            .map(|i| parts[i])
-            .collect();
-        if diff.is_empty() {
-            identical += 1;
-        } else {
-            differing.push(format!("{path}:{}", diff.join("+")));
-        }
-    }
-    eprintln!(
-        "[floor-heap] retained seam={seam} duplicated_paths={} identical_wiring={identical} \
-         differing_wiring={} [{}]",
-        identical + differing.len(),
-        differing.len(),
-        differing.join(","),
-    );
-    let names: Vec<String> = graphs
-        .iter()
-        .map(|(name, g)| format!("{name}:{}", g.modules.len()))
-        .collect();
-    eprintln!(
-        "[floor-heap] retained seam={seam} graphs=[{}] held_modules={held} typed_modules={} \
-         module_paths={}",
-        names.join(","),
-        typed_modules.len(),
-        module_paths.len(),
-    );
-    for t in &tallies {
-        eprintln!(
-            "[floor-heap] retained seam={seam} field={} retained={} distinct={} spines={}",
-            t.name,
-            t.retained,
-            t.distinct,
-            t.spines.len(),
-        );
-    }
-}
-
-/// One copy's wiring at identity grain: the module node, each type binding's resolved node, each
-/// parent environment's module, each function signature, and each parent function environment's
-/// name -- the facts a rewire decides -- each folded to one hash so copies compare component-wise.
-fn wiring_identity(m: &crate::v1_compiler_infer_items::TypedModule) -> [u64; 6] {
-    use std::hash::{Hash, Hasher};
-    fn fold<I: IntoIterator<Item = (String, usize)>>(items: I) -> u64 {
-        let mut rows: Vec<(String, usize)> = items.into_iter().collect();
-        rows.sort();
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        rows.hash(&mut h);
-        h.finish()
-    }
-    let te = &m.type_env;
-    let fe = &m.func_env;
-    [
-        fold([(String::new(), Rc::as_ptr(&m.module) as usize)]),
-        fold(
-            te.str_bindings
-                .iter()
-                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize))
-                .chain(
-                    te.bindings
-                        .iter()
-                        .map(|(k, b)| (k.to_string(), Rc::as_ptr(&b.resolved) as usize)),
-                ),
-        ),
-        fold(
-            te.ancestry_str_bindings
-                .iter()
-                .map(|(k, b)| (k.clone(), Rc::as_ptr(&b.resolved) as usize)),
-        ),
-        fold(
-            te.parents
-                .iter()
-                .enumerate()
-                .map(|(i, p)| (p.module_path.clone(), i)),
-        ),
-        fold(
-            fe.local
-                .iter()
-                .map(|(k, sig)| (k.clone(), Rc::as_ptr(sig) as usize)),
-        ),
-        fold(
-            fe.parents
-                .iter()
-                .enumerate()
-                .map(|(i, p)| (p.name.clone(), i)),
-        ),
-    ]
-}
-
-/// Every graph the thread's process resolve store holds, by entry — the planning and prelude
-/// authorities resolved through `resolve_entry_graph_shared`, which live until the thread ends.
-pub(crate) fn process_resolve_store_graphs() -> Vec<(String, Rc<v1_compiler_compile::ResolvedGraph>)>
-{
-    PROCESS_RESOLVE_STORE.with(|s| {
-        let mut graphs: Vec<_> = s
-            .borrow()
-            .iter()
-            .map(|((_, entry), (graph, _))| (entry.clone(), graph.clone()))
-            .collect();
-        graphs.sort_by(|a, b| a.0.cmp(&b.0));
-        graphs
     })
 }
 
@@ -2966,14 +2686,11 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let key = abs_pool_roots.join("\u{1e}");
     if let Some(hit) = REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow().get(&key).cloned()) {
-        shared_fill::record_hit("reference_pool_names", &key);
         return hit;
     }
-    // A PROCESS-WIDE POOL FILL, ACCOUNTED AS ONE. The heads index is built once per pool per
-    // process and then served to every consumer -- the same class as module_path_index and
-    // reference_edges, which already report through shared_fill. Unrecorded, it was billed as the
-    // own CPU of whichever claim first reached an import-less file.
-    shared_fill::begin_fill();
+    // A PROCESS-WIDE POOL FILL. The heads index is built once per pool per process and then
+    // served to every consumer. Unrecorded, it was billed as the own CPU of whichever claim
+    // first reached an import-less file.
     let started = std::time::Instant::now();
     let mut heads: Vec<(String, Rc<crate::v1_std_core::Node>)> = Vec::new();
     for root in &abs_pool_roots {
@@ -3007,11 +2724,6 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
         "reference_pool_names_heads",
         super::pre_entry_phase::PhaseScale::Tree,
         started.elapsed(),
-    );
-    shared_fill::record_fill(
-        "reference_pool_names",
-        &key,
-        started.elapsed().as_nanos() as u64,
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
     names
@@ -3550,11 +3262,8 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
-        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
-    shared_fill::begin_fill();
-    let reference_edges_fill_start = std::time::Instant::now();
     let names = reference_pool_names(pool_roots);
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
     let mut edges: Vec<ReferenceEdgeRaw> = Vec::new();
@@ -3591,11 +3300,6 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
-    shared_fill::record_fill(
-        "reference_edges",
-        &cache_key,
-        reference_edges_fill_start.elapsed().as_nanos() as u64,
-    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
@@ -3699,16 +3403,6 @@ mod live_pool_thread_tests {
     }
 }
 
-thread_local! {
-    /// Set by the required floor only, so the byte attribution below reads the floor's own graphs
-    /// and no other caller of `resolved_graph_from_sources` pays for it or prints it.
-    static FLOOR_BYTE_ATTRIBUTION_ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-pub(crate) fn arm_floor_byte_attribution() {
-    FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.set(true));
-}
-
 fn floor_heap_in_use() -> Option<u64> {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
@@ -3719,338 +3413,6 @@ fn floor_heap_in_use() -> Option<u64> {
     #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
     {
         None
-    }
-}
-
-/// THE TYPED GRAPH'S BYTES BY COMPONENT CLASS, read by FREEING it one class at a time at the point
-/// the floor frees it anyway: the strict resolve's refusal path, where the graph is discarded, and
-/// the prepared repository's teardown. `floor_retention_census` counts entries, which persistent
-/// maps share, so it cannot say what a structure COSTS; the allocator can, as the live bytes a
-/// drop returns. Nothing is read after a class is dropped, so no answer the floor gives changes.
-///
-/// ORDER-DEPENDENT BY CONSTRUCTION, and reported as such. Sequential drops telescope -- the parts
-/// sum to the total freed -- but a node two classes share is freed by whichever drops LAST, so a
-/// class dropped early reports only its EXCLUSIVE bytes. The type environment is split into its
-/// maps and dropped first, so each map's figure is a lower bound on what it alone costs; `shells`
-/// is the environments themselves once their maps are held elsewhere.
-///
-/// A graph, module list or module another owner still holds is not attributable -- dropping it
-/// would free nothing -- and is reported as that, never as a zero.
-pub(crate) fn typed_graph_byte_attribution(
-    label: &str,
-    graph: Rc<v1_compiler_compile::ResolvedGraph>,
-) {
-    if !FLOOR_BYTE_ATTRIBUTION_ARMED.with(|a| a.get()) {
-        return;
-    }
-    let Some(start) = floor_heap_in_use() else {
-        eprintln!(
-            "[floor-heap] bytes label={label} unattributable: no allocator reading on this target"
-        );
-        return;
-    };
-    let graph = match Rc::try_unwrap(graph) {
-        Ok(g) => g,
-        Err(g) => {
-            eprintln!(
-                "[floor-heap] bytes label={label} unattributable: the graph has {} other owner(s)",
-                Rc::strong_count(&g) - 1
-            );
-            return;
-        }
-    };
-    let v1_compiler_compile::ResolvedGraph {
-        modules,
-        item_registry,
-        item_leaf_owner_modules,
-        diagnostics,
-    } = graph;
-    let modules: im::Vector<Rc<crate::v1_compiler_infer_items::TypedModule>> = match Rc::try_unwrap(
-        modules,
-    ) {
-        Ok(m) => m,
-        Err(m) => {
-            eprintln!(
-                    "[floor-heap] bytes label={label} unattributable: the module list has {} other owner(s)",
-                    Rc::strong_count(&m) - 1
-                );
-            return;
-        }
-    };
-    let module_count = modules.len();
-    let mut shared_modules = Vec::new();
-    let (
-        mut te_str,
-        mut te_anc,
-        mut te_bind,
-        mut te_vis,
-        mut te_ind,
-        mut te_sym,
-        mut te_intern,
-        mut te_unit,
-    ) = (
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    );
-    let (mut shells, mut tec, mut fe, mut iface, mut reg, mut items, mut nodes, mut occ) = (
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    );
-    for m in modules {
-        match Rc::try_unwrap(m) {
-            Ok(m) => {
-                te_str.push(m.type_env.str_bindings.clone());
-                te_anc.push(m.type_env.ancestry_str_bindings.clone());
-                te_bind.push(m.type_env.bindings.clone());
-                te_vis.push(m.type_env.source_visible_names.clone());
-                te_ind.push(m.type_env.inductive_fields.clone());
-                te_sym.push(m.type_env.symbol_index.clone());
-                te_intern.push(m.type_env.intern_table.clone());
-                te_unit.push(m.type_env.unit_variant_index.clone());
-                shells.push(m.type_env);
-                tec.push(m.type_env_cache);
-                fe.push(m.func_env);
-                iface.push(m.interface);
-                reg.push(m.item_registry);
-                items.push(m.items);
-                nodes.push(m.module);
-                occ.push(m.occurrence_transport);
-            }
-            Err(shared) => shared_modules.push(shared),
-        }
-    }
-    let mut last = floor_heap_in_use().unwrap_or(start);
-    let mut parts: Vec<(&str, u64)> = Vec::new();
-    macro_rules! drop_class {
-        ($name:expr, $class:expr) => {{
-            drop($class);
-            let now = floor_heap_in_use().unwrap_or(last);
-            parts.push(($name, last.saturating_sub(now)));
-            last = now;
-        }};
-    }
-    drop_class!("type_env_shells", shells);
-    drop_class!("te.ancestry_str_bindings", te_anc);
-    drop_class!("te.str_bindings", te_str);
-    drop_class!("te.bindings", te_bind);
-    drop_class!("te.source_visible_names", te_vis);
-    drop_class!("te.inductive_fields", te_ind);
-    drop_class!("te.unit_variant_index", te_unit);
-    drop_class!("te.symbol_index", te_sym);
-    drop_class!("te.intern_table", te_intern);
-    drop_class!("type_env_cache", tec);
-    drop_class!("func_env", fe);
-    drop_class!("interface", iface);
-    drop_class!("module_item_registry", reg);
-    drop_class!("items", items);
-    drop_class!("module_nodes", nodes);
-    drop_class!("occurrence_transport", occ);
-    drop_class!("shared_modules", shared_modules.clone());
-    drop_class!("graph_item_registry", item_registry);
-    drop_class!("item_leaf_owner_modules", item_leaf_owner_modules);
-    drop_class!("diagnostics", diagnostics);
-    let sum: u64 = parts.iter().map(|(_, b)| *b).sum();
-    eprintln!(
-        "[floor-heap] bytes label={label} modules={module_count} shared_modules={} start_in_use={start} \
-         end_in_use={last} total_freed={} sum_of_parts={sum} (sequential: early classes are exclusive bytes)",
-        shared_modules.len(),
-        start.saturating_sub(last),
-    );
-    // EVERY LINE SAYS WHAT KIND OF READING IT IS, because the figure alone invites the wrong one:
-    // a class dropped after others is also credited every node it SHARED with them, so its
-    // `freed` is what its last reference kept alive, not what removing it would save. Read as a
-    // saving, this probe's `emit_graph_info` figure predicted a peak cut that the floor-memory
-    // qualification A/B on gunbc#12832 did not find. Only the first class dropped
-    // reads exclusive bytes; the TypeEnv maps split before it are exclusive only after the
-    // environment shells went. A removal's saving is a leave-one-out reading, not this one.
-    for (order, (name, bytes)) in parts.into_iter().enumerate() {
-        let reading = match order {
-            0 => "exclusive",
-            1..=8 => "exclusive_lower_bound_after_shells",
-            _ => "includes_shared_residue",
-        };
-        eprintln!(
-            "[floor-heap] bytes label={label} order={order} class={name} freed={bytes} reading={reading}"
-        );
-    }
-}
-
-#[cfg(test)]
-mod cross_tree_bare_reference_tests {
-    use super::*;
-
-    fn write(root: &Path, rel: &str, content: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
-        std::fs::write(&p, content).expect("write dag");
-    }
-
-    /// Two source trees. `a/user.dag` references `helper`, declared only in tree `b`, and a builtin
-    /// `get`, which tree `b` also declares as an ordinary function. Returns the admission verdict
-    /// of `a/user.dag`.
-    fn admit_user(tag: &str, user_imports: &str, call_helper: bool) -> Result<(), String> {
-        let base = process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let (a, b) = (base.join("a"), base.join("b"));
-        let main_body = if call_helper { "helper()" } else { "1" };
-        write(
-            &b,
-            "helper.dag",
-            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n\nfn get(x: Int) -> Int {\n  x\n}\n",
-        );
-        write(
-            &a,
-            "user.dag",
-            &format!(
-                "module ta.user\n{user_imports}\nfn main() -> Int {{\n  {main_body}\n}}\n\nfn first() -> Bool {{\n  match get(xs: [1, 2], index: 0) {{\n    Present {{ value: _ }} => true\n    Absent => false\n  }}\n}}\n"
-            ),
-        );
-        let roots = vec![
-            a.to_string_lossy().into_owned(),
-            b.to_string_lossy().into_owned(),
-        ];
-        let index = build_multi_entry_index(&roots);
-        let user = index
-            .source_files
-            .values()
-            .find(|sf| sf.path.ends_with("a/user.dag"))
-            .cloned()
-            .expect("user source indexed");
-        let verdict = super::super::admit_bare_references_of_file(&index, &user);
-        let _ = std::fs::remove_dir_all(&base);
-        verdict
-    }
-
-    fn admit_user_qualified(tag: &str) -> Result<(), String> {
-        let base = process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-crosstree-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let (a, b) = (base.join("a"), base.join("b"));
-        write(
-            &b,
-            "helper.dag",
-            "module tb.helper\n\nfn helper() -> Int {\n  1\n}\n",
-        );
-        write(
-            &a,
-            "user.dag",
-            "module ta.user\n\nfn main() -> Int {\n  tb.helper.helper()\n}\n",
-        );
-        let roots = vec![
-            a.to_string_lossy().into_owned(),
-            b.to_string_lossy().into_owned(),
-        ];
-        let index = build_multi_entry_index(&roots);
-        let user = index
-            .source_files
-            .values()
-            .find(|sf| sf.path.ends_with("a/user.dag"))
-            .cloned()
-            .expect("user source indexed");
-        let verdict = super::super::admit_bare_references_of_file(&index, &user);
-        let _ = std::fs::remove_dir_all(&base);
-        verdict
-    }
-
-    /// THE RED: an unimported bare reference to a name only another source tree declares refuses,
-    /// typed and located, where the deleted pool fallback silently resolved it.
-    #[test]
-    fn an_unimported_cross_tree_bare_name_refuses() {
-        let err = admit_user("red", "", true).expect_err("a cross-tree bare reference must refuse");
-        assert!(err.contains("CrossTreeBareReference"), "{err}");
-        assert!(err.contains("'helper'"), "{err}");
-        assert!(err.contains("`tb.helper.helper`"), "{err}");
-    }
-
-    /// A BUILTIN IS NOT A CROSS-TREE REFERENCE: `get` is the builtin even though tree `b` declares
-    /// an ordinary `fn get`. The deleted fallback pulled that function in; the rule neither pulls
-    /// it nor refuses.
-    #[test]
-    fn a_builtin_named_like_another_trees_function_admits() {
-        admit_user("builtin", "", false).expect("the builtin get admits without a provider");
-    }
-
-    /// The positive control: the same reference written qualified (`tb.helper.helper()`) admits,
-    /// and the file stays import-less, so its other bare references are still followed.
-    #[test]
-    fn the_same_reference_written_qualified_admits() {
-        admit_user_qualified("green").expect("a qualified cross-tree reference admits");
-    }
-}
-
-/// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
-/// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
-/// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
-/// refuses as ambiguous; with one unrelated import whose module imports `ta.dep`, the same call
-/// RESOLVES -- silently binding `bar` to the transitively reached `ta.dep.bar`. This test pins
-/// that behaviour as observed. WHEN THE DEFECT IS FIXED IT MUST FAIL: flip its second assertion
-/// to expect the ambiguity refusal and keep it as the regression control (DESIGN §4b(4)).
-#[cfg(test)]
-mod import_transitive_bare_pick_specimen {
-    use super::*;
-
-    fn w(root: &Path, rel: &str, c: &str) {
-        let p = root.join(rel);
-        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir");
-        std::fs::write(p, c).expect("write dag");
-    }
-
-    #[test]
-    fn an_unrelated_import_turns_an_ambiguous_bare_name_into_a_transitive_pick() {
-        let base = process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-import-pick-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let a = base.join("a");
-        w(
-            &a,
-            "dep.dag",
-            "module ta.dep\n\nfn bar() -> Int {\n  1\n}\n\nfn z() -> Int {\n  0\n}\n",
-        );
-        w(
-            &a,
-            "other.dag",
-            "module ta.other\n\nfn bar() -> Int {\n  2\n}\n",
-        );
-        w(
-            &a,
-            "lib.dag",
-            "module ta.lib\n\nimport ta.dep { z }\n\nfn y() -> Int {\n  z()\n}\n",
-        );
-        w(
-            &a,
-            "bare_user.dag",
-            "module ta.bare_user\n\nfn main() -> Int {\n  bar()\n}\n",
-        );
-        w(
-            &a,
-            "import_user.dag",
-            "module ta.import_user\n\nimport ta.lib { y }\n\nfn main() -> Int {\n  bar()\n}\n",
-        );
-        let index = build_multi_entry_index(&[a.to_string_lossy().into_owned()]);
-        let bare = resolve_entry_with_index(&index, &a.join("bare_user.dag").to_string_lossy());
-        let imported =
-            resolve_entry_with_index(&index, &a.join("import_user.dag").to_string_lossy());
-        let _ = std::fs::remove_dir_all(&base);
-        let err = bare.expect_err("with no imports, an ambiguous bare name refuses");
-        assert!(err.contains("ambiguous reference 'bar'"), "{err}");
-        // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
-        imported.expect("observed: one unrelated import makes the same bare name resolve");
     }
 }
 

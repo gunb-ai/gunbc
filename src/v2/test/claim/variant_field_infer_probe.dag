@@ -6,6 +6,7 @@ import v2.compiler.infer {
   ConstructNotARecord,
   ConstructVariantArmIdentityUnavailable,
   ConstructVariantArmIdentityContested,
+  ConstructVariantArmBodyUnavailable,
   infer,
   infer_record_construct_read,
   inferred_facts_resolved_type
@@ -39,7 +40,7 @@ import v2.std.node {
 }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.std.collection { List }
+import std.types { List }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 
@@ -201,6 +202,7 @@ fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
           }
         ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
         ConstructVariantArmIdentityContested { claimants: _ } => ^vfp_read_identity_unavailable
+        ConstructVariantArmBodyUnavailable => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }
@@ -223,6 +225,7 @@ fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
           }
         ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
         ConstructVariantArmIdentityContested { claimants: _ } => ^vfp_read_identity_unavailable
+        ConstructVariantArmBodyUnavailable => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }

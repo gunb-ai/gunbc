@@ -28,7 +28,7 @@ import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocat
 import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import std.optional { Absent, Present, Optional, optional_absent, optional_present }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
@@ -142,6 +142,7 @@ fn claim_lowered_tree(m: ClaimLoweredModule) -> Outcome<NormalizedTree> {
     root: claim_lowered_allocated(root: claim_lowered_root(m: m)),
     test_markers: test_marker_channel_empty(),
     import_bindings: m.imports,
+    imported_modules: Empty,
     type_declaration_kinds: list_map(xs: m.records, f: fn(r) { DeclaredRecord { name: r } }),
     type_declaration_modifiers: Empty,
     diagnostics: None

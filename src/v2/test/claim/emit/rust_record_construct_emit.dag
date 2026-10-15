@@ -12,9 +12,7 @@ import v2.extdeps.languages.rust_fixtures {
   rust_rec_wrong_value_source_text
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,
