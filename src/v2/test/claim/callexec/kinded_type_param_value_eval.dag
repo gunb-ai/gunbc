@@ -179,4 +179,4 @@ fn kpw_src() -> String {
 }
 test fn kpw_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpw_src())) { Present { value: _ } => true
   Absent => false } }
-test fn kpw_is_8() -> Bool { cref_value_int_optional(r: cref_eval_of_call_to(o: cref_assemble(src: kpw_src()), name: ^width_of)) == Present { value: 8 } }
+test fn kpw_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpw_src()), name: ^width_of)) == Present { value: 8 } }
