@@ -323,9 +323,9 @@ fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnv
 
 fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
   match f.fixed_overhead {
-    HostFixedOverheadUnmeasured =>
+    HostFixedOverheadUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
-        cause: "host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents"
+        cause: concat("host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents: ", why as String)
       }
     HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
       envelope_after_overhead(f: f, overhead: overhead)
@@ -336,9 +336,9 @@ fn runner_memory_envelope_of(f: HostWidthFacts) -> RunnerMemoryEnvelope {
 
 fn envelope_after_overhead(f: HostWidthFacts, overhead: ByteSize) -> RunnerMemoryEnvelope {
   match f.usable_ram {
-    HostUsableRamUnmeasured =>
+    HostUsableRamUnmeasured { reason: why } =>
       RunnerMemoryEnvelopeUnestablished {
-        cause: "host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host"
+        cause: concat("host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host: ", why as String)
       }
     HostUsableRamMeasured { bytes: usable, provenance: _ } =>
       envelope_after_usable(f: f, usable: usable, overhead: overhead)
