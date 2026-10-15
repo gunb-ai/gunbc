@@ -333,3 +333,10 @@ test fn kpzz_type_argument_read_as_value() -> Bool { kpa_reason() == Present { v
 test fn kpzz_canonical_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
 test fn kpzz_function_value_body() -> Bool { kpa_reason() == Present { value: ^eval_rejected_function_value_body } }
 test fn kpzz_absent() -> Bool { kpa_reason() == Absent }
+fn kpb_src() -> String {
+  "module p\n\ntype brand = Nominal {}\n\ntype Resolution\n  = Static\n  | Pointer\n\ntype Box<n: Resolution> = Int where brand(\"Box\")\n\nfn mk8() -> Box<8> {\n  0\n}\n\nfn width_of<bits: Resolution>(x: Box<bits>) -> Int {\n  bits\n}\n\nfn consumer() -> Int {\n  width_of(x: mk8())\n}\n"
+}
+test fn kpb_assembles() -> Bool { match cref_inferred_of(o: cref_assemble(src: kpb_src())) { Present { value: _ } => true
+  Absent => false } }
+test fn kpb_call_grounded() -> Bool { kpz_call_grounded(src: kpb_src(), name: ^width_of) }
+test fn kpb_is_8() -> Bool { kpe_int_of(r: cref_eval_of_call_to(o: cref_assemble(src: kpb_src()), name: ^width_of)) == Present { value: 8 } }
