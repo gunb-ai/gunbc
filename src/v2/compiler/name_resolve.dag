@@ -1155,27 +1155,27 @@ fn closure_collect_declaration_callees(n: Node, acc: List<QualifiedName>) -> Lis
   fold(n.children, init: here, f: fn(a, e) { closure_collect_declaration_callees(n: e.target, acc: a) })
 }
 
-fn closure_unavailable_owner_refusal(
-  unavailable: List<ModuleOutcome>,
-  callee: QualifiedName
-) -> Optional<NonEmptyDiagnostics> {
-  let owner = qualified_name_init(qn: callee)
-  fold_list(xs: unavailable, empty: optional_absent(), cons: fn(acc, o) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match o {
-          ModuleUnavailable { module: m, refusal: r } =>
-            if m == owner { optional_present(value: r) } else { acc }
-          ModuleObserved { module: _, declarations: _ } => acc
-        }
+fn closure_unavailable_by_module(
+  unavailable: List<ModuleOutcome>
+) -> Map<QualifiedName, NonEmptyDiagnostics> {
+  fold_list(xs: unavailable, empty: empty_map(), cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } => map_insert(m: acc, key: m, value: r)
+      ModuleObserved { module: _, declarations: _ } => acc
     }
   })
 }
 
+fn closure_unavailable_owner_refusal(
+  unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
+  callee: QualifiedName
+) -> Optional<NonEmptyDiagnostics> {
+  map_lookup(m: unavailable, key: qualified_name_init(qn: callee))
+}
+
 fn closure_callee_blocking_refusal(
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
-  unavailable: List<ModuleOutcome>,
+  unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   callee: QualifiedName
 ) -> Optional<NonEmptyDiagnostics> {
   match map_lookup(m: blocked, key: callee) {
@@ -1241,12 +1241,9 @@ fn closure_decl_call_graph(rows: List<DeclPhase1Row>) -> CallGraph<QualifiedName
   }
 }
 
-fn closure_row_by_path(rows: List<DeclPhase1Row>, path: QualifiedName) -> Optional<DeclPhase1Row> {
-  fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if row.path == path { optional_present(value: row) } else { acc }
-    }
+fn closure_rows_by_path(rows: List<DeclPhase1Row>) -> Map<QualifiedName, DeclPhase1Row> {
+  fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
+    map_insert(m: acc, key: row.path, value: row)
   })
 }
 
@@ -1255,16 +1252,16 @@ fn closure_reverse_components(xs: List<List<QualifiedName>>) -> List<List<Qualif
 }
 
 fn closure_component_blocking_refusal(
-  rows: List<DeclPhase1Row>,
+  rows: Map<QualifiedName, DeclPhase1Row>,
   blocked: Map<QualifiedName, NonEmptyDiagnostics>,
-  unavailable: List<ModuleOutcome>,
+  unavailable: Map<QualifiedName, NonEmptyDiagnostics>,
   component: List<QualifiedName>
 ) -> Optional<NonEmptyDiagnostics> {
   fold_list(xs: component, empty: optional_absent(), cons: fn(found, name) {
     match found {
       Present { value: _ } => found
       Absent =>
-        match closure_row_by_path(rows: rows, path: name) {
+        match map_lookup(m: rows, key: name) {
           Absent => found
           Present { value: row } =>
             match row.local_refusal {
@@ -1295,6 +1292,8 @@ fn closure_phase2_blocked(
   rows: List<DeclPhase1Row>,
   unavailable: List<ModuleOutcome>
 ) -> Map<QualifiedName, NonEmptyDiagnostics> {
+  let by_path = closure_rows_by_path(rows: rows)
+  let unavailable_by_module = closure_unavailable_by_module(unavailable: unavailable)
   let seed = fold_list(xs: rows, empty: empty_map(), cons: fn(acc, row) {
     match row.local_refusal {
       Absent => acc
@@ -1309,9 +1308,9 @@ fn closure_phase2_blocked(
   )
   fold_list(xs: components, empty: seed, cons: fn(blocked, component) {
     match closure_component_blocking_refusal(
-      rows: rows,
+      rows: by_path,
       blocked: blocked,
-      unavailable: unavailable,
+      unavailable: unavailable_by_module,
       component: component
     ) {
       Absent => blocked
