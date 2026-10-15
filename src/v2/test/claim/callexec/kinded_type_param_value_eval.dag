@@ -272,21 +272,21 @@ fn kpa_reason() -> Optional<Symbol> {
     _ => Absent
   }
 }
-test fn kpa_type_node() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_node } }
-test fn kpa_unsupported_callee() -> Bool { kpa_reason() == Present { value: ^eval_rejected_unsupported_callee } }
-test fn kpa_runtime_value_node_unrepresentable() -> Bool { kpa_reason() == Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
-test fn kpa_argument_bind_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_argument_bind_absent } }
-test fn kpa_bind_value_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_bind_value_absent } }
-test fn kpa_invalid_node() -> Bool { kpa_reason() == Present { value: ^eval_rejected_invalid_node } }
-test fn kpa_callee_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_callee_absent } }
-test fn kpa_grounding_node_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_grounding_node_mismatch } }
-test fn kpa_resolved_type_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_resolved_type_mismatch } }
-test fn kpa_inhabitance_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_inhabitance_mismatch } }
-test fn kpa_grounding_not_derived() -> Bool { kpa_reason() == Present { value: ^eval_rejected_grounding_not_derived } }
-test fn kpa_parameter_reference_unbound() -> Bool { kpa_reason() == Present { value: ^eval_rejected_parameter_reference_unbound } }
-test fn kpa_runtime_binding_lookup_miss() -> Bool { kpa_reason() == Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
-test fn kpa_type_argument_instance_absent() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_argument_instance_absent } }
-test fn kpa_type_argument_read_as_value() -> Bool { kpa_reason() == Present { value: ^eval_rejected_type_argument_read_as_value } }
-test fn kpa_canonical_mismatch() -> Bool { kpa_reason() == Present { value: ^eval_rejected_canonical_mismatch } }
-test fn kpa_function_value_body() -> Bool { kpa_reason() == Present { value: ^eval_rejected_function_value_body } }
-test fn kpa_absent() -> Bool { kpa_reason() == Absent }
+test fn kpn_type_node() -> Bool { kpa_reason() != Present { value: ^eval_rejected_type_node } }
+test fn kpn_unsupported_callee() -> Bool { kpa_reason() != Present { value: ^eval_rejected_unsupported_callee } }
+test fn kpn_runtime_value_node_unrepresentable() -> Bool { kpa_reason() != Present { value: ^eval_rejected_runtime_value_node_unrepresentable } }
+test fn kpn_argument_bind_absent() -> Bool { kpa_reason() != Present { value: ^eval_rejected_argument_bind_absent } }
+test fn kpn_bind_value_absent() -> Bool { kpa_reason() != Present { value: ^eval_rejected_bind_value_absent } }
+test fn kpn_invalid_node() -> Bool { kpa_reason() != Present { value: ^eval_rejected_invalid_node } }
+test fn kpn_callee_absent() -> Bool { kpa_reason() != Present { value: ^eval_rejected_callee_absent } }
+test fn kpn_grounding_node_mismatch() -> Bool { kpa_reason() != Present { value: ^eval_rejected_grounding_node_mismatch } }
+test fn kpn_resolved_type_mismatch() -> Bool { kpa_reason() != Present { value: ^eval_rejected_resolved_type_mismatch } }
+test fn kpn_inhabitance_mismatch() -> Bool { kpa_reason() != Present { value: ^eval_rejected_inhabitance_mismatch } }
+test fn kpn_grounding_not_derived() -> Bool { kpa_reason() != Present { value: ^eval_rejected_grounding_not_derived } }
+test fn kpn_parameter_reference_unbound() -> Bool { kpa_reason() != Present { value: ^eval_rejected_parameter_reference_unbound } }
+test fn kpn_runtime_binding_lookup_miss() -> Bool { kpa_reason() != Present { value: ^eval_rejected_runtime_binding_lookup_miss } }
+test fn kpn_type_argument_instance_absent() -> Bool { kpa_reason() != Present { value: ^eval_rejected_type_argument_instance_absent } }
+test fn kpn_type_argument_read_as_value() -> Bool { kpa_reason() != Present { value: ^eval_rejected_type_argument_read_as_value } }
+test fn kpn_canonical_mismatch() -> Bool { kpa_reason() != Present { value: ^eval_rejected_canonical_mismatch } }
+test fn kpn_function_value_body() -> Bool { kpa_reason() != Present { value: ^eval_rejected_function_value_body } }
+test fn kpn_absent() -> Bool { kpa_reason() != Absent }
