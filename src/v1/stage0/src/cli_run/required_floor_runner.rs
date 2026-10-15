@@ -12,9 +12,6 @@
     clippy::needless_return,  // 1
     clippy::nonminimal_bool,  // 1
     clippy::type_complexity,  // 1
-    dead_code,  // 10
-    unused_imports,  // 0 -- pre-existing
-    unused_variables,  // 2
 )]
 // cli_run.rs is this module's PARENT, and an `#![allow]` there reaches every module
 // under it -- the same cascade this commit removed at the crate root, one level down.
@@ -1366,26 +1363,6 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // all; v2.lens.complexity_accumulator_copy.corpus_census is the worked example, and it
         // carries its own next-rung trigger.
     ]
-}
-
-/// ONE BEAT'S READINGS, TYPED, EACH `None` MEANING "THIS SOURCE DID NOT READ" and never zero.
-/// Authority: `gunbc.observation_ci_render` `HeartbeatSample` -- this is the seed-side twin of
-/// that record, at the grain the seed reads its sources: one `/proc/self/stat` read feeds `cpu_ms`
-/// and `major_faults` together (a half-read stat cannot be summed, so the pair is all-or-nothing),
-/// `/proc/self/statm` feeds `rss_bytes`, `memory.current`, `memory.events` and
-/// `memory.events.local` are three files, and `/proc/vmstat` is one. The rendering is
-/// `render_heartbeat_line_mirror`; nothing here formats.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FloorResourceSample {
-    pub cpu_ms: Option<u64>,
-    pub major_faults: Option<u64>,
-    pub rss_bytes: Option<u64>,
-    pub cgroup_charge_bytes: Option<u64>,
-    /// `(high, max)` from `memory.events`, read together because they are one file.
-    pub cgroup_events: Option<(u64, u64)>,
-    pub cgroup_local_high_events: Option<u64>,
-    /// `(pswpin, pgmajfault)` from `/proc/vmstat`, read together because they are one file.
-    pub host_vmstat: Option<(u64, u64)>,
 }
 
 // THE CONSTRUCTOR A DECODE ACTUALLY OBSERVED, for refusals whose cause is a shape mismatch.
