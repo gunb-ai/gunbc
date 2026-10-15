@@ -11,7 +11,9 @@ import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.runner.runner_revision_job_guest {
   revision_job_tree_steps, RevisionJobGuestUnit, RevisionJobGuestUnitRendered, RevisionJobGuestUnitRefused,
-  revision_job_guest_unit, revision_job_exec_line, RevisionJobExecWordRefused, RevisionJobExecLineRendered,
+  revision_job_guest_unit, revision_job_exec_line,
+}
+import extdeps.systemd.service_exec { ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line_with_environment
 }
 
 // THE GUEST'S TREE VERIFICATION, RUN FOR REAL OVER A STAND-IN: an archive file in place of /dev/vdc
@@ -70,11 +72,19 @@ test fn a_changed_file_fails_verification_against_the_admitted_tree_by_real_exec
 test fn the_unit_renders_and_a_word_systemd_would_reinterpret_refuses() -> Bool {
   let unit_ok = match revision_job_guest_unit() {
     RevisionJobGuestUnitRendered { unit: _ } => true
-    RevisionJobGuestUnitRefused { word: _ } => false
+    RevisionJobGuestUnitRefused { reason: _ } => false
   }
   let refused = match revision_job_exec_line(command: mkdir_parents_command(path: "/tmp/100%")) {
-    RevisionJobExecWordRefused { word: w } => w == "/tmp/100%"
-    RevisionJobExecLineRendered { line: _ } => false
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
   }
-  unit_ok && refused
+  let newline = match revision_job_exec_line(command: mkdir_parents_command(path: "/tmp/a\nb")) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  let undeclared = match exec_command_line_with_environment(command: mkdir_parents_command(path: join(["$", "{", "OTHER", "}"], "")), environment: ["GUNBC_CLAIM_SET_TREE"]) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  unit_ok && refused && newline && undeclared
 }

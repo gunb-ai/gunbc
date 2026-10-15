@@ -1,9 +1,12 @@
 module gunbc.runner.runner_revision_job_guest
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd.service_exec {
+  ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused,
+  exec_command_line_with_environment, exec_words_line_with_environment,
+}
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.git {
@@ -17,7 +20,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, SuccessAction, FailureAction, ServiceType, ExecMode,
   Restart, WorkingDirectory, Environment, EnvironmentFile, ServiceStandardOutput, ServiceStandardError,
   OutputJournalAndConsole, ExecStartPre, ExecStart, Installable, WantedBy, UnitActionPoweroffForce,
-  systemd_environment_reference, ServiceMemoryMax, ServiceMemorySwapMax,
+  systemd_environment_reference, ServiceResourceControl, service_memory_max, service_memory_swap_max,
 }
 import gunbc.cli_invoke { release_bin_rel_path, gunbc_bin_name, gunbc_run_invocation_words, invocation_words_bare }
 import gunbc.runner.runner_guest_image {
@@ -102,30 +105,13 @@ fn revision_job_pre_steps() -> List<ArgvCommand> {
 
 // ── the systemd command line ───────────────────────────────────────────────────────────────────
 
-// A WORD IS WRITTEN AS ITSELF, AND A WORD SYSTEMD WOULD REINTERPRET REFUSES. The fleet's unit lines
-// join argv words with spaces (gunbc.runner.runner_microvm_slot_unit microvm_locus_execstart); that is
-// faithful only for a word with no whitespace, quote, backslash, `%` (a systemd specifier) or `$`
-// (environment substitution). The one admitted `$` form is a whole word `${NAME}`, which systemd
-// substitutes as exactly one argument -- the job's per-job value.
-type RevisionJobExecLine
-  = RevisionJobExecLineRendered { line: NonEmptyStr }
-  | RevisionJobExecWordRefused { word: String }
+// EVERY LINE GOES THROUGH extdeps.systemd.service_exec, the one wall for what a systemd command line
+// may carry: a literal word must be free of anything the manager would read as syntax, and the one
+// variable a word here may name is the job spec's tree id, declared as the environment the unit loads.
+data revision_job_environment_names: List<NonEmptyStr> = ["GUNBC_CLAIM_SET_TREE"]
 
-// The one admitted `$` word: exactly what extdeps.systemd.unit_file systemd_environment_reference
-// renders for the job spec's tree variable, the only per-job value an argv here carries.
-fn exec_word_is_env_reference(word: String) -> Bool {
-  word == (systemd_environment_reference(name: "GUNBC_CLAIM_SET_TREE") as String)
-}
-
-fn exec_word_is_literal(word: String) -> Bool {
-  word != "" && !string_contains(s: word, pattern: " ") && !string_contains(s: word, pattern: "\t")
-    && !string_contains(s: word, pattern: "\"") && !string_contains(s: word, pattern: "'")
-    && !string_contains(s: word, pattern: "\\") && !string_contains(s: word, pattern: "%")
-    && !string_contains(s: word, pattern: "$")
-}
-
-fn revision_job_exec_line(command: ArgvCommand) -> RevisionJobExecLine {
-  revision_job_exec_words_line(words: argv_words(command: command))
+fn revision_job_exec_line(command: ArgvCommand) -> ExecCommandLineRendering {
+  exec_command_line_with_environment(command: command, environment: revision_job_environment_names)
 }
 
 fn revision_job_entry_exec_words() -> List<String> {
@@ -140,24 +126,16 @@ fn revision_job_entry_exec_words() -> List<String> {
 
 type RevisionJobGuestUnit
   = RevisionJobGuestUnitRendered { unit: SystemdUnitFile }
-  | RevisionJobGuestUnitRefused { word: String }
+  | RevisionJobGuestUnitRefused { reason: NonEmptyStr }
 
-// THE ENTRY WORDS ARE CHECKED BY THE SAME WALL AS THE STEPS: ExecStart is a command line too, so a
-// word systemd would reinterpret refuses the unit whatever line it sits on.
-fn revision_job_exec_words_line(words: List<String>) -> RevisionJobExecLine {
-  match filter(words, w => !(exec_word_is_literal(word: w) || exec_word_is_env_reference(word: w))).first() {
-    Present { value: w } => RevisionJobExecWordRefused { word: w }
-    Absent => RevisionJobExecLineRendered { line: join(words, " ") as NonEmptyStr }
-  }
-}
-
+// THE ENTRY WORDS ARE CHECKED BY THE SAME WALL AS THE STEPS: ExecStart is a command line too.
 fn revision_job_guest_unit() -> RevisionJobGuestUnit {
-  match revision_job_exec_words_line(words: revision_job_entry_exec_words()) {
-  RevisionJobExecWordRefused { word: w } => RevisionJobGuestUnitRefused { word: w }
-  RevisionJobExecLineRendered { line: entry_line } => {
+  match exec_words_line_with_environment(words: revision_job_entry_exec_words(), environment: revision_job_environment_names) {
+  ExecCommandLineRefused { reason: r } => RevisionJobGuestUnitRefused { reason: r }
+  ExecCommandLineRendered { line: entry_line } => {
   let rendered = map(revision_job_pre_steps(), c => revision_job_exec_line(command: c))
-  match filter(rendered, r => match r { RevisionJobExecWordRefused { word: _ } => true  RevisionJobExecLineRendered { line: _ } => false }).first() {
-    Present { value: RevisionJobExecWordRefused { word: w } } => RevisionJobGuestUnitRefused { word: w }
+  match filter(rendered, r => match r { ExecCommandLineRefused { reason: _ } => true  ExecCommandLineRendered { line: _ } => false }).first() {
+    Present { value: ExecCommandLineRefused { reason: w } } => RevisionJobGuestUnitRefused { reason: w }
     _ => RevisionJobGuestUnitRendered { unit: ServiceUnitFile {
       unit: [
         Description { text: "gunbc revision job: verify the staged tree, build offline, run the claims" as NonEmptyStr },
@@ -171,13 +149,13 @@ fn revision_job_guest_unit() -> RevisionJobGuestUnit {
         Environment { assignment: runner_guest_job_path },
         Environment { assignment: runner_guest_job_home },
         EnvironmentFile { path: revision_job_spec_device },
-        ServiceMemoryMax { bytes: gunbc_runner_slot_memory_max },
-        ServiceMemorySwapMax { bytes: byte_size(count: 0) },
+        ServiceResourceControl { directive: service_memory_max(bytes: gunbc_runner_slot_memory_max) },
+        ServiceResourceControl { directive: service_memory_swap_max(bytes: byte_size(count: 0)) },
         ServiceStandardOutput { stream: OutputJournalAndConsole },
         ServiceStandardError { stream: OutputJournalAndConsole },
       ] + flat_map(rendered, r => match r {
-        RevisionJobExecLineRendered { line: l } => [ExecStartPre { command: l }]
-        RevisionJobExecWordRefused { word: _ } => []
+        ExecCommandLineRendered { line: l } => [ExecStartPre { command: l }]
+        ExecCommandLineRefused { reason: _ } => []
       }) + [ExecStart { command: entry_line }],
       install: Installable { directives: [WantedBy { target: runner_guest_agent_target }] },
     } }
