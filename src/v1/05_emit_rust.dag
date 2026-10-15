@@ -9076,7 +9076,78 @@ fn v1_call_forwarding_forwarded_param_names(
           )
       }
     )
-    v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded)
+    let unified = callee_value_params
+    |> flat_map(cp =>
+      match map_get(arg_by_name, cp.name) {
+        Absent => []
+        Present { value: arg_node } =>
+          v1_unify_bound_forwarded_names(
+            callee_ts: [resolved_type(n: cp)],
+            arg_ts: [resolved_type(n: arg_node)],
+            callee_bound_param_names: callee_bound_param_names,
+            wrapper_generic_param_names: wrapper_generic_param_names,
+            source_indices: si
+          )
+      }
+    )
+    v1_union_bound_param_names(
+      base: v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded),
+      extra: unified
+    )
+  }
+}
+
+// STRUCTURAL UNIFICATION OF A CALLEE PARAMETER TYPE WITH THE ARGUMENT'S TYPE, AT ANY DEPTH. The
+// arity-one, one-level pairing in v1_call_forwarding_bound_wrapper_param_names cannot see a callee
+// generic that sits under two or more constructors (`List<KeyedRow<SubjectKey<K>, V>>`: its only
+// child is `KeyedRow`, so K was never compared), so a wrapper forwarding such an argument lost the
+// callee's DECLARED bound and the emitted signature failed E0277. Both type trees are walked in
+// lockstep; descent happens only where the heads agree and the arities match, so a mismatch yields
+// no bound (the status quo) and never a mis-paired one. The bound itself is still the callee's
+// declared one; nothing here re-derives key position.
+fn v1_unify_bound_forwarded_names(
+  callee_ts: List<Node>,
+  arg_ts: List<Node>,
+  callee_bound_param_names: List<String>,
+  wrapper_generic_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  match callee_ts |> first {
+    Absent => []
+    Present { value: callee_t } =>
+      match arg_ts |> first {
+        Absent => []
+        Present { value: arg_t } =>
+          let callee_name = authored_name_at(source_indices: source_indices, node: callee_t)
+          let arg_name = authored_name_at(source_indices: source_indices, node: arg_t)
+          let here = if (callee_bound_param_names |> any(g => g == callee_name))
+            && (wrapper_generic_param_names |> any(g => g == arg_name)) {
+            [arg_name]
+          } else {
+            []
+          }
+          let below = if callee_name == arg_name && (callee_t.children |> count) == (arg_t.children |> count) {
+            v1_unify_bound_forwarded_names(
+              callee_ts: callee_t.children,
+              arg_ts: arg_t.children,
+              callee_bound_param_names: callee_bound_param_names,
+              wrapper_generic_param_names: wrapper_generic_param_names,
+              source_indices: source_indices
+            )
+          } else {
+            []
+          }
+          v1_union_bound_param_names(
+            base: v1_union_bound_param_names(base: here, extra: below),
+            extra: v1_unify_bound_forwarded_names(
+              callee_ts: callee_ts |> skip(1),
+              arg_ts: arg_ts |> skip(1),
+              callee_bound_param_names: callee_bound_param_names,
+              wrapper_generic_param_names: wrapper_generic_param_names,
+              source_indices: source_indices
+            )
+          )
+      }
   }
 }
 
