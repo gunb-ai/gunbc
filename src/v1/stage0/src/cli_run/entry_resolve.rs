@@ -1653,10 +1653,21 @@ pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool
     // question is not answered with a boolean; the refusal below runs first regardless.
     match &resolution {
         crate::memory_governor::HostBudgetResolution::ExternallyBounded { run_id } => {
-            let label = format!("ExternallyBoundedExecutor:{run_id}");
+            let label = super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            );
             eprintln!(
                 "[floor-drain] host_memory_budget source=externally_bounded executor={label}"
             );
+            // WRAP STANDING, NOT AN ENV SUBSTITUTE FOR A CGROUP READ. The earlier comment
+            // said a BuildBuddy environment declaration cannot replace a missing observation.
+            // That still holds for bytes: this arm carries no number. What changed is that
+            // wrap already classified the process as ExternallyBoundedExecutor
+            // (`gunbc.compute.unit_bounds`); HostBudget records that standing instead of
+            // panicking HostBudgetUnreadable. CapEntriesExternallyBounded is the floor until
+            // the executor exposes a readable memory.max (`typed_module_cache_externally_bounded_dissolves_on`).
             // SEED MIRROR of `gunbc.typed_module_cache_capacity` `CapEntriesExternallyBounded`
             // (not `CapEntries`: that arm is a derived bound from observed/declared bytes).
             return Ok((TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR, label, false));

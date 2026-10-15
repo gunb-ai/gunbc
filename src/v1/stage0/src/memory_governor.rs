@@ -1195,7 +1195,11 @@ impl HostBudgetResolution {
                 "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
             ),
             HostBudgetResolution::ExternallyBounded { run_id } => {
-                format!("ExternallyBoundedExecutor:{run_id}")
+                crate::cli_run::user_work_scope::standing_wire(
+                    &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                        run_id: run_id.clone(),
+                    },
+                )
             }
         }
     }
@@ -1215,14 +1219,16 @@ impl HostBudgetResolution {
 }
 
 /// Mirror of `host_budget_with_external_executor`.
-pub fn host_budget_with_external_executor(
+pub(crate) fn host_budget_with_external_executor(
     resolution: HostBudgetResolution,
-    executor_run_id: Option<String>,
+    standing: &crate::cli_run::user_work_scope::UserWorkScopeStanding,
 ) -> HostBudgetResolution {
     match resolution {
-        HostBudgetResolution::Unreadable { reason } => match executor_run_id {
-            Some(run_id) if !run_id.trim().is_empty() => HostBudgetResolution::ExternallyBounded {
-                run_id: run_id.trim().to_string(),
+        HostBudgetResolution::Unreadable { reason } => match standing {
+            crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id,
+            } if !run_id.is_empty() => HostBudgetResolution::ExternallyBounded {
+                run_id: run_id.clone(),
             },
             _ => HostBudgetResolution::Unreadable { reason },
         },
@@ -1345,11 +1351,10 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
         cgroup_v1_limit,
         crate::v1_rt::host_budget_darwin_physical(),
     );
-    let executor_run_id = std::env::var("BUILDBUDDY_RUN_ID")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    host_budget_with_external_executor(joined, executor_run_id)
+    host_budget_with_external_executor(
+        joined,
+        &crate::cli_run::user_work_scope::user_work_scope_standing(),
+    )
 }
 
 /// `(budget, source label)` view of `read_host_budget_resolution` for the log lines and
@@ -1996,7 +2001,9 @@ mod tests {
         let refused = resolve_host_budget(None, None, None, None, None);
         let classified = host_budget_with_external_executor(
             refused,
-            Some("bb77f2ae-888b-4f04-9bef-6dab045b1548".to_string()),
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548".to_string(),
+            },
         );
         assert!(matches!(
             &classified,
@@ -2010,7 +2017,7 @@ mod tests {
         );
         let still = host_budget_with_external_executor(
             resolve_host_budget(None, None, None, None, None),
-            Some("  ".to_string()),
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::CgroupUnreadable,
         );
         assert!(matches!(still, HostBudgetResolution::Unreadable { .. }));
         let observed = resolve_host_budget(
@@ -2020,7 +2027,12 @@ mod tests {
             None,
             None,
         );
-        let unchanged = host_budget_with_external_executor(observed, Some("bb-id".to_string()));
+        let unchanged = host_budget_with_external_executor(
+            observed,
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id: "bb-id".to_string(),
+            },
+        );
         assert_eq!(unchanged.bytes(), Some(9_663_676_416));
     }
 

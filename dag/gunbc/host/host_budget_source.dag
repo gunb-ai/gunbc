@@ -11,6 +11,10 @@ import extdeps.linux.cgroup_v2_memory {
 import gunbc.required_ci_phase_roster { floor_log_row_fields, floor_log_field_value }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.compute.unit_bounds {
+  UserWorkScopeStanding,
+  ExternallyBoundedExecutor,
+}
 import extdeps.linux.procfs {
   ProcfsPath,
   ProcSelfCgroup,
@@ -123,18 +127,20 @@ fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   }
 }
 
-// An unreadable local budget under an executor that already carries the bound (BuildBuddy
-// BUILDBUDDY_RUN_ID; same standing as UserWorkScopeStanding ExternallyBoundedExecutor) is not
-// HostBudgetUnreadable: the bound is the executor identity, never a fabricated byte count.
+// An unreadable local budget under wrap standing ExternallyBoundedExecutor is not
+// HostBudgetUnreadable: that standing already lives in gunbc.compute.unit_bounds. This fold
+// consumes it; it does not re-read BUILDBUDDY_RUN_ID. The bound is the executor identity,
+// never a fabricated byte count.
 fn host_budget_with_external_executor(
   resolution: HostBudgetResolution,
-  executor_run_id: NonEmptyStr?
+  standing: UserWorkScopeStanding
 ) -> HostBudgetResolution {
   match resolution {
     HostBudgetUnreadable { reason: r } =>
-      match executor_run_id {
-        Present { value: id } => HostBudgetExternallyBounded { run_id: id }
-        Absent => HostBudgetUnreadable { reason: r }
+      match standing {
+        ExternallyBoundedExecutor { run_id: id } =>
+          HostBudgetExternallyBounded { run_id: id as NonEmptyStr }
+        _ => HostBudgetUnreadable { reason: r }
       }
     HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o } =>
       HostBudgetResolved { effective_bytes: e, requested_bytes: q, observation: o }

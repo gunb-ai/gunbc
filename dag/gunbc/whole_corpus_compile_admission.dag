@@ -17,6 +17,10 @@ import gunbc.host.host_budget_source {
   HostBudgetObserved,
   host_budget_source_label,
 }
+import gunbc.compute.unit_bounds {
+  ExternallyBoundedExecutor,
+  user_work_scope_standing_wire,
+}
 
 data whole_corpus_compile_admission_authority_disposition: Disposition = Terminal {
   reason: "Single authority for the arm-time admission of a WHOLE-CORPUS compile against the host memory budget gunbc.host.host_budget_source already models. The budget half and the source half were both modeled; the JOIN between them and the decision to start the run was not, which is the defect this module closes. Its sibling for the floor walk is gunbc.runner.runner_slot_allocation gunbc_floor_minimum_viable_armed_budget, enforced by claim_executor at arm time as a fail-fast refusal on a provably doomed walk; nothing played that role for the compile instrument, and this module is that role, derived the same way from a measured demand figure."
@@ -403,7 +407,7 @@ fn whole_corpus_compile_budget_against_peak(
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
     HostBudgetExternallyBounded { run_id: id } =>
       WholeCorpusCompileRefusedBudgetUnreadable {
-        reason: concat("ExternallyBoundedExecutor:", id as String) as NonEmptyStr
+        reason: user_work_scope_standing_wire(standing: ExternallyBoundedExecutor { run_id: id as String }) as NonEmptyStr
       }
     HostBudgetResolved {
       effective_bytes: b,

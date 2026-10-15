@@ -41,7 +41,7 @@ const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-approval-broker.slice",
 ];
 
-enum UserWorkScopeStanding {
+pub(crate) enum UserWorkScopeStanding {
     AlreadyInSlice,
     RunnerSlotExempt,
     CiExempt,
@@ -100,7 +100,7 @@ pub fn reexec_into_user_work_slice_if_owed() {
     }
 }
 
-fn standing_wire(s: &UserWorkScopeStanding) -> String {
+pub(crate) fn standing_wire(s: &UserWorkScopeStanding) -> String {
     match s {
         UserWorkScopeStanding::AlreadyInSlice => "AlreadyInSlice".to_string(),
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
@@ -480,7 +480,13 @@ fn user_manager_reachable() -> bool {
         .unwrap_or(false)
 }
 
-fn user_work_scope_standing() -> UserWorkScopeStanding {
+pub(crate) fn buildbuddy_run_id_from_env() -> Option<String> {
+    std::env::var(BUILDBUDDY_RUN_ID_ENV)
+        .ok()
+        .filter(|id| !id.is_empty())
+}
+
+pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
     if cfg!(test) {
         return UserWorkScopeStanding::UnitTestExempt;
     }
@@ -489,9 +495,7 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
     let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
     let github_actions = std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some();
     let xdg_runtime_dir = std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some();
-    let buildbuddy_run_id = std::env::var(BUILDBUDDY_RUN_ID_ENV)
-        .ok()
-        .filter(|id| !id.is_empty());
+    let buildbuddy_run_id = buildbuddy_run_id_from_env();
     let namespaced_root = cg.is_some_and(cgroup_text_is_root) && !systemd_manager;
     let root_memory = if namespaced_root {
         root_memory_from_file(read_cgroup_memory_file("/", "memory.max"))

@@ -4164,7 +4164,12 @@ fn host_memory_budget_receipt_line(
         }
         HostBudgetResolution::ExternallyBounded { run_id } => format!(
             "[v2-native-census] host_memory_budget source=externally_bounded \
-             executor=ExternallyBoundedExecutor:{run_id}"
+             executor={}",
+            super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            )
         ),
     }
 }
