@@ -121,9 +121,11 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // in a declared slot cgroup, not because the user manager is missing.
 // ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
 // AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
-// the local bound. Membership (recognized_system_slice) is names only: it does not
-// consume declared_system_slice_memory_maxes magnitudes, which are host-parametric.
-// Unreadable, unbounded, or zero live memory.max refuses UncappedSystemSlice.
+// the local bound. recognized_system_slice is a name census: sessions.slice plus
+// units whose declared memory_max is positive (modeled_system_slice_memory_max).
+// Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
+// is only the live memory.max. Unreadable, unbounded, or zero live memory.max
+// refuses UncappedSystemSlice.
 // sessions.slice is recognized by name (gunbc_oomd_sessions_slice) and still refuses
 // without a local finite cap. Wrapping that path into gunbc-user-work.slice when a
 // user manager is reachable is not a fallback: the enclosing slice is already a

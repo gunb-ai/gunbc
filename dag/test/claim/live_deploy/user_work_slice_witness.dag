@@ -287,7 +287,6 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds system_service_unit_from_cgroup`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`")
     && string_contains(s: seed, pattern: concat("\"", concat(repository_convergence_slice_unit_name as String, "\"")))
-    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`")
     && string_contains(s: seed, pattern: concat("\"", concat(gunbc_oomd_sessions_slice as String, "\"")))
     && !any(
       declared_system_slice_memory_maxes(),
