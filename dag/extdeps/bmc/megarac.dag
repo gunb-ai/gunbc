@@ -123,13 +123,13 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/fan_control/get_manager_status",
-  contract_note: "Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON {manager_disabled: 0|1}; 1 is manual PWM, 0 is Cooling Manager automatic; executed read-only 2026-10-14 ~21:50Z after POST /api/session",
+  contract_note: "Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON manager_disabled 0 or 1; 1 is manual PWM, 0 is Cooling Manager automatic; executed read-only 2026-10-14 ~21:50Z after POST /api/session",
 }
 
 data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "GET",
   path: "/api/fan_control/get_fan_info",
-  contract_note: "same UI bundle; JSON list of {id, fan_number, fan_speed, fan_pwm}; UI labels speed as PWM percentage",
+  contract_note: "same UI bundle; JSON list of id, fan_number, fan_speed, fan_pwm; UI labels speed as PWM percentage",
 }
 
 // §3c frontier: megarac_op_fan_get_manager_status and megarac_op_fan_get_fan_info. Consumer: a
@@ -145,13 +145,13 @@ data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
 data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/fan_control/set_manager_status",
-  contract_note: "same UI bundle; JSON {manager_disabled: r} with r in {0,1}; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository; not a megarac_api_operations row",
+  contract_note: "same UI bundle; JSON manager_disabled r with r in 0 or 1; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository; not a megarac_api_operations row",
 }
 
 data megarac_op_fan_set_fan_speed: MegaRacApiOperation = MegaRacApiOperation {
   http_method: "POST",
   path: "/api/fan_control/set_fan_speed",
-  contract_note: "FanControlView updateFanPWMs in source.min.js (gzip sha256 prefix ee9b14cbf7141b78): JSON.stringify({fan_pwm_all: r}) where r is the string from select#fan_all_speed (example fan_pwm_all: \"25\"); no per-fan write; UI offers 20..100 step 5; takes effect only while manager_disabled is 1; success handler re-reads get_fan_info; not yet executed by this repository; not a megarac_api_operations row",
+  contract_note: "FanControlView updateFanPWMs in source.min.js (gzip sha256 prefix ee9b14cbf7141b78): JSON.stringify fan_pwm_all r where r is the string from select#fan_all_speed (example fan_pwm_all: \"25\"); no per-fan write; UI offers 20..100 step 5; takes effect only while manager_disabled is 1; success handler re-reads get_fan_info; not yet executed by this repository; not a megarac_api_operations row",
 }
 
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
