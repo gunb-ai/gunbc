@@ -105,7 +105,9 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_entry_separator,
 }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
-import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_swap_max }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
+}
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
@@ -301,7 +303,7 @@ type AttemptWorkerSlice {
 }
 
 data attempt_system_unit_worker_slice: AttemptWorkerSlice = AttemptWorkerSlice {
-  unit: "gunbc-attempt-worker.slice" as NonEmptyStr
+  unit: attempt_worker_slice_unit_name
 }
 
 fn attempt_system_unit_slice_property() -> SystemdRunProperty {

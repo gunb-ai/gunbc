@@ -17,13 +17,18 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceForId, DashboardInstanceIdUnknown,
 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
-import gunbc.live_deploy.slice_bounds { live_deploy_slice_memory_swap_max, user_work_slice_unit_name }
+import gunbc.live_deploy.slice_bounds {
+  live_deploy_slice_memory_swap_max, user_work_slice_unit_name,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
+  attempt_worker_slice_memory_high,
+  UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+}
 import gunbc.live_deploy.emit {
   attempt_system_unit_grant_steps, attempt_system_unit_grant_steps_for_instance,
   attempt_system_unit_grant_launch_argv_refused_poison, apply_intent_from_effects,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec { DeploymentSpec, gunbc_attempt_worker_slice_unit_path }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
@@ -318,6 +323,33 @@ test fn the_lab_full_install_apply_installs_only_the_lab_launcher_grant() -> Boo
   )
 }
 
+fn apply_needle_precedes(text: String, earlier: String, later: String) -> Bool {
+  string_contains(s: text, pattern: earlier)
+    && string_contains(s: text, pattern: later)
+    && match split(s: text, delimiter: earlier).first() {
+      Absent => false
+      Present { value: prefix } => !string_contains(s: prefix, pattern: later)
+    }
+}
+
+test fn the_full_install_apply_installs_the_attempt_worker_slice_with_bounds_before_the_grant() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let text = full_install_apply_text(spec: deployment_spec_srv1())
+  let dest = gunbc_attempt_worker_slice_unit_path() as String
+  let grant = attempt_system_unit_sudoers_path(instance: live)
+  match attempt_worker_slice_memory_high() {
+    UserWorkSliceHighGapExceedsMax => false
+    UserWorkSliceHighDerived { bytes: high } =>
+      string_contains(s: dest, pattern: "/etc/systemd/system/")
+        && string_contains(s: dest, pattern: attempt_worker_slice_unit_name as String)
+        && string_contains(s: text, pattern: dest)
+        && string_contains(s: text, pattern: join(["MemoryMax=", to_string(byte_size_count(b: attempt_worker_slice_memory_max))], ""))
+        && string_contains(s: text, pattern: join(["MemoryHigh=", to_string(byte_size_count(b: high))], ""))
+        && string_contains(s: text, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], ""))
+        && apply_needle_precedes(text: text, earlier: dest, later: grant)
+  }
+}
+
 fn instance_toolchain_has_systemd_run(instance: HostDashboardInstance) -> Bool {
   match instance.toolchain.systemd_run {
     Present { value: _ } => true
@@ -608,9 +640,10 @@ test fn the_launcher_systemd_run_argv_places_the_worker_and_forbids_swap() -> Bo
             SystemdRunCommandReady { command } => {
               let words = argv_words(command: command)
               let swap = join(["MemorySwapMax=", to_string(byte_size_count(b: live_deploy_slice_memory_swap_max))], "")
-              let slice = join(["Slice=", attempt_system_unit_worker_slice.unit as String], "")
+              let slice = join(["Slice=", attempt_worker_slice_unit_name as String], "")
               let user_slice = join(["Slice=", user_work_slice_unit_name as String], "")
-              filter(words, w => string_contains(s: w, pattern: swap)).length() == 1
+              (attempt_system_unit_worker_slice.unit as String) == (attempt_worker_slice_unit_name as String)
+                && filter(words, w => string_contains(s: w, pattern: swap)).length() == 1
                 && filter(words, w => string_contains(s: w, pattern: slice)).length() == 1
                 && filter(words, w => string_contains(s: w, pattern: user_slice)).length() == 0
             }

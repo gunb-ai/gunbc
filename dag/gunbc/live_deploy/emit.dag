@@ -152,6 +152,8 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
+  attempt_worker_slice_memory_high,
 }
 import gunbc.live_deploy.user_work_pool_slots {
   user_work_pool_slots, UserWorkPoolSlotsDerived,
@@ -183,6 +185,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_user_work_slice_unit_path,
+  gunbc_attempt_worker_slice_unit_path,
   gunbc_service_uid,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
@@ -1778,6 +1781,53 @@ fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
       )),
       deploy_raw(command: shell_privileged_command_text_of_argv(
         argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid),
+      )),
+    ]
+  }
+}
+
+type AttemptWorkerSliceUnitFile
+  = AttemptWorkerSliceUnitFileReady { file: SystemdUnitFile }
+  | AttemptWorkerSliceUnitFileRefused { cause: String }
+
+fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
+  match attempt_worker_slice_memory_high() {
+    UserWorkSliceHighGapExceedsMax =>
+      AttemptWorkerSliceUnitFileRefused {
+        cause: "attempt-worker MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
+      }
+    UserWorkSliceHighDerived { bytes: high } =>
+      AttemptWorkerSliceUnitFileReady {
+        file: SliceUnitFile {
+          unit: [
+            Description { text: "gunbc system-manager cgroup bound for attempt worker transients" as NonEmptyStr },
+          ],
+          slice: [
+            slice_memory_max(bytes: attempt_worker_slice_memory_max),
+            slice_memory_high(bytes: high),
+            slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
+          ],
+          install: NotInstallable,
+        },
+      }
+  }
+}
+
+fn apply_attempt_worker_slice_install_steps() -> List<PipelineStep> {
+  match attempt_worker_slice_unit_file() {
+    AttemptWorkerSliceUnitFileRefused { cause } => [
+      Comment { text: cause },
+      Exit { status: "1" },
+    ]
+    AttemptWorkerSliceUnitFileReady { file } => [
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: attempt_worker_slice_unit_name as String,
+        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: attempt_worker_slice_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: gunbc_attempt_worker_slice_unit_path() as String,
       )),
     ]
   }
@@ -3593,8 +3643,11 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       LiveDeployServeUnitEmitted { file } => concat(
         if !plan_writes_unit(plan: plan) { [] } else { concat(
           concat(
-            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
-            attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
+            apply_attempt_worker_slice_install_steps(),
+            concat(
+              apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+              attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
+            ),
           ),
           concat(
             apply_systemd_unit_write_steps(spec: spec, file: file),
