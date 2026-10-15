@@ -7156,8 +7156,8 @@ fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
       module_name: "v1.compiler.trace",
       method: "map",
       occurrences: 1,
-      receiver_shape: "Product(SpanMapping)",
-      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted.",
+      receiver_shape: "Product(SpanMapping<Primitive(Int),Product(SourceSpan<Product(FilePath<Primitive(String)>),Primitive(Int),Primitive(Int)>)>)",
+      cause: "receiver is an Optional produced by `|> last`, and the optional functor is being mapped over. It arrives as the INNER product because the optional cardinality is dropped before method lookup, so Optional's own surface is never consulted. node_type_shape now prints the product's field types, so the key is the applied Product(SpanMapping<...>) rather than the bare Product(SpanMapping).",
       dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
     },
     {
