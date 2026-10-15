@@ -192,6 +192,7 @@ fn physical_machine_axis3(
             }
           }
       }
+  }
 }
 
 // RECEIPT CURRENCY FOR THE SEALED SUBJECT. A receipt taken against a subject (the MachineIntakeSubject
