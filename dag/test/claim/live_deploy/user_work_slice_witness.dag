@@ -203,25 +203,25 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
 }
 
 test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
-  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
     UnitTestExempt =>
-      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
         CiExempt =>
-          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
             CgroupUnreadable =>
-              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false) {
+              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                 AlreadyInSlice =>
-                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                     RunnerSlotExempt =>
-                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                         UncappedSystemSlice { unit, slice } =>
                           unit == (gunbc_tree_sync_unit_name as String)
                             && slice == "system.slice"
-                            && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false) {
+                            && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                               UserManagerOwed =>
-                                match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true) {
+                                match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
                                   UserManagerProbeFailed =>
-                                    match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false) {
+                                    match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                                       UserSessionAbsent => true
                                       _ => false
                                     }
@@ -295,6 +295,7 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_slice_unit_suffix, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_scope_unit_suffix`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_scope_unit_suffix, "\"")))
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds live_modeled_slice_standing`")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds innermost_modeled_capped_slice`")
     && string_contains(s: seed, pattern: "ExemptSystemUnit")
     && string_contains(s: seed, pattern: "UncappedSystemSlice")
@@ -323,7 +324,7 @@ test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {
     SystemServiceNamed { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == "system.slice"
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
           UncappedSystemSlice { unit: u, slice: sl } =>
             u == unit
               && sl == "system.slice"
@@ -348,7 +349,7 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
     Absent => false
     Present { value: max } =>
       byte_size_count(b: max) == byte_size_count(b: repository_convergence_slice_memory_max)
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
           ExemptSystemUnit { unit, slice } =>
             unit == (gunbc_tree_sync_unit_name as String)
               && slice == (gunbc_repository_convergence_slice_unit_name as String)
@@ -359,6 +360,41 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
               }
           _ => false
         }
+  }
+}
+
+test fn a_modeled_slice_without_a_live_memory_max_refuses() -> Bool {
+  let cg = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+    UncappedSystemSlice { unit, slice } =>
+      unit == (gunbc_tree_sync_unit_name as String)
+        && slice == (gunbc_repository_convergence_slice_unit_name as String)
+        && match user_work_scope_standing_effect(s: UncappedSystemSlice { unit: unit, slice: slice }) {
+          RefuseUserWorkScope { standing: UncappedSystemSlice { unit: ru, slice: rs } } =>
+            ru == unit && rs == slice
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_modeled_slice_with_unbounded_memory_max_refuses() -> Bool {
+  let cg = join([
+    "0::/",
+    gunbc_repository_convergence_slice_unit_name as String,
+    "/",
+    gunbc_tree_sync_unit_name as String,
+  ], "")
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnbounded) {
+    UncappedSystemSlice { unit, slice } =>
+      unit == (gunbc_tree_sync_unit_name as String)
+        && slice == (gunbc_repository_convergence_slice_unit_name as String)
+    _ => false
   }
 }
 
@@ -377,7 +413,7 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
   ], "")
   match system_service_unit_from_cgroup(text: cg) {
     NotSystemService =>
-      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true) {
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
         UserManagerOwed =>
           match user_work_scope_standing_effect(s: UserManagerOwed) {
             WrapIntoUserWorkSlice => true
@@ -400,7 +436,7 @@ test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
   match modeled_system_slice_memory_max(unit: sessions_slice_unit_name as String) {
     Present { value: _ } => false
     Absent =>
-      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
         UserSessionAbsent =>
           match user_work_scope_standing_effect(s: UserSessionAbsent) {
             RefuseUserWorkScope { standing: UserSessionAbsent } => true
@@ -521,7 +557,7 @@ test fn a_session_cgroup_without_a_modeled_cap_refuses() -> Bool {
     user_work_scope_user_slice_cgroup_needle,
     "user-1000.slice/user@1000.service/app.slice/run-u.scope",
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
     UserSessionAbsent =>
       match user_work_scope_standing_effect(s: UserSessionAbsent) {
         RefuseUserWorkScope { standing: UserSessionAbsent } => true
@@ -532,7 +568,7 @@ test fn a_session_cgroup_without_a_modeled_cap_refuses() -> Bool {
 }
 
 test fn unreadable_cgroup_still_refuses() -> Bool {
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
     CgroupUnreadable =>
       match user_work_scope_standing_effect(s: CgroupUnreadable) {
         RefuseUserWorkScope { standing: CgroupUnreadable } => true

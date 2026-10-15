@@ -118,14 +118,15 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // UserSessionAbsent refuses: a host that owes the bound and has no user manager must not run
 // unbounded (review 80042). CiExempt / RunnerSlotExempt skip because those processes already sit
 // in a declared slot cgroup, not because the user manager is missing.
-// ExemptSystemUnit skips when any cgroup path segment is a modeled capped slice
-// (declared_system_slice_memory_maxes). sessions.slice is host policy
-// (gunbc.session_reservation_policy), not a fleet-wide wrap census name: a
-// namespaced-root container is ExemptBoundedContainer only from a live finite
-// memory.max. A named .service under system.slice or any other uncapped/unmodeled
-// slice refuses UncappedSystemSlice { unit, slice }. A session cgroup with no modeled
-// cap and no user manager refuses UserSessionAbsent rather than wrapping. Path from
-// /proc/self/cgroup, never User= or an env var.
+// ExemptSystemUnit skips only when a cgroup path segment is a modeled capped slice
+// AND that slice's live memory.max is finite (live_modeled_slice_standing). A name
+// in declared_system_slice_memory_maxes with unreadable or unbounded memory.max
+// refuses UncappedSystemSlice. sessions.slice is host policy, not a wrap census
+// name; a namespaced-root container is ExemptBoundedContainer only from a live
+// finite memory.max. A named .service under an unmodeled slice refuses
+// UncappedSystemSlice { unit, slice }. A session cgroup with no modeled cap and
+// no user manager refuses UserSessionAbsent. Path from /proc/self/cgroup, never
+// User= or an env var.
 //
 // THIS REFUSAL IS OUTSIDE DECIDE-BEFORE-MUTATE. compose_host_script drops Mutate only when a
 // Decide fragment is HostScriptRefused. slice-control is Mutate with HostScriptProceed; the
@@ -217,11 +218,35 @@ fn cgroup_leaf_unit(text: String) -> String {
   }
 }
 
-fn modeled_slice_standing_from_cgroup(text: String) -> UserWorkScopeStanding? {
+type RootCgroupMemoryRead
+  = RootMemoryCapped { bytes: ByteSize }
+  | RootMemoryUnbounded
+  | RootMemoryUnreadable
+
+fn live_modeled_slice_standing(unit: String, slice: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  match slice_memory {
+    RootMemoryCapped { bytes } =>
+      if byte_size_count(b: bytes) == 0 {
+        UncappedSystemSlice { unit: unit, slice: slice }
+      } else {
+        ExemptSystemUnit { unit: unit, slice: slice }
+      }
+    RootMemoryUnbounded => UncappedSystemSlice { unit: unit, slice: slice }
+    RootMemoryUnreadable => UncappedSystemSlice { unit: unit, slice: slice }
+  }
+}
+
+fn modeled_slice_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
   match innermost_modeled_capped_slice(text: text) {
     Absent => none
     Present { value: slice } =>
-      Present { value: ExemptSystemUnit { unit: cgroup_leaf_unit(text: text), slice: slice } }
+      Present {
+        value: live_modeled_slice_standing(
+          unit: cgroup_leaf_unit(text: text),
+          slice: slice,
+          slice_memory: slice_memory,
+        ),
+      }
   }
 }
 
@@ -240,21 +265,19 @@ fn system_service_unit_from_cgroup(text: String) -> SystemServiceCgroup {
   }
 }
 
-fn system_unit_standing_from_cgroup(text: String) -> UserWorkScopeStanding? {
+fn system_unit_standing_from_cgroup(text: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding? {
   match system_service_unit_from_cgroup(text: text) {
     NotSystemService => none
     SystemServiceNamed { unit, slice } =>
       match modeled_system_slice_memory_max(unit: slice) {
-        Present { value: _ } => Present { value: ExemptSystemUnit { unit: unit, slice: slice } }
+        Present { value: _ } =>
+          Present {
+            value: live_modeled_slice_standing(unit: unit, slice: slice, slice_memory: slice_memory),
+          }
         Absent => Present { value: UncappedSystemSlice { unit: unit, slice: slice } }
       }
   }
 }
-
-type RootCgroupMemoryRead
-  = RootMemoryCapped { bytes: ByteSize }
-  | RootMemoryUnbounded
-  | RootMemoryUnreadable
 
 fn cgroup_text_is_root(text: String) -> Bool {
   let t = trim(s: text)
@@ -305,6 +328,7 @@ fn user_work_scope_standing_with_root_memory(
       cgroup: cgroup,
       user_manager_reachable: user_manager_reachable,
       xdg_runtime_dir: xdg_runtime_dir,
+      slice_memory: RootMemoryUnreadable,
     )
   }
 }
@@ -315,6 +339,7 @@ fn user_work_scope_standing(
   cgroup: UserWorkScopeCgroupRead,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
+  slice_memory: RootCgroupMemoryRead,
 ) -> UserWorkScopeStanding {
   if unit_test {
     UnitTestExempt
@@ -329,10 +354,10 @@ fn user_work_scope_standing(
         } else if string_contains(s: text, pattern: runner_unit_prefix) {
           RunnerSlotExempt
         } else {
-          match modeled_slice_standing_from_cgroup(text: text) {
+          match modeled_slice_standing_from_cgroup(text: text, slice_memory: slice_memory) {
             Present { value: s } => s
             Absent =>
-              match system_unit_standing_from_cgroup(text: text) {
+              match system_unit_standing_from_cgroup(text: text, slice_memory: slice_memory) {
                 Present { value: s } => s
                 Absent =>
                   if user_manager_reachable {

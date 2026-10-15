@@ -326,6 +326,33 @@ fn last_cgroup_unit_with_suffix(text: &str, suffix: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn cgroup_rel_through_segment(text: &str, segment: &str) -> Option<String> {
+    let rel = cgroup_v2_rel_path(text)?;
+    let mut acc = String::new();
+    for seg in rel.split('/') {
+        if seg.is_empty() {
+            continue;
+        }
+        acc.push('/');
+        acc.push_str(seg);
+        if seg == segment {
+            return Some(acc);
+        }
+    }
+    None
+}
+
+// SEED MIRROR of `gunbc.compute.unit_bounds live_modeled_slice_standing`
+fn live_modeled_slice_standing(unit: String, slice: String, cg: &str) -> UserWorkScopeStanding {
+    let rel = cgroup_rel_through_segment(cg, &slice).unwrap_or_else(|| format!("/{slice}"));
+    match read_cgroup_memory_file(&rel, "memory.max") {
+        Some(MemoryBound::Capped(n)) if n > 0 => {
+            UserWorkScopeStanding::ExemptSystemUnit { unit, slice }
+        }
+        _ => UserWorkScopeStanding::UncappedSystemSlice { unit, slice },
+    }
+}
+
 // SEED MIRROR of `gunbc.compute.unit_bounds innermost_modeled_capped_slice`
 fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
     text.split(['/', '\n'])
@@ -381,11 +408,11 @@ fn user_work_scope_standing() -> UserWorkScopeStanding {
         let unit = last_cgroup_unit_with_suffix(&cg, SCOPE_UNIT_SUFFIX)
             .or_else(|| last_cgroup_unit_with_suffix(&cg, SERVICE_UNIT_SUFFIX))
             .unwrap_or_default();
-        return UserWorkScopeStanding::ExemptSystemUnit { unit, slice };
+        return live_modeled_slice_standing(unit, slice, &cg);
     }
     if let Some((unit, slice)) = system_service_unit_from_cgroup(&cg) {
         if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {
-            return UserWorkScopeStanding::ExemptSystemUnit { unit, slice };
+            return live_modeled_slice_standing(unit, slice, &cg);
         }
         return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
     }
