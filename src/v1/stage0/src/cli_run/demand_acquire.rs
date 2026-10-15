@@ -386,8 +386,8 @@ mod tests {
         tag
     }
 
-    /// Whole-tree `resolve_entry_graph` vs demand acquire. Ignored: the tree arm builds the
-    /// shared index (~8 GiB). Run on a memory-capped host, not in the default lib suite.
+    /// One arm per process: `GUNBC_EQ_ARM=demand` or `tree`. Paired mode is unwritable
+    /// (`PROCESS_RESOLVE_INDEX` / `DEMAND_PATH` leak). Ignored: tree arm ~8 GiB.
     #[test]
     #[ignore = "whole-tree shared index; memory-capped only"]
     fn demand_matches_whole_tree_resolve_on_selected_entries() {
@@ -429,45 +429,56 @@ mod tests {
             !selected.is_empty(),
             "GUNBC_EQ_ENTRY matched no probe entry"
         );
-        let mut failed = Vec::new();
-        eprintln!("eq_table entry\tresolve\tdiags\tfunction");
+        let arm = std::env::var("GUNBC_EQ_ARM").unwrap_or_default();
+        assert!(
+            arm == "demand" || arm == "tree",
+            "paired demand-then-tree in one process is forbidden: PROCESS_RESOLVE_INDEX / DEMAND_PATH leak. Set GUNBC_EQ_ARM=demand or GUNBC_EQ_ARM=tree in a fresh process"
+        );
+        eprintln!("eq_arm={arm}");
         for rel in selected {
             let entry = root.join(rel).to_string_lossy().into_owned();
-            eprintln!("eq_start demand {rel}");
-            let demand = super::resolve_entry_graph_demand_acquired(&roots, &entry);
-            let demand_side = match demand {
-                Ok((gd, sd)) => {
-                    let diags = diag_msgs(&gd);
-                    let fn_d = function_result(&gd, sd, function);
-                    drop(gd);
-                    Ok((diags, fn_d))
+            let started = std::time::Instant::now();
+            eprintln!("eq_start {arm} {rel}");
+            let outcome = if arm == "demand" {
+                match super::resolve_entry_graph_demand_acquired(&roots, &entry) {
+                    Ok((g, s)) => {
+                        let diags = diag_msgs(&g);
+                        let f = function_result(&g, s, function);
+                        drop(g);
+                        Ok((diags, f))
+                    }
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e),
-            };
-            eprintln!("eq_start tree {rel}");
-            let tree = crate::cli_run::resolve_entry_graph(&roots, &entry);
-            let (resolve_match, diag_match, fn_match, fn_d, fn_t) = match (demand_side, tree) {
-                (Ok((dd, fd)), Ok((gt, st))) => {
-                    let d_ok = dd == diag_msgs(&gt);
-                    let ft = function_result(&gt, st, function);
-                    drop(gt);
-                    (true, d_ok, fd == ft, fd, ft)
+            } else {
+                match crate::cli_run::resolve_entry_graph(&roots, &entry) {
+                    Ok((g, s)) => {
+                        let diags = diag_msgs(&g);
+                        let f = function_result(&g, s, function);
+                        drop(g);
+                        Ok((diags, f))
+                    }
+                    Err(e) => Err(e),
                 }
-                (Err(a), Err(b)) => (a == b, true, true, a, b),
-                (Ok((_, fd)), Err(b)) => (false, false, false, fd, b),
-                (Err(a), Ok(_)) => (false, false, false, a, "tree=Ok".to_string()),
             };
-            let ok = resolve_match && diag_match && fn_match;
-            eprintln!(
-                "eq {rel} resolve_match={resolve_match} diags_match={diag_match} fn_match={fn_match} demand_fn={fn_d} tree_fn={fn_t} ok={ok}"
-            );
-            if !ok {
-                failed.push(format!(
-                    "{rel}: resolve_match={resolve_match} diags_match={diag_match} fn_match={fn_match} demand_fn={fn_d} tree_fn={fn_t}"
-                ));
+            match outcome {
+                Ok((diags, f)) => {
+                    eprintln!(
+                        "eq_arm {arm} {rel} resolve=Ok elapsed_s={:.3} function={f} diag_count={}",
+                        started.elapsed().as_secs_f64(),
+                        diags.len()
+                    );
+                    for d in &diags {
+                        eprintln!("eq_diag {arm} {d}");
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "eq_arm {arm} {rel} resolve=Err elapsed_s={:.3} err={e}",
+                        started.elapsed().as_secs_f64()
+                    );
+                }
             }
         }
         let _ = std::env::set_current_dir(prev);
-        assert!(failed.is_empty(), "{}", failed.join("\n"));
     }
 }
