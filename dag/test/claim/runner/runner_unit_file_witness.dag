@@ -38,12 +38,6 @@ import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy }
 import gunbc.host.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.fleet.fleet_posix_accounts {
-  fleet_posix_ci_runner_user,
-  fleet_ci_runner_reported_contradiction,
-}
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, ExternalAuthority }
-import extdeps.uri { Uri, File }
 import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
@@ -69,11 +63,11 @@ import gunbc.runner.runner_unit_file {
   runner_unit_quoted_environment,
   runner_unit_app_environment,
   runner_slot_instance_directory,
-  gunbc_runner_unit_depriv_dropin_text,
-  gunbc_runner_unit_depriv_dropin_text_from_figure,
+  gunbc_runner_unit_depriv_dropin_text_from_reading,
   gunbc_runner_unit_fragment_from_deploy,
-  runner_job_user_xdg_runtime_uid,
-  RunnerJobUserRuntimeUidFigure,
+  RunnerJobUserUidReading,
+  JobUserUidObserved,
+  JobUserUidUnobserved,
 }
 
 // Every claim here is a function of declared substrate rows -- a render and its serialization -- so
@@ -226,25 +220,15 @@ test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
     && !string_contains(s: text, pattern: "\nUser=root\n")
 }
 
-fn fixture_cited_job_user_uid() -> RunnerJobUserRuntimeUidFigure {
-  RunnerJobUserRuntimeUidFigure {
-    uid: 4242,
-    evidence: CitedToAuthority {
-      authority: ExternalAuthority {
-        uri: Uri {
-          scheme: File,
-          locator: "dag/test/claim/runner/runner_unit_file_witness.dag#fixture_cited_job_user_uid",
-        },
-      },
-    },
-  }
+fn fixture_cited_job_user_uid() -> RunnerJobUserUidReading {
+  JobUserUidObserved { uid: 4242, passwd_line: "ghrunner:x:4242:4242::/home/ghrunner:/usr/sbin/nologin" as NonEmptyStr }
 }
 
 test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+  match gunbc_runner_unit_depriv_dropin_text_from_reading(
     deploy: wt_srv1_deploy(),
     host: operator_host_srv3,
-    figure: fixture_cited_job_user_uid(),
+    reading: fixture_cited_job_user_uid(),
   ) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
@@ -255,7 +239,6 @@ test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_do
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_IDLE_TIMEOUT=0\n")
         && string_contains(s: text, pattern: "\nEnvironment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log\n")
         && string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: 4242), "\n"))
-        && !string_contains(s: text, pattern: concat("\nEnvironment=DOCKER_HOST=", docker_rootless_unix_endpoint(uid: runner_job_user_xdg_runtime_uid().uid), "\n"))
   }
 }
 
@@ -269,10 +252,10 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
     app: wt_srv1_deploy().app,
     runner_count: wt_srv1_deploy().runner_count,
   }
-  match gunbc_runner_unit_depriv_dropin_text_from_figure(
+  match gunbc_runner_unit_depriv_dropin_text_from_reading(
     deploy: poisoned,
     host: operator_host_srv3,
-    figure: fixture_cited_job_user_uid(),
+    reading: fixture_cited_job_user_uid(),
   ) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: text } =>
@@ -281,21 +264,12 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
   }
 }
 
-test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool {
-  match gunbc_runner_unit_depriv_dropin_text(deploy: wt_srv1_deploy(), host: operator_host_srv3) {
-    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "TranscribedUncited")
+// RED: a host whose job-user uid was not read refuses depriv by name rather than forming DOCKER_HOST
+// from a committed bet; no uid is committed anywhere in production.
+test fn an_unread_uid_refuses_depriv_docker_host() -> Bool {
+  match gunbc_runner_unit_depriv_dropin_text_from_reading(deploy: wt_srv1_deploy(), host: operator_host_srv3, reading: JobUserUidUnobserved { cause: "fixture: not read" as NonEmptyStr }) {
+    RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "was not read")
     RunnerUnitText { text: _ } => false
-  }
-}
-
-test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool {
-  match runner_job_user_xdg_runtime_uid().evidence {
-    TranscribedUncited { read_obligation: o } =>
-      (runner_job_user_xdg_runtime_uid().uid == fleet_ci_runner_reported_contradiction().reported_uid)
-        && (runner_job_user_xdg_runtime_uid().uid != fleet_posix_ci_runner_user.uid)
-        && string_contains(s: o as String, pattern: "id -u")
-    CitedToAuthority { authority: _ } => false
-    ObservedByReceipt { observed: _ } => false
   }
 }
 
@@ -306,7 +280,9 @@ test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv()
       string_contains(s: t, pattern: "srv3")
         && string_contains(s: t, pattern: "\nUser=briansrls\n")
         && !string_contains(s: t, pattern: "\nUser=root\n")
-        && string_contains(s: t, pattern: "MAKEFLAGS")
+        && !string_contains(s: t, pattern: "MAKEFLAGS")
+        && !string_contains(s: t, pattern: "ctrl-jobserver")
+        && string_contains(s: t, pattern: "\nEnvironment=CARGO_BUILD_JOBS=")
   }
 }
 

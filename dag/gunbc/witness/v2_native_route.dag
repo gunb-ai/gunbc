@@ -1,7 +1,11 @@
 module gunbc.witness.v2_native_route
 
 import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_empty, length, list_find_first }
-import v2.std.integer { Int }
+import std.integer { Int }
+// dag→v2 is CrossTreeToTreeLessFundamental. This module's remaining v2 imports (node.Symbol
+// first at acquisition, then native_test_vocabulary, diagnostic, compile_door_cause_ownership,
+// floor_expected_red, floor_route_gap) are a NAMESPACE-XL layering question, not a local re-point.
+// Int is std.integer because the counts on this receipt inhabit algebraic Int.
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
 import std.types { NonEmptyStr, List }

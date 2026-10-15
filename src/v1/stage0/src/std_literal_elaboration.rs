@@ -12,6 +12,7 @@ use self::LiteralSourceKind::*;
 use self::LiteralUnfolding::*;
 pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_types::range;
