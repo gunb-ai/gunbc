@@ -409,7 +409,7 @@ fn non_fold_residue_units_from_parse_source(
     Ok(units)
 }
 
-fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
+fn nfr_workspace_carrier_files(root: &Path) -> Result<Vec<(String, String)>, String> {
     let mut acquired: Vec<crate::cli_run::derived_row_roster::AcquiredDag> = Vec::new();
     collect_dag_files(&root.join("dag"), &mut acquired);
     collect_dag_files(&root.join("src/v2"), &mut acquired);
@@ -418,12 +418,12 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
         if item.is_derived() {
             continue;
         }
-        let content = item.read().unwrap_or_else(|e| {
-            panic!(
+        let content = item.read().map_err(|e| {
+            format!(
                 "nfr frontier reader: failed to read {}: {e}",
                 item.path().display()
             )
-        });
+        })?;
         let rel = item
             .path()
             .strip_prefix(root)
@@ -435,7 +435,7 @@ fn nfr_workspace_carrier_files(root: &Path) -> Vec<(String, String)> {
         }
         files.push((rel, content));
     }
-    files
+    Ok(files)
 }
 
 fn nfr_collect_units_from_files(
@@ -465,65 +465,71 @@ fn nfr_collect_units_from_files(
     Ok(all)
 }
 
-pub(crate) fn non_fold_residue_identity_join_triples() -> &'static [NfrFrontierTriple] {
-    static TRIPLES: std::sync::OnceLock<Vec<NfrFrontierTriple>> = std::sync::OnceLock::new();
-    TRIPLES.get_or_init(|| {
-        let root = process_workspace_root();
-        let files = nfr_workspace_carrier_files(&root);
-        let mut all = Vec::new();
-        let mut seen: BTreeSet<String> = BTreeSet::new();
-        for (rel, content) in &files {
-            if !nfr_content_declares_frontier(content) {
-                continue;
-            }
-            for triple in non_fold_residue_triples_from_module_source_with(
-                rel,
-                content,
-                NfrHomeCheck::Require,
-            )
-            .unwrap_or_else(|cause| panic!("{cause}"))
-            {
-                if !seen.insert(triple.path.clone()) {
-                    panic!(
-                        "nfr frontier reader: duplicate path {:?} across co-located \
-                         `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
-                         {rel}; {})",
-                        triple.path,
-                        nfr_identity_join_line(&triple)
-                    );
-                }
-                all.push(triple);
-            }
+pub(crate) fn nfr_identity_join_from_files(
+    files: &[(String, String)],
+) -> Result<Vec<NfrFrontierTriple>, String> {
+    let mut all = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        if !nfr_content_declares_frontier(content) {
+            continue;
         }
-        if all.is_empty() {
-            panic!(
-                "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
-                 corpus (fail-closed)"
-            );
+        for triple in
+            non_fold_residue_triples_from_module_source_with(rel, content, NfrHomeCheck::Require)?
+        {
+            if !seen.insert(triple.path.clone()) {
+                return Err(format!(
+                    "nfr frontier reader: duplicate path {:?} across co-located \
+                     `{NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` lists (first collision involving \
+                     {rel}; {})",
+                    triple.path,
+                    nfr_identity_join_line(&triple)
+                ));
+            }
+            all.push(triple);
         }
-        all
-    })
+    }
+    if all.is_empty() {
+        return Err(format!(
+            "nfr frontier reader: no `data {NON_FOLD_RESIDUE_FRONTIER_DATA_NAME}` rows in the \
+             corpus (fail-closed)"
+        ));
+    }
+    Ok(all)
 }
 
-pub(crate) fn non_fold_residue_roster_entries() -> &'static [String] {
-    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    ENTRIES.get_or_init(|| {
-        non_fold_residue_identity_join_triples()
+pub(crate) fn non_fold_residue_identity_join_triples(
+) -> Result<&'static [NfrFrontierTriple], String> {
+    static TRIPLES: std::sync::OnceLock<Result<Vec<NfrFrontierTriple>, String>> =
+        std::sync::OnceLock::new();
+    match TRIPLES.get_or_init(|| {
+        nfr_workspace_carrier_files(&process_workspace_root())
+            .and_then(|files| nfr_identity_join_from_files(&files))
+    }) {
+        Ok(v) => Ok(v.as_slice()),
+        Err(e) => Err(e.clone()),
+    }
+}
+
+pub(crate) fn non_fold_residue_roster_entries() -> Result<&'static [String], String> {
+    static ENTRIES: std::sync::OnceLock<Result<Vec<String>, String>> = std::sync::OnceLock::new();
+    match ENTRIES.get_or_init(|| {
+        Ok(non_fold_residue_identity_join_triples()?
             .iter()
             .map(|t| t.path.clone())
-            .collect()
-    })
+            .collect())
+    }) {
+        Ok(v) => Ok(v.as_slice()),
+        Err(e) => Err(e.clone()),
+    }
 }
 
-pub(crate) fn non_fold_residue_roster_set() -> &'static std::collections::BTreeSet<&'static str> {
-    static SET: std::sync::OnceLock<std::collections::BTreeSet<&'static str>> =
-        std::sync::OnceLock::new();
-    SET.get_or_init(|| {
-        non_fold_residue_roster_entries()
-            .iter()
-            .map(|s| s.as_str())
-            .collect()
-    })
+pub(crate) fn non_fold_residue_roster_set() -> Result<&'static BTreeSet<String>, String> {
+    static SET: std::sync::OnceLock<Result<BTreeSet<String>, String>> = std::sync::OnceLock::new();
+    match SET.get_or_init(|| Ok(non_fold_residue_roster_entries()?.iter().cloned().collect())) {
+        Ok(s) => Ok(s),
+        Err(e) => Err(e.clone()),
+    }
 }
 
 pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
@@ -531,8 +537,8 @@ pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collectio
     nfr_closed_coproduct_name_set()
 }
 
-pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
-    non_fold_residue_roster_set().contains(site)
+pub fn non_fold_residue_site_is_rostered(site: &str) -> Result<bool, String> {
+    Ok(non_fold_residue_roster_set()?.contains(site))
 }
 
 // ---------------------------------------------------------------------------
@@ -698,11 +704,13 @@ fn typed_collect_wildcard_arms(
 /// (unrostered live sites, stale roster rows) over one typed walk, against the live roster.
 pub(crate) fn non_fold_residue_roster_diff(
     walk: &TypedFallbackArmWalk,
-) -> (Vec<String>, Vec<String>) {
+) -> Result<(Vec<String>, Vec<String>), String> {
     let root = process_workspace_root();
-    non_fold_residue_roster_diff_with(walk, non_fold_residue_roster_entries(), &|path: &str| {
-        root.join(path).is_file()
-    })
+    Ok(non_fold_residue_roster_diff_with(
+        walk,
+        non_fold_residue_roster_entries()?,
+        &|path: &str| root.join(path).is_file(),
+    ))
 }
 
 #[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor
@@ -960,7 +968,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     scoped_modules: &BTreeSet<String>,
     row_subjects: &[NonFoldResidueRowSubject],
-) -> NonFoldResidueDiffVerdict {
+) -> Result<NonFoldResidueDiffVerdict, String> {
     let walk = typed_fallback_arm_walk(graph, si, Some(scoped_modules));
     let typed: BTreeSet<String> = graph
         .modules
@@ -973,15 +981,18 @@ pub(crate) fn non_fold_residue_diff_verdict(
         .cloned()
         .collect();
 
-    let (unrostered, stale) = non_fold_residue_roster_diff(&walk);
-    let undetermined_unrostered = walk
-        .undetermined_sites
-        .iter()
-        .filter(|s| !non_fold_residue_site_is_rostered(s))
-        .cloned()
-        .collect();
+    let (unrostered, stale) = non_fold_residue_roster_diff(&walk)?;
+    let undetermined_unrostered = {
+        let mut out = Vec::new();
+        for s in &walk.undetermined_sites {
+            if !non_fold_residue_site_is_rostered(s)? {
+                out.push(s.clone());
+            }
+        }
+        out
+    };
     let row_subjects_untyped = non_fold_residue_row_subjects_unjudged(row_subjects, &walk);
-    NonFoldResidueDiffVerdict {
+    Ok(NonFoldResidueDiffVerdict {
         scoped_modules: scoped_modules.len(),
         walk,
         scoped_but_untyped,
@@ -989,7 +1000,7 @@ pub(crate) fn non_fold_residue_diff_verdict(
         stale,
         undetermined_unrostered,
         row_subjects_untyped,
-    }
+    })
 }
 
 /// Type a fixture through the REAL checker and walk it: the controls exercise the same route the
@@ -1367,7 +1378,8 @@ mod nfr_typed_tests {
         let scope: BTreeSet<String> = ["b".to_string(), "absent.module".to_string()]
             .into_iter()
             .collect();
-        let verdict = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope, &[]);
+        let verdict = non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope, &[])
+            .expect("frontier roster read");
         assert!(
             verdict.unrostered.is_empty(),
             "module a is out of scope; got {:?}",
@@ -1379,7 +1391,8 @@ mod nfr_typed_tests {
         );
         let scope_a: BTreeSet<String> = ["a".to_string()].into_iter().collect();
         let verdict_a =
-            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope_a, &[]);
+            non_fold_residue_diff_verdict(&graph, &resolved.source_indices, &scope_a, &[])
+                .expect("frontier roster read");
         assert_eq!(
             verdict_a.unrostered,
             vec!["a.dag::f".to_string()],

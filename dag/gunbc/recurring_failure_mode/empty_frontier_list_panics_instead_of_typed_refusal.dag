@@ -13,7 +13,7 @@ data empty_frontier_list_panics_instead_of_typed_refusal: RecurringFailureMode =
 
     "SPECIMEN, 2026-10-14, HEAD 578442c0c9f: `cli_run::nfr_tests::nfr_frontier_reader_refuses_empty_list` with `data non_fold_residue_frontier: List<FrontierRow> = []` in `a.dag` panics at `non_fold_residue_units_from_parse_source`: `nfr frontier reader: `non_fold_residue_frontier` in a.dag is empty (fail-closed)`.",
 
-    "RUNG FOUND AT: below the ladder -- process death, no typed cause. CEILING: mechanically preventable at the seed reader (a Result from the parse), structurally guaranteed once an empty list of this data name has no constructor or is refused at ingest. NEXT-RUNG TRIGGER: the frontier parse returns Err naming the file and saying to delete the decl, and a RED fixture of an empty list stays enrolled.",
+    "RUNG FOUND AT: below the ladder -- process death, no typed cause. CEILING: mechanically preventable at the seed reader (a Result from the parse and from the workspace identity join), structurally guaranteed once an empty list of this data name has no constructor or is refused at ingest. NEXT-RUNG TRIGGER: the frontier parse AND `nfr_identity_join_from_files` return Err naming the file and saying to delete the decl, and a RED fixture of an empty list stays enrolled on both paths.",
 
     "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Enrolled control: v1-compiler `cli_run::nfr_tests::nfr_frontier_reader_refuses_empty_list`.",
   ],

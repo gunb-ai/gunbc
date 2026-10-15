@@ -30009,7 +30009,8 @@ mod nfr_observation_roster_test {
         assert!(
             !non_fold_residue_site_is_rostered(
                 "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text"
-            ),
+            )
+            .expect("frontier roster read"),
             "ci_hold_cause_text has no wildcard since gunbc#13277; its roster row must stay drained"
         );
     }
@@ -30296,6 +30297,13 @@ mod nfr_tests {
              (a module with no decl already contributes zero rows)",
             "the refusal must name the file and say to delete the decl"
         );
+        let join =
+            super::nfr_identity_join_from_files(&[("a.dag".to_string(), synthetic.to_string())]);
+        assert_eq!(
+            join.expect_err("identity join must not panic on an empty list"),
+            message,
+            "the workspace identity-join path must return the same typed refusal"
+        );
     }
 
     #[test]
@@ -30541,7 +30549,7 @@ mod nfr_tests {
 
     #[test]
     fn nfr_live_union_is_populated_unique_and_tripled() {
-        let entries = super::non_fold_residue_roster_entries();
+        let entries = super::non_fold_residue_roster_entries().expect("live frontier union");
         assert!(
             entries.len() >= 100,
             "live host union must stay populated (got {})",
@@ -30559,7 +30567,8 @@ mod nfr_tests {
                 "live union path must be unique, duplicate {path}"
             );
         }
-        let triples = super::non_fold_residue_identity_join_triples();
+        let triples =
+            super::non_fold_residue_identity_join_triples().expect("live frontier triples");
         assert_eq!(
             triples.len(),
             entries.len(),
@@ -31207,7 +31216,8 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
             out.push(ComplexityLinearityWildcardFactRaw {
                 fn_name: fact.name.clone(),
                 closed_coproduct_wildcard: stats.closed_coproduct_wildcard_matches > 0,
-                rostered: non_fold_residue_site_is_rostered(&site),
+                rostered: non_fold_residue_site_is_rostered(&site)
+                    .unwrap_or_else(|cause| panic!("{cause}")),
                 site,
             });
         }
