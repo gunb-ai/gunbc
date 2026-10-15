@@ -8,7 +8,6 @@ import extdeps.cache.types {
   FilePaths,
   CargoFingerprintEncoding,
 }
-import std.types { String }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   NativeInternalLookup,
@@ -77,16 +76,4 @@ data cargo_target_dir_facts: CacheInterfaceCatalogFacts = {
       }
     },
   ]
-}
-
-// The PARTITION of an owned cargo target directory, keyed by its owner (C4): <base>/<owner>/target.
-// cargo_target_dir_facts above names the cache; this fn is its path form, so the partition lives in
-// ONE home that every owner can consume unchanged. The owners are the per-owner work roots: devboot
-// passes its work_root and subject token (devboot_target_dir delegates here), the compute provider
-// passes its compute root and the request's identity_hex (its work_dir, so the identity-scoped lease
-// bounds the writable target), and the host-seed site adopts the same partition once it stops
-// sharing the ambient host target. One fn, one shape -- a second model of this partition would be a
-// nickname (DESIGN §3).
-fn cargo_target_dir(base_root: String, owner: String) -> String {
-  join([base_root, "/", owner, "/target"], "")
 }

@@ -34,7 +34,7 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
-import extdeps.cache.cargo { cargo_target_dir }
+import gunbc.owned_cargo_target { owned_cargo_target_dir }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
@@ -158,7 +158,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     lease_path: join([root, "/leases/", identity_hex], ""),
     staging_dir: compute_staging_dir(),
     // The writable target belongs to THIS IDENTITY (C4), not to the host: it is the owned cargo
-    // target partition extdeps.cache.cargo.cargo_target_dir applied to the compute work root and
+    // target partition gunbc.owned_cargo_target.owned_cargo_target_dir applied to the compute work root and
     // this identity -- <root>/work/<identity>/target, under the identity's own work_dir (the same
     // per-identity home that holds its checkout), a sibling of src, instead of one host-wide
     // target shared by every identity. Two identities can therefore never write to, or capture
@@ -168,7 +168,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     // from (TargetRoot). A memoized identity keeps one stable work_dir across requests, so its
     // target is still reused warm; only the cross-identity sharing is gone. sccache stays the
     // shared wrapper.
-    target_dir: cargo_target_dir(base_root: work_root, owner: identity_hex),
+    target_dir: owned_cargo_target_dir(base_root: work_root, owner: identity_hex),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
     attempts_dir: join([root, "/attempts"], ""),
