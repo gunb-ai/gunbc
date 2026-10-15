@@ -39,7 +39,6 @@ import gunbc.serving.caller_backlog {
 }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, ChainEnvelope }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_seat {
   HarnessCallerTurn, harness_caller_turn, harness_current_grant_in, harness_commit_fence,
   HarnessCommitFenceReady, HarnessCommitGrantUnread, HarnessCommitClockUnread,
