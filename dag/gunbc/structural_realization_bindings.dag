@@ -1,5 +1,6 @@
 module gunbc.structural_realization_bindings
 
+import std.optional { Present, Absent }
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration }

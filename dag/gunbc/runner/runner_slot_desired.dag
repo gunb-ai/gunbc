@@ -157,6 +157,13 @@ data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory
 // parallel link and codegen phases of the very single-core-sustained workload the ruling describes.
 // The hosts run with CPUQuota unlimited today; this arm says so rather than emitting a new
 // constraint the ruling did not ask for. cpu_weight stays the relative-share governor.
+//
+// GITHUB RUNNER SLOTS NO LONGER READ THIS ROW (operator ruling 2026-10-14, "slots need a CPU cap").
+// Their ceiling is per host, because it divides that host's threads among that host's width:
+// gunbc.ci.ci_runner_placement host_cpu_allocation. This fleet-wide arm still governs the fabric
+// cell, microvm and workspace slices that consume it; whether those take a per-host allocation too
+// is their own change, and until it lands the two are deliberately different answers for different
+// slot families, not one fact stated twice.
 fn gunbc_runner_slot_cpu_quota() -> RunnerSlotCpuQuota {
   SlotCpuQuotaUnbounded
 }

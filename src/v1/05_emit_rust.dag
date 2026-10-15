@@ -172,6 +172,8 @@ import v1.compiler.trait_derive_emit {
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_map_key_head_names_in_type_expr,
+  v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params,
+  v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -187,7 +189,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -3598,6 +3600,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     source_indices: closure_source_indices
   )
+  let map_key_bounded = v1_map_key_bounded_type_params(type_decl_items: base_info.type_decl_items, source_indices: closure_source_indices)
   let clone_impl_required = v1_clone_impl_required_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: closure_source_indices
@@ -3610,7 +3613,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: typed.modules, data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
-    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: closure_source_indices),
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -3624,6 +3627,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    map_key_bounded_type_params: map_key_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
@@ -4297,6 +4301,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
   )
+  let map_key_bounded = v1_map_key_bounded_type_params(type_decl_items: base_info.type_decl_items, source_indices: merged_module_source_indices(modules: [typed_module]))
   let clone_impl_required = v1_clone_impl_required_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
@@ -4309,7 +4314,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_decl_items: base_info.type_decl_items,
     data_variant_wire_spellings: build_data_variant_wire_spellings(modules: [typed_module], data_items: data_items, module_index: module_index),
     fn_decl_items: base_info.fn_decl_items,
-    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
+    fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -4323,6 +4328,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_bounded_type_params: clone_bounded,
     map_key_required_type_names: map_key_required,
     clone_impl_required_type_params: clone_impl_required,
+    map_key_bounded_type_params: map_key_bounded,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none,
@@ -5779,6 +5785,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     clone_bounded_type_params: emit_info.clone_bounded_type_params,
     map_key_required_type_names: emit_info.map_key_required_type_names,
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+    map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: scope.type_env,
     fn_return_type: emit_info.fn_return_type,
@@ -7785,6 +7792,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             clone_bounded_type_params: emit_info.clone_bounded_type_params,
             map_key_required_type_names: emit_info.map_key_required_type_names,
             clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+            map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
             fn_generic_param_names: emit_info.fn_generic_param_names,
             fn_type_env: emit_info.fn_type_env,
             fn_return_type: emit_info.fn_return_type,
@@ -7945,9 +7953,12 @@ fn emit_item_header_clone_param_names(
 fn emit_type_params_from_clone_param_names(
   params: List<Node>,
   clone_param_names: List<String>,
+  key_param_names: List<String>,
   source_indices: Map<String, NewlineIndex>
 ) -> String {
-  if (clone_param_names |> count) > 0 {
+  if (key_param_names |> count) > 0 {
+    v1_emit_type_params_with_map_key_bounds(params: params, clone_param_names: clone_param_names, key_param_names: key_param_names, source_indices: source_indices)
+  } else if (clone_param_names |> count) > 0 {
     v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
   } else {
     emit_type_params(params: params, source_indices: source_indices)
@@ -8071,6 +8082,11 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
+      key_param_names: v1_item_map_key_bounded_param_names(
+        item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
+        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+        bounds: emit_info.map_key_bounded_type_params
+      ),
       source_indices: env.source_indices
     )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
@@ -8114,6 +8130,11 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params_from_clone_param_names(
       params: item.params,
       clone_param_names: header_clone_param_names,
+      key_param_names: v1_item_map_key_bounded_param_names(
+        item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
+        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+        bounds: emit_info.map_key_bounded_type_params
+      ),
       source_indices: env.source_indices
     )
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
@@ -8329,7 +8350,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices, env: env)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
   } else {
     render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices, env: env)
   }
@@ -8902,46 +8923,24 @@ fn rust_map_key_bound_traits() -> List<String> {
   ["std::cmp::Eq", "std::hash::Hash"]
 }
 
-// EVERY GENERIC INSIDE A KEY-POSITION TYPE ARGUMENT EARNS THE BOUND, AT ANY DEPTH. The key type of
-// `Map<SubjectKey<K>, V>` is `SubjectKey<K>`, and the im::HashMap bridges require that whole type to
-// be Eq + Hash; a derived `SubjectKey<K>: Hash` holds only when `K: Hash`, so `K` owes the bound
-// although it is not the head of the key. Reading only the key's head name left `K` bare (rustc
-// E0277 on the std.keyed_roster index). The walk collects every name in the key expression and
-// the caller filters to the fn's generics, so a generic that never reaches a key position stays
-// unbounded (pinned by the negative control in map_key_derive_requirement_witness).
-// The key subtree is walked over its authored children with authored names (the walk
-// v1_type_expr_contains_param_name already makes for set elements), and the resolved head name is
-// kept so a bare `K` key still resolves as before.
-fn v1_type_expr_all_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  concat(
-    [authored_name_at(source_indices: source_indices, node: child_type_node(ch: type_expr))],
-    v1_authored_type_expr_names(type_expr: type_expr, source_indices: source_indices)
-  )
-}
-
-fn v1_authored_type_expr_names(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  concat(
-    [authored_name_at(source_indices: source_indices, node: type_expr)],
-    type_expr.children |> flat_map(c => v1_authored_type_expr_names(type_expr: c, source_indices: source_indices))
-  )
-}
-
-fn v1_map_key_nested_names_in_type_expr(type_expr: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  let own = match v1_type_expr_keyed_map_verdict(type_expr: type_expr, source_indices: source_indices) {
-    KeyedMap =>
-      match type_expr.children |> first {
-        Present { value: key_child } => v1_type_expr_all_names(type_expr: key_child, source_indices: source_indices)
-        Absent => []
-      }
-    NotKeyedMap => []
-    KeyedMapUndecidable { name: _ } => []
-  }
-  concat(
-    own,
-    type_expr.children |> flat_map(ch =>
-      v1_map_key_nested_names_in_type_expr(type_expr: child_type_node(ch: ch), source_indices: source_indices)
-    )
-  )
+// The signature's whole map-key requirement, ONE derivation for the seed table and the emit site:
+// the generics in a key position of a keyed map written in the signature, plus the generics at an
+// argument position a NAMED declared type bounds in its own header (`type_bounds`, the declaration's
+// bound -- never re-derived per call site).
+fn v1_fn_signature_map_key_bound_names(
+  value_params: List<Node>,
+  ret: Node,
+  generic_param_names: List<String>,
+  type_decl_items: TypeDeclIndex,
+  type_bounds: Map<String, Set<String>>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let direct = v1_fn_signature_map_key_param_names(value_params: value_params, ret: ret, generic_param_names: generic_param_names, source_indices: source_indices)
+  let sig_type_exprs = list_push(value_params |> map(p => param_node_type_expr(n: p)), ret)
+  let via_type = generic_param_names |> filter(g => sig_type_exprs |> any(te =>
+    v1_type_expr_wf_needs_clone_param(param_name: g, type_expr: te, bounds: type_bounds, type_decl_items: type_decl_items, source_indices: source_indices)
+  ))
+  v1_union_bound_param_names(base: direct, extra: via_type)
 }
 
 fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
@@ -9693,16 +9692,18 @@ fn v1_call_site_forwarded_param_names(
 // from callees' declared bounds, closed to a fixpoint. Computed once per emission where the
 // EmitGraphInfo is assembled and read at every call site, so a call graph with fan-out costs one
 // pass per round (rounds <= fn count, in practice 2-3), never a re-walk per path.
-fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
+fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, type_decl_items: TypeDeclIndex, type_bounds: Map<String, Set<String>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
   let names = sorted_map_keys(fn_decl_items)
   let seed = names |> fold(init: empty_map(), f: (acc, n) =>
     match map_get(fn_decl_items, n) {
       Present { value: item } =>
         let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-        let bound = v1_fn_signature_map_key_param_names(
+        let bound = v1_fn_signature_map_key_bound_names(
           value_params: function_value_params(params: item.params),
           ret: resolved_type(n: item),
           generic_param_names: generics,
+          type_decl_items: type_decl_items,
+          type_bounds: type_bounds,
           source_indices: source_indices
         )
         if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
@@ -9938,10 +9939,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     extra: call_forwarding_eq_param_names
   )
   let map_key_param_names = v1_union_bound_param_names(
-    base: v1_fn_signature_map_key_param_names(
+    base: v1_fn_signature_map_key_bound_names(
       value_params: value_params,
       ret: inferred,
       generic_param_names: generic_param_names,
+      type_decl_items: emit_info.type_decl_items,
+      type_bounds: emit_info.map_key_bounded_type_params,
       source_indices: si
     ),
     extra: v1_call_forwarding_bound_param_names(
@@ -12013,22 +12016,22 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
   }
 }
 
-fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
 }
 
-fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info())
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
-  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
   } else { "" }
@@ -12061,21 +12064,28 @@ fn type_node_carries_erased_type_argument(n: Node) -> Bool {
     (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
 }
 
+// Uninstantiated Map formals arrive as TypeVariable children of map_type. render_rust_type
+// matches TypeVariable ids against emit_info.fn_generic_param_names by spelling, so Map's own
+// parameter V is captured as the enclosing fn's V and an unbound K renders `_`. Those children
+// are the typed fact that instantiation never reached this call; defer `::<_, _>()` from that,
+// not from the rendered string. Instantiated Map<K2, Entry<V>> children are not TypeVariables:
+// render their argument types (Entry<V> then correctly names the fn parameter).
+fn type_node_child_is_type_variable(c: Node) -> Bool {
+  let ch = child_type_node(ch: c)
+  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
-    || type_node_carries_erased_type_argument(n: map_type) {
+    || type_node_carries_erased_type_argument(n: map_type)
+    || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
   }
-}
-
-fn type_node_child_is_type_variable(c: Node) -> Bool {
-  let ch = child_type_node(ch: c)
-  if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
@@ -13695,6 +13705,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
@@ -13732,6 +13743,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_bounded_type_params: emit_info.clone_bounded_type_params,
               map_key_required_type_names: emit_info.map_key_required_type_names,
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+              map_key_bounded_type_params: emit_info.map_key_bounded_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
               fn_return_type: emit_info.fn_return_type,
@@ -15954,6 +15966,34 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
   rust_operand_realization_of_type(rt: resolved_type(n: operand), scope: scope, fuel: 8)
 }
 
+// THE ONE ALIAS / REFINEMENT HOP. Continuation is the next type node to judge; absence means
+// this declaration is the structural residue. Fuel is the remaining chain budget; this fold
+// does not recurse — rust_operand_realization_of_type is the only recursive reader.
+fn rust_operand_alias_or_refinement_continue(rt: Node, scope: InferScope, fuel: Int) -> Node? {
+  if fuel <= 0 {
+    none
+  } else if is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => Present { value: r }
+          Absent => Present { value: base }
+        }
+      Absent => none
+    }
+  } else {
+    let decl = match rt.inferred {
+      Present { value: Resolved { node: r } } => r
+      _ => rt
+    }
+    if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+      Present { value: resolved_type(n: decl) }
+    } else {
+      none
+    }
+  }
+}
+
 // AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
 // non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
 // (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
@@ -16005,24 +16045,9 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
       if declaration_realizes_natively_on_rust(declaration: d, spelling_decision: type_realization_decision(target: Rust, dag_name: d.decl_name as String, provenance: provenance)) {
         HostNumericOperand
       } else {
-        let decl = match rt.inferred {
-          Present { value: Resolved { node: r } } => r
-          _ => rt
-        }
-        if fuel > 0 && is_where_refinement_type(ty: rt) {
-          match rt.children |> first {
-            Present { value: base } =>
-              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
-                Present { value: r } => r
-                Absent => base
-              }
-              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
-            Absent => StructuralOperand { declaration: d }
-          }
-        } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
-          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
-        } else {
-          StructuralOperand { declaration: d }
+        match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
+          Present { value: next } => rust_operand_realization_of_type(rt: next, scope: scope, fuel: fuel - 1)
+          Absent => StructuralOperand { declaration: d }
         }
       }
   }
@@ -16030,17 +16055,21 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
   }
 }
 
-
-// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// The operand's declaration is the one inference stamped on the node (std.operator_realization)
 // OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+// Recover the declaration's type node by identity (symbol_index_lookup of module_path.decl_name)
+// and judge it with rust_operand_realization_of_type — the only hop is
+// rust_operand_alias_or_refinement_continue.
+fn rust_operand_realization_of_stamped_declaration(od: OperandDeclaration, scope: InferScope) -> OperandRealization {
+  match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: concat(od.declaration.module_path as String, ".", od.declaration.decl_name as String)) {
+    Present { value: resolved } => rust_operand_realization_of_type(rt: resolved, scope: scope, fuel: 8)
+    Absent => StructuralOperand { declaration: od.declaration }
+  }
+}
+
 fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
   let realization = match operand {
-    Present { value: od } =>
-      if declaration_realizes_natively_on_rust(declaration: od.declaration, spelling_decision: type_realization_decision(target: Rust, dag_name: od.declaration.decl_name as String, provenance: od.provenance)) {
-        HostNumericOperand
-      } else {
-        StructuralOperand { declaration: od.declaration }
-      }
+    Present { value: od } => rust_operand_realization_of_stamped_declaration(od: od, scope: scope)
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
   operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
@@ -19936,7 +19965,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
       "    native_census_module_inference, native_census_infer_type_contribution,", "\n",
-      "    native_census_infer_completeness, native_census_cause_groups_add_infer_module, native_census_module_paths,", "\n",
+      "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module, native_census_module_paths,", "\n",
       "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,", "\n",
       "    native_census_residual_rows,", "\n",
       "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,", "\n",
@@ -20453,6 +20482,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"nanos\": span_nanos(started),", "\n",
       "            \"outcome\": outcome_label,", "\n",
       "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),", "\n",
+      "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),", "\n",
       "        \}));", "\n",
       "    \}", "\n",
       "    let cause_groups = native_census_cause_group_rows(groups.clone());", "\n",

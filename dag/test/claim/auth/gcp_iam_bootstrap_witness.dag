@@ -9,6 +9,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
   BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
+  iam_bootstrap_identity_federations, iam_bootstrap_bound_secrets, BootstrapPool, BootstrapAccount,
 }
 import gunbc.auth.gcp_iam_converge {
   gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account,
@@ -41,6 +42,9 @@ import extdeps.cloud.gcp.iam {
 }
 
 import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_pool_display_name_refusals }
+import gunbc.auth.branch_dispatch_federation { hetzner_cloud_control_federation }
+import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted }
 
 test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
   all(iam_bootstrap_roles, role => {
@@ -318,3 +322,45 @@ test fn resolved_journals_admit_a_new_create_and_unreadable_ones_refuse() -> Boo
     && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservationRefused { cause: "403" }, journal: custody_journal_of(secret: custody_x, records: [])))
 }
 
+fn with_pool_display_name(f: DedicatedFederation, name: NonEmptyStr) -> DedicatedFederation {
+  DedicatedFederation { label: f.label, pool_id: f.pool_id, pool_display_name: name, provider_id: f.provider_id,
+    attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition, impersonation: f.impersonation,
+    service_account: f.service_account, service_account_id: f.service_account_id, service_account_display_name: f.service_account_display_name,
+    service_account_member: f.service_account_member, secret_grants: f.secret_grants }
+}
+
+// The identities stage folds iam_bootstrap_identity_population, and the plan and the apply refuse over
+// the same rows before any token, so this reads the population that creates.
+test fn every_pool_the_bootstrap_creates_fits_the_display_name_cap() -> Bool {
+  let federations = iam_bootstrap_identity_federations()
+  count(federations) > 0
+    && count(dedicated_federation_pool_display_name_refusals(federations: federations)) == 0
+}
+
+// The 2026-10-14 specimen: 37 characters, refused live at the identities stage after services ran.
+test fn an_over_long_pool_display_name_refuses_naming_its_federation() -> Bool {
+  let f = hetzner_cloud_control_federation()
+  let refused = dedicated_federation_pool_display_name_refusals(federations: [
+    with_pool_display_name(f: f, name: "Fleet converge (approved branch runs)" as NonEmptyStr),
+    with_pool_display_name(f: f, name: "Fleet converge (approved branch)" as NonEmptyStr),
+  ])
+  count(refused) == 1
+    && all(refused, r => r == "hetzner cloud control (approved branch runs): pool display name \"Fleet converge (approved branch runs)\" is 37 characters; CreateWorkloadIdentityPool admits at most 32")
+    && workload_identity_pool_display_name_admitted(name: "Fleet converge (approved branch)" as NonEmptyStr)
+    && !workload_identity_pool_display_name_admitted(name: "Fleet converge (approved branchs)" as NonEmptyStr)
+}
+
+// The capabilities stage binds a role on every one of these, so the identities stage creates each
+// bare when absent. The two named secrets were absent on 2026-10-14 and would have refused it.
+test fn every_secret_the_capabilities_stage_binds_is_created_bare() -> Bool {
+  let bare = map(iam_bootstrap_bound_secrets(), s => s as String)
+  all(iam_bootstrap_capability_bindings(), b => match b.resource {
+    BootstrapSecret { secret } => any(bare, s => s == (secret as String))
+    BootstrapProject => true
+    BootstrapPool { pool: _ } => true
+    BootstrapAccount { account: _ } => true
+  })
+    && all(gcp_iam_converge_grant_set_secrets(), g => any(bare, s => s == (g as String)))
+    && any(bare, s => s == "hetzner-cloud-default-read-api-key")
+    && any(bare, s => s == "bmc-mtjade1-gunbc")
+}
