@@ -1139,6 +1139,27 @@ fn ct_present_list_into_optional_list_formal_is_admitted_test() -> String {
     "    }\n\n")
 }
 
+fn ct_record_field_under_optional_expected_keeps_its_declared_type_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn record_field_under_an_optional_expected_keeps_its_declared_type() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"probe_outer_opt.dag\".to_string(),\n",
+    "                    content: \"module probe.outer_opt\\ntype Inner { x: Int }\\ntype Outer { child: Inner }\\nfn f() -> Outer? { Outer { child: Inner { x: 1 } } }\\n\".to_string(),\n",
+    "                });\n",
+    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));\n",
+    "                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "                assert!(!messages.iter().any(|m| m.contains(\"Inner\")), \"a field of a record literal under a T? expected keeps its declared type Inner; refused: {:?}\", messages);\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"record_field_under_an_optional_expected_keeps_its_declared_type panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_kernel_mint_without_std_optional_refuses_typed_test() -> String {
   concat(
     "    #[test]\n",
@@ -5681,6 +5702,7 @@ fn compiler_tests_source() -> String {
     ct_user_declared_optional_is_not_stamped_test(),
     ct_present_empty_list_fold_init_emits_no_unit_element_test(),
     ct_kernel_mint_without_std_optional_refuses_typed_test(),
+    ct_record_field_under_optional_expected_keeps_its_declared_type_test(),
     ct_present_list_into_optional_list_formal_is_admitted_test(),
     ct_pub_use_crate_lines_two_emission_byte_identity_test(),
     ct_overlapping_use_line_dedupe_permutation_test(),

@@ -1042,6 +1042,24 @@ mod compiler_tests {
     }
 
     #[test]
+    fn record_field_under_an_optional_expected_keeps_its_declared_type() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_outer_opt.dag".to_string(),
+                    content: "module probe.outer_opt\ntype Inner { x: Int }\ntype Outer { child: Inner }\nfn f() -> Outer? { Outer { child: Inner { x: 1 } } }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!messages.iter().any(|m| m.contains("Inner")), "a field of a record literal under a T? expected keeps its declared type Inner; refused: {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_field_under_an_optional_expected_keeps_its_declared_type panicked");
+    }
+
+    #[test]
     fn present_list_into_an_optional_marked_list_formal_is_admitted() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)

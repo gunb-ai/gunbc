@@ -17638,7 +17638,12 @@ pub fn present_value_expected_from_optional(
     match expected.clone() {
         std::option::Option::None => std::option::Option::None,
         Some(exp) => {
-            let payload = if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
+            let names_present_payload =
+                (name_is_std_optional_present_arm(scope.clone(), type_name.clone())
+                    && name_is_std_optional_payload_member(scope.clone(), field_name.clone()));
+            let payload = if ((exp.return_cardinality.clone() == Cardinality::CardOptional)
+                && names_present_payload.clone())
+            {
                 Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
             } else {
                 if node_is_std_optional(exp.clone(), scope.clone()) {
