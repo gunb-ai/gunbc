@@ -6,7 +6,6 @@ import std.keyed_roster {
   KeyedRosterIndex,
   keyed_roster_index,
   keyed_roster_index_operations,
-  keyed_roster_contains,
   keyed_roster_distinct,
   keyed_roster_duplicated,
 }
@@ -115,7 +114,7 @@ fn census_subject_key_in_index(
   index: KeyedRosterIndex<CensusSubjectKey, CensusSubjectKey>,
   key: CensusSubjectKey,
 ) -> Bool {
-  keyed_roster_contains(index: index, key: SubjectKey { subject: key })
+  match map_get(index.slots, SubjectKey { subject: key }) { Present { value: _ } => true, Absent => false }
 }
 
 fn pair_with(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {

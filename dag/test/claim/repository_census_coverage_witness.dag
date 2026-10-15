@@ -91,7 +91,6 @@ import std.key_relation { SubjectKey }
 import std.keyed_roster {
   KeyedRosterIndex,
   keyed_roster_index,
-  keyed_roster_contains,
   keyed_roster_distinct,
   keyed_roster_duplicated,
 }
