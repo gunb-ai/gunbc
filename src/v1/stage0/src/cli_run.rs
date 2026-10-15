@@ -12131,23 +12131,6 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-// The declaration-head projection and its refusing marker are modeled in
-// v1.compiler.compile and v1.compiler.parse. This query is a convenience;
-// inference's CensusHeadsBodyStripped diagnostic remains the refusal mechanism.
-// It does not guard direct body traversal.
-// 🟡 dissolve-on (B): `pool_nodes_by_file_consumers_must_not_descend_into_body` —
-// a construction wall must still prevent census consumers from reading bodies;
-// the inference refusal is only a validation backstop.
-pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
-    matches!(
-        &*node.expr_data,
-        ExprData::ExprError {
-            kind: ExprErrorKind::CensusHeadsBodyStripped,
-            ..
-        }
-    )
-}
-
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
 // many module typechecks were actually COMPUTED (cache misses). When every consumer of
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
@@ -13059,38 +13042,11 @@ mod schedule_retention_red_controls {
     }
 }
 
-/// Interim width=1 floor-drain retention (v1-run-stability throughline, parent
-/// governor lane): instrument accumulation + host-budget entry cap on the private
-/// `typed_module_cache` only. Whole-row eviction here is a counted safety backstop,
-/// not cross-entry-typed-module-memo-sketch PR-β (`SpacePacked` + interface-summary
-/// payload). Dissolve-on: PR-β lands the content-keyed outer ring.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct IndexRetentionSnapshot {
-    pub typed_module_cache_entries: usize,
-    pub parse_cache_entries: usize,
-    pub resolved_graph_memo_entries: usize,
-    pub normalize_diag_cache_entries: usize,
-    pub ownership_diag_cache_entries: usize,
-    pub intern_table_entries: usize,
-    pub typed_cache_evictions: u64,
-    /// Schedule-derived per-module RELEASES (v1-run-stability M2): modules whose
-    /// refcount reached zero because no remaining scheduled entry's closure reaches
-    /// them. At run end this equals the armed module count by construction, so it is
-    /// a progress measure, not an eviction measure — see `schedule_evictions`.
-    pub schedule_releases: u64,
-    /// The releases that actually dropped cached state — the honest count of modules
-    /// this mechanism removed from a cache.
-    pub schedule_evictions: u64,
-    /// Counted `RetentionUnknown` rows: modules cached but reachability-uncomputable,
-    /// retained (correctness-fail-closed) — visible and prioritizable, never absorbed.
-    pub retention_unknown: u64,
-    /// Cumulative `resolved_graph_memo` pin drops (v1-run-stability M2 Fact #4):
-    /// distinct from `schedule_evictions` (per-module typed-state drops) — this
-    /// counts assembled-graph pin drops, the P1 receipt's `graphs_evicted` field.
-    pub resolved_graph_evictions: u64,
-    pub peak_rss_bytes: Option<u64>,
-}
-
+/// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
+/// are counted and logged — a typed, located diagnostic, never a silent widen.
+/// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
+/// correctness is preserved by content-key recompute on miss; only cost/frequency
+/// is affected if a hot entry is dropped.
 /// Conservative per-entry estimate for deriving a typed-cache cap from the host
 /// memory envelope (v1-run-stability M0/M1 receipts: ~2–11 MiB/module; 3 MiB is
 /// the interim declared fraction denominator until measured space lands).
@@ -13103,48 +13059,6 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
-pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
-    IndexRetentionSnapshot {
-        typed_module_cache_entries: index.typed_module_cache.borrow().len(),
-        parse_cache_entries: index.parse_cache.borrow().len(),
-        resolved_graph_memo_entries: index.resolved_graph_memo.borrow().len(),
-        normalize_diag_cache_entries: index.normalize_diag_cache.borrow().len(),
-        ownership_diag_cache_entries: index.ownership_diag_cache.borrow().len(),
-        intern_table_entries: index.intern_table.borrow().index.len(),
-        typed_cache_evictions: index.typed_cache_evictions.get(),
-        schedule_releases: index
-            .schedule_retention
-            .borrow()
-            .as_ref()
-            .map(|s| s.schedule_releases())
-            .unwrap_or(0),
-        schedule_evictions: index
-            .schedule_retention
-            .borrow()
-            .as_ref()
-            .map(|s| s.schedule_evictions())
-            .unwrap_or(0),
-        retention_unknown: index
-            .schedule_retention
-            .borrow()
-            .as_ref()
-            .map(|s| s.retention_unknown())
-            .unwrap_or(0),
-        resolved_graph_evictions: index
-            .schedule_retention
-            .borrow()
-            .as_ref()
-            .map(|s| s.resolved_graph_evictions())
-            .unwrap_or(0),
-        peak_rss_bytes: peak_rss_vhwm_bytes(),
-    }
-}
-
-/// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
-/// are counted and logged — a typed, located diagnostic, never a silent widen.
-/// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
-/// correctness is preserved by content-key recompute on miss; only cost/frequency
-/// is affected if a hot entry is dropped.
 fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
     let cap = typed_module_cache_cap(index);
     let mut cache = index.typed_module_cache.borrow_mut();
@@ -17272,74 +17186,6 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     }
 }
 
-/// Single-binary claim execution (v1-run-stability M2 companion, Deliverable 2): run a
-/// batch of claims IN-PROCESS rather than spawning a `claim_batch` child (the
-/// `gunbc.instruments.host_prelude.run_gunbc_claims` transport). Claims are grouped by entry so
-/// each closure resolves exactly once — the pooled property claim_batch's
-/// one-child-per-call already had — and every claim keeps `run_claim_measured`'s
-/// per-witness discipline (subject key, eval deadline, the operator 5 s fast-lane
-/// law). The declared `execution_mode` threads through unchanged: an in-process claim
-/// keeps EXACTLY its declared effect envelope — it never silently widens into the
-/// caller's environment (envelope honesty).
-///
-/// This is the vehicle the the `run_gunbc_claims_pooled_note` annotation reserved ("the child dies
-/// and frees"): folding claims into the long-lived executor is safe ONLY because
-/// schedule-derived eviction (this module) now bounds the retention the child used to
-/// reclaim by dying. Returns `true` iff every claim passed — the same conjunction
-/// claim_batch computes — with a per-claim PASS/FAIL line so the in-process verdict is
-/// as legible as the child's. Proven verdict-identical to the spawn path by
-/// `claim_in_process_matches_spawn_verdict` (RED control #2).
-pub fn run_claims_in_process(
-    source_roots: &[String],
-    claims: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-) -> bool {
-    // Group by entry, preserving first-appearance order (stable PASS/FAIL log).
-    let mut order: Vec<String> = Vec::new();
-    let mut by_entry: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    for (entry, function) in claims {
-        if !by_entry.contains_key(entry) {
-            order.push(entry.clone());
-            by_entry.insert(entry.clone(), Vec::new());
-        }
-        by_entry
-            .get_mut(entry)
-            .expect("entry inserted above")
-            .push(function.clone());
-    }
-    let mut all_passed = true;
-    for entry in &order {
-        let functions = &by_entry[entry];
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(pair) => pair,
-            Err(msg) => {
-                println!("FAIL <resolve {entry}> ({msg})");
-                all_passed = false;
-                continue;
-            }
-        };
-        let ctx = make_eval_context(&graph, source_indices, execution_mode);
-        // Subject identity for the per-witness discipline: entry-derived (this path's
-        // own subjects; the discovery corpus's content-subject drives a cross-run memo
-        // this in-process transport does not share).
-        let closure_subject = format!("in-process-claim:{entry}");
-        for function in functions {
-            let (outcome, _receipt) = run_claim_measured(&ctx, &closure_subject, function);
-            // Frame exit: the eval memo must not retain values across claims sharing
-            // this ctx (byte-unbounded, the 20GiB-class kills — same as the gate path).
-            v1_interpreter::eval_call_memo_frame_exit(&ctx);
-            if outcome == ClaimOutcome::Pass {
-                println!("PASS {function}");
-            } else {
-                println!("FAIL {function} ({outcome:?})");
-                all_passed = false;
-            }
-        }
-    }
-    all_passed
-}
-
 /// Completion-side budget enforcement: the cooperative deadline polls every 4096
 /// eval_expr dispatches, so a witness whose time is spent in few dispatches (native
 /// builtin-heavy) can finish over budget without ever hitting a poll. A Pass that
@@ -21313,37 +21159,6 @@ fn explicit_witness_admission_keys() -> &'static [String] {
     })
 }
 
-/// The `(entry, function)` pairs admitted with cadence `QuarantineProbeExpectRed` -- the rows whose
-/// admission says DO NOT SCHEDULE THIS PER-PR.
-///
-/// Keyed on the CADENCE, not on "carries a row in the admission authority": a witness admitted
-/// under `bin_wet`, `SubstrateLongLaneRow` or any other head is a different obligation and must
-/// still be planned, and still red the floor, when a diff touches it.
-pub(crate) fn quarantine_probe_admission_pairs() -> Vec<(String, String)> {
-    static PAIRS: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    PAIRS
-        .get_or_init(|| {
-            let content = std::fs::read_to_string(
-                workspace_root().join(EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL),
-            )
-            .unwrap_or_else(|e| {
-                panic!(
-                    "quarantine probe admission: failed to read {}: {e}",
-                    EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL
-                )
-            });
-            crate::cli_run::witness_gates::quarantine_probe_admission_keys_from_source(
-                EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL,
-                &content,
-            )
-            .iter()
-            .filter_map(|key| key.split_once("::"))
-            .map(|(entry, function)| (entry.to_string(), function.to_string()))
-            .collect()
-        })
-        .clone()
-}
-
 /// The same keys split back into `(entry, function)` pairs — the grain the exclusion is decided
 /// at. An empty function is the declared file-grain form and is expanded upstream, so it never
 /// reaches here as a pair.
@@ -21569,69 +21384,6 @@ fn quoted_literals(text: &str) -> Vec<String> {
 /// fixture roster), and — since 2026-08-04 — a broad `OfflineLocalRecipe` path policy is no longer
 /// an answer on its own. A row that policy claims is admitted only while it sits in the frozen
 /// legacy population (`gunbc.witness.witness_deferral_freeze`); anything new refuses.
-/// Per-row EXECUTION STANDING — what actually runs this witness. Mirrors the
-/// `WitnessExecutionStanding` coproduct in `std.witness_admission` arm for arm, and the split is
-/// the point: `LegacyFrozenPathDeferral` means TOLERATED BY THE MIGRATION RATCHET, never COVERED.
-/// A frozen row has no executing consumer — that is the entire content of its debt — so the two
-/// gates below are deliberately different rather than one success arm serving both questions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WitnessExecutionStanding {
-    HasExecutingConsumer,
-    LegacyFrozenPathDeferral,
-    UnclassifiedPathDeferral,
-    UnexecutedDeferredWitness,
-}
-
-/// The second direction of the identity join: a frozen row whose witness the tree no longer
-/// carries is a standing exemption for an identity nothing checks, so it refuses and must be
-/// deleted. Reads the filesystem and the pattern authority only — deliberately independent of the
-/// caller's source roots, so a scoped batch cannot make the whole freeze look stale.
-pub fn collect_stale_frozen_path_deferrals() -> Vec<(String, String, &'static str)> {
-    let offline = witness_admission_offline_exclusion_substrings();
-    let mut stale: Vec<(String, String, &'static str)> = Vec::new();
-    let mut decls_cache: std::collections::BTreeMap<String, Option<Result<Vec<String>, String>>> =
-        std::collections::BTreeMap::new();
-    for key in frozen_path_deferral_keys() {
-        let Some((entry, function)) = key.split_once("::") else {
-            continue;
-        };
-        if !path_matches_any_substring(entry, &offline) {
-            stale.push((
-                entry.to_string(),
-                function.to_string(),
-                "entry no longer matches any OfflineLocalRecipe path policy",
-            ));
-            continue;
-        }
-        let decls = decls_cache.entry(entry.to_string()).or_insert_with(|| {
-            std::fs::read_to_string(workspace_root().join(entry))
-                .ok()
-                .map(|c| test_marker::test_marked_decl_names(&c, entry))
-        });
-        match decls {
-            None => stale.push((
-                entry.to_string(),
-                function.to_string(),
-                "entry file is absent",
-            )),
-            // An entry that does not parse has no determinable test set: the row is refused,
-            // never judged against a partial or text-scanned one.
-            Some(Err(_)) => stale.push((
-                entry.to_string(),
-                function.to_string(),
-                "entry does not parse, so its test-marked declarations cannot be read",
-            )),
-            Some(Ok(names)) if !names.iter().any(|n| n == function) => stale.push((
-                entry.to_string(),
-                function.to_string(),
-                "entry no longer declares this test decl",
-            )),
-            Some(Ok(_)) => {}
-        }
-    }
-    stale
-}
-
 /// The freeze is a MONOTONE debt contract, and this is what makes that a wall rather than a
 /// convention. The forward and backward identity joins keep the roster honest about the tree, but
 /// neither stops an author appending a row in the same change that adds the witness — which is the
@@ -23751,140 +23503,6 @@ fn entry_touches_rerun_frontier(
         }
     }
     Ok(!saw_claim)
-}
-
-pub fn expand_explicit_witness_entries(
-    explicit_entries: &[(String, String)],
-) -> Result<Vec<(String, String)>, String> {
-    test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
-}
-
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): the floor-observability cluster
-// below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
-// `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
-// around the existing affected-set selection. It adds no selection authority: the fail-closed
-// skip/run decision, its refusals, and the `DiscoverySummary` counts are unchanged; these helpers only choose how the already-decided run is printed. They
-// live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
-// `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
-// output already migrating into `dag/gunbc/ci/ci_render.dag` (the timing histogram + slowest-witness
-// rollup render there today). It is counted seed Rust, not a new authority; do not accrete
-// further floor logic here — extend the `.dag` render/observability surface instead.
-
-#[derive(Clone, Copy)]
-pub struct ShardStyle {
-    shard_id: usize,
-    /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
-    /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
-    /// operator asked "what does s0 mean?"). The tag returns, colored, only when shards run wide.
-    shard_count: usize,
-    color: bool,
-    stream: bool,
-}
-
-impl ShardStyle {
-    /// The style the required witness floor runs under. It is a single shard by construction —
-    /// there is no sharding to describe, so the `s{id}` tag is absent rather than set to a
-    /// constant — and colour/streaming come from the same environment the rest of the floor
-    /// reads. This exists because the fields are private to this module and the floor's CLI
-    /// entry lives in a binary; it is a constructor, not a policy.
-    pub fn single_shard() -> Self {
-        ShardStyle {
-            shard_id: 0,
-            shard_count: 1,
-            color: floor_color_enabled(),
-            stream: floor_stream_enabled(),
-        }
-    }
-
-    /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
-    /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
-    fn shard_color_code(self) -> &'static str {
-        const PALETTE: [&str; 6] = [
-            "\x1b[96m", // bright cyan
-            "\x1b[94m", // bright blue
-            "\x1b[95m", // bright magenta
-            "\x1b[93m", // bright yellow
-            "\x1b[36m", // cyan
-            "\x1b[35m", // magenta
-        ];
-        PALETTE[self.shard_id % PALETTE.len()]
-    }
-
-    /// Colored `▎shard N` tag, or empty when the run is single-shard (nothing to disambiguate).
-    fn shard_tag(self) -> String {
-        if self.shard_count <= 1 {
-            return String::new();
-        }
-        if self.color {
-            format!(
-                "{}▎shard {}\x1b[0m ",
-                self.shard_color_code(),
-                self.shard_id
-            )
-        } else {
-            format!("[shard {}] ", self.shard_id)
-        }
-    }
-
-    fn stream_witness(
-        self,
-        function: &str,
-        subject: &str,
-        _execution_leg: &str,
-        wall_nanos: u128,
-        verdict: CiWitnessVerdict,
-        outcome: &ClaimOutcome,
-    ) {
-        if !self.stream {
-            return;
-        }
-        // Law 4's fold at the site that produces two thirds of the console. The routing decision
-        // is NOT restated here: `concluded_outcome_folds` is the verdict `ci_routine_projection`
-        // and `observation_class_density` produced, resolved once at policy install. A pass folds
-        // into the batch rollup and prints nothing; an anomaly pierces at its exact leaf, which is
-        // the whole point of collapsing the routine.
-        // The fold still keys on PASSED-ness alone: a row that folds into the batch rollup is
-        // one that needs no attention, and every non-passing arm needs attention. Deriving the
-        // bool HERE rather than accepting one is the whole change -- the caller no longer gets
-        // to decide what the console may distinguish.
-        if routine_rollup_folds() && concluded_outcome_folds(verdict == CiWitnessVerdict::Passed) {
-            return;
-        }
-        let ts = floor_ts();
-        let tag = self.shard_tag();
-        match render_witness_claim_result_text(subject, function, wall_nanos, verdict) {
-            Some(line) => {
-                if self.color {
-                    eprintln!("\x1b[2m{ts}\x1b[0m {tag}{line}");
-                } else {
-                    eprintln!("{ts} {tag}{line}");
-                }
-                // THE THROW'S LOCATION, beside the row rather than inside it. The verdict carries
-                // only the cause (it is `Copy` and keyed on class); the message and the raising
-                // declaration are on the outcome, which is where they were being dropped.
-                if let ClaimOutcome::RuntimeError {
-                    message, raised_in, ..
-                } = outcome
-                {
-                    let detail = render_witness_runtime_error_detail_text_mirror(
-                        subject, function, raised_in, message,
-                    );
-                    if self.color {
-                        eprintln!("\x1b[2m{ts}\x1b[0m {tag}{detail}");
-                    } else {
-                        eprintln!("{ts} {tag}{detail}");
-                    }
-                }
-            }
-            // Fail-closed: routine lines may already be folded, so a silent return would read as
-            // a witness that never ran rather than a renderer that refused.
-            None => eprintln!(
-                "::error::witness presentation unavailable: could not render claim result \
-                 through gunbc.observation_ci_render `ci_witness_claim_result_text` for \
-                 {subject}:{function}"
-            ),
-        }
-    }
 }
 
 #[cfg(test)]

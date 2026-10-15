@@ -52,7 +52,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
@@ -92,27 +92,6 @@ use crate::v1_std_core::{
     Node,
 };
 use serde::Serialize;
-
-/// The frozen legacy path-deferral population, read from the one `.dag` authority by the same
-/// interim source scan as the sibling rosters (`CLI_RUN_WITNESS_ADMISSION_SOURCE_SCAN_SCAFFOLD_MARKER`).
-///
-/// Fail-closed like its siblings: a `FrozenPathDeferral {` head that does not parse PANICS with
-/// its location rather than yielding no key, because a silently-dropped freeze row would refuse a
-/// legitimately frozen witness — and a silently-*added* one is impossible since keys only come
-/// from parsed heads.
-pub(crate) fn frozen_path_deferral_keys() -> &'static [String] {
-    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
-    KEYS.get_or_init(|| {
-        let content =
-            std::fs::read_to_string(workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}"
-                    )
-                });
-        frozen_path_deferral_keys_from_source(&content)
-    })
-}
 
 pub(crate) fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
