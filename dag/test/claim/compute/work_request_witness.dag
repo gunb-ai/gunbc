@@ -257,9 +257,9 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 }
 
 // Declared outputs follow the operation: a build names its binaries under the profile directory of
-// the TARGET root (the shared per-host CARGO_TARGET_DIR, not the checkout -- the first wet run
-// declared the checkout and mismatched a build that had succeeded); checking operations declare
-// none, so an absent binary is a mismatch and an absent nothing is not.
+// the TARGET root (the identity-owned CARGO_TARGET_DIR under that identity's work_dir, not the
+// checkout -- the first wet run declared the checkout and mismatched a build that had succeeded);
+// checking operations declare none, so an absent binary is a mismatch and an absent nothing is not.
 test fn declared_outputs_follow_the_operation() -> Bool {
   let build = work_declared_outputs(op: work_default_build())
   let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] })
