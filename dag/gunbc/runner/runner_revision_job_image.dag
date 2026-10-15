@@ -23,6 +23,7 @@ import gunbc.runner.microvm_guest_artifacts {
   guest_artifact_verdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
   ArtifactContradictsPin, ArtifactNotMeasured,
 }
+import gunbc.runner.runner_revision_job_toolchain { RevisionJobToolchainClosure, toolchain_tree_commands, toolchain_receipt_lines }
 import gunbc.runner.runner_guest_image { runner_guest_agent_target }
 import gunbc.runner.runner_revision_job_guest {
   RevisionJobGuestUnit, RevisionJobGuestUnitRendered, RevisionJobGuestUnitRefused, revision_job_guest_unit,
@@ -70,13 +71,17 @@ fn revision_job_cargo_config() -> String {
   ], "")
 }
 
-fn revision_job_image_tree_commands(root: String, rust_dist_dir: String) -> List<ArgvCommand> {
+// `toolchain` is the closure's extraction and effect steps; the build passes exactly
+// toolchain_tree_commands of a minted closure, so the steps run after the base is unpacked (they
+// replace its libc6) and before the tools are checked.
+fn revision_job_image_tree_commands(root: String, rust_dist_dir: String, toolchain: List<ArgvCommand>) -> List<ArgvCommand> {
   let tree = revision_job_tree_path(root: root)
   let unit_wants = join([tree, "/etc/systemd/system/", runner_guest_agent_target as String, ".wants"], "")
   [
     rm_recursive_force_command(path: tree),
     mkdir_parents_command(path: tree),
     unsquashfs_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), into_directory: tree),
+  ] + toolchain + [
     tar_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), into_directory: rust_dist_dir, strip_components: 0),
     rust_standalone_install_command(unpacked_dir: join([rust_dist_dir, "/", revision_job_rust_dist_unpacked_dir()], ""), prefix: concat(tree, "/usr/local")),
     mkdir_parents_command(path: concat(tree, "/work")),
@@ -102,12 +107,12 @@ fn revision_job_rust_dist_unpacked_dir() -> String {
 
 // THE TOOLCHAIN RECEIPT: what `rustc --version` says the installed tree carries, written beside the
 // image. The job compares its version against the tree's rust-toolchain.toml channel.
-fn revision_job_write_toolchain_receipt(root: String) -> Bool {
+fn revision_job_write_toolchain_receipt(root: String, closure: RevisionJobToolchainClosure) -> Bool {
   match run_shell_command_capture(command: rustc_version_command(rustc: concat(revision_job_tree_path(root: root), "/usr/local/bin/rustc")), transport: LocalExec) {
     ProcessOutputPresent { text: t } => {
       let words: List<String> = trim(s: t).split(delimiter: " ")
       match skip(words, 1).first() {
-        Present { value: version } => Filesystem.Write(path: revision_job_toolchain_receipt_path(root: root), content: concat(version, "\n")).success
+        Present { value: version } => Filesystem.Write(path: revision_job_toolchain_receipt_path(root: root), content: concat(concat(version, "\n"), toolchain_receipt_lines(closure: closure))).success
         Absent => false
       }
     }
@@ -133,14 +138,6 @@ type RevisionJobImageBuild
   // inputs, until the closure is supplied by S4b-3c -- never an interim hand-picked list.
   | RevisionJobImageToolchainClosureMissing { missing: List<String> }
 
-// THE TOOLCHAIN CLOSURE THE IMAGE NEEDS BEYOND THE BASE, supplied by S4b-3c: a pinned .deb set from
-// the noble release pocket of ports.ubuntu.com, verified through the signed InRelease to Packages to
-// SHA-256 chain, closed on its own (the stripped base contributes nothing to the dependency proof).
-// DECLARED FRONTIER (DESIGN 3c), TRIGGER: S4b-3c's closure completeness check green over that set.
-type RevisionJobToolchainClosure sole_constructor {
-  debs: List<String>
-}
-
 data revision_job_toolchain_closure_inputs: List<String> = ["git", "cc", "ld", "libc6-dev"]
 
 fn pinned(artifact_path: String, artifact: gunbc.runner.microvm_guest_artifacts.GuestBaseArtifact) -> Bool {
@@ -157,12 +154,12 @@ fn revision_job_image_build(root: String, rust_dist_dir: String, closure: Revisi
   let tree = revision_job_tree_path(root: root)
   match closure {
   Absent => RevisionJobImageToolchainClosureMissing { missing: revision_job_toolchain_closure_inputs }
-  Present { value: _ } =>
+  Present { value: c } =>
   if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), artifact: runner_guest_base_rootfs_artifact) {
     RevisionJobImageRefused { reason: "the base rootfs does not match its pin" }
   } else if !pinned(artifact_path: runner_guest_base_artifact_path(root: root, artifact: revision_job_rust_dist_artifact), artifact: revision_job_rust_dist_artifact) {
     RevisionJobImageRefused { reason: "the Rust standalone dist does not match its upstream-published pin" }
-  } else if !revision_job_run_commands(commands: revision_job_image_tree_commands(root: root, rust_dist_dir: rust_dist_dir)) {
+  } else if !revision_job_run_commands(commands: revision_job_image_tree_commands(root: root, rust_dist_dir: rust_dist_dir, toolchain: toolchain_tree_commands(tree: tree, closure: c))) {
     RevisionJobImageRefused { reason: "a tree step failed: the base, the toolchain install, or a required tool (git, tar, cargo, rustc) is missing" }
   } else { match revision_job_guest_unit() {
     RevisionJobGuestUnitRefused { reason: r } => RevisionJobImageRefused { reason: concat("the guest unit refused to render: ", r as String) }
@@ -170,7 +167,7 @@ fn revision_job_image_build(root: String, rust_dist_dir: String, closure: Revisi
       if !Filesystem.Write(path: concat(tree, "/etc/fstab"), content: revision_job_fstab()).success
         || !Filesystem.Write(path: join([tree, "/etc/systemd/system/", revision_job_unit_name], ""), content: serialize_systemd_unit_file(file: u)).success
         || !Filesystem.Write(path: concat(tree, revision_job_image_cargo_config), content: revision_job_cargo_config()).success
-        || !revision_job_write_toolchain_receipt(root: root) {
+        || !revision_job_write_toolchain_receipt(root: root, closure: c) {
         RevisionJobImageRefused { reason: "writing the image's files failed" }
       } else if !revision_job_run_commands(commands: [rm_force_command(path: revision_job_image_path(root: root)),
           mke2fs_populate_command(fs: Ext4, image_path: revision_job_image_path(root: root), from_directory: tree, size: mebibyte(count: revision_job_image_size_mib))]) {

@@ -23,7 +23,7 @@ test fn the_image_mounts_the_work_disk_and_points_cargo_at_the_staged_vendor_set
 }
 
 test fn the_tree_refuses_without_git_tar_cargo_and_rustc() -> Bool {
-  let words = map(revision_job_image_tree_commands(root: "/r", rust_dist_dir: "/d"), c => join(argv_words(command: c), " "))
+  let words = map(revision_job_image_tree_commands(root: "/r", rust_dist_dir: "/d", toolchain: []), c => join(argv_words(command: c), " "))
   count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/git")) == 1
     && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/bin/tar")) == 1
     && count(filter(words, w => w == "test -x /r/revision-job-tree/usr/local/bin/cargo")) == 1

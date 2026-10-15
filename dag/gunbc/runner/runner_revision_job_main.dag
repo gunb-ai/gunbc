@@ -91,7 +91,10 @@ type RevisionJobOutcome
 // authority and the image is built from it.
 fn revision_job_image_toolchain(image_dir: String) -> NonEmptyStr? {
   let read = Filesystem.Read(path: join([image_dir, "/", revision_job_toolchain_receipt_name], ""))
-  if !read.success || trim(s: read.content) == "" { none } else { Present { value: trim(s: read.content) as NonEmptyStr } }
+  // The first line is the version; the closure lines after it (gunbc.runner.runner_revision_job_toolchain
+  // toolchain_receipt_lines) are the image's record, not part of the channel.
+  let first = trim(s: match read.content.split(delimiter: "\n").first() { Present { value: l } => l  Absent => "" })
+  if !read.success || first == "" { none } else { Present { value: first as NonEmptyStr } }
 }
 
 fn revision_job_slot(instance: String) -> RunnerSlotIdentity? {

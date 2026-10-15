@@ -1,0 +1,45 @@
+module extdeps.sequoia.sqv
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// sqv(1), Sequoia's OpenPGP signature verifier. `--keyring <K> --cleartext --output <OUT> <FILE>`
+// checks a cleartext-signed FILE against the certificates in K and, only when a valid signature by
+// one of them is found, writes the signed text to OUT and exits 0; any other outcome (no valid
+// signature, a manipulated message, an unknown key) exits nonzero and writes nothing usable. It
+// trusts exactly the keyring it is handed -- no agent, no trust database -- which is why it is the
+// verifier an apt index chain is checked with.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/trixie/sqv/sqv.1.en.html"
+  }
+}
+
+// PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim records.
+fn sqv_program() -> ProgramIdentity = uncataloged_program(invocation: "sqv")
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.sequoia.sqv",
+      decl_name: "sqv_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// OUTPUT IS CREATE-ONLY: sqv refuses ("File exists") when OUTPUT already exists, so a stale verified
+// copy can never stand in for this run's. With `-v` it prints, on stdout, the fingerprint of each
+// certificate that made a valid signature, one per line, before the "N of M signatures are valid"
+// line -- which is what lets a caller require a SPECIFIC signer rather than any key in the ring.
+fn sqv_verify_cleartext_command(keyring: String, signed_file: String, output: String) -> ArgvCommand {
+  argv_command(program: sqv_program(), arguments: ["-v", "--keyring", keyring, "--cleartext", "--output", output, signed_file])
+}
