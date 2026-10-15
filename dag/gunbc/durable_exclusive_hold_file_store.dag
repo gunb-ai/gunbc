@@ -29,6 +29,7 @@ import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableAbsent, CasReadablePresent, CasGeneration,
+  ExpectSlotAbsent, CasGenerationSuccessor, CasSuccessorGeneration, cas_generation_successor, cas_generation_first,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
@@ -270,6 +271,35 @@ fn file_hold_acquire_prepare_retained(
 
 fn file_hold_acquire_prepare(root: NonEmptyStr, slot_key: NonEmptyStr, requested_owner: DurableHoldOwnerRef) -> FileHoldAcquirePreparation {
   file_hold_acquire_prepare_retained(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: KeepAllGenerations)
+}
+
+// THE GENERATION THIS PLAN'S COMMIT LANDS ON, read off the expectation the live read derived.
+// A commit either lands exactly here or does not land (the store refuses any other generation), so
+// a consumer that must write a fact keyed by the landing generation INTO the same payload can name
+// it before the write rather than after it. That is what makes the write one transition instead of
+// a hold followed by a second record a crash could separate from it.
+fn file_hold_acquire_plan_landing(plan: FileHoldAcquirePlan) -> CasGenerationSuccessor {
+  match plan.expected {
+    ExpectSlotAbsent => CasSuccessorGeneration { generation: cas_generation_first() }
+    ExpectSlotGeneration { generation: g } => cas_generation_successor(g: g)
+  }
+}
+
+// THE SAME PLAN UNDER ANOTHER OWNER. The expectation is kept -- it is still the one the live read
+// derived, so occupancy is judged exactly as before and no caller-supplied generation enters -- and
+// the payload is re-derived from the new owner by this module's own codec. Confined to the one
+// consumer whose owner depends on the landing generation.
+fn file_hold_acquire_plan_for_owner(plan: FileHoldAcquirePlan, owner: DurableHoldOwnerRef) -> FileHoldAcquirePlan
+  admit_callers: [decl_ref(module_path: "gunbc.fabric.fabric_cell_grant", decl_name: "grant_selected_cell_under_exclusion")]
+{
+  FileHoldAcquirePlan {
+    root: plan.root,
+    slot_key: plan.slot_key,
+    owner: owner,
+    expected: plan.expected,
+    held_payload: hold_slot_payload(state: DurableHoldHeld { owner: owner }),
+    retention: plan.retention,
+  }
 }
 
 // EVERY WAY AN ACQUIRE ENDS, TYPED AND SEPARATE, because the remedies differ.
