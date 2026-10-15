@@ -201,11 +201,14 @@ pub(crate) use test_migration::*;
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
+mod demand_acquire;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod source_layout_lookup;
+pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -4909,7 +4912,7 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
     c.matches('{').count() as i32 - c.matches('}').count() as i32
 }
 
-type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
+pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.

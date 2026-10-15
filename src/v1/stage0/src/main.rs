@@ -1271,7 +1271,7 @@ fn run_verb(
     }
 
     let resolve_started = std::time::Instant::now();
-    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    let resolved = cli_run::resolve_entry_graph_demand_acquired(source_roots, entry_file);
     report_pre_entry_phases(
         resolve_started.elapsed(),
         source_roots,

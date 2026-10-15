@@ -1513,7 +1513,7 @@ pub(crate) fn new_multi_entry_index_scratch_over(
         &source_files,
         MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
 }
 
 #[track_caller]
@@ -1526,17 +1526,33 @@ pub(crate) fn new_multi_entry_index_shell(
         &source_files,
         MultiEntryIndexBuildKind::NameSetIndex,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
+}
+
+#[track_caller]
+pub(crate) fn new_multi_entry_index_acquired(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    facts: ModuleGraphFactsLive,
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots, Some(facts))
 }
 
 fn multi_entry_index_shell_body(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
+    acquired_facts: Option<ModuleGraphFactsLive>,
 ) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        module_graph_facts: build_module_graph_facts_live(source_roots),
+        module_graph_facts: acquired_facts
+            .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
         typed_cache_evicted_keys: RefCell::new(std::collections::HashSet::new()),
