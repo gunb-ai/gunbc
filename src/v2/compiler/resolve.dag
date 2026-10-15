@@ -4812,8 +4812,9 @@ fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition)
 // the single entry of this frame; a kinded one additionally records the path its value reading is
 // keyed by, <declaring path>.<name> -- the same key a value parameter of this fn has
 // (resolve_frame_bound_reference ParameterFrame), so binder identity is the declaring path plus the
-// name and a body `let` or value parameter of the same spelling lives in another key space and
-// cannot capture it. "Kinded" is the existing language-level literal rule, not a per-kind roster
+// name. A value parameter of the same spelling would be the SAME key, so it is refused
+// (resolve_type_params_slot); a body `let` cannot capture it (lexical frames, not that key).
+// "Kinded" is the existing language-level literal rule, not a per-kind roster
 // (std.machine_constraints machine_width_literal_roster_frontier). An unkinded binder, or a binder
 // with no declaring path (a lambda, an anonymous arrow), records nothing, so its value read keeps
 // refusing resolve_reason_type_parameter_in_value_position.
@@ -5010,6 +5011,29 @@ fn resolve_arrow_slot_scope(
   }
 }
 
+// A KINDED TYPE PARAMETER AND A VALUE PARAMETER OF ONE ARROW MAY NOT SHARE A SPELLING. Both are indexed at
+// <fn path>.<name> (v2.compiler.symbol_index_fill symbol_index_fill_kinded_type_params), so the two would
+// be one key holding two declarations and the later insert would overwrite the earlier. The type-parameter
+// shadow check sees only the OUTER scope, so the same-arrow collision is refused here, where both sets are
+// visible, located at the type-parameter set, and the fill never meets it.
+fn resolve_type_params_slot(ctx: ResolveContext, arrow: Node, value_params: FrameBinders, conj: Node) -> ResolveNodeWalk {
+  let collides = fold(kinded_type_param_names(n: arrow), init: false, f: fn(acc, name) {
+    if acc {
+      true
+    } else {
+      match map_lookup(m: value_params.binders, key: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  })
+  if collides {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: conj)))
+  } else {
+    resolve_type_params_conj(ctx: ctx, conj: conj)
+  }
+}
+
 fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let value_params = arrow_domain_frame_binders(n: n)
@@ -5030,7 +5054,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
     )
     match slot {
       ArrowTypeParamsSlot =>
-        child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+        child_walk_step(w: acc, e: e, r: resolve_type_params_slot(ctx: outer_ctx, arrow: n, value_params: value_params, conj: e.target))
       ArrowCarriedSlot =>
         child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
       ArrowResourceRequirementsSlot =>
