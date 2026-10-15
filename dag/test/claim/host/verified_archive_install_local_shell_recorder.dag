@@ -1,10 +1,11 @@
 module test.claim.host.verified_archive_install_local_shell_recorder
 
-import std.types { String }
+import std.types { String, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host.verified_archive_install {
   staged_archive_fetch_commands, staged_archive_install_commands,
-  publish_staged_tree_command, argv_list_record, argv_record_line,
+  publish_staged_tree_command,
 }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_staged_archive }
 import extdeps.virtualization.qemu { qemu_8_2_2_ubuntu_noble_arm64 }
@@ -15,6 +16,14 @@ import gunbc.runner.runner_microvm_host_ready {
 import extdeps.virtualization.firecracker { firecracker_release_aarch64 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn argv_record_line(command: ArgvCommand) -> String {
+  join(argv_words(command: command), "\n  | ")
+}
+
+fn argv_list_record(commands: List<ArgvCommand>) -> String {
+  join(map(commands, c => argv_record_line(command: c)), "\n")
+}
 
 fn local_shell_legs_record_text() -> String {
   let qemu_a = qemu_toolchain_staged_archive(a: qemu_8_2_2_ubuntu_noble_arm64.archive)
