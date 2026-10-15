@@ -259,7 +259,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
   AttemptSystemUnitEnqueueRefused,
   attempt_system_unit_launch_host_argv, attempt_system_unit_read_answer,
-  attempt_system_unit_harness_start_from_answer,
+  attempt_system_unit_harness_start_from_launcher_exit,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
 }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
@@ -1518,11 +1518,17 @@ fn belt_session_container_create(
                         detail: join(["a request for this attempt already exists at ", entry], ""),
                       }
                     AttemptSystemUnitEnqueued { entry } => {
-                      let launched_exec = belt_exec_steps(
-                        steps: [BeltExecStep { step: "harness-unit-start", command: attempt_system_unit_launch_host_argv(instance: instance) }],
+                      let launched_exec = belt_exec(
+                        cmd: attempt_system_unit_launch_host_argv(instance: instance),
                         workdir: workdir,
                       )
-                      match attempt_system_unit_harness_start_from_answer(
+                      let exit_code = match launched_exec {
+                        ExecOk { stdout: _ } => 0
+                        ExecFailed { program: _, exit_code: c, stderr: _ } => c
+                        ExecRefused { program: _, reason: _ } => 1
+                      }
+                      match attempt_system_unit_harness_start_from_launcher_exit(
+                        exit_code: exit_code,
                         reading: attempt_system_unit_read_answer(
                           instance_root: instance.instance_root as String,
                           entry: entry,
@@ -1530,14 +1536,7 @@ fn belt_session_container_create(
                       ) {
                         AttemptSystemUnitHarnessStarted => ExecStepsOk
                         AttemptSystemUnitHarnessFailed { detail } =>
-                          match launched_exec {
-                            ExecStepsOk => ExecStepFailed { step: "harness-unit-start", detail: detail }
-                            ExecStepFailed { step: _, detail: exec_detail } =>
-                              ExecStepFailed {
-                                step: "harness-unit-start",
-                                detail: join([detail, "; launcher: ", exec_detail], ""),
-                              }
-                          }
+                          ExecStepFailed { step: "harness-unit-start", detail: detail }
                       }
                     }
                   }

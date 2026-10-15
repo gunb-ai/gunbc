@@ -2,7 +2,7 @@ module test.claim.roadmap.attempt_system_unit_launch_witness
 
 import std.types { Bool, NonEmptyStr, List, String }
 import std.optional { Present }
-import std.measure { kibibyte }
+import std.measure { kibibyte, second_count }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { StatFileKind, RegularFileKind, SymbolicLinkKind, FifoKind, DirectoryKind }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
@@ -37,8 +37,15 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
   attempt_system_unit_admit_body_kind, AttemptSystemUnitBodyRegular, AttemptSystemUnitBodyRefused,
+  attempt_system_unit_launch_flocked_argv_at, attempt_system_unit_launch_host_argv_at,
+  attempt_system_unit_sudoers_line, attempt_system_unit_launcher_busy_exit,
+  attempt_system_unit_launcher_flock_wait, attempt_system_unit_harness_start_from_launcher_exit,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance }
+import gunbc.host.host_layout { attempt_unit_spool_drain_lock_path }
+import extdeps.tools.util_linux_flock { flock_absolute_path }
+import extdeps.sudo.elevation { sudo_non_interactive_flag }
+import gunbc.executor_privileged_operation { sudoers_argument_word }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.auth.authorization_pattern_selection {
   select_authorization_pattern, PatternSelected, FederatedScopedGrant, OperatorApprovedCapability,
@@ -412,4 +419,36 @@ test fn a_fifo_or_symlink_body_kind_is_refused() -> Bool {
   body_kind_refused_with(kind: FifoKind, needle: "fifo")
     && body_kind_refused_with(kind: SymbolicLinkKind, needle: "symlink")
     && body_kind_refused_with(kind: DirectoryKind, needle: "directory")
+}
+
+test fn the_sudoers_line_and_host_argv_pin_the_flock_wrapped_launcher() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let flocked = attempt_system_unit_launch_flocked_argv_at(instance: live, revision: rev)
+  let line = attempt_system_unit_sudoers_line(instance: live, revision: rev)
+  let host = attempt_system_unit_launch_host_argv_at(instance: live, revision: rev)
+  let lock = attempt_unit_spool_drain_lock_path(instance_root: live.instance_root as String)
+  let wait = to_string(value: second_count(s: attempt_system_unit_launcher_flock_wait))
+  count(flocked) > 0
+    && match flocked.first() {
+      Absent => false
+      Present { value: bin } => bin == (flock_absolute_path as String)
+    }
+    && any(flocked, w => w == "--wait")
+    && any(flocked, w => w == wait)
+    && any(flocked, w => w == "--conflict-exit-code")
+    && any(flocked, w => w == to_string(value: attempt_system_unit_launcher_busy_exit))
+    && any(flocked, w => w == lock)
+    && string_contains(s: line, pattern: join(map(flocked, w => sudoers_argument_word(w: w)), " "))
+    && host.args == concat([sudo_non_interactive_flag as String], flocked)
+}
+
+test fn flock_expiry_is_launcher_busy_past_the_bound() -> Bool {
+  match attempt_system_unit_harness_start_from_launcher_exit(
+    exit_code: attempt_system_unit_launcher_busy_exit,
+    reading: AttemptSystemUnitAnswerMissing,
+  ) {
+    AttemptSystemUnitHarnessStarted => false
+    AttemptSystemUnitHarnessFailed { detail } => string_contains(s: detail, pattern: "busy past the bound")
+  }
 }

@@ -239,7 +239,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -1138,6 +1138,17 @@ fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
       owner: root_principal,
       group: service,
       path: attempt_unit_spool_answer_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
+      content: "",
+    )),
+    deploy_raw(command: deploy_stage_install_owned_command(
+      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
+      mode: "0644" as NonEmptyStr,
+      owner: root_principal,
+      group: root_principal,
+      dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root),
     )),
   ]
 }
