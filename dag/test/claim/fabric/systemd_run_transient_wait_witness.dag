@@ -6,6 +6,7 @@ import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet,
   systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
+  systemd_run_property_assignments, SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
   UnitSettingValueMultiline,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
@@ -78,6 +79,28 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: _ } => false
   }
+}
+
+// THE ONE REFUSAL IS BUILT AT THE ASSIGNMENT (review 80336). A setting value carrying a newline refuses
+// where the assignment text is made, so the session placement record (the assignments fold) refuses it
+// too instead of recording a split value, and a one-line value still renders.
+test fn a_multiline_setting_refuses_at_the_assignment_and_in_the_placement_record() -> Bool {
+  let split_value = NamedUnitSetting { property: MemoryMax, value: "1G\nTasksMax=1" as NonEmptyStr }
+  let one_line = NamedUnitSetting { property: MemoryMax, value: "1G" as NonEmptyStr }
+  (match systemd_run_property_assignment(property: split_value) {
+    SystemdRunPropertyAssignmentRefused { cause: UnitSettingValueMultiline { property: _ } } => true
+    SystemdRunPropertyAssignmentRefused { cause: _ } => false
+    SystemdRunPropertyAssignmentReady { assignment: _ } => false
+  })
+    && (match systemd_run_property_assignments(properties: [one_line, split_value]) {
+      SystemdRunPropertyAssignmentsRefused { cause: UnitSettingValueMultiline { property: _ } } => true
+      SystemdRunPropertyAssignmentsRefused { cause: _ } => false
+      SystemdRunPropertyAssignmentsReady { assignments: _ } => false
+    })
+    && (match systemd_run_property_assignments(properties: [one_line]) {
+      SystemdRunPropertyAssignmentsReady { assignments: words } => words == ["MemoryMax=1G"]
+      SystemdRunPropertyAssignmentsRefused { cause: _ } => false
+    })
 }
 
 // The empty set renders as the directive with no names. That a non-empty set has no constructor is
