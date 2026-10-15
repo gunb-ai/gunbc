@@ -17,7 +17,7 @@ import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results
 
 // THE GUEST'S HALF OF A REVISION JOB, AFTER THE TREE IS VERIFIED AND BUILT.
 //
-// The guest unit (S4b-2's revision-job guest image) verifies the staged tree against the admitted
+// The guest unit (gunbc.runner.runner_revision_job_guest) verifies the staged tree against the admitted
 // tree, checks the toolchain, and builds offline, each as a typed argv step that ends the unit on
 // failure. Only then does it run THIS entry, from the gunbc it just built out of the verified tree:
 // one `gunbc test <label>` per claim of the job spec, in the spec's order, and the exits framed onto
