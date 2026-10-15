@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
-import extdeps.filesystem.filesystem_io { FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized }
+import extdeps.filesystem.filesystem_io { filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.compilers.cli_surface {
   ProcessArgvExpansion,
@@ -128,7 +128,8 @@ fn fabric_ci_capture_transport(context: FabricCiCalibrationContext, producer: St
   } else {
     let value_path = join([context.value_root, "/", coordinate, ".wire"], "")
     let name = concat(coordinate, ".wire")
-    let cleared = match Filesystem.Delete(path: value_path) {
+    let deleted = Filesystem.Delete(path: value_path)
+    let cleared = match filesystem_delete(path: value_path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind) {
       FilesystemDeleted { path: _ } => none
       FilesystemDeleteTargetAbsent { path: _ } => none
       FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: concat("stale value file not removed: ", e) }
