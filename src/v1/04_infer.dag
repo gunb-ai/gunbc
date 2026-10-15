@@ -10879,21 +10879,35 @@ fn std_optional_present_arm(scope: InferScope) -> Node? {
   }
 }
 
-fn std_optional_present_arm_name(scope: InferScope) -> String {
+fn std_optional_present_arm_name(scope: InferScope) -> String? {
   match std_optional_present_arm(scope: scope) {
-    Present { value: arm } => arm.name
-    Absent => ""
+    Present { value: arm } => Present { value: arm.name }
+    Absent => none
   }
 }
 
-fn std_optional_payload_member_name(scope: InferScope) -> String {
+fn std_optional_payload_member_name(scope: InferScope) -> String? {
   match std_optional_present_arm(scope: scope) {
     Present { value: arm } =>
       match arm.children |> first {
-        Present { value: member } => member.name
-        Absent => ""
+        Present { value: member } => Present { value: member.name }
+        Absent => none
       }
-    Absent => ""
+    Absent => none
+  }
+}
+
+fn name_is_std_optional_present_arm(scope: InferScope, name: String) -> Bool {
+  match std_optional_present_arm_name(scope: scope) {
+    Present { value: arm_name } => arm_name == name
+    Absent => false
+  }
+}
+
+fn name_is_std_optional_payload_member(scope: InferScope, name: String) -> Bool {
+  match std_optional_payload_member_name(scope: scope) {
+    Present { value: member_name } => member_name == name
+    Absent => false
   }
 }
 
@@ -11428,7 +11442,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Present { value: parent_name } => parent_name_is_std_optional(parent_name: parent_name)
       Absent => false
     })
-    let skip_owner_widen = type_name_declares_own_product || (parent_is_std_optional && type_name.value == std_optional_present_arm_name(scope: scope))
+    let skip_owner_widen = type_name_declares_own_product || (parent_is_std_optional && name_is_std_optional_present_arm(scope: scope, name: type_name.value))
     let interned_owner = match local_variant_parent {
       Present { value: parent_name } =>
         if skip_owner_widen { none } else {
@@ -11470,7 +11484,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
       }
     }
-    let is_present_ctor = parent_is_std_optional && type_name.value == std_optional_present_arm_name(scope: scope)
+    let is_present_ctor = parent_is_std_optional && name_is_std_optional_present_arm(scope: scope, name: type_name.value)
     // Present skip_owner_widen leaves raw_resolved as the Present product (Conj), not Optional.
     // variant_literal_expected_application requires the coproduct owner; expected_owner is that
     // Optional declaration when the context is nominal Optional<T>. T? still answers none.
@@ -11486,14 +11500,15 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let resolved_node = if applied_expected_owner != none {
       applied_expected_owner.value
     } else if is_present_ctor {
-      let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == std_optional_payload_member_name(scope: scope)) |> first
+      let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
       let payload_optional = match val_field {
-        Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
+        Present { value: val_fir } =>
+          with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
         Absent => raw_resolved
       }
       match expected {
         Present { value: exp } =>
-          if node_is_std_optional(n: exp, scope: scope) {
+          if node_is_std_optional(n: exp, scope: scope) || exp.return_cardinality == CardOptional {
             exp
           } else {
             match exp.inferred {
@@ -11524,9 +11539,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       name_span: name_span
     )
     let presence_ambiguity_diags = if (type_diags |> count) > 0 { [] } else { presence_ambiguity_refusal_diags }
+    let optional_owner_unrecovered_diags = if parent_is_std_optional && std_optional_present_arm(scope: scope) == none {
+      [inference_error(
+          message: concat("the literal '", type_name.value, "' is owned by std.optional Optional, but that declaration is not resolvable in this closure, so its Present arm and payload member are undecidable here; refusing rather than leaving its payload unstamped"),
+          span: span,
+          module_name: scope.module_name
+        )]
+    } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
     }
   }
 }

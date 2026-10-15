@@ -17379,20 +17379,34 @@ pub fn std_optional_present_arm(scope: Rc<InferScope>) -> Option<Rc<Node>> {
     }
 }
 
-pub fn std_optional_present_arm_name(scope: Rc<InferScope>) -> String {
+pub fn std_optional_present_arm_name(scope: Rc<InferScope>) -> Option<String> {
     match std_optional_present_arm(scope.clone()) {
-        Some(arm) => arm.name.clone(),
-        std::option::Option::None => "".to_string(),
+        Some(arm) => Some(arm.name.clone()),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
-pub fn std_optional_payload_member_name(scope: Rc<InferScope>) -> String {
+pub fn std_optional_payload_member_name(scope: Rc<InferScope>) -> Option<String> {
     match std_optional_present_arm(scope.clone()) {
         Some(arm) => match arm.children.clone().first().cloned() {
-            Some(member) => member.name.clone(),
-            std::option::Option::None => "".to_string(),
+            Some(member) => Some(member.name.clone()),
+            std::option::Option::None => std::option::Option::None,
         },
-        std::option::Option::None => "".to_string(),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn name_is_std_optional_present_arm(scope: Rc<InferScope>, name: String) -> bool {
+    match std_optional_present_arm_name(scope.clone()) {
+        Some(arm_name) => (arm_name.clone() == name.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn name_is_std_optional_payload_member(scope: Rc<InferScope>, name: String) -> bool {
+    match std_optional_payload_member_name(scope.clone()) {
+        Some(member_name) => (member_name.clone() == name.clone()),
+        std::option::Option::None => false,
     }
 }
 
@@ -18328,8 +18342,10 @@ Rc::new(FieldInferResult {
                 });
                 let skip_owner_widen = (type_name_declares_own_product.clone()
                     || (parent_is_std_optional.clone()
-                        && (type_name.clone().unwrap()
-                            == std_optional_present_arm_name(scope.clone()))));
+                        && name_is_std_optional_present_arm(
+                            scope.clone(),
+                            type_name.clone().unwrap(),
+                        )));
                 let interned_owner = match local_variant_parent.clone() {
                     Some(parent_name) => {
                         if skip_owner_widen.clone() {
@@ -18391,8 +18407,7 @@ Rc::new(FieldInferResult {
                     }
                 };
                 let is_present_ctor = (parent_is_std_optional.clone()
-                    && (type_name.clone().unwrap()
-                        == std_optional_present_arm_name(scope.clone())));
+                    && name_is_std_optional_present_arm(scope.clone(), type_name.clone().unwrap()));
                 let present_application_owner = match expected_owner.clone() {
                     Some(coproduct) => coproduct.clone(),
                     std::option::Option::None => raw_resolved.clone(),
@@ -18415,11 +18430,13 @@ Rc::new(FieldInferResult {
                             let val_field = Rc::new({
                                 let mut __result = Vec::new();
                                 for fir in fi_infer_results.iter().cloned() {
-                                    if (crate::v1_std_core::field_init_node_name_at(
-                                        fir.typed_field.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    ) == std_optional_payload_member_name(scope.clone()))
-                                    {
+                                    if name_is_std_optional_payload_member(
+                                        scope.clone(),
+                                        crate::v1_std_core::field_init_node_name_at(
+                                            fir.typed_field.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ),
+                                    ) {
                                         __result.push(fir);
                                     }
                                 }
@@ -18437,7 +18454,10 @@ Rc::new(FieldInferResult {
                             };
                             match expected.clone() {
                                 Some(exp) => {
-                                    if node_is_std_optional(exp.clone(), scope.clone()) {
+                                    if (node_is_std_optional(exp.clone(), scope.clone())
+                                        || (exp.return_cardinality.clone()
+                                            == Cardinality::CardOptional))
+                                    {
                                         exp.clone()
                                     } else {
                                         match exp.inferred.clone().as_deref().cloned() {
@@ -18500,20 +18520,30 @@ Rc::new(FieldInferResult {
                 } else {
                     presence_ambiguity_refusal_diags.clone()
                 };
+                let optional_owner_unrecovered_diags = if (parent_is_std_optional.clone()
+                    && (std_optional_present_arm(scope.clone()) == std::option::Option::None))
+                {
+                    Rc::new(vec![inference_error(v1_rt::concat(v1_rt::concat("the literal '".to_string(), type_name.clone().unwrap()), "' is owned by std.optional Optional, but that declaration is not resolvable in this closure, so its Present arm and payload member are undecidable here; refusing rather than leaving its payload unstamped".to_string()), span.clone(), scope.module_name.clone())])
+                } else {
+                    Rc::new(vec![])
+                };
                 Rc::new(InferResult {
                     typed: texpr.clone(),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
-                                    type_diags.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                        type_diags.clone(),
+                                    ),
+                                    sole_ctor_diags.clone(),
                                 ),
-                                sole_ctor_diags.clone(),
+                                missing_field_diags.clone(),
                             ),
-                            missing_field_diags.clone(),
+                            presence_ambiguity_diags.clone(),
                         ),
-                        presence_ambiguity_diags.clone(),
+                        optional_owner_unrecovered_diags.clone(),
                     ),
                 })
             }

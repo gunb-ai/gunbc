@@ -1006,6 +1006,42 @@ mod compiler_tests {
     }
 
     #[test]
+    fn present_empty_list_fold_init_emits_no_unit_element() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let mut srcs: Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> = vec![];
+                for (path, content) in [("dag/extdeps/currency/currency.dag", include_str!("../../../../dag/extdeps/currency/currency.dag")), ("dag/extdeps/external_authority.dag", include_str!("../../../../dag/extdeps/external_authority.dag")), ("dag/extdeps/units/dimensionless.dag", include_str!("../../../../dag/extdeps/units/dimensionless.dag")), ("dag/extdeps/units/iec_80000_13.dag", include_str!("../../../../dag/extdeps/units/iec_80000_13.dag")), ("dag/extdeps/units/iso8601.dag", include_str!("../../../../dag/extdeps/units/iso8601.dag")), ("dag/extdeps/units/iso_80000_3.dag", include_str!("../../../../dag/extdeps/units/iso_80000_3.dag")), ("dag/extdeps/uri.dag", include_str!("../../../../dag/extdeps/uri.dag")), ("dag/extdeps/version.dag", include_str!("../../../../dag/extdeps/version.dag")), ("dag/extdeps/version/semver.dag", include_str!("../../../../dag/extdeps/version/semver.dag")), ("dag/std/algebra.dag", include_str!("../../../../dag/std/algebra.dag")), ("dag/std/checked_arithmetic.dag", include_str!("../../../../dag/std/checked_arithmetic.dag")), ("dag/std/coercion.dag", include_str!("../../../../dag/std/coercion.dag")), ("dag/std/computation.dag", include_str!("../../../../dag/std/computation.dag")), ("dag/std/constructors.dag", include_str!("../../../../dag/std/constructors.dag")), ("dag/std/decimal.dag", include_str!("../../../../dag/std/decimal.dag")), ("dag/std/decl_ref.dag", include_str!("../../../../dag/std/decl_ref.dag")), ("dag/std/dissolution.dag", include_str!("../../../../dag/std/dissolution.dag")), ("dag/std/error_primitives.dag", include_str!("../../../../dag/std/error_primitives.dag")), ("dag/std/induction.dag", include_str!("../../../../dag/std/induction.dag")), ("dag/std/integer.dag", include_str!("../../../../dag/std/integer.dag")), ("dag/std/keyed_roster.dag", include_str!("../../../../dag/std/keyed_roster.dag")), ("dag/std/keyed_row.dag", include_str!("../../../../dag/std/keyed_row.dag")), ("dag/std/literal_elaboration.dag", include_str!("../../../../dag/std/literal_elaboration.dag")), ("dag/std/machine_constraints.dag", include_str!("../../../../dag/std/machine_constraints.dag")), ("dag/std/measure.dag", include_str!("../../../../dag/std/measure.dag")), ("dag/std/nat.dag", include_str!("../../../../dag/std/nat.dag")), ("dag/std/optional.dag", include_str!("../../../../dag/std/optional.dag")), ("dag/std/render_repeat_string_bootstrap.dag", include_str!("../../../../dag/std/render_repeat_string_bootstrap.dag")), ("dag/std/roster_frontier.dag", include_str!("../../../../dag/std/roster_frontier.dag")), ("dag/std/syntax.dag", include_str!("../../../../dag/std/syntax.dag")), ("dag/std/termination.dag", include_str!("../../../../dag/std/termination.dag")), ("dag/std/types.dag", include_str!("../../../../dag/std/types.dag")), ("dag/std/unicode/types.dag", include_str!("../../../../dag/std/unicode/types.dag"))] {
+                    srcs.push(std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: path.to_string(), content: content.to_string() }));
+                }
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(srcs.into_iter().collect()), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let out = result.files.iter().find(|f| f.path.contains("semver")).expect("extdeps.version.semver must emit");
+                assert!(!out.content.contains("Vec<()>"), "a Present empty-list fold init (semver_identifier_list_parse) must not erase its element type to (); emitted Rust annotates the fold accumulator with Vec<()>");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("present_empty_list_fold_init_emits_no_unit_element panicked");
+    }
+
+    #[test]
+    fn kernel_mint_reachable_without_std_optional_refuses_typed() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_no_optional.dag".to_string(),
+                    content: "module probe.no_optional\nfn f() -> Optional<Int> { Present { value: 1 } }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(messages.iter().any(|m| m.contains("refusing rather than leaving its payload unstamped")), "the kernel mint is reachable but std.optional is not in the closure: a typed refusal, never a silent false; got {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("kernel_mint_reachable_without_std_optional_refuses_typed panicked");
+    }
+
+    #[test]
     fn present_list_into_an_optional_marked_list_formal_is_admitted() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
