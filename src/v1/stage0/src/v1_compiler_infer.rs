@@ -14575,32 +14575,18 @@ Rc::new(InferResult {
                                 scope.type_env.clone().symbol_index.clone(),
                                 recv_spine.dotted.clone(),
                             ) {
-                                let dotted = v1_rt::concat(
-                                    v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
-                                    method_name.clone(),
-                                );
-                                Some(infer_expr(
-                                    crate::v1_std_core::make_named_expr_node(
-                                        texpr.occurrence_identity.clone(),
-                                        dotted.clone(),
-                                        Rc::new(ExprData::ExprCall {
-                                            call_semantics: Some(Rc::new(
-                                                CallSemantics::PlainCallSemantics {
-                                                    target: Rc::new(
-                                                        CallTargetIdentity::CallableTargetUndetermined,
-                                                    ),
-                                                },
-                                            )),
-                                            descent_evidence: std::option::Option::None,
-                                        }),
-                                        mc_args.clone(),
-                                        std::option::Option::None,
-                                        span.clone(),
-                                        kernel_span(dotted.clone()),
-                                    ),
-                                    scope.clone(),
-                                    expected.clone(),
-                                ))
+                                {
+                                    let dotted = v1_rt::concat(
+                                        v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
+                                        method_name.clone(),
+                                    );
+                                    Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
+    call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
+    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+})),
+    descent_evidence: std::option::Option::None,
+}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone()))
+                                }
                             } else {
                                 std::option::Option::None
                             }
