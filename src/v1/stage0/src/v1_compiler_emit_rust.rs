@@ -67,7 +67,7 @@ pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeBinding, GlobalBareLookupState, BareOccurrenceBinding, UnitVariantPhantomLookup};
-pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref};
+pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 pub use crate::v1_compiler_infer_items::{item_kind, item_is_effectful_callee};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
@@ -82,8 +82,7 @@ pub use crate::v1_compiler_ownership::{analyze_ownership, analyze_single_fold, b
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
-pub use crate::v1_compiler_trait_derive_emit::{KeyedMapVerdict};
-pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
+pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
 pub use crate::v1_std_core::{ParsedModuleItemKind, Node, InferredNode, NewlineIndex, ExprData, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, TextFile, ErrorNode, UnaryOpKind, StringPart, Connective, Cardinality, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 pub use crate::v1_std_core::{call_semantics_target, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, find_child_named, tuple_type_name, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, make_expr_node, field_binding_pattern, make_error_node, is_error_diagnostic, resource_use_resource, unaryop_operand, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, is_rest_transport, transport_base_path, empty_intern_table};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
@@ -137,7 +136,6 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomP
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
-use crate::v1_compiler_trait_derive_emit::KeyedMapVerdict::*;
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
 use crate::v1_std_core::Cardinality::{Required, CardOptional};
@@ -6785,6 +6783,10 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             base_info.type_decl_items.clone(),
             closure_source_indices.clone(),
         );
+        let map_key_bounded = crate::v1_compiler_trait_derive_emit::v1_map_key_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            closure_source_indices.clone(),
+        );
         let clone_impl_required =
             crate::v1_compiler_trait_derive_emit::v1_clone_impl_required_type_params(
                 base_info.type_decl_items.clone(),
@@ -6807,6 +6809,8 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             fn_decl_items: base_info.fn_decl_items.clone(),
             fn_map_key_bounds: v1_fn_map_key_bound_table(
                 base_info.fn_decl_items.clone(),
+                base_info.type_decl_items.clone(),
+                map_key_bounded.clone(),
                 closure_source_indices.clone(),
             ),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -6822,10 +6826,13 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             clone_bounded_type_params: clone_bounded.clone(),
             map_key_required_type_names: map_key_required.clone(),
             clone_impl_required_type_params: clone_impl_required.clone(),
+            map_key_bounded_type_params: map_key_bounded.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         });
         let registry = typed.item_registry.clone();
         let anonymous_record_diags = Rc::new({
@@ -8070,6 +8077,10 @@ pub fn emit_module(
             base_info.type_decl_items.clone(),
             merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
         );
+        let map_key_bounded = crate::v1_compiler_trait_derive_emit::v1_map_key_bounded_type_params(
+            base_info.type_decl_items.clone(),
+            merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
+        );
         let clone_impl_required =
             crate::v1_compiler_trait_derive_emit::v1_clone_impl_required_type_params(
                 base_info.type_decl_items.clone(),
@@ -8092,6 +8103,8 @@ pub fn emit_module(
             fn_decl_items: base_info.fn_decl_items.clone(),
             fn_map_key_bounds: v1_fn_map_key_bound_table(
                 base_info.fn_decl_items.clone(),
+                base_info.type_decl_items.clone(),
+                map_key_bounded.clone(),
                 merged_module_source_indices(Rc::new(vec![typed_module.clone()])),
             ),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -8107,10 +8120,13 @@ pub fn emit_module(
             clone_bounded_type_params: clone_bounded.clone(),
             map_key_required_type_names: map_key_required.clone(),
             clone_impl_required_type_params: clone_impl_required.clone(),
+            map_key_bounded_type_params: map_key_bounded.clone(),
             fn_generic_param_names: base_info.fn_generic_param_names.clone(),
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: std::option::Option::None,
             expected_type: std::option::Option::None,
+            tco_cursor_param: "".to_string(),
+            tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         });
         let shared_types = emit_info.shared_types.clone();
         let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
@@ -11100,10 +11116,13 @@ pub fn emit_module_full(
             clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
             map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
             clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+            map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
             fn_type_env: scope.type_env.clone(),
             fn_return_type: emit_info.fn_return_type.clone(),
             expected_type: emit_info.expected_type.clone(),
+            tco_cursor_param: emit_info.tco_cursor_param.clone(),
+            tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
         });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
             build_scoped_data_item_index(typed_module.clone(), data_items.clone()),
@@ -16162,10 +16181,13 @@ pub fn emit_typed_item(
                         clone_impl_required_type_params: emit_info
                             .clone_impl_required_type_params
                             .clone(),
+                        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
                         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                         fn_type_env: emit_info.fn_type_env.clone(),
                         fn_return_type: emit_info.fn_return_type.clone(),
                         expected_type: emit_info.expected_type.clone(),
+                        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                     });
                     let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
                         registry.clone(),
@@ -16509,16 +16531,26 @@ pub fn emit_item_header_clone_param_names(
 pub fn emit_type_params_from_clone_param_names(
     params: Rc<Vec<Rc<Node>>>,
     clone_param_names: Rc<Vec<String>>,
+    key_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((clone_param_names.clone().len() as i64) > 0) {
-        crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_clone_bounds(
+    if ((key_param_names.clone().len() as i64) > 0) {
+        crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_map_key_bounds(
             params.clone(),
             clone_param_names.clone(),
+            key_param_names.clone(),
             source_indices.clone(),
         )
     } else {
-        emit_type_params(params.clone(), source_indices.clone())
+        if ((clone_param_names.clone().len() as i64) > 0) {
+            crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_clone_bounds(
+                params.clone(),
+                clone_param_names.clone(),
+                source_indices.clone(),
+            )
+        } else {
+            emit_type_params(params.clone(), source_indices.clone())
+        }
     }
 }
 
@@ -16613,6 +16645,23 @@ pub fn emit_type_def_from_connective(
                 let type_params = emit_type_params_from_clone_param_names(
                     item.params.clone(),
                     header_clone_param_names.clone(),
+                    crate::v1_compiler_trait_derive_emit::v1_item_map_key_bounded_param_names(
+                        crate::v1_compiler_infer_emit_info::type_decl_identity(
+                            env.module_path.clone(),
+                            item_text.clone(),
+                        ),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in item.params.clone().iter().cloned() {
+                                __result.push(crate::v1_std_core::generic_param_name_at(
+                                    p.clone(),
+                                    env.source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        emit_info.map_key_bounded_type_params.clone(),
+                    ),
                     env.source_indices.clone(),
                 );
                 let generic_param_names = Rc::new({
@@ -16807,11 +16856,7 @@ pub fn emit_type_def_from_connective(
                                 emit_info.clone(),
                                 env.source_indices.clone(),
                             );
-                            let type_params = emit_type_params_from_clone_param_names(
-                                item.params.clone(),
-                                header_clone_param_names.clone(),
-                                env.source_indices.clone(),
-                            );
+                            let type_params = emit_type_params_from_clone_param_names(item.params.clone(), header_clone_param_names.clone(), crate::v1_compiler_trait_derive_emit::v1_item_map_key_bounded_param_names(crate::v1_compiler_infer_emit_info::type_decl_identity(env.module_path.clone(), item_text.clone()), Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), env.source_indices.clone())); } __result }), emit_info.map_key_bounded_type_params.clone()), env.source_indices.clone());
                             let clone_bound_refusal = emit_item_clone_bound_refusal(
                                 item.clone(),
                                 item_text.clone(),
@@ -18953,82 +18998,60 @@ pub fn rust_map_key_bound_traits() -> Rc<Vec<String>> {
     ])
 }
 
-pub fn v1_type_expr_all_names(
-    type_expr: Rc<Node>,
+pub fn v1_fn_signature_map_key_bound_names(
+    value_params: Rc<Vec<Rc<Node>>>,
+    ret: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    type_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    v1_rt::concat(
-        Rc::new(vec![crate::v1_std_core::authored_name_at(
+    {
+        let direct = v1_fn_signature_map_key_param_names(
+            value_params.clone(),
+            ret.clone(),
+            generic_param_names.clone(),
             source_indices.clone(),
-            crate::v1_compiler_infer_types::child_type_node(type_expr.clone()),
-        )]),
-        v1_authored_type_expr_names(type_expr.clone(), source_indices.clone()),
-    )
-}
-
-pub fn v1_authored_type_expr_names(
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        v1_rt::concat(
-            Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                type_expr.clone(),
-            )]),
+        );
+        let sig_type_exprs = v1_rt::rc_list_push(
             Rc::new({
                 let mut __result = Vec::new();
-                for c in type_expr.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*v1_authored_type_expr_names(c.clone(), source_indices.clone()))
-                            .iter()
-                            .cloned(),
-                    );
+                for p in value_params.iter().cloned() {
+                    __result.push(crate::v1_std_core::param_node_type_expr(p.clone()));
                 }
                 __result
             }),
-        )
-    })
-}
-
-pub fn v1_map_key_nested_names_in_type_expr(
-    type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match (*crate::v1_compiler_trait_derive_emit::v1_type_expr_keyed_map_verdict(
-            type_expr.clone(),
-            source_indices.clone(),
-        ))
-        .clone()
-        {
-            KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
-                Some(key_child) => {
-                    v1_type_expr_all_names(key_child.clone(), source_indices.clone())
-                }
-                std::option::Option::None => Rc::new(vec![]),
-            },
-            KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
-            KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            own.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*v1_map_key_nested_names_in_type_expr(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+            ret.clone(),
+        );
+        let via_type = Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for te in sig_type_exprs.iter().cloned() {
+                        if crate::v1_compiler_trait_derive_emit::v1_type_expr_wf_needs_clone_param(
+                            g.clone(),
+                            te.clone(),
+                            type_bounds.clone(),
+                            type_decl_items.clone(),
                             source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __result.push(g);
                 }
-                __result
-            }),
+            }
+            __result
+        });
+        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+            direct.clone(),
+            via_type.clone(),
         )
-    })
+    }
 }
 
 pub fn v1_fn_signature_map_key_param_names(
@@ -19042,7 +19065,7 @@ pub fn v1_fn_signature_map_key_param_names(
             let mut __result = Vec::new();
             for p in value_params.iter().cloned() {
                 __result.extend(
-                    (*v1_map_key_nested_names_in_type_expr(
+                    (*crate::v1_compiler_trait_derive_emit::v1_map_key_nested_names_in_type_expr(
                         crate::v1_std_core::param_node_type_expr(p.clone()),
                         source_indices.clone(),
                     ))
@@ -19052,7 +19075,10 @@ pub fn v1_fn_signature_map_key_param_names(
             }
             __result
         });
-        let from_ret = v1_map_key_nested_names_in_type_expr(ret.clone(), source_indices.clone());
+        let from_ret = crate::v1_compiler_trait_derive_emit::v1_map_key_nested_names_in_type_expr(
+            ret.clone(),
+            source_indices.clone(),
+        );
         crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
             for n in v1_rt::concat(from_params.clone(), from_ret.clone())
@@ -19851,6 +19877,8 @@ pub fn v1_call_site_forwarded_param_names(
 
 pub fn v1_fn_map_key_bound_table(
     fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
+    type_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
@@ -19872,10 +19900,12 @@ pub fn v1_fn_map_key_bound_table(
                         }
                         __result
                     });
-                    let bound = v1_fn_signature_map_key_param_names(
+                    let bound = v1_fn_signature_map_key_bound_names(
                         function_value_params(item.params.clone()),
                         crate::v1_compiler_infer_types::resolved_type(item.clone()),
                         generics.clone(),
+                        type_decl_items.clone(),
+                        type_bounds.clone(),
                         source_indices.clone(),
                     );
                     if ((bound.clone().len() as i64) > 0) {
@@ -20205,10 +20235,12 @@ pub fn emit_fn_def(
         );
         let map_key_param_names =
             crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                v1_fn_signature_map_key_param_names(
+                v1_fn_signature_map_key_bound_names(
                     value_params.clone(),
                     inferred.clone(),
                     generic_param_names.clone(),
+                    emit_info.type_decl_items.clone(),
+                    emit_info.map_key_bounded_type_params.clone(),
                     si.clone(),
                 ),
                 v1_call_forwarding_bound_param_names(
@@ -20394,6 +20426,18 @@ pub fn emit_fn_def(
                     emit_info.variant_to_enum.clone(),
                     scope.type_env.clone(),
                 );
+                let cursor_plan = tco_cursor_plan(
+                    body.clone(),
+                    name.clone(),
+                    value_params.clone(),
+                    body_emit_info.clone(),
+                    si.clone(),
+                );
+                let cursor_emit_info = Rc::new(EmitGraphInfo {
+                    tco_cursor_param: cursor_plan.param.clone(),
+                    tco_cursor_tails: cursor_plan.tails.clone(),
+                    ..(*body_emit_info.clone()).clone()
+                });
                 let body_str = emit_typed_tco_body(
                     body.clone(),
                     name.clone(),
@@ -20402,7 +20446,7 @@ pub fn emit_fn_def(
                     body_scope.clone(),
                     v1_rt::int_add(depth.clone(), 1),
                     shared_types.clone(),
-                    body_emit_info.clone(),
+                    cursor_emit_info.clone(),
                 );
                 let kw = rust_items().func_keyword.clone();
                 v1_rt::concat(
@@ -29120,10 +29164,15 @@ pub fn emit_rust_fold_method_call(
                             clone_impl_required_type_params: emit_info
                                 .clone_impl_required_type_params
                                 .clone(),
+                            map_key_bounded_type_params: emit_info
+                                .map_key_bounded_type_params
+                                .clone(),
                             fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                             fn_type_env: emit_info.fn_type_env.clone(),
                             fn_return_type: emit_info.fn_return_type.clone(),
                             expected_type: emit_info.expected_type.clone(),
+                            tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                            tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                         }),
                         std::option::Option::None => emit_info.clone(),
                     }
@@ -29172,10 +29221,15 @@ pub fn emit_rust_fold_method_call(
                                 clone_impl_required_type_params: emit_info
                                     .clone_impl_required_type_params
                                     .clone(),
+                                map_key_bounded_type_params: emit_info
+                                    .map_key_bounded_type_params
+                                    .clone(),
                                 fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
                                 fn_type_env: emit_info.fn_type_env.clone(),
                                 fn_return_type: emit_info.fn_return_type.clone(),
                                 expected_type: emit_info.expected_type.clone(),
+                                tco_cursor_param: emit_info.tco_cursor_param.clone(),
+                                tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                             }),
                             std::option::Option::None => emit_info.clone(),
                         }
@@ -31553,8 +31607,13 @@ pub struct FmBindAcc {
     pub out: String,
 }
 
-pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>) -> String {
+pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>, cursor: String) -> String {
     {
+        let offset = if (cursor.clone() == "".to_string()) {
+            "".to_string()
+        } else {
+            v1_rt::concat(cursor.clone(), " + ".to_string())
+        };
         let folded = head_binds.iter().cloned().fold(
             Rc::new(FmBindAcc {
                 index: 0,
@@ -31570,10 +31629,13 @@ pub fn fm_head_bind_lets(head_binds: Rc<Vec<String>>) -> String {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(acc.out.clone(), "let ".to_string()),
-                                        hb.clone(),
+                                        v1_rt::concat(
+                                            v1_rt::concat(acc.out.clone(), "let ".to_string()),
+                                            hb.clone(),
+                                        ),
+                                        " = (*__fm)[".to_string(),
                                     ),
-                                    " = (*__fm)[".to_string(),
+                                    offset.clone(),
                                 ),
                                 crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
                             ),
@@ -31592,11 +31654,13 @@ pub fn fm_spine_binds(
     head_binds: Rc<Vec<String>>,
     tail_bind: String,
     exact: bool,
+    cursor: String,
 ) -> String {
     {
-        let head_lets = fm_head_bind_lets(head_binds.clone());
-        let tail_let = if ((exact.clone() || (tail_bind.clone() == "_".to_string()))
+        let head_lets = fm_head_bind_lets(head_binds.clone(), cursor.clone());
+        let tail_let = if (((exact.clone() || (tail_bind.clone() == "_".to_string()))
             || (tail_bind.clone() == "".to_string()))
+            || (cursor.clone() != "".to_string()))
         {
             "".to_string()
         } else {
@@ -31622,29 +31686,43 @@ pub fn fm_spine_binds(
     }
 }
 
-pub fn fm_spine_condition(len: i64, exact: bool) -> String {
-    if exact.clone() {
-        if (len.clone() == 0) {
-            "__fm.is_empty()".to_string()
+pub fn fm_spine_condition(len: i64, exact: bool, cursor: String) -> String {
+    {
+        let remaining = if (cursor.clone() == "".to_string()) {
+            "__fm.len()".to_string()
         } else {
             v1_rt::concat(
-                "__fm.len() == ".to_string(),
-                crate::v1_compiler_emit_core_support::to_string(len.clone()),
+                v1_rt::concat("(__fm.len() - ".to_string(), cursor.clone()),
+                ")".to_string(),
             )
-        }
-    } else {
-        if (len.clone() == 0) {
-            "true".to_string()
+        };
+        if exact.clone() {
+            if (len.clone() == 0) {
+                if (cursor.clone() == "".to_string()) {
+                    "__fm.is_empty()".to_string()
+                } else {
+                    v1_rt::concat(remaining.clone(), " == 0".to_string())
+                }
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(remaining.clone(), " == ".to_string()),
+                    crate::v1_compiler_emit_core_support::to_string(len.clone()),
+                )
+            }
         } else {
-            v1_rt::concat(
-                "__fm.len() >= ".to_string(),
-                crate::v1_compiler_emit_core_support::to_string(len.clone()),
-            )
+            if (len.clone() == 0) {
+                "true".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(remaining.clone(), " >= ".to_string()),
+                    crate::v1_compiler_emit_core_support::to_string(len.clone()),
+                )
+            }
         }
     }
 }
 
-pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String) -> Rc<FmChainPiece> {
+pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String, cursor: String) -> Rc<FmChainPiece> {
     match (*plan.analysis.clone()).clone() {
         FmArmAnalysis::FmSpine {
             exact: e,
@@ -31653,8 +31731,14 @@ pub fn fm_chain_piece(plan: Rc<FmArmPlan>, body: String) -> Rc<FmChainPiece> {
             tail_bind: tb,
             ..
         } => Rc::new(FmChainPiece {
-            cond: fm_spine_condition(l.clone(), e.clone()),
-            binds: fm_spine_binds(l.clone(), hbs.clone(), tb.clone(), e.clone()),
+            cond: fm_spine_condition(l.clone(), e.clone(), cursor.clone()),
+            binds: fm_spine_binds(
+                l.clone(),
+                hbs.clone(),
+                tb.clone(),
+                e.clone(),
+                cursor.clone(),
+            ),
             body: body.clone(),
         }),
         FmArmAnalysis::FmUnsupportedArm { cause: c, .. } => Rc::new(FmChainPiece {
@@ -31746,6 +31830,7 @@ pub fn emit_native_freemonoid_match(
                                 emit_info.clone(),
                                 1024,
                             ),
+                            "".to_string(),
                         ));
                     }
                     __result
@@ -35303,6 +35388,44 @@ pub fn rust_operand_realization(
     )
 }
 
+pub fn rust_operand_alias_or_refinement_continue(
+    rt: Rc<Node>,
+    scope: Rc<InferScope>,
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    if (fuel.clone() <= 0) {
+        std::option::Option::None
+    } else {
+        if crate::v1_compiler_infer::is_where_refinement_type(rt.clone()) {
+            match rt.children.clone().first().cloned() {
+                Some(base) => match crate::v1_compiler_infer_env::lookup_type_for(
+                    scope.type_env.clone(),
+                    base.clone(),
+                ) {
+                    Some(r) => Some(r.clone()),
+                    std::option::Option::None => Some(base.clone()),
+                },
+                std::option::Option::None => std::option::Option::None,
+            }
+        } else {
+            {
+                let decl = match rt.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+                    _ => rt.clone(),
+                };
+                if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                    decl.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    Some(crate::v1_compiler_infer_types::resolved_type(decl.clone()))
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    }
+}
+
 pub fn rust_operand_realization_of_type(
     mut __tco_loop_rt: Rc<Node>,
     mut __tco_loop_scope: Rc<InferScope>,
@@ -35369,18 +35492,9 @@ pub fn rust_operand_realization_of_type(
     Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_realization_decision(RenderTarget::Rust, d.decl_name.clone(), provenance.clone())) {
                             break Rc::new(OperandRealization::HostNumericOperand);
 } else {
-                            let decl = match rt.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-    _ => rt.clone(),
-};
-if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
-                                match rt.children.clone().first().cloned() {
-    Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
-    Some(r) => r.clone(),
-    std::option::Option::None => base.clone(),
-};
-{
-                                    let __tco_0 = base_resolved.clone();
+                            match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel.clone()) {
+    Some(next) => { {
+                                let __tco_0 = next.clone();
 let __tco_1 = scope;
 let __tco_2 = v1_rt::int_sub(fuel, 1);
 __tco_loop_rt = __tco_0;
@@ -35391,23 +35505,6 @@ continue;
     std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
     declaration: d.clone(),
 }); },
-}
-} else {
-                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
-                                    {
-                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
-let __tco_1 = scope;
-let __tco_2 = v1_rt::int_sub(fuel, 1);
-__tco_loop_rt = __tco_0;
-__tco_loop_scope = __tco_1;
-__tco_loop_fuel = __tco_2;
-continue;
-}
-} else {
-                                    break Rc::new(OperandRealization::StructuralOperand {
-    declaration: d.clone(),
-});
-}
 }
 } },
 }
@@ -35420,6 +35517,24 @@ continue;
     }
 }
 
+pub fn rust_operand_realization_of_stamped_declaration(
+    od: Rc<OperandDeclaration>,
+    scope: Rc<InferScope>,
+) -> Rc<OperandRealization> {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        scope.type_env.clone().symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(od.declaration.clone().module_path.clone(), ".".to_string()),
+            od.declaration.clone().decl_name.clone(),
+        ),
+    ) {
+        Some(resolved) => rust_operand_realization_of_type(resolved.clone(), scope.clone(), 8),
+        std::option::Option::None => Rc::new(OperandRealization::StructuralOperand {
+            declaration: od.declaration.clone(),
+        }),
+    }
+}
+
 pub fn binop_operator_realization(
     op: BinOp,
     operand: Option<Rc<OperandDeclaration>>,
@@ -35428,22 +35543,7 @@ pub fn binop_operator_realization(
 ) -> Rc<OperatorRealization> {
     {
         let realization = match operand.clone() {
-            Some(od) => {
-                if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-                    od.declaration.clone(),
-                    crate::v1_compiler_coercion::type_realization_decision(
-                        RenderTarget::Rust,
-                        od.declaration.clone().decl_name.clone(),
-                        od.provenance.clone(),
-                    ),
-                ) {
-                    Rc::new(OperandRealization::HostNumericOperand)
-                } else {
-                    Rc::new(OperandRealization::StructuralOperand {
-                        declaration: od.declaration.clone(),
-                    })
-                }
-            }
+            Some(od) => rust_operand_realization_of_stamped_declaration(od.clone(), scope.clone()),
             std::option::Option::None => rust_operand_realization(left.clone(), scope.clone()),
         };
         crate::std_operator_realization::operator_realization_for(
@@ -36295,26 +36395,115 @@ pub fn emit_typed_tco_body(
             shared_types.clone(),
             emit_info.clone(),
         );
-        v1_rt::concat(
+        let si = scope.type_env.clone().source_indices.clone();
+        let cursor_param = emit_info.tco_cursor_param.clone();
+        if (cursor_param.clone() == "".to_string()) {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        "loop {\n".to_string(),
-                        crate::v1_compiler_emit::tco_loop_iteration_lets(
-                            params.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
+                        v1_rt::concat(
+                            "loop {\n".to_string(),
+                            crate::v1_compiler_emit::tco_loop_iteration_lets(
+                                params.clone(),
+                                si.clone(),
+                                v1_rt::int_add(depth.clone(), 1),
+                            ),
                         ),
+                        crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                            depth.clone(),
+                            1,
+                        )),
                     ),
-                    crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
-                        depth.clone(),
-                        1,
-                    )),
+                    inner.clone(),
                 ),
-                inner.clone(),
-            ),
-            "\n}".to_string(),
-        )
+                "\n}".to_string(),
+            )
+        } else {
+            {
+                let slot = crate::v1_compiler_emit::emit_ident(
+                    crate::v1_compiler_emit::tco_loop_slot_name(cursor_param.clone()),
+                    RenderTarget::Rust,
+                );
+                let cursor_let = v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            crate::v1_compiler_emit_core_support::make_indent(
+                                                v1_rt::int_add(depth.clone(), 1),
+                                            ),
+                                            "#[allow(unused_mut)]\n".to_string(),
+                                        ),
+                                        crate::v1_compiler_emit_core_support::make_indent(
+                                            v1_rt::int_add(depth.clone(), 1),
+                                        ),
+                                    ),
+                                    "let mut ".to_string(),
+                                ),
+                                crate::v1_compiler_emit::emit_ident(
+                                    cursor_param.clone(),
+                                    RenderTarget::Rust,
+                                ),
+                            ),
+                            " = ".to_string(),
+                        ),
+                        slot.clone(),
+                    ),
+                    ".clone();\n".to_string(),
+                );
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "{ let mut ".to_string(),
+                                                    tco_cursor_name(),
+                                                ),
+                                                ": usize = 0;\n".to_string(),
+                                            ),
+                                            crate::v1_compiler_emit_core_support::make_indent(
+                                                v1_rt::int_add(depth.clone(), 1),
+                                            ),
+                                        ),
+                                        "loop {\n".to_string(),
+                                    ),
+                                    crate::v1_compiler_emit::tco_loop_iteration_lets(
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for p in params.iter().cloned() {
+                                                if (crate::v1_std_core::param_node_name_at(
+                                                    p.clone(),
+                                                    si.clone(),
+                                                ) != cursor_param.clone())
+                                                {
+                                                    __result.push(p);
+                                                }
+                                            }
+                                            __result
+                                        }),
+                                        si.clone(),
+                                        v1_rt::int_add(depth.clone(), 1),
+                                    ),
+                                ),
+                                cursor_let.clone(),
+                            ),
+                            crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(
+                                depth.clone(),
+                                1,
+                            )),
+                        ),
+                        inner.clone(),
+                    ),
+                    "\n}\n}".to_string(),
+                )
+            }
+        }
     }
 }
 
@@ -36454,8 +36643,625 @@ pub fn emit_rust_tco_if(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CursorTail {
+    pub name: String,
+    pub depth: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CursorWalk {
+    pub ok: bool,
+    pub tails: Rc<Vec<Rc<CursorTail>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TcoCursorPlan {
+    pub param: String,
+    pub tails: Rc<HashMap<String, i64>>,
+}
+
+pub fn tco_cursor_name() -> String {
+    "__tco_cursor".to_string()
+}
+
+pub fn no_tco_cursor_plan() -> Rc<TcoCursorPlan> {
+    Rc::new(TcoCursorPlan {
+        param: "".to_string(),
+        tails: v1_rt::rc_empty_map::<String, i64>(),
+    })
+}
+
+pub fn cursor_walk_fail() -> Rc<CursorWalk> {
+    Rc::new(CursorWalk {
+        ok: false,
+        tails: Rc::new(vec![]),
+    })
+}
+
+pub fn cursor_walk_ok(tails: Rc<Vec<Rc<CursorTail>>>) -> Rc<CursorWalk> {
+    Rc::new(CursorWalk {
+        ok: true,
+        tails: tails.clone(),
+    })
+}
+
+pub fn cursor_walk_join(a: Rc<CursorWalk>, b: Rc<CursorWalk>) -> Rc<CursorWalk> {
+    if (a.ok.clone() && b.ok.clone()) {
+        cursor_walk_ok(v1_rt::concat(a.tails.clone(), b.tails.clone()))
+    } else {
+        cursor_walk_fail()
+    }
+}
+
+pub fn cursor_name_in(names: Rc<Vec<String>>, name: String) -> bool {
+    {
+        let mut __found = false;
+        for x in names.iter().cloned() {
+            if (x.clone() == name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn cursor_mentions(
+    node: Rc<Node>,
+    names: Rc<Vec<String>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for nm in names.iter().cloned() {
+            if expr_references_var(node.clone(), nm.clone(), si.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn pattern_binder_names(
+    pattern: Rc<MatchPattern>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::Bind { declaration: d, .. } => Rc::new(vec![d.name.clone()]),
+            MatchPattern::VariantPattern {
+                field_bindings: fbs,
+                ..
+            } => Rc::new({
+                let mut __result = Vec::new();
+                for fb in fbs.iter().cloned() {
+                    __result.extend(
+                        (*pattern_binder_names(
+                            crate::v1_std_core::field_binding_pattern(fb.clone()),
+                            si.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            MatchPattern::LitPattern { value: _, .. } => Rc::new(vec![]),
+            MatchPattern::Wildcard => Rc::new(vec![]),
+        }
+    })
+}
+
+pub fn tco_match_scrut_type_name(
+    scrutinee: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match scrutinee.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            if is_optional.clone() {
+                crate::v1_std_core::authored_name_at(
+                    si.clone(),
+                    crate::v1_std_core::with_required_cardinality(rt.clone()),
+                )
+            } else {
+                crate::v1_std_core::authored_name_at(si.clone(), rt.clone())
+            }
+        }
+        _ => "".to_string(),
+    }
+}
+
+pub fn tco_match_is_freemonoid(
+    scrutinee: Rc<Node>,
+    arms: Rc<Vec<Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    arms_are_freemonoid_coproduct(
+        arms.clone(),
+        tco_match_scrut_type_name(scrutinee.clone(), si.clone()),
+        emit_info.type_summaries.clone(),
+    )
+}
+
+pub fn cursor_scrutinee_is(
+    scrutinee: Rc<Node>,
+    param: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*scrutinee.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => (crate::v1_std_core::expr_var_name_at(scrutinee.clone(), si.clone()) == param.clone()),
+        _ => false,
+    }
+}
+
+pub fn cursor_walk_arm(
+    plan: Rc<FmArmPlan>,
+    p: String,
+    in_tails: Rc<Vec<String>>,
+    fn_name: String,
+    param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CursorWalk> {
+    match (*plan.analysis.clone()).clone() {
+        FmArmAnalysis::FmUnsupportedArm { cause: _, .. } => cursor_walk_fail(),
+        FmArmAnalysis::FmSpine {
+            exact: e,
+            len: l,
+            head_binds: hbs,
+            tail_bind: tb,
+            ..
+        } => {
+            let binders = Rc::new({
+                let mut __result = Vec::new();
+                for b in v1_rt::concat(hbs.clone(), Rc::new(vec![tb.clone()]))
+                    .iter()
+                    .cloned()
+                {
+                    if ((b.clone() != "".to_string()) && (b.clone() != "_".to_string())) {
+                        __result.push(b);
+                    }
+                }
+                __result
+            });
+            let clash = {
+                let mut __found = false;
+                for b in binders.iter().cloned() {
+                    if (((b.clone() == p.clone()) || cursor_name_in(in_tails.clone(), b.clone()))
+                        || cursor_name_in(param_names.clone(), b.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            if clash.clone() {
+                cursor_walk_fail()
+            } else {
+                {
+                    let binds_tail = ((!e.clone() && (tb.clone() != "".to_string()))
+                        && (tb.clone() != "_".to_string()));
+                    let new_tails = if binds_tail.clone() {
+                        Rc::new(vec![Rc::new(CursorTail {
+                            name: tb.clone(),
+                            depth: l.clone(),
+                        })])
+                    } else {
+                        Rc::new(vec![])
+                    };
+                    let inner = cursor_walk(
+                        crate::v1_std_core::arm_body(plan.arm.clone()),
+                        p.clone(),
+                        v1_rt::concat(
+                            in_tails.clone(),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for t in new_tails.iter().cloned() {
+                                    __result.push(t.name.clone());
+                                }
+                                __result
+                            }),
+                        ),
+                        fn_name.clone(),
+                        param_names.clone(),
+                        emit_info.clone(),
+                        si.clone(),
+                    );
+                    cursor_walk_join(cursor_walk_ok(new_tails.clone()), inner.clone())
+                }
+            }
+        }
+    }
+}
+
+pub fn cursor_walk(
+    n: Rc<Node>,
+    p: String,
+    in_tails: Rc<Vec<String>>,
+    fn_name: String,
+    param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<CursorWalk> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let names = v1_rt::concat(Rc::new(vec![p.clone()]), in_tails.clone());
+        if !cursor_mentions(n.clone(), names.clone(), si.clone()) {
+            cursor_walk_ok(Rc::new(vec![]))
+        } else {
+            match (*n.expr_data.clone()).clone() {
+                ExprData::ExprMatch => {
+                    let s = crate::v1_std_core::match_scrutinee(n.clone());
+                    let arm_list = crate::v1_std_core::match_arm_nodes(n.clone());
+                    if cursor_scrutinee_is(s.clone(), p.clone(), si.clone()) {
+                        if !tco_match_is_freemonoid(
+                            s.clone(),
+                            arm_list.clone(),
+                            emit_info.clone(),
+                            si.clone(),
+                        ) {
+                            cursor_walk_fail()
+                        } else {
+                            {
+                                let plans = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for arm in arm_list.iter().cloned() {
+                                        __result.push(fm_arm_plan(arm.clone(), si.clone()));
+                                    }
+                                    __result
+                                });
+                                match fm_plans_refusal(plans.clone()) {
+                                    Some(_) => cursor_walk_fail(),
+                                    std::option::Option::None => plans.iter().cloned().fold(
+                                        cursor_walk_ok(Rc::new(vec![])),
+                                        |acc: Rc<CursorWalk>, plan: Rc<FmArmPlan>| {
+                                            cursor_walk_join(
+                                                acc,
+                                                cursor_walk_arm(
+                                                    plan.clone(),
+                                                    p.clone(),
+                                                    in_tails.clone(),
+                                                    fn_name.clone(),
+                                                    param_names.clone(),
+                                                    emit_info.clone(),
+                                                    si.clone(),
+                                                ),
+                                            )
+                                        },
+                                    ),
+                                }
+                            }
+                        }
+                    } else {
+                        if cursor_mentions(s.clone(), names.clone(), si.clone()) {
+                            cursor_walk_fail()
+                        } else {
+                            arm_list.iter().cloned().fold(
+                                cursor_walk_ok(Rc::new(vec![])),
+                                |acc: Rc<CursorWalk>, arm: Rc<Node>| {
+                                    let binders = pattern_binder_names(
+                                        crate::v1_std_core::arm_pattern(arm.clone()),
+                                        si.clone(),
+                                    );
+                                    let guard_mentions =
+                                        match crate::v1_std_core::arm_guard(arm.clone()) {
+                                            Some(g) => cursor_mentions(
+                                                g.clone(),
+                                                names.clone(),
+                                                si.clone(),
+                                            ),
+                                            std::option::Option::None => false,
+                                        };
+                                    if (guard_mentions.clone() || {
+                                        let mut __found = false;
+                                        for b in binders.iter().cloned() {
+                                            if cursor_name_in(names.clone(), b.clone()) {
+                                                __found = true;
+                                                break;
+                                            }
+                                        }
+                                        __found
+                                    }) {
+                                        cursor_walk_fail()
+                                    } else {
+                                        cursor_walk_join(
+                                            acc,
+                                            cursor_walk(
+                                                crate::v1_std_core::arm_body(arm.clone()),
+                                                p.clone(),
+                                                in_tails.clone(),
+                                                fn_name.clone(),
+                                                param_names.clone(),
+                                                emit_info.clone(),
+                                                si.clone(),
+                                            ),
+                                        )
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                ExprData::ExprIf => {
+                    let c = crate::v1_std_core::if_condition(n.clone());
+                    let t = crate::v1_std_core::if_then_branch(n.clone());
+                    if cursor_mentions(c.clone(), names.clone(), si.clone()) {
+                        cursor_walk_fail()
+                    } else {
+                        {
+                            let then_walk = cursor_walk(
+                                t.clone(),
+                                p.clone(),
+                                in_tails.clone(),
+                                fn_name.clone(),
+                                param_names.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            );
+                            match crate::v1_std_core::if_else_branch(n.clone()) {
+                                Some(eb) => cursor_walk_join(
+                                    then_walk.clone(),
+                                    cursor_walk(
+                                        eb.clone(),
+                                        p.clone(),
+                                        in_tails.clone(),
+                                        fn_name.clone(),
+                                        param_names.clone(),
+                                        emit_info.clone(),
+                                        si.clone(),
+                                    ),
+                                ),
+                                std::option::Option::None => then_walk.clone(),
+                            }
+                        }
+                    }
+                }
+                ExprData::ExprLet => {
+                    let bound = crate::v1_std_core::let_binding_name_at(n.clone(), si.clone());
+                    if ((cursor_name_in(names.clone(), bound.clone())
+                        || cursor_name_in(param_names.clone(), bound.clone()))
+                        || cursor_mentions(
+                            crate::v1_std_core::let_value(n.clone()),
+                            names.clone(),
+                            si.clone(),
+                        ))
+                    {
+                        cursor_walk_fail()
+                    } else {
+                        match crate::v1_std_core::let_body(n.clone()) {
+                            Some(b) => cursor_walk(
+                                b.clone(),
+                                p.clone(),
+                                in_tails.clone(),
+                                fn_name.clone(),
+                                param_names.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            ),
+                            std::option::Option::None => cursor_walk_ok(Rc::new(vec![])),
+                        }
+                    }
+                }
+                ExprData::ExprBlock => {
+                    let ss = n.children.clone();
+                    let ss_count = (ss.clone().len() as i64);
+                    let init_mentions = {
+                        let mut __found = false;
+                        for pair in Rc::new(
+                            ss.clone()
+                                .iter()
+                                .cloned()
+                                .enumerate()
+                                .map(|(i, v)| (i as i64, v))
+                                .collect::<Vec<_>>(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            if ((pair.0.clone() < v1_rt::int_sub(ss_count.clone(), 1))
+                                && cursor_mentions(pair.1.clone(), names.clone(), si.clone()))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    };
+                    if init_mentions.clone() {
+                        cursor_walk_fail()
+                    } else {
+                        match ss.clone().last().cloned() {
+                            Some(last_expr) => cursor_walk(
+                                last_expr.clone(),
+                                p.clone(),
+                                in_tails.clone(),
+                                fn_name.clone(),
+                                param_names.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            ),
+                            std::option::Option::None => cursor_walk_ok(Rc::new(vec![])),
+                        }
+                    }
+                }
+                ExprData::ExprReturn => cursor_walk(
+                    crate::v1_std_core::return_value(n.clone()),
+                    p.clone(),
+                    in_tails.clone(),
+                    fn_name.clone(),
+                    param_names.clone(),
+                    emit_info.clone(),
+                    si.clone(),
+                ),
+                ExprData::ExprCall { .. } => {
+                    if (crate::v1_std_core::expr_call_func_at(n.clone(), si.clone())
+                        == fn_name.clone())
+                    {
+                        {
+                            let arg_values = Rc::new({
+                                let mut __result = Vec::new();
+                                for a in n.children.clone().iter().cloned() {
+                                    __result.push(crate::v1_std_core::arg_value(a.clone()));
+                                }
+                                __result
+                            });
+                            if ((arg_values.clone().len() as i64)
+                                != (param_names.clone().len() as i64))
+                            {
+                                cursor_walk_fail()
+                            } else {
+                                {
+                                    let ok = {
+                                        let mut __all = true;
+                                        for pair in Rc::new(
+                                            param_names
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .enumerate()
+                                                .map(|(i, v)| (i as i64, v))
+                                                .collect::<Vec<_>>(),
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            if !(match arg_values
+                                                .clone()
+                                                .get((pair.0.clone()) as usize)
+                                                .cloned()
+                                            {
+                                                std::option::Option::None => false,
+                                                Some(av) => {
+                                                    if (pair.1.clone() == p.clone()) {
+                                                        match (*av.expr_data.clone()).clone() {
+    ExprData::ExprVar { binding_kind: _, .. } => (cursor_name_in(in_tails.clone(), crate::v1_std_core::expr_var_name_at(av.clone(), si.clone())) || !cursor_mentions(av.clone(), names.clone(), si.clone())),
+    _ => !cursor_mentions(av.clone(), names.clone(), si.clone()),
+}
+                                                    } else {
+                                                        !cursor_mentions(
+                                                            av.clone(),
+                                                            names.clone(),
+                                                            si.clone(),
+                                                        )
+                                                    }
+                                                }
+                                            }) {
+                                                __all = false;
+                                                break;
+                                            }
+                                        }
+                                        __all
+                                    };
+                                    if ok.clone() {
+                                        cursor_walk_ok(Rc::new(vec![]))
+                                    } else {
+                                        cursor_walk_fail()
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        cursor_walk_fail()
+                    }
+                }
+                _ => cursor_walk_fail(),
+            }
+        }
+    })
+}
+
+pub fn cursor_tails_consistent(tails: Rc<Vec<Rc<CursorTail>>>) -> bool {
+    {
+        let mut __all = true;
+        for a in tails.clone().iter().cloned() {
+            if !({
+                let mut __all = true;
+                for b in tails.iter().cloned() {
+                    if !((a.name.clone() != b.name.clone()) || (a.depth.clone() == b.depth.clone()))
+                    {
+                        __all = false;
+                        break;
+                    }
+                }
+                __all
+            }) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn cursor_tails_map(tails: Rc<Vec<Rc<CursorTail>>>) -> Rc<HashMap<String, i64>> {
+    tails.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |m: Rc<HashMap<String, i64>>, t: Rc<CursorTail>| {
+            v1_rt::rc_map_insert(m, t.name.clone(), t.depth.clone())
+        },
+    )
+}
+
+pub fn tco_cursor_plan(
+    body: Rc<Node>,
+    fn_name: String,
+    params: Rc<Vec<Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TcoCursorPlan> {
+    {
+        let param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in params.iter().cloned() {
+                __result.push(crate::v1_std_core::param_node_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
+            }
+            __result
+        });
+        param_names.clone().iter().cloned().fold(
+            no_tco_cursor_plan(),
+            |best: Rc<TcoCursorPlan>, p: String| {
+                if (best.param.clone() != "".to_string()) {
+                    best.clone()
+                } else {
+                    {
+                        let walked = cursor_walk(
+                            body.clone(),
+                            p.clone(),
+                            Rc::new(vec![]),
+                            fn_name.clone(),
+                            param_names.clone(),
+                            emit_info.clone(),
+                            si.clone(),
+                        );
+                        if ((walked.ok.clone() && ((walked.tails.clone().len() as i64) > 0))
+                            && cursor_tails_consistent(walked.tails.clone()))
+                        {
+                            Rc::new(TcoCursorPlan {
+                                param: p.clone(),
+                                tails: cursor_tails_map(walked.tails.clone()),
+                            })
+                        } else {
+                            best.clone()
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
 pub fn emit_native_freemonoid_tco_match(
     scrut_str: String,
+    cursor: String,
     arms: Rc<Vec<Rc<Node>>>,
     fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
@@ -36492,6 +37298,7 @@ pub fn emit_native_freemonoid_tco_match(
                                 shared_types.clone(),
                                 emit_info.clone(),
                             ),
+                            cursor.clone(),
                         ));
                     }
                     __result
@@ -36583,32 +37390,33 @@ pub fn emit_rust_tco_match(
         ExprData::ExprMatch => {
             let s = crate::v1_std_core::match_scrutinee(frame.expr.clone());
             let arm_list = crate::v1_std_core::match_arm_nodes(frame.expr.clone());
-            let scrut_str = emit_typed_expr(
-                s.clone(),
-                registry.clone(),
-                frame.scope.clone(),
-                frame.depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-                1024,
-            );
-            let tco_scrut_type = match s.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => {
-                    let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
-                    if is_optional.clone() {
-                        crate::v1_std_core::authored_name_at(
-                            frame.scope.clone().type_env.clone().source_indices.clone(),
-                            crate::v1_std_core::with_required_cardinality(rt.clone()),
-                        )
-                    } else {
-                        crate::v1_std_core::authored_name_at(
-                            frame.scope.clone().type_env.clone().source_indices.clone(),
-                            rt.clone(),
-                        )
-                    }
-                }
-                _ => "".to_string(),
+            let tco_si = frame.scope.clone().type_env.clone().source_indices.clone();
+            let on_cursor = ((emit_info.tco_cursor_param.clone() != "".to_string())
+                && cursor_scrutinee_is(
+                    s.clone(),
+                    emit_info.tco_cursor_param.clone(),
+                    tco_si.clone(),
+                ));
+            let scrut_str = if on_cursor.clone() {
+                v1_rt::concat(
+                    crate::v1_compiler_emit::emit_ident(
+                        emit_info.tco_cursor_param.clone(),
+                        RenderTarget::Rust,
+                    ),
+                    ".clone()".to_string(),
+                )
+            } else {
+                emit_typed_expr(
+                    s.clone(),
+                    registry.clone(),
+                    frame.scope.clone(),
+                    frame.depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                )
             };
+            let tco_scrut_type = tco_match_scrut_type_name(s.clone(), tco_si.clone());
             if arms_are_freemonoid_coproduct(
                 arm_list.clone(),
                 tco_scrut_type.clone(),
@@ -36616,6 +37424,11 @@ pub fn emit_rust_tco_match(
             ) {
                 emit_native_freemonoid_tco_match(
                     scrut_str.clone(),
+                    if on_cursor.clone() {
+                        tco_cursor_name()
+                    } else {
+                        "".to_string()
+                    },
                     arm_list.clone(),
                     fn_name.clone(),
                     params.clone(),
@@ -37372,11 +38185,110 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let inner = crate::v1_compiler_emit::shared_tco_reassign(
-            ordered_args.clone(),
-            param_names.clone(),
-            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
-        );
+        let cursor_param = emit_info.tco_cursor_param.clone();
+        let cursor_pos = Rc::new({
+            let mut __result = Vec::new();
+            for pair in pairs.iter().cloned() {
+                if ((cursor_param.clone() != "".to_string())
+                    && (crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone())
+                        == cursor_param.clone()))
+                {
+                    __result.push(pair);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        let cursor_advance = match cursor_pos.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(pair) => {
+                let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    Some(v) => v.clone(),
+                    std::option::Option::None => pair.1.clone(),
+                };
+                match (*av.expr_data.clone()).clone() {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => v1_rt::map_get(
+                        &emit_info.tco_cursor_tails.clone(),
+                        crate::v1_std_core::expr_var_name_at(av.clone(), si.clone()),
+                    ),
+                    _ => std::option::Option::None,
+                }
+            }
+        };
+        let inner = match cursor_pos.clone() {
+            std::option::Option::None => crate::v1_compiler_emit::shared_tco_reassign(
+                ordered_args.clone(),
+                param_names.clone(),
+                crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
+            ),
+            Some(cpair) => match cursor_advance.clone() {
+                Some(depth_of_tail) => {
+                    let kept = Rc::new({
+                        let mut __result = Vec::new();
+                        for pair in pairs.iter().cloned() {
+                            if (pair.0.clone() != cpair.0.clone()) {
+                                __result.push(pair);
+                            }
+                        }
+                        __result
+                    });
+                    crate::v1_compiler_emit::shared_tco_reassign(
+                        v1_rt::concat(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for pair in kept.iter().cloned() {
+                                    __result.push(
+                                        match ordered_args
+                                            .clone()
+                                            .get((pair.0.clone()) as usize)
+                                            .cloned()
+                                        {
+                                            Some(a) => a.clone(),
+                                            std::option::Option::None => "".to_string(),
+                                        },
+                                    );
+                                }
+                                __result
+                            }),
+                            Rc::new(vec![v1_rt::concat(
+                                v1_rt::concat(tco_cursor_name(), " + ".to_string()),
+                                crate::v1_compiler_emit_core_support::to_string(
+                                    depth_of_tail.clone(),
+                                ),
+                            )]),
+                        ),
+                        v1_rt::concat(
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for pair in kept.iter().cloned() {
+                                    __result.push(
+                                        match param_names
+                                            .clone()
+                                            .get((pair.0.clone()) as usize)
+                                            .cloned()
+                                        {
+                                            Some(a) => a.clone(),
+                                            std::option::Option::None => "".to_string(),
+                                        },
+                                    );
+                                }
+                                __result
+                            }),
+                            Rc::new(vec![tco_cursor_name()]),
+                        ),
+                        crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
+                    )
+                }
+                std::option::Option::None => crate::v1_compiler_emit::shared_tco_reassign(
+                    v1_rt::concat(ordered_args.clone(), Rc::new(vec!["0".to_string()])),
+                    v1_rt::concat(param_names.clone(), Rc::new(vec![tco_cursor_name()])),
+                    crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust),
+                ),
+            },
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -41787,7 +42699,7 @@ pub fn emit_candidate_cli_host_method(sub: Rc<CliSubcommandRow>, method: String)
 }
 
 pub fn emit_candidate_compile_host_method(params: String) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({})\", run.closure_modules, run.subject.scope_receipt().render());\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({})\", run.closure_modules, run.subject.scope_receipt().render());\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
 }
 
 pub fn emit_candidate_cli_host(crate_name: String) -> String {

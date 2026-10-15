@@ -1,0 +1,18 @@
+module gunbc.live_deploy.user_work_pool_slots
+
+import std.nat { Nat }
+
+// OPERATOR RULING 2026-10-14 (sleek-owl-397 via clever-crane-830), OPTION C MAXIMIZED.
+// The slice holds TWO concurrent 22 GiB units (gunbc_runner_slot_desired MemoryMax): belt
+// attempts, compute, and ad-hoc gunbc test/run share this envelope. That is smaller than the
+// concurrent review/audit/supervisor population that still injects Slice=; the cap is policy,
+// not a claim those members fit without queuing or OOM. Charging this appropriation (44 GiB)
+// into served_deployment_slice_allowance is the same ruling.
+data user_work_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
+
+type UserWorkPoolSlots
+  = UserWorkPoolSlotsDerived { slots: Nat }
+
+fn user_work_pool_slots() -> UserWorkPoolSlots {
+  UserWorkPoolSlotsDerived { slots: user_work_charged_slots }
+}

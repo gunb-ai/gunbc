@@ -53,6 +53,7 @@ import v2.std.model_core {
   bool_model_core
 }
 import v2.std.node {
+  ComputationNode,
   Atom,
   Edge,
   Node,
