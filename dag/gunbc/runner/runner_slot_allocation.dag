@@ -84,6 +84,14 @@ fn srv1_microvm_shakedown_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv1, slot_index: gunbc_microvm_shakedown_slot_index }
 }
 
+// THE SLOTS A REVISION JOB MAY RUN ON, AND THERE IS NO DEFAULT. A revision job (gunbc.runner.
+// runner_revision_job_main) refuses any slot not on this list, and the list is EMPTY: starting a
+// microVM slot on a host is a host mutation and a second slot on srv1 is a capacity decision there
+// (its CI width is set by operator ruling), so a slot is added here only by an operator-approved
+// change -- bright-moth-475 brings that ask with a recommendation once a live job is possible. The
+// workspace commissioning slot (srv1-13) is never a revision-job slot.
+data revision_job_slots: List<RunnerSlotIdentity> = []
+
 fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
   runner_slot_identity_equal(a: slot, b: srv1_microvm_shakedown_slot())
 }

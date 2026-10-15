@@ -56,7 +56,8 @@ type MicroVmWorkload
   = GitHubRunnerWorkload { registration_id: NonEmptyStr }
   | WorkspaceWorkload { bootstrap_identity: NonEmptyStr, image_identity: NonEmptyStr, lease_expires_unix: Int }
   // A revision job (gunbc.runner.runner_revision_job_guest): the grant that authorized the cell and
-  // the admitted tree it runs. Two records agreeing on both are one job.
+  // the admitted tree it runs. Two records agreeing on both are one job. Constructed by the
+  // revision-job entry (S4b-3b, its declared frontier); every consumer already matches it.
   | ClaimSetWorkload { grant: NonEmptyStr, tree: NonEmptyStr }
 
 fn microvm_workload_same(a: MicroVmWorkload, b: MicroVmWorkload) -> Bool {
