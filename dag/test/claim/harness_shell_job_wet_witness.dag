@@ -21,9 +21,9 @@ import gunbc.harness.harness_tool {
   harness_tool_environment, harness_run_command_scheduled, harness_wait_jobs_scheduled,
   harness_kill_job, harness_read_job_output, harness_outcome_text, harness_env_with_jobs,
 }
+import extdeps.posix.process { StillRunning, Exited, Signaled, ReapRefused }
 import gunbc.harness.harness_shell_job {
-  HarnessShellJob, JobFinished, JobExitedOutcome,
-  harness_observe_job, JobStillRunning, JobExited, JobSignaled, JobReapRefused,
+  HarnessShellJob, harness_refresh_job,
   harness_job_is_running, StdioAtDestination,
 }
 import gunbc.harness.harness_turn {
@@ -342,11 +342,11 @@ test fn job_kill_keeps_the_job_running_unless_reap_confirms_death() -> Bool {
   let confirmed = match killed.environment.jobs.first() {
     Absent => false
     Present { value: j } =>
-      match harness_observe_job(job: j) {
-        JobStillRunning { job: _ } => false
-        JobExited { job: _, code: _ } => true
-        JobSignaled { job: _, signal: _ } => true
-        JobReapRefused { job: _, cause: _ } => false
+      match harness_refresh_job(job: j).reaped {
+        StillRunning => false
+        Exited { code: _ } => true
+        Signaled { signal: _ } => true
+        ReapRefused { cause: _ } => false
       }
   }
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
@@ -402,7 +402,8 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
     stderr: StdioAtDestination { path: missing as FilePath },
     started_at: "1970-01-01T00:00:00Z" as Timestamp,
     backstop: second(count: 20),
-    state: JobFinished { outcome: JobExitedOutcome { code: 0 }, elapsed: Present { value: second(count: 0) } },
+    reaped: Exited { code: 0 },
+    elapsed: Present { value: second(count: 0) },
   }
   let step = harness_read_job_output(
     environment: harness_env_with_jobs(
