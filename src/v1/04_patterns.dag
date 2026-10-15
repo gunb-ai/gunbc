@@ -555,13 +555,17 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 // An uninhabited SUM: a coproduct with zero arms, or the std.error_primitives Never
 // declaration keyed by DeclarationRef (never_type_declaration), not by spelling.
 fn env_binds_never_declaration(env: TypeEnv) -> Bool {
-  match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
-    Absent => env.module_path == (never_type_declaration.module_path as String)
-    Present { value: indexed } =>
-      match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
-        Absent => false
-        Present { value: bound } => bound.occurrence_identity == indexed.occurrence_identity
-      }
+  if env.module_path == (never_type_declaration.module_path as String) {
+    true
+  } else {
+    match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
+      Absent => false
+      Present { value: indexed } =>
+        match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
+          Absent => false
+          Present { value: bound } => bound.occurrence_identity == indexed.occurrence_identity
+        }
+    }
   }
 }
 

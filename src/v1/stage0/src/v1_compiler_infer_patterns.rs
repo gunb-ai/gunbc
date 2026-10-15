@@ -921,27 +921,28 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
 }
 
 fn env_binds_never_declaration(env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        env.symbol_index.clone(),
-        crate::std_primitive_projection::never_type_qualified_path(),
-    ) {
-        std::option::Option::None => {
-            env.module_path.clone()
-                == crate::std_primitive_projection::never_type_declaration()
-                    .module_path
-                    .clone()
-                    .to_string()
-        }
-        Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
-            env.clone(),
-            crate::std_primitive_projection::never_type_declaration()
-                .decl_name
-                .clone()
-                .to_string(),
+    if env.module_path.clone()
+        == crate::std_primitive_projection::never_type_declaration()
+            .module_path
+            .clone()
+    {
+        true
+    } else {
+        match crate::v1_compiler_infer_env::symbol_index_lookup(
+            env.symbol_index.clone(),
+            crate::std_primitive_projection::never_type_qualified_path(),
         ) {
             std::option::Option::None => false,
-            Some(bound) => bound.occurrence_identity == indexed.occurrence_identity,
-        },
+            Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                env.clone(),
+                crate::std_primitive_projection::never_type_declaration()
+                    .decl_name
+                    .clone(),
+            ) {
+                std::option::Option::None => false,
+                Some(bound) => bound.occurrence_identity == indexed.occurrence_identity,
+            },
+        }
     }
 }
 
