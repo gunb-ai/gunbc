@@ -1197,12 +1197,15 @@ type ClosureDeclarations {
   context: ResolutionContext
 }
 
+type DeclLocalOutcome
+  = LocallyResolved { node: Node }
+  | LocallyRefused { refusal: NonEmptyDiagnostics }
+
 type DeclPhase1Row {
   module: QualifiedName
   name: Symbol
   path: QualifiedName
-  local_refusal: Optional<NonEmptyDiagnostics>
-  resolved: Optional<Node>
+  local: DeclLocalOutcome
   callees: List<QualifiedName>
 }
 
@@ -1343,9 +1346,9 @@ fn closure_component_blocking_refusal(
         match closure_row_at(rows: rows, path: name) {
           Absent => found
           Present { value: row } =>
-            match row.local_refusal {
-              Present { value: r } => optional_present(value: r)
-              Absent =>
+            match row.local {
+              LocallyRefused { refusal: r } => optional_present(value: r)
+              LocallyResolved { node: _ } =>
                 fold_list(xs: row.callees, empty: found, cons: fn(hit, callee) {
                   match hit {
                     Present { value: _ } => hit
@@ -1375,9 +1378,9 @@ fn closure_phase2_blocked(
   let unavailable_by_module = closure_unavailable_by_module(unavailable: unavailable)
   let seed_empty: Map<QualifiedName, NonEmptyDiagnostics> = empty_map()
   let seed = fold_list(xs: rows, empty: seed_empty, cons: fn(acc, row) {
-    match row.local_refusal {
-      Absent => acc
-      Present { value: r } => map_insert(m: acc, key: row.path, value: r)
+    match row.local {
+      LocallyResolved { node: _ } => acc
+      LocallyRefused { refusal: r } => map_insert(m: acc, key: row.path, value: r)
     }
   })
   let components = closure_reverse_components(
@@ -1417,9 +1420,9 @@ fn closure_publish_module(
       match map_lookup(m: blocked, key: row.path) {
         Present { value: _ } => acc
         Absent =>
-          match row.resolved {
-            Absent => acc
-            Present { value: n } => map_insert(m: acc, key: row.name, value: n)
+          match row.local {
+            LocallyRefused { refusal: _ } => acc
+            LocallyResolved { node: n } => map_insert(m: acc, key: row.name, value: n)
           }
       }
     } else {
@@ -1453,7 +1456,11 @@ fn closure_observed_outcome(
           xs: acc,
           item: match map_lookup(m: blocked, key: row.path) {
             Present { value: r } => DeclarationRefused { path: row.path, refusal: r }
-            Absent => DeclarationAvailable { path: row.path }
+            Absent =>
+              match row.local {
+                LocallyResolved { node: _ } => DeclarationAvailable { path: row.path }
+                LocallyRefused { refusal: r } => DeclarationRefused { path: row.path, refusal: r }
+              }
           }
         )
       } else {
@@ -1503,8 +1510,7 @@ fn closure_phase1_walk_module(
                   module: module_qn,
                   name: binding.name,
                   path: path,
-                  local_refusal: optional_absent(),
-                  resolved: optional_present(value: resolved),
+                  local: LocallyResolved { node: resolved },
                   callees: closure_collect_declaration_callees(n: resolved, acc: [])
                 }
               ResolveWalkRefused { first: first, rest: _, observation: _ } =>
@@ -1512,8 +1518,7 @@ fn closure_phase1_walk_module(
                   module: module_qn,
                   name: binding.name,
                   path: path,
-                  local_refusal: optional_present(value: first),
-                  resolved: optional_absent(),
+                  local: LocallyRefused { refusal: first },
                   callees: closure_collect_declaration_callees(n: binding.declaration, acc: [])
                 }
             }
