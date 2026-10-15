@@ -117,7 +117,7 @@ Realized by the typed `FabricCiCalibrationStep` rows in `fabric_ci_calibration_s
 | **Alpha vs Beta transport** | `transport-assert` (alpha) + `transport-assert` (beta) + `transport-cross-red` (beta through alpha's assert) | Alpha and Beta are distinct transports; a Beta payload asserted through the Alpha assertion must red |
 | **altered bytes** | `altered-byte-red` → `fabric_ci_calibration_transport_alpha` (coordinate `alpha-alter`) | flipping the final byte of a captured wire must red the transport assert (exact-bytes, not a prefix match) |
 | **failed writes** | `write-failure-red` → `fabric_ci_calibration_transport_alpha` path `/proc/fci-evidence-write-refusal` | a producer whose value-file write fails must refuse, not emit |
-| **ignored writes** | `ignored-write-red` → `fabric_ci_calibration_ignores_write_failure` (coordinate `ignored`) | a producer that silently ignores a write failure must be caught (no value file → no acceptance) |
+| **ignored writes** | `ignored-write-red` → `fabric_ci_calibration_transport_ignores_write_failure` (coordinate `ignored`) | a producer that silently ignores a write failure must be caught (no value file → no acceptance) |
 | **projection-arm removal** | `delete-projection-arm-red` → subject `fabric_ci_evidence_projection_fixture.dag`, selector `FabricCiCalibrationBeta { payload: payload } =>` | deleting (or duplicating) the Beta projection arm in the fixture must make `fabric_ci_calibration_assertion_success` red — the two-arm projection is load-bearing |
 
 Supporting refusals in the same plan: `fabric_ci_calibration_assertion_success` (status 0),
