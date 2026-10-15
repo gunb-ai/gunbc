@@ -10,7 +10,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import std.optional { Absent, Present, optional_absent, optional_present }
 import std.types { Map }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
-import v2.compiler.infer { ConstructIsRecord, ConstructIsVariantArm, ConstructNotARecord, ConstructVariantArmIdentityUnavailable, ConstructVariantArmIdentityContested, infer, infer_record_construct_read, inferred_facts_resolved_type }
+import v2.compiler.infer { ConstructIsRecord, ConstructIsVariantArm, ConstructNotARecord, ConstructVariantArmIdentityUnavailable, ConstructVariantArmIdentityContested, ConstructVariantArmBodyUnavailable, infer, infer_record_construct_read, inferred_facts_resolved_type }
 import v2.compiler.resolve { LexicalBinding, LexicalDeclared, ResolvedTree }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
@@ -316,6 +316,7 @@ test fn a_record_payload_arm_used_as_a_constructor_is_unchanged_holds() -> Bool 
     ConstructNotARecord => false
     ConstructVariantArmIdentityUnavailable => false
     ConstructVariantArmIdentityContested { claimants: _ } => false
+    ConstructVariantArmBodyUnavailable => false
   }
 }
 
