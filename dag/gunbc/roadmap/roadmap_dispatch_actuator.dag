@@ -48,14 +48,14 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
-import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
+import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv, git_non_bare_git_dir_name }
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
-  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
+  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty,
   RemainAfterExitProperty, ExecStopPostProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
 }
@@ -2989,6 +2989,7 @@ fn dispatch_worker_unit_stream_properties(
       NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
       EmptyCapabilityBoundingSet,
       NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
+      NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
       NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
@@ -3032,6 +3033,54 @@ fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance) -> List<S
   ]
 }
 
+fn dispatch_worktree_entry_name(attempt_worktree: String) -> String {
+  fold(split(s: attempt_worktree, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join([instance.repo_root as String, "/.git/worktrees/", dispatch_worktree_entry_name(attempt_worktree: attempt_worktree)], "")
+}
+
+// THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
+// writable carve-outs (the worktree and .git/worktrees/<n>/). ReadOnlyPaths= with systemd's '-'
+// prefix wins over the parent ReadWritePaths for those exact files, including before git worktree
+// add has created them. Index, HEAD, refs and logs under the private dir stay writable.
+type DispatchWorkerGitPointerFiles {
+  gitfile: String
+  commondir: String
+  gitdir_file: String
+  config_worktree: String
+}
+
+fn dispatch_worker_git_pointer_files(instance: HostDashboardInstance, attempt_worktree: String) -> DispatchWorkerGitPointerFiles {
+  let private_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree)
+  DispatchWorkerGitPointerFiles {
+    gitfile: join([attempt_worktree, "/", git_non_bare_git_dir_name], ""),
+    commondir: join([private_dir, "/commondir"], ""),
+    gitdir_file: join([private_dir, "/gitdir"], ""),
+    config_worktree: join([private_dir, "/config.worktree"], ""),
+  }
+}
+
+fn dispatch_worker_git_pointer_readonly_list(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
+  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: attempt_worktree)
+  [pointers.gitfile, pointers.commondir, pointers.gitdir_file, pointers.config_worktree]
+}
+
+fn dispatch_worker_optional_readonly_path(path: String) -> String {
+  join(["-", path], "")
+}
+
+fn dispatch_worker_git_pointer_readonly_paths(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join(
+    map(
+      dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
+      p => dispatch_worker_optional_readonly_path(path: p),
+    ),
+    separator: " ",
+  )
+}
+
 fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
   concat(
     [attempt_worktree, scratch_directory],
@@ -3043,11 +3092,22 @@ fn dispatch_worker_writable_paths(instance: HostDashboardInstance, attempt_workt
   join(dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory), separator: " ")
 }
 
-fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String, path: String) -> Bool {
+fn dispatch_worker_path_is_readonly(instance: HostDashboardInstance, attempt_worktree: String, path: String) -> Bool {
   any(
-    dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory),
-    root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
+    dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
+    p => path == p,
   )
+}
+
+fn dispatch_worker_path_is_writable(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String, path: String) -> Bool {
+  if dispatch_worker_path_is_readonly(instance: instance, attempt_worktree: attempt_worktree, path: path) {
+    false
+  } else {
+    any(
+      dispatch_worker_writable_path_list(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory),
+      root => path == root || starts_with(s: path, prefix: join([root, "/"], "")),
+    )
+  }
 }
 
 // THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit

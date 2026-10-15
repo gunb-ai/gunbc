@@ -20,6 +20,13 @@ import std.resources { Network }
 data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
 data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
 data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+data git_worktree_commondir_relative: String = "../.."
+data git_dir_flag_prefix: String = "--git-dir="
+data git_work_tree_flag_prefix: String = "--work-tree="
+
+fn git_untrusted_config_env_words() -> List<String> {
+  [git_config_global_null_env, git_config_nosystem_env]
+}
 
 fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
   concat(home as String, "/.netrc") as FilePath

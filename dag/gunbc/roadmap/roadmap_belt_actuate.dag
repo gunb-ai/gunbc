@@ -178,6 +178,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
+  dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files,
   dispatch_verification_checkout_path_for_instance,
   git_worktree_add_detached_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
@@ -478,7 +479,12 @@ import gunbc.fleet.origin_main_revision_observe {
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
-import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args }
+import extdeps.git {
+  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
+  shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
+  git_dir_path_from_gitfile, git_untrusted_config_env_words,
+  git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
+}
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject }
 import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
@@ -6535,20 +6541,74 @@ type BeltCommitOutcome
   | CommitDeferred { node_id: String, reason: String }
   | CommitSubjectUnaddressable { node_id: String, reason: String }
 
-fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
-  belt_exec(
-    cmd: belt_commit_git_argv(instance: instance, args: args),
-    workdir: worktree,
-  )
+type BeltCommitGitTrust
+  = BeltCommitGitTrusted { git_dir: String, work_tree: String }
+  | BeltCommitGitUntrusted { cause: String }
+
+fn belt_commit_gitfile_points_at(contents: String, expected_git_dir: String) -> Bool {
+  match git_dir_path_from_gitfile(contents: contents) {
+    Absent => false
+    Present { value: pointer } => pointer == expected_git_dir
+  }
 }
 
-fn belt_commit_git_argv(instance: HostDashboardInstance, args: List<String>) -> HostExecArgv {
+fn belt_commit_commondir_points_at(contents: String, expected_common: String) -> Bool {
+  let line = trim(s: contents)
+  line == git_worktree_commondir_relative || line == expected_common
+}
+
+fn belt_commit_git_trust(instance: HostDashboardInstance, worktree: String) -> BeltCommitGitTrust {
+  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: worktree)
+  let expected_git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
+  let expected_common = join([instance.repo_root as String, "/.git"], "")
+  let gitfile = Filesystem.Read(path: pointers.gitfile)
+  if !gitfile.success {
+    BeltCommitGitUntrusted { cause: "worktree gitfile is missing or unreadable" }
+  } else if !belt_commit_gitfile_points_at(contents: gitfile.content, expected_git_dir: expected_git_dir) {
+    BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" }
+  } else {
+    let commondir = Filesystem.Read(path: pointers.commondir)
+    if !commondir.success {
+      BeltCommitGitUntrusted { cause: "worktree commondir is missing or unreadable" }
+    } else if !belt_commit_commondir_points_at(contents: commondir.content, expected_common: expected_common) {
+      BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
+    } else {
+      BeltCommitGitTrusted { git_dir: expected_git_dir, work_tree: worktree }
+    }
+  }
+}
+
+fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
+  match belt_commit_git_trust(instance: instance, worktree: worktree) {
+    BeltCommitGitUntrusted { cause } =>
+      ExecRefused {
+        program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+        reason: cause,
+      }
+    BeltCommitGitTrusted { git_dir, work_tree } =>
+      belt_exec(
+        cmd: belt_commit_git_argv(instance: instance, git_dir: git_dir, work_tree: work_tree, args: args),
+        workdir: work_tree,
+      )
+  }
+}
+
+fn belt_commit_git_argv(
+  instance: HostDashboardInstance,
+  git_dir: String,
+  work_tree: String,
+  args: List<String>,
+) -> HostExecArgv {
+  let git = dispatch_capability_program(
+    environment: instance.execution_environment,
+    cap: GitWorkspaceCapability,
+  )
   host_exec_argv(
-    program: dispatch_capability_program(
-      environment: instance.execution_environment,
-      cap: GitWorkspaceCapability,
+    program: "/usr/bin/env",
+    args: concat(
+      concat(git_untrusted_config_env_words(), [git, join([git_dir_flag_prefix, git_dir], ""), join([git_work_tree_flag_prefix, work_tree], "")]),
+      concat(git_command_config_inert_args(), args),
     ),
-    args: concat(git_command_config_inert_args(), args),
   )
 }
 

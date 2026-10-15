@@ -11,7 +11,7 @@ import extdeps.systemd {
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
-  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, ReadOnlyPathsProperty,
   systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
@@ -158,6 +158,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     ProtectHomeProperty => SettableDirective
     PrivateTmpProperty => SettableDirective
     ReadWritePathsProperty => SettableDirective
+    ReadOnlyPathsProperty => SettableDirective
     RemainAfterExitProperty => SettableDirective
     RuntimeMaxSecProperty => SettableDirective
     CollectModeProperty => SettableDirective
@@ -208,7 +209,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
   StandardOutputProperty, StandardErrorProperty, ProtectSystemProperty, ProtectHomeProperty,
-  PrivateTmpProperty, ReadWritePathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
+  PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,

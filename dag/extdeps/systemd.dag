@@ -96,6 +96,7 @@ type SystemdUnitProperty
   | ProtectHomeProperty
   | PrivateTmpProperty
   | ReadWritePathsProperty
+  | ReadOnlyPathsProperty
   | RemainAfterExitProperty
   | RuntimeMaxSecProperty
   | CollectModeProperty
@@ -177,6 +178,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     ProtectHomeProperty => "ProtectHome" as NonEmptyStr
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    ReadOnlyPathsProperty => "ReadOnlyPaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     RuntimeMaxSecProperty => "RuntimeMaxSec" as NonEmptyStr
     CollectModeProperty => "CollectMode" as NonEmptyStr

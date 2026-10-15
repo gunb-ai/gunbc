@@ -23,9 +23,13 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_state_path_for_instance,
   dispatch_attempt_worker_log_path_for_instance,
   dispatch_worktree_path_for_instance,
+  dispatch_worker_git_pointer_files, dispatch_attempt_private_git_dir,
 }
 import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import std.optional { Present }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_commit_git, ExecOk, ExecFailed, ExecRefused,
+}
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
@@ -775,6 +779,126 @@ test fn two_concurrent_launcher_runs_each_read_their_own_answer() -> Bool {
           AttemptSystemUnitEnqueueRefused { detail: _ } => false
         }
     }
+  }
+}
+
+fn sandbox_worktree_commit_cli(worktree: String, git_dir: String) -> ProcessExit {
+  let r = shell.Exec.RunArgv(
+    program: "/usr/bin/git",
+    arguments: [
+      "--git-dir", git_dir, "--work-tree", worktree,
+      "-c", "user.email=probe@gunbc.local", "-c", "user.name=probe",
+      "commit", "--allow-empty", "-q", "-m", "worker-probe",
+    ],
+  )
+  if r.exit_code == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "worktree commit refused")
+  }
+}
+
+fn prepare_launcher_linked_worktree(instance: HostDashboardInstance, unit_key: String) -> Bool {
+  let wt = launcher_probe_worktree(instance: instance, unit_key: unit_key)
+  prepare_launcher_probe(instance: instance, unit_key: unit_key)
+    && shell.Exec.RunArgv(program: "rm", arguments: ["-rf", "--", wt]).exit_code == 0
+    && shell.Exec.RunArgv(
+      program: "git",
+      arguments: ["-C", instance.repo_root as String, "worktree", "add", "--detach", "--", wt, "HEAD"],
+    ).exit_code == 0
+}
+
+fn launcher_worktree_commit(instance: HostDashboardInstance, unit_key: String) -> SandboxTouch {
+  let wt = launcher_probe_worktree(instance: instance, unit_key: unit_key)
+  let git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: wt)
+  match admit_named_argument(name: "worktree", value: wt) {
+    NamedArgumentNameEmpty => SandboxTouchUnrunnable
+    NamedArgumentNameHoldsSeparator { name: _ } => SandboxTouchUnrunnable
+    NamedArgumentAdmitted { argument: wt_arg } =>
+      match admit_named_argument(name: "git_dir", value: git_dir) {
+        NamedArgumentNameEmpty => SandboxTouchUnrunnable
+        NamedArgumentNameHoldsSeparator { name: _ } => SandboxTouchUnrunnable
+        NamedArgumentAdmitted { argument: git_arg } =>
+          launcher_inner_start(
+            instance: instance,
+            unit_key: unit_key,
+            inner: launcher_gunbc_run_inner_argv(
+              instance: instance,
+              function: "sandbox_worktree_commit_cli",
+              extra_args: [
+                "--arg", join([wt_arg.name, "=", wt_arg.value], ""),
+                "--arg", join([git_arg.name, "=", git_arg.value], ""),
+              ],
+            ),
+          )
+      }
+  }
+}
+
+fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
+  let lab = srv1_lab_dashboard_instance()
+  HostDashboardInstance {
+    deployment: lab.deployment,
+    instance_id: lab.instance_id,
+    host_identity: lab.host_identity,
+    provision_parent_root: lab.provision_parent_root,
+    instance_root: lab.instance_root,
+    local_origin_root: lab.local_origin_root,
+    local_origin_publish_ref: lab.local_origin_publish_ref,
+    repo_root: root,
+    dispatch_base_ref: lab.dispatch_base_ref,
+    dispatch_state_scope: lab.dispatch_state_scope,
+    execution_environment: lab.execution_environment,
+    provider_state: lab.provider_state,
+    serve_binary: lab.serve_binary,
+    serve_function: lab.serve_function,
+    listen_host: lab.listen_host,
+    listen_port: lab.listen_port,
+    tmux_server: lab.tmux_server,
+    actuation: lab.actuation,
+    provision_transport: lab.provision_transport,
+    source_seed: lab.source_seed,
+    admitted_revision: lab.admitted_revision,
+    toolchain: lab.toolchain,
+    dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
+    directory_owner: lab.directory_owner,
+  }
+}
+
+test fn writing_the_gitfile_or_commondir_inside_the_unit_fails_and_a_worktree_commit_succeeds() -> Bool {
+  let inst = srv1_lab_dashboard_instance()
+  let unit_key = "gitptr"
+  let wt = launcher_probe_worktree(instance: inst, unit_key: unit_key)
+  let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
+  prepare_launcher_linked_worktree(instance: inst, unit_key: unit_key)
+    && launcher_write_refused(instance: inst, unit_key: "gitfile", path: pointers.gitfile)
+    && launcher_write_refused(instance: inst, unit_key: "commondir", path: pointers.commondir)
+    && match launcher_worktree_commit(instance: inst, unit_key: unit_key) {
+      SandboxTouchUnrunnable => false
+      SandboxTouchRan { exit_code } => exit_code == 0
+    }
+}
+
+test fn belt_commit_refuses_a_planted_commondir_without_running_git() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let repo = join([root, "/repo"], "")
+    let wt = join([root, "/wt"], "")
+    let inst = lab_instance_at_repo(root: repo as FilePath)
+    let pointers = dispatch_worker_git_pointer_files(instance: inst, attempt_worktree: wt)
+    let expected_git_dir = dispatch_attempt_private_git_dir(instance: inst, attempt_worktree: wt)
+    shell.Mkdir.Parents(path: path_parent_directory(path: pointers.gitfile) as FilePath).success
+      && shell.Mkdir.Parents(path: path_parent_directory(path: pointers.commondir) as FilePath).success
+      && Filesystem.Write(path: pointers.gitfile, content: join(["gitdir: ", expected_git_dir, "\n"], "")).success
+      && Filesystem.Write(path: pointers.commondir, content: "/tmp/gunbc-planted-commondir\n").success
+      && match belt_commit_git(instance: inst, worktree: wt, args: ["status"]) {
+        ExecRefused { program: _, reason } => string_contains(s: reason, pattern: "commondir")
+        ExecOk { stdout: _ } => false
+        ExecFailed { program: _, exit_code: _, stderr: _ } => false
+      }
   }
 }
 

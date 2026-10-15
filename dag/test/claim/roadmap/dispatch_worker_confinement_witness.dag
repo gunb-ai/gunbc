@@ -6,6 +6,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_writable_path_list,
   dispatch_worker_writable_paths,
   dispatch_worker_path_is_writable,
+  dispatch_worker_git_pointer_files, dispatch_worker_git_pointer_readonly_paths,
   attempt_state_prepare_argv_for_instance,
   dispatch_attempt_verification_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
@@ -52,6 +53,14 @@ fn property_words(props: List<SystemdRunProperty>) -> List<String> {
   )
 }
 
+fn git_pointer_files_are_not_writable(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> Bool {
+  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: attempt_worktree)
+  !dispatch_worker_path_is_writable(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory, path: pointers.gitfile)
+    && !dispatch_worker_path_is_writable(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory, path: pointers.commondir)
+    && !dispatch_worker_path_is_writable(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory, path: pointers.gitdir_file)
+    && !dispatch_worker_path_is_writable(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: scratch_directory, path: pointers.config_worktree)
+}
+
 fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
   any(property_words(props: props), p => string_contains(s: p, pattern: needle))
 }
@@ -74,6 +83,7 @@ test fn the_worker_unit_confines_writes_to_the_instance_root() -> Bool {
     && has_property(props: props, needle: "RestrictSUIDSGID=yes")
     && any(property_words(props: props), p => p == "CapabilityBoundingSet=")
     && has_property(props: props, needle: join(["ReadWritePaths=", expected], ""))
+    && has_property(props: props, needle: join(["ReadOnlyPaths=", dispatch_worker_git_pointer_readonly_paths(instance: inst, attempt_worktree: "/wt")], ""))
     && has_property(props: props, needle: "/.git/objects")
     && any(dispatch_worker_writable_path_list(instance: inst, attempt_worktree: "/wt", scratch_directory: "/wt"), p => p == "/wt")
     && any(dispatch_worker_writable_path_list(instance: inst, attempt_worktree: "/wt", scratch_directory: "/wt"), p => p == join([inst.repo_root as String, "/.git/objects"], ""))
@@ -115,6 +125,8 @@ test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_worktree_root(instance: inst) as String)
     && dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/attempt"], ""))
+    && git_pointer_files_are_not_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch)
+    && has_property(props: lab_props, needle: "ReadOnlyPaths=-")
     && dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/objects"], ""))
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git"], ""))
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""))
