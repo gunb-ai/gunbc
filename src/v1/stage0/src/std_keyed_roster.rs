@@ -3,8 +3,7 @@
 
 use self::KeyedRosterBuild::*;
 use self::KeyedRosterInsert::*;
-use self::KeyedRosterSecondRowScan::*;
-pub use crate::std_keyed_row::keyed_row_find;
+pub use crate::std_key_relation::SubjectKey;
 pub use crate::std_keyed_row::KeyedRow;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
@@ -15,28 +14,12 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn keyed_occurrence_count<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    wanted_key: K,
-    key_eq: impl Fn(K, K) -> bool + Clone,
-) -> i64 {
-    rows.iter()
-        .cloned()
-        .fold(0, |n: i64, row: Rc<KeyedRow<K, V>>| {
-            if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                v1_rt::int_add(n.clone(), 1)
-            } else {
-                n.clone()
-            }
-        })
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
-    pub key: K,
+    pub key: Rc<SubjectKey<K>>,
     pub value: V,
-    pub first: Rc<KeyedRow<K, V>>,
-    pub duplicate: Rc<KeyedRow<K, V>>,
+    pub first: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+    pub duplicate: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
@@ -51,192 +34,267 @@ pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum KeyedRosterSecondRowScan<K: Clone, V: Clone> {
-    KeyedRosterSecondRowScanAbsent,
-    KeyedRosterSecondRowScanAwaitingSecond,
-    KeyedRosterSecondRowScanFound { row: Rc<KeyedRow<K, V>> },
+pub struct KeyedRosterSlot<K: Clone, V: Clone> {
+    pub first_position: i64,
+    pub first: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+    pub later_reversed: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
+    pub count: i64,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
 }
-impl<K: Clone, V: Clone> KeyedRosterSecondRowScan<K, V> {
-    pub fn row(&self) -> Rc<KeyedRow<K, V>> {
-        match self {
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
-                panic!("no row on unit variant")
-            }
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
-                panic!("no row on unit variant")
-            }
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: __val, .. } => {
-                __val.clone()
-            }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeyedRosterIndex<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone> {
+    pub rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
+    pub slots: Rc<HashMap<Rc<SubjectKey<K>>, Rc<KeyedRosterSlot<K, V>>>>,
+    pub distinct: Rc<Vec<Rc<SubjectKey<K>>>>,
+    pub duplicated: Rc<Vec<Rc<SubjectKey<K>>>>,
+    pub earliest_duplicate: Option<Rc<KeyedRosterDuplicateEvidence<K, V>>>,
+    pub first_conflict: Option<Rc<KeyedRosterDuplicateEvidence<K, V>>>,
+    pub map_lookups: i64,
+    pub map_inserts: i64,
+    pub key_prepends: i64,
+    pub order_reversals: i64,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KeyedRosterIndexBuild<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone> {
+    pub slots: Rc<HashMap<Rc<SubjectKey<K>>, Rc<KeyedRosterSlot<K, V>>>>,
+    pub distinct_reversed: Rc<Vec<Rc<SubjectKey<K>>>>,
+    pub duplicated_reversed: Rc<Vec<Rc<SubjectKey<K>>>>,
+    pub earliest_duplicate: Option<Rc<KeyedRosterDuplicateEvidence<K, V>>>,
+    pub earliest_first_position: Option<i64>,
+    pub first_conflict: Option<Rc<KeyedRosterDuplicateEvidence<K, V>>>,
+    pub position: i64,
+    pub map_lookups: i64,
+    pub map_inserts: i64,
+    pub key_prepends: i64,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
+}
+
+pub fn keyed_roster_index_step<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    build: Rc<KeyedRosterIndexBuild<K, V>>,
+    row: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+) -> Rc<KeyedRosterIndexBuild<K, V>> {
+    match v1_rt::map_get(&build.slots.clone(), row.row_key.clone()) {
+        std::option::Option::None => Rc::new(KeyedRosterIndexBuild {
+            slots: v1_rt::rc_map_insert(
+                build.slots.clone(),
+                row.row_key.clone(),
+                Rc::new(KeyedRosterSlot {
+                    first_position: build.position.clone(),
+                    first: row.clone(),
+                    later_reversed: Rc::new(vec![]),
+                    count: 1,
+                    _phantom: std::marker::PhantomData,
+                }),
+            ),
+            distinct_reversed: v1_rt::concat(
+                Rc::new(vec![row.row_key.clone()]),
+                build.distinct_reversed.clone(),
+            ),
+            duplicated_reversed: build.duplicated_reversed.clone(),
+            earliest_duplicate: build.earliest_duplicate.clone(),
+            earliest_first_position: build.earliest_first_position.clone(),
+            first_conflict: build.first_conflict.clone(),
+            position: v1_rt::int_add(build.position.clone(), 1),
+            map_lookups: v1_rt::int_add(build.map_lookups.clone(), 1),
+            map_inserts: v1_rt::int_add(build.map_inserts.clone(), 1),
+            key_prepends: v1_rt::int_add(build.key_prepends.clone(), 1),
+            _phantom: std::marker::PhantomData,
+        }),
+        Some(slot) => {
+            let repeats = (slot.count.clone() == 1);
+            let evidence = Rc::new(KeyedRosterDuplicateEvidence {
+                key: row.row_key.clone(),
+                value: slot.first.clone().value.clone(),
+                first: slot.first.clone(),
+                duplicate: row.clone(),
+                _phantom: std::marker::PhantomData,
+            });
+            let earlier = (repeats.clone()
+                && match build.earliest_first_position.clone() {
+                    Some(best) => (slot.first_position.clone() < best.clone()),
+                    std::option::Option::None => true,
+                });
+            Rc::new(KeyedRosterIndexBuild {
+                slots: v1_rt::rc_map_insert(
+                    build.slots.clone(),
+                    row.row_key.clone(),
+                    Rc::new(KeyedRosterSlot {
+                        first_position: slot.first_position.clone(),
+                        first: slot.first.clone(),
+                        later_reversed: v1_rt::concat(
+                            Rc::new(vec![row.clone()]),
+                            slot.later_reversed.clone(),
+                        ),
+                        count: v1_rt::int_add(slot.count.clone(), 1),
+                        _phantom: std::marker::PhantomData,
+                    }),
+                ),
+                distinct_reversed: build.distinct_reversed.clone(),
+                duplicated_reversed: if repeats.clone() {
+                    v1_rt::concat(
+                        Rc::new(vec![row.row_key.clone()]),
+                        build.duplicated_reversed.clone(),
+                    )
+                } else {
+                    build.duplicated_reversed.clone()
+                },
+                earliest_duplicate: if earlier.clone() {
+                    Some(evidence.clone())
+                } else {
+                    build.earliest_duplicate.clone()
+                },
+                earliest_first_position: if earlier.clone() {
+                    Some(slot.first_position.clone())
+                } else {
+                    build.earliest_first_position.clone()
+                },
+                first_conflict: match build.first_conflict.clone() {
+                    Some(_) => build.first_conflict.clone(),
+                    std::option::Option::None => Some(evidence.clone()),
+                },
+                position: v1_rt::int_add(build.position.clone(), 1),
+                map_lookups: v1_rt::int_add(build.map_lookups.clone(), 1),
+                map_inserts: v1_rt::int_add(build.map_inserts.clone(), 1),
+                key_prepends: v1_rt::int_add(
+                    build.key_prepends.clone(),
+                    if repeats.clone() { 2 } else { 1 },
+                ),
+                _phantom: std::marker::PhantomData,
+            })
         }
     }
 }
 
-pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    wanted_key: K,
-    key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRow<K, V>>> {
-    match (*rows.iter().cloned().fold(
-        Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
-        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone())
-            .clone()
-        {
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: _, .. } => acc.clone(),
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
-                if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                    Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound {
-                        row: row.clone(),
-                    })
-                } else {
-                    acc.clone()
-                }
-            }
-            KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => {
-                if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                    Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond)
-                } else {
-                    acc.clone()
-                }
-            }
-        },
-    ))
-    .clone()
+pub fn keyed_roster_empty_slots<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+) -> Rc<HashMap<Rc<SubjectKey<K>>, Rc<KeyedRosterSlot<K, V>>>> {
+    v1_rt::rc_empty_map::<_, _>()
+}
+
+pub fn keyed_roster_index<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
+) -> Rc<KeyedRosterIndex<K, V>> {
     {
-        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: row, .. } => {
-            Some(row.clone())
-        }
-        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => std::option::Option::None,
-        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
-            std::option::Option::None
-        }
+        let build = rows.iter().cloned().fold(
+            Rc::new(KeyedRosterIndexBuild {
+                slots: keyed_roster_empty_slots(),
+                distinct_reversed: Rc::new(vec![]),
+                duplicated_reversed: Rc::new(vec![]),
+                earliest_duplicate: std::option::Option::None,
+                earliest_first_position: std::option::Option::None,
+                first_conflict: std::option::Option::None,
+                position: 0,
+                map_lookups: 0,
+                map_inserts: 0,
+                key_prepends: 0,
+                _phantom: std::marker::PhantomData,
+            }),
+            keyed_roster_index_step,
+        );
+        Rc::new(KeyedRosterIndex {
+            rows: rows.clone(),
+            slots: build.slots.clone(),
+            distinct: v1_rt::reverse(build.distinct_reversed.clone()),
+            duplicated: v1_rt::reverse(build.duplicated_reversed.clone()),
+            earliest_duplicate: build.earliest_duplicate.clone(),
+            first_conflict: build.first_conflict.clone(),
+            map_lookups: build.map_lookups.clone(),
+            map_inserts: build.map_inserts.clone(),
+            key_prepends: build.key_prepends.clone(),
+            order_reversals: 2,
+            _phantom: std::marker::PhantomData,
+        })
     }
 }
 
-pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    wanted_key: K,
-    key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Option<Rc<KeyedRow<K, V>>> {
-    rows.iter().cloned().fold(
-        std::option::Option::None,
-        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
-            Some(_) => acc.clone(),
-            std::option::Option::None => {
-                if key_eq(row.row_key.clone(), wanted_key.clone()) {
-                    Some(row.clone())
-                } else {
-                    acc.clone()
-                }
-            }
-        },
+pub fn keyed_roster_index_operations<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    index: Rc<KeyedRosterIndex<K, V>>,
+) -> i64 {
+    v1_rt::int_add(
+        v1_rt::int_add(
+            v1_rt::int_add(index.map_lookups.clone(), index.map_inserts.clone()),
+            index.key_prepends.clone(),
+        ),
+        index.order_reversals.clone(),
     )
+}
+
+pub fn keyed_roster_distinct<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    index: Rc<KeyedRosterIndex<K, V>>,
+) -> Rc<Vec<Rc<SubjectKey<K>>>> {
+    index.distinct.clone()
+}
+
+pub fn keyed_roster_duplicated<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    index: Rc<KeyedRosterIndex<K, V>>,
+) -> Rc<Vec<Rc<SubjectKey<K>>>> {
+    index.duplicated.clone()
+}
+
+pub fn keyed_roster_index_occurrences<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    index: Rc<KeyedRosterIndex<K, V>>,
+    key: Rc<SubjectKey<K>>,
+) -> Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>> {
+    match v1_rt::map_get(&index.slots.clone(), key.clone()) {
+        Some(slot) => v1_rt::concat(
+            Rc::new(vec![slot.first.clone()]),
+            v1_rt::reverse(slot.later_reversed.clone()),
+        ),
+        std::option::Option::None => Rc::new(vec![]),
+    }
 }
 
 pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    key_eq: impl Fn(K, K) -> bool + Clone,
+    rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
 ) -> Option<Rc<KeyedRosterDuplicateEvidence<K, V>>> {
-    rows.clone().iter().cloned().fold(
-        std::option::Option::None,
-        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
-            Some(_) => acc.clone(),
-            std::option::Option::None => {
-                if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
-                    match keyed_roster_locate_first_row(
-                        rows.clone(),
-                        row.row_key.clone(),
-                        key_eq.clone(),
-                    ) {
-                        Some(first) => match keyed_roster_locate_second_row(
-                            rows.clone(),
-                            row.row_key.clone(),
-                            key_eq.clone(),
-                        ) {
-                            Some(duplicate) => Some(Rc::new(KeyedRosterDuplicateEvidence {
-                                key: row.row_key.clone(),
-                                value: row.value.clone(),
-                                first: first.clone(),
-                                duplicate: duplicate.clone(),
-                                _phantom: std::marker::PhantomData,
-                            })),
-                            std::option::Option::None => acc.clone(),
-                        },
-                        std::option::Option::None => acc.clone(),
-                    }
-                } else {
-                    acc.clone()
-                }
-            }
-        },
-    )
+    keyed_roster_index(rows.clone()).earliest_duplicate.clone()
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeyedRosterInsert<K: Clone, V: Clone> {
     KeyedRosterInserted {
-        rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+        rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
     },
     KeyedRosterDuplicateKey {
-        key: K,
-        existing: Rc<KeyedRow<K, V>>,
-        incoming: Rc<KeyedRow<K, V>>,
+        key: Rc<SubjectKey<K>>,
+        existing: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+        incoming: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
     },
     KeyedRosterInvalidRoster {
-        key: K,
-        first: Rc<KeyedRow<K, V>>,
-        duplicate: Rc<KeyedRow<K, V>>,
+        key: Rc<SubjectKey<K>>,
+        first: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+        duplicate: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
     },
 }
 
 pub fn keyed_roster_insert<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    incoming: Rc<KeyedRow<K, V>>,
-    key_eq: impl Fn(K, K) -> bool + Clone,
+    rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
+    incoming: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
 ) -> Rc<KeyedRosterInsert<K, V>> {
-    match keyed_roster_locate_duplicate(rows.clone(), key_eq.clone()) {
-        Some(evidence) => Rc::new(KeyedRosterInsert::KeyedRosterInvalidRoster {
-            key: evidence.key.clone(),
-            first: evidence.first.clone(),
-            duplicate: evidence.duplicate.clone(),
-        }),
-        std::option::Option::None => match crate::std_keyed_row::keyed_row_find(
-            rows.clone(),
-            incoming.row_key.clone(),
-            key_eq.clone(),
-        ) {
-            Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
-                key: incoming.row_key.clone(),
-                existing: existing.clone(),
-                incoming: incoming.clone(),
+    {
+        let index = keyed_roster_index(rows.clone());
+        match index.earliest_duplicate.clone() {
+            Some(evidence) => Rc::new(KeyedRosterInsert::KeyedRosterInvalidRoster {
+                key: evidence.key.clone(),
+                first: evidence.first.clone(),
+                duplicate: evidence.duplicate.clone(),
             }),
-            std::option::Option::None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
-                rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
-            }),
-        },
-    }
-}
-
-pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
-    rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    incoming: Rc<KeyedRow<K, V>>,
-    key_eq: impl Fn(K, K) -> bool + Clone,
-) -> Rc<KeyedRosterInsert<K, V>> {
-    match crate::std_keyed_row::keyed_row_find(
-        rows.clone(),
-        incoming.row_key.clone(),
-        key_eq.clone(),
-    ) {
-        Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
-            key: incoming.row_key.clone(),
-            existing: existing.clone(),
-            incoming: incoming.clone(),
-        }),
-        std::option::Option::None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
-            rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
-        }),
+            std::option::Option::None => {
+                match v1_rt::map_get(&index.slots.clone(), incoming.row_key.clone()) {
+                    Some(slot) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
+                        key: incoming.row_key.clone(),
+                        existing: slot.first.clone(),
+                        incoming: incoming.clone(),
+                    }),
+                    std::option::Option::None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
+                        rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
+                    }),
+                }
+            }
+        }
     }
 }
 
@@ -244,71 +302,36 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
 #[serde(tag = "_variant")]
 pub enum KeyedRosterBuild<K: Clone, V: Clone> {
     KeyedRosterBuilt {
-        rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
+        rows: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
     },
     KeyedRosterBuildDuplicateKey {
-        key: K,
-        first: Rc<KeyedRow<K, V>>,
-        duplicate: Rc<KeyedRow<K, V>>,
+        key: Rc<SubjectKey<K>>,
+        first: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
+        duplicate: Rc<KeyedRow<Rc<SubjectKey<K>>, V>>,
     },
 }
 
 pub fn keyed_roster_build<K: Clone, V: Clone>(
-    incomings: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    key_eq: impl Fn(K, K) -> bool + Clone,
+    incomings: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
 ) -> Rc<KeyedRosterBuild<K, V>> {
-    incomings.iter().cloned().fold(
-        Rc::new(KeyedRosterBuild::KeyedRosterBuilt {
-            rows: Rc::new(vec![]),
-        }),
-        |acc: Rc<KeyedRosterBuild<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc).clone() {
-            KeyedRosterBuild::KeyedRosterBuilt { rows: rows, .. } => {
-                match (*keyed_roster_insert_into_unique(rows.clone(), row.clone(), key_eq.clone()))
-                    .clone()
-                {
-                    KeyedRosterInsert::KeyedRosterInserted { rows: next, .. } => {
-                        Rc::new(KeyedRosterBuild::KeyedRosterBuilt { rows: next.clone() })
-                    }
-                    KeyedRosterInsert::KeyedRosterDuplicateKey {
-                        key: k,
-                        existing: first,
-                        incoming: dup,
-                        ..
-                    } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
-                        key: k.clone(),
-                        first: first.clone(),
-                        duplicate: dup.clone(),
-                    }),
-                    KeyedRosterInsert::KeyedRosterInvalidRoster {
-                        key: k,
-                        first: f,
-                        duplicate: d,
-                        ..
-                    } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
-                        key: k.clone(),
-                        first: f.clone(),
-                        duplicate: d.clone(),
-                    }),
-                }
-            }
-            KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
-                key: k,
-                first: f,
-                duplicate: d,
-                ..
-            } => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
-                key: k.clone(),
-                first: f.clone(),
-                duplicate: d.clone(),
+    {
+        let index = keyed_roster_index(incomings.clone());
+        match index.first_conflict.clone() {
+            Some(evidence) => Rc::new(KeyedRosterBuild::KeyedRosterBuildDuplicateKey {
+                key: evidence.key.clone(),
+                first: evidence.first.clone(),
+                duplicate: evidence.duplicate.clone(),
             }),
-        },
-    )
+            std::option::Option::None => Rc::new(KeyedRosterBuild::KeyedRosterBuilt {
+                rows: incomings.clone(),
+            }),
+        }
+    }
 }
 
 pub fn keyed_roster_union<K: Clone, V: Clone>(
-    left: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    right: Rc<Vec<Rc<KeyedRow<K, V>>>>,
-    key_eq: impl Fn(K, K) -> bool + Clone,
+    left: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
+    right: Rc<Vec<Rc<KeyedRow<Rc<SubjectKey<K>>, V>>>>,
 ) -> Rc<KeyedRosterBuild<K, V>> {
-    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()), key_eq.clone())
+    keyed_roster_build(v1_rt::concat(left.clone(), right.clone()))
 }

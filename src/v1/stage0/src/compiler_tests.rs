@@ -5453,9 +5453,6 @@ mod compiler_tests {
     #[test]
     fn an_optional_carrier_with_an_absent_payload_node_refuses() {
         let source_indices = std::rc::Rc::new(HashMap::new());
-        let mut observed_env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();
-        observed_env_value.unit_variant_index_observed = true;
-        let observed_env = std::rc::Rc::new(observed_env_value);
         let render = |carrier: std::rc::Rc<crate::v1_std_core::Node>| -> String {
             crate::v1_compiler_emit_rust::render_rust_optional_carrier_applied(
                 carrier,
@@ -5463,7 +5460,7 @@ mod compiler_tests {
                 std::rc::Rc::new(im::OrdSet::new()),
                 source_indices.clone(),
                 std::rc::Rc::new(HashMap::new()),
-                observed_env.clone(),
+                crate::v1_compiler_infer_env::empty_type_env(),
             )
         };
         let red = render(shaped_type_node("Optional", Vec::new()));
