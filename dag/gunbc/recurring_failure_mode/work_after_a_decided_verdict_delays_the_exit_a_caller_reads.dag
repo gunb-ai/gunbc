@@ -19,6 +19,6 @@ data work_after_a_decided_verdict_delays_the_exit_a_caller_reads: RecurringFailu
 
   evidence: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_sol_notice", decl_name: "mtcollins1_sol_notice_wet"),
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_sol_notice_final_allowance"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_sol_notice_facts", decl_name: "mtcollins1_sol_notice_final_allowance"),
   ],
 }
