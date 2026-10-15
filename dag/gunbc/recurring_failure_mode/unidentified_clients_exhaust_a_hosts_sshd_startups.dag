@@ -14,7 +14,7 @@ data unidentified_clients_exhaust_a_hosts_sshd_startups: RecurringFailureMode = 
 
     "DISTINGUISHING FACTS: the converge route makes one startup per leg sequentially and so cannot alone exceed ten concurrent unauthenticated connections; the excess is load from other clients. The tell is a kex reset with a MaxStartups drop line in the host journal.",
 
-    "RUNG FOUND AT: mitigatable (the leg refuses, and the route now opens one connection per target per attempt by multiplexing, gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_multiplex_options, which reduces its exposure but does not remove the load). CEILING: outside the modeled guarantee until the other clients are identified -- they are external to this route; once named, each is either a modeled fleet consumer whose connections are bounded or an unadmitted client the host refuses.",
+    "RUNG FOUND AT: mitigatable (the leg refuses, and the route now opens one connection per target per attempt by multiplexing, gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_multiplex_options, which reduces its exposure but does not remove the load; connection sharing needs OpenSSH 5.6 or later for ControlPersist, per openssh.com/txt/release-5.6, and the fleet runs OpenSSH_10.0p2). CEILING: outside the modeled guarantee until the other clients are identified -- they are external to this route; once named, each is either a modeled fleet consumer whose connections are bounded or an unadmitted client the host refuses.",
 
     "NEXT TRIGGER: identify the IPv6 client on srv1 and 192.168.1.188 from the sshd journal (source address, principal, cadence), then model or refuse each. Raising MaxStartups is not the repair: it hides the load rather than naming it.",
   ],

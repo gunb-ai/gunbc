@@ -125,11 +125,10 @@ type ControlPathValue
   = ControlPathNone
   | ControlPathSocket { path: NonEmptyStr }
 
-// THE VERSION THIS VOCABULARY IS STATED AGAINST. ControlMaster, ControlPath and -O check/exit
-// predate it; ControlPersist arrived in OpenSSH 5.6. No ControlPath % token is used by any caller,
-// so no claim about a token's expansion rests on this row. The fleet's runners and operator
-// positions read OpenSSH_10.0p2 (Debian 13), far above the floor.
-data openssh_connection_sharing_minimum_release: NonEmptyStr = "OpenSSH 5.6" as NonEmptyStr
+// THE RELEASE FLOOR, as cited prose (OpenSSH release notes, openssh.com/txt/release-5.6):
+// ControlMaster, ControlPath and -O check/exit predate it, and ControlPersist arrived in OpenSSH
+// 5.6. No ControlPath % token is used by any caller, so no expansion claim rests on a release. The
+// fleet's runners and operator positions read OpenSSH_10.0p2 (Debian 13).
 
 // THE TEMPORARY NAME A MASTER BINDS. OpenSSH mux.c muxserver_listen binds the control socket at
 // the ControlPath followed by "." and 16 random characters, then renames it into place, so a
