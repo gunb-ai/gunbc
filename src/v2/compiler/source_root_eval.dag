@@ -273,8 +273,6 @@ import v2.compiler.dependency_demand_census {
   DemandCensusUnreadableStage,
   DemandModuleResolveRefused,
   DemandModuleResolved,
-  UnboundNamed,
-  UnboundShaped,
   UnreadableAtParse,
   UnreadableAtTokenize,
   demand_census_authored_readings,
@@ -283,6 +281,7 @@ import v2.compiler.dependency_demand_census {
   demand_census_module_facts,
   demand_census_report,
   demand_census_strip,
+  demand_census_unbound_locus_from_diagnostics,
 }
 import v2.compiler.normalized_tree {
   NormalizedTree,
@@ -2741,25 +2740,6 @@ fn native_demand_census_unreadable(
   }
 }
 
-fn native_demand_census_unbound_locus(d: NonEmptyDiagnostics) -> Optional<DemandCensusUnboundLocus> {
-  let fatal = diagnostics_fatal(d: d)
-  if fatal.reason == ^resolve_reason_unbound_symbol {
-    match fatal.at {
-      NodeLocus { anchor: a } =>
-        match node_atom_identity_optional(node: a.at) {
-          Present { value: n } => optional_present(value: UnboundNamed { name: n })
-          Absent => optional_present(value: UnboundShaped { kind: a.at.kind })
-        }
-      Textual { file: _, extent: _ } => optional_absent()
-      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
-      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
-      DeclarationLocus { declaration: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
-  }
-}
-
 fn native_demand_census_read(
   state: NativeDemandCensusFoldState,
   read: DagSourceReadWitness,
@@ -2854,7 +2834,7 @@ fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, 
             standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused {
               authored: mine,
               first_reason: diagnostics_fatal_reason(d: d),
-              first_unbound: native_demand_census_unbound_locus(d: d)
+              first_unbound: demand_census_unbound_locus_from_diagnostics(d: d)
             })
           }
         Accepted { value: resolved, diagnostics: _ } =>
