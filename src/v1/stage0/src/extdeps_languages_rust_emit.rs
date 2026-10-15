@@ -14,6 +14,7 @@ pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_emit_model::SimpleMethodSpec;
+pub use crate::std_optional::Optional;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 use crate::std_trait_derive_shape::PairCompletionBody::{
