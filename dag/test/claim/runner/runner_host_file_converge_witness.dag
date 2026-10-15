@@ -361,6 +361,27 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
   }
 }
 
+// THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
+// before any SSH. On srv1, committed width 7 desires 01..06; fabric member 13 is not a
+// retiree; retirees are prior committed identities minus that set = 07..11.
+test fn observe_on_srv1_lists_retirees_07_through_11() -> Bool {
+  match runner_host_file_subject(host: operator_host_srv1) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: s } =>
+      length(s.retired_units) == 5
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-07.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-08.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-09.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-10.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-11.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-06.service")
+        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-07.service")
+        && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-13.service")
+  }
+}
+
 test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
   match runner_host_file_subject(host: "srv9" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => true
@@ -885,11 +906,9 @@ test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
 
 // RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
 // retirement, so the population is built from the real srv1 subject's desired and retired rosters
-// (the desired range and the retirement obligation gunbc.runner.runner_width_transition declares) over a
-// listing that names every slot but 21; slot 21 must still be a member, its retirement standing must still be joined, and
-// forty-nine healthy units must not carry the verdict.
-fn srv1_list_units_without_21() -> String {
-  join(map(concat(srv1_unit_names(slot: 1, limit: 20), srv1_unit_names(slot: 22, limit: 50)), u => concat(u, " loaded active running GitHub Actions runner")), "\n")
+// over a listing that names every slot but 11 (a width-7 retiree); slot 11 must still be a member.
+fn srv1_list_units_without_11() -> String {
+  join(map(concat(srv1_unit_names(slot: 1, limit: 10), srv1_unit_names(slot: 12, limit: 50)), u => concat(u, " loaded active running GitHub Actions runner")), "\n")
 }
 
 fn srv1_population_over_listing(retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
@@ -898,7 +917,7 @@ fn srv1_population_over_listing(retirements: List<RunnerRetirementStanding>, sho
     Present { value: s } =>
       SlotPopulationObserved {
         units: classify_runner_slot_population(
-          units: runner_slot_population_units(desired: s.desired_units, retired: s.retired_units, loaded: runner_slot_units_from_list_units(stdout: srv1_list_units_without_21())),
+          units: runner_slot_population_units(desired: s.desired_units, retired: s.retired_units, loaded: runner_slot_units_from_list_units(stdout: srv1_list_units_without_11())),
           retirements: retirements,
           show_stdout: show,
           expect: fixture_expect(),
@@ -915,7 +934,7 @@ fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bo
 }
 
 test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
-  let omitted = "actions-runner@srv1-21.service"
+  let omitted = "actions-runner@srv1-11.service"
   let healthy = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))
   let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
     runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
@@ -929,14 +948,14 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
 // conjunction of independent cases forces every case through one budget (DESIGN 3): the omitted
 // retiree with NO reading of its own is unread, and refuses.
 test fn an_unread_omitted_retiree_refuses() -> Bool {
-  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
+  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 10), srv1_unit_names(slot: 12, limit: 50))))
   length(srv1_live_names()) > 0
-    && population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
+    && population_holds(pop: unread_pop, unit: "actions-runner@srv1-11.service", wire: "unread")
     && !runner_slot_population_effective(population: unread_pop)
 }
 
 // THE POSITIVE CONTROL for the two REDs above, and what makes them discriminating: the SAME listing
-// that omits slot 21, with every retiree read and drained, IS effective.
+// that omits slot 11, with every retiree read and drained, IS effective.
 test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> Bool {
   runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))))
 }
