@@ -254,8 +254,9 @@ pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
     cla_cached_builtin_cache().sites.contains(site)
 }
 
-pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
-    &cla_cached_wildcard_facts().facts
+pub fn complexity_linearity_wildcard_facts(
+) -> Result<&'static [ComplexityLinearityWildcardFactRaw], String> {
+    Ok(&cla_cached_wildcard_facts()?.facts)
 }
 
 // --- Fallback-arm census (W2, fallback-arm-census (plan doc deleted 2026-08-28)) ---
