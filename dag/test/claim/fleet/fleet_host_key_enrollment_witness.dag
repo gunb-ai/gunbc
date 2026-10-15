@@ -36,7 +36,7 @@ fn first_enrolled_host() -> String? {
 // Acceptance item 4: a host the registry does not hold answers none (no fabricated
 // Mismatch from an unenrolled lookup), and a known_hosts line renders exactly
 // "endpoint keytype key". The line-shape row is a supplied fixture, not a roster cite.
-test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -> Bool {
+test fn witness_unenrolled_host_yields_no_expectation_and_line_shape_is_exact() -> Bool {
   let absent_host = host_the_registry_does_not_hold()
   !any(fleet_host_key_enrollments, k => (k.host as String) == absent_host)
     && match enrolled_fingerprint_for(host: absent_host) {
