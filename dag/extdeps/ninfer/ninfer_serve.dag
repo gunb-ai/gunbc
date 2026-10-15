@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Bool, List, Int, Port }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_max }
 import std.algebra { list_append }
-import std.measure { Millisecond, TokenCount, Mebibyte, mebibyte_count, token_count_value }
+import std.measure { Millisecond, TokenCount, Mebibyte, mebibyte_count, token_count, token_count_value }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
@@ -95,7 +95,7 @@ type NinferServeLaunch {
 // their figures. default_max_tokens is rendered only when it differs from the help's stated default, 8192,
 // which makes the row's 8192 the cited default and not a passed flag. --api-key is a credential and is not
 // an argument of this renderer: a launch leg binds it as a grant or refuses.
-data ninfer_default_max_tokens_help_default: Int = 8192
+data ninfer_default_max_tokens_help_default: TokenCount = token_count(count: 8192)
 
 fn ninfer_kv_dtype_flag_value(d: NinferKvDtype) -> String {
   match d {
@@ -132,7 +132,7 @@ fn ninfer_serve_launch_argv(launch: NinferServeLaunch, model_path: NonEmptyStr, 
   let tail = [
     "--host-context-mib", to_string(mebibyte_count(m: launch.host_context)),
   ]
-  let max_tokens = if token_count_value(t: launch.default_max_tokens) == ninfer_default_max_tokens_help_default {
+  let max_tokens = if token_count_value(t: launch.default_max_tokens) == token_count_value(t: ninfer_default_max_tokens_help_default) {
     []
   } else {
     ["--default-max-tokens", to_string(token_count_value(t: launch.default_max_tokens))]
