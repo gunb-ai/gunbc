@@ -24081,22 +24081,22 @@ pub fn call_target_for_direct_call(
                             }
                         }
                         NonDeclarationBinding::DeclarationOnly => {
-                            match crate::v1_compiler_infer_lookup::census_declaration_identity(
+                            match (*crate::v1_compiler_infer_lookup::func_sig_from_global_bare(
                                 scope.type_env.clone(),
                                 func_name.clone(),
-                            ) {
-                                Some(bd) => {
-                                    Rc::new(CallTargetOutcome::DeclaredCallableIdentityResolved {
-                                        declared: Rc::new(DeclaredCallableIdentity {
-                                            owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: crate::v1_std_core::qualified_last_segment(
-                                                func_name.clone(),
-                                            ),
-                                        }),
-                                        borrowed_declaration: bd.node.clone(),
-                                    })
-                                }
-                                std::option::Option::None => {
+                            ))
+                            .clone()
+                            {
+                                FuncSigLookup::FuncSigResolved {
+                                    sig: s,
+                                    declared: d,
+                                    ..
+                                } => Rc::new(CallTargetOutcome::DeclaredCallableResolved {
+                                    sig: s.clone(),
+                                    declared: d.clone(),
+                                }),
+                                FuncSigLookup::FuncSigUnresolved
+                                | FuncSigLookup::FuncSigAmbiguous { .. } => {
                                     Rc::new(CallTargetOutcome::CallableUnresolved {
                                         name: func_name.clone(),
                                     })
