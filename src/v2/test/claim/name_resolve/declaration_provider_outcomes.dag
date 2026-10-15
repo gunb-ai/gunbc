@@ -263,19 +263,22 @@ test fn dpo_importer_of_dep_is_declarer_refused_through_bad() -> Bool {
   }
 }
 
-test fn dpo_gone_independent_names_stay_available() -> Bool {
+// RULING: Option B, operator 2026-10-14 (gunbc.roadmap.roadmap_authority node declaration-provider-outcomes):
+// an incomplete or unadmitted namespace is MODULE-WIDE. gone lists an import of v2.test.dpo.missing, a module
+// outside the closure, so its namespace is refused (ModuleUnavailable) and neither Named nor Other is published,
+// though neither demands Ghost. This control stood expecting the opposite from f62825af57 with no ruling and was
+// red on main; the module-wide arm is what the ruling states, and per-declaration locality applies only inside
+// an admitted namespace (see Ok/Indep beside Bad in mixed).
+test fn dpo_gone_unadmitted_namespace_is_module_wide() -> Bool {
   match dpo_outcomes() {
     Absent => false
     Present { value: outcomes } =>
-      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Named"))
-        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Other"))
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.gone"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Named"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.gone.Other"))
         && match dpo_verdict(module: "v2.test.dpo.gone_named_user", path: ^dpo_gone_named_user) {
           Absent => false
-          Present { value: named } =>
-            match dpo_verdict(module: "v2.test.dpo.gone_other_user", path: ^dpo_gone_other_user) {
-              Absent => false
-              Present { value: other } => dpo_accepted(v: named) && dpo_accepted(v: other)
-            }
+          Present { value: named } => dpo_refuses_with(v: named, reason: ^resolve_reason_declarer_refused)
         }
   }
 }
@@ -335,11 +338,11 @@ test fn dpo_one_namespace_per_module() -> Bool {
   }
 }
 
-test fn dpo_declaration_depending_on_gone_named_is_published() -> Bool {
+test fn dpo_declaration_depending_on_gone_named_is_unavailable() -> Bool {
   match dpo_outcomes() {
     Absent => false
     Present { value: outcomes } =>
-      declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
+      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.uses_gone.UsesGone"))
   }
 }
 
@@ -355,16 +358,16 @@ test fn dpo_module_unavailable_mutant_is_not_available() -> Bool {
   }
 }
 
-// Option B (operator ruling 2026-10-14, gunbc.roadmap.roadmap_authority node declaration-provider-outcomes):
-// a declaration is available when its own walk resolves and every declaration it demands is available. Named
-// and Other do not demand Ghost (import v2.test.dpo.missing), so they stay available beside it; UsesGhost
-// demands the listed import Ghost, whose module is not in the closure, so it is refused, not published.
-test fn dpo_declaration_depending_on_ghost_listed_import_is_refused() -> Bool {
+// UsesGhost: a listed import of a name from a module outside the closure (Option B, see
+// dpo_gone_unadmitted_namespace_is_module_wide). The declaration that demands Ghost is unavailable, and so is
+// Solo, which does not: the namespace was never admitted.
+test fn dpo_listed_import_of_ghost_module_refuses_the_module() -> Bool {
   match dpo_outcomes() {
     Absent => false
     Present { value: outcomes } =>
-      !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.UsesGhost"))
-        && declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.Solo"))
+      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.ghost_user"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.UsesGhost"))
+        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.ghost_user.Solo"))
   }
 }
 
