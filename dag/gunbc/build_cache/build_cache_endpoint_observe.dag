@@ -16,7 +16,8 @@ import extdeps.linux.proc_pid_stat {
 }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { cat_command, readlink_command }
-import extdeps.tools.stat { stat_file_type_command, stat_owner_user_name_command }
+import extdeps.tools.stat { stat_owner_user_name_command }
+import extdeps.tools.findutils { find_path_is_socket_command }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.linux.proc_self_cgroup {
   ProcPidCgroupMembershipRecord,
@@ -192,7 +193,7 @@ fn boot_id_read_command() -> ArgvCommand {
 }
 
 fn endpoint_path_kind_command(path: NonEmptyStr) -> ArgvCommand {
-  stat_file_type_command(path: path as String)
+  find_path_is_socket_command(path: path as String)
 }
 
 fn proc_pid_path(pid: Nat, leaf: String) -> String {
@@ -395,34 +396,25 @@ fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
   }
 }
 
-// `stat -c %F` PRINTS THE OBJECT TYPE AS A WORD -- `socket`, `regular file`, `directory`, `symbolic
-// link` -- so the path axis is decided by reading it rather than by a chain of test -e/-S calls.
-// One argv, one round trip, and the non-socket answer arrives NAMED: EndpointPathConflict quotes
-// the word, so an operator sees that the endpoint path is a directory rather than merely that it is
-// not a socket. A nonzero exit is absence, which is the one place in this module where a failed
-// command is a positive reading rather than an unavailability -- and it is safe exactly because
-// stat's failure to stat a path it was asked for by name means no object is there.
-
-data stat_socket_type_word: String = "socket"
-
-fn path_kind_of_stat_read(read: HostRead, exit_success: Bool) -> EndpointPathKind {
+// THE PATH AXIS IS ASKED AS ONE PORTABLE TEST, NOT A FORMAT. It was `stat -c %F`, whose `%` the fleet
+// SSH edge refuses (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed), so over
+// FleetSsh and SshShell this read never executed and every remote endpoint read PathKindUnreadable.
+// `extdeps.tools.findutils` `find_path_is_socket_command` asks the same question in admitted words:
+// the operand printed is a socket; exit 0 with nothing printed is an object that is not a socket
+// (its kind is no longer named, a loss stated rather than hidden); a nonzero exit is absence, which
+// is the one place in this module where a failed command is a positive reading.
+fn path_kind_of_socket_test_read(read: HostRead, exit_success: Bool) -> EndpointPathKind {
   if exit_success == false {
     PathKindAbsent
   } else {
     match read {
       HostReadFailed { detail: d } => PathKindUnreadable { detail: d }
-      HostReadText { text: t } => {
-        let word = trim(t)
-        if (word == stat_socket_type_word) {
-          PathKindSocket
-        } else if word == "" {
-          PathKindUnreadable {
-            detail: "stat reported success over the endpoint path and printed no object type" as NonEmptyStr,
-          }
+      HostReadText { text: t } =>
+        if trim(t) == "" {
+          PathKindOtherObject { described: "an object that is not a socket (find -type s did not match)" as NonEmptyStr }
         } else {
-          PathKindOtherObject { described: word as NonEmptyStr }
+          PathKindSocket
         }
-      }
     }
   }
 }

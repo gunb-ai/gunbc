@@ -86,7 +86,8 @@ fn binding_unit_variant_contributions(binding: TypeBinding, source_indices: Map<
   let ty = variant_lookup_structural(ty: binding.resolved)
   match ty.connective {
     Disj =>
-      fold(ty.children, init: empty_map(), f: (acc, v) =>
+      let seed: Map<String, UnitVariantContribution> = empty_map()
+      fold(ty.children, init: seed, f: (acc, v) =>
         if is_unit_variant_node(variant: v) {
           let vname = authored_name_at(source_indices: source_indices, node: v)
           match map_get(acc, vname) {
@@ -1477,7 +1478,8 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
 }
 
 fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
-  fields |> fold(init: empty_map(), f: (acc, field) =>
+  let seed: Map<String, List<InductiveField>> = empty_map()
+  fields |> fold(init: seed, f: (acc, field) =>
     let existing = match map_get(acc, field.type_name) {
       Present { value: fs } => fs
       Absent => []

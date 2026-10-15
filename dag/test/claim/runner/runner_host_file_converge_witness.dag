@@ -17,7 +17,7 @@ import gunbc.runner.runner_width_transition { transition_population_agreement, T
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.systemd { systemd_unit_property_wire, ControlGroup, UnitFileState, ActiveState }
-import extdeps.systemd.systemctl { systemctl_show_properties_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_load_state_argv }
 import gunbc.runner.runner_slot_retirement {
   RunnerRetirementStanding,
   CgroupOccupancy,
@@ -51,12 +51,17 @@ import gunbc.runner.runner_unit_file {
   runner_job_user_uid_reading,
 }
 import gunbc.typed_remote_file_write {
+  typed_remote_file_compare_argv,
+  typed_remote_file_stage_argv,
+  typed_remote_file_rename_argv,
+  typed_remote_file_unlink_staging_argv,
+  typed_remote_file_chmod_argv,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
 }
 import extdeps.exec.command { argv_words }
-import extdeps.tools.stat { stat_file_type_command }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, path_parent }
 import gunbc.runner.runner_host_file_converge {
   RunnerHostFileDesired,
   RunnerHostFilesDesired,
@@ -100,7 +105,7 @@ import gunbc.runner.runner_host_file_converge {
   HostFileAbsent,
   HostFileUnobservable,
   RunnerHostFileMetadataReading,
-  HostFileMetadataRead,
+  HostFileMetadataReported,
   HostFileMetadataUnread,
   classify_host_file_metadata,
   RunnerHostFilePathStanding,
@@ -118,6 +123,16 @@ import gunbc.runner.runner_host_file_converge {
   PathsNotApplicable,
   runner_host_path_ancestors,
   runner_host_root_only_find_argv,
+  ctrl_jobserver_retired_residue,
+  runner_host_run_legs,
+  runner_host_leg_argv,
+  runner_host_leg_kind,
+  runner_host_leg_kinds,
+  LegRetireeCgroupEvents,
+  classify_runner_slot_population_with_fabric,
+  runner_host_fabric_member_units,
+  SlotFabricMemberNotARunner,
+  SlotFabricMemberRunsARunner,
   classify_root_only_paths,
   RunnerHostFileObservation,
   HostFileLeaveInPlace,
@@ -379,15 +394,15 @@ fn standing_is_unobservable(standing: RunnerHostFileStanding) -> Bool {
 }
 
 fn path_is_present(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathPresent { file_type: _ } => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
+  match st { HostFilePathPresent => true HostFilePathAbsent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
 fn path_is_absent(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathAbsent => true HostFilePathPresent { file_type: _ } => false HostFilePathUnreadable { cause: _ } => false }
+  match st { HostFilePathAbsent => true HostFilePathPresent => false HostFilePathUnreadable { cause: _ } => false }
 }
 
 fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
-  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent { file_type: _ } => false HostFilePathAbsent => false }
+  match st { HostFilePathUnreadable { cause: _ } => true HostFilePathPresent => false HostFilePathAbsent => false }
 }
 
 // A metadata read that FAILED is the outcome `test -e` could not distinguish from an absence: both
@@ -438,7 +453,7 @@ test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
   settled_is_unobservable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
     && settled_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
     && settles_nothing(st: classify_host_file_path(
-         reading: HostFileMetadataRead { file_type: "regular file" },
+         reading: HostFileMetadataReported,
          parent: EntryPresent,
        ))
 }
@@ -446,7 +461,7 @@ test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
 // The read decides presence; the parent decides nothing when the read answered. An indeterminate
 // parent beside a successful read is still present, so the join cannot turn a read file unreadable.
 test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool {
-  let read = HostFileMetadataRead { file_type: "regular file" }
+  let read = HostFileMetadataReported
   path_is_present(st: classify_host_file_path(reading: read, parent: EntryPresent))
     && path_is_present(st: classify_host_file_path(reading: read, parent: EntryAbsent))
     && path_is_present(st: classify_host_file_path(
@@ -459,17 +474,13 @@ test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> B
 // question, so it is unread -- and unread beside a parent that holds the entry is unreadable, never
 // a nameless kind and never an absence.
 fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
-  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataRead { file_type: _ } => false }
+  match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataReported => false }
 }
 
 test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
   reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  \n", stderr: ""))
     && reading_is_unread(r: classify_host_file_metadata(exit_code: 1, stdout: "", stderr: ""))
-    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "regular file\n", stderr: ""))
-    && match classify_host_file_metadata(exit_code: 0, stdout: " directory \n", stderr: "") {
-         HostFileMetadataRead { file_type: t } => t == "directory"
-         HostFileMetadataUnread { cause: _ } => false
-       }
+    && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  File: /etc/default/ctrl-jobserver\n  Size: 12\n", stderr: ""))
 }
 
 // INHABITANCE (DESIGN section 3): the words observe_runner_host_file_content actually sends are the
@@ -484,8 +495,8 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
     Present { value: f } => {
       let path = f.path as String
       let sent = runner_host_file_metadata_probe_argv(path: path)
-      sent == argv_words(command: stat_file_type_command(path: path))
-        && sent == ["/usr/bin/stat", "-c", "%F", "--", path]
+      sent == argv_words(command: stat_default_report_command(path: path))
+        && sent == ["/usr/bin/stat", "--", path]
         && !any(sent, w => w == "test" || w == "-e")
     }
   }
@@ -586,6 +597,8 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotTeardownEffective => "effective"
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
     SlotAllocationNotEffective { detail: d } => concat("allocation-not-effective:", d)
+    SlotFabricMemberNotARunner { load_state: l } => concat("fabric-not-runner:", l)
+    SlotFabricMemberRunsARunner => "fabric-runs-runner"
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
     SlotRetiredAsDeclared => "retired"
@@ -1202,7 +1215,7 @@ test fn a_read_uid_delivers_the_fragment_with_no_makeflags() -> Bool {
 // ── The retired ctrl-jobserver residue ─────────────────────────────────────────────────────────────
 
 fn residue_reading(path: String, present: Bool) -> ResiduePathReading {
-  ResiduePathReading { path: path, standing: if present { HostFilePathPresent { file_type: "regular file" } } else { HostFilePathAbsent } }
+  ResiduePathReading { path: path, standing: if present { HostFilePathPresent } else { HostFilePathAbsent } }
 }
 
 fn is_residue_absent(o: RetiredResidueObservation) -> Bool {
@@ -1327,4 +1340,104 @@ test fn absent_residue_forbids_makeflags_without_the_fragment() -> Bool {
   let cleaned = runner_slot_expectation(per_slot: hardware_thread_count(count: 7), fragment_delivered: false, residue_absent: true)
   starts_with(s: allocation_wire(cpu: "7s", env: "MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo", expect: cleaned), prefix: "allocation-not-effective:")
     && allocation_wire(cpu: "7s", env: "RUNNER_DIR=/opt/x", expect: cleaned) == "effective"
+}
+
+// ── Every leg the observe route sends must cross the SSH edge ──────────────────────────────────────
+
+fn crosses_the_edge(argv: List<String>) -> Bool {
+  match portable_remote_words(raws: argv) { Absent => false Present { value: _ } => true }
+}
+
+// THE WALL THE PRODUCTION RUNS HIT (observe 38662663858 / 38662666227 / 38662668957): every file leg
+// and the residue leg were NOT attempted because the metadata probe carried `%F`. The command set is
+// DERIVED FROM THE ROUTE (review on #14053): for each runner host, runner_host_run_legs enumerates the
+// legs that host's run issues -- privilege probe, list-units, slot show, the job-user getent, every
+// file's metadata / root-only / ancestor reads, the residue reads and every elevated retire and reload
+// leg -- plus the retiree events read built by the real builder over a supplied show answer. Every
+// leg must cross the edge, and the legs must cover every arm of RunnerHostRemoteLeg, so a new remote
+// call cannot skip this check. The typed_remote_file_write legs and the parent listing, which run
+// through their own modules' builders, are checked over the same files.
+fn host_legs_cross(host: String) -> Bool {
+  match runner_host_file_subject(host: host as HostIdentity) {
+    RunnerHostFileSubjectRefused { cause: _ } => false
+    RunnerHostFileSubjectAdmitted { subject: subj } =>
+      match runner_host_file_desired_population_from_uid_reading(host: host as HostIdentity, reading: fixture_cited_job_user_uid()) {
+        RunnerHostFilesDesiredRefused { cause: _ } => false
+        RunnerHostFilesDesired { files: fs, withheld: _ } => {
+          let legs = concat(
+            runner_host_run_legs(subject: subj, files: fs, residue: ctrl_jobserver_retired_residue),
+            [LegRetireeCgroupEvents { argv: argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true))) }],
+          )
+          let kinds = map(legs, l => runner_host_leg_kind(leg: l))
+          all(runner_host_leg_kinds, k => any(kinds, x => x == k))
+            && all(legs, l => crosses_the_edge(argv: runner_host_leg_argv(leg: l)))
+            && all(fs, f => crosses_the_edge(argv: parent_listing_argv(parent: path_parent(path: f.path as String)))
+              && (match runner_host_file_write_admission(file: f) {
+                TypedRemoteFileWriteAdmitted { write: w } =>
+                  crosses_the_edge(argv: typed_remote_file_compare_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_stage_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_rename_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_unlink_staging_argv(write: w))
+                    && crosses_the_edge(argv: typed_remote_file_chmod_argv(write: w, mode: f.mode))
+                TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+              }))
+        }
+      }
+  }
+}
+
+test fn every_observe_leg_argv_crosses_the_ssh_edge() -> Bool {
+  host_legs_cross(host: "srv1") && host_legs_cross(host: "srv3") && host_legs_cross(host: "srv4")
+}
+
+// RED: the probe this replaced is refused by the same transport check.
+test fn the_percent_format_stat_probe_is_refused_by_the_transport() -> Bool {
+  !crosses_the_edge(argv: argv_words(command: stat_file_type_command(path: "/etc/default/ctrl-jobserver")))
+}
+
+// ── Fabric execution members are not runner slots (observe run 38662663858, srv1-13) ──────────────
+
+fn srv1_fabric_show() -> String {
+  join([
+    "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+    "Id=actions-runner@srv1-13.service\nLoadState=masked\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=infinity\nEnvironment=",
+  ], "\n\n")
+}
+
+fn fabric_population(show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved {
+    units: classify_runner_slot_population_with_fabric(
+      units: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-13.service" as NonEmptyStr],
+      fabric: runner_host_fabric_member_units(host: operator_host_srv1),
+      retirements: [],
+      show_stdout: show,
+      expect: fixture_expect(),
+    ),
+  }
+}
+
+// POSITIVE CONTROL: srv1's real fabric roster names slot 13, and its masked runner unit is the
+// declared state, so the host is effective; without the fabric join the same reading refuses.
+test fn a_masked_fabric_member_runner_unit_is_the_declared_state() -> Bool {
+  any(runner_host_fabric_member_units(host: operator_host_srv1), u => (u as String) == "actions-runner@srv1-13.service")
+    && runner_slot_population_effective(population: fabric_population(show: srv1_fabric_show()))
+    && population_holds(pop: fabric_population(show: srv1_fabric_show()), unit: "actions-runner@srv1-13.service", wire: "fabric-not-runner:masked")
+}
+
+// RED: a fabric member still running a runner unit is a runner on a slot the model gave to fabric.
+test fn a_loaded_runner_on_a_fabric_member_refuses() -> Bool {
+  let show = join([
+    "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+    "Id=actions-runner@srv1-13.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment=",
+  ], "\n\n")
+  !runner_slot_population_effective(population: fabric_population(show: show))
+    && population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "fabric-runs-runner")
+}
+
+// RED (review on #14053, DESIGN 5): a fabric member that list-units named but `systemctl show` returned
+// no block for was a failed read mapped to the declared state. It stays unread, and the host refuses.
+test fn a_fabric_member_with_no_show_block_is_unread_not_declared() -> Bool {
+  let show = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nCPUQuotaPerSecUSec=7s\nEnvironment="
+  population_holds(pop: fabric_population(show: show), unit: "actions-runner@srv1-13.service", wire: "unread")
+    && !runner_slot_population_effective(population: fabric_population(show: show))
 }

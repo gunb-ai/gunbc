@@ -3,7 +3,7 @@ module test.claim.refusal_reason_ownership_join_witness
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Symbol }
 import std.algebra { is_empty, length }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.workflow.compile_door_cause_ownership {
