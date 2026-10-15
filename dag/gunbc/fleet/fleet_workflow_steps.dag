@@ -62,6 +62,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_fleet_key_agent_cleanup_script,
 }
 import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_multiplex_teardown_script }
 import std.types { List, String, Int }
 
 import gunbc.roadmap.roadmap_execution_contract {
@@ -636,11 +637,22 @@ fn ci_fleet_key_agent_step_when(if_condition: String?) -> Step {
   }
 }
 
+// THE MASTERS END BEFORE THE KEY DOES. Fleet key legs multiplex over control masters whose
+// sockets live in the job's owner-only multiplex directory (gunbc.fleet.fleet_known_hosts_anchor
+// FleetSshMultiplexDirectory). A master stays authenticated after the agent dies, so the teardown
+// asks every master to exit (ssh -O exit, modeled in extdeps.ssh.client_options) and removes the
+// directory FIRST, and only then kills the agent -- one always() script, so the order is fixed by
+// construction rather than by step adjacency. A master that does not acknowledge is named in the
+// log; its socket is removed regardless, so no later job can reach it, and ControlPersist ends it.
+fn ci_fleet_key_agent_cleanup_script() -> String {
+  concat(fleet_ssh_multiplex_teardown_script(), gunbc_ci_fleet_key_agent_cleanup_script())
+}
+
 fn ci_fleet_key_agent_cleanup_step() -> Step {
   RunStep {
-    name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
+    name: Present { value: "End the fleet ssh masters, then kill the in-run ssh-agent (key never outlives the job)" },
     id: none,
-    run: gunbc_ci_fleet_key_agent_cleanup_script(),
+    run: ci_fleet_key_agent_cleanup_script(),
     shell: none,
     env: none,
     working_directory: none,

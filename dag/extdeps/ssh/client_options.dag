@@ -122,6 +122,41 @@ type ControlPersistValue
   | ControlPersistIndefinite
   | ControlPersistIdle { seconds: Second }
 
+// ControlPath "none" disables connection sharing outright; any other value names the socket.
+type ControlPathValue
+  = ControlPathNone
+  | ControlPathSocket { path: NonEmptyStr }
+
+// THE VERSION THIS VOCABULARY IS STATED AGAINST. ControlMaster, ControlPath and -O check/exit
+// predate it; ControlPersist arrived in OpenSSH 5.6. No ControlPath % token is used by any caller,
+// so no claim about a token's expansion rests on this row. The fleet's runners and operator
+// positions read OpenSSH_10.0p2 (Debian 13), far above the floor.
+data openssh_connection_sharing_minimum_release: NonEmptyStr = "OpenSSH 5.6" as NonEmptyStr
+
+// THE TEMPORARY NAME A MASTER BINDS. OpenSSH mux.c muxserver_listen binds the control socket at
+// the ControlPath followed by "." and 16 random characters, then renames it into place, so a
+// ControlPath must leave that many bytes of sun_path free.
+data openssh_control_path_temporary_suffix_length: Int = 17
+
+// ssh(1) -O ctl_cmd: "Control an active connection multiplexing master process ... check (check
+// that the master process is running) ... exit (request the master to exit)".
+type SshControlCommand
+  = SshControlCheck
+  | SshControlExit
+
+fn ssh_control_command_wire(command: SshControlCommand) -> String {
+  match command {
+    SshControlCheck => "check"
+    SshControlExit => "exit"
+  }
+}
+
+// The control request names its master by ControlPath alone; the destination operand ssh(1)
+// requires is not contacted, and -F none keeps any ambient configuration from adding options.
+fn shape_openssh_control_command_argv(command: SshControlCommand, control_path: String, destination: NonEmptyStr) -> List<String> {
+  ["ssh", "-F", "none", "-O", ssh_control_command_wire(command: command), "-o", concat("ControlPath=", control_path), destination as String]
+}
+
 // One variant per keyword, each carrying the value domain THAT keyword admits, so a nonsensical
 // pairing has no constructor. ServerAliveInterval and ServerAliveCountMax are the LIVENESS half of a
 // deadline, distinct from ConnectTimeout, which bounds only the TCP connect: ssh_config(5) --
@@ -160,7 +195,7 @@ type SshClientOption
   | User { name: NonEmptyStr }
   | RemotePort { port: Port }
   | ControlMaster { value: ControlMasterValue }
-  | ControlPath { path: NonEmptyStr }
+  | ControlPath { value: ControlPathValue }
   | ControlPersist { value: ControlPersistValue }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
@@ -188,7 +223,7 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     User { name: _ } => "User"
     RemotePort { port: _ } => "Port"
     ControlMaster { value: _ } => "ControlMaster"
-    ControlPath { path: _ } => "ControlPath"
+    ControlPath { value: _ } => "ControlPath"
     ControlPersist { value: _ } => "ControlPersist"
   }
 }
@@ -260,7 +295,10 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     User { name: n } => n as String
     RemotePort { port: n } => to_string(n)
     ControlMaster { value: v } => control_master_wire(value: v)
-    ControlPath { path: p } => p as String
+    ControlPath { value: v } => match v {
+      ControlPathNone => "none"
+      ControlPathSocket { path: p } => p as String
+    }
     ControlPersist { value: v } => control_persist_wire(value: v)
   }
 }
@@ -421,7 +459,7 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     User { name: _ } => serialize_ssh_client_option(option: option)
     RemotePort { port: _ } => serialize_ssh_client_option(option: option)
     ControlMaster { value: _ } => serialize_ssh_client_option(option: option)
-    ControlPath { path: _ } => serialize_ssh_client_option(option: option)
+    ControlPath { value: _ } => serialize_ssh_client_option(option: option)
     ControlPersist { value: _ } => serialize_ssh_client_option(option: option)
   }
 }

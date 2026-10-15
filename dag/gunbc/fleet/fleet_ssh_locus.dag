@@ -29,6 +29,8 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   fleet_ssh_attempt_identity,
   fleet_ssh_execution_context_of,
+  materialize_fleet_ssh_multiplex_directory,
+  fleet_ssh_multiplex_receipt,
   materialize_known_hosts_anchor,
   fleet_known_hosts_rows,
   known_hosts_materialization_receipt,
@@ -202,12 +204,13 @@ fn ssh_context_from_verified_binding(
 ) -> FleetSshContextPreparation
 {
   let materialization = materialize_known_hosts_anchor(attempt: attempt, rows: rows)
-  match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+  let multiplex = materialize_fleet_ssh_multiplex_directory()
+  match fleet_ssh_execution_context_of(outcome: materialization, credential: binding, multiplex: multiplex) {
     Absent =>
       FleetSshContextRefused {
         cause: join([
           "fleet ssh context refused before any ssh leg: ",
-          known_hosts_materialization_receipt(outcome: materialization),
+          known_hosts_materialization_receipt(outcome: materialization), " ", fleet_ssh_multiplex_receipt(preparation: multiplex),
         ], ""),
       }
     Present { value: context } =>
@@ -216,7 +219,7 @@ fn ssh_context_from_verified_binding(
         receipt: join([
           "credential ", fleet_ssh_credential_locus_label(binding: binding),
           " trust=attempt-owned known_hosts anchor materialized and content-verified by THIS entry\n",
-          known_hosts_materialization_receipt(outcome: materialization),
+          known_hosts_materialization_receipt(outcome: materialization), " ", fleet_ssh_multiplex_receipt(preparation: multiplex),
         ], ""),
       }
   }
