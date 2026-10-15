@@ -48,7 +48,8 @@ data claim_set_guest_device_bytes_env: NonEmptyStr = "GUNBC_CLAIM_SET_RESULTS_BY
 type ClaimSetGuestWrite
   = ClaimSetGuestWritten { records: Int }
   | ClaimSetGuestNoClaims
-  | ClaimSetGuestFrameExceedsDevice { frame: Int, device: Int }
+  | ClaimSetGuestFrameExceedsDevice { frame: ByteSize, device: ByteSize }
+  | ClaimSetGuestFrameUnmeasured
   | ClaimSetGuestDeviceWriteRefused { device: String, detail: String }
 
 // NUL to `n` characters, by doubling: the padding is built to the declared size, never spelled.
@@ -61,16 +62,29 @@ fn nul_padding(n: Int) -> String {
   }
 }
 
+// The frame is ASCII by construction (claim_set_results_frame), so its character count is its byte
+// count; the conversion goes through the checked Int-to-Nat route.
+fn text_byte_size(text: String) -> ByteSize? {
+  match checked_int_to_nat(n: length(text)) {
+    Present { value: n } => Present { value: byte_size(count: n) }
+    Absent => none
+  }
+}
+
 fn write_claim_set_frame(records: List<ClaimSetResult>, device: String, device_bytes: ByteSize) -> ClaimSetGuestWrite {
   let size = byte_size_count(b: device_bytes)
   if count(records) == 0 { ClaimSetGuestNoClaims }
   else {
     let frame = claim_set_results_frame(results: records)
-    if length(frame) > size { ClaimSetGuestFrameExceedsDevice { frame: length(frame), device: size } }
+    match text_byte_size(text: frame) {
+    Absent => ClaimSetGuestFrameUnmeasured
+    Present { value: frame_bytes } =>
+    if byte_size_count(b: frame_bytes) > size { ClaimSetGuestFrameExceedsDevice { frame: frame_bytes, device: device_bytes } }
     else {
       let w = Filesystem.Write(path: device, content: concat(frame, nul_padding(n: size - length(frame))))
       if w.success { ClaimSetGuestWritten { records: count(records) } }
       else { ClaimSetGuestDeviceWriteRefused { device: device, detail: w.error } }
+    }
     }
   }
 }
@@ -140,7 +154,8 @@ fn claim_set_guest_main() -> ProcessExit {
             Present { value: size } => match write_claim_set_frame(records: rs, device: device, device_bytes: size) {
               ClaimSetGuestWritten { records: _ } => ExitSuccess
               ClaimSetGuestNoClaims => exit_failure(reason: "claim_set_guest: the spec names no claims")
-              ClaimSetGuestFrameExceedsDevice { frame: f, device: d } => exit_failure(reason: join(["claim_set_guest: frame ", to_string(f), " bytes exceeds device ", to_string(d)], ""))
+              ClaimSetGuestFrameUnmeasured => exit_failure(reason: "claim_set_guest: the frame's size could not be measured")
+              ClaimSetGuestFrameExceedsDevice { frame: f, device: d } => exit_failure(reason: join(["claim_set_guest: frame ", to_string(byte_size_count(b: f)), " bytes exceeds device ", to_string(byte_size_count(b: d))], ""))
               ClaimSetGuestDeviceWriteRefused { device: d, detail: e } => exit_failure(reason: join(["claim_set_guest: results device write refused at ", d, ": ", e], ""))
             }
           }
