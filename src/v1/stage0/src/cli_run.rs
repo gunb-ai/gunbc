@@ -7574,9 +7574,10 @@ fn compile_not_executed(
 /// overclaim): it pulls modules OUT of the root -- from the dependency pool -- and an import
 /// edge is strictly WEAKER than a reference here: the whole-tree namespace is flat, so a
 /// cross-module reference usually resolves with no import edge. The walk under-pulls from the
-/// pool by construction; the census fill covers the difference by putting every remaining
-/// indexed module in front of the name census. The walk is a cheap over-approximation of what
-/// to COMPILE, not the authority on what the subject DEPENDS on.
+/// pool by construction. Product census fill that used to cover the remainder is deleted;
+/// a declaration that affects an entry belongs in that entry's acquired dependency closure.
+/// The walk is a cheap over-approximation of what to COMPILE, not the authority on what the
+/// subject DEPENDS on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileSubject {
     /// One `.dag` file and its reference-derived closure.
@@ -8052,12 +8053,12 @@ pub fn compile_emission_over(request: &CompileRequest, residency: IndexResidency
         }
     }
 
-    // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
-    // module index, and calling `load_sources_for_entry_with_pool_index` and then building
-    // a second index for the census parsed ~3,800 modules twice per invocation (review
-    // 55167). Building it here and handing the SAME index to both also removes the
-    // possibility that the closure and the census are computed against different
-    // populations, which is a correctness property and not only a cost one.
+    // ONE INDEX BUILD, NOT TWO. The closure loader and the remaining pool-derived terms
+    // share the module index; calling `load_sources_for_entry_with_pool_index` and then
+    // building a second index parsed ~3,800 modules twice per invocation (review 55167).
+    // Building it here and handing the SAME index to both also removes the possibility
+    // that the closure and those terms are computed against different populations, which
+    // is a correctness property and not only a cost one.
     // SOURCE DISCOVERY IS FALLIBLE ON THIS PATH AND ONLY ON THIS PATH. A missing root, a
     // file where a directory was named, an unreadable directory, a non-UTF-8 source, or a
     // module-path collision are ORDINARY USER-CAUSED conditions -- they owe a typed located
@@ -17834,19 +17835,23 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                         return;
                     }
                 };
-                // ONE FILE THROUGH THE FRONTEND'S OWN CENSUS-FILL PARSE: it tokenizes with the
+                // ONE FILE THROUGH THE REVISION-DECLARATION READER: it tokenizes with the
                 // annotation channel, parses in an occurrence scope and binds every comment to
                 // its gap, exactly as the compile frontend does, so the sweep reads each file the
                 // way a compile would. Called with a single source, so files stay independent
-                // and nothing resolves across them.
+                // and nothing resolves across them. The head grammar is named here because this
+                // reader has no defaulting wrapper.
                 let path_str = path.to_string_lossy().to_string();
-                let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
-                    vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                        path: path_str.clone(),
-                        content: content.clone(),
-                    })]
-                    .into(),
-                ));
+                let fill = crate::v1_compiler_compile::parse_revision_declarations_with_environment(
+                    std::rc::Rc::new(
+                        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                            path: path_str.clone(),
+                            content: content.clone(),
+                        })]
+                        .into(),
+                    ),
+                    crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+                );
                 if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
                     // ONE RECORD PER MODULE, FROM THE PARSE THAT JUST RAN. Only a

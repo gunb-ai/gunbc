@@ -61,8 +61,8 @@ type GrammarAuthorityStanding
 data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "bind_annotations")
 
 // THE REQUIRED PARSE PHASE. `claim_executor --required-ci --required-lane witnesses` sweeps
-// src/v1, dag and src/v2 and puts every file through the frontend's own per-source census-fill
-// parse -- tokenize into the annotation channel, parse in an occurrence scope, then bind every comment to its gap. The
+// src/v1, dag and src/v2 and puts every file through parse_revision_declarations_with_environment
+// -- tokenize into the annotation channel, parse in an occurrence scope, then bind every comment to its gap. The
 // walk is host Rust; the parse it calls is not.
 data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
   invoked_as: "claim_executor --required-ci --required-lane witnesses (parse phase)" as NonEmptyStr,
@@ -71,7 +71,7 @@ data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
 }
 
 // THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
-// into the modeled pipeline, whose frontend and whose census fill are the two callers that
+// into the modeled pipeline, whose frontend and whose revision-declaration reader are the two callers that
 // v1.compiler.annotation_bind names in its own header as the pair that must not drift.
 data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
   invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
