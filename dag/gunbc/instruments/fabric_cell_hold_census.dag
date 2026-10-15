@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_shakedown { microvm_shakedown_demand, microvm
 // slot, the only cell the grant path judges -- the judgement the new controller will make.
 //
 // It reads the store and writes nothing into it: Filesystem.List and Filesystem.Read through the
-// store's own observers. The report goes to fabric_cell_hold_census_report_path, outside the store,
+// store's own observers. The report is CREATED (never overwritten) at fabric_cell_hold_census_report_path, outside the store,
 // because a run's only other output is its exit. Run it on the host as the store's owner:
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/fabric_cell_hold_census.dag --function fabric_cell_hold_census_main
 // Exit 0: the store was listed and the report written. Non-zero: the store could not be listed or
@@ -87,14 +87,27 @@ fn fabric_cell_hold_census_listed(report: String) -> Bool {
   report.starts_with("census=listed ")
 }
 
+// THE REPORT IS CREATED, NEVER OVERWRITTEN. The census runs as root (the store is root:root 0700)
+// and the report path is fixed under /tmp, so a plain write would follow a symlink planted at that
+// name and redirect a root write. WriteCreateNew refuses any existing path, a symlink included, and a
+// refused create is its own typed outcome: the report was not written, and the reason says why
+// without trusting whatever already sits at the path. The caller's guard is not relied on.
+type CensusReportWrite
+  = CensusReportCreated
+  | CensusReportPathOccupiedOrUnwritable { path: String, error: String }
+
+fn write_census_report(report: String) -> CensusReportWrite {
+  let w = Filesystem.WriteCreateNew(path: fabric_cell_hold_census_report_path, content: concat(report, "\n"))
+  if w.success { CensusReportCreated }
+  else { CensusReportPathOccupiedOrUnwritable { path: fabric_cell_hold_census_report_path, error: w.error } }
+}
+
 fn fabric_cell_hold_census_main() -> ProcessExit {
   let report = fabric_cell_hold_census()
-  let w = Filesystem.Write(path: fabric_cell_hold_census_report_path, content: concat(report, "\n"))
-  if !w.success {
-    exit_failure(reason: join(["fabric_cell_hold_census: report write refused at ", fabric_cell_hold_census_report_path, ": ", w.error, "\n", report], ""))
-  } else if !fabric_cell_hold_census_listed(report: report) {
-    exit_failure(reason: report)
-  } else {
-    ExitSuccess
+  match write_census_report(report: report) {
+    CensusReportPathOccupiedOrUnwritable { path: p, error: e } =>
+      exit_failure(reason: join(["fabric_cell_hold_census: the report path ", p, " already exists or is not writable (create-only, nothing overwritten): ", e, "\n", report], ""))
+    CensusReportCreated =>
+      if !fabric_cell_hold_census_listed(report: report) { exit_failure(reason: report) } else { ExitSuccess }
   }
 }
