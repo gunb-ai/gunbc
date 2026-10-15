@@ -43,10 +43,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // CreateWorkloadIdentityPool caps display_name at 32 CHARACTERS: a longer one answers 400
 // INVALID_ARGUMENT, "The WorkloadIdentityPool's display name must be less than or equal to 32
-// characters." Nothing here enforces it -- NonEmptyStr carries no length -- so consumers hold the
-// bound with a claim over their own declared name. That gap is rostered as
-// gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose ceiling is a
-// length-refined carrier on this input, after which an over-long literal has no constructor.
+// characters." The cap is workload_identity_pool_display_name_max_characters, and NonEmptyStr still
+// carries no length, so the compiler admits an over-long literal; a consumer that creates pools
+// refuses its own creation population through workload_identity_pool_display_name_admitted before it
+// reads a token (gunbc.auth.heal_publisher_provision dedicated_federation_pool_display_name_refusals). That
+// gap is rostered as gunbc.recurring_failure_mode upstream_input_constraint_held_only_by_prose, whose
+// ceiling is a length-refined carrier on this input, after which an over-long literal has no constructor.
 //
 // BOTH POLICY OPERATIONS declare bindings and version OPTIONAL because an empty policy omits them:
 // an account created seconds earlier answers 200 with an etag alone. Declaring them required made
@@ -75,6 +77,12 @@ type GcpCustomRoleWire {
 // Only presence is consumed: pool policies with audit configuration are refused
 // by this bootstrap rather than reconstructed without their logging settings.
 type GcpPoolAuditConfigWire { service: String? }
+
+data workload_identity_pool_display_name_max_characters: Int = 32
+
+fn workload_identity_pool_display_name_admitted(name: NonEmptyStr) -> Bool {
+  string_length(s: name as String) <= workload_identity_pool_display_name_max_characters
+}
 
 type GcpPoolPolicyWire {
   audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs"

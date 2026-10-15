@@ -9,6 +9,7 @@ import extdeps.cloud.gcp.iam {
   reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_from_wire
 }
 import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.iam_admin { workload_identity_pool_display_name_admitted, workload_identity_pool_display_name_max_characters }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
@@ -478,6 +479,15 @@ fn create_if(wanted: Bool, subject: String, creation: SubjectCreation) -> String
   }
 }
 
+// CreateWorkloadIdentityPool refuses an over-long display name only once a run holds a token, so
+// every route that may create a pool reads its whole creation population here before it reads one.
+fn dedicated_federation_pool_display_name_refusals(federations: List<DedicatedFederation>) -> List<String> {
+  map(filter(federations, f => !workload_identity_pool_display_name_admitted(name: f.pool_display_name)), f => join([
+    f.label, ": pool display name \"", f.pool_display_name as String, "\" is ", to_string(string_length(s: f.pool_display_name as String)),
+    " characters; CreateWorkloadIdentityPool admits at most ", to_string(workload_identity_pool_display_name_max_characters),
+  ], ""))
+}
+
 fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
 {
   match c {
@@ -553,10 +563,12 @@ fn provision_dedicated_federation(f: DedicatedFederation, token: Secret) -> Proc
 
 fn dedicated_federation_provision_with_supplied_token(f: DedicatedFederation) -> ProcessExit
 {
-  match read_supplied_access_token() {
+  let input_refusals = dedicated_federation_pool_display_name_refusals(federations: [f])
+  if count(input_refusals) > 0 { exit_failure(reason: join(input_refusals, "; ")) }
+  else { match read_supplied_access_token() {
     SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
     SuppliedTokenReady { token: t } => provision_dedicated_federation(f: f, token: t)
-  }
+  } }
 }
 
 fn heal_publisher_federation_provision_with_supplied_token() -> ProcessExit

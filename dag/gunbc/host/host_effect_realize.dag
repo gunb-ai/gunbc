@@ -193,7 +193,7 @@ import gunbc.live_deploy.emit {
   live_deploy_apply_script_for_wet,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
-  deployment_serve_route_script,
+  deployment_serve_route_command,
   approval_broker_dark_install_script,
   microvm_controller_install_script,
 }
@@ -4604,20 +4604,31 @@ fn realize_live_deploy_ensure_dependency_on_host(
 
 // One serve route written or turned off, as its own gated effect: the tailnet door cutover applies
 // the re-point and its restore one at a time, between observations, never inside the bulk apply.
+// THE SERVE ROUTE AS A TYPED ARGV, not a retained shell script. The one route the cutover writes
+// (gunbc.live_deploy.tailnet_door_cutover) is a single privileged command; its old body was a
+// RetainedShellScript whose bash added nothing the words did not say, so it is emitted as an
+// ArgvCommand (deployment_serve_route_command: sudo -n tailscale <serve argv>) and run through the
+// typed transport. Every refusal the script had survives as a typed NotConverged:
+//   - the leg RAN (LocalShell / SshShell) and returned a non-zero exit -> reconcile_shell_exec_observed
+//     maps it to NotConverged { shell_exec_failure_reason } exactly as the old realize_shell_on_host did;
+//   - the leg RAN and returned 0 -> Converged { ShellEffectApplied } (same evidence the script path produced);
+//   - the transport is refused (FleetSsh / EmitArtifactThenThinRun, and the SshShell typed-argv refusal)
+//     -> run_argv_over_host_effect_transport yields RunArgvTransportRefused, folded here to NotConverged
+//     { reason }. The old script path surfaced those transports as a failed observation; the new typed
+//     path names the refusal directly. Neither path converges, and neither falls back to a default.
 fn realize_live_deploy_serve_route_on_host(
   endpoint: TailscaleServeEndpoint,
   enabled: Bool,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: deployment_serve_route_script(endpoint: endpoint, enabled: enabled),
-      reason: "live_deploy serve route",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  let command = deployment_serve_route_command(endpoint: endpoint, enabled: enabled)
+  match run_argv_over_host_effect_transport(command: command, transport: transport) {
+    RunArgvTransportObserved { observed } =>
+      reconcile_shell_exec_observed(observed: observed, intent: intent)
+    RunArgvTransportRefused { reason } =>
+      NotConverged { reason: reason, applied: intent }
+  }
 }
 
 fn realize_live_deploy_digest_readback_on_host(
