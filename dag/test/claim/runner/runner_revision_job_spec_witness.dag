@@ -74,4 +74,6 @@ test fn an_unobserved_claim_never_qualifies_whatever_the_others_did() -> Bool {
     && standing_label(s: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:typo", exit: 2)])) == "unobserved://a:typo"
     && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:typo", exit: 2)]))
     && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:y", exit: 1)]))
+    && !revision_job_qualifies(standing: revision_job_standing(results: [r(label: "//a:x", exit: 0), r(label: "//a:z", exit: 99)]))
+    && standing_label(s: revision_job_standing(results: [r(label: "//a:z", exit: 99)])) == "unobserved://a:z"
 }

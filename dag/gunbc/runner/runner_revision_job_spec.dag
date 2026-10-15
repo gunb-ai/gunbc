@@ -197,8 +197,11 @@ type RevisionJobStanding
   | RevisionJobSomeNotHeld { not_held: List<String> }
   | RevisionJobSomeUnobserved { unobserved: List<String>, not_held: List<String> }
 
+// ONLY exit 0 IS HELD. The decoder already refuses an exit outside {0,1,2}
+// (gunbc.runner.runner_claim_set_results ResultsExitNotAStanding); this fold does not rely on that:
+// anything that is not 0 or 1 is unobserved, so no value can fall through to the qualifying arm.
 fn revision_job_standing(results: List<ClaimSetResult>) -> RevisionJobStanding {
-  let unobserved = map(filter(results, r => r.exit == 2), r => r.label as String)
+  let unobserved = map(filter(results, r => r.exit != 0 && r.exit != 1), r => r.label as String)
   let not_held = map(filter(results, r => r.exit == 1), r => r.label as String)
   if count(unobserved) > 0 { RevisionJobSomeUnobserved { unobserved: unobserved, not_held: not_held } }
   else if count(not_held) > 0 { RevisionJobSomeNotHeld { not_held: not_held } }
