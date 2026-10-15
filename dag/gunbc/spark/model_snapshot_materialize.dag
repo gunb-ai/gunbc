@@ -18,6 +18,7 @@ import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_endpoint, spark_reach_path_wire }
@@ -147,12 +148,12 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
         Absent => spark_remote_unreachable(u: LegNotAttempted { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") })
         Present { value: endpoint } =>
+          match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: fleet_bootstrap_principal_login()) {
+          SshTargetRefused { endpoint: e, refusal: why } => spark_remote_unreachable(u: LegNotAttempted { cause: ssh_target_refusal_text(endpoint: e, refusal: why) })
+          SshTargetResolved { target: target } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: ctx.trust,
-            target: SshTarget {
-              endpoint: endpoint as NonEmptyStr,
-              principal: fleet_bootstrap_principal_login(),
-            },
+            target: target,
             words: words,
             stdin_payload: join([ctx.admin_credential as String, "\n", remote_leg_began_payload_line(), shell_command_line(argv: argv), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
@@ -160,6 +161,7 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
             FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
             FleetPrincipalLegRan { session: _, result: r } =>
               spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+          }
           }
       }
   }
