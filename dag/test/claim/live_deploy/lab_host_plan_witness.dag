@@ -115,6 +115,30 @@ test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
   }
 }
 
+test fn a_non_srv1_host_with_sysctl_one_does_not_get_a_ready_sandbox_from_srv1s_receipt() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandboxEnforcementUnobserved { obligation: _ } => true
+        LabSandboxUnobserved { obligation: _ } => false
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+        LabSandboxSysctlUnreadable { value: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
 test fn unobserved_apparmor_with_known_os_refuses_sandbox_rather_than_defaulting() -> Bool {
   let surface = software_surface(
     host: operator_host_srv2,

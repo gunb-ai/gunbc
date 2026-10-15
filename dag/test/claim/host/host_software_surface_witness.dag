@@ -28,6 +28,7 @@ import gunbc.host.host_software_surface {
   host_coreutils_timeout_expired_exit_code,
   srv1_software_inhabitance_probe_commands,
   srv1_user_manager_protect_home_wrote_into_home_receipt,
+  user_manager_wrote_into_home_observed_on_this_host_obligation,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
@@ -115,6 +116,26 @@ test fn a_sysctl_zero_host_does_not_promote_the_enforcing_bet() -> Bool {
   )
   match user_manager_sandbox_enforcement(surface: surface) {
     UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_non_srv1_host_with_sysctl_one_does_not_inherit_the_srv1_receipt() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerSandboxEnforcementUnobserved { obligation: o } =>
+      o == user_manager_wrote_into_home_observed_on_this_host_obligation
     UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
     UserManagerSandboxUnobserved { obligation: _ } => false
     UserManagerSandboxSysctlUnreadable { value: _ } => false
