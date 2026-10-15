@@ -25042,10 +25042,6 @@ macro_rules! v1_builtin_arms {
                 $ctx,
             ))),
 
-            arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
-            ))),
-
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
                 let names = crate::cli_run::test_migration_debt_module_names();
                 let items: Vec<Value> = names.into_iter().map(str_value).collect();

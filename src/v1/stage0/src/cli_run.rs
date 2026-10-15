@@ -5824,11 +5824,25 @@ fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
             let closure_units = sources.len() as u128;
             let leg_started = std::time::Instant::now();
             let _ = drain_module_typecheck_walls();
-            let (ok, failure_detail) = match compile_clean::compile_clean_cli_verdict_whole_tree() {
-                Ok(ok) => (ok, String::new()),
-                Err(detail) => (false, detail),
+            let index = process_shared_index(&index_roots);
+            let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+            let result = v1_compiler_compile::compile_to_resolved_with_options(
+                Rc::new(sources.into()),
+                options,
+            );
+            let has_hard = compile_clean::compile_clean_resolve_has_hard_errors(&result);
+            if has_hard {
+                eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
+            }
+            let empty_graph = result.graph.is_none();
+            let ok = !has_hard && !empty_graph;
+            let failure_detail = if ok {
+                String::new()
+            } else if has_hard {
+                format_first_compile_clean_hard_diagnostic(result.diagnostics.as_ref())
+            } else {
+                "floor compile-clean: refused — resolve produced no graph".to_string()
             };
-            let _ = (sources, index_roots);
             let wall_ms = leg_started.elapsed().as_millis();
             let module_typecheck_walls = drain_module_typecheck_walls();
             write_floor_compile_clean_cost_receipt(
@@ -5889,7 +5903,7 @@ fn write_floor_compile_clean_cost_receipt(
     }
 }
 
-/// Run the floor's single whole-tree `--target dag` compile and store the receipt for gate
+/// Run the floor's single scoped resolve/typecheck and store the receipt for gate
 /// consumption. Exactly one install per `claim_executor` process; second install is an error.
 pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT
@@ -5897,12 +5911,12 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         .map_err(|e| format!("floor compile-clean receipt lock poisoned: {e}"))?;
     if guard.is_some() {
         return Err(
-            "floor compile-clean receipt already installed — one whole-tree compile per run"
+            "floor compile-clean receipt already installed — one compile-clean resolve per run"
                 .to_string(),
         );
     }
     eprintln!(
-        "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
+        "claim_executor: floor compile-clean — one scoped resolve/typecheck via shared index (gate consumes receipt)"
     );
     let receipt = produce_floor_compile_clean_receipt();
     if let FloorCompileCleanReceipt::Compiled { ok, .. } = &receipt {
@@ -5912,10 +5926,10 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
     Ok(())
 }
 
-/// Gate consumer for the floor's ONE whole-tree `--target dag` compile.
+/// Gate consumer for the floor's ONE compile-clean resolve/typecheck.
 ///
-/// IT MAY RUN THAT COMPILE. When `claim_executor` armed `FLOOR_COMPILE_CLEAN_LAZY_INSTALL` this
-/// call installs the receipt on first consume — a whole-tree compile — hence
+/// IT MAY RUN THAT RESOLVE. When `claim_executor` armed `FLOOR_COMPILE_CLEAN_LAZY_INSTALL` this
+/// call installs the receipt on first consume — a scoped compile-clean resolve — hence
 /// `install_or_consume`. The two `consume_*` functions it replaces were documented as "reads the
 /// receipt only ... never runs a second compile", false of the first and invisible at the `.dag`
 /// call site, where a `Bool` read could cost a whole-tree compile.
@@ -6170,17 +6184,6 @@ fn normalize_repo_relative_path_for_census(path: &str) -> String {
         }
     }
     p
-}
-
-/// Host-callable witness entry (errors → false, located stderr).
-pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
-    match compile_clean_cli_floor_verdicts_agree() {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("witness_compile_clean_cli_floor_verdicts_agree: {e}");
-            false
-        }
-    }
 }
 
 fn truncate_histogram_label(s: &str, max: usize) -> String {

@@ -402,7 +402,6 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "record_generated_artifact_drift_gate_failure_detail": BuiltinSignature { params: [BuiltinParam { name: "detail", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "record_generated_artifact_drift_gate_clean": BuiltinSignature { params: [], returns: unit_type },
   "consume_generated_artifact_drift_gate_receipt": BuiltinSignature { params: [], returns: type_variable_node(id: "gate_receipt_result") },
-  "witness_compile_clean_cli_floor_verdicts_agree": BuiltinSignature { params: [], returns: bool_type },
   "test_migration_debt_module_names": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_debt_module_name_elem") },
   "test_migration_legacy_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_legacy_behavior_id_elem") },
   "test_migration_witness_behavior_ids": BuiltinSignature { params: [], returns: list_of_type_variable(id: "test_migration_witness_behavior_id_elem") },

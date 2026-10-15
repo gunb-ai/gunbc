@@ -1393,26 +1393,13 @@ pub fn compile_clean_diagnostic_census(
     })
 }
 
-/// Floor compile-clean verdict. The via-index emit oracle is gone (no executing
-/// route); this is the CLI realization.
-pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    compile_clean_cli_verdict_whole_tree()
-}
-
-/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
-/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
+/// CLI compile-clean verdict: resolve/typecheck over the whole-tree source closure
+/// (the standalone `gunbc compile` transport).
 pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
     let result = compile_clean_whole_tree_resolved()?;
     let graph_ok = result.graph.is_some();
     let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
     Ok(graph_ok && !hard)
-}
-
-/// Both realizations must agree modulo the single policy row.
-pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
-    let floor = compile_clean_floor_verdict_whole_tree()?;
-    let cli = compile_clean_cli_verdict_whole_tree()?;
-    Ok(floor == cli)
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.

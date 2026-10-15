@@ -1575,10 +1575,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![]),
         returns: type_variable_node("gate_receipt_result".to_string()),
     }));
-                __m.insert("witness_compile_clean_cli_floor_verdicts_agree".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
                 __m.insert("test_migration_debt_module_names".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: list_of_type_variable("test_migration_debt_module_name_elem".to_string()),

@@ -126,7 +126,6 @@ pub enum EvalBuiltinArm {
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallRecordGeneratedArtifactDriftGateClean,
     FreeCallConsumeGeneratedArtifactDriftGateReceipt,
-    FreeCallWitnessCompileCleanCliFloorVerdictsAgree,
     FreeCallTestMigrationDebtModuleNames,
     FreeCallTestMigrationLegacyBehaviorIds,
     FreeCallTestMigrationWitnessBehaviorIds,
@@ -273,7 +272,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "record_generated_artifact_drift_gate_clean" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean),
         "consume_generated_artifact_drift_gate_receipt" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt),
-        "witness_compile_clean_cli_floor_verdicts_agree" => Some(EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree),
         "test_migration_debt_module_names" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames),
         "test_migration_legacy_behavior_ids" => Some(EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds),
         "test_migration_witness_behavior_ids" => Some(EvalBuiltinArm::FreeCallTestMigrationWitnessBehaviorIds),
@@ -418,7 +416,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.record_generated_artifact_drift_gate_clean") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateClean };
     ("free_call.consume_generated_artifact_drift_gate_receipt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateReceipt };
-    ("free_call.witness_compile_clean_cli_floor_verdicts_agree") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree };
     ("free_call.test_migration_debt_module_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames };
     ("free_call.test_migration_legacy_behavior_ids") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds };
     ("free_call.test_migration_witness_behavior_ids") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationWitnessBehaviorIds };
