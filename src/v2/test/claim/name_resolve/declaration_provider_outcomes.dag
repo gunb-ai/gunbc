@@ -316,7 +316,7 @@ test fn dpo_declaration_depending_on_gone_named_is_published() -> Bool {
   }
 }
 
-test fn dpo_module_grained_mutant_hides_ok() -> Bool {
+test fn dpo_module_unavailable_mutant_is_not_available() -> Bool {
   match dpo_outcomes() {
     Absent => false
     Present { value: outcomes } =>

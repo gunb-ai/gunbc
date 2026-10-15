@@ -55,6 +55,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  dag_surface_where_refinement_clause_edge,
   namespace_graft_namespace_body_node,
   dag_int_literal_magnitude_int_from_node,
   ParseSubtreeAbsent,
@@ -10468,13 +10469,9 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<BodyLow
   }
 }
 
-fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
-  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
-}
-
 fn body_lower_find_where_host_conj(root: Node) -> Optional<Node> {
   match fold(root.children, init: false, f: fn(found, e) {
-    found || body_lower_edge_names_where_clause(e: e)
+    found || dag_surface_where_refinement_clause_edge(e: e)
   }) {
     true => Present { value: root }
     false =>
