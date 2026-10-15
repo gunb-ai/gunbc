@@ -5,6 +5,7 @@ import v2.compiler.infer {
   ConstructIsVariantArm,
   ConstructNotARecord,
   ConstructVariantArmIdentityUnavailable,
+  ConstructVariantArmIdentityContested,
   infer,
   infer_record_construct_read,
   inferred_facts_resolved_type
@@ -199,6 +200,7 @@ fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
             Absent => ^vfp_read_arm_path_absent
           }
         ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
+        ConstructVariantArmIdentityContested { claimants: _ } => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }
@@ -220,6 +222,7 @@ fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
             Absent => ^vfp_read_no_carrier
           }
         ConstructVariantArmIdentityUnavailable => ^vfp_read_identity_unavailable
+        ConstructVariantArmIdentityContested { claimants: _ } => ^vfp_read_identity_unavailable
         ConstructNotARecord => ^vfp_read_not_a_record
       }
   }

@@ -103,7 +103,7 @@ import v2.std.provenance {
   span_index_empty,
   span_index_in_scope
 }
-import v2.std.source_position { source_line_col_at_byte }
+import v2.std.source_position { SourcePositionIndex, source_line_col_in, source_position_index }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_eq_structural }
 import std.judgment_contract {
   DeclaredInput,
@@ -1427,13 +1427,14 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // ACCEPTED FILES' SPAN INDEXES, JOINED BY OCCURRENCE ID TO THE FILE THAT MINTED THEM. The census
 // locates a later resolve/infer fatal by looking up the owner and resolving that file's index at
 // the demand (native_census_locate), not by converting every occurrence to a line at absorb
-// (DESIGN §2: one undeclared pure demand may recompute; §6: ids × bytes through
-// source_line_col_at_byte is a quadratic fold). The stored values are a path and a SpanIndex, never
-// a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
+// (DESIGN §6: ids × bytes would be a quadratic fold). What the file keeps for those demands is its
+// SourcePositionIndex, derived once here, never its text: a demand that re-swept the text paid
+// refusals × bytes, which is what made a 16k-line module with ten thousand refusals take two hours.
+// The stored values are a path, a SpanIndex and a SourcePositionIndex, never a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
 // file (native_test_context_absorb). A colliding id already in `owner` is left as it was (base-wins).
 type NativeCensusFileSpans {
   spans: SpanIndex
-  text: String
+  lines: SourcePositionIndex
 }
 
 type NativeCensusPositionTable {
@@ -1568,13 +1569,14 @@ fn native_refused_file_module(content: String) -> Optional<QualifiedName> {
 }
 
 fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics, spans: SpanIndex, text: String) -> NativeTestFileRefusal {
+  let lines = source_position_index(text: text)
   NativeTestFileRefusal {
     path: path,
     module: module,
     chain: FreeSemigroup {
-      head: native_file_refusal_link(d: d.head, path: path, spans: spans, text: text),
+      head: native_file_refusal_link(d: d.head, path: path, spans: spans, lines: lines),
       tail: fold_list(xs: d.tail, empty: Empty, cons: fn(acc, diag) {
-        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
+        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, lines: lines))
       })
     }
   }
@@ -1582,42 +1584,42 @@ fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: No
 
 // ONE LINK, RESOLVED HERE AND NOWHERE LATER. A node locus goes through THIS file's span index to
 // its textual extent; a textual extent in THIS file becomes a line and byte column against THIS
-// file's text (v2.std.source_position, which walks UTF-8 octets, never characters). Everything
+// file's line index (v2.std.source_position, derived from UTF-8 octets, never characters). Everything
 // else keeps its own typed reason for having no line.
-fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalLink {
-  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, text: text) }
+fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, lines: SourcePositionIndex) -> FileRefusalLink {
+  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, lines: lines) }
 }
 
-fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalAt {
+fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: SourcePositionIndex) -> FileRefusalAt {
   match at {
-    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
       match node_authored_span_optional(node: a.at, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
-        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, text: text)
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
   }
 }
 
-fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, text: String) -> FileRefusalAt {
+fn native_file_refusal_from_resolved_locus(resolved: Locus, path: Symbol, lines: SourcePositionIndex) -> FileRefusalAt {
   match resolved {
-    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
-    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, lines: lines)
     NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
   }
 }
 
-fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text: String) -> FileRefusalAt {
+fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, lines: SourcePositionIndex) -> FileRefusalAt {
   if file == path {
     match extent {
       WholeFile => FileRefusalAtWholeFile
       ByteRange { start: st, end: _ } => {
-        let lc = source_line_col_at_byte(text: text, offset: st)
+        let lc = source_line_col_in(index: lines, offset: st)
         FileRefusalAtLine { line: lc.line, byte_column: lc.byte_column }
       }
     }
@@ -1627,8 +1629,8 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text:
 }
 
 // ONE ACCEPTED FILE, RECORDED FOR LATER LOOKUP. Occurrence ids are owned by this path (base-wins);
-// the span index and text stay with the file so a later fatal can resolve a line through
-// native_file_refusal_at. A refused parse never enters this table.
+// the span index and the file's line index (derived here, once) stay with the file so a later fatal
+// can resolve a line through native_file_refusal_at. A refused parse never enters this table.
 fn native_census_positions_absorb_accepted(
   table: NativeCensusPositionTable,
   path: Symbol,
@@ -1646,7 +1648,7 @@ fn native_census_positions_absorb_accepted(
         }
       }
     ),
-    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, text: text })
+    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, lines: source_position_index(text: text) })
   }
 }
 
@@ -1666,7 +1668,7 @@ fn native_census_owner_key(node: Node) -> Optional<OccurrenceId> {
 // A LATER DIAGNOSTIC'S LOCUS, RESOLVED AT THE DEMAND. NodeLocus finds the owner file by the
 // parse-minted key, then goes through native_file_refusal_at (node_authored_span_optional on
 // THAT file's spans). A foreign projected cause therefore stays Unresolved, same as a miss;
-// never a neighbouring span. Textual loci use the stored file text.
+// never a neighbouring span. Textual loci use the stored line index.
 fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match at {
     Textual { file: f, extent: e } => native_census_locate_textual(file: f, extent: e, path: path, positions: positions)
@@ -1683,7 +1685,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
               match map_lookup(positions.files, owner_path) {
                 Absent => FileRefusalAtUnresolvedNode
                 Present { value: file } =>
-                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, text: file.text)
+                  native_file_refusal_at(at: at, path: owner_path, spans: file.spans, lines: file.lines)
               }
           }
       }
@@ -1692,7 +1694,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
 
 fn native_census_locate_textual(file: Symbol, extent: Extent, path: Symbol, positions: NativeCensusPositionTable) -> FileRefusalAt {
   match map_lookup(positions.files, file) {
-    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, text: stored.text)
+    Present { value: stored } => native_file_refusal_textual(file: file, extent: extent, path: path, lines: stored.lines)
     Absent =>
       if file == path {
         FileRefusalAtUnresolvedNode

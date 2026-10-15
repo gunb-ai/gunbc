@@ -98,6 +98,15 @@ fn find_owner_executable_files_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "f", "-perm", "-u+x", "-printf", "x %P\\n"])
 }
 
+// IS THIS EXACT PATH A SOCKET, IN WORDS THAT CROSS THE FLEET SSH EDGE. `-maxdepth 0` tests the named
+// operand itself; `-type s` (find(1) TESTS) matches a socket; `-print` prints the operand only when it
+// matched. So: the path printed is a socket; exit 0 with nothing printed is an object that is not a
+// socket; a nonzero exit names a failure on stderr (find(1) EXIT STATUS). Unlike `stat -c %F`, no
+// word here carries a `%`, which the fleet edge refuses.
+fn find_path_is_socket_command(path: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [path, "-maxdepth", "0", "-type", "s", "-print"])
+}
+
 fn find_symlink_targets_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "l", "-printf", "l %P -> %l\\n"])
 }
