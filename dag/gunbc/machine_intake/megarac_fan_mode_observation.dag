@@ -277,6 +277,8 @@ fn megarac_duty_converge_verdict(
         floor: megarac_duty_tach_move_floor,
       )) {
         MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
+      } else if (!guard_holds_over_dwell) {
+        MegaRacDutyNotConvergedGuardOpen
       } else {
         MegaRacDutyConvergedTachMoved
       }

@@ -202,6 +202,35 @@ test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
   }
 }
 
+test fn open_dwell_guard_refuses_converge_on_both_fidelity_arms() -> Bool {
+  match megarac_duty_converge_verdict(
+    fidelity: mtcollins1_megarac_tach_fidelity,
+    pwm_echo_matches_desired: true,
+    guard_holds_over_dwell: false,
+    tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+    tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(6000)],
+  ) {
+    MegaRacDutyNotConvergedGuardOpen =>
+      match megarac_duty_converge_verdict(
+        fidelity: MegaRacTachFidelityEstablished,
+        pwm_echo_matches_desired: true,
+        guard_holds_over_dwell: false,
+        tach_before_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(5700)],
+        tach_after_rpm: [rpm(5700), rpm(5700), rpm(5700), rpm(6000)],
+      ) {
+        MegaRacDutyNotConvergedGuardOpen => true
+        MegaRacDutyConvergedTachMoved => false
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+        MegaRacDutyNotConvergedEchoMismatch => false
+      }
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+    MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedEchoMismatch => false
+  }
+}
+
 test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
   (megarac_op_fan_get_manager_status.path as String) == "/api/fan_control/get_manager_status"
     && (megarac_op_fan_get_fan_info.path as String) == "/api/fan_control/get_fan_info"
