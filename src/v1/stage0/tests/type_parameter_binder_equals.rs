@@ -1,6 +1,6 @@
 use im::HashMap;
 use std::rc::Rc;
-use v1_compiler::std_decl_ref::decl_type_parameter_ref;
+use v1_compiler::std_decl_ref::{decl_ref, decl_type_parameter_ref};
 use v1_compiler::v1_compiler_infer_resolve::node_with_declaration;
 use v1_compiler::v1_compiler_infer_types::{
     node_type_equals, type_variable_node, TextJudgment, TextNotAskedReason,
@@ -78,5 +78,19 @@ fn unmarked_leaf_named_like_the_variable_is_that_variable() {
     assert!(
         !node_type_equals(tv, unnamed_leaf("K"), si, t),
         "TypeVariable T vs unmarked leaf K is not"
+    );
+}
+
+#[test]
+fn declared_nominal_leaf_named_t_is_not_the_inference_variable() {
+    let si = empty_si();
+    let t = text();
+    let tv = type_variable_node("T".to_string());
+    let mut leaf = (*unnamed_leaf("T")).clone();
+    leaf.declaration = Some(decl_ref("user.mod".to_string(), "T".to_string()));
+    let leaf = Rc::new(leaf);
+    assert!(
+        !node_type_equals(tv, leaf, si, t),
+        "review 80583: a declared type T must not equal inference-variable T by spelling"
     );
 }

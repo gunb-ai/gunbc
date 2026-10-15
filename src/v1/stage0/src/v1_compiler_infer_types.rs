@@ -94,6 +94,9 @@ pub fn type_variable_leaf_name(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
+    if n.declaration.clone().is_some() {
+        return "".to_string();
+    }
     if (n.children.clone().len() as i64) == 0
         && n.connective.clone() == Connective::NoConnective
         && (n.params.clone().len() as i64) == 0
