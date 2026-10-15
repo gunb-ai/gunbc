@@ -1,5 +1,6 @@
 module test.claim.live_deploy.user_work_slice_witness
 
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.measure { byte_size_count, kibibyte, byte_size }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -30,7 +31,7 @@ import gunbc.compute.unit_bounds {
   user_work_scope_ci_env_name, user_work_scope_xdg_runtime_dir_env_name,
   CgroupText, CgroupReadFailed,
   AlreadyInSlice, RunnerSlotExempt, CiExempt, UnitTestExempt, UserSessionAbsent,
-  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainUnbounded, CgroupChainNotObserved, cgroup_bound_fallthrough_wire, CgroupChainRead, CgroupChainUnread, CgroupLimitReading,
+  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainUnbounded, CgroupChainNotObserved, cgroup_bound_fallthrough_wire, CgroupChainRead, CgroupChainUnread,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -322,25 +323,29 @@ test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Boo
   }
 }
 
-// THE OBSERVED-BOUND ARM: a process whose cgroup chain carries a finite memory.max with no swap is
-// bounded whatever its unit is called; memory.max=max, swap allowed, or no reading never admits.
-fn bound_standing(chain: List<CgroupLimitReading>) -> String {
-  user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
-    cgroup: CgroupText { text: "0::/system.slice/gunbc-revision-job.service" },
-    bound: CgroupChainRead { chain: chain }, user_manager_reachable: false, xdg_runtime_dir: false))
+// THE OBSERVED-BOUND ARM: a process whose cgroup chain carries a binding memory.max and forbids swap
+// is bounded whatever its unit is called; no binding limit, swap allowed everywhere, or no reading
+// never admits. Levels and swap values are parsed by extdeps.linux.cgroup_v2_memory's own parser.
+fn level(dir: NonEmptyStr, max: String) -> CgroupMemoryLevel {
+  CgroupMemoryLevelRead { dir: dir, max: parse_cgroup_memory_limit(body: max), high: CgroupMemoryUnlimited }
 }
 
-test fn a_finite_memory_max_with_no_swap_bounds_the_process_whatever_its_unit_is_called() -> Bool {
-  bound_standing(chain: [
-    CgroupLimitReading { cgroup: "/system.slice/gunbc-revision-job.service", memory_max: "21474836480", memory_swap_max: "0" },
-    CgroupLimitReading { cgroup: "/system.slice", memory_max: "max", memory_swap_max: "max" },
-  ]) == "BoundedByObservedCgroup"
+fn bound_standing(levels: List<CgroupMemoryLevel>, swap: List<String>) -> String {
+  user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
+    cgroup: CgroupText { text: "0::/system.slice/gunbc-revision-job.service" },
+    bound: CgroupChainRead { levels: levels, swap_max: map(swap, w => parse_cgroup_memory_limit(body: w)) },
+    user_manager_reachable: false, xdg_runtime_dir: false))
+}
+
+test fn a_binding_memory_max_with_swap_forbidden_bounds_the_process_whatever_its_unit_is_called() -> Bool {
+  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]) == "BoundedByObservedCgroup"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max"), level(dir: "/sys/fs/cgroup/system.slice", max: "8589934592")], swap: ["max", "0"]) == "BoundedByObservedCgroup"
 }
 
 test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
-  bound_standing(chain: [CgroupLimitReading { cgroup: "/system.slice/x.service", memory_max: "max", memory_swap_max: "0" }]) == "UserSessionAbsent"
-    && bound_standing(chain: [CgroupLimitReading { cgroup: "/system.slice/x.service", memory_max: "21474836480", memory_swap_max: "max" }]) == "UserSessionAbsent"
-    && bound_standing(chain: []) == "UserSessionAbsent"
+  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]) == "UserSessionAbsent"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]) == "UserSessionAbsent"
+    && bound_standing(levels: [], swap: []) == "UserSessionAbsent"
     && user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
          cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
          user_manager_reachable: false, xdg_runtime_dir: false)) == "UserSessionAbsent"
