@@ -9,6 +9,7 @@ import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium,
   census_capture_program,
+  census_image_derivation,
   mtcollins1_census_image, CensusImage, CensusImageDerived, CensusImageRefused,
   mtcollins1_census_console_device, mtcollins1_census_grub_cmdline, mtcollins1_census_halt_command,
   mtcollins1_census_image_stem, mtcollins1_census_machine, mtcollins1_census_nocloud_dir,
@@ -306,19 +307,24 @@ fn second_subject_medium() -> BootMedium {
   census_boot_medium(image_stem: second_subject_stem, volume_id: second_subject_volume_id, output_digest: second_subject_digest)
 }
 
-// The second subject's image: its build input, with the same stem + volume +
-// program as the derivation would produce. The record path and build key derive
-// from this input, so the medium and the image agree on artifact identity.
+// The second subject's image: the REAL derivation applied to its own facts. Its stem and volume id
+// name the artifact, so the derived input carries the second stem -- and hence a build key and an
+// image name that differ from mtcollins1's -- through the same code path the mtcollins1 row uses.
+// (Routed through census_image_derivation, not a hand-built CensusImageDerived, so a derivation that
+// ignored image_stem and hardcoded the mtcollins1 constants would go RED here -- DESIGN 5: a real
+// consumer green by execution plus a discriminating input.)
 fn second_subject_image() -> CensusImage {
-  CensusImageDerived { input: census_seeded_image_input(
+  census_image_derivation(
+    stages: mtcollins1_census_stages,
+    machine: second_subject_stem,
+    console_device: mtcollins1_census_console_device,
+    halt_command: mtcollins1_census_halt_command,
     image_stem: second_subject_stem,
     volume_id: second_subject_volume_id,
-    user_data_body: "#cloud-config\nautoinstall:\n  version: 1\n" as NonEmptyStr,
     grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
     nocloud_dir: mtcollins1_census_nocloud_dir,
     program_file: mtcollins1_census_program_file,
-    program_content: census_capture_program(machine: second_subject_stem, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages),
-  ) }
+  )
 }
 
 // CONTROL (a): A NON-MTCOLLINS1 SUBJECT DERIVES ITS OWN IMAGE AND MEDIUM PLAN.
