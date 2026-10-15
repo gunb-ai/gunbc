@@ -6,6 +6,7 @@ use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_primitive_projection::{never_type_declaration, never_type_qualified_path};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::*;
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
@@ -920,47 +921,6 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
     }
 }
 
-fn env_binds_never_declaration(env: Rc<TypeEnv>) -> bool {
-    if env.module_path.clone()
-        == crate::std_primitive_projection::never_type_declaration()
-            .module_path
-            .clone()
-    {
-        true
-    } else {
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
-            env.symbol_index.clone(),
-            crate::std_primitive_projection::never_type_qualified_path(),
-        ) {
-            std::option::Option::None => false,
-            Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                crate::std_primitive_projection::never_type_declaration()
-                    .decl_name
-                    .clone(),
-            ) {
-                std::option::Option::None => false,
-                Some(bound) => bound.occurrence_identity == indexed.occurrence_identity,
-            },
-        }
-    }
-}
-
-fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if resolved.connective.clone() == Disj {
-        (resolved.children.clone().len() as i64) == 0
-    } else {
-        (crate::v1_std_core::authored_name_at(env.source_indices.clone(), resolved.clone())
-            == crate::std_primitive_projection::never_type_declaration()
-                .decl_name
-                .clone()
-                .to_string())
-            && (resolved.connective.clone() == NoConnective)
-            && ((resolved.children.clone().len() as i64) == 0)
-            && env_binds_never_declaration(env.clone())
-    }
-}
-
 pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<ConstructorRoster> {
     {
         let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
@@ -1005,6 +965,40 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
                 }
             }
         }
+    }
+}
+
+pub fn env_binds_never_declaration(env: Rc<TypeEnv>) -> bool {
+    if (env.module_path.clone() == never_type_declaration().module_path.clone()) {
+        true
+    } else {
+        match crate::v1_compiler_infer_env::symbol_index_lookup(
+            env.symbol_index.clone(),
+            crate::std_primitive_projection::never_type_qualified_path(),
+        ) {
+            std::option::Option::None => false,
+            Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
+                env.clone(),
+                never_type_declaration().decl_name.clone(),
+            ) {
+                std::option::Option::None => false,
+                Some(bound) => {
+                    (bound.occurrence_identity.clone() == indexed.occurrence_identity.clone())
+                }
+            },
+        }
+    }
+}
+
+pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if (resolved.connective.clone() == Connective::Disj) {
+        ((resolved.children.clone().len() as i64) == 0)
+    } else {
+        ((((crate::v1_std_core::authored_name_at(env.source_indices.clone(), resolved.clone())
+            == never_type_declaration().decl_name.clone())
+            && (resolved.connective.clone() == Connective::NoConnective))
+            && ((resolved.children.clone().len() as i64) == 0))
+            && env_binds_never_declaration(env.clone()))
     }
 }
 
