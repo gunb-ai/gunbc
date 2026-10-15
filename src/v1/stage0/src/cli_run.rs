@@ -11752,31 +11752,6 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     )
 }
 
-/// Test-only: whether `parse_cache` holds a path (pool census must not pre-fill it).
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -> bool {
-    index
-        .parse_cache
-        .borrow()
-        .keys()
-        .any(|k| k == path || same_canonical_file(k, path))
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
-    index.parse_cache.borrow().keys().cloned().collect()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
-    index.typed_cache_evictions.get()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
-    index.entry_closure_sources.borrow().len()
-}
-
 /// Drop every assembled per-closure graph from the in-process share memo, leaving the
 /// per-module typed cache warm. Reproduces the production state after the compile-clean
 /// gate warms the shared index Ephemerally (D0.1): modules cached, no per-entry graph
@@ -11785,35 +11760,6 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
-}
-
-/// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
-/// bypassing the process-global `GUNBC_SCHEDULE_RETENTION_EVICT` env — so the D0.4
-/// retain-all (`evict_enabled=false`) baseline can be exercised on a real index without
-/// racing that env against concurrently-running tests.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn install_schedule_retention_for_test(
-    index: &MultiEntryIndex,
-    per_entry: Vec<(String, Vec<String>)>,
-    evict_enabled: bool,
-) {
-    *index.schedule_retention.borrow_mut() =
-        Some(ScheduleRetention::armed(per_entry, evict_enabled));
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn both_closure_edges_initialized_for_test(index: &MultiEntryIndex) -> bool {
-    index.both_closure_edges.borrow().is_some()
-}
-
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn both_closure_bare_edge_rows_for_test(index: &MultiEntryIndex) -> usize {
-    index
-        .both_closure_edges
-        .borrow()
-        .as_ref()
-        .map(|edges| edges.bare_out.len())
-        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -11959,35 +11905,6 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         _ => return false,
     }
     true
-}
-
-/// The loader's EXACT closure for one entry, in the `workspace_relative_repo_path` form
-/// `index_arm_schedule_retention` arms from — so the decomposition harness can arm
-/// schedule retention over its cohort through the same closure authority production uses,
-/// rather than reconstructing a second adjacency (the D0.3 / #6985 Class-B root).
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn entry_closure_paths_for_test(
-    index: &MultiEntryIndex,
-    entry: &str,
-) -> Result<Vec<String>, String> {
-    load_sources_for_entry_with_pool(index, entry).map(|sources| {
-        sources
-            .iter()
-            .map(|sf| workspace_relative_repo_path(&sf.path))
-            .collect()
-    })
-}
-
-/// Drive one entry-completion of the armed schedule — the production drain step
-/// (`index_schedule_entry_completed`), so an armed measurement releases exactly what a
-/// real worker releases.
-#[cfg(any(test, feature = "interp_test_witness"))]
-pub fn schedule_entry_completed_for_test(
-    index: &MultiEntryIndex,
-    entry: &str,
-    subject: Option<&str>,
-) -> Result<(), String> {
-    index_schedule_entry_completed(index, entry, subject)
 }
 
 /// The drop-attributable term names, in the order the decomposition reports them.
@@ -12263,22 +12180,6 @@ const SCHEDULE_RETENTION_ENTRY_LINE_ASSERTS_EXECUTION: bool = false;
 /// `unreconciled_module_releases_without_evicting`.
 const RELEASE_AND_EVICTION_COUNTED_APART: bool = true;
 
-/// Measurement control (RED #1): with `GUNBC_SCHEDULE_RETENTION_EVICT=0` the schedule
-/// still ARMS and COUNTS (refcounts, RetentionUnknown, decrement-underflow refusals)
-/// but drops nothing — reproducing today's pegged peak so the mechanism's effect on
-/// RSS is measurable both directions. This is NOT a §5 escape hatch: it bypasses no
-/// fail-closed refusal (RetentionUnknown still retains-and-counts; a schedule
-/// underflow still refuses) — it only chooses whether the freed-by-schedule bytes are
-/// actually released, the retain-all pole being exactly the pre-M2 behavior.
-fn schedule_retention_evict_enabled() -> bool {
-    !matches!(
-        std::env::var("GUNBC_SCHEDULE_RETENTION_EVICT")
-            .ok()
-            .as_deref(),
-        Some("0") | Some("false") | Some("off")
-    )
-}
-
 /// The cache keys one module holds in the process-shared `MultiEntryIndex`, recorded
 /// as the module reconciles so eviction drops exactly its per-module state — never a
 /// head (the whole-pool parse snapshot and census layers are not per-module state and
@@ -12523,86 +12424,6 @@ impl ScheduleRetention {
     }
 }
 
-/// Arm schedule-derived retention over a discovery run's WHOLE schedule (`rows` = every
-/// scheduled entry's rows). Called ONCE by the drain caller (Serial: the single run; Adaptive
-/// width=1: before the entry-group loop) so refcounts span the whole batch and a shared module
-/// survives until its last consumer — NOT per entry-group call, which would hand the
-/// Adaptive inline drain a one-entry schedule per group (refcount 1 on the whole closure → the
-/// entries=1 cold-recompute churn). Only the private index path
-/// arms — the serial + adaptive-width-1 inline drains that share the long-lived process index
-/// whose typed mass this bounds. The Adaptive plural/shared-store worker path keeps its current
-/// behavior (typed results live in the byte store whose scheduled eviction is the PR-β
-/// `SpacePacked` follow-on) — a declared, typed frontier, never a silent widen. A per-entry
-/// closure that cannot be computed is skipped (its modules become counted `RetentionUnknown` at
-/// reconcile), so arming never fails the run.
-fn index_arm_schedule_retention(index: &MultiEntryIndex, rows: &[DiscoveryRow]) {
-    let mut per_entry: Vec<(String, Vec<String>)> = Vec::new();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for row in rows {
-        if !seen.insert(row.entry.as_str()) {
-            continue;
-        }
-        // Arm from the LOADER's EXACT closure — `load_sources_for_entry_with_pool`, the
-        // same function the discovery reconcile path runs (`resolve_entry_with_parse_cache`).
-        // This is the ONE closure authority the arming and the loader now share (D0.3 /
-        // the #6985 Class-B root, third appearance): the prior CHEAP
-        // `selection_closure_live_paths_with_facts` walked only `selection_adjacency`
-        // (import edges + strict reference edges for import-LESS files), so it OMITTED
-        // modules the loader reaches via qualified-projection references emitted by
-        // import-BEARING files. Such a module, being present in some OTHER entry's global
-        // refcount, was counted neither `RetentionUnknown` nor re-evicted after it was
-        // re-cached on load — an invisible resident leak. Consuming the loader's own output
-        // makes the armed closure ⊇ the reconciled set BY CONSTRUCTION, not by two closures
-        // happening to agree (the doc's "name the one closure authority, don't add a third
-        // adjacency"). Cost is neutral, not the front-load the old comment feared: the pool
-        // loader MEMOIZES into `entry_closure_sources`, so this pre-load is exactly what
-        // discovery would compute and is reused on the entry's resolve, never doubled. Keyed
-        // by `workspace_relative_repo_path(&sf.path)` — the identical form the reconcile
-        // record site derives from `resolved.module.span.file` (`decl_file`), so refcount
-        // keys and record keys still coincide. A closure that cannot be loaded is skipped:
-        // its modules become counted `RetentionUnknown` at reconcile (retained — §5
-        // fail-closed), so arming still never fails the run.
-        let paths = match load_sources_for_entry_with_pool(index, &row.entry) {
-            Ok(sources) => sources
-                .iter()
-                .map(|sf| workspace_relative_repo_path(&sf.path))
-                .collect::<Vec<String>>(),
-            Err(_) => continue,
-        };
-        per_entry.push((row.entry.clone(), paths));
-    }
-    let evict_enabled = schedule_retention_evict_enabled();
-    let entries = per_entry.len();
-    if !evict_enabled {
-        // Loud, once per armed run: an accidentally-set env must not silently revert the
-        // M2 memory win in CI. Without this line the receipt's `schedule_evictions=0` is
-        // the only tell, and a zero reads as "nothing to evict" rather than "eviction off".
-        eprintln!(
-            "[floor-drain] SCHEDULE-RETENTION EVICTION DISABLED \
-             (GUNBC_SCHEDULE_RETENTION_EVICT=0): arming + counting only, dropping NOTHING — \
-             the retain-all measurement pole (pre-M2 process-lifetime retention). \
-             schedule_evictions will be 0 BY CONSTRUCTION; unset the env to restore eviction."
-        );
-    }
-    let sr = ScheduleRetention::armed(per_entry, evict_enabled);
-    // Unconditional ARMED receipt: proves schedule-derived retention is LIVE on this run,
-    // so a later `schedule_evictions=0` reads as "shared closure held resident" rather
-    // than "never armed" (the private-index serial regime is the only one that arms).
-    // The legend is part of the receipt because the per-entry lines below are otherwise
-    // read as an execution log: they are not one, and `discovered_entries` says why —
-    // arming walks the DISCOVERED roster, before selection decides anything.
-    eprintln!(
-        "[floor-drain] schedule-retention ARMED: discovered_entries={entries} \
-         modules_refcounted={} evict_enabled={evict_enabled} \
-         (legend: a `schedule_passed_entry=` line below marks the schedule moving past an \
-         entry — discovery + arming only; it does NOT mean the entry was selected or run. \
-         `released_modules` = refcount reached zero; `evicted_modules` = the subset that \
-         actually dropped cached state.)",
-        sr.refcount_len()
-    );
-    *index.schedule_retention.borrow_mut() = Some(sr);
-}
-
 /// Record a reconciled module's cache keys with the armed schedule retention (no-op
 /// when unarmed). Called from the reconcile loop where the authored name, content
 /// key, and raw file are all in hand.
@@ -12692,122 +12513,6 @@ pub fn render_typecheck_concluded_line_mirror(
         "{glyph} typecheck {module_path} done in {}",
         typecheck_human_duration(elapsed_ms)
     )
-}
-
-/// Drive one entry-completion: decrement the entry's closure refcounts, drop the
-/// per-module state that reached zero from every per-module cache (typed, parse,
-/// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
-/// `ResolvedGraph` from `resolved_graph_memo` (keyed by `subject`) — the graph strong-
-/// `Rc`-pins the same modules, so without it the per-module eviction frees no bytes
-/// (Fact #4 / the brief's "strong Rc pins from elsewhere"). Heads are never touched. A
-/// schedule underflow propagates as a typed, located refusal. Emits an unconditional
-/// per-entry progress line so a timed-out walk still shows eviction working (the early-
-/// receipt discipline — the walk-end receipt never lands on a step-cap death).
-fn index_schedule_entry_completed(
-    index: &MultiEntryIndex,
-    entry: &str,
-    subject: Option<&str>,
-) -> Result<(), String> {
-    let (batch, evict_enabled) = {
-        let mut slot = index.schedule_retention.borrow_mut();
-        match slot.as_mut() {
-            Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
-            None => return Ok(()),
-        }
-    };
-    if !batch.typed_keys.is_empty() {
-        let mut cache = index.typed_module_cache.borrow_mut();
-        for key in &batch.typed_keys {
-            cache.remove(key);
-        }
-    }
-    if !batch.raw_files.is_empty() {
-        let mut parse = index.parse_cache.borrow_mut();
-        let mut norm = index.normalize_diag_cache.borrow_mut();
-        let mut own = index.ownership_diag_cache.borrow_mut();
-        let mut src = index.source_hash_by_file.borrow_mut();
-        for file in &batch.raw_files {
-            parse.remove(file);
-            norm.remove(file);
-            own.remove(file);
-            src.remove(file);
-        }
-    }
-    // Drop the completed entry's assembled graph. The entry's own `InterpContext` still
-    // holds it until the next resolve, so this only removes the memo's pin; a rare later
-    // entry with the identical closure re-resolves (a memo miss, cost only).
-    // Gate the resolved-graph pin drop on the SAME eviction switch as the per-module drops
-    // above: with GUNBC_SCHEDULE_RETENTION_EVICT=0 the retain-all measurement pole must
-    // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
-    // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
-    let graph_evicted = match subject {
-        Some(subj) if evict_enabled => index
-            .resolved_graph_memo
-            .borrow_mut()
-            .remove(subj)
-            .is_some(),
-        _ => false,
-    };
-    let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
-        let mut slot = index.schedule_retention.borrow_mut();
-        match slot.as_mut() {
-            Some(sr) => {
-                if graph_evicted {
-                    sr.note_graph_eviction();
-                }
-                (
-                    sr.schedule_releases(),
-                    sr.schedule_evictions(),
-                    sr.retention_unknown(),
-                    sr.resolved_graph_evictions(),
-                )
-            }
-            None => (0, 0, 0, 0),
-        }
-    };
-    // Unconditional (not floor_verbose-gated) so the receipt survives a step-cap timeout.
-    //
-    // `schedule_passed_entry=` names what this line actually witnesses: the schedule
-    // moved PAST that entry, so its per-module state can no longer be read. It asserts
-    // nothing about selection or execution — arming spans the whole discovered roster
-    // (`index_arm_schedule_retention` walks every row, before any predict-skip), so this
-    // line appears for entries the affected set skipped without ever resolving them. The
-    // former `entry='…'` spelling was read as "this entry was scheduled and ran" by two
-    // independent readers hours apart, which is a property of the label, not the readers.
-    // Routine drain steps FOLD (law 4): the schedule passing an entry is the most ordinary event
-    // the floor produces — one line per discovered entry, thousands per run, none of them carrying
-    // a fact a reader acts on. What a reader acts on is `retention_unknown` GROWING, which is the
-    // drain admitting it could not classify a module's retention, so that is the arm that pierces.
-    //
-    // The trigger is the INCREASE, not the total: the total is monotone, so gating on `> 0` would
-    // print every remaining entry once the first unknown appeared — the fold would collapse exactly
-    // when the run got interesting. The aggregate `[floor-drain] receipt:` line still reports the
-    // totals at close, so folding here loses no count, only the per-entry retelling of it.
-    let unknown_grew = {
-        // `fetch_max`, not `swap`: retention_unknown is a cumulative monotone counter, and a swap
-        // lets two threads observing real growth each read the other's newer value as `prev` and
-        // conclude nothing grew — the signal is lost on both. fetch_max returns the previous
-        // maximum, so exactly the thread that raised it reports, and a raise is never dropped.
-        static LAST_UNKNOWN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let prev = LAST_UNKNOWN.fetch_max(retention_unknown, std::sync::atomic::Ordering::Relaxed);
-        retention_unknown > prev
-    };
-    if !unknown_grew && routine_rollup_folds() {
-        return Ok(());
-    }
-    eprintln!(
-        "[floor-drain] schedule-retention: schedule_passed_entry='{entry}' \
-         released_modules={} evicted_modules={} evicted_graph={} \
-         schedule_releases={sched_releases} schedule_evictions={sched_evictions} \
-         graph_evictions={graph_evictions} retention_unknown={retention_unknown} \
-         typed_cache={} resolved_graphs={}",
-        batch.released_modules.len(),
-        batch.evicted_modules.len(),
-        graph_evicted as u8,
-        index.typed_module_cache.borrow().len(),
-        index.resolved_graph_memo.borrow().len(),
-    );
-    Ok(())
 }
 
 #[cfg(test)]
