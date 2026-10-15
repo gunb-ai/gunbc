@@ -1,9 +1,9 @@
 module v2.compiler.reference_site_collector
 
-import std.types { List }
+import std.types { List, Map }
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, list_init, list_map }
-import v2.std.collection { Map, empty_map, map_contains_key, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
+
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
 import v2.std.node {

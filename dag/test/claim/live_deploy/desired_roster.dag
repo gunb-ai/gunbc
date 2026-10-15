@@ -54,7 +54,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_dispatch_worktree_root }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

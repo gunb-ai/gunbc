@@ -13,7 +13,7 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_post_install_refusal_prefix }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
