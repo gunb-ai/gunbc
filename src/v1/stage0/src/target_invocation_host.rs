@@ -1627,8 +1627,10 @@ fn run_namespace_wave_binding_diff(source_roots: &[String]) -> InvocationOutcome
         &[],
         true,
     ) {
-        Ok(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
-        Ok(_) => return unreached("binding_diff_base_ref did not return a string".to_string()),
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::Str(s) => s.to_string(),
+            _ => return unreached("binding_diff_base_ref did not return a string".to_string()),
+        },
         Err(cause) => return unreached(format!("binding_diff_base_ref failed: {cause}")),
     };
     let base = match run_base_ambient_name_census(&scratch, &base_ref) {
