@@ -9413,14 +9413,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               // consults the same global_bare map and will return that function NODE as a
               // type (Named(exit_failure)), so the call is typed as the name instead of the
               // return (ProcessExit vs Named(exit_failure) at srv3_boot_once_cd).
-              let type_match = match call_target {
-                DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: bn } =>
-                  match item_kind(item: bn) {
-                    FnItem => none
-                    _ => lookup_type_by_name(env: scope.type_env, name: func_name)
-                  }
-                _ => lookup_type_by_name(env: scope.type_env, name: func_name)
-              }
+              let type_match = type_match_for_direct_call_target(type_env: scope.type_env, func_name: func_name, call_target: call_target)
               let global_bare_callable = match type_match {
                 Present { value: _ } => none
                 Absent => match call_target {
@@ -14013,6 +14006,16 @@ fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String
 type SigParamSplit {
   value_params: List<Node>
   generic_names: List<String>
+}
+
+// IdentityResolved is census-Present with FuncSigUnresolved (OtherItem: bodiless,
+// zero params, no inferred result, no type_annotation). That node is not a type;
+// lookup_type_by_name would still steal it as Named.
+fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_target: CallTargetOutcome) -> Node? {
+  match call_target {
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => none
+    _ => lookup_type_by_name(env: type_env, name: func_name)
+  }
 }
 
 // DISSOLVED body_shadow_aware_func_sig, WHICH LAUNDERED A SHADOW INTO "NO SIGNATURE".

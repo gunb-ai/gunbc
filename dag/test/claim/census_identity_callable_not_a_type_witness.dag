@@ -15,10 +15,14 @@ import gunbc.instruments.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// 743bd53: a unique census fn taken as DeclaredCallableIdentityResolved was then
-// lookup_type_by_name'd as a TYPE, so `census_exit("x")` inhabited Named(census_exit)
-// rather than ProcessExit (srv3_boot_once_cd if-branches). This fixture is isolated:
-// census_exit is the only such name in the pool, unimported, identity-only.
+// 743bd53: a unique census fn taken as a type via lookup_type_by_name, so
+// `census_exit("x")` inhabited Named(census_exit) rather than ProcessExit
+// (srv3_boot_once_cd if-branches). census_exit has params, so it is
+// DeclaredCallableResolved; IdentityResolved is the OtherItem residual
+// (Present identity + FuncSigUnresolved), covered by
+// type_match_for_direct_call_target and the seed control in
+// census_identity_call_type.rs. This fixture is isolated: census_exit is
+// the only such name in the pool and is unimported.
 
 data decoy_identity_callable: String = "module kmfx.ident_decoy\n\ntype ProcessExit = ExitSuccess | ExitFailure { reason: String }\n\ntype ProbeBox = { n: Int }\n\nfn census_exit(reason: String) -> ProcessExit {\n  ExitFailure { reason: reason }\n}\n"
 

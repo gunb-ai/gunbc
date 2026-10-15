@@ -14475,13 +14475,7 @@ Rc::new(InferResult {
                                             match infer_variant_constructor_call(texpr.occurrence_identity.clone(), func_name.clone(), call_args.clone(), span.clone(), crate::v1_std_core::node_name_span(texpr.clone()), scope.clone(), expected.clone()) {
     Some(ctor_result) => ctor_result.clone(),
     std::option::Option::None => {
-                                                let type_match = match (*call_target.clone()).clone() {
-    CallTargetOutcome::DeclaredCallableIdentityResolved { borrowed_declaration: bn, .. } => match crate::v1_compiler_infer_items::item_kind(bn.clone()) {
-    ItemKind::FnItem => std::option::Option::None,
-    _ => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), func_name.clone()),
-},
-    _ => crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), func_name.clone()),
-};
+                                                let type_match = type_match_for_direct_call_target(scope.type_env.clone(), func_name.clone(), call_target.clone());
 let global_bare_callable = match type_match.clone() {
     Some(_) => std::option::Option::None,
     std::option::Option::None => match (*call_target.clone()).clone() {
@@ -24010,6 +24004,17 @@ pub fn type_node_label(
 pub struct SigParamSplit {
     pub value_params: Rc<Vec<Rc<Node>>>,
     pub generic_names: Rc<Vec<String>>,
+}
+
+pub fn type_match_for_direct_call_target(
+    type_env: Rc<TypeEnv>,
+    func_name: String,
+    call_target: Rc<CallTargetOutcome>,
+) -> Option<Rc<Node>> {
+    match (*call_target.clone()).clone() {
+        CallTargetOutcome::DeclaredCallableIdentityResolved { .. } => std::option::Option::None,
+        _ => crate::v1_compiler_infer_env::lookup_type_by_name(type_env.clone(), func_name.clone()),
+    }
 }
 
 pub fn call_target_for_direct_call(
