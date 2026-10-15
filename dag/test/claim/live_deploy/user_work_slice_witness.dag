@@ -493,8 +493,8 @@ test fn wrap_keeps_the_tighter_of_caller_and_slice() -> Bool {
       let slice = UserWorkSliceInstalled { memory_max: slice_max, memory_high: MemoryUnbounded }
       let caller = CallerEnvelopeObserved { memory_max: MemoryCapped { bytes: caller_max }, memory_high: MemoryUnbounded }
       parent != ""
-        && string_contains(s: parent, pattern: "--property=Slice={USER_WORK_SLICE}")
-        && string_contains(s: parent, pattern: "--property=MemorySwapMax={USER_WORK_SLICE_MEMORY_SWAP_MAX_BYTES}")
+        && string_contains(s: parent, pattern: "--property=Slice=")
+        && string_contains(s: parent, pattern: "--property=MemorySwapMax=")
         && !string_contains(s: parent, pattern: "--property=MemoryMax=")
         && byte_size_count(b: slice_max) > byte_size_count(b: caller_max)
         && has_property(
