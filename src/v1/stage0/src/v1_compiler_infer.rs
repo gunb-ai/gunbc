@@ -185,8 +185,9 @@ use crate::v1_compiler_infer_lookup::DeclaredArgContract::{
     ContractKnown, ContractUnavailable, MethodUnresolved,
 };
 pub use crate::v1_compiler_infer_lookup::{
-    census_declaration_identity, declared_arg_types_for_method, field_summary_for_type,
-    func_decl_binding_for_call, global_bare_callable_node, lookup_coproduct_common_field_node,
+    census_declaration_identity, constructor_declaration_for_admission,
+    declared_arg_types_for_method, field_summary_for_type,
+    global_bare_callable_node, lookup_coproduct_common_field_node,
     lookup_field_type_node, lookup_func_sig, lookup_in_scope, lookup_structural_method,
     map_key_type_in_env, map_value_type_in_env, product_field_result_type,
     resolve_known_method_node, resolve_method_receiver_type, resolve_scrutinee_type_node,
@@ -1726,7 +1727,13 @@ pub fn constructor_call_admission_diags(
     if !constructor_reference_admission_enforced_now() {
         Rc::new(vec![])
     } else {
-        match (*crate::v1_compiler_infer_lookup::func_decl_binding_for_call(scope.func_env.clone(), scope.type_env.clone(), callee_name.clone())).clone() {
+        match (*crate::v1_compiler_infer_lookup::constructor_declaration_for_admission(
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+            callee_name.clone(),
+        ))
+        .clone()
+        {
     ConstructorDeclarationLookup::ExactConstructorDeclaration { identity, declaration: declaration_node, .. } => match crate::v1_std_core::fn_admit_callers(declaration_node.clone(), scope.type_env.clone().source_indices.clone()) {
     Some(entries) => {
             let uninterpretable = crate::v1_std_core::admit_callers_entry_uninterpretable_spans(entries.clone());
