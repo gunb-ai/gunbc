@@ -716,20 +716,20 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     with_module_path_index(&pool_roots_abs(&roots), |_| ());
     super::pre_entry_phase::record(
         "module_path_index_build",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         index_started
             .elapsed()
             .saturating_sub(super::pool_acquire::attributed() - acquired_before),
     );
     let observation = super::pre_entry_phase::timed(
         "graph_facts_import_edges",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || import_resolution_facts_with_observation(&roots, &roots, EXCLUDE),
     );
     let edges = observation.facts;
     let nodes = super::pre_entry_phase::timed(
         "graph_facts_module_declarations",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         || module_declaration_facts(&roots),
     );
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
@@ -1376,7 +1376,7 @@ pub fn try_process_shared_index_for_pool(
     };
     super::pre_entry_phase::record(
         "source_root_walk_and_read",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         walk_started.elapsed(),
     );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
@@ -1461,7 +1461,7 @@ pub(crate) fn new_multi_entry_index_scratch_over(
         &source_files,
         MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
 }
 
 #[track_caller]
@@ -1474,17 +1474,33 @@ pub(crate) fn new_multi_entry_index_shell(
         &source_files,
         MultiEntryIndexBuildKind::NameSetIndex,
     );
-    multi_entry_index_shell_body(source_files, source_roots)
+    multi_entry_index_shell_body(source_files, source_roots, None)
+}
+
+#[track_caller]
+pub(crate) fn new_multi_entry_index_acquired(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+    facts: ModuleGraphFactsLive,
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots, Some(facts))
 }
 
 fn multi_entry_index_shell_body(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
+    acquired_facts: Option<ModuleGraphFactsLive>,
 ) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
-        module_graph_facts: build_module_graph_facts_live(source_roots),
+        module_graph_facts: acquired_facts
+            .unwrap_or_else(|| build_module_graph_facts_live(source_roots)),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
         typed_cache_evicted_keys: RefCell::new(std::collections::HashSet::new()),
@@ -2673,7 +2689,7 @@ pub(crate) fn reference_pool_names_for_index(
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_from_census",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     *index.reference_pool_names.borrow_mut() = Some(names.clone());
@@ -2722,7 +2738,7 @@ pub(crate) fn reference_pool_names(pool_roots: &[String]) -> Rc<ReferencePoolNam
     ));
     super::pre_entry_phase::record(
         "reference_pool_names_heads",
-        super::pre_entry_phase::PhaseScale::Tree,
+        super::pre_entry_phase::index_scale(),
         started.elapsed(),
     );
     REFERENCE_POOL_NAMES_CACHE.with(|c| c.borrow_mut().insert(key, names.clone()));
@@ -2817,7 +2833,7 @@ impl ReferenceSelectionTier {
             .collect();
             super::pre_entry_phase::record(
                 "selection_tier_whole_pool",
-                super::pre_entry_phase::PhaseScale::Tree,
+                super::pre_entry_phase::index_scale(),
                 started.elapsed(),
             );
             (adjacency, unaccounted)
