@@ -75,7 +75,7 @@ import gunbc.live_deploy.desired {
   selected_deployment_spec,
 }
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
 //

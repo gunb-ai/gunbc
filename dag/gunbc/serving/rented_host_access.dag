@@ -3,7 +3,9 @@ module gunbc.serving.rented_host_access
 import std.types { String, NonEmptyStr }
 import product.host_identity { HostIdentity }
 import extdeps.ssh.keys { SshPublicKey }
-import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, host_key_provenance_label, known_host_row_field }
+import extdeps.network.endpoint { SocketAddress }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused,
@@ -23,7 +25,7 @@ import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 // the row is the whole trust anchor and the declaration is refused when it names another endpoint.
 type RentedHostAccessDeclaration {
   node: NonEmptyStr
-  endpoint: NonEmptyStr
+  address: SocketAddress
   principal: NonEmptyStr
   host_key: KnownHostKeyRow
   operator_key: SshPublicKey
@@ -39,13 +41,18 @@ type RentedHostAccess
 // fleet uses and no parallel transport exists. The attempt identity is the caller's, because only the
 // caller knows what one attempt is, and the anchor path it owns is derived from the registry's digest
 // so two rentals' registries never share a file.
+//
+// THE LEG DIALS THE DECLARED ADDRESS, PORT INCLUDED. A rental behind a provider's port mapping is a
+// different sshd from port 22 on the same host; the target carries the address the key row is pinned
+// under, so the anchor and the dial name one daemon.
 fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: String) -> RentedHostAccess {
-  if declaration.host_key.endpoint != (declaration.endpoint as String) {
+  let declared = known_hosts_host_field(address: declaration.address) as String
+  if known_host_row_field(k: declaration.host_key) != declared {
     RentedHostAccessRefused {
       node: declaration.node,
       cause: join([
-        "rented host access refused: the host key row is for endpoint `", declaration.host_key.endpoint,
-        "` but the node is declared at `", declaration.endpoint as String, "`, so the key would anchor a different host",
+        "rented host access refused: the host key row is for endpoint `", known_host_row_field(k: declaration.host_key),
+        "` but the node is declared at `", declared, "`, so the key would anchor a different host",
       ], ""),
     }
   } else {
@@ -61,7 +68,7 @@ fn rented_host_access(declaration: RentedHostAccessDeclaration, attempt_raw: Str
         RentedHostAccessReady {
           node: declaration.node,
           transport: FleetSsh {
-            target: SshTarget { endpoint: declaration.endpoint, principal: declaration.principal },
+            target: SshTarget { address: declaration.address, principal: declaration.principal },
             context: context,
           },
           receipt: join([

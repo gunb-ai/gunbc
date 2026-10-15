@@ -106,7 +106,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //   RefusalCensusReading: `census-infer`, the front-end/resolve/infer refusal report (gunbc#13026,
 //     census part 2). Its exit status is the type census's and is not read as this report's standing.
 //   ScopedRefusalCensusReading: `census-scoped`, the same refusal report over ONE SUBJECT'S ACQUIRED
-//     CLOSURE (gunbc.plans.census_scoped_run). `subject` is the PACKAGE the row binds -- typed as a
+//     CLOSURE (v2.compiler.module_acquisition). `subject` is the PACKAGE the row binds -- typed as a
 //     package so only a subject that names one module is writable; it is rendered as the package
 //     pattern `//<package>:all` only at the verb's argv, and the terminal must name that rendering back.
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and

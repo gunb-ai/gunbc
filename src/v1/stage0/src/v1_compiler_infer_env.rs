@@ -117,39 +117,42 @@ pub fn binding_unit_variant_contributions(
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
         match ty.connective.clone() {
-            Connective::Disj => ty.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-                |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
-                    if is_unit_variant_node(v.clone()) {
-                        {
-                            let vname = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                v.clone(),
-                            );
-                            match v1_rt::map_get(&acc, vname.clone()) {
-                                Some(prev) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: v1_rt::int_add(prev.count.clone(), 1),
-                                        variant: prev.variant.clone(),
-                                    }),
-                                ),
-                                std::option::Option::None => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    vname.clone(),
-                                    Rc::new(UnitVariantContribution {
-                                        count: 1,
-                                        variant: v.clone(),
-                                    }),
-                                ),
+            Connective::Disj => {
+                let seed = v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>();
+                ty.children.clone().iter().cloned().fold(
+                    seed.clone(),
+                    |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
+                        if is_unit_variant_node(v.clone()) {
+                            {
+                                let vname = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    v.clone(),
+                                );
+                                match v1_rt::map_get(&acc, vname.clone()) {
+                                    Some(prev) => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: v1_rt::int_add(prev.count.clone(), 1),
+                                            variant: prev.variant.clone(),
+                                        }),
+                                    ),
+                                    std::option::Option::None => v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        vname.clone(),
+                                        Rc::new(UnitVariantContribution {
+                                            count: 1,
+                                            variant: v.clone(),
+                                        }),
+                                    ),
+                                }
                             }
+                        } else {
+                            acc.clone()
                         }
-                    } else {
-                        acc.clone()
-                    }
-                },
-            ),
+                    },
+                )
+            }
             _ => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
         }
     }
@@ -2448,20 +2451,23 @@ pub fn merge_inductive_fields(
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
-            let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
-                Some(fs) => fs.clone(),
-                std::option::Option::None => Rc::new(vec![]),
-            };
-            v1_rt::rc_map_insert(
-                acc.clone(),
-                field.type_name.clone(),
-                v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
-            )
-        },
-    )
+    {
+        let seed = v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>();
+        fields.iter().cloned().fold(
+            seed.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+                let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
+                    Some(fs) => fs.clone(),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    field.type_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![field.clone()])),
+                )
+            },
+        )
+    }
 }
 
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {

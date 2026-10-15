@@ -1243,7 +1243,7 @@ pub fn base_records(
     content: &str,
     environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
 ) -> Result<Vec<ModuleDeclarationRecord>, String> {
-    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+    let fill = crate::v1_compiler_compile::parse_revision_declarations_with_environment(
         std::rc::Rc::new(
             vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                 path: rel.to_string(),
