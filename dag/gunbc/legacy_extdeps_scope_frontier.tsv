@@ -147,7 +147,6 @@ dag/extdeps/gunbc.dag
 dag/extdeps/hardware.dag
 dag/extdeps/http/client.dag
 dag/extdeps/http/server.dag
-dag/extdeps/jobserver.dag
 dag/extdeps/languages/c/emit.dag
 dag/extdeps/languages/css/properties.dag
 dag/extdeps/languages/css/selectors.dag

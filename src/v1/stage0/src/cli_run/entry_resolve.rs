@@ -1641,15 +1641,15 @@ pub(crate) fn typed_module_content_key(
 /// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
 /// all and the ceiling was used). Pure and side-effect-free: callers decide
 /// how often to invoke it and whether to log the degraded case.
-pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
+pub(crate) fn typed_module_cache_cap_derivation() -> Result<(usize, String, bool), String> {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
-                return (
+                return Ok((
                     n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL),
                     "env override GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES".to_string(),
                     false,
-                );
+                ));
             }
             // Zero override is invalid — fall through to derived cap.
         }
@@ -1667,47 +1667,54 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     //
     // An unreadable budget has no source, so `degraded_source` is `None` there and the
     // question is not answered with a boolean; the refusal below runs first regardless.
+    match &resolution {
+        crate::memory_governor::HostBudgetResolution::ExternallyBounded { run_id } => {
+            let label = super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            );
+            eprintln!(
+                "[floor-drain] host_memory_budget source=externally_bounded executor={label}"
+            );
+            // WRAP STANDING, NOT AN ENV SUBSTITUTE FOR A CGROUP READ. The earlier comment
+            // said a BuildBuddy environment declaration cannot replace a missing observation.
+            // That still holds for bytes: this arm carries no number. What changed is that
+            // wrap already classified the process as ExternallyBoundedExecutor
+            // (`gunbc.compute.unit_bounds`); HostBudget records that standing instead of
+            // panicking HostBudgetUnreadable. CapEntriesExternallyBounded is the floor until
+            // the executor exposes a readable memory.max (`typed_module_cache_externally_bounded_dissolves_on`).
+            // SEED MIRROR of `gunbc.typed_module_cache_capacity` `CapEntriesExternallyBounded`
+            // (not `CapEntries`: that arm is a derived bound from observed/declared bytes).
+            return Ok((TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR, label, false));
+        }
+        crate::memory_governor::HostBudgetResolution::Unreadable { reason } => {
+            return Err(format!(
+                "HostBudgetUnreadable: no modeled host memory source answered ({reason}). \
+                 The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
+                 unknown budget cannot be defaulted — the previous default was the ceiling, which \
+                 OOM-killed this process rather than refusing, and the MemAvailable arm that \
+                 replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
+                 at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
+                 GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
+                 (dag/gunbc/host/host_budget_source.dag)."
+            ));
+        }
+        _ => {}
+    }
     let degraded = resolution.degraded_source().unwrap_or(true);
-    let budget = resolution.bytes();
-    // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
-    // authority `dag/gunbc/host/host_budget_source.dag` `HostBudgetUnreadable`).
-    //
-    // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
-    // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
-    // top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. It is not
-    // hypothetical. It OOM-killed the full witness corpus twice on a macOS dev machine
-    // (exit 137): nothing readable, cap defaults to the ceiling, nothing bounds the resolve,
-    // kernel ends the process. The deficit's frequency was zero by construction, so it never
-    // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
-    //
-    // Reaching this arm means the host declared no bound this process can read: no cgroup
-    // memory.high or memory.max, no operator override, and no Darwin physical-memory read.
-    // That is the ordinary state on a remote-execution runner whose slot cap lives outside
-    // the container's cgroup namespace (BuildBuddy, measured 2026-08-30), and it used to be
-    // answered with the machine's MemAvailable capped at this fleet's own declared slot line
-    // — two substitutions stacked, and an rc=137 SIGKILL of `main_wet` with no diagnostic.
-    // An environment declaration cannot replace that missing observation: it constrains no
-    // allocation. Panicking here is a hard
-    // stop by design: this runs inside resolution, there is no caller that could honour a
-    // typed refusal without threading Result through the cache seam, and continuing is the
-    // one option ruled out.
-    let Some(budget_bytes) = budget else {
-        panic!(
+    let Some(budget_bytes) = resolution.bytes() else {
+        return Err(format!(
             "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
-             The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
-             unknown budget cannot be defaulted — the previous default was the ceiling, which \
-             OOM-killed this process rather than refusing, and the MemAvailable arm that \
-             replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
-             at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
-             GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
+             Configure the executor to expose a cgroup memory limit \
              (dag/gunbc/host/host_budget_source.dag)."
-        );
+        ));
     };
     let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
         TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
-    (cap, source_label, degraded)
+    Ok((cap, source_label, degraded))
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -1724,17 +1731,20 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
 /// kernel that HAS cgroups, a missing limit is a missing bound and the
 /// derivation refuses instead of degrading — that path used to answer with the
 /// host's MemAvailable and got `main_wet` SIGKILLed at rc=137.
-pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
-    *index.typed_module_cache_cap.get_or_init(|| {
-        let (cap, source, degraded) = typed_module_cache_cap_derivation();
-        if degraded {
-            eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} \
-                 (this kernel has no private-limit mechanism, so the reading is host-shared)"
-            );
-        }
-        cap
-    })
+pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> Result<usize, String> {
+    index
+        .typed_module_cache_cap
+        .get_or_init(|| {
+            let (cap, source, degraded) = typed_module_cache_cap_derivation()?;
+            if degraded {
+                eprintln!(
+                    "[floor-drain] degraded_budget_source: cap={cap} source={source} \
+                     (this kernel has no private-limit mechanism, so the reading is host-shared)"
+                );
+            }
+            Ok(cap)
+        })
+        .clone()
 }
 
 pub fn resolve_entry_with_index(
