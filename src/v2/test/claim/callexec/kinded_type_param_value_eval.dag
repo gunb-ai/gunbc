@@ -389,3 +389,32 @@ test fn kpt9_conforms_not_arity() -> Bool { kpt9_reason(src: concat(kpt9_pre(), 
 test fn kpt9_conforms_not_unresolved() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_kind_unresolved } }
 test fn kpt9_literal_accepts() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesEight = Width<8>\n")) == Absent }
 test fn kpt9_prelude_alone_accepts() -> Bool { kpt9_reason(src: kpt9_pre()) == Absent }
+test fn kpr9_n1_ambiguous_symbol() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_ambiguous_symbol } }
+test fn kpr9_n2_anonymous_parameter_referenced() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_anonymous_parameter_referenced } }
+test fn kpr9_n3_binder_duplicate_in_frame() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_binder_duplicate_in_frame } }
+test fn kpr9_n4_binder_hides_visible_value() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_binder_hides_visible_value } }
+test fn kpr9_n5_construct_tag_not_a_constructor() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_construct_tag_not_a_constructor } }
+test fn kpr9_n6_declarer_refused() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_declarer_refused } }
+test fn kpr9_n7_kernel_type_spelling_names_a_foreign_declaration() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration } }
+test fn kpr9_n8_lexical_reference_unkeyed() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_lexical_reference_unkeyed } }
+test fn kpr9_n9_malformed_imported_root() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_malformed_imported_root } }
+test fn kpr9_n10_malformed_tree() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_malformed_tree } }
+test fn kpr9_n11_member_kind_duplicate_declaration() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_member_kind_duplicate_declaration } }
+test fn kpr9_n12_namespace_provider_admission_conflict() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_namespace_provider_admission_conflict } }
+test fn kpr9_n13_observation_incomplete() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_observation_incomplete } }
+test fn kpr9_n14_parameter_path_not_indexed() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_parameter_path_not_indexed } }
+test fn kpr9_n15_primitive_row_name_disagrees() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_primitive_row_name_disagrees } }
+test fn kpr9_n16_realized_declaration_mismatch() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_realized_declaration_mismatch } }
+test fn kpr9_n17_realized_declaration_shadowed() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_realized_declaration_shadowed } }
+test fn kpr9_n18_requirement_not_a_resource() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_requirement_not_a_resource } }
+test fn kpr9_n19_requirement_repeated() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_requirement_repeated } }
+test fn kpr9_n20_test_code_referenced() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_test_code_referenced } }
+test fn kpr9_n21_type_application_arity_mismatch() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_application_arity_mismatch } }
+test fn kpr9_n22_type_argument_kind_not_inhabited() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_argument_kind_not_inhabited } }
+test fn kpr9_n23_type_parameter_in_value_position() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_in_value_position } }
+test fn kpr9_n24_type_parameter_kind_unresolved() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_kind_unresolved } }
+test fn kpr9_n25_type_parameter_order_malformed() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_order_malformed } }
+test fn kpr9_n26_type_parameter_shadows_visible_name() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_type_parameter_shadows_visible_name } }
+test fn kpr9_n27_unbound_symbol() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_unbound_symbol } }
+test fn kpr9_n28_where_predicate_unbound() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Pointer>\n")) != Present { value: ^resolve_reason_where_predicate_unbound } }
+test fn kpr9_qualified_accepts() -> Bool { kpt9_reason(src: concat(kpt9_pre(), "type UsesPointer = Width<Resolution.Pointer>\n")) == Absent }
