@@ -254,6 +254,8 @@ pub enum V2NativeCensusReading {
         subject: &'static [&'static str],
     },
     TypeDeclarationUse,
+    /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
+    OccurrenceBinding,
     NativeProcessMemory {
         workload: NativeMeasuredWorkload,
     },
@@ -419,6 +421,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("type-declaration-use-census"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
+        ),
+        (
+            instrument_label("ambient-name-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::OccurrenceBinding,
             },
         ),
         (
@@ -939,7 +947,10 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         ),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
-        } => run_type_declaration_use_census(&self_host_source_roots()),
+        } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::OccurrenceBinding,
+        } => run_census_infer_reading(&self_host_source_roots(), &AMBIENT_NAME_READING),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::NativeProcessMemory { workload },
         } => run_native_process_memory(&self_host_source_roots(), workload),
@@ -1412,27 +1423,56 @@ fn fixture_file_rows(
         .collect()
 }
 
-/// THE TYPE-DECLARATION-USE CENSUS PRODUCER (the nominal-type plan's M0). The host writes the two
-/// control roots from the reader's own rows (`type_census_fixture_files`,
-/// `type_census_unindexed_files`), runs the emitted compiler's `census-infer` over them and over the
-/// whole tree, and hands all three to `type_declaration_use_census_standing`, which decides the
-/// standing and filters the affected modules by the required gate. The host decides nothing.
-fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome {
-    let label_name = "type-declaration-use-census";
+/// WHICH `.dag` READER A census-infer LABEL HANDS ITS THREE RUNS TO: the reader module, its two
+/// fixture-root producers and its standing function. Each census-infer label is one row of this
+/// shape; the host below is shared, so a new reading is a row, not a second copy of the host.
+struct CensusInferReading {
+    label: &'static str,
+    reader: &'static str,
+    fixture_files: &'static str,
+    unindexed_files: &'static str,
+    standing: &'static str,
+}
+
+const TYPE_DECLARATION_USE_READING: CensusInferReading = CensusInferReading {
+    label: "type-declaration-use-census",
+    reader: "dag/gunbc/instruments/type_declaration_use_census_reading.dag",
+    fixture_files: "type_census_fixture_files",
+    unindexed_files: "type_census_unindexed_files",
+    standing: "type_declaration_use_census_standing",
+};
+
+const AMBIENT_NAME_READING: CensusInferReading = CensusInferReading {
+    label: "ambient-name-census",
+    reader: "dag/gunbc/instruments/ambient_name_census_reading.dag",
+    fixture_files: "ambient_census_fixture_files",
+    unindexed_files: "ambient_census_unindexed_files",
+    standing: "ambient_name_census_standing",
+};
+
+/// THE census-infer READING PRODUCER (first written for the nominal-type plan's M0, generalized for
+/// the occurrence-binding census). The host writes the two control roots from the reader's own rows,
+/// runs the emitted compiler's `census-infer` over them and over the whole tree, and hands all three
+/// to the reader's standing function, which decides. The host decides nothing.
+fn run_census_infer_reading(
+    source_roots: &[String],
+    reading: &CensusInferReading,
+) -> InvocationOutcome {
+    let label_name = reading.label;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
-    const READER: &str = "dag/gunbc/instruments/type_declaration_use_census_reading.dag";
+    let reader_path = reading.reader;
     let roots = cli_run::default_source_roots();
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, reader_path) {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+                message: format!("{label_name}: resolve failed for {reader_path}: {cause}"),
             };
         }
     };
@@ -1441,7 +1481,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         source_indices,
         crate::v1_interpreter::ExecutionMode::Wet,
     );
-    let scratch = std::path::Path::new("target").join("type-declaration-use-census");
+    let scratch = std::path::Path::new("target").join(label_name);
     let mut write_root = |name: &str, function: &str| -> Result<String, String> {
         let root = scratch.join(name);
         let _ = std::fs::remove_dir_all(&root);
@@ -1456,8 +1496,8 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
         }
         Ok(root.to_string_lossy().into_owned())
     };
-    let roots_written = write_root("fixture", "type_census_fixture_files")
-        .and_then(|f| write_root("unindexed", "type_census_unindexed_files").map(|u| (f, u)));
+    let roots_written = write_root("fixture", reading.fixture_files)
+        .and_then(|f| write_root("unindexed", reading.unindexed_files).map(|u| (f, u)));
     let (fixture_root, unindexed_root) = match roots_written {
         Ok(pair) => pair,
         Err(cause) => {
@@ -1502,7 +1542,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
     ];
     let value = match crate::v1_interpreter::run_in_context_with_args(
         &ctx,
-        "type_declaration_use_census_standing",
+        reading.standing,
         &args,
         true,
     ) {
@@ -1514,12 +1554,7 @@ fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome
             }
         }
     };
-    reader_standing_outcome(
-        &ctx,
-        &value,
-        label_name,
-        "type_declaration_use_census_standing",
-    )
+    reader_standing_outcome(&ctx, &value, label_name, reading.standing)
 }
 
 /// A reader's `CliWireResponse`, as the invocation outcome: exit 0 held, 1 did not hold, any other

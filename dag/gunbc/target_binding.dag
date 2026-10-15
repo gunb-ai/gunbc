@@ -112,6 +112,9 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
+//   OccurrenceBindingReading: `census-infer` again, its occurrence-binding lines (resolve's one
+//     binding record, v2.compiler.occurrence_binding_census) with that census's fixture and unindexed
+//     controls, read by gunbc.instruments.ambient_name_census_reading.
 //   NativeProcessMemoryReading: the named workload's verb, run once over a one-module control root and
 //     once over the source roots, each child reaped by wait4 so its own peak is read and cargo's is
 //     not; read by gunbc.instruments.native_process_memory_reading.
@@ -119,6 +122,7 @@ type V2NativeCensusReading
   = RefusalCensusReading
   | ScopedRefusalCensusReading { subject: PackageName }
   | TypeDeclarationUseReading
+  | OccurrenceBindingReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }
 
 type TargetBinding {

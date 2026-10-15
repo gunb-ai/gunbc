@@ -4720,6 +4720,20 @@ pub fn run_type_declaration_use_census_runs(
     })
 }
 
+/// `census-infer` over each of `root_sets`, in order, over ONE prepared binary (built from
+/// `source_roots`). `gunbc test //gunbc/instruments:namespace-wave-binding-diff` reads the runs; the
+/// host decides nothing about them.
+pub fn run_census_infer_root_sets(
+    source_roots: &[String],
+    root_sets: &[Vec<String>],
+) -> Result<Vec<CensusInferRun>, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    root_sets
+        .iter()
+        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
+        .collect()
+}
+
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
 /// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
 /// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host

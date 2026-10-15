@@ -1,0 +1,281 @@
+module gunbc.instruments.namespace_wave_binding_diff
+
+import std.types { String, Bool, List, Int, Map, NonEmptyStr }
+import std.algebra { Cons, Empty, empty_map, map_insert, list_at_optional, list_snoc_item }
+import std.optional { Optional, Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
+
+// THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
+// a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
+// gunbc.rung_drop.namespace_wave_admission_wall_removed records is NOT rebuilt -- this is a label, on no
+// required path). It joins the occurrence-binding census of BASE to that of HEAD, occurrence by
+// occurrence, and admits exactly one kind of change: an occurrence that was AMBIENT on base (a stopgap
+// table answered it) and binds, on head, the declared HOME a row of gunbc.namespace_cut.ambient_name_home
+// names for that spelling. Every other change REFUSES, naming the occurrence:
+//
+//   TargetChanged  the same occurrence binds something else on head -- a declared spelling that an
+//                  added import now points at a different declaration (the namespace-wave wall's lost
+//                  TargetChanged arm), or an ambient spelling that moved somewhere other than its home;
+//   Appeared       head has an occurrence base did not;
+//   Vanished       base had an occurrence head does not.
+//
+// THE KEY IS (module, authored spelling, ordinal) -- v2.compiler.occurrence_binding_census says why the
+// ordinal survives inserting an import and nothing else. ITS STABILITY IS ENFORCED HERE, NOT ASSUMED: an
+// edit beyond import insertion that adds or removes an occurrence of a spelling shifts that spelling's
+// ordinals, and every shifted occurrence surfaces as Appeared or Vanished (or as TargetChanged where two
+// different targets now share an ordinal) and refuses. A wave PR therefore carries imports and the
+// table deletion, and nothing that moves a body.
+//
+// A MODULE ONE SIDE DID NOT REACH is not a module with no bindings. Reached on one side and not the other
+// is a binding-observation change in its own right and REFUSES, named (UnreachedOnOneSide). Unreached on
+// BOTH sides is outside what either census observed: it is listed, never folded in as "no change", and
+// a diff with any such module answers no observation (exit 2) over the population it could not see,
+// even when every observed occurrence was admitted -- so that answer is read with its list, never as
+// green. (The native route does not resolve the whole pool yet; that is NAMESPACE-XL's own subject.)
+
+type BindingKey {
+  module: String
+  authored: String
+  ordinal: String
+}
+
+type BindingTarget {
+  source: String
+  target: String
+}
+
+type BindingDelta
+  = AmbientToDeclaredHome { key: BindingKey, home: String }
+  | TargetChanged { key: BindingKey, before: BindingTarget, after: BindingTarget }
+  | Appeared { key: BindingKey, after: BindingTarget }
+  | Vanished { key: BindingKey, before: BindingTarget }
+
+type BindingDiff {
+  admitted: List<BindingDelta>
+  refused: List<BindingDelta>
+  unreached_one_side: List<String>
+  unobserved_both_sides: List<String>
+}
+
+fn field_at(line: String, index: Int) -> String {
+  match list_at_optional(xs: split(s: line, delimiter: "\t"), index: index) {
+    Present { value: f } => f
+    Absent => ""
+  }
+}
+
+fn binding_lines(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t"))
+}
+
+fn unreached_modules(stdout: String) -> List<String> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "binding_unreached\t"))
+    |> map(l => field_at(line: l, index: 1))
+}
+
+fn key_text(key: BindingKey) -> String {
+  key.module + " " + key.authored + "#" + key.ordinal
+}
+
+fn line_key(line: String) -> BindingKey {
+  BindingKey { module: field_at(line: line, index: 1), authored: field_at(line: line, index: 2), ordinal: field_at(line: line, index: 3) }
+}
+
+fn line_target(line: String) -> BindingTarget {
+  BindingTarget { source: field_at(line: line, index: 4), target: field_at(line: line, index: 5) }
+}
+
+fn target_text(t: BindingTarget) -> String {
+  t.source + " " + t.target
+}
+
+fn census_index_of(lines: List<String>) -> Map<String, String> {
+  fold(lines, init: empty_map(), f: fn(m, l) { map_insert(m, key_text(key: line_key(line: l)), l) })
+}
+
+// AN AMBIENT OCCURRENCE THAT NOW BINDS ITS ROW'S HOME. The spelling's LEAF is the row's name (a
+// qualified spelling `m.chars` is the same name reached by path), the base side was ambient, and the
+// head side is a declared binding of exactly the home path.
+fn row_admits(row: AmbientNameHome, key: BindingKey, before: BindingTarget, after: BindingTarget) -> Bool {
+  let leaf = match last(split(s: key.authored, delimiter: ".")) {
+    Present { value: l } => l
+    Absent => key.authored
+  }
+  (leaf == (row.name as String))
+    && starts_with(s: before.source, prefix: "ambient:")
+    && (after.source == "declared")
+    && (after.target == (row.home as String))
+}
+
+fn classify_change(rows: List<AmbientNameHome>, key: BindingKey, before: BindingTarget, after: BindingTarget) -> BindingDelta {
+  match first(rows |> filter(r => row_admits(row: r, key: key, before: before, after: after))) {
+    Present { value: r } => AmbientToDeclaredHome { key: key, home: r.home as String }
+    Absent => TargetChanged { key: key, before: before, after: after }
+  }
+}
+
+fn delta_admitted(d: BindingDelta) -> Bool {
+  match d {
+    AmbientToDeclaredHome { key: _, home: _ } => true
+    TargetChanged { key: _, before: _, after: _ } => false
+    Appeared { key: _, after: _ } => false
+    Vanished { key: _, before: _ } => false
+  }
+}
+
+fn delta_line(d: BindingDelta) -> String {
+  match d {
+    AmbientToDeclaredHome { key: k, home: h } => "admitted\tAmbientToDeclaredHome\t" + key_text(key: k) + "\t" + h
+    TargetChanged { key: k, before: b, after: a } => "refused\tTargetChanged\t" + key_text(key: k) + "\t" + target_text(t: b) + " -> " + target_text(t: a)
+    Appeared { key: k, after: a } => "refused\tAppeared\t" + key_text(key: k) + "\t" + target_text(t: a)
+    Vanished { key: k, before: b } => "refused\tVanished\t" + key_text(key: k) + "\t" + target_text(t: b)
+  }
+}
+
+// THE FOLD. Head's lines are walked once against base's index, then base's lines once against head's,
+// so every occurrence on either side lands in exactly one delta or is unchanged.
+fn binding_diff(base_stdout: String, head_stdout: String, rows: List<AmbientNameHome>) -> BindingDiff {
+  let base_unreached = unreached_modules(stdout: base_stdout)
+  let head_unreached = unreached_modules(stdout: head_stdout)
+  let both = base_unreached |> filter(m => count(head_unreached |> filter(h => h == m)) != 0)
+  let one_side = (base_unreached + head_unreached) |> filter(m => count(both |> filter(b => b == m)) == 0)
+  let observed_base = binding_lines(stdout: base_stdout) |> filter(l => count(one_side |> filter(m => m == field_at(line: l, index: 1))) == 0)
+  let observed_head = binding_lines(stdout: head_stdout) |> filter(l => count(one_side |> filter(m => m == field_at(line: l, index: 1))) == 0)
+  binding_diff_observed(base_lines: observed_base, head_lines: observed_head, rows: rows, one_side: one_side, both: both)
+}
+
+fn binding_diff_observed(base_lines: List<String>, head_lines: List<String>, rows: List<AmbientNameHome>, one_side: List<String>, both: List<String>) -> BindingDiff {
+  let base = census_index_of(lines: base_lines)
+  let head = census_index_of(lines: head_lines)
+  let changed = head_lines |> fold(init: [], f: fn(acc, l) {
+    let key = line_key(line: l)
+    let after = line_target(line: l)
+    match map_get(base, key_text(key: key)) {
+      Absent => list_snoc_item(xs: acc, item: Appeared { key: key, after: after })
+      Present { value: bl } =>
+        let before = line_target(line: bl)
+        if (before.source == after.source) && (before.target == after.target) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: classify_change(rows: rows, key: key, before: before, after: after))
+        }
+    }
+  })
+  let vanished = base_lines
+    |> filter(l => match map_get(head, key_text(key: line_key(line: l))) { Present { value: _ } => false  Absent => true })
+    |> map(l => Vanished { key: line_key(line: l), before: line_target(line: l) })
+  let all = changed + vanished
+  BindingDiff {
+    admitted: all |> filter(d => delta_admitted(d: d)),
+    refused: all |> filter(d => !delta_admitted(d: d)),
+    unreached_one_side: one_side,
+    unobserved_both_sides: both
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// THE CONTROLS. The RED is run on the REAL route: the host runs the native census-infer over two
+// fixture roots that differ by ONE IMPORT EDIT -- `helper` imported from fx.a on base, from fx.b on head
+// -- so an existing spelling re-binds a different declaration with no body edit; the diff must refuse it
+// as TargetChanged naming `fx.uses helper#0`. The positive control is at the diff's own interface
+// (supplied census lines, DESIGN section 3 "a witness discriminates at one interface"): an ambient
+// `Int` that binds its row's home on head is admitted. Its inhabitance claim -- that the real producer
+// emits an ambient kernel_type_spelling line of exactly this shape -- is the ambient-name-census
+// fixture join (gunbc.instruments.ambient_name_census_reading), and the real route's last execution is
+// the base-to-head diff itself.
+
+type BindingDiffFixtureFile {
+  path: String
+  content: String
+}
+
+fn rebind_fixture_shared() -> List<BindingDiffFixtureFile> {
+  [
+    BindingDiffFixtureFile { path: "fx/a.dag", content: "module fx.a\n\nfn helper() -> Int {\n  1\n}\n" },
+    BindingDiffFixtureFile { path: "fx/b.dag", content: "module fx.b\n\nfn helper() -> Int {\n  2\n}\n" }
+  ]
+}
+
+fn binding_diff_rebind_base_files() -> List<BindingDiffFixtureFile> {
+  rebind_fixture_shared() + [
+    BindingDiffFixtureFile { path: "fx/uses.dag", content: "module fx.uses\n\nimport fx.a { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
+  ]
+}
+
+fn binding_diff_rebind_head_files() -> List<BindingDiffFixtureFile> {
+  rebind_fixture_shared() + [
+    BindingDiffFixtureFile { path: "fx/uses.dag", content: "module fx.uses\n\nimport fx.b { helper }\n\nfn call() -> Int {\n  helper()\n}\n" }
+  ]
+}
+
+fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<String> {
+  let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: [])
+  let refused = diff.refused
+  if count(diff.unreached_one_side + diff.unobserved_both_sides) != 0 {
+    Present { value: "the re-bind fixture was not observed: " + ((diff.unreached_one_side + diff.unobserved_both_sides) |> join(separator: ", ")) }
+  } else {
+      if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\tfx.uses helper#0\tdeclared fx.a.helper -> declared fx.b.helper")) == 1 {
+        if count(refused) == 1 {
+          Absent
+        } else {
+          Present { value: "the re-bind fixture refused more than the one re-binding: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")) }
+        }
+      } else {
+        Present { value: "the re-bind fixture did not refuse fx.uses helper#0 as TargetChanged fx.a.helper -> fx.b.helper; refused: " + (refused |> map(d => delta_line(d: d)) |> join(separator: "; ")) }
+      }
+  }
+}
+
+fn home_control_rows() -> List<AmbientNameHome> {
+  [AmbientNameHome { name: "Int" as NonEmptyStr, home: "fx.home.Int" as NonEmptyStr, table: KernelTypeSpellingTable, origin: ExistingDeclaration }]
+}
+
+fn home_control_failure() -> Optional<String> {
+  let before = "binding\tfx.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int\n"
+  let moved = "binding\tfx.uses\tInt\t0\tdeclared\tfx.home.Int\n"
+  let elsewhere = "binding\tfx.uses\tInt\t0\tdeclared\tfx.other.Int\n"
+  let home = binding_diff(base_stdout: before, head_stdout: moved, rows: home_control_rows())
+  let not_home = binding_diff(base_stdout: before, head_stdout: elsewhere, rows: home_control_rows())
+  if (count(home.admitted) != 1) || (count(home.refused) != 0) {
+    Present { value: "an ambient Int moving to its row's home was not admitted alone" }
+  } else if (count(not_home.admitted) != 0) || (count(not_home.refused) != 1) {
+    Present { value: "an ambient Int moving somewhere other than its home was not refused" }
+  } else {
+    Absent
+  }
+}
+
+fn binding_diff_standing(
+  rebind_base_stdout: String,
+  rebind_head_stdout: String,
+  base_stdout: String,
+  base_status: Int,
+  head_stdout: String
+) -> CliWireResponse {
+  match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
+    Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
+    Absent =>
+      match home_control_failure() {
+        Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "home control: " + why } }
+        Absent =>
+          if (base_status != 0) && (base_status != 2) {
+            CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } }
+          } else {
+            let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
+            let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
+              + (diff.unreached_one_side |> map(m => "refused\tUnreachedOnOneSide\t" + m) |> join(separator: "\n")) + "\n"
+              + (diff.unobserved_both_sides |> map(m => "unobserved\t" + m) |> join(separator: "\n")) + "\n"
+            if (count(diff.refused) != 0) || (count(diff.unreached_one_side) != 0) {
+              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: to_string(count(diff.refused) + count(diff.unreached_one_side)) + " occurrence(s) or module(s) re-bound outside the wave's declared homes (refused rows above)" } }
+            } else if count(diff.unobserved_both_sides) != 0 {
+              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no refusal among the observed modules, but " + to_string(count(diff.unobserved_both_sides)) + " module(s) neither census reached (unobserved rows above)" } }
+            } else {
+              CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+            }
+          }
+      }
+  }
+}

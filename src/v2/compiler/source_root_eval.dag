@@ -77,6 +77,9 @@ import v2.compiler.infer {
 import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
+import v2.compiler.occurrence_binding_census {
+  occurrence_binding_contribution, occurrence_binding_contribution_lines
+}
 import v2.compiler.name_resolve {
   resolution_context_namespace,
   closure_declarations_demand,
@@ -3243,6 +3246,22 @@ fn native_census_module_inference(
     },
     context: step.context,
     cascade: native_census_import_cascade(attribution: step.import_attribution)
+  }
+}
+
+// THE OCCURRENCE-BINDING CENSUS'S LINES, DISPATCHED FROM THE census-infer WALK
+// (v2.compiler.occurrence_binding_census). Binding is a resolve-level fact, so a module that resolved
+// contributes its rows on BOTH infer arms; one that did not has no binding record and prints one
+// unreached line with its stage, which the reader counts as no observation of that module -- never as
+// a module with no bindings.
+fn native_census_infer_binding_lines(entry: NativeCensusModule, outcome: NativeInferCensusOutcome) -> List<String> {
+  match outcome {
+    NativeInferCensusFileRefused => ["binding_unreached\t" + entry.module + "\tfront_end"]
+    NativeInferCensusResolveRefused { first: _, rest: _, observation: _ } => ["binding_unreached\t" + entry.module + "\tresolve"]
+    NativeInferCensusInferred { resolved: r, inferred: _, frontier: _ } =>
+      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r))
+    NativeInferCensusInferRefused { resolved: r, chain: _ } =>
+      occurrence_binding_contribution_lines(c: occurrence_binding_contribution(module: entry.module, tree: r))
   }
 }
 
