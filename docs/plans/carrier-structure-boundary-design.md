@@ -97,6 +97,7 @@ The r1 draft used "inhabitance" for several materially different facts. Each is 
 | What computation exists? | **Operation declaration** | `list_append`, `map_get` |
 | What operations and laws define a structure? | **External structure** (`extdeps.math`) | `Monoid`, `FreeMonoid`, `Ring` |
 | How does a carrier satisfy a structure? | **`Inhabits`** | `List<T>` inhabits the free monoid on `T` |
+| How does a concrete carrier satisfy an external interface (an ADT contract, not a mathematical structure)? | **`Implements`** | `std.map.Map` implements a thin `extdeps` finite-map interface |
 | What mathematical object does a value represent? | **`Denotes`** | `Map<K,V>` denotes a finite partial function `K ⇀ V` |
 | How do two distinct carriers cross? | **`ConvertsTo`** | `String ↔ List<Char>` |
 | How is a carrier stored or emitted? | **`RealizesAs`** | `String` realized as host text |
@@ -506,4 +507,5 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 | I5 | `Map` key equality: on the carrier or on the operations | On the operations |
 | I6 | `map_keys` result | `Set<K>`; ordered list only with an ordering witness |
 | O1 | Run the call-site classification to validate D1 before the rewrite? | Yes, as validation, not as a prerequisite |
+| I7 | `Implements` vs `Inhabits`: external ADT interfaces (thin contracts in `extdeps`: operations plus behavioural laws, no carrier) are not mathematical structures, and must not be modelled as either a structure or a second carrier. Which current `extdeps` declarations are interfaces rather than structures? | Keep `Implements` distinct; classify `extdeps` declarations as part of the §5.4 disposition pass |
 | S1 | `src/v2/std` duplicates (logic, nat, integer, …) de-forked in these terms | Yes |
