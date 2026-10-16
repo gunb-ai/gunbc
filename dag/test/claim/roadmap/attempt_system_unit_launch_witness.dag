@@ -823,6 +823,8 @@ fn live_with_instance_root(root: FilePath) -> HostDashboardInstance {
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    materialization_store_root: live.materialization_store_root,
+    publication_base_branch: live.publication_base_branch,
   }
 }
 

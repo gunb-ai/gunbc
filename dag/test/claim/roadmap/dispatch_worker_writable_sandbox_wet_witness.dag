@@ -867,6 +867,8 @@ fn lab_instance_at_repo(root: FilePath) -> HostDashboardInstance {
     toolchain: lab.toolchain,
     dispatch_worker_memory_max: lab.dispatch_worker_memory_max,
     directory_owner: lab.directory_owner,
+    materialization_store_root: lab.materialization_store_root,
+    publication_base_branch: lab.publication_base_branch,
   }
 }
 
