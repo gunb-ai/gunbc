@@ -1069,21 +1069,36 @@ fn observe_transition_retirement_evidence(
         ], ""),
       }
     RetireesKnown { units: units } =>
-      SlotRetirementEvidencePresent {
-        authorization: auth,
+      transition_retirement_admission_over(
+        host: host,
+        auth: auth,
+        required: units,
         standings: observe_retirement_standings(transport: transport, units: units),
-      }
+      )
   }
 }
 
-// PERMISSION COVERAGE IS A PURE DECISION OVER THE OBLIGATION, and it is exported so the plan can
-// refuse a partially-authorized transition without performing anything. Retiring only the covered
-// subset would release ceilings against a population that is still running, so an uncovered required
-// retiree refuses the whole transition rather than narrowing it.
+// COVERAGE IS OVER UNITS THIS OBSERVATION HAS NOT COMPLETED. A required retiree whose standing
+// this run reads as RetirementComplete (masked and stopped) is met for this plan; it is not
+// subtracted from the durable obligation and it is not named against a stored run id. An unmask
+// later is a different observation and returns the unit to the coverage demand. Units this run
+// has not completed still refuse the whole transition if any of them is outside the grant —
+// retiring only the covered remainder would release ceilings against a population still running.
 // AN UNRESOLVED OBLIGATION IS NOT A FULLY PERMITTED ONE. Coverage is a decision over a set, and a
 // host with no derivable set has nothing to cover -- which under the previous List shape arrived
 // here as the empty set and therefore as TransitionFullyPermitted: the strongest possible answer,
 // reached because nothing could be asked.
+fn outstanding_required_retirees(
+  required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
+) -> List<NonEmptyStr> {
+  required |> filter(u =>
+    !any(standings, s =>
+      retirement_is_complete(s: s) && retirement_unit(s: s) == (u as String)
+    )
+  )
+}
+
 fn transition_retirement_admission(
   host: HostIdentity,
   auth: InterruptionAuthorization,
@@ -1097,7 +1112,7 @@ fn transition_retirement_admission(
         ], ""),
       }
     RetireesKnown { units: required } =>
-      transition_retirement_admission_over(host: host, auth: auth, required: required)
+      transition_retirement_admission_over(host: host, auth: auth, required: required, standings: [])
   }
 }
 
@@ -1105,8 +1120,12 @@ fn transition_retirement_admission_over(
   host: HostIdentity,
   auth: InterruptionAuthorization,
   required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
 ) -> SlotRetirementEvidence {
-  match transition_interruption_coverage(auth: auth, required: required) {
+  match transition_interruption_coverage(
+    auth: auth,
+    required: outstanding_required_retirees(required: required, standings: standings),
+  ) {
     TransitionRetireesNotPermitted { permitted: _, unpermitted: u } =>
       SlotRetirementEvidenceAbsent {
         cause: join(
@@ -1119,7 +1138,7 @@ fn transition_retirement_admission_over(
         ),
       }
     TransitionFullyPermitted { units: _ } =>
-      SlotRetirementEvidencePresent { authorization: auth, standings: [] }
+      SlotRetirementEvidencePresent { authorization: auth, standings: standings }
   }
 }
 
