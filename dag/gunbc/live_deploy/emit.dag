@@ -2836,43 +2836,6 @@ fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> Stri
   join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
 }
 
-// 🟡 dissolve-on: the last step below assembles `sha256sum … | sudo install /dev/stdin` as a string
-// (medium-as-string); it dissolves when v2.workflow.bash_emit can render a piped command from
-// modeled parts, exactly as approval_broker_tree_digest_expr's marker says.
-fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let rel = microvm_controller_firecracker_release
-  let dir = microvm_controller_release_dir(revision: revision)
-  let stage = microvm_controller_tarball_stage_path()
-  let extracted = microvm_controller_stage_dir
-  [
-    deploy_raw(command: join(argv_words(command: mkdir_parents_command(path: extracted)), " ")),
-    deploy_raw(command: join(argv_words(command: curl_download_command(url: firecracker_release_download_url(rel: rel), destination: stage)), " ")),
-    deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: firecracker_release_aarch64_tarball_sha256), file_path: stage as NonEmptyStr)),
-    deploy_raw(command: join(argv_words(command: tar_extract_command(archive: stage, into_directory: extracted, strip_components: 0)), " ")),
-    deploy_raw(command: install_file_owned_command(
-      mode: install_executable_shared_mode,
-      owner: microvm_controller_owner,
-      group: microvm_controller_owner,
-      source: join([extracted, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""),
-      dest: microvm_controller_vmm_binary(release_dir: dir),
-    )),
-    deploy_raw(command: install_file_owned_command(
-      mode: install_executable_shared_mode,
-      owner: microvm_controller_owner,
-      group: microvm_controller_owner,
-      source: join([extracted, "/", firecracker_release_jailer_path_in_tarball(rel: rel)], ""),
-      dest: microvm_controller_jailer_binary(release_dir: dir),
-    )),
-    deploy_raw(command: join([
-      sha256sum_program().invocation as String, " ",
-      microvm_controller_vmm_binary(release_dir: dir), " ",
-      microvm_controller_jailer_binary(release_dir: dir),
-      " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
-        microvm_controller_vmm_receipt_path(revision: revision)]), " "),
-    ], "")),
-  ]
-}
-
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
 // belong to this module while the unit's shape belongs to gunbc.runner.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
@@ -2886,85 +2849,6 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
   microvm_locus_unit_with_workspace_root(
     file: microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
     release_dir: release_dir,
-  )
-}
-
-fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  [
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_controller_slice_unit_name as String,
-      content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_controller_slice_unit_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_controller_slice_unit_path() as String,
-    )),
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_slot_unit_template_name as String,
-      content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
-        release_dir: microvm_controller_release_dir(revision: revision),
-      )),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_slot_unit_template_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_slot_unit_path() as String,
-    )),
-  ] + (if microvm_controller_requires_ci_reservation_unit() { [
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_slot_reserve_unit_name as String,
-      content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
-        file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
-        release_dir: microvm_controller_release_dir(revision: revision),
-      )),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_slot_reserve_unit_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_slot_reserve_unit_path() as String,
-    )),
-  ] } else { [] })
-}
-
-// THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
-// the manager. An instance is started by the shakedown's own dispatch (systemctl start
-// gunbc-microvm-slot@srv1-13), never by the deploy, because starting the controller IS running an
-// attempt and an attempt is admitted by the readiness store and a reservation, not by a deploy.
-fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      concat(
-        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        concat(
-          release_locus_install_steps(
-            owner: microvm_controller_owner,
-            base_root: microvm_controller_root,
-            revision: revision,
-          ),
-          microvm_controller_vmm_install_steps(revision: revision) + workspace_image_install_steps(revision: revision),
-        ),
-      ),
-      concat(
-        [
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: runner_microvm_converged_receipt_root)),
-        ],
-        concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
-      ),
-    ),
-    on_failure: FailFast,
-  }
-}
-
-data microvm_controller_install_emit_refused_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the microVM slot controller install pipeline did not emit; the stage refuses rather than running a partial script (DESIGN section 5)."
-
-fn microvm_controller_install_script(revision: ReleaseRevisionBinding) -> String {
-  emit_pipeline_or_poison(
-    p: microvm_controller_install_intent(revision: revision),
-    refused: microvm_controller_install_emit_refused_poison,
   )
 }
 
@@ -4862,65 +4746,5 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     module_path: "v2.compiler.emit_orchestration",
     decl_name: "orch_emit_pipeline",
     field: WholeDeclaration,
-  }
-}
-
-// Additive installation only: the executor is not enabled or started here. Its native waiter,
-// bounded adapter and unit are derived from the same installed release as the slot controller.
-fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = microvm_controller_release_dir(revision: revision)
-  [
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_script_name,
-      content: workspace_commissioning_executor_script())),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_script_name,
-      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_script_name], ""))),
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_helper_name,
-      content: workspace_executor_helper_script(release_dir: dir))),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_helper_name,
-      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_helper_name], ""))),
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_template_name as String,
-      content: workspace_executor_unit_text(release_dir: dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_template_name as String,
-      mode: install_file_shared_mode, dest: workspace_executor_unit_path() as String)),
-  ]
-}
-
-// The installer has already installed the exact controller release under root custody. These
-// argument-free grants name that binary, tree and the fixed entry roster; no job code is elevated.
-// The same policy also grants its exact readback operation to the installation observer.
-fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let stage = "workspace-commissioning-sudoers"
-  let pending = concat(workspace_dispatch_grant_path, ".pending")
-  [
-    deploy_raw(command: deploy_stage_write_command(stage_name: stage,
-      content: concat(workspace_dispatch_grant_content(release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr), "\n"))),
-    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
-    deploy_raw(command: deploy_stage_install_owned_command(stage_name: stage, mode: "0440", owner: microvm_controller_owner, group: microvm_controller_owner, dest: pending)),
-    deploy_raw(command: installed_visudo_policy_check_command(path: pending)),
-    deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
-    deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
-  ]
-}
-
-// Copy only the named files, never extract an archive as root. Verify the administrator-owned
-// destination after copying: a transport/staging race cannot turn different bytes into admission.
-fn workspace_image_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = workspace_installed_image_root(release_dir: microvm_controller_release_dir(revision: revision), identity: workspace_demo_image_identity())
-  let kernel = concat(concat(dir, "/"), runner_guest_kernel_artifact.filename as String)
-  let rootfs = concat(dir, "/workspace.ext4")
-  match runner_guest_kernel_artifact.integrity {
-    ArtifactDigestPinned { digest, provenance: _ } => [
-      deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: dir)),
-      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
-        owner: microvm_controller_owner, group: microvm_controller_owner,
-        source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact), dest: kernel)),
-      deploy_raw(command: digest_shell_verify_line(digest: digest, file_path: kernel as NonEmptyStr)),
-      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
-        owner: microvm_controller_owner, group: microvm_controller_owner,
-        source: workspace_image_path(root: workspace_image_staging_root), dest: rootfs)),
-      deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: workspace_demo_image_identity()), file_path: rootfs as NonEmptyStr)),
-    ]
-    ArtifactDigestUnpinned { cause: _ } => [deploy_raw(command: "exit 1")]
-    ArtifactDigestNotPinnable { cause: _ } => [deploy_raw(command: "exit 1")]
   }
 }

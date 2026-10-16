@@ -204,7 +204,6 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   deployment_serve_route_command,
   approval_broker_dark_install_script,
-  microvm_controller_install_script,
 }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -6476,6 +6475,43 @@ fn microvm_controller_staged_write_steps(name: String, dest: String, mode: NonEm
   ]
 }
 
+// THE STEP ACCESSORS A WITNESS READS THE PLAN THROUGH. Each projects one field
+// out of the three arms, so a claim about the plan does not have to match all
+// three arms itself (and so a claim cannot quietly inspect only the arm that
+// supports it).
+fn microvm_controller_step_name(step: MicrovmControllerInstallStep) -> String {
+  match step {
+    MicrovmControllerArgvStep { name: n } => n
+    MicrovmControllerVerifyStep { name: n } => n
+    MicrovmControllerReceiptStep { name: n } => n
+  }
+}
+
+fn microvm_controller_step_words(step: MicrovmControllerInstallStep) -> List<String> {
+  match step {
+    MicrovmControllerArgvStep { command: c } => argv_words(command: c)
+    MicrovmControllerVerifyStep { command: c } => argv_words(command: c)
+    MicrovmControllerReceiptStep { observe: o, observe2: t, write: w } =>
+      concat(argv_words(command: o), concat(argv_words(command: t), argv_words(command: w)))
+  }
+}
+
+// THE WORDS A STEP RUNS, AS TEXT -- the surface a shell claim is made against.
+// A stdin payload is deliberately NOT included: it is bytes the receiving
+// program reads, not words any shell parses, and the claim that distinguishes
+// the two is microvm_controller_step_stdin below.
+fn microvm_controller_step_text(step: MicrovmControllerInstallStep) -> String {
+  join(microvm_controller_step_words(step: step), " ")
+}
+
+fn microvm_controller_step_stdin(step: MicrovmControllerInstallStep) -> String {
+  match step {
+    MicrovmControllerArgvStep { stdin_payload: p } => p
+    MicrovmControllerVerifyStep { command: _, expected: _, subject: _ } => ""
+    MicrovmControllerReceiptStep { observe: _, observe2: _, write: _ } => ""
+  }
+}
+
 // THE W5 INVARIANT AS A TYPED REFUSAL. This edge makes units known; starting a
 // slot instance belongs to its own edge (systemd(1): `systemctl start`
 // "starts (activates) the given units"; this wave's premise is an additive
@@ -6487,26 +6523,20 @@ data microvm_controller_forbidden_systemd_verbs: List<String> = [
   "wake-up", "reboot", "resume", "suspend", "poweroff", "halt",
 ]
 
-fn microvm_controller_starts_no_instance_refusal(step: MicrovmControllerInstallStep) -> String {
-  let words = match step {
-    MicrovmControllerArgvStep { command: c } => argv_words(command: c)
-    MicrovmControllerVerifyStep { command: c } => argv_words(command: c)
-    MicrovmControllerReceiptStep { observe: c, observe2: _, write: w } =>
-      concat(argv_words(command: c), concat(argv_words(command: w), []))
-  }
-  let offending = fold(
+// THE LIFECYCLE-VERB TEST, ONE AUTHORITY. Given a step's words, returns the
+// offending verb or "". `daemon-reload` and the read-only verbs are admitted
+// explicitly: this edge's own legitimate systemctl leg must survive the check,
+// so the check is about the VERB and not about the program's name.
+data microvm_controller_readonly_systemd_verbs: List<String> = ["daemon-reload", "status", "is-enabled", "show", "list-units"]
+
+fn microvm_controller_systemd_lifecycle_word(words: List<String>) -> String {
+  fold(
     words,
     init: "",
     f: (acc, w) =>
       if acc != "" {
         acc
-      } else if w == "daemon-reload" {
-        acc
-      } else if w == "reload" {
-        acc
-      } else if w == "status" {
-        acc
-      } else if w == "is-enabled" {
+      } else if any(microvm_controller_readonly_systemd_verbs, v => v == w) {
         acc
       } else if any(microvm_controller_forbidden_systemd_verbs, v => v == w) {
         w
@@ -6514,16 +6544,24 @@ fn microvm_controller_starts_no_instance_refusal(step: MicrovmControllerInstallS
         acc
       },
   )
+}
+
+// THE WITNESS'S HOOK: does THIS command carry a lifecycle verb? A witness can
+// ask it of a command built by the production systemctl builder, so the red
+// below is not a string I authored to match my own list.
+fn microvm_controller_start_word_reported(command: ArgvCommand) -> Bool {
+  microvm_controller_systemd_lifecycle_word(words: argv_words(command: command)) != ""
+}
+
+fn microvm_controller_starts_no_instance_refusal(step: MicrovmControllerInstallStep) -> String {
+  let words = microvm_controller_step_words(step: step)
+  let offending = microvm_controller_systemd_lifecycle_word(words: words)
   if offending == "" {
     ""
   } else {
     join([
       microvm_controller_install_edge, " refuses before any operation ran: step '",
-      (match step {
-        MicrovmControllerArgvStep { name: n } => n
-        MicrovmControllerVerifyStep { name: n } => n
-        MicrovmControllerReceiptStep { name: n } => n
-      }),
+      microvm_controller_step_name(step: step),
       "' carries the systemctl lifecycle verb '", offending
       "', which would start or alter instance state; this edge writes template units and reloads the manager only (systemd(1)), and slot instances start at their own edge",
     ], "")
@@ -7078,7 +7116,7 @@ fn realize_microvm_controller_install_on_host(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let revision = ReleaseRevisionBinding { commit_sha: candidate.revision as NonEmptyStr }
+  let revision = RevisionBoundAtEmission { revision: candidate.revision }
   match microvm_controller_install_staging(revision: revision) {
     MicrovmControllerInstallRefused { reason: why } => NotConverged { reason: why, applied: intent }
     MicrovmControllerInstallReady { steps: steps } => {
