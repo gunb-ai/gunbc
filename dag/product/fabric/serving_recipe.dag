@@ -85,14 +85,20 @@ type ServingCacheTiers {
 // A recipe whose weights are PLACED starts from that placement: the route is derived from
 // ServingWeightsSource (serving_start_source), so a placed source and its start route cannot disagree.
 // A recipe whose weights are unpinned carries an observed route with its own standing.
+// How a setting or route is grounded (DESIGN 4d). An OPERATOR POLICY choice is established policy, cited
+// to the dated design ruling that made it; an empirical reading keeps its CitedFigureStanding.
+type ServingSettingStanding
+  = SettingOperatorPolicy { ruling: DeclarationRef }
+  | SettingReading { standing: CitedFigureStanding }
+
 type ServingStartRoute
   = StartFromPlacedWeights
-  | StartFromObjectStoreObserved { store: NonEmptyStr, hub_fallback: Bool, standing: CitedFigureStanding }
+  | StartFromObjectStoreObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
   | StartRouteUnread { read_obligation: NonEmptyStr }
 
 type ServingStartSource
   = StartSourcePlaced { source: RentedArtifactSource }
-  | StartSourceObserved { store: NonEmptyStr, hub_fallback: Bool, standing: CitedFigureStanding }
+  | StartSourceObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
   | StartSourcePlacementMissing
   | StartSourceUnread
 
@@ -112,9 +118,9 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
 // Chosen or observed settings of a recipe carry their standing (DESIGN 4d): none of these is a measured
 // compatibility fact, and a consumer reads the standing instead of assuming one.
 type ServingSettingStandings {
-  disk: CitedFigureStanding
-  cache: CitedFigureStanding
-  port: CitedFigureStanding
+  disk: ServingSettingStanding
+  cache: ServingSettingStanding
+  port: ServingSettingStanding
 }
 
 // ── throughput: an operator reading, never a constant ────────────────────────────────────────
@@ -123,11 +129,12 @@ type ServingThroughput
   | ThroughputUnread
 
 // The engine is the engine's own typed release row (each in its own module), so a provision phase reads
-// the release's pins (ninfer: installed-file pins) to verify an install. A new engine is a new arm here
-// with its own extdeps module, never a string.
+// the release's pins (ninfer: installed-file pins) to verify an install. A new engine FAMILY adds an arm
+// here (with its own extdeps module); a new RELEASE of an existing family adds a release row in the
+// existing arm's module, never an arm and never a string.
 type ServingEngine
   = EngineNinfer { build: NinferEngineRelease }
-  | EngineVllmLab { build: VllmEngineRelease }
+  | EngineVllm { build: VllmEngineRelease }
 
 type ServingRecipe {
   id: DeclarationRef
@@ -181,9 +188,9 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   start: StartFromPlacedWeights,
   throughput: ThroughputUnread,
   settings: ServingSettingStandings {
-    disk: TranscribedUncited { read_obligation: "32 GiB is the retired flex_qwen_* disk figure; read the ninfer launch image plus weights container size" as NonEmptyStr },
-    cache: TranscribedUncited { read_obligation: "no cache tier is declared for ninfer; read whether ninfer has a host cache tier" as NonEmptyStr },
-    port: TranscribedUncited { read_obligation: "operator_pod_listen_port is the --port of one observed operator launch; read the engine's own default" as NonEmptyStr },
+    disk: SettingReading { standing: TranscribedUncited { read_obligation: "32 GiB is the retired flex_qwen_* disk figure; read the ninfer launch image plus weights container size" as NonEmptyStr } },
+    cache: SettingReading { standing: TranscribedUncited { read_obligation: "no cache tier is declared for ninfer; read whether ninfer has a host cache tier" as NonEmptyStr } },
+    port: SettingReading { standing: TranscribedUncited { read_obligation: "operator_pod_listen_port is the --port of one observed operator launch; read the engine's own default" as NonEmptyStr } },
   },
 }
 
@@ -196,7 +203,7 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
     source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
     served_model_id: none,
   },
-  engine: EngineVllmLab { build: local_inference_lab_vllm_release },
+  engine: EngineVllm { build: local_inference_lab_vllm_release },
   catalog_unit: none,
   published_tcp_port: 8000,
   cards: [serving_card_class_rtx_pro_6000_blackwell],
@@ -214,7 +221,7 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   start: StartFromObjectStoreObserved {
     store: "R2",
     hub_fallback: false,
-    standing: TranscribedUncited { read_obligation: "operator reading: weights and saved kernel tuning start from the object store with no Hugging Face fallback; no placement row pins them yet" as NonEmptyStr },
+    standing: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
   },
   throughput: ThroughputOperatorReading {
     tokens_per_second: tokens_per_second(count: 900),
@@ -224,9 +231,9 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
     },
   },
   settings: ServingSettingStandings {
-    disk: TranscribedUncited { read_obligation: "operator reading: 400 GiB disk; read the weights, kernel-tuning and session-cache sizes" as NonEmptyStr },
-    cache: TranscribedUncited { read_obligation: "operator reading: half of host RAM and half of disk as cache tiers; read the lab build's tier configuration" as NonEmptyStr },
-    port: TranscribedUncited { read_obligation: "operator reading: the lab build answers on 8000; read its launch flags" as NonEmptyStr },
+    disk: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    cache: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    port: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
   },
 }
 
@@ -339,24 +346,41 @@ type ServingCardSupply
 
 type ServingHourlyCost
   = HourlyCostQuoted { rate: MoneyPerHour }
+  | HourlyCostEstimated { rate: MoneyPerHour, standing: CitedFigureStanding }
   | HourlyCostUnamortizable
   | HourlyCostCurrencyMismatch
 
+// The standing a setting contributes to anything computed from it: operator policy and a cited reading
+// are established; an uncited reading is not.
+fn serving_setting_uncited(setting: ServingSettingStanding) -> CitedFigureStanding? {
+  match setting {
+    SettingOperatorPolicy { ruling: _ } => none
+    SettingReading { standing: sd } =>
+      match sd {
+        TranscribedUncited { read_obligation: _ } => Present { value: sd }
+        _ => none
+      }
+  }
+}
+
 // Disk is part of a rented card's cost: the recipe's disk need priced at the host's storage rate and
-// added to the card's dph. An owned card's cost is its capital over the declared amortization
+// added to the card's dph. The disk size is the recipe's setting, so a cost computed from an UNCITED disk
+// size is Estimated, never Quoted. An owned card's cost is its capital over the declared amortization
 // horizon (an owned card is not free: ruling of 2026-08-27 in product.fabric.selection).
 fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> ServingHourlyCost {
   match supply {
     RentedCardSupply { dph: dph, disk_rate: disk } =>
       if currency_code_eq(a: dph.currency, b: disk.rate.currency) {
-        HourlyCostQuoted {
-          rate: MoneyPerHour {
-            amount: money_amount_micro(
-              count: money_per_hour_micros(q: dph)
-                + money_rate_micros(q: disk.rate) * gibibyte_count(g: gibibyte_ceiling(b: recipe.disk)),
-            ),
-            currency: dph.currency,
-          },
+        let rate = MoneyPerHour {
+          amount: money_amount_micro(
+            count: money_per_hour_micros(q: dph)
+              + money_rate_micros(q: disk.rate) * gibibyte_count(g: gibibyte_ceiling(b: recipe.disk)),
+          ),
+          currency: dph.currency,
+        }
+        match serving_setting_uncited(setting: recipe.settings.disk) {
+          Present { value: sd } => HourlyCostEstimated { rate: rate, standing: sd }
+          Absent => HourlyCostQuoted { rate: rate }
         }
       } else {
         HourlyCostCurrencyMismatch
@@ -378,13 +402,24 @@ fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> Serv
 
 // ── cost per accepted unit ───────────────────────────────────────────────────────────────────
 // The accepted unit is a served token. Throughput is an operator reading carried on the recipe, so a
-// recipe without one has no unit cost rather than a made-up one.
+// recipe without one has no unit cost rather than a made-up one. The cost is Quoted only when EVERY
+// input is established: an uncited throughput or an Estimated hourly cost makes it Estimated.
 type ServingUnitCost
   = UnitCostQuoted { amount: MoneyAmountMicro, currency: CurrencyCode }
   | UnitCostEstimated { amount: MoneyAmountMicro, currency: CurrencyCode, standing: CitedFigureStanding }
   | UnitCostThroughputUnread
+  | UnitCostHourlyUnavailable
 
-fn serving_cost_per_million_tokens(recipe: ServingRecipe, hourly: MoneyPerHour) -> ServingUnitCost {
+fn serving_cost_per_million_tokens(recipe: ServingRecipe, hourly: ServingHourlyCost) -> ServingUnitCost {
+  match hourly {
+    HourlyCostUnamortizable => UnitCostHourlyUnavailable
+    HourlyCostCurrencyMismatch => UnitCostHourlyUnavailable
+    HourlyCostQuoted { rate: r } => serving_unit_cost_at(recipe: recipe, hourly: r, hourly_standing: none)
+    HourlyCostEstimated { rate: r, standing: sd } => serving_unit_cost_at(recipe: recipe, hourly: r, hourly_standing: Present { value: sd })
+  }
+}
+
+fn serving_unit_cost_at(recipe: ServingRecipe, hourly: MoneyPerHour, hourly_standing: CitedFigureStanding?) -> ServingUnitCost {
   match recipe.throughput {
     ThroughputUnread => UnitCostThroughputUnread
     ThroughputOperatorReading { tokens_per_second: rate, at_concurrency: _, standing: sd } =>
@@ -395,9 +430,29 @@ fn serving_cost_per_million_tokens(recipe: ServingRecipe, hourly: MoneyPerHour) 
         let amount = money_amount_micro(count: (money_per_hour_micros(q: hourly) * 1000000 + (tps * 3600 - 1)) / (tps * 3600))
         match sd {
           TranscribedUncited { read_obligation: _ } => UnitCostEstimated { amount: amount, currency: hourly.currency, standing: sd }
-          _ => UnitCostQuoted { amount: amount, currency: hourly.currency }
+          _ =>
+            match hourly_standing {
+              Present { value: hs } => UnitCostEstimated { amount: amount, currency: hourly.currency, standing: hs }
+              Absent => UnitCostQuoted { amount: amount, currency: hourly.currency }
+            }
         }
       }
+  }
+}
+
+// What select_supply may take as a quote. An Estimated cost is a bet and is refused as an established
+// price (DESIGN 4d): the selection fold is handed only a Quoted cost.
+type ServingSelectionQuote
+  = SelectionQuoteEstablished { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | SelectionQuoteRefusedEstimated { standing: CitedFigureStanding }
+  | SelectionQuoteRefusedUnavailable
+
+fn serving_unit_cost_for_selection(cost: ServingUnitCost) -> ServingSelectionQuote {
+  match cost {
+    UnitCostQuoted { amount: a, currency: c } => SelectionQuoteEstablished { amount: a, currency: c }
+    UnitCostEstimated { amount: _, currency: _, standing: sd } => SelectionQuoteRefusedEstimated { standing: sd }
+    UnitCostThroughputUnread => SelectionQuoteRefusedUnavailable
+    UnitCostHourlyUnavailable => SelectionQuoteRefusedUnavailable
   }
 }
 
