@@ -328,6 +328,9 @@ test fn thermal_guard_trip_re_enables_the_cooling_manager() -> Bool {
             ) {
               Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
                 true
+              Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+                false
+              Present { value: ReEnableCoolingManager { cause: RunExited } } => false
               Absent => false
             }
           MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
@@ -356,6 +359,9 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         ) {
           Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
             true
+          Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: RunExited } } => false
           Absent => false
         }
     MegaRacThermalGuardHolds => false
@@ -407,6 +413,9 @@ test fn dimm_over_uncited_ceiling_re_enables_the_manager() -> Bool {
         ) {
           Present { value: ReEnableCoolingManager { cause: ThermalGuardTripped { sensor: _, temperature: _ } } } =>
             true
+          Present { value: ReEnableCoolingManager { cause: TemperatureUnreadable { sensor: _ } } } =>
+            false
+          Present { value: ReEnableCoolingManager { cause: RunExited } } => false
           Absent => false
         }
     MegaRacThermalGuardHolds => false
