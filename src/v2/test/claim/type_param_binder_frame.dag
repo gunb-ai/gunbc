@@ -44,6 +44,7 @@ import v2.std.node {
   well_formed,
   ArrowBodyEdge,
   TypeParamsEdge,
+  BinderTypeEdge,
   core_edge_label,
 }
 import v2.std.text { String }
@@ -373,6 +374,10 @@ test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
 // (v2.test.claim.emit.rust_produced_decl_emit emits it); the specimen is that same decl with one
 // type-parameter edge added, so the refusal is the edge's and not the specimen's.
 fn tpb_with_type_param(decl: Node) -> Node {
+  tpb_with_binders(decl: decl, binders: tpb_t_binders())
+}
+
+fn tpb_with_binders(decl: Node, binders: Node) -> Node {
   node_synthetic(
     kind: decl.kind,
     children: fold(decl.children, init: [], f: fn(acc, e) {
@@ -382,12 +387,46 @@ fn tpb_with_type_param(decl: Node) -> Node {
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
             label: core_edge_label(marker: TypeParamsEdge),
-            target: tpb_t_binders()
+            target: binders
           }])
         )
       }])
     })
   )
+}
+
+// A KINDED binder `<T: Int>`: T's own Atom carries one BinderTypeEdge to the kind, the shape
+// v2.std.node type_binder_conforms admits and v2.std.type_binder kinded_type_param_kind_optional reads.
+fn tpb_kinded_t_binders() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [Edge {
+        label: Authored { name: ^T },
+        target: node_synthetic(
+          kind: TypeNode { connective: Atom { identity: ^T } },
+          children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
+        )
+      }],
+      source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+    )
+  )
+}
+
+// RED, REAL ACCEPTANCE PATH: no target declares a kind-spelling row, so a kinded parameter must refuse
+// typed at the Rust header (rows that DO render type parameters), never render as the unkinded `<T>`.
+// The unkinded twin (tpb_emitter_renders_a_generic_arrow_header_where_rows_declare_one) is the accepted
+// positive control over the same decl and target.
+test fn tpb_kinded_type_param_refuses_rather_than_rendering_unkinded() -> Bool {
+  match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: tpb_with_binders(decl: decl, binders: tpb_kinded_t_binders()), target: rust_target_model()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^produced_decl_render_type_param_kind_unrealized)
+      }
+  }
 }
 
 // THE EMIT OUTCOMES ARE THE SHARE POINT. Each claim that built the `add` fixture and ran the Rust

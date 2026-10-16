@@ -443,34 +443,56 @@ fn produced_decl_type_params_tokens(
   }
 }
 
-fn produced_decl_signature_segment_tokens(
+// ONE SEGMENT'S RENDERING AND THE DEBT IT DISCHARGES. A declaration's type parameters are owed to
+// exactly one segment, the type-parameter segment, so the segment that renders them is the one that
+// returns them as `placed`; every other segment places none. The signature fold reads the debt off
+// what the segments returned, so rows with no type-parameter segment leave it unpaid and refuse there,
+// with no second scan over the rows' shape.
+type ProducedSegmentRender {
+  tokens: List<ConcreteSyntaxToken>
+  placed_type_params: List<ProducedTypeParam>
+}
+
+fn produced_segment_placing_no_type_params(tokens: Outcome<List<ConcreteSyntaxToken>>) -> Outcome<ProducedSegmentRender> {
+  bind_outcome(
+    o: tokens,
+    f: fn(toks) { outcome_accepted(value: ProducedSegmentRender { tokens: toks, placed_type_params: Empty }) }
+  )
+}
+
+fn produced_decl_signature_segment_render(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
   segment: ProducedDeclSignatureSegment,
   type_binding: fn(Node) -> Outcome<Symbol>
-) -> Outcome<List<ConcreteSyntaxToken>> {
+) -> Outcome<ProducedSegmentRender> {
   match segment {
     ProducedSignatureFixed { token_class: tc } =>
-      outcome_accepted(value: [FixedToken { token_class: tc }])
+      produced_segment_placing_no_type_params(tokens: outcome_accepted(value: [FixedToken { token_class: tc }]))
     ProducedSignatureDeclName { token_class: tc } =>
-      outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
+      produced_segment_placing_no_type_params(tokens: outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }]))
     ProducedSignatureTypeParams { open: open, separator: separator, close: close, name_class: name_class } =>
-      produced_decl_type_params_tokens(
-        type_params: subject.type_params,
-        open: open,
-        separator: separator,
-        close: close,
-        name_class: name_class,
-        anchor: subject.codomain
+      bind_outcome(
+        o: produced_decl_type_params_tokens(
+          type_params: subject.type_params,
+          open: open,
+          separator: separator,
+          close: close,
+          name_class: name_class,
+          anchor: subject.codomain
+        ),
+        f: fn(toks) { outcome_accepted(value: ProducedSegmentRender { tokens: toks, placed_type_params: subject.type_params }) }
       )
     ProducedSignatureParams =>
-      produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding)
+      produced_segment_placing_no_type_params(tokens: produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding))
     ProducedSignatureReturnType =>
-      produced_decl_type_tokens_at(
-        rows: rows,
-        position: FunctionTypeAtItemReturn,
-        type_node: subject.codomain,
-        type_binding: type_binding
+      produced_segment_placing_no_type_params(
+        tokens: produced_decl_type_tokens_at(
+          rows: rows,
+          position: FunctionTypeAtItemReturn,
+          type_node: subject.codomain,
+          type_binding: type_binding
+        )
       )
   }
 }
@@ -606,26 +628,42 @@ fn produced_decl_signature_segments_tokens(
   segments: List<ProducedDeclSignatureSegment>,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  fold_list(
-    xs: segments,
-    empty: outcome_accepted(value: Empty),
-    cons: fn(acc, segment) {
-      bind_outcome(
-        o: acc,
-        f: fn(so_far) {
-          bind_outcome(
-            o: produced_decl_signature_segment_tokens(
-              rows: rows,
-              subject: subject,
-              segment: segment,
-              type_binding: type_binding
-            ),
-            f: fn(toks) {
-              outcome_accepted(value: list_append(left: so_far, right: toks))
-            }
-          )
-        }
-      )
+  bind_outcome(
+    o: fold_list(
+      xs: segments,
+      empty: outcome_accepted(value: ProducedSegmentRender { tokens: Empty, placed_type_params: Empty }),
+      cons: fn(acc, segment) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_signature_segment_render(
+                rows: rows,
+                subject: subject,
+                segment: segment,
+                type_binding: type_binding
+              ),
+              f: fn(seg) {
+                outcome_accepted(
+                  value: ProducedSegmentRender {
+                    tokens: list_append(left: so_far.tokens, right: seg.tokens),
+                    placed_type_params: list_append(left: so_far.placed_type_params, right: seg.placed_type_params)
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(rendered) {
+      if length(xs: rendered.placed_type_params) == length(xs: subject.type_params) {
+        outcome_accepted(value: rendered.tokens)
+      } else {
+        outcome_rejected(
+          d: produced_decl_render_diagnostic(reason: ^translate_reason_generic_arrow_not_rendered, node: subject.codomain)
+        )
+      }
     }
   )
 }
@@ -802,18 +840,12 @@ fn produced_decl_signature_with_open_from_rows(
   bind_outcome(
     o: produced_decl_subject_from_decl(decl: decl),
     f: fn(subject) {
-      if is_empty(xs: subject.type_params) == false && produced_decl_rows_render_type_params(rows: rows) == false {
-        outcome_rejected(
-          d: produced_decl_render_diagnostic(reason: ^translate_reason_generic_arrow_not_rendered, node: subject.codomain)
-        )
-      } else {
-        produced_decl_signature_segments_tokens(
-          rows: rows,
-          subject: subject,
-          segments: rows.signature,
-          type_binding: produced_decl_binding_with_own_type_params(subject: subject, outer: type_binding)
-        )
-      }
+      produced_decl_signature_segments_tokens(
+        rows: rows,
+        subject: subject,
+        segments: rows.signature,
+        type_binding: produced_decl_binding_with_own_type_params(subject: subject, outer: type_binding)
+      )
     }
   )
 }
@@ -836,26 +868,6 @@ fn produced_decl_binding_with_own_type_params(
       _ => outer(type_node)
     }
   }
-}
-
-// WHETHER THE TARGET'S ROWS HAVE A PLACE FOR A TYPE-PARAMETER LIST. A generic declaration handed to
-// rows with none refuses translate_reason_generic_arrow_not_rendered rather than rendering a
-// signature without the parameters its types name (the refusal this seam inherited from
-// v2.compiler.target_serialize, now owned by the rows that can lift it).
-fn produced_decl_rows_render_type_params(rows: ProducedDeclRenderRows) -> Bool {
-  fold_list(
-    xs: rows.signature,
-    empty: false,
-    cons: fn(acc, segment) {
-      acc || match segment {
-        ProducedSignatureTypeParams { open: _, separator: _, close: _, name_class: _ } => true
-        ProducedSignatureFixed { token_class: _ } => false
-        ProducedSignatureDeclName { token_class: _ } => false
-        ProducedSignatureParams => false
-        ProducedSignatureReturnType => false
-      }
-    }
-  )
 }
 
 // The whole produced-declaration rendering, read off the target's declared rows. This
