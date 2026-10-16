@@ -117,10 +117,12 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // probe and then pinned here as the alarm this claim is), not figures chosen for the hosts.
 // OPERATOR RULING 2026-10-14 OPTION C: sessions 128 GiB, user-work 44 GiB charged, slot 22 GiB.
 // envelope 189.85 GiB; less 52 GiB shakedown; floor(/22)+1 = 7.
-// OPERATOR RULING 2026-10-16 (gunbc.live_deploy.user_work_pool_slots): user-work 88 GiB charged.
-// envelope 145.85 GiB; less 52 GiB shakedown; floor(93.85/22)+1 = 5. The pin is the fold's answer.
+// OPERATOR RULING 2026-10-16 (gunbc.live_deploy.user_work_pool_slots): user-work 88 GiB charged:
+// envelope 145.85 GiB; floor(93.85/22)+1 = 5. Operator decision 2026-10-15 (escalation msg_57614325)
+// stacks attempt-worker 2 x 22 GiB on top: envelope 101.85 GiB; less 52 GiB shakedown;
+// floor(49.85/22)+1 = 3. The pin is the fold's answer.
 test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv1) == 5
+  host_memory_admitted_width(host: operator_host_srv1) == 3
     && host_memory_admitted_width(host: operator_host_srv3) == 21
     && host_memory_admitted_width(host: operator_host_srv4) == 21
     && match host_memory_denominator(host: operator_host_srv2) {
@@ -133,7 +135,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
   match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
     RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
     RunnerHostDeployAdmitted { deploy } =>
-      deploy.runner_count == 5
+      deploy.runner_count == 3
         && deploy.runner_count == host_memory_admitted_width(host: operator_host_srv1)
   }
 }
