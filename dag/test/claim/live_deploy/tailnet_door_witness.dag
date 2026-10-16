@@ -146,6 +146,8 @@ fn is_door_pending_naming(r: ServiceReadiness, text: String) -> Bool {
         && string_contains(s: service_readiness_reason(r: r), pattern: door_socket())
         && string_contains(s: service_readiness_reason(r: r), pattern: text)
     Pending { cause: ServiceProbeUnanswered { detail: _ } } => false
+    // An answered-unhealthy door is not the door this claim is naming either.
+    Pending { cause: ServiceObservedUnhealthy { status: _, detail: _ } } => false
     Pending { cause: ServiceReadinessIdentityPending { cause: _ } } => false
     Ready { evidence: _ } => false
     Refused { cause: _ } => false

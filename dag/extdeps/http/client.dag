@@ -77,7 +77,7 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
     http_client_max_time_flag(max_time: max_time) as String,
     url as String,
     "-w",
-    "\n%{http_code}",
+    "\n%\{http_code\}",
   ]
 }
 
