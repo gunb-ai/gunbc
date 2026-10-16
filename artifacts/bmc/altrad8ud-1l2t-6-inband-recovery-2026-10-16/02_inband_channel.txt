@@ -11,7 +11,7 @@ ipmi_devintf           20480  0
 ipmi_msghandler       102400  3 ipmi_devintf,acpi_ipmi,ipmi_ssif
 ### ipmitool version
 ipmitool version 1.8.19
-### mc info (in-band, no -I lanplus, no credential => passwordless KCS)
+### mc info (in-band, no -I lanplus, no credential => passwordless system interface; ipmi_ssif loaded above => SSIF, not KCS)
 Device ID                 : 32
 Device Revision           : 1
 Firmware Revision         : 3.22
