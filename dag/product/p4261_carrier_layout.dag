@@ -469,7 +469,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   ],
   module_receptacles: [],
   grey_edge_connectors: "not photographed or read on this unit",
-  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Rows by side (j20_rows), marked by the operator on a photograph 2026-10-16: the row on the latch side is ground, the row on the F1 / D2 side is the fused supply",
+  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Rows by side (j20_rows), marked by the operator on a photograph 2026-10-16: the row on the latch side is ground, the row on the F1 / D2 side is the fused supply. Caliper, 2026-10-16: 26.32 mm from the inner left wall of a row's first cavity to the outer right wall of its ninth (eight pitches plus one cavity), and 5.27 mm from the top wall of the supply row's ninth cavity to the bottom wall of the ground row's ninth (one row pitch plus one cavity). With square cavities both fit a 3.0 mm pitch on both axes and a cavity of about 2.3 mm, and both exclude a 4.2 mm pitch (Mini-Fit Jr); the family is unread, and Molex Micro-Fit 3.0 is the candidate those dimensions match",
   j20_positions: 18,
   j20_rows: [
     PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true, side: LatchSide },
