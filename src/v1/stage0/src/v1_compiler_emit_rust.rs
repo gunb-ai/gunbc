@@ -6733,6 +6733,12 @@ pub fn shared_layer_of_type_expr(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     generic_param_names: Rc<Vec<String>>,
 ) -> Rc<SharedLayerAnswer> {
+    let spelled = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
+    if (crate::std_types::is_kernel_type(spelled.clone())
+        && !crate::std_types::is_container_type(spelled.clone()))
+    {
+        return Rc::new(SharedLayerAnswer::SharedLayerAtValue);
+    }
     {
         let judged = match rust_operand_alias_or_refinement_continue(
             type_expr.clone(),

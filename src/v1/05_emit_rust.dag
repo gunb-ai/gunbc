@@ -3537,6 +3537,12 @@ fn emit_alias_hop_scope(source_indices: Map<String, NewlineIndex>) -> InferScope
 // (v1.compiler.emit_rust; tidy-swift-183 #13941). When the use-site node is not stamped, the same
 // alias arm is applied to the routed declaration item.
 fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, generic_param_names: List<String>) -> SharedLayerAnswer {
+  let spelled = rust_fn_sig_leaf_name(source_indices: source_indices, n: type_expr)
+  // The alias hop below must not carry a kernel spelling past itself: `type Int = AbelianGroup<..>`
+  // is declared in std.integer, and judging the hop's right-hand side wrapped every Int field in Rc.
+  if is_kernel_type(name: spelled) && !is_container_type(name: spelled) {
+    return SharedLayerAtValue
+  }
   let judged = match rust_operand_alias_or_refinement_continue(rt: type_expr, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
     Present { value: next } => next
     Absent =>
