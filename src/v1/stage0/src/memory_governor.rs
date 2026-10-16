@@ -476,7 +476,8 @@ pub fn whole_corpus_compile_admission(
             effective_bytes, ..
         } => (*effective_bytes, budget.label()),
         HostBudgetResolution::DeclaredUnverified { .. }
-        | HostBudgetResolution::Unreadable { .. } => {
+        | HostBudgetResolution::Unreadable { .. }
+        | HostBudgetResolution::ExternallyBounded { .. } => {
             return WholeCorpusCompileAdmission::RefusedBudgetUnreadable {
                 source: budget.label(),
             };
@@ -1149,6 +1150,11 @@ pub enum HostBudgetResolution {
         requested_bytes: u64,
         reason: String,
     },
+    /// Local cgroup budget unreadable, but the executor already holds the bound
+    /// (`ExternallyBoundedExecutor` / `BUILDBUDDY_RUN_ID`). Carries the run id, never a byte count.
+    ExternallyBounded {
+        run_id: String,
+    },
 }
 
 impl HostBudgetResolution {
@@ -1161,7 +1167,8 @@ impl HostBudgetResolution {
             HostBudgetResolution::DeclaredUnverified {
                 requested_bytes, ..
             } => Some(*requested_bytes),
-            HostBudgetResolution::Unreadable { .. } => None,
+            HostBudgetResolution::Unreadable { .. }
+            | HostBudgetResolution::ExternallyBounded { .. } => None,
         }
     }
 
@@ -1187,6 +1194,13 @@ impl HostBudgetResolution {
             } => format!(
                 "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
             ),
+            HostBudgetResolution::ExternallyBounded { run_id } => {
+                crate::cli_run::user_work_scope::standing_wire(
+                    &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                        run_id: run_id.clone(),
+                    },
+                )
+            }
         }
     }
 
@@ -1198,8 +1212,27 @@ impl HostBudgetResolution {
                 Some(observation.source.is_degraded())
             }
             HostBudgetResolution::Unreadable { .. }
-            | HostBudgetResolution::DeclaredUnverified { .. } => None,
+            | HostBudgetResolution::DeclaredUnverified { .. }
+            | HostBudgetResolution::ExternallyBounded { .. } => None,
         }
+    }
+}
+
+/// Mirror of `host_budget_with_external_executor`.
+pub(crate) fn host_budget_with_external_executor(
+    resolution: HostBudgetResolution,
+    standing: &crate::cli_run::user_work_scope::UserWorkScopeStanding,
+) -> HostBudgetResolution {
+    match resolution {
+        HostBudgetResolution::Unreadable { reason } => match standing {
+            crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id,
+            } if !run_id.is_empty() => HostBudgetResolution::ExternallyBounded {
+                run_id: run_id.clone(),
+            },
+            _ => HostBudgetResolution::Unreadable { reason },
+        },
+        other => other,
     }
 }
 
@@ -1311,12 +1344,16 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
             },
         )
     });
-    resolve_host_budget(
+    let joined = resolve_host_budget(
         env_override,
         cgroup_high,
         cgroup_max,
         cgroup_v1_limit,
         crate::v1_rt::host_budget_darwin_physical(),
+    );
+    host_budget_with_external_executor(
+        joined,
+        &crate::cli_run::user_work_scope::user_work_scope_standing(),
     )
 }
 
@@ -1957,6 +1994,46 @@ mod tests {
         assert!(label.contains("memory.high"), "{label}");
         assert!(label.contains("memory.max"), "{label}");
         assert!(label.contains("GUNBC_MEMORY_BUDGET_BYTES"), "{label}");
+    }
+
+    #[test]
+    fn a_buildbuddy_run_id_classifies_unreadable_as_externally_bounded_with_no_bytes() {
+        let refused = resolve_host_budget(None, None, None, None, None);
+        let classified = host_budget_with_external_executor(
+            refused,
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548".to_string(),
+            },
+        );
+        assert!(matches!(
+            &classified,
+            HostBudgetResolution::ExternallyBounded { run_id }
+                if run_id == "bb77f2ae-888b-4f04-9bef-6dab045b1548"
+        ));
+        assert_eq!(classified.bytes(), None);
+        assert_eq!(
+            classified.label(),
+            "ExternallyBoundedExecutor:bb77f2ae-888b-4f04-9bef-6dab045b1548"
+        );
+        let still = host_budget_with_external_executor(
+            resolve_host_budget(None, None, None, None, None),
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::CgroupUnreadable,
+        );
+        assert!(matches!(still, HostBudgetResolution::Unreadable { .. }));
+        let observed = resolve_host_budget(
+            None,
+            None,
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 9_663_676_416)),
+            None,
+            None,
+        );
+        let unchanged = host_budget_with_external_executor(
+            observed,
+            &crate::cli_run::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                run_id: "bb-id".to_string(),
+            },
+        );
+        assert_eq!(unchanged.bytes(), Some(9_663_676_416));
     }
 
     /// THE POSITIVE CONTROLS, without which the RED above is satisfied by a resolver refusing

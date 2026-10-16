@@ -3393,6 +3393,14 @@ type NativeCensusCascade
 // b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
 // then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
 // it is Counted, an exact answer, only when no other refused file could be a hidden importer.
+// THE RELATION IS IMPORT-EDGE REACHABILITY, AND THAT IS A DECLARED FRONTIER (DESIGN §4b). Both
+// directions come from normalized_tree_import_bindings, so a module that reaches the root only
+// through a qualified reference is in a scoped run's acquired population but can be missing from
+// the root's fan-out: the count is import-edge reachability over the observed population, coverage
+// incomplete -- not demand fan-out, and not evidence that two repairs are independent. Next rung:
+// feed this fold the acquisition's observed request-to-selected-target relation
+// (v2.compiler.module_acquisition), so fan-out walks the edges the acquirer followed. Trigger: the
+// acquisition result carries that relation per member.
 type NativeCensusClosureFanOut
   = NativeCensusClosureFanOutCounted { modules: Int }
   | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
@@ -3952,6 +3960,12 @@ fn native_lane_census_scoped_ingest(label: String, source_roots: FreeMonoid<Stri
   }
 }
 
+// THE WHOLE-CORPUS SUBJECT ANNOTATION, AN IMPORT-ONLY WALK, AND A DECLARED FRONTIER (DESIGN §4b).
+// It misses the qualified-reference edges module_acquisition follows, so it is a second closure
+// definition beside acquire_census_closure_of (a §3 fork), kept only because the whole-corpus census
+// walks its roots rather than acquiring. A scoped run never consults it: there the acquired set is
+// the closure. Next rung: re-derive this annotation from the same acquisition and delete the walk.
+// Trigger: the whole-corpus census takes its population from module_acquisition.
 type NativeCensusSubjectClosure
   = NativeCensusSubjectClosureRead { subject: String, members: Map<String, Bool> }
   | NativeCensusSubjectClosureUnavailable { reason: Symbol }
@@ -5656,6 +5670,12 @@ type CensusRunDiffFinding
   | CensusDiffNewlyRefusing { after: CensusComparableRow }
   | CensusDiffIncompleteEvidence { member: Optional<String> }
   | CensusDiffLocationUpdate { before: CensusComparableRow, after: CensusComparableRow }
+  // REFUSED AT THE SAME STAGE BEFORE AND AFTER, FOR A DIFFERENT FATAL. Neutral on purpose: a
+  // comparable row keeps only the fatal selected from the obligation's first chain, so a changed
+  // fatal does not show the earlier one cleared (it may survive in a later chain) or the later one
+  // newly exposed (the chains may only have reordered). Cleared-and-exposed is claimed only across
+  // stages, where the earlier stage passing is the identity that supports it.
+  | CensusDiffRefusalChanged { before: CensusComparableRow, after: CensusComparableRow }
   | CensusDiffMemberAdded { member: String }
   | CensusDiffMemberRemoved { member: String }
   | CensusDiffDuplicateObligation { module: String, stage: NativeCensusCauseStage }
@@ -6092,7 +6112,9 @@ fn census_diff_stage_pair(before_row: CensusComparableRow, after_row: CensusComp
               [CensusDiffLocationUpdate { before: before_row, after: after_row }]
             }
           } else {
-            [CensusDiffNewlyRefusing { after: after_row }]
+            // A different fatal at the same stage: changed, neither cleared nor a regression
+            // (Passed to Refused, below, is the only newly-refusing case).
+            [CensusDiffRefusalChanged { before: before_row, after: after_row }]
           }
         CensusComparablePassed => []
       }
@@ -6383,7 +6405,7 @@ fn census_block_obligation_rows(blocks: List<CensusBlock>) -> List<CensusObligat
   })
 }
 
-// THE REVISION IS THE CONTENT THAT WAS READ (gunbc.plans.census_scoped_run section 6): one structural
+// THE REVISION IS THE CONTENT THAT WAS READ: one structural
 // digest over the member digests in read order, so two runs over identical bytes are one revision
 // whatever commit either claimed. The claimed commit stays the host record's revision_claimed field;
 // it is not a fact this walk observed. (Not gunbc.guarantee_measurement MeasurementRevision: that

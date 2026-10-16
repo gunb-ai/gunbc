@@ -12,9 +12,14 @@ import gunbc.host.host_budget_source {
   HostBudgetResolved,
   HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
   HostBudgetSource,
   HostBudgetObserved,
   host_budget_source_label,
+}
+import gunbc.compute.unit_bounds {
+  ExternallyBoundedExecutor,
+  user_work_scope_standing_wire,
 }
 
 data whole_corpus_compile_admission_authority_disposition: Disposition = Terminal {
@@ -400,6 +405,10 @@ fn whole_corpus_compile_budget_against_peak(
   match budget {
     HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+    HostBudgetExternallyBounded { run_id: id } =>
+      WholeCorpusCompileRefusedBudgetUnreadable {
+        reason: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id }) as NonEmptyStr
+      }
     HostBudgetResolved {
       effective_bytes: b,
       requested_bytes: _,
