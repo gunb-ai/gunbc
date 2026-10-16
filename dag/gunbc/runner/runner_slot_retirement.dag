@@ -346,6 +346,34 @@ data srv1_transition_interruption_authorization: InterruptionAuthorization = Int
   operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
 }
 
+// THE WIDTH CUTS OF 2026-10-16 ARE THEIR OWN DECISION, CARRIED BESIDE THE 09-17 ONE. Two cuts landed
+// that day: 7 to 5 (#14162, the user-work slice to 88 GiB) and 5 to 3 (#13942, the attempt-worker
+// slice stacked on it). Together they made srv1-03..06 required retirees, which the 09-17 scope
+// (13-50) does not name, so the retirement admission refused them until the operator decided. The
+// scope is enumerated for the same reason as srv4's: a range would acquire members if the width
+// moved again.
+data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv1-03.service" as NonEmptyStr,
+    "actions-runner@srv1-04.service" as NonEmptyStr,
+    "actions-runner@srv1-05.service" as NonEmptyStr,
+    "actions-runner@srv1-06.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs" as NonEmptyStr,
+}
+
+// srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
+// joined rather than rewritten, the same composition host_interruption_reason applies to the fabric
+// reassignment.
+data srv1_width_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: concat(srv1_transition_interruption_authorization.scope, srv1_width_cut_2026_10_16_interruption_authorization.scope),
+  operator_reason: join([
+    srv1_transition_interruption_authorization.operator_reason as String,
+    " | ",
+    srv1_width_cut_2026_10_16_interruption_authorization.operator_reason as String,
+  ], "") as NonEmptyStr,
+}
+
 type HostInterruptionAuthorizationStanding
   = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
   | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
@@ -415,7 +443,7 @@ type WidthDecisionAuthorization
 
 fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
-    WidthDecisionNamed { authorization: srv1_transition_interruption_authorization }
+    WidthDecisionNamed { authorization: srv1_width_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
     WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {
