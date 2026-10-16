@@ -321,7 +321,7 @@ fn fan_boot_phase_tail_run(stem: String, receipt: String, plant: Bool, from_yml:
   let out_path = concat(stem, "-output")
   let tail = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false)
   let _ = if from_yml {
-    shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["{ echo 'set -euo pipefail'; sed -n '/--function mtcollins1_fan_observe_boot_phase_wet/,/^        env:/p' .github/workflows/fleet-converge.yml | sed '1d;$d' | sed 's/^          //'; } > '", spec_path, "'"], "")]).success
+    shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["{ echo 'set -euo pipefail'; sed -n '/--function mtcollins1_fan_observe_boot_phase_wet/,/^        env:/p' .github/workflows/fleet-converge.yml | sed '1d;$d' | sed 's/^          //'; } > '", spec_path, "'"], "")]).exit_code == 0
   } else {
     Filesystem.Write(path: spec_path, content: concat("set -euo pipefail\n", tail)).success
   }
