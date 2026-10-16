@@ -46,7 +46,7 @@ import product.fabric.flex_market {
 }
 import product.fabric.flex_vast_shadow {
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
-  flex_serving_recipe, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
+  flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_accepted_by_recipe, flex_offer_in_shadow_field,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, FlexAttemptBound, FlexAttemptCandidateUnestablished,
@@ -70,8 +70,7 @@ import product.fabric.flex_vast_shadow {
 }
 import std.rational { NonzeroNatFraction }
 import product.fabric.serving_recipe {
-  serving_recipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
-  RecipeQwen3_8_27bNvfp4OnNinfer, RecipeFlashNextOnLabVllm,
+  serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import extdeps.cloud.vast_ai {
@@ -289,14 +288,14 @@ fn exhausted(rows: List<VastAiInstance>) -> FlexInstancesStanding {
 }
 
 fn qwen_image() -> String {
-  match serving_recipe_qwen3_8_27b_nvfp4_ninfer.host_image {
+  match flex_host_image(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
     Present { value: i } => i as String
     Absent => ""
   }
 }
 
 test fn flex_template_is_the_recipes_realization() -> Bool {
-  match flex_serving_template(recipe: serving_recipe(id: flex_serving_recipe)) {
+  match flex_serving_template(recipe: flex_serving_recipe) {
     FlexTemplateResolved { template: t } =>
       (t.image as String == "vastai/vllm:v0.30.0-cuda-13.0")
         && t.published_tcp_port == 8000
@@ -305,7 +304,7 @@ test fn flex_template_is_the_recipes_realization() -> Bool {
     FlexTemplateImageUnread => false
     FlexTemplateServedIdUnread => false
   }
-    && match flex_serving_template(recipe: serving_recipe(id: RecipeFlashNextOnLabVllm)) {
+    && match flex_serving_template(recipe: serving_recipe_flash_next_lab_vllm) {
       FlexTemplateImageUnread => true
       _ => false
     }
@@ -485,19 +484,27 @@ fn objective_is_cost_per_accepted_unit() -> Bool {
 test fn supported_gpu_classes_screen_offers() -> Bool {
   flex_offer_accepted_by_recipe(
     offer: wire_offer(name: "RTX 5000 Ada", ram: 49152, bid: true, rentable: true),
-    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
   )
     && !flex_offer_accepted_by_recipe(
       offer: wire_offer(name: "RTX 4090", ram: 49152, bid: true, rentable: true),
-      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      recipe: serving_recipe_flash_next_lab_vllm,
     )
     && flex_offer_accepted_by_recipe(
       offer: wire_offer(name: "H100", ram: 73728, bid: true, rentable: true),
-      recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
     )
     && flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 6000 WS", ram: 98304, bid: true, rentable: true),
+      recipe: serving_recipe_flash_next_lab_vllm,
+    )
+    && flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 6000 Max-Q", ram: 98304, bid: true, rentable: true),
+      recipe: serving_recipe_flash_next_lab_vllm,
+    )
+    && !flex_offer_accepted_by_recipe(
       offer: wire_offer(name: "RTX PRO 6000 Blackwell", ram: 98304, bid: true, rentable: true),
-      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      recipe: serving_recipe_flash_next_lab_vllm,
     )
     && flex_offer_in_shadow_field(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: true, rentable: true))
     && !flex_offer_in_shadow_field(offer: wire_offer(name: "RTX PRO 6000 S", ram: 98304, bid: false, rentable: true))

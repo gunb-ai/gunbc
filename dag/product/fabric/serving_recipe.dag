@@ -1,6 +1,6 @@
 module product.fabric.serving_recipe
 
-import std.types { NonEmptyStr, Bool, Int, List, String }
+import std.types { NonEmptyStr, Bool, Int, List, String, Port }
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.rational { NonzeroNatFraction }
@@ -14,9 +14,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
-import gunbc.serving.rented_ninfer_source {
-  RentedWeightsPlacement, NinferEngineRelease, rented_qwen3_8_27b_nvfp4_weights_placement, ninfer_serve_81c8ce09_sm120_release,
-}
+import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, rented_qwen3_8_27b_nvfp4_weights_placement }
+import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
+import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
@@ -34,14 +35,17 @@ import gunbc.harness.harness_reasoning_wire {
 // Figures this repository has not read from an upstream are TranscribedUncited (DESIGN 4d): the
 // operator's readings carry that standing and say so, and nothing here promotes them.
 
-type ServingRecipeId
-  = RecipeQwen3_8_27bNvfp4OnNinfer
-  | RecipeFlashNextOnLabVllm
+// A RECIPE IS KEYED BY DECLARATION IDENTITY (as the vendor rows are): a new recipe is a new row, not an
+// edit to a closed enum or to an equality function.
+fn serving_recipe_id_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
+  (left.module_path as String == right.module_path as String) && (left.decl_name as String == right.decl_name as String)
+}
 
-fn serving_recipe_id_eq(left: ServingRecipeId, right: ServingRecipeId) -> Bool {
-  match left {
-    RecipeQwen3_8_27bNvfp4OnNinfer => match right { RecipeQwen3_8_27bNvfp4OnNinfer => true RecipeFlashNextOnLabVllm => false }
-    RecipeFlashNextOnLabVllm => match right { RecipeQwen3_8_27bNvfp4OnNinfer => false RecipeFlashNextOnLabVllm => true }
+fn serving_recipe_ref(decl_name: NonEmptyStr) -> DeclarationRef {
+  DeclarationRef {
+    module_path: "product.fabric.serving_recipe" as NonEmptyStr,
+    decl_name: decl_name,
+    field: WholeDeclaration,
   }
 }
 
@@ -60,16 +64,18 @@ type ServingModelArtifact {
 }
 
 // ── engine build ─────────────────────────────────────────────────────────────────────────────
-type ServingEngineBuild
-  = NinferEngine { engine_release: NinferEngineRelease }
-  | VllmEngine { build: NonEmptyStr }
+// The engine is a REFERENCE to its own release row in the engine's own module (ninfer:
+// gunbc.serving.rented_ninfer_source NinferEngineRelease; the lab vLLM build:
+// extdeps.vllm.local_inference_lab_build), so no hub enumerates engine products (DESIGN 3, external
+// upstream decomposition).
 
-// ── card class requirements ──────────────────────────────────────────────────────────────────
-type ServingCardClass {
-  identity: NonEmptyStr
-  gpu_name_contains: String?
-  min_vram: ByteSize
-}
+// ── card requirements ────────────────────────────────────────────────────────────────────────
+// A recipe requires cards by REFERENCE to the cited catalog rows (extdeps.gpu.nvidia) or by a VRAM figure.
+// A provider's spelling of a card (a Vast gpu_name) is an INGEST concern that maps to a catalog row; it is
+// not part of the recipe.
+type ServingCardRequirement
+  = CardIsAnyCatalogProduct { identity: NonEmptyStr, products: List<GpuModelCatalogRow> }
+  | CardHasVramAtLeast { identity: NonEmptyStr, min_vram: ByteSize, standing: CitedFigureStanding }
 
 type ServingDriverFloor {
   major: Nat
@@ -97,12 +103,12 @@ type ServingThroughput
   | ThroughputUnread
 
 type ServingRecipe {
-  id: ServingRecipeId
+  id: DeclarationRef
   model: ServingModelArtifact
-  engine: ServingEngineBuild
-  host_image: NonEmptyStr?
-  published_tcp_port: Int
-  cards: List<ServingCardClass>
+  engine: DeclarationRef
+  catalog_unit: HarnessServingUnit?
+  published_tcp_port: Port
+  cards: List<ServingCardRequirement>
   driver_floor: ServingDriverFloor
   disk: ByteSize
   cache: ServingCacheTiers
@@ -114,36 +120,49 @@ fn gib(n: Nat) -> ByteSize {
   gibibyte_to_byte_size(g: gibibyte(count: n))
 }
 
-data serving_card_class_rtx_5000_48gb: ServingCardClass = ServingCardClass {
-  identity: "rtx-5000-class-48gb",
-  gpu_name_contains: Present { value: "RTX 5000" },
+data serving_card_vram_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "operator-stated card classes (48, 72, 96 GB) for the 27B NVFP4 recipe; read the weights' resident bytes plus KV capacity at the launch's context to ground the smallest card" as NonEmptyStr,
+}
+
+data serving_card_class_48gb: ServingCardRequirement = CardHasVramAtLeast {
+  identity: "48gb-class",
   min_vram: mebibyte_to_byte_size(m: mebibyte(count: 49152)),
+  standing: serving_card_vram_standing,
 }
 
-data serving_card_class_72gb: ServingCardClass = ServingCardClass {
+data serving_card_class_72gb: ServingCardRequirement = CardHasVramAtLeast {
   identity: "72gb-class",
-  gpu_name_contains: none,
   min_vram: mebibyte_to_byte_size(m: mebibyte(count: 73728)),
+  standing: serving_card_vram_standing,
 }
 
-data serving_card_class_rtx_pro_6000_96gb: ServingCardClass = ServingCardClass {
-  identity: "rtx-pro-6000-blackwell-96gb",
-  gpu_name_contains: Present { value: "RTX PRO 6000" },
+data serving_card_class_96gb: ServingCardRequirement = CardHasVramAtLeast {
+  identity: "96gb-class",
   min_vram: mebibyte_to_byte_size(m: mebibyte(count: 98304)),
+  standing: serving_card_vram_standing,
+}
+
+data serving_card_class_rtx_pro_6000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
+  identity: "rtx-pro-6000-blackwell",
+  products: [nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog],
 }
 
 // Recipe (a). The 580 floor moved here from product.fabric.flex_market flex_ninfer_min_driver: the
 // floor is the recipe's fact, not a market constant. It stays a transcribed flex screen.
 data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
-  id: RecipeQwen3_8_27bNvfp4OnNinfer,
+  id: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
   model: ServingModelArtifact {
     source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
-    served_model_id: Present { value: "qwen" },
+    served_model_id: Present { value: operator_pod_ninfer_launch.model_id },
   },
-  engine: NinferEngine { engine_release: ninfer_serve_81c8ce09_sm120_release },
-  host_image: Present { value: "vastai/vllm:v0.30.0-cuda-13.0" },
-  published_tcp_port: 8000,
-  cards: [serving_card_class_rtx_5000_48gb, serving_card_class_72gb, serving_card_class_rtx_pro_6000_96gb],
+  engine: DeclarationRef {
+    module_path: "gunbc.serving.rented_ninfer_source" as NonEmptyStr,
+    decl_name: "ninfer_serve_81c8ce09_sm120_release" as NonEmptyStr,
+    field: WholeDeclaration,
+  },
+  catalog_unit: Present { value: Qwen3_8_27bOnNinfer },
+  published_tcp_port: operator_pod_listen_port,
+  cards: [serving_card_class_48gb, serving_card_class_72gb, serving_card_class_96gb],
   driver_floor: ServingDriverFloor {
     major: 580,
     standing: TranscribedUncited {
@@ -152,9 +171,7 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   },
   disk: gib(n: 32),
   cache: ServingCacheTiers { ram: CacheNone, disk: CacheNone },
-  start: StartRouteUnread {
-    read_obligation: "read how the ninfer Qwen3.8-27b image fetches its weights; the flex template names a vast.ai vLLM image and no object store" as NonEmptyStr,
-  },
+  start: StartFromObjectStoreOnly { store: "R2", hub_fallback: false },
   throughput: ThroughputUnread,
 }
 
@@ -162,15 +179,19 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
 // 580 work (tested on a 595 host); about 900 tokens per second at 16 concurrent; 400 GiB disk;
 // weights and saved kernel tuning started from the object store with no Hugging Face fallback.
 data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
-  id: RecipeFlashNextOnLabVllm,
+  id: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
   model: ServingModelArtifact {
     source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
     served_model_id: none,
   },
-  engine: VllmEngine { build: "local-inference-lab vLLM build" },
-  host_image: none,
+  engine: DeclarationRef {
+    module_path: "extdeps.vllm.local_inference_lab_build" as NonEmptyStr,
+    decl_name: "local_inference_lab_vllm_release" as NonEmptyStr,
+    field: WholeDeclaration,
+  },
+  catalog_unit: none,
   published_tcp_port: 8000,
-  cards: [serving_card_class_rtx_pro_6000_96gb],
+  cards: [serving_card_class_rtx_pro_6000_blackwell],
   driver_floor: ServingDriverFloor {
     major: 580,
     standing: TranscribedUncited {
@@ -192,33 +213,18 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   },
 }
 
-fn serving_recipe(id: ServingRecipeId) -> ServingRecipe {
-  match id {
-    RecipeQwen3_8_27bNvfp4OnNinfer => serving_recipe_qwen3_8_27b_nvfp4_ninfer
-    RecipeFlashNextOnLabVllm => serving_recipe_flash_next_lab_vllm
-  }
-}
-
-// The harness catalog unit a recipe is served as. Flash-Next has none: its request wire, parser and
-// reasoning facts are unread, and a HarnessServingUnit arm without them would invent them in twenty
-// exhaustive matches (see serving_recipe_frontier).
-fn serving_recipe_catalog_unit(id: ServingRecipeId) -> HarnessServingUnit? {
-  match id {
-    RecipeQwen3_8_27bNvfp4OnNinfer => Present { value: Qwen3_8_27bOnNinfer }
-    RecipeFlashNextOnLabVllm => none
-  }
-}
+// Harness catalog unit: the recipe's own catalog_unit field (Flash-Next has none, see serving_recipe_frontier).
 
 // Two recipes are interchangeable only when identical, or when both name catalog units that the
 // catalog says are fungible. A recipe with no catalog unit is interchangeable with nothing else.
-fn serving_recipes_interchangeable(left: ServingRecipeId, right: ServingRecipeId) -> Bool {
-  if serving_recipe_id_eq(left: left, right: right) {
+fn serving_recipes_interchangeable(left: ServingRecipe, right: ServingRecipe) -> Bool {
+  if serving_recipe_id_eq(left: left.id, right: right.id) {
     true
   } else {
-    match serving_recipe_catalog_unit(id: left) {
+    match left.catalog_unit {
       Absent => false
       Present { value: l } =>
-        match serving_recipe_catalog_unit(id: right) {
+        match right.catalog_unit {
           Absent => false
           Present { value: r } =>
             match harness_serving_unit_compatibility(required: l, observed: r) {
@@ -233,7 +239,7 @@ fn serving_recipes_interchangeable(left: ServingRecipeId, right: ServingRecipeId
 
 // ── does a card satisfy a recipe ─────────────────────────────────────────────────────────────
 type ServingCardFacts {
-  gpu_name: String
+  product: GpuModelCatalogRow?
   vram: ByteSize
   driver_major: Nat?
 }
@@ -245,63 +251,79 @@ type ServingCardVerdict
   | CardRefusedDriverBelowFloor { required: Nat, observed: Nat }
   | CardRefusedDriverUnread
 
-fn serving_class_matches(card: ServingCardFacts, class: ServingCardClass) -> Bool {
-  byte_size_count(b: card.vram) >= byte_size_count(b: class.min_vram)
-    && match class.gpu_name_contains {
-      Absent => true
-      Present { value: needle } => string_contains(s: card.gpu_name, pattern: needle)
-    }
+fn serving_requirement_identity(r: ServingCardRequirement) -> NonEmptyStr {
+  match r {
+    CardIsAnyCatalogProduct { identity: i, products: _ } => i
+    CardHasVramAtLeast { identity: i, min_vram: _, standing: _ } => i
+  }
 }
 
-fn serving_smallest_class_vram(classes: List<ServingCardClass>) -> Nat? {
+fn serving_requirement_matches(card: ServingCardFacts, r: ServingCardRequirement) -> Bool {
+  match r {
+    CardHasVramAtLeast { identity: _, min_vram: m, standing: _ } => byte_size_count(b: card.vram) >= byte_size_count(b: m)
+    CardIsAnyCatalogProduct { identity: _, products: ps } =>
+      match card.product {
+        Absent => false
+        Present { value: p } =>
+          fold(ps, init: false, f: (acc, q) => if acc { true } else { gpu_catalog_row_eq(a: p, b: q) })
+      }
+  }
+}
+
+fn serving_smallest_vram(classes: List<ServingCardRequirement>) -> Nat? {
   fold(
     classes,
     init: none,
-    f: (acc, class) =>
-      match acc {
-        Absent => Present { value: byte_size_count(b: class.min_vram) }
-        Present { value: n } =>
-          if byte_size_count(b: class.min_vram) < n {
-            Present { value: byte_size_count(b: class.min_vram) }
-          } else {
-            Present { value: n }
+    f: (acc, r) =>
+      match r {
+        CardIsAnyCatalogProduct { identity: _, products: _ } => acc
+        CardHasVramAtLeast { identity: _, min_vram: m, standing: _ } =>
+          match acc {
+            Absent => Present { value: byte_size_count(b: m) }
+            Present { value: n } => if byte_size_count(b: m) < n { Present { value: byte_size_count(b: m) } } else { Present { value: n } }
           }
       },
   )
 }
 
-fn serving_first_matching_class(card: ServingCardFacts, classes: List<ServingCardClass>) -> ServingCardClass? {
+fn serving_first_matching_requirement(card: ServingCardFacts, classes: List<ServingCardRequirement>) -> ServingCardRequirement? {
   fold(
     classes,
     init: none,
-    f: (acc, class) =>
+    f: (acc, r) =>
       match acc {
         Present { value: found } => Present { value: found }
-        Absent => if serving_class_matches(card: card, class: class) { Present { value: class } } else { none }
+        Absent => if serving_requirement_matches(card: card, r: r) { Present { value: r } } else { none }
       },
   )
 }
 
-fn serving_recipe_accepts_card(recipe: ServingRecipe, card: ServingCardFacts) -> ServingCardVerdict {
-  match serving_smallest_class_vram(classes: recipe.cards) {
-    Absent => CardRefusedWrongCard
-    Present { value: smallest } =>
-      if byte_size_count(b: card.vram) < smallest {
-        CardRefusedBelowVram { required: byte_size(count: smallest), observed: card.vram }
+fn serving_driver_verdict(recipe: ServingRecipe, card: ServingCardFacts, identity: NonEmptyStr) -> ServingCardVerdict {
+  match card.driver_major {
+    Absent => CardRefusedDriverUnread
+    Present { value: observed } =>
+      if observed < recipe.driver_floor.major {
+        CardRefusedDriverBelowFloor { required: recipe.driver_floor.major, observed: observed }
       } else {
-        match serving_first_matching_class(card: card, classes: recipe.cards) {
-          Absent => CardRefusedWrongCard
-          Present { value: class } =>
-            match card.driver_major {
-              Absent => CardRefusedDriverUnread
-              Present { value: observed } =>
-                if observed < recipe.driver_floor.major {
-                  CardRefusedDriverBelowFloor { required: recipe.driver_floor.major, observed: observed }
-                } else {
-                  CardAccepted { class: class.identity }
-                }
-            }
-        }
+        CardAccepted { class: identity }
+      }
+  }
+}
+
+// A card below every VRAM class of a VRAM-classed recipe is BelowVram; one that meets no requirement
+// otherwise is WrongCard; a matching card is then judged on the driver floor.
+fn serving_recipe_accepts_card(recipe: ServingRecipe, card: ServingCardFacts) -> ServingCardVerdict {
+  match serving_first_matching_requirement(card: card, classes: recipe.cards) {
+    Present { value: r } => serving_driver_verdict(recipe: recipe, card: card, identity: serving_requirement_identity(r: r))
+    Absent =>
+      match serving_smallest_vram(classes: recipe.cards) {
+        Present { value: smallest } =>
+          if byte_size_count(b: card.vram) < smallest {
+            CardRefusedBelowVram { required: byte_size(count: smallest), observed: card.vram }
+          } else {
+            CardRefusedWrongCard
+          }
+        Absent => CardRefusedWrongCard
       }
   }
 }
@@ -386,23 +408,20 @@ fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
 }
 
 // ── declared frontiers ───────────────────────────────────────────────────────────────────────
-fn serving_recipe_fact(decl_name: NonEmptyStr) -> DeclarationRef {
-  DeclarationRef {
-    module_path: "product.fabric.serving_recipe" as NonEmptyStr,
-    decl_name: decl_name,
-    field: WholeDeclaration,
-  }
-}
-
 data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: serving_recipe_fact(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
+    ref: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
     reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn.",
     dissolution: unbound_dissolution(description: "an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
-    ref: serving_recipe_fact(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
-    reason: "throughput, start route and cache tiers of the 27B recipe are unread; its unit cost is UnitCostThroughputUnread rather than a guess.",
+    ref: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
+    reason: "throughput and cache tiers of the 27B recipe are unread; its unit cost is UnitCostThroughputUnread rather than a guess.",
     dissolution: unbound_dissolution(description: "an operator or measured throughput reading and the ninfer weight-fetch route for Qwen3.8-27B NVFP4 on a rented card. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
+    reason: "ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
+    dissolution: unbound_dissolution(description: "an extdeps.lmcache module citing LMCache's tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting ServingCacheSizing."),
   ),
 ]

@@ -1,6 +1,9 @@
 module product.fabric.flex_vast_shadow
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.decl_ref { DeclarationRef }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import std.decl_ref { decl_ref }
 import std.integer { int_to_decimal_string }
 import std.measure {
@@ -31,7 +34,7 @@ import product.fabric.flex_market {
   FlexCapRateUnconverted, FlexCapCurrencyMismatch,
 }
 import product.fabric.serving_recipe {
-  ServingRecipe, ServingRecipeId, RecipeQwen3_8_27bNvfp4OnNinfer, serving_recipe,
+  ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_id_eq, serving_recipe_ref,
   ServingCardFacts, serving_recipe_accepts_card, CardAccepted, CardRefusedBelowVram,
   CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread,
 }
@@ -393,11 +396,37 @@ data flex_objective: DemandObjective = debt_payoff_objective
 // product.fabric.serving_recipe: the image, port, disk, model id, card classes and driver floor are
 // the recipe's, not literals of this loop. Consumer: flex_offer_in_shadow_field, which walks the
 // Vast roster against it.
-data flex_serving_recipe: ServingRecipeId = RecipeQwen3_8_27bNvfp4OnNinfer
+data flex_serving_recipe: ServingRecipe = serving_recipe_qwen3_8_27b_nvfp4_ninfer
+
+// THE VAST CONTAINER REALIZATION OF A RECIPE: the image a rented Vast card boots is a Vast fact, not a
+// recipe fact (an owned card has no image). A recipe with no row here has no Vast realization.
+type FlexHostImageRow {
+  recipe: DeclarationRef
+  image: NonEmptyStr
+}
+
+data flex_host_images: List<FlexHostImageRow> = [
+  FlexHostImageRow {
+    recipe: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
+    image: "vastai/vllm:v0.30.0-cuda-13.0" as NonEmptyStr,
+  },
+]
+
+fn flex_host_image(recipe: ServingRecipe) -> NonEmptyStr? {
+  fold(
+    flex_host_images,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent => if serving_recipe_id_eq(left: row.recipe, right: recipe.id) { Present { value: row.image } } else { none }
+      },
+  )
+}
 
 type FlexServingTemplate {
   image: NonEmptyStr
-  published_tcp_port: Int
+  published_tcp_port: Port
   disk: ByteSize
   model_id: NonEmptyStr
 }
@@ -411,7 +440,7 @@ type FlexTemplateRealization
 // to realize rather than defaulting one. Consumer: the wet create path
 // (flex_wet_create_release_consumer_frontier).
 fn flex_serving_template(recipe: ServingRecipe) -> FlexTemplateRealization {
-  match recipe.host_image {
+  match flex_host_image(recipe: recipe) {
     Absent => FlexTemplateImageUnread
     Present { value: image } =>
       match recipe.model.served_model_id {
@@ -437,13 +466,32 @@ fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
 }
 
 // A Vast offer as the recipe sees any card. An unreadable VRAM is no card at all.
+// INGEST: a Vast gpu_name to the cited catalog row it names. Vast spells the PRO 6000 editions WS, S and
+// Max-Q; a name that names no single edition maps to no row rather than a guess. The suffix spellings are
+// TranscribedUncited (read them from Vast's offer vocabulary).
+fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuModelCatalogRow? {
+  if string_contains(s: gpu_name, pattern: "RTX PRO 6000") {
+    if string_contains(s: gpu_name, pattern: "Max-Q") {
+      Present { value: nvidia_rtx_pro_6000_max_q_catalog }
+    } else if string_contains(s: gpu_name, pattern: " WS") {
+      Present { value: nvidia_rtx_pro_6000_workstation_catalog }
+    } else if string_contains(s: gpu_name, pattern: " S") {
+      Present { value: nvidia_rtx_pro_6000_server_catalog }
+    } else {
+      none
+    }
+  } else {
+    none
+  }
+}
+
 fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
   match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
     Absent => none
     Present { value: vram } =>
       Present {
         value: ServingCardFacts {
-          gpu_name: offer.gpu_name,
+          product: flex_vast_gpu_catalog_row(gpu_name: offer.gpu_name),
           vram: vram,
           driver_major: flex_offer_driver_major(offer: offer),
         },
@@ -474,7 +522,7 @@ fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
 
 fn flex_offer_in_shadow_field(offer: VastAiOffer) -> Bool {
   flex_interruptible_rentable(offer: offer)
-    && flex_offer_accepted_by_recipe(offer: offer, recipe: serving_recipe(id: flex_serving_recipe))
+    && flex_offer_accepted_by_recipe(offer: offer, recipe: flex_serving_recipe)
 }
 
 data flex_search_type: String = vast_ai_search_type_bid

@@ -30,8 +30,7 @@ import product.fabric.selection {
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
 }
 import product.fabric.serving_recipe {
-  ServingRecipeId, RecipeQwen3_8_27bNvfp4OnNinfer, RecipeFlashNextOnLabVllm,
-  ServingRecipe, serving_recipe, serving_recipe_catalog_unit, serving_recipes_interchangeable,
+  ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
   ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedBelowVram, CardRefusedWrongCard,
   CardRefusedDriverBelowFloor, CardRefusedDriverUnread, serving_recipe_accepts_card,
   ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
@@ -45,6 +44,7 @@ import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -147,7 +147,11 @@ fn gib(n: Nat) -> ByteSize {
 }
 
 fn card(name: String, vram_gib: Nat, driver: Nat?) -> ServingCardFacts {
-  ServingCardFacts { gpu_name: name, vram: gib(n: vram_gib), driver_major: driver }
+  ServingCardFacts {
+    product: if string_contains(s: name, pattern: "PRO 6000") { Present { value: nvidia_rtx_pro_6000_server_catalog } } else { none },
+    vram: gib(n: vram_gib),
+    driver_major: driver,
+  }
 }
 
 fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
@@ -160,27 +164,27 @@ fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
   }
 }
 
-fn accepts(id: ServingRecipeId, c: ServingCardFacts) -> Bool {
-  verdict_is_accepted(v: serving_recipe_accepts_card(recipe: serving_recipe(id: id), card: c))
+fn accepts(recipe: ServingRecipe, c: ServingCardFacts) -> Bool {
+  verdict_is_accepted(v: serving_recipe_accepts_card(recipe: recipe, card: c))
 }
 
 // ── each recipe resolves to its card classes ─────────────────────────────────────────────────
 
 test fn qwen_recipe_resolves_to_its_three_card_classes() -> Bool {
-  accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 580 }))
-    && accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX A6000", vram_gib: 72, driver: Present { value: 580 }))
-    && accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 580 }))
+    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX A6000", vram_gib: 72, driver: Present { value: 580 }))
+    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
 }
 
 test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
-  accepts(id: RecipeFlashNextOnLabVllm, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+  accepts(recipe: serving_recipe_flash_next_lab_vllm, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
 }
 
 // ── refusals ─────────────────────────────────────────────────────────────────────────────────
 
 test fn qwen_is_refused_on_a_card_below_its_vram() -> Bool {
   match serving_recipe_accepts_card(
-    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
     card: card(name: "RTX 4090", vram_gib: 24, driver: Present { value: 595 }),
   ) {
     CardRefusedBelowVram { required: r, observed: o } =>
@@ -191,7 +195,7 @@ test fn qwen_is_refused_on_a_card_below_its_vram() -> Bool {
 
 test fn flash_next_is_refused_off_pro_6000_even_with_enough_vram() -> Bool {
   match serving_recipe_accepts_card(
-    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    recipe: serving_recipe_flash_next_lab_vllm,
     card: card(name: "RTX A6000", vram_gib: 96, driver: Present { value: 595 }),
   ) {
     CardRefusedWrongCard => true
@@ -201,21 +205,21 @@ test fn flash_next_is_refused_off_pro_6000_even_with_enough_vram() -> Bool {
 
 test fn a_driver_below_the_floor_is_refused_and_an_unread_driver_is_refused() -> Bool {
   (match serving_recipe_accepts_card(
-    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
     card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 570 }),
   ) {
     CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 570
     _ => false
   })
     && (match serving_recipe_accepts_card(
-      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      recipe: serving_recipe_flash_next_lab_vllm,
       card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 575 }),
     ) {
       CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 575
       _ => false
     })
     && (match serving_recipe_accepts_card(
-      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      recipe: serving_recipe_flash_next_lab_vllm,
       card: card(name: "RTX PRO 6000", vram_gib: 96, driver: none),
     ) {
       CardRefusedDriverUnread => true
@@ -226,14 +230,14 @@ test fn a_driver_below_the_floor_is_refused_and_an_unread_driver_is_refused() ->
 // ── non-fungible recipes are never substituted ───────────────────────────────────────────────
 
 test fn flash_next_is_not_interchangeable_with_the_27b_in_either_direction() -> Bool {
-  serving_recipes_interchangeable(left: RecipeQwen3_8_27bNvfp4OnNinfer, right: RecipeQwen3_8_27bNvfp4OnNinfer)
-    && serving_recipes_interchangeable(left: RecipeFlashNextOnLabVllm, right: RecipeFlashNextOnLabVllm)
-    && !serving_recipes_interchangeable(left: RecipeQwen3_8_27bNvfp4OnNinfer, right: RecipeFlashNextOnLabVllm)
-    && !serving_recipes_interchangeable(left: RecipeFlashNextOnLabVllm, right: RecipeQwen3_8_27bNvfp4OnNinfer)
+  serving_recipes_interchangeable(left: serving_recipe_qwen3_8_27b_nvfp4_ninfer, right: serving_recipe_qwen3_8_27b_nvfp4_ninfer)
+    && serving_recipes_interchangeable(left: serving_recipe_flash_next_lab_vllm, right: serving_recipe_flash_next_lab_vllm)
+    && !serving_recipes_interchangeable(left: serving_recipe_qwen3_8_27b_nvfp4_ninfer, right: serving_recipe_flash_next_lab_vllm)
+    && !serving_recipes_interchangeable(left: serving_recipe_flash_next_lab_vllm, right: serving_recipe_qwen3_8_27b_nvfp4_ninfer)
 }
 
 test fn the_27b_recipe_names_the_existing_catalog_unit_and_flash_next_names_none_yet() -> Bool {
-  (match serving_recipe_catalog_unit(id: RecipeQwen3_8_27bNvfp4OnNinfer) {
+  (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.catalog_unit {
     Present { value: u } =>
       match u {
         Qwen3_8_27bOnNinfer => true
@@ -241,7 +245,7 @@ test fn the_27b_recipe_names_the_existing_catalog_unit_and_flash_next_names_none
       }
     Absent => false
   })
-    && (match serving_recipe_catalog_unit(id: RecipeFlashNextOnLabVllm) {
+    && (match serving_recipe_flash_next_lab_vllm.catalog_unit {
       Present { value: _ } => false
       Absent => true
     })
@@ -264,7 +268,7 @@ fn hourly_micro(h: ServingHourlyCost) -> Int {
 
 test fn a_rented_cards_hourly_cost_is_its_dph_plus_the_recipes_disk() -> Bool {
   hourly_micro(h: serving_card_hourly(
-    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    recipe: serving_recipe_flash_next_lab_vllm,
     supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
   )) == 1050000
 }
@@ -272,14 +276,14 @@ test fn a_rented_cards_hourly_cost_is_its_dph_plus_the_recipes_disk() -> Bool {
 test fn disk_scales_with_the_recipes_disk_need() -> Bool {
   // 27B needs 32 GiB: 32 * 375 = 12000
   hourly_micro(h: serving_card_hourly(
-    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
     supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
   )) == 912000
 }
 
 test fn a_disk_rate_in_another_currency_is_refused_not_added() -> Bool {
   match serving_card_hourly(
-    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    recipe: serving_recipe_flash_next_lab_vllm,
     supply: RentedCardSupply {
       dph: usd_hour(micro: 900000),
       disk_rate: ServingDiskRate { micro_per_gibibyte_hour: 375, currency: Eur },
@@ -293,11 +297,11 @@ test fn a_disk_rate_in_another_currency_is_refused_not_added() -> Bool {
 test fn an_owned_card_amortizes_its_capital_and_zero_hours_is_unamortizable() -> Bool {
   // $10,000 over 10,000 hours is $1/h.
   (hourly_micro(h: serving_card_hourly(
-    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    recipe: serving_recipe_flash_next_lab_vllm,
     supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 10000 },
   )) == 1000000)
     && (hourly_micro(h: serving_card_hourly(
-      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      recipe: serving_recipe_flash_next_lab_vllm,
       supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 0 },
     )) == -1)
 }
@@ -305,7 +309,7 @@ test fn an_owned_card_amortizes_its_capital_and_zero_hours_is_unamortizable() ->
 // ── owned and rented reach selection under one recipe; disk changes the ranking ──────────────
 
 fn recipe_rate(supply: ServingCardSupply) -> MoneyPerHour {
-  match serving_card_hourly(recipe: serving_recipe(id: RecipeFlashNextOnLabVllm), supply: supply) {
+  match serving_card_hourly(recipe: serving_recipe_flash_next_lab_vllm, supply: supply) {
     HourlyCostQuoted { rate: r } => r
     HourlyCostUnamortizable => usd_hour(micro: 0)
     HourlyCostCurrencyMismatch => usd_hour(micro: 0)
@@ -349,11 +353,11 @@ test fn disk_cost_flips_the_selection_that_dph_alone_would_make() -> Bool {
 
 test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unread_where_not() -> Bool {
   // Flash-Next: operator reading ~900 tok/s. 1.05/h -> 1050000 * 1e6 / (900 * 3600) = 324074 micro per Mtok.
-  (match serving_cost_per_million_tokens(recipe: serving_recipe(id: RecipeFlashNextOnLabVllm), hourly: usd_hour(micro: 1050000)) {
+  (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: usd_hour(micro: 1050000)) {
     UnitCostQuoted { amount: a, currency: _ } => (money_amount_micro_count(m: a) as Int) == 324074
     UnitCostThroughputUnread => false
   })
-    && (match serving_cost_per_million_tokens(recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer), hourly: usd_hour(micro: 1050000)) {
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, hourly: usd_hour(micro: 1050000)) {
       UnitCostQuoted { amount: _, currency: _ } => false
       UnitCostThroughputUnread => true
     })
@@ -362,7 +366,7 @@ test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unrea
 // ── start route and cache adapt ──────────────────────────────────────────────────────────────
 
 test fn flash_next_starts_from_the_object_store_only_with_no_hub_fallback() -> Bool {
-  match serving_recipe(id: RecipeFlashNextOnLabVllm).start {
+  match serving_recipe_flash_next_lab_vllm.start {
     StartFromObjectStoreOnly { store: _, hub_fallback: fb } => !fb
     StartRouteUnread { read_obligation: _ } => false
   }
