@@ -1182,6 +1182,27 @@ fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
   scanned.repeated
 }
 
+// THE FIRST AUTHORED NAME A PRODUCER MUST REFUSE: Present exactly when v2.std.node
+// all_names_distinct refuses the list, carrying the offending name itself. The same single
+// O(n) scan as repeated_name_edges -- one Map lookup per edge, never a rescan of every earlier
+// name -- so a fold that must NAME the repeated subject in its diagnostic takes it from the one
+// place the repeat is decided, rather than re-deciding it with its own pass (DESIGN section 2,
+// no re-invention; section 6, bare minimum cost). This lives here rather than beside
+// all_names_distinct in v2.std.node because the seen set is a Map and v2.std.collection imports
+// v2.std.node: node.dag keeps its measured census without Optional/first/Map and the tree-wide
+// unimported-bare-provider census would move (the note beside v2.std.node first_edge_read).
+fn repeated_authored_name_optional(children: List<Edge>) -> Symbol? {
+  match first(repeated_name_edges(children: children)) {
+    Present { value: e } =>
+      match e.label {
+        Authored { name: n } => Present { value: n }
+        Positional => Absent
+        StructuralLabel { label: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
 // A CONJ TYPE NODE'S CHILDREN, AS A VALUE: Present for a Conj, Absent for every other connective or a computation.
 // The one place the NodeKind / Connective discrimination for "is this a product" is written; a reader that needs
 // a Conj's members matches this Optional instead of re-enumerating the kinds.

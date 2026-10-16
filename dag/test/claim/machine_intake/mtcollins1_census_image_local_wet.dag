@@ -42,9 +42,16 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 }
 import gunbc.machine_intake.boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake.mtcollins1_census_image {
+  census_capture_program,
+  mtcollins1_census_console_device,
+  mtcollins1_census_grub_cmdline,
+  mtcollins1_census_halt_command,
   mtcollins1_census_image_stem,
+  mtcollins1_census_machine,
+  mtcollins1_census_nocloud_dir,
+  mtcollins1_census_program_file,
   mtcollins1_census_volume_id,
-  mtcollins1_seeded_image_input,
+  census_seeded_image_input,
 }
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.provisioning.seeded_install_media_publish {
@@ -254,11 +261,14 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
 data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - \"*\"\n  early-commands:\n    - sh /cdrom/gunbc-census/capture.sh\n" as NonEmptyStr
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
-  mtcollins1_seeded_image_input(
-    stages: mtcollins1_census_stages,
+  census_seeded_image_input(
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: census_user_data_fixture,
+    grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+    nocloud_dir: mtcollins1_census_nocloud_dir,
+    program_file: mtcollins1_census_program_file,
+    program_content: census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages),
   )
 }
 

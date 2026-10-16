@@ -1,9 +1,6 @@
 module extdeps.network.endpoint
 
-import std.types { String, Bool, NonEmptyStr, Port, List }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
-import std.decl_ref { decl_ref }
+import std.types { String, Bool, NonEmptyStr, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.error_primitives { Ok, Err }
@@ -107,13 +104,11 @@ fn parse_network_host(raw: String) -> NetworkHostParse {
   }
 }
 
-// CONSUMED BY S2(b), a declared frontier (DESIGN §3c): the fleet's endpoint text crosses into a
-// typed address once, at gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_target_at_standard_port. The
-// row dissolves when that declaration appears.
-data endpoint_host_text_parse_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.network.endpoint", decl_name: "parse_network_host"),
-    reason: "host text the fleet reads (operator input, a provider API field) is parsed here once and refused on a typed arm; its consumer is fleet_ssh_target_at_standard_port, over the fleet endpoint text gunbc.fleet.fleet_reach_endpoint fleet_probe_endpoint_for returns",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "fleet_ssh_target_at_standard_port")),
-  )
-]
+// THE REFUSAL AS ONE WORD for a receipt: the arm and the text it refused.
+fn network_host_parse_refusal_wire(refusal: NetworkHostParseRefusal) -> String {
+  match refusal {
+    NetworkHostIpv6LiteralUnparsed { raw: r } => join(["ipv6-literal-unparsed `", r, "`"], "")
+    NetworkHostIpv4Malformed { raw: r, error: _ } => join(["ipv4-malformed `", r, "`"], "")
+    NetworkHostNameMalformed { raw: r, error: _ } => join(["host-name-malformed `", r, "`"], "")
+  }
+}
