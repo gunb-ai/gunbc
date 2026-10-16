@@ -527,9 +527,22 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 
 ---
 
-## 15. Scope beyond std (pending survey)
+## 15. Scope beyond std (survey, 2026-10-16, HEAD 6eab655b13)
 
-The operator expects this cleanup to be much broader than math and lists. Before roadmap work is sized, a
-survey classifies how the §1.1 root causes show up in higher-level code (business logic, product and
-workflow types): second carriers for a std concept, structure names used as data types, synonyms for one
-operation across layers, and spelling-keyed identity. Results land here.
+**Verdict:** std-first, repo-wide in effect. Categories 1–3 are std's own aliases and synonyms copied outward,
+so they are fixed by canonicalizing std and then running mechanical sweeps. Category 4 is a separate,
+non-mechanical cleanup. Counts are matching `.dag` lines outside `dag/std` and `dag/extdeps`, given as
+`dag/gunbc` / `src/v2` / `dag/product`. They are rough (they include comments and strings).
+
+| # | Pattern | Size | Risk | Fix |
+|---|---|---|---|---|
+| 4 | String-keyed identity (`Map<String, …>`; `decl_name`/`module_name: String`) | ~331/232/4 maps; ~2,000 `*name/_ref/_id: String` lines | **Correctness.** At least one documented collision (`dag/gunbc/instruments/prose_citation_census.dag:366`); nothing checks that a named reference exists | Designed separately: replace spellings with declaration references (the v1 spelling-identity root cause) |
+| 5 | Forks recorded but not fixed ("kept in sync", "held twice", "must match") | a few dozen real, inside ~280 noisy hits | Drift | Triage by reading; each gets a trigger or a fix (§8.3) |
+| 3 | Operation synonyms (`count`/`length`/`list_length`; `map_lookup`/`get`/`lookup`/`map_get`; `fold_list`) | ~8k call sites | Cosmetic | Codemod after §7.4 is fixed in std. It must rewrite call shapes, because argument labels differ by spelling |
+| 1 | `FreeMonoid<…>` written for List | 178/1147/1 | Cosmetic while the alias exists | Swept by the List cut (D2) |
+| 2 | Domain clones of std concepts (`OptionalHashMember`, `ControlOptionalParam`) | a handful | Minor | Fold into std types |
+
+Other findings:
+- `src/v2/extdeps` is a second extdeps tree, a layering fork in its own right.
+- The fork-census instruments record forks without removing them. They become gate inputs (§8.2) or are deleted.
+- `dag/product` is lightly affected throughout: tens of sites, not thousands.
