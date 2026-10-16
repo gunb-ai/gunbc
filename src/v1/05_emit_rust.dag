@@ -3476,7 +3476,19 @@ fn shared_layer_refuse_text(answer: SharedLayerAnswer) -> String {
 
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   if is_container_type(name: leaf) {
-    if set_contains(shared_types, leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
+    // A container leaf two modules declare (FreeMonoid) is in the shared set by declaration identity only:
+    // the leaf key is inserted for a unique declarer. The leaf answer is then the one every declaration
+    // agrees on, exactly as for a user type, so the signature and the constructor cannot disagree.
+    if set_contains(shared_types, leaf) {
+      SharedLayerAtShared
+    } else {
+      match resolution {
+        TypeDeclResolved { identity: identity, decl: _ } =>
+          if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
+        TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
+        _ => SharedLayerAtValue
+      }
+    }
   } else if is_kernel_type(name: leaf) {
     // A kernel spelling realizes as the host type (i64, String, ...), at the value layer, whichever
     // declaration the corpus also gives the same leaf (emitted Int enum-variant fields as Rc<i64>).
