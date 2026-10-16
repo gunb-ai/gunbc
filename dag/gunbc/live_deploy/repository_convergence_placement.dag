@@ -137,12 +137,14 @@ import std.optional { Present, Absent }
 // and no server-side option, and -- the load-bearing part -- so it cannot resolve the candidate
 // against a DIFFERENT population than the one the deploy admitted. Holding the admitted revision
 // is not the same as being able to serve this target the objects the transfer needs:
-// `git clone --filter=blob:none` sets git's own promisor keys, and upload-pack at git 2.43.0
-// disables lazy fetching, so pack-objects dies on blobs the source does not hold (including
-// thin-pack bases of advertised have-commits). Admission therefore consumes
+// `git clone --filter=blob:none` sets git's own promisor keys, and git-upload-pack(1) sets
+// GIT_NO_LAZY_FETCH=1 by default, so pack-objects dies on blobs the source does not hold
+// (including thin-pack bases of advertised have-commits). Admission therefore consumes
 // extdeps.git.partial_clone object_source_serve_admission over that path, not path shape alone.
 // Shallow history without those keys is observed and admitted: no specimen shows a complete
-// shallow source failing the same fetch.
+// shallow source failing the same fetch. The srv1 2.43.0 print is a receipt on
+// gunbc.recurring_failure_mode.a_convergence_precondition_decided_after_the_binary_swap, not
+// a git-owned version fact.
 // A fetch from `origin` would reintroduce a second source of truth for the admitted subject at
 // the last step of the transaction.
 //

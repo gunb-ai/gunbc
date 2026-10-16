@@ -9,7 +9,8 @@ import extdeps.git {
   git_config_regexp_remote_promisor,
   git_config_regexp_remote_partialclonefilter,
   git_rev_parse_is_shallow_true,
-  git_upload_pack_lazy_fetch_disabled_version,
+  git_no_lazy_fetch_environment,
+  git_no_lazy_fetch_internally_set_value,
   git_repository_unusable_exit_code,
 }
 import extdeps.git.inspect {
@@ -27,30 +28,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data git_rev_parse_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "git-scm.com/docs/git-rev-parse"
-  }
-}
-
-data git_upload_pack_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "git-scm.com/docs/git-upload-pack"
-  }
-}
-
 // A REPOSITORY'S PARTIAL-CLONE STANDING IS GIT'S OWN CONFIGURATION AND SHALLOW FILE, not a
 // nickname this repository invents for "has the objects we want". git-config(1) names
 // extensions.partialClone, remote.<name>.promisor and remote.<name>.partialclonefilter.
-// git-rev-parse(1) `--is-shallow-repository` answers the `.git/shallow` file. upload-pack at
-// git_upload_pack_lazy_fetch_disabled_version disables lazy fetching from a promisor remote,
-// so a source that still lists those keys cannot serve pack-objects the blobs the transfer
-// needs (including thin-pack delta bases of advertised "have" commits). Shallow without
-// promisor keys is an observed reading, not a refuse: the srv1 specimen was partial and
-// shallow, and every reproduced fetch death was the promisor side. A complete shallow
-// source has no discriminating red on FetchForcedRefInRepoTrustingSource.
+// git-rev-parse(1) `--is-shallow-repository` answers the `.git/shallow` file. git-upload-pack(1)
+// ENVIRONMENT GIT_NO_LAZY_FETCH: upload-pack internally sets it to 1, so a source that still
+// lists those keys cannot serve pack-objects the blobs the transfer needs. Shallow without
+// promisor keys is an observed reading, not a refuse.
 
 type ShallowRepositoryReading
   = ShallowRepositoryYes
@@ -138,17 +122,21 @@ fn object_source_cannot_serve_cause(standing: PartialCloneStanding) -> String {
       join([
         "it is a promisor (partial) clone (",
         d,
-        "); git upload-pack ",
-        git_upload_pack_lazy_fetch_disabled_version,
-        " disables lazy fetching, so pack-objects dies reading blobs the source does not hold",
+        "); git-upload-pack(1) sets ",
+        git_no_lazy_fetch_environment,
+        "=",
+        git_no_lazy_fetch_internally_set_value,
+        " by default, so pack-objects dies reading blobs the source does not hold",
       ], "")
     PartialCloneFilter { detail: d } =>
       join([
         "it has a partialclonefilter (",
         d,
-        "); git upload-pack ",
-        git_upload_pack_lazy_fetch_disabled_version,
-        " disables lazy fetching, so pack-objects dies reading blobs the source does not hold",
+        "); git-upload-pack(1) sets ",
+        git_no_lazy_fetch_environment,
+        "=",
+        git_no_lazy_fetch_internally_set_value,
+        " by default, so pack-objects dies reading blobs the source does not hold",
       ], "")
     ShallowClone =>
       ""

@@ -1000,13 +1000,14 @@ data git_config_regexp_remote_partialclonefilter: String = "remote\\..*\\.partia
 
 data git_rev_parse_is_shallow_true: String = "true"
 
-// Measured on srv1 packaged git 1:2.43.0-1ubuntu7.3 (2026-10-14): upload-pack prints
-// "warning: lazy fetching disabled; some objects may not be available" and then
-// "fatal: could not fetch <oid> from promisor remote" when the source is a promisor clone.
-// GIT_NO_LAZY_FETCH is set for the upload-pack child so it will not hydrate missing blobs
-// from its own promisor while packing. That is git's behaviour at this version, not a
-// caller policy.
-data git_upload_pack_lazy_fetch_disabled_version: String = "2.43.0"
+// git-upload-pack(1) ENVIRONMENT GIT_NO_LAZY_FETCH (git-scm.com/docs/git-upload-pack):
+// when serving a partial clone, upload-pack internally sets this variable to 1 so it will
+// not lazy-fetch missing objects from the source's promisor remote. GIT_NO_LAZY_FETCH=0 is
+// the documented override. These are git's names; a host's packaged version is a receipt
+// in the observing layer, not a fact of git.
+data git_no_lazy_fetch_environment: String = "GIT_NO_LAZY_FETCH"
+
+data git_no_lazy_fetch_internally_set_value: String = "1"
 
 fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
