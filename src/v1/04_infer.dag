@@ -4176,6 +4176,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
+  | RefusedValueAtNever
 
 
 type InhabitanceVerdict
@@ -4447,6 +4448,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedOptionalAtRequired }
   } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
+  } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedValueAtNever }
   } else if declared_is_generic {
     InhabitanceUndecidable { reason: UndecidableGenericFormal }
   } else if declared_name == "" {
@@ -5307,6 +5310,8 @@ fn inhabitance_refusal_position_label(
   match reason {
     RefusedProductCoproductHeadMismatch =>
       concat(base, " [RefusedProductCoproductHeadMismatch]")
+    RefusedValueAtNever =>
+      concat(base, " [RefusedValueAtNever]")
     _ => base
   }
 }
