@@ -1,0 +1,62 @@
+module extdeps.standards.rfc_1951
+
+import std.types { Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// RFC 1951, DEFLATE Compressed Data Format Specification version 1.3. Cited sections: §3.1.1
+// (multi-octet LEN/NLEN fields are least significant octet first), §3.2.3 (block header: BFINAL in
+// the first bit, BTYPE in the next two; BTYPE 00 is "no compression"), §3.2.4 (a stored block skips
+// to the octet boundary, then LEN, NLEN = one's complement of LEN, then LEN literal octets).
+//
+// ONLY THE STORED BLOCK IS REALIZED, and that is a scope, not a gap: every DEFLATE decoder must
+// accept BTYPE 00, so a stream of stored blocks is a valid DEFLATE stream of any length. A block
+// carries at most 65535 octets (LEN is 16 bits), so a longer input is split into consecutive blocks
+// and only the last sets BFINAL. Huffman-coded blocks (BTYPE 01, 10) are the compression this
+// module does not do; a consumer that needs smaller output would add them here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1951#section-3.2.4"
+  }
+}
+
+data rfc_1951_stored_block_capacity: Int = 65535
+
+type Rfc1951StoredFold {
+  out: List<Int>
+  at: Int
+}
+
+// The stored-block header at the start of a block: header octet (BFINAL, BTYPE 00), LEN, NLEN.
+fn rfc_1951_stored_header(out: List<Int>, len: Int, last: Int) -> List<Int> {
+  out
+    |> list_push(last)
+    |> list_push(len % 256)
+    |> list_push(len / 256)
+    |> list_push((65535 - len) % 256)
+    |> list_push((65535 - len) / 256)
+}
+
+fn rfc_1951_stored_step(st: Rfc1951StoredFold, o: Int, total: Int) -> Rfc1951StoredFold {
+  let remaining = total - st.at
+  let opened = if st.at % rfc_1951_stored_block_capacity != 0 {
+    st.out
+  } else if remaining <= rfc_1951_stored_block_capacity {
+    rfc_1951_stored_header(out: st.out, len: remaining, last: 1)
+  } else {
+    rfc_1951_stored_header(out: st.out, len: rfc_1951_stored_block_capacity, last: 0)
+  }
+  Rfc1951StoredFold { out: opened |> list_push(o), at: st.at + 1 }
+}
+
+// The octets as a DEFLATE stream of stored blocks. An empty input is one final empty block.
+fn rfc_1951_stored_stream(octets: List<Int>) -> List<Int> {
+  let total = count(octets)
+  if total == 0 {
+    rfc_1951_stored_header(out: [], len: 0, last: 1)
+  } else {
+    let folded = fold(octets, init: Rfc1951StoredFold { out: [], at: 0 }, f: (st, o) => rfc_1951_stored_step(st: st, o: o, total: total))
+    folded.out
+  }
+}
