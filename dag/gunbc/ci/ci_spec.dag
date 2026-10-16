@@ -1945,7 +1945,15 @@ fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
 }
 
 fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")])], set_e: false)
+  // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
+  // nothing fetch-status-related rides into the KVM observer's script (control:
+  // fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict).
+  let trap_rm_words = if typed_fetch_failure {
+    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")]
+  } else {
+    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]
+  }
+  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: trap_rm_words)], set_e: false)
   // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
   // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
   // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
@@ -1993,26 +2001,26 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
   } else {
     bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
   }
-  let base = [
+  let head = [
     bcmdl(lits: ["set", "-euo", "pipefail"]),
     bcmdl(lits: ["umask", "077"]),
     bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
     bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
-    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
     bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
     bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    fetch_pair,
   ]
+  // The STATUS_FILE assignment exists only in the typed lane, before the fetch that writes it.
+  let middle = if typed_fetch_failure {
+    [bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])), fetch_pair]
+  } else {
+    [fetch_pair, chmod]
+  }
   let tail = [
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
     gunbc_ci_mtcollins1_probe_root_statement(),
   ]
-  if typed_fetch_failure {
-    concat(base, tail)
-  } else {
-    concat(concat(base, [chmod]), tail)
-  }
+  concat(concat(head, middle), tail)
 }
 
 fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {

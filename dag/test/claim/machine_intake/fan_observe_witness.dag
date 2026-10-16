@@ -220,8 +220,8 @@ test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Boo
   string_contains(s: boot, pattern: "||")
     && string_contains(s: boot, pattern: mtcollins1_fan_credential_fetch_status_suffix)
     && string_contains(s: boot, pattern: "fetch-failed")
-    && string_contains(s: boot, pattern: "printf 'ok'")
-    && !string_contains(s: kvm, pattern: mtcollins1_fan_credential_fetch_status_suffix)
+    && string_contains(s: boot, pattern: "'ok' > \"$STATUS_FILE\"")
+    && !string_contains(s: kvm, pattern: "STATUS_FILE")
     && !string_contains(s: kvm, pattern: "fetch-failed")
 }
 
