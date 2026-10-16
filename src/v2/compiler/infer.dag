@@ -4487,7 +4487,7 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
   match infer_type_declaration_ref(t: wanted) {
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
-      match infer_machine_width_of(t: wanted) {
+      match infer_machine_width_of(t: wanted, declarations: declarations, bindings: bindings) {
         Present { value: width } =>
           if machine_width_admits(signedness: width.signedness, bits: width.bits, value: value) {
             InferLiteralElaboratesTo { destination_type: wanted }
@@ -4509,7 +4509,7 @@ type InferMachineWidth {
   bits: BitWidth
 }
 
-fn infer_machine_width_of(t: Node) -> Optional<InferMachineWidth> {
+fn infer_machine_width_of(t: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<InferMachineWidth> {
   match infer_type_declaration_ref(t: t) {
     Absent => optional_absent()
     Present { value: head } =>
@@ -4519,7 +4519,7 @@ fn infer_machine_width_of(t: Node) -> Optional<InferMachineWidth> {
             match infer_machine_width_bits(t: width) {
               Absent => optional_absent()
               Present { value: bits } =>
-                match infer_machine_width_signedness(carrier: carrier) {
+                match infer_machine_width_signedness(carrier: carrier, declarations: declarations, bindings: bindings) {
                   Absent => optional_absent()
                   Present { value: signedness } => optional_present(value: InferMachineWidth { signedness: signedness, bits: bits })
                 }
@@ -4553,9 +4553,17 @@ fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
   }
 }
 
-fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
-  if infer_type_equal_ignoring_provenance(a: carrier, b: integer_int_type_node()) {
+// THE CARRIER'S SIGNEDNESS, read from the declared carrier and nothing else. A carrier is read as the kernel Int or
+// std.nat Nat, and as the std.integer declarations that name the same two sets (`Int` and `UInt`) after the ONE
+// alias normalization every declared position takes: std.integer declares `type UInt = Nat` and its own
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`, so a width over either normalizes to those shapes, and comparing the
+// carrier with the normalized declaration (not with a copy of its body) keeps the declaration the one authority.
+fn infer_machine_width_signedness(carrier: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<Signedness> {
+  if infer_type_equal_ignoring_provenance(a: carrier, b: integer_int_type_node())
+    || infer_type_equal_ignoring_provenance(a: carrier, b: infer_machine_width_carrier_normalized(name: ^Int, declarations: declarations, bindings: bindings)) {
     optional_present(value: Signed)
+  } else if infer_type_equal_ignoring_provenance(a: carrier, b: infer_machine_width_carrier_normalized(name: ^UInt, declarations: declarations, bindings: bindings)) {
+    optional_present(value: Unsigned)
   } else {
     match infer_type_declaration_ref(t: carrier) {
       Present { value: d } =>
@@ -4563,6 +4571,14 @@ fn infer_machine_width_signedness(carrier: Node) -> Optional<Signedness> {
       Absent => optional_absent()
     }
   }
+}
+
+fn infer_machine_width_carrier_normalized(name: Symbol, declarations: SymbolIndex, bindings: SymbolIndex) -> Node {
+  infer_type_alias_normalized_at(
+    t: declaration_reference_node(qn: [^std, ^integer, name], occurrence_id: OccurrenceSynthetic),
+    bodies: declarations,
+    bindings: bindings
+  )
 }
 
 fn infer_int_literal_value_at_declared(value: Int, wanted: Node, destination: DeclarationRef) -> InferLiteralElaboration {

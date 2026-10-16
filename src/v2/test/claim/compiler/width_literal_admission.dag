@@ -41,11 +41,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data wla_p_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_p_artifact, file_path: "src/v2/pilot/width_literal_admission_p.dag" }
 data wla_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_nat_artifact, file_path: "src/v2/pilot/width_literal_admission_nat.dag" }
 data wla_mc_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_mc_artifact, file_path: "src/v2/pilot/width_literal_admission_mc.dag" }
+data wla_algebra_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_algebra_artifact, file_path: "src/v2/pilot/width_literal_admission_algebra.dag" }
 data wla_int_artifact: Artifact = Artifact { kind: SourceFile, id: ^width_literal_admission_int_artifact, file_path: "src/v2/pilot/width_literal_admission_int.dag" }
 
 data wla_nat_peer: String = "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n"
 data wla_mc_peer: String = "module std.machine_constraints\n\ntype MachineWidth<bits>\n\ntype Compose<Algebra, MachineConstraint>\n"
-data wla_int_peer: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype UInt8 = Compose<Nat, MachineWidth<8>>\n\ntype Int8 = Compose<Int, MachineWidth<8>>\n"
+data wla_algebra_peer: String = "module std.algebra\n\ntype AbelianGroup<A>\n\ntype GroupCompletion<A>\n"
+
+// The two carrier declarations are std.integer's own (dag/std/integer.dag: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
+// `type UInt = Nat`), and the widths are written over them exactly as it writes them.
+data wla_int_peer: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\n\ntype UInt = Nat\n\ntype UInt8 = Compose<UInt, MachineWidth<8>>\n\ntype Int8 = Compose<Int, MachineWidth<8>>\n"
 
 fn wla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: cu, source_root: V2Tree }
@@ -59,7 +64,10 @@ fn wla_assemble(src: String) -> Outcome<ResolvedTree> {
         head: wla_source(src: wla_nat_peer, artifact: wla_nat_artifact, cu: ^width_literal_admission_nat_cu),
         tail: Cons {
           head: wla_source(src: wla_mc_peer, artifact: wla_mc_artifact, cu: ^width_literal_admission_mc_cu),
-          tail: Cons { head: wla_source(src: wla_int_peer, artifact: wla_int_artifact, cu: ^width_literal_admission_int_cu), tail: Empty }
+          tail: Cons {
+            head: wla_source(src: wla_algebra_peer, artifact: wla_algebra_artifact, cu: ^width_literal_admission_algebra_cu),
+            tail: Cons { head: wla_source(src: wla_int_peer, artifact: wla_int_artifact, cu: ^width_literal_admission_int_cu), tail: Empty }
+          }
         }
       }
     },
@@ -189,6 +197,6 @@ test fn wla_s_uint8_300() -> Bool { wla_verdict(lexeme: "300", carrier: wla_decl
 test fn wla_s_int8_127() -> Bool { wla_verdict(lexeme: "127", carrier: wla_int_carrier(), bits: "8") == ^elaborated }
 test fn wla_s_int8_128() -> Bool { wla_verdict(lexeme: "128", carrier: wla_int_carrier(), bits: "8") == ^infer_reason_literal_outside_machine_width }
 test fn wla_s_bits_read() -> Bool { infer_machine_width_bits(t: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: "8")])) == optional_present(value: bit_width(count: 8)) }
-test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat")) == optional_present(value: Unsigned) }
-test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier()) == optional_present(value: Signed) }
+test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat"), declarations: empty_symbol_index(), bindings: empty_symbol_index()) == optional_present(value: Unsigned) }
+test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) == optional_present(value: Signed) }
 
