@@ -1,0 +1,328 @@
+module gunbc.live_deploy.pre_swap_admission
+
+import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
+import std.algebra { trim }
+import std.integer { int_to_decimal_string }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  selected_deployment_spec,
+}
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_serve_source_roots }
+import gunbc.instruments.host_prelude { witness_bin_release_path }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.shell
+import extdeps.git
+import extdeps.git.inspect {
+  merge_base_outcome,
+  MergeBaseOutcome,
+  MergeBaseReported,
+  NoCommonAncestor,
+  MergeBaseRefused,
+}
+
+// PRE-MUTATION ADMISSION FOR A LIVE SWAP. Two observed holes, one decision, used by the CI
+// transaction, the operator-local converge deploy, and the desired-instance apply. Nothing here
+// mutates a host; a refusal is the only answer a wet caller may act on besides proceed.
+//
+// (1) SERVE-ENTRY COMPILE. A revision whose server did not compile (a source annotation inside a
+// fn body) was installed; the new process crash-looped; deploy learned this only at readiness.
+// The candidate's declared serve entry file (DeploymentServiceConfig.serve_entry, the same
+// path ExecStart binds) is compiled before any apply fold runs. The path is a spec fact, not
+// a reverse lookup of a module name (DESIGN §3: paths follow names; this does not invent a
+// second path-to-name table).
+//
+// THE COMPILE IS THE CANDIDATE COMPILER'S OWN, OVER THE SERVE ROUTE'S CLOSURE. The candidate's
+// gunbc compiles the entry under deployment_serve_source_roots (the roots ExecStart passes to
+// `serve`) to the dag target, and its exit status is the verdict. An earlier cut fed the file's
+// text to the compile_dag_diagnostic_census builtin, whose declared scope is a synthetic
+// single-module source on the Rust render target and which states it says nothing about the
+// interpreter's disposition of the same program, so it refused real candidates whose serve entry
+// compiles clean. What this
+// still cannot see is a failure of `serve` itself after its compile (a bind, a listener); that
+// stays with readiness after the swap.
+//
+// (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
+// checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
+// production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
+// carries the one NonEmptyStr branch it admits. There is no class default.
+// The CLI flag check remains a second, optional equality; it does not widen the row.
+
+type TargetBranchAdmission
+  = TargetBranchAdmitted
+  | TargetBranchRefused { reason: String }
+
+type ServeEntryCompileVerdict
+  = ServeEntryCompileAdmitted
+  | ServeEntryCompileBlocked { blocking: Int, diagnostics: List<String> }
+  | ServeEntryCompileUnobserved { detail: String }
+
+type PreSwapAdmission
+  = PreSwapAdmitted
+  | PreSwapRefused { reason: String }
+
+fn target_branch_admission(admitted: NonEmptyStr, observed: String) -> TargetBranchAdmission {
+  let required = trim(s: admitted as String)
+  let seen = trim(s: observed)
+  if seen != "" && seen == required {
+    TargetBranchAdmitted
+  } else {
+    TargetBranchRefused {
+      reason: join([
+        "live_deploy: DeployTargetBranchRefused — checkout '",
+        seen,
+        "' is not the admitted branch '",
+        required,
+        "'",
+      ], ""),
+    }
+  }
+}
+
+// The verdict is the compiler's own: exit 0 admits whatever it printed; a nonzero exit with error
+// lines is blocked and carries them; a nonzero exit with none (the binary missing, a spawn
+// failure) is unobserved, never admitted.
+fn serve_entry_compile_verdict_of(exit_success: Bool, exit_code: Int, stderr: String) -> ServeEntryCompileVerdict {
+  let errors = filter(split(s: stderr, sep: "\n"), l => starts_with(s: l, prefix: "error"))
+  if exit_success {
+    ServeEntryCompileAdmitted
+  } else if count(errors) > 0 {
+    ServeEntryCompileBlocked { blocking: count(errors), diagnostics: errors }
+  } else {
+    ServeEntryCompileUnobserved { detail: join([
+      "the serve-entry compile exited ",
+      int_to_decimal_string(value: exit_code),
+      " with no error line",
+    ], "") }
+  }
+}
+
+// A refusal names what blocked it: the compiler's first eight error lines, then how many it left out.
+data serve_entry_blocking_lines_shown: Int = 8
+
+fn serve_entry_blocking_summary(diagnostics: List<String>) -> String {
+  let shown = diagnostics.take(n: serve_entry_blocking_lines_shown)
+  let hidden = count(diagnostics) - count(shown)
+  if hidden > 0 {
+    join([join(shown, "; "), "; and ", int_to_decimal_string(value: hidden), " more"], "")
+  } else {
+    join(shown, "; ")
+  }
+}
+
+fn serve_entry_compile_args(roots: List<String>, entry: String, out_dir: String) -> List<String> {
+  concat(
+    concat(["compile"], fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))),
+    ["--entry", entry, "--output-dir", out_dir, "--target", "dag"],
+  )
+}
+
+fn observe_serve_entry_compile_clean(repo_root: String, bin_path: String, roots: List<String>, entry: String) -> ServeEntryCompileVerdict {
+  let path = trim(s: entry)
+  if path == "" {
+    ServeEntryCompileUnobserved { detail: "serve entry path is empty" }
+  } else {
+    let tmp = shell.Mktemp.Dir()
+    if !tmp.success {
+      ServeEntryCompileUnobserved { detail: "no scratch directory for the serve-entry compile output" }
+    } else {
+      let run = gunbc.WitnessBin.Run(
+        workdir: repo_root,
+        bin_path: bin_path,
+        args: serve_entry_compile_args(roots: roots, entry: path, out_dir: concat(tmp.path as String, "/out")),
+        expect: OutcomeIsData,
+      )
+      let _ = shell.Remove.RecursiveForce(path: tmp.path)
+      serve_entry_compile_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr)
+    }
+  }
+}
+
+// The candidate is the checkout this process runs in, compiled by the gunbc that checkout built.
+fn observe_spec_serve_entry_compile(spec: DeploymentSpec) -> ServeEntryCompileVerdict {
+  let root = git.Inspect.Toplevel()
+  observe_serve_entry_compile_clean(
+    repo_root: root.path as String,
+    bin_path: witness_bin_release_path(root: root.path as String, bin_name: "gunbc"),
+    roots: deployment_serve_source_roots,
+    entry: spec.service.serve_entry as String,
+  )
+}
+
+// Named checkout as git reports it. A detached HEAD is the literal "HEAD"; provenance for that
+// case is checkout_branch_for_admission (merge-base of HEAD and refs/remotes/origin/<B>), never
+// GITHUB_REF_NAME. An environment variable that names a CI event is not proof of a commit's
+// ancestry (DESIGN §5). Operator-local and CI share this function; neither reads GITHUB_*.
+fn observe_checkout_branch() -> String {
+  trim(s: git.Core.CurrentBranch().branch)
+}
+
+fn origin_tracking_ref(branch: NonEmptyStr) -> GitRef {
+  join(["refs/remotes/origin/", branch as String], "") as GitRef
+}
+
+// Detached HEAD is on admitted branch B iff git's merge-base of HEAD and
+// refs/remotes/origin/<B> equals HEAD (HEAD is reachable from B's origin ref).
+// Exit 0 / 1 / 128 stay typed through merge_base_outcome; none of them admits.
+type CheckoutBranchForAdmission
+  = CheckoutNamedBranch { branch: String }
+  | DetachedHeadOnAdmittedBranch { head: String, branch: String }
+  | DetachedHeadNotOnAdmittedBranch { head: String, branch: String, cause: String }
+
+fn detached_head_on_admitted_branch(
+  head: String,
+  admitted: NonEmptyStr,
+  outcome: MergeBaseOutcome,
+) -> CheckoutBranchForAdmission {
+  let h = trim(s: head)
+  let b = admitted as String
+  match outcome {
+    MergeBaseReported { base_hex } => {
+      let base = trim(s: base_hex)
+      if h != "" && base == h {
+        DetachedHeadOnAdmittedBranch { head: h, branch: b }
+      } else {
+        DetachedHeadNotOnAdmittedBranch {
+          head: h,
+          branch: b,
+          cause: join([
+            "live_deploy: DetachedHeadNotOnAdmittedBranch — merge-base of HEAD and ",
+            origin_tracking_ref(branch: admitted) as String,
+            " is '",
+            base,
+            "', not HEAD '",
+            h,
+            "'",
+          ], ""),
+        }
+      }
+    }
+    NoCommonAncestor =>
+      DetachedHeadNotOnAdmittedBranch {
+        head: h,
+        branch: b,
+        cause: join([
+          "live_deploy: DetachedHeadNotOnAdmittedBranch — HEAD '",
+          h,
+          "' and ",
+          origin_tracking_ref(branch: admitted) as String,
+          " share no merge base",
+        ], ""),
+      }
+    MergeBaseRefused { exit_code, stderr } =>
+      DetachedHeadNotOnAdmittedBranch {
+        head: h,
+        branch: b,
+        cause: join([
+          "live_deploy: DetachedHeadNotOnAdmittedBranch — merge-base of HEAD '",
+          h,
+          "' and ",
+          origin_tracking_ref(branch: admitted) as String,
+          " refused (exit ",
+          int_to_decimal_string(value: exit_code),
+          "): ",
+          trim(s: stderr),
+        ], ""),
+      }
+  }
+}
+
+fn checkout_branch_for_admission(
+  named: String,
+  admitted: NonEmptyStr,
+  head: String,
+  outcome: MergeBaseOutcome,
+) -> CheckoutBranchForAdmission {
+  let seen = trim(s: named)
+  if seen != "" && seen != "HEAD" {
+    CheckoutNamedBranch { branch: seen }
+  } else {
+    detached_head_on_admitted_branch(head: head, admitted: admitted, outcome: outcome)
+  }
+}
+
+fn observe_detached_merge_base(admitted: NonEmptyStr) -> MergeBaseOutcome {
+  let root = git.Inspect.Toplevel()
+  let probe = git.Inspect.MergeBase(
+    repository_path: trim(s: root.path as String),
+    left: "HEAD" as GitRef,
+    right: origin_tracking_ref(branch: admitted),
+    expect: OutcomeIsData,
+  )
+  merge_base_outcome(exit_code: probe.exit_code, stdout: probe.sha as String, stderr: probe.stderr)
+}
+
+fn observe_checkout_for_admission(admitted: NonEmptyStr) -> CheckoutBranchForAdmission {
+  let named = observe_checkout_branch()
+  if named != "" && named != "HEAD" {
+    checkout_branch_for_admission(
+      named: named,
+      admitted: admitted,
+      head: "",
+      outcome: NoCommonAncestor,
+    )
+  } else {
+    let head = git.Inspect.HeadCommit(expect: OutcomeIsData)
+    checkout_branch_for_admission(
+      named: named,
+      admitted: admitted,
+      head: trim(s: head.sha as String),
+      outcome: observe_detached_merge_base(admitted: admitted),
+    )
+  }
+}
+
+fn pre_swap_from_checkout(
+  standing: CheckoutBranchForAdmission,
+  admitted: NonEmptyStr,
+  compile: ServeEntryCompileVerdict,
+) -> PreSwapAdmission {
+  match standing {
+    CheckoutNamedBranch { branch } =>
+      live_deploy_pre_swap_admission(admitted: admitted, observed_branch: branch, compile: compile)
+    DetachedHeadOnAdmittedBranch { head: _, branch } =>
+      live_deploy_pre_swap_admission(admitted: admitted, observed_branch: branch, compile: compile)
+    DetachedHeadNotOnAdmittedBranch { cause, head: _, branch: _ } =>
+      PreSwapRefused { reason: cause }
+  }
+}
+
+fn live_deploy_pre_swap_admission(
+  admitted: NonEmptyStr,
+  observed_branch: String,
+  compile: ServeEntryCompileVerdict,
+) -> PreSwapAdmission {
+  match target_branch_admission(admitted: admitted, observed: observed_branch) {
+    TargetBranchRefused { reason } => PreSwapRefused { reason: reason }
+    TargetBranchAdmitted =>
+      match compile {
+        ServeEntryCompileAdmitted => PreSwapAdmitted
+        ServeEntryCompileBlocked { blocking, diagnostics } =>
+          PreSwapRefused {
+            reason: join([
+              "live_deploy: ServeEntryCompileBlocked — the candidate serve entry has ",
+              int_to_decimal_string(value: blocking),
+              " blocking diagnostic(s): ",
+              serve_entry_blocking_summary(diagnostics: diagnostics),
+              "; nothing was mutated",
+            ], ""),
+          }
+        ServeEntryCompileUnobserved { detail } =>
+          PreSwapRefused {
+            reason: join([
+              "live_deploy: ServeEntryCompileUnobserved — ",
+              detail,
+              "; nothing was mutated",
+            ], ""),
+          }
+      }
+  }
+}
+
+fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwapAdmission {
+  pre_swap_from_checkout(
+    standing: observe_checkout_for_admission(admitted: deployment.admitted_branch),
+    admitted: deployment.admitted_branch,
+    compile: observe_spec_serve_entry_compile(spec: selected_deployment_spec(row: deployment)),
+  )
+}

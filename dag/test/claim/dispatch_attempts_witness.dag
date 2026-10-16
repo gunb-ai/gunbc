@@ -32,7 +32,7 @@ fn attempt_fixture() -> DispatchAttemptRef {
 }
 
 test fn attempts_parse_roundtrips_the_minted_branch() -> Bool {
-  let k = dispatch_attempt_key(node_id: "ts-wf-progress", probed_at: "2026-07-25T22:00:00Z")
+  let k = dispatch_attempt_key(node_id: "ts-wf-progress", ordinal: 1)
   let b = dispatch_branch_name(node_id: "ts-wf-progress", attempt_key: k)
   return match parse_dispatch_attempt_branch(line: b) {
     Present { value: r } => r.node_id == "ts-wf-progress" && r.attempt_key == k && r.branch == b
@@ -119,14 +119,12 @@ test fn attempts_argv_is_typed_and_scoped() -> Bool {
 // U1's own REDs: redispatch works exactly when a NEW attempt yields a NEW branch/worktree/uuid while the tmux name — the observe/reconcile key — stays node-grain. Fresh where debris collides, stable where identity reconciles. Homed beside U3's parse witnesses because the two are the same authority read in both directions: this row proves the MINT varies per attempt, attempts_parse_roundtrips_the_minted_branch proves the READ recovers exactly what was minted.
 test fn belt_attempt_grain_holds() -> Bool {
   let n = "5-regen-cutover"
-  let t1 = "2026-07-25T20:00:00Z"
-  let t2 = "2026-07-25T21:30:00Z"
-  let k1 = dispatch_attempt_key(node_id: n, probed_at: t1)
-  let k2 = dispatch_attempt_key(node_id: n, probed_at: t2)
+  let k1 = dispatch_attempt_key(node_id: n, ordinal: 1)
+  let k2 = dispatch_attempt_key(node_id: n, ordinal: 2)
   return k1 != k2
-    && k1 == dispatch_attempt_key(node_id: n, probed_at: t1)
+    && k1 == dispatch_attempt_key(node_id: n, ordinal: 1)
     && dispatch_branch_name(node_id: n, attempt_key: k1) != dispatch_branch_name(node_id: n, attempt_key: k2)
     && dispatch_worktree_path(node_id: n, attempt_key: k1) != dispatch_worktree_path(node_id: n, attempt_key: k2)
-    && belt_spawn_session_uuid(node_id: n, probed_at: t1) != belt_spawn_session_uuid(node_id: n, probed_at: t2)
+    && belt_spawn_session_uuid(node_id: n, attempt_key: k1) != belt_spawn_session_uuid(node_id: n, attempt_key: k2)
     && string_contains(s: dispatch_branch_name(node_id: n, attempt_key: k1), pattern: "dispatch/5-regen-cutover-a")
 }

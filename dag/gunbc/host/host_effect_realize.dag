@@ -53,6 +53,62 @@ import gunbc.host.host_effect {
   EmitArtifactThenThinRun, BootstrapFragment, bootstrap_fragment_carries_hand_script,
   host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_directory_owned_argv,
+  coreutils_install_file_owned_argv,
+  coreutils_rm_force_recursive_argv,
+  coreutils_rm_force_recursive_flags,
+  mktemp_directory_command,
+  dd_overwrite_path_command,
+  rm_recursive_force_command,
+  mv_exact_destination_command,
+}
+import extdeps.sudo.visudo { visudo_check_command, visudo_policy_check_command }
+import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
+import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
+import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
+import gunbc.host_command_binding { admitted_scratch_path }
+import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
+import gunbc.auth.approval_device_redemption { approval_device_store_directory }
+import gunbc.fleet.fleet_posix_accounts { GroundedPosixPrincipal, grounded_posix_principal_name, fleet_rm_binary_path }
+import gunbc.live_deploy.spec {
+  deployment_owns_the_host_approval_broker,
+  gunbc_approval_broker_unit_name,
+  gunbc_approval_broker_unit_path,
+  gunbc_approval_broker_slice_unit_path,
+}
+import gunbc.live_deploy.release_locus {
+  approval_broker_helper_root_principal,
+  approval_broker_helper_snapshot_base,
+  approval_broker_helper_snapshot_locus,
+  helper_locus_dir,
+}
+import gunbc.live_deploy.emit {
+  approval_broker_slice_unit_file,
+  live_deploy_approval_broker_unit_file_on,
+  approval_broker_helper_sudoers_content,
+  approval_broker_helper_sudoers_mode,
+  approval_broker_helper_sudoers_path,
+  approval_broker_helper_sudoers_temp_path,
+  approval_broker_helper_sudoers_stage_name,
+  approval_broker_helper_sudoers_readback_stage_name,
+  approval_broker_helper_grant_admission,
+  approval_broker_helper_grant_refusal_text,
+  HelperGrantAdmitted,
+  HelperGrantWordRefused,
+  HelperGrantLocusWritableByGrantee,
+  path_ancestors_inclusive,
+}
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+import extdeps.tools.findutils { find_regular_files_sha256_command }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_releases_dir, approval_broker_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
+import std.algebra { list_sort_by_key, TotalOrder, Ordering, Less, Greater, Equal }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
 import v2.extdeps.toolchain_interference {
@@ -130,7 +186,11 @@ import extdeps.package_managers.apt {
   apt_get_binary_path,
 }
 import extdeps.tools { CliTool, apt_binary_path_of }
-import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
+import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command, curl_localhost_max_time }
+import extdeps.http.client
+import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
+import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
+import extdeps.languages.json.parse { json_text_parseable }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -195,7 +255,6 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
   deployment_serve_route_command,
-  approval_broker_dark_install_script,
   microvm_controller_install_script,
 }
 import gunbc.live_deploy.release_locus {
@@ -218,7 +277,8 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheIn
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_digest_readback_script }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_dispatch_json_artifact }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
 import gunbc.cli_services
@@ -4555,10 +4615,689 @@ fn realize_live_deploy_retract_on_host(
   )
 }
 
-// THE DARK INSTALL'S SCRIPT IS THE SAME UNIT VALUE THE BYTE ORACLES PIN, projected to shell by
-// gunbc.live_deploy.emit approval_broker_dark_install_script. It writes the broker's slice and unit
-// and touches gunbc-roadmap.service in no way: a daemon-reload does not restart running units, so
-// the roadmap keeps its PID and its incarnation across this stage.
+// THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
+// dark install, declared frontier: its consumers are the microVM controller install (W5) and the live_deploy apply (PB2), each landing in its own atomic PR that calls this one function, and until they land only its witness calls it: owner, base_root,
+// source_root and revision are PARAMETERS (the owner is never inferred, the source is never the
+// process cwd), and every step is an ArgvCommand run through run_argv_over_host_effect_transport --
+// no shell, no quoting, no script body. The first failing step stops the line and names itself.
+//
+// THE RECEIPT IS INDEPENDENT READBACK. After the install the INSTALLED files under the release
+// directory are hashed on the host and compared, entry for entry, with the same hashes taken over
+// source_root's file set; sorting is bytewise (std.algebra list_sort_by_key over the canonical String
+// order, which is LC_ALL=C sort). A single differing file refuses with step "readback", and the
+// receipt -- the completeness marker, written last -- is then NOT written. installed_digest is the
+// sha256 of the sorted `<hex>  <relative path>` lines, byte-for-byte what the retired shell receipt
+// recorded, so gunbc.auth.approval_broker_cutover observe_broker_tree_receipt reads it unchanged.
+//
+// source_root must be reachable from the transport (the install reads it on the host that runs it):
+// over SshShell a source_root absent on the host refuses at the first file install, never installs
+// nothing and reports success.
+type ApprovalBrokerTreeInstallVerdict
+  = TreeInstallConverged { installed_digest: String, files_installed: Int }
+  | TreeInstallRefused { step: TreeInstallStep, reason: String }
+
+type TreeFileHash {
+  path: String
+  hex: String
+}
+
+// The closed set of places a tree install can refuse; a caller matches on the variant, never on text.
+type TreeInstallStep
+  = TreeStepRevision
+  | TreeStepSourceObserve
+  | TreeStepInstallDirectory
+  | TreeStepInstallFile
+  | TreeStepInstallBinary
+  | TreeStepReadback
+  | TreeStepDigest
+  | TreeStepReceipt
+
+type TreeInstallStepState
+  = TreeStepsOk
+  | TreeStepFailed { step: TreeInstallStep, reason: String }
+
+fn tree_file_hash_path(e: TreeFileHash) -> String { e.path }
+
+data tree_path_total_order: TotalOrder<String> = { compare: tree_path_compare }
+
+fn tree_path_compare(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
+  list_sort_by_key(xs: entries, key: tree_file_hash_path, order: tree_path_total_order)
+}
+
+// `<hex>  <path>` lines of sha256sum, the path rebased from the absolute `root` onto `sub`/<relative>.
+// A line that is not shaped `<64 hex>  <root>/<relative>` is DROPPED here; the caller
+// (observe_tree_hashes) counts the non-empty lines against the parsed entries and refuses on any
+// difference, so a dropped line is never a silently smaller tree.
+fn tree_file_hashes_of_stdout(stdout: String, root: String, sub: String) -> List<TreeFileHash> {
+  let marker = join([root, "/"], "")
+  flat_map(split(s: stdout, delimiter: "\n"), line =>
+    if string_length(s: line) > 66 + string_length(s: marker) && starts_with(s: substring(s: line, start: 66, end: string_length(s: line)), prefix: marker) {
+      [TreeFileHash {
+        hex: substring(s: line, start: 0, end: 64),
+        path: join([sub, "/", substring(s: line, start: 66 + string_length(s: marker), end: string_length(s: line))], ""),
+      }]
+    } else { [] }
+  )
+}
+
+fn tree_hash_lines(entries: List<TreeFileHash>) -> String {
+  join(list_map(xs: sort_tree_file_hashes(entries: entries), f: e => join([e.hex, "  ", e.path, "\n"], "")), "")
+}
+
+fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>) -> Bool {
+  count(source) == count(installed) && tree_hash_lines(entries: source) == tree_hash_lines(entries: installed)
+}
+
+// Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
+fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
+  let all = flat_map(files, f => tree_path_prefixes(path: f.path))
+  // sorted, so duplicates are adjacent: compare with the last kept entry only
+  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+    if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
+  )
+  walked.out
+}
+
+type TreeDedupWalk {
+  last: String
+  out: List<String>
+}
+
+fn tree_path_prefixes(path: String) -> List<String> {
+  let parts = split(s: path, delimiter: "/")
+  let n = count(parts)
+  let walked = fold(parts, init: TreePrefixWalk { current: "", seen: 0, out: [] }, f: (w, part) => {
+    let next = if w.seen == 0 { part } else { join([w.current, "/", part], "") }
+    TreePrefixWalk {
+      current: next,
+      seen: w.seen + 1,
+      out: if w.seen + 1 < n { list_snoc_item(xs: w.out, item: next) } else { w.out },
+    }
+  })
+  walked.out
+}
+
+type TreePrefixWalk {
+  current: String
+  seen: Int
+  out: List<String>
+}
+
+fn tree_step_failure(step: TreeInstallStep, outcome: RunArgvTransportOutcome) -> TreeInstallStepState {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => TreeStepFailed { step: step, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success { TreeStepsOk } else {
+        TreeStepFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      }
+  }
+}
+
+fn tree_run_step(state: TreeInstallStepState, step: TreeInstallStep, command: ArgvCommand, transport: HostEffectTransport) -> TreeInstallStepState {
+  match state {
+    TreeStepFailed { step: _, reason: _ } => state
+    TreeStepsOk => tree_step_failure(step: step, outcome: run_argv_over_host_effect_transport(command: command, transport: transport))
+  }
+}
+
+// The hashes of one subdirectory's regular files, as seen by `transport`, or the refusal that names why.
+type TreeObservation
+  = TreeObserved { entries: List<TreeFileHash> }
+  | TreeObservationFailed { reason: String }
+
+fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectTransport) -> TreeObservation {
+  fold(subs, init: TreeObserved { entries: [] }, f: (acc, sub) =>
+    match acc {
+      TreeObservationFailed { reason: _ } => acc
+      TreeObserved { entries: es } =>
+        match run_argv_over_host_effect_transport(
+          command: find_regular_files_sha256_command(root: join([root, "/", sub], "")),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: o } =>
+            if !o.success { TreeObservationFailed { reason: join(["find exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+            else {
+              let parsed = tree_file_hashes_of_stdout(stdout: o.stdout, root: join([root, "/", sub], ""), sub: sub)
+              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 { [l] } else { [] }))
+              if lines != count(parsed) {
+                TreeObservationFailed { reason: join(["find|sha256sum under ", root, "/", sub, " printed ", to_string(lines), " lines but ", to_string(count(parsed)), " parsed as <hex>  <path under root>; a path with a newline or an unexpected line shape is refused, not dropped"], "") }
+              } else { TreeObserved { entries: concat(es, parsed) } }
+            }
+        }
+    }
+  )
+}
+
+fn approval_broker_tree_install(
+  owner: NonEmptyStr,
+  base_root: String,
+  source_root: String,
+  revision: ReleaseRevisionBinding,
+  transport: HostEffectTransport,
+) -> ApprovalBrokerTreeInstallVerdict {
+  approval_broker_tree_install_at(
+    owner: owner,
+    spine: [base_root, approval_broker_releases_dir(root: base_root)],
+    locus: approval_broker_release_dir(root: base_root, revision: revision),
+    source_root: source_root,
+    revision: revision,
+    transport: transport,
+  )
+}
+
+// THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
+// /releases/ segment), so one install serves both rather than a copy per locus.
+fn approval_broker_tree_install_at(
+  owner: NonEmptyStr,
+  spine: List<String>,
+  locus: String,
+  source_root: String,
+  revision: ReleaseRevisionBinding,
+  transport: HostEffectTransport,
+) -> ApprovalBrokerTreeInstallVerdict {
+  match revision {
+    RevisionNotInstalled =>
+      TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
+    RevisionBoundAtEmission { revision: r } => {
+      match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
+        TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
+        TreeObserved { entries: source } =>
+          if count(source) == 0 {
+            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
+          } else {
+            approval_broker_tree_install_observed(
+              owner: owner, spine: spine, source_root: source_root, locus: locus,
+              revision: revision, source: sort_tree_file_hashes(entries: source), transport: transport,
+            )
+          }
+      }
+    }
+  }
+}
+
+fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectTransport) -> TreeInstallStepState {
+  tree_run_step(state: state, step: TreeStepInstallDirectory, transport: transport, command: sudo_elevate_command(
+    command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
+}
+
+// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both hashes are
+// observed through the transport and must be equal; an unreadable hash is a disagreement.
+fn tree_binary_hex(path: String, transport: HostEffectTransport) -> String {
+  match run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport) {
+    RunArgvTransportRefused { reason: _ } => ""
+    RunArgvTransportObserved { observed: o } =>
+      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
+        Absent => ""
+        Present { value: d } => d.hex as String
+      }
+  }
+}
+
+fn tree_binary_agrees(source_path: String, installed_path: String, transport: HostEffectTransport) -> Bool {
+  let a = tree_binary_hex(path: source_path, transport: transport)
+  string_length(s: a) > 0 && a == tree_binary_hex(path: installed_path, transport: transport)
+}
+
+fn approval_broker_tree_install_observed(
+  owner: NonEmptyStr,
+  spine: List<String>,
+  source_root: String,
+  locus: String,
+  revision: ReleaseRevisionBinding,
+  source: List<TreeFileHash>,
+  transport: HostEffectTransport,
+) -> ApprovalBrokerTreeInstallVerdict {
+  let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
+  let after_dirs = fold(tree_ancestor_directories(files: source), init: after_spine, f: (st, d) =>
+    tree_install_directory_step(state: st, owner: owner, path: join([locus, "/", d], ""), transport: transport))
+  let after_files = fold(source, init: after_dirs, f: (st, e) =>
+    tree_run_step(state: st, step: TreeStepInstallFile, transport: transport, command: sudo_elevate_command(
+      command: coreutils_install_file_owned_argv(
+        mode: install_file_shared_mode, owner: owner, group: owner,
+        source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], "")))))
+  let after_binary = tree_run_step(state: after_files, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
+    command: coreutils_install_file_owned_argv(
+      mode: install_executable_shared_mode, owner: owner, group: owner,
+      source: join([source_root, "/target/release/", gunbc_release_bin_name], ""),
+      dest: join([locus, "/", gunbc_release_bin_name], ""))))
+  match after_binary {
+    TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
+    TreeStepsOk =>
+      match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
+        TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
+        TreeObserved { entries: installed } =>
+          if !tree_binary_agrees(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport) {
+            TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (or could not be hashed); no receipt was written"], "") }
+          } else if !tree_entries_agree(source: source, installed: installed) {
+            TreeInstallRefused { step: TreeStepReadback, reason: join([
+              "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
+              " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
+          } else {
+            approval_broker_tree_receipt_write(
+              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+              files: count(installed), transport: transport)
+          }
+      }
+  }
+}
+
+// THE RECEIPT, LAST: digest the verified lines through sha256sum (stdin, no argv payload), then write
+// candidate_revision/installed_digest through install(1) from stdin as the locus owner.
+fn approval_broker_tree_receipt_write(
+  owner: NonEmptyStr,
+  locus: String,
+  revision: ReleaseRevisionBinding,
+  lines: String,
+  files: Int,
+  transport: HostEffectTransport,
+) -> ApprovalBrokerTreeInstallVerdict {
+  match run_argv_stdin_over_host_effect_transport(
+    command: sha256sum_file_command(path: "/dev/stdin"),
+    stdin_payload: lines,
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
+        Absent => TreeInstallRefused { step: TreeStepDigest, reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
+        Present { value: d } => {
+          let digest = d.hex as String
+          let body = join(["candidate_revision=", release_revision_execstart_text(binding: revision), "\ninstalled_digest=", digest, "\n"], "")
+          match run_argv_stdin_over_host_effect_transport(
+            command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+              mode: install_file_shared_mode, owner: owner, group: owner,
+              source: "/dev/stdin", dest: join([locus, "/", release_locus_tree_receipt_name], ""))),
+            stdin_payload: body,
+            transport: transport,
+          ) {
+            RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
+            RunArgvTransportObserved { observed: w } =>
+              if w.success { TreeInstallConverged { installed_digest: digest, files_installed: files } }
+              else { TreeInstallRefused { step: TreeStepReceipt, reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
+          }
+        }
+      }
+  }
+}
+
+// ── THE APPROVAL BROKER DARK INSTALL, TYPED ───────────────────────────────────────────────────
+// Stage 1 of the cutover: the device store, this release's helper grant (a root-owned snapshot, then
+// the sudoers line that names it), the broker's tree, slice and unit, a daemon-reload, enable +
+// restart of ONLY the broker unit, and the slice-control caps. It touches gunbc-roadmap.service in no
+// way: a daemon-reload does not restart running units, so the roadmap keeps its PID and incarnation.
+//
+// FAIL-FAST, ONE STEP AT A TIME. Each leg is an ArgvCommand run through
+// run_argv_over_host_effect_transport -- no shell, no quoting, no script body -- and the first leg
+// that refuses stops the line: DarkInstallRefused names the step and NO later leg runs. The retired
+// script's refusals are all preserved as typed steps: a non-owning spec, an uncovered device-store
+// writer, a refused helper grant, a snapshot that is not root-owned, a sudoers file that fails
+// visudo, a readback that differs, a slice-control plan the host cannot derive.
+//
+// THE SUDOERS FILE IS STAGED IN ONE SCRATCH DIRECTORY (mktemp -d, written unelevated) because visudo
+// -cf must read a file before it is installed and neither tee nor dd is a grantable root verb. The
+// directory is acquired after the earlier legs and removed on every path out of the sudoers stage; a
+// removal that fails is its own refusal. The installed file is read back and hashed against the
+// staged one: convergence is the independent readback, not the install's exit code.
+type DarkInstallStep
+  = DarkStepOwner
+  | DarkStepDeviceStore
+  | DarkStepGrantAdmission
+  | DarkStepSnapshot
+  | DarkStepSnapshotReadback
+  | DarkStepScratchAcquire
+  | DarkStepSudoersStage
+  | DarkStepSudoersCheck
+  | DarkStepSudoersInstall
+  | DarkStepSudoersPolicyTemp
+  | DarkStepSudoersRename
+  | DarkStepSudoersPolicyFinal
+  | DarkStepSudoersReadback
+  | DarkStepSudoersCompare
+  | DarkStepScratchCleanup
+  | DarkStepRetire
+  | DarkStepBrokerTree
+  | DarkStepSliceUnit
+  | DarkStepBrokerUnit
+  | DarkStepDaemonReload
+  | DarkStepEnable
+  | DarkStepRestart
+  | DarkStepSliceControl
+
+type DarkInstallVerdict
+  = DarkInstallConverged { broker_tree_digest: String }
+  | DarkInstallRefused { step: DarkInstallStep, reason: String }
+
+type DarkLeg
+  = DarkLegArgv { step: DarkInstallStep, command: ArgvCommand }
+  | DarkLegStdin { step: DarkInstallStep, command: ArgvCommand, payload: String }
+  | DarkLegExpectEmpty { step: DarkInstallStep, command: ArgvCommand }
+  | DarkLegSameHash { step: DarkInstallStep, left: String, right: String }
+
+type DarkState
+  = DarkOk
+  | DarkFailed { step: DarkInstallStep, reason: String }
+
+type DarkInstallInputs {
+  spec: DeploymentSpec
+  revision: ReleaseRevisionBinding
+  principal: GroundedPosixPrincipal
+  source_root: String
+  transport: HostEffectTransport
+}
+
+data dark_scratch_template: NonEmptyStr = "/tmp/gunbc-broker-dark-install.XXXXXX" as NonEmptyStr
+data dark_scratch_prefix: String = "/tmp/gunbc-broker-dark-install."
+
+fn dark_failed_of_outcome(step: DarkInstallStep, outcome: RunArgvTransportOutcome) -> DarkState {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => DarkFailed { step: step, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success { DarkOk } else { DarkFailed { step: step, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+  }
+}
+
+fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) -> DarkState {
+  match state {
+    DarkFailed { step: _, reason: _ } => state
+    DarkOk =>
+      match leg {
+        DarkLegArgv { step: s, command: c } =>
+          dark_failed_of_outcome(step: s, outcome: run_argv_over_host_effect_transport(command: c, transport: transport))
+        DarkLegStdin { step: s, command: c, payload: p } =>
+          dark_failed_of_outcome(step: s, outcome: run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: p, transport: transport))
+        DarkLegExpectEmpty { step: s, command: c } =>
+          match run_argv_over_host_effect_transport(command: c, transport: transport) {
+            RunArgvTransportRefused { reason: r } => DarkFailed { step: s, reason: r }
+            RunArgvTransportObserved { observed: o } =>
+              if !o.success { DarkFailed { step: s, reason: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+              else if string_length(s: trim(s: o.stdout)) > 0 { DarkFailed { step: s, reason: join(["expected no output, got: ", o.stdout], "") } }
+              else { DarkOk }
+          }
+        DarkLegSameHash { step: s, left: l, right: r } =>
+          if tree_binary_agrees(source_path: l, installed_path: r, transport: transport) { DarkOk }
+          else { DarkFailed { step: s, reason: join([l, " and ", r, " differ (or one could not be hashed)"], "") } }
+      }
+  }
+}
+
+fn dark_run_legs(legs: List<DarkLeg>, transport: HostEffectTransport) -> DarkState {
+  fold(legs, init: DarkOk, f: (st, leg) => dark_run_leg(state: st, leg: leg, transport: transport))
+}
+
+fn tree_install_step_name(step: TreeInstallStep) -> String {
+  match step {
+    TreeStepRevision => "revision"
+    TreeStepSourceObserve => "source-observe"
+    TreeStepInstallDirectory => "install-directory"
+    TreeStepInstallFile => "install-file"
+    TreeStepInstallBinary => "install-binary"
+    TreeStepReadback => "readback"
+    TreeStepDigest => "digest"
+    TreeStepReceipt => "receipt"
+  }
+}
+
+// The helper snapshot's root-ownership readback: neither the base's ancestors nor anything in the
+// snapshot may be owned by another principal, writable by group/other, or be a symlink. Bare find (not
+// grantable); an unreadable entry is an observation failure and refuses.
+fn dark_snapshot_readback_legs(dir: String) -> List<DarkLeg> {
+  let root = approval_broker_helper_root_principal as String
+  [
+    DarkLegExpectEmpty {
+      step: DarkStepSnapshotReadback,
+      command: find_untrusted_entries_command(roots: path_ancestors_inclusive(path: approval_broker_helper_snapshot_base), top_only: true, owner: root),
+    },
+    DarkLegExpectEmpty {
+      step: DarkStepSnapshotReadback,
+      command: find_untrusted_entries_command(roots: [dir], top_only: false, owner: root),
+    },
+  ]
+}
+
+// The sudoers file, staged -> visudo -cf -> installed beside the final name -> policy-checked ->
+// renamed over it -> policy-checked again -> read back through the applying principal and hashed
+// against the staged bytes. `scratch` is the directory the caller acquired and will remove.
+fn dark_sudoers_legs(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal, scratch: String) -> List<DarkLeg> {
+  let staged = join([scratch, "/", approval_broker_helper_sudoers_stage_name], "")
+  let readback = join([scratch, "/", approval_broker_helper_sudoers_readback_stage_name], "")
+  let temp_path = approval_broker_helper_sudoers_temp_path as String
+  let final_path = approval_broker_helper_sudoers_path as String
+  let root = approval_broker_helper_root_principal
+  let name = grounded_posix_principal_name(p: principal)
+  [
+    DarkLegStdin { step: DarkStepSudoersStage, command: dd_overwrite_path_command(path: staged), payload: approval_broker_helper_sudoers_content(revision: revision) },
+    DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: staged) },
+    DarkLegArgv {
+      step: DarkStepSudoersInstall,
+      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+        mode: approval_broker_helper_sudoers_mode, owner: root, group: root, source: staged, dest: temp_path)),
+    },
+    DarkLegArgv { step: DarkStepSudoersPolicyTemp, command: visudo_policy_check_command(file: temp_path) },
+    DarkLegArgv { step: DarkStepSudoersRename, command: dark_elevated_of(c: mv_exact_destination_command(source: temp_path, destination: final_path)) },
+    DarkLegArgv { step: DarkStepSudoersPolicyFinal, command: visudo_policy_check_command(file: final_path) },
+    DarkLegArgv {
+      step: DarkStepSudoersReadback,
+      command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+        mode: "0400" as NonEmptyStr, owner: name, group: name, source: final_path, dest: readback)),
+    },
+    DarkLegSameHash { step: DarkStepSudoersCompare, left: staged, right: readback },
+  ]
+}
+
+fn dark_elevated_of(c: ArgvCommand) -> ArgvCommand {
+  sudo_elevate_command(command: concat([c.program.invocation as String], c.arguments))
+}
+
+fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> DarkLeg {
+  DarkLegStdin {
+    step: step,
+    command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+      mode: install_file_shared_mode,
+      owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
+      source: "/dev/stdin", dest: dest)),
+    payload: text,
+  }
+}
+
+fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DarkLeg> {
+  let unit = gunbc_approval_broker_unit_name
+  [
+    dark_unit_install_leg(
+      step: DarkStepSliceUnit, dest: gunbc_approval_broker_slice_unit_path() as String,
+      text: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
+    dark_unit_install_leg(
+      step: DarkStepBrokerUnit, dest: gunbc_approval_broker_unit_path() as String,
+      text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
+    DarkLegArgv { step: DarkStepDaemonReload, command: extdeps.systemd.systemctl.systemctl_daemon_reload_command() },
+    DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: unit)) },
+    DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: unit)) },
+  ]
+}
+
+fn dark_slice_control_legs(units: List<SliceControlUnit>) -> List<DarkLeg> {
+  flat_map(units, u =>
+    list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
+      DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
+}
+
+fn approval_broker_dark_install(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  principal: GroundedPosixPrincipal,
+  source_root: String,
+  transport: HostEffectTransport,
+) -> DarkInstallVerdict {
+  if !deployment_owns_the_host_approval_broker(spec: spec) {
+    DarkInstallRefused {
+      step: DarkStepOwner,
+      reason: join(["the dark install was reached with a deployment that does not own this host's broker unit; gunbc-approval-broker.service is a host singleton owned by the spec holding the prod role. instance=", spec.instance_id as String], ""),
+    }
+  } else {
+    dark_stage_device_store(i: DarkInstallInputs { spec: spec, revision: revision, principal: principal, source_root: source_root, transport: transport })
+  }
+}
+
+fn dark_stage_device_store(i: DarkInstallInputs) -> DarkInstallVerdict {
+  match managed_directory_admit(d: approval_device_store_directory()) {
+    ManagedDirectoryRefused { member: m, path: p, writer: w } =>
+      DarkInstallRefused { step: DarkStepDeviceStore, reason: join([m as String, " writer uncovered path=", p as String, " writer=", w as String], "") }
+    ManagedDirectoryAdmitted { dir: d } =>
+      match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+        step: DarkStepDeviceStore,
+        command: sudo_elevate_command(command: coreutils_install_directory_owned_argv(
+          mode: managed_directory_permissions(d: d).mode, owner: d.owner.name, group: d.group_principal.name, path: d.path as String)),
+      }) {
+        DarkOk => dark_stage_grant_admission(i: i)
+        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      }
+  }
+}
+
+fn dark_stage_grant_admission(i: DarkInstallInputs) -> DarkInstallVerdict {
+  match approval_broker_helper_grant_admission(revision: i.revision) {
+    HelperGrantAdmitted => dark_stage_snapshot(i: i)
+    HelperGrantWordRefused { word: w } =>
+      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w }) }
+    HelperGrantLocusWritableByGrantee { owner: o } =>
+      DarkInstallRefused { step: DarkStepGrantAdmission, reason: approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o }) }
+  }
+}
+
+fn dark_stage_snapshot(i: DarkInstallInputs) -> DarkInstallVerdict {
+  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: i.revision)
+  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+    step: DarkStepSnapshot,
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+  }) {
+    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+    DarkOk =>
+      match approval_broker_tree_install_at(
+        owner: approval_broker_helper_root_principal,
+        spine: [approval_broker_helper_snapshot_base],
+        locus: dir,
+        source_root: i.source_root,
+        revision: i.revision,
+        transport: i.transport,
+      ) {
+        TreeInstallRefused { step: ts, reason: r } =>
+          DarkInstallRefused { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+        TreeInstallConverged { installed_digest: _, files_installed: _ } =>
+          match dark_run_legs(legs: dark_snapshot_readback_legs(dir: dir), transport: i.transport) {
+            DarkOk => dark_stage_sudoers(i: i)
+            DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+          }
+      }
+  }
+}
+
+fn dark_stage_sudoers(i: DarkInstallInputs) -> DarkInstallVerdict {
+  match run_argv_over_host_effect_transport(command: mktemp_directory_command(template: dark_scratch_template), transport: i.transport) {
+    RunArgvTransportRefused { reason: r } => DarkInstallRefused { step: DarkStepScratchAcquire, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      match (if o.success { admitted_scratch_path(prefix: dark_scratch_prefix, stdout: o.stdout) } else { none }) {
+        Absent => DarkInstallRefused { step: DarkStepScratchAcquire, reason: join(["mktemp -d did not yield an admitted scratch directory (exit ", to_string(o.exit_code), "): ", o.stdout, o.stderr], "") }
+        Present { value: scratch } => {
+          let state = dark_run_legs(legs: dark_sudoers_legs(revision: i.revision, principal: i.principal, scratch: scratch), transport: i.transport)
+          let cleanup = dark_failed_of_outcome(
+            step: DarkStepScratchCleanup,
+            outcome: run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: i.transport),
+          )
+          match state {
+            DarkFailed { step: s, reason: r } =>
+              match cleanup {
+                DarkOk => DarkInstallRefused { step: s, reason: r }
+                DarkFailed { step: _, reason: cr } => DarkInstallRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], "") }
+              }
+            DarkOk =>
+              match cleanup {
+                DarkFailed { step: cs, reason: cr } => DarkInstallRefused { step: cs, reason: join(["removing scratch ", scratch, ": ", cr], "") }
+                DarkOk => dark_stage_retire(i: i)
+              }
+          }
+        }
+      }
+  }
+}
+
+// The previous release's snapshot is removed after the rename took its grant away: the sweep is
+// confined to the root-owned base and keeps exactly this release's directory.
+fn dark_stage_retire(i: DarkInstallInputs) -> DarkInstallVerdict {
+  match dark_run_leg(state: DarkOk, transport: i.transport, leg: DarkLegArgv {
+    step: DarkStepRetire,
+    command: find_other_children_exec_command(
+      root: approval_broker_helper_snapshot_base,
+      keep_name: release_revision_execstart_text(binding: i.revision),
+      exec_argv: sudo_elevate_argv(command: [fleet_rm_binary_path as String, coreutils_rm_force_recursive_flags as String, "--"]),
+    ),
+  }) {
+    DarkOk => dark_stage_broker_tree(i: i)
+    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+  }
+}
+
+fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
+  match approval_broker_tree_install(
+    owner: i.spec.service.service_user,
+    base_root: i.spec.approval_broker.repo_root as String,
+    source_root: i.source_root,
+    revision: i.revision,
+    transport: i.transport,
+  ) {
+    TreeInstallRefused { step: ts, reason: r } =>
+      DarkInstallRefused { step: DarkStepBrokerTree, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
+    TreeInstallConverged { installed_digest: d, files_installed: _ } =>
+      match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision), transport: i.transport) {
+        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+        DarkOk => dark_stage_slice_control(i: i, digest: d)
+      }
+  }
+}
+
+fn dark_stage_slice_control(i: DarkInstallInputs, digest: String) -> DarkInstallVerdict {
+  match slice_control_plan_for(host: i.spec.target.host.identity) {
+    SliceControlPlanNotOwed => DarkInstallConverged { broker_tree_digest: digest }
+    SliceControlPlanRefused { cause: c } => DarkInstallRefused { step: DarkStepSliceControl, reason: c }
+    SliceControlPlanDerived { units: us } =>
+      match dark_run_legs(legs: dark_slice_control_legs(units: us), transport: i.transport) {
+        DarkOk => DarkInstallConverged { broker_tree_digest: digest }
+        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+      }
+  }
+}
+
+fn dark_install_step_name(step: DarkInstallStep) -> String {
+  match step {
+    DarkStepOwner => "owner"
+    DarkStepDeviceStore => "device-store"
+    DarkStepGrantAdmission => "helper-grant-admission"
+    DarkStepSnapshot => "helper-snapshot"
+    DarkStepSnapshotReadback => "helper-snapshot-readback"
+    DarkStepScratchAcquire => "scratch-acquire"
+    DarkStepSudoersStage => "sudoers-stage"
+    DarkStepSudoersCheck => "sudoers-visudo-check"
+    DarkStepSudoersInstall => "sudoers-install"
+    DarkStepSudoersPolicyTemp => "sudoers-policy-check-temp"
+    DarkStepSudoersRename => "sudoers-rename"
+    DarkStepSudoersPolicyFinal => "sudoers-policy-check-final"
+    DarkStepSudoersReadback => "sudoers-readback"
+    DarkStepSudoersCompare => "sudoers-compare"
+    DarkStepScratchCleanup => "scratch-cleanup"
+    DarkStepRetire => "helper-snapshot-retire"
+    DarkStepBrokerTree => "broker-tree"
+    DarkStepSliceUnit => "broker-slice-unit"
+    DarkStepBrokerUnit => "broker-unit"
+    DarkStepDaemonReload => "daemon-reload"
+    DarkStepEnable => "enable"
+    DarkStepRestart => "restart"
+    DarkStepSliceControl => "slice-control"
+  }
+}
+
 fn realize_approval_broker_dark_install_on_host(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
@@ -4566,18 +5305,24 @@ fn realize_approval_broker_dark_install_on_host(
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: approval_broker_dark_install_script(
-        spec: spec,
-        revision: RevisionBoundAtEmission { revision: candidate.revision },
-        access: access,
-      ),
-      reason: "approval broker dark install (additive; does not restart the roadmap unit)",
-    ),
+  match approval_broker_dark_install(
+    spec: spec,
+    revision: RevisionBoundAtEmission { revision: candidate.revision },
+    principal: access.principal,
+    source_root: git.Inspect.Toplevel().path as String,
     transport: transport,
-    intent: intent,
-  )
+  ) {
+    DarkInstallRefused { step: s, reason: r } =>
+      NotConverged {
+        reason: join(["approval broker dark install refused at step ", dark_install_step_name(step: s), ": ", r], ""),
+        applied: intent,
+      }
+    DarkInstallConverged { broker_tree_digest: d } =>
+      Converged {
+        evidence: ShellEffectApplied { exit_code: 0, stdout: join(["broker_tree_digest=", d, "\n"], ""), stderr: "" },
+        applied: intent,
+      }
+  }
 }
 
 fn realize_microvm_controller_install_on_host(
@@ -4641,19 +5386,128 @@ fn realize_live_deploy_serve_route_on_host(
   }
 }
 
+// THE READ VERDICT, as a pure fn on the TYPED GET (success, body) — the §3 boundary-witness
+// subject: the witness SUPPLIES each boundary value (success:false and body:"" — the hermetic
+// mock's shape; the dispatch body with its digest; an unparseable body) and asserts the leg that
+// fires. Leg order and strings are VERBATIM from the dissolved script
+// (roadmap_site_readback_curl_digest_check + the node JSON.parse leg):
+//   (1) !success -> "roadmap-site-readback: curl failed url=<url>"
+//   (2) the body hashes to something other than the dispatch artifact's digest (content_hash_atom
+//       is the same FNV-1a-64 over UTF-8 the script's node one-liner ran — offset basis
+//       0xcbf29ce484222325, prime 0x100000001b3, the parity node_hash_protocol_witness pins; an
+//       empty body hashes to the offset basis, never the dispatch digest, so it refuses HERE)
+//       -> "roadmap-site-readback: digest mismatch url=<url>"
+//   (3) !json_text_parseable(body) -> "roadmap-site-readback: dispatch json parse failed"
+//   (4) else Converged { ShellEffectApplied { 0, body, "" } } — the read-back bytes ARE the
+//       evidence, which is more faithful than the script's static receipt echo.
+fn live_deploy_digest_readback_verdict(
+  intent: HostEffectIntent,
+  url: String,
+  success: Bool,
+  body: String,
+  expected: Fnv1a64Structural,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if !success {
+    NotConverged { reason: concat("roadmap-site-readback: curl failed url=", url), applied: intent }
+  } else {
+    if body == "" || !content_hash_eq_structural(
+      left: content_hash_atom(value: body as NonEmptyStr),
+      right: expected,
+    ) {
+      NotConverged { reason: concat("roadmap-site-readback: digest mismatch url=", url), applied: intent }
+    } else {
+      if !json_text_parseable(s: body) {
+        NotConverged { reason: "roadmap-site-readback: dispatch json parse failed", applied: intent }
+      } else {
+        Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: body, stderr: "" }, applied: intent }
+      }
+    }
+  }
+}
+
+fn live_deploy_digest_readback_url(port: Int) -> String {
+  concat(concat("http://127.0.0.1:", to_string(port)), roadmap_site_dispatch_url_path as String)
+}
+
+// THE SAME GET the script ran, as TYPED ARGV WORDS (DESIGN §0c: argv, not a command string). The
+// bound flags come from the kernel (curl_localhost_max_time == the script's --max-time 5); the
+// url is a PARAMETER, never a policy literal baked into an argv build.
+fn live_deploy_digest_readback_argv(port: Int) -> List<String> {
+  http_client_get_argv(
+    url: live_deploy_digest_readback_url(port: port) as NonEmptyStr,
+    max_time: curl_localhost_max_time,
+  )
+}
+
+// LiveDeployDigestReadback realization (roadmap static-site dispatch digest read-back; the
+// live_deploy readiness poll on the reconcile spine). AN OBSERVATION, and it RUNS on the caller
+// (runtime present), so it dissolves to its typed effects the way the landed readiness sibling
+// does (DESIGN §3; §0c native-handler arm) — no bash emitter, no retained_srvn, and no
+// RetainedShellScript row is minted:
+//   - LocalShell takes the NATIVE arm: the http.Client.GetWithin op with the script's 5 s wall
+//     passed as a PARAMETER (the op's argv is materializable words — the same arm the sibling
+//     probe lands on; GetLocalhostBounded's argv embeds two flag-expression residues, so the
+//     parameterized op is the one that reaches this seam as words);
+//   - SshShell / FleetSsh route the SAME typed argv through typed_argv_exec_over_{ssh,fleet_ssh}
+//     and judge the brought-back (success, stdout): the FleetSsh refusal the SCRIPT CARRIER
+//     carried dissolves because typed argv words are exactly what the fleet path admits — the
+//     wall the readiness sibling already ran down;
+//   - EmitArtifactThenThinRun has no thin argv to run against an observation and keeps its typed
+//     refusal, now in the per-effect template's words.
 fn realize_live_deploy_digest_readback_on_host(
   port: Int,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: roadmap_site_digest_readback_script(port: port),
-      reason: "live_deploy digest readback probe",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  let url = live_deploy_digest_readback_url(port: port)
+  let expected = roadmap_site_dispatch_json_artifact().digest
+  match transport {
+    LocalShell => {
+      let got = http.Client.GetWithin(
+        url: url as NonEmptyStr,
+        max_seconds: http_client_max_time_flag(max_time: curl_localhost_max_time),
+      )
+      live_deploy_digest_readback_verdict(
+        intent: intent,
+        url: url,
+        success: got.success,
+        body: got.body,
+        expected: expected,
+      )
+    }
+    SshShell { ssh_host: h } =>
+      match typed_argv_exec_over_ssh(host: h, argv: live_deploy_digest_readback_argv(port: port)) {
+        TypedArgvExecConverged { result: r } =>
+          live_deploy_digest_readback_verdict(
+            intent: intent,
+            url: url,
+            success: r.success,
+            body: r.stdout,
+            expected: expected,
+          )
+        TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
+      }
+    FleetSsh { target: t, context: c } =>
+      match typed_argv_exec_over_fleet_ssh(
+        target: t,
+        context: c,
+        argv: live_deploy_digest_readback_argv(port: port),
+      ) {
+        TypedArgvExecConverged { result: r } =>
+          live_deploy_digest_readback_verdict(
+            intent: intent,
+            url: url,
+            success: r.success,
+            body: r.stdout,
+            expected: expected,
+          )
+        TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => NotConverged {
+      reason: "host_effect_apply: LiveDeployDigestReadback cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      applied: intent,
+    }
+  }
 }
 
 // THE UNGATED DISPATCHER HAS NO DeployAccess, so it cannot emit a live-deploy apply, retract or broker
