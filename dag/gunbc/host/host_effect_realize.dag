@@ -6159,7 +6159,7 @@ fn compile_pool_slice_install_step(
         transport: transport,
       )
       if !run_argv_transport_succeeded(outcome: written) {
-        let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+        let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
         compile_pool_install_failed_step_result(
           failed_step: "stage write",
           slice_unit: slice_unit,
@@ -6168,9 +6168,9 @@ fn compile_pool_slice_install_step(
           effect_intent: effect_intent,
         )
       } else {
-        let installed = run_argv_over_host_effect_transport(command: plan.install, transport: transport)
+        let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
         if !run_argv_transport_succeeded(outcome: installed) {
-          let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+          let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
           compile_pool_install_failed_step_result(
             failed_step: "install",
             slice_unit: slice_unit,
@@ -6181,7 +6181,7 @@ fn compile_pool_slice_install_step(
         } else {
           let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
           if !run_argv_transport_succeeded(outcome: reloaded) {
-            let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
             compile_pool_install_failed_step_result(
               failed_step: "daemon-reload",
               slice_unit: slice_unit,
@@ -6191,7 +6191,7 @@ fn compile_pool_slice_install_step(
             )
           } else {
             let started = run_argv_over_host_effect_transport(command: start, transport: transport)
-            let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
             match started {
               RunArgvTransportRefused { reason: _ } =>
                 compile_pool_install_failed_step_result(
