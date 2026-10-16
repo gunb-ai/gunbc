@@ -747,6 +747,35 @@ fn belt_verification_resume_decision(
   }
 }
 
+// A RECORDED REFUSAL AT THE EXACT SUBJECT IS ITSELF EVIDENCE THE WORKER WAS TERMINAL. The belt only ever
+// verifies a terminal worker, so a refused receipt for this very head and window was written after the
+// worker ended; an operator resume may rely on that instead of re-reading terminality from a provider
+// ledger that a legacy attempt never wrote. It holds ONLY for a V2 receipt whose subject matches and whose
+// verdict is Refused: an absent, unreadable, other-subject or judged receipt establishes nothing.
+fn belt_verification_recorded_refusal_matches(expected: VerificationSubject, source: ExactVerificationReceiptSource) -> Bool {
+  match source {
+    ExactVerificationReceiptPresent { text } =>
+      match verification_receipt_text_classify(receipt: text) {
+        VerificationReceiptTextV2 { receipt } =>
+          match verification_subject_match(expected: expected, found: receipt.subject) {
+            VerificationSubjectMatches =>
+              match receipt.verdict {
+                ValidationRefused { cause: _ } => true
+                ValidationNotRun => false
+                ValidationPassed { command: _, oracle_identity: _ } => false
+                ValidationFailed { command: _, exit_code: _, detail: _ } => false
+              }
+            VerificationSubjectDiffers { field: _, expected: _, found: _ } => false
+          }
+        VerificationReceiptTextUndecodable { reason: _ } => false
+        VerificationReceiptTextLegacyAttempt { verdict_key: _ } => false
+        VerificationReceiptTextV1ExactHead { legacy: _ } => false
+      }
+    ExactVerificationReceiptAbsent => false
+    ExactVerificationReceiptUnreadable { detail: _ } => false
+  }
+}
+
 // THE CAUSE A RECORDED REFUSED VERDICT CARRIES, read from the exact receipt: the belt's bounded retry
 // classifies it (gunbc.roadmap.roadmap_refused_retry), and any other source or verdict carries none.
 fn belt_verification_refused_cause(source: ExactVerificationReceiptSource) -> ValidationRefusalCause? {

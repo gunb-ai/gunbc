@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_refused_retry {
 }
 import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed, WorkEndedCancelled }
 import gunbc.roadmap.roadmap_validation_oracle { validation_verdict_detail, validation_refusal_cause_detail }
-import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause }
+import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause, belt_verification_recorded_refusal_matches }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -117,6 +117,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
   LegacyReceiptVerdictMemberMissing,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
+  belt_verify_terminality_guard,
   belt_verification_receipt_source,
   belt_verification_subject_from_selection,
   belt_verify_pass_outcome_from,
@@ -945,4 +946,23 @@ test fn c5_the_real_compute_refusal_inhabits_the_shape() -> Bool {
     && (match refusal_cause_class(cause: compute_refusal_cause(ending: WorkEndedCancelled, document: "x")) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
     && (match belt_verification_refused_cause(source: source) { Present { value: c } => validation_refusal_cause_detail(cause: c) == "the claim run ended refused_by_infrastructure: gunbc-compute: dependency <build:release:gunbc,claim_batch> ended failed"  Absent => false })
     && (match refusal_cause_class(cause: lookalike) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
+}
+
+// CLAIM C6 (legacy attempt, no provider events): an operator resume of a recorded REFUSED verification at
+// the exact subject runs although the provider ledger cannot show the worker terminal, because the
+// refusal is itself the evidence the worker ended. RED before: the verify gate deferred on the provider
+// channel alone. Controls: no receipt, a passed or failed receipt, or a receipt for another subject
+// establishes nothing, and an unready provider with no recorded refusal still defers (a live worker is
+// never verified).
+test fn c6_a_recorded_refusal_stands_in_for_provider_terminality_and_nothing_else_does() -> Bool {
+  let subject = fixture_subject(window: fixture_window_w1)
+  let refused = resume_receipt_source(verdict: infra_refusal_verdict())
+  let passed = resume_receipt_source(verdict: ValidationPassed { command: "fixture-command", oracle_identity: content_hash_of_value(value: "oracle-fixture") })
+  let other = ExactVerificationReceiptPresent { text: verification_receipt_json(receipt: fixture_receipt(window: fixture_window_w2, verdict: infra_refusal_verdict())) }
+  belt_verification_recorded_refusal_matches(expected: subject, source: refused)
+    && !belt_verification_recorded_refusal_matches(expected: subject, source: passed)
+    && !belt_verification_recorded_refusal_matches(expected: subject, source: other)
+    && !belt_verification_recorded_refusal_matches(expected: subject, source: ExactVerificationReceiptAbsent)
+    && (match belt_verify_terminality_guard(provider_ready: false, recorded_refusal: true, decision: BeltVerificationRun) { BeltVerificationRun => true  BeltVerificationDefer { reason: _ } => false  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
+    && (match belt_verify_terminality_guard(provider_ready: false, recorded_refusal: false, decision: BeltVerificationRun) { BeltVerificationRun => false  BeltVerificationDefer { reason: _ } => true  BeltVerificationRefuse { reason: _ } => false  BeltVerificationEvidenceUnreadable { reason: _ } => false })
 }
