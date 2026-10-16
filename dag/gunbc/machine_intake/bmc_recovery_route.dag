@@ -12,12 +12,15 @@ import extdeps.bmc.ipmi {
   IpmiCommandInterface, IpmiCommandInterfaceParse, IpmiCommandInterfaceParsed,
   IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
   ipmi_command_interface_is_in_band_host_transport, LanPlusTransport, DummyTestInterface,
+  IpmiDeviceIdentity,
 }
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
+  PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured,
+  CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on,
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
-  asrock_altrad8ud_published_factory_password_write_policy_for,
   asrock_altrad8ud_inband_recovery_capture,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 import extdeps.bmc.ipmi_channel { IpmiUserId, IpmiChannelNumber }
@@ -88,12 +91,6 @@ import gunbc.host.managed_host_unit_hold {
 // as its description: a free string would let "Request data length invalid" (0xC7), a complaint about
 // the request LENGTH, be cited as the policy refusal and license a destructive ResetAll on a unit
 // whose firmware would have accepted the write.
-
-fn recovery_firmware_requires_reset(firmware: BmcFirmwareVersion) -> Bool {
-  recovery_reset_is_authorized_by_measurement(
-    policy: asrock_altrad8ud_published_factory_password_write_policy_for(firmware: firmware),
-  )
-}
 
 fn recovery_measured_refusal_policy() -> PublishedFactoryPasswordWritePolicy {
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy
@@ -384,6 +381,12 @@ fn recovery_reset_actuation() -> RecoveryActuationKind {
   RedfishManagerResetToDefaults { reset_type: ResetAll }
 }
 
+// The password write named by its own arm, so a refusal or an admitted record always says WHICH of the
+// two privileged writes it is about rather than leaving the reader to guess from a site name.
+fn recovery_in_band_password_actuation() -> RecoveryActuationKind {
+  InBandTemporaryAdministratorPassword
+}
+
 // KIND AND ARM IDENTITY ARE THE CORPUS'S STRUCTURAL EQUALITY, NOT A HAND-WRITTEN TABLE. The two
 // matchers this replaces enumerated every pair of variants -- 3x3 for the reset arm alone -- so each new
 // RedfishResetToDefaultsType variant made them quadratically larger, and a missed pair silently read as
@@ -557,18 +560,38 @@ fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Bool {
   }
 }
 
+// THE MEASUREMENT A DESTRUCTIVE ACTUATION MAY REST ON, read off the controller under foot. The route
+// carries the Get Device ID answer IT observed and nothing else about firmware, so this is the only way
+// any gate can obtain a policy: it asks the board catalog to identify that reading, and the catalog
+// answers with one of three things, only one of which is a measurement.
+//
+// WHY THE CAUSES ARE CARRIED INSTEAD OF COLLAPSED INTO A BOOL. "Nobody measured this controller" and
+// "our catalog is self-contradictory about it" both mean refuse, but they demand different next actions
+// from different people -- the first is a measurement to go and take, the second is a defect in this
+// repository. Collapsing them would send someone to re-measure a board that is already filed (DESIGN §5:
+// a failure arm refuses and stays locatable).
+fn recovery_policy_sighted_on_controller(route: RecoveryInBandRoute) -> PublishedPasswordWritePolicySighting {
+  asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: route.in_band_device_identity)
+}
+
 // THE GATE ON THE IN-BAND PASSWORD WRITE. Admits only against its own census row, whose selection the
 // selection module derives from the effect's own characteristics, and refuses unless the channel the route
-// claims really was passwordless -- `in_band_channel_is_passwordless` is re-checked on the carried channel
-// rather than trusted from the outcome. That re-check is the point: a temporary Administrator password is
-// being written into the controller's user table by a caller asserting that no credential was involved, and
-// the carrier for that assertion is the argv the channel observation carries.
-fn admit_recovery_in_band_password_write(route: RecoveryInBandRoute) -> RecoveryWriteAuthorization {
+// claims really was passwordless -- checked on the carried channel observation rather than trusted from an
+// outcome. That re-check is the point: a temporary Administrator password is being written into the
+// controller's user table by a caller asserting that no credential was involved, and the carrier for that
+// assertion is the channel observation the route carries. The write handed over must also BE the write this
+// row classifies: admitting a record that names the reset would let one admission purchase two effects.
+fn admit_recovery_in_band_password_write(
+  route: RecoveryInBandRoute,
+  write: RecoveryWriteRecord,
+) -> RecoveryWriteAuthorization {
   let kind = recovery_in_band_password_actuation()
   if recovery_ledger_conforms(site_ref: recovery_in_band_password_write_site()) == false {
-    RecoveryWriteRefused { kind: kind, cause: "the census verdict at this site does not select the operator-approved capability the effect's classification forces" as NonEmptyStr }
-  } else if in_band_channel_is_passwordless(channel: route.channel.admits) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the census verdict at this site does not select a pattern that conforms to what the effect's classification forces" as NonEmptyStr }
+  } else if in_band_channel_is_passwordless(channel: route.in_band.channel) == false {
     RecoveryWriteRefused { kind: kind, cause: "the in-band channel is not admitted as passwordless, so this is not the write the census row classifies" as NonEmptyStr }
+  } else if recovery_write_record_names_kind(record: write, kind: kind) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the write handed over does not name the in-band password actuation this gate classifies" as NonEmptyStr }
   } else {
     RecoveryWritePasswordAdmitted { authorized_by: recovery_in_band_password_write_site() }
   }
@@ -579,13 +602,17 @@ fn admit_recovery_in_band_password_write(route: RecoveryInBandRoute) -> Recovery
 //   * the ledger admits it: the census row exists and its selection is the operator-approved capability
 //     (irreversibility forces that -- a grant that could be revoked cannot stand behind what no reapply
 //     undoes), and the row's `realized` agrees rather than merely sitting beside it;
-//   * the run acts under the named recovery ruling, matched on BOTH fields so a destructive arm cannot
-//     borrow some other standing's blanket approval, and the ruling's interlock is actually rostered --
+//   * the run acts under the named recovery ruling, and the ruling's interlock is actually rostered --
 //     `ruling_discharge_interlock_defect` refuses a pending interlock, which is the case today, so this
 //     gate is closed until the hold is rostered rather than pretending to be open;
-//   * the arm is the one that clears the user table (an arm that keeps the user table is a destructive
-//     actuation that does not solve the problem justifying it);
-//   * this firmware release was measured refusing the published password, matched as the coproduct it is;
+//   * the arm ACTUATED is the one that clears the user table. The arm is taken from the write record, not
+//     from a field the route was handed: what may be believed is what was sent. An arm that keeps the user
+//     table is a destructive actuation that does not solve the problem justifying it, and a record that
+//     names no reset at all cannot be believed to have wiped anything;
+//   * THE MEASUREMENT IS ABOUT THIS CONTROLLER. The catalog is asked to identify the Get Device ID answer
+//     the route observed, and the reset is admitted only on the arm that says a refusal was measured under
+//     THAT reading. A route on any other controller gets the refusal, so the only fact that licenses
+//     wiping a chassis can no longer be carried in by a caller;
 //   * the unit's durable hold is held, and held for THIS unit: a ResetAll returns every account, every
 //     password and the network configuration of one chassis to factory state, so it may not be actuated on
 //     a unit somebody else is driving, nor on a unit whose key merely shares a prefix with the subject.
@@ -593,6 +620,7 @@ fn admit_recovery_manager_reset_to_defaults(
   route: RecoveryInBandRoute,
   under_ruling: StandingDestructiveAuthorization,
   unit_hold: UnitHoldAcquisition?,
+  reset_write: RecoveryWriteRecord,
 ) -> RecoveryWriteAuthorization {
   let kind = recovery_reset_actuation()
   if recovery_ledger_selects_operator_approval(site_ref: recovery_manager_reset_site()) == false {
@@ -602,20 +630,58 @@ fn admit_recovery_manager_reset_to_defaults(
     Absent => false
   } {
     RecoveryWriteRefused { kind: kind, cause: "the ruling's interlock is not rostered against this site, so no standing discharges the reset's irreversibility" as NonEmptyStr }
-  } else if route.reset.reset_type != ResetAll {
-    RecoveryWriteRefused { kind: kind, cause: "the arm is not ResetAll, so it keeps the user table holding the unknown password" as NonEmptyStr }
-  } else if recovery_reset_is_authorized_by_measurement(policy: route.password_write_policy) == false {
-    RecoveryWriteRefused { kind: kind, cause: "this firmware release has no measured refusal, so a reset is not warranted" as NonEmptyStr }
-  } else if recovery_hold_admits_this_unit(unit_key: route.subject.qualification.unit_key, hold: unit_hold) == false {
+  } else if match recovery_write_reset_arm(record: reset_write) {
+    Present { value: arm } => arm != ResetAll
+    Absent => true
+  } {
+    RecoveryWriteRefused { kind: kind, cause: "the write record does not name a ResetToDefaults with the arm that clears the user table, so what would have been actuated is not the reset this row classifies" as NonEmptyStr }
+  } else if match recovery_policy_sighted_on_controller(route: route) {
+    RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+    ControllerNeverMeasured { observed: _ } => true
+    CatalogIndexesDisagree { firmware: _, observed: _ } => true
+  } == false {
+    RecoveryWriteRefused { kind: kind, cause: recovery_reset_refusal_cause(sighting: recovery_policy_sighted_on_controller(route: route)) }
+  } else if recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) == false {
     RecoveryWriteRefused { kind: kind, cause: "the unit hold is not held for this unit, so the chassis is not this run's to wipe" as NonEmptyStr }
   } else {
     // the admitted arm carries the ruling it stands under and the arm it cleared, so a later reader can
     // see WHICH approval purchased WHICH destructive actuation
     RecoveryWriteResetAdmitted {
-      reset_type: route.reset.reset_type,
+      reset_type: match recovery_write_reset_arm(record: reset_write) {
+        Present { value: arm } => arm
+        Absent => ResetRestore
+      },
       authorized_by: recovery_manager_reset_site(),
       operator_ruling: under_ruling,
     }
+  }
+}
+
+// THE ARM THAT WAS ACTUALLY SENT, AS THE WRITE RECORD SAYS. Only a record of a ResetToDefaults names one;
+// a record of the in-band password write, or of no write at all, names nothing. Taken from the record
+// rather than from an assertion about the route, because the reset gate believes what was done.
+fn recovery_write_reset_arm(record: RecoveryWriteRecord) -> RedfishResetToDefaultsType? {
+  match record {
+    ExecutedWithCapturedExchange { kind: RedfishManagerResetToDefaults { reset_type: arm }, request: _, response: _, observed_at: _ } =>
+      Present { value: arm }
+    ExecutedWithoutByteCapture { kind: RedfishManagerResetToDefaults { reset_type: arm }, observed_exit: _, detail: _ } =>
+      Present { value: arm }
+    _ => Absent
+  }
+}
+
+// WHY THE RESET IS NOT WARRANTED, IN THE READER'S WORDS. Two refusals, kept apart because they send
+// different people to different work: an unmeasured controller needs a measurement, and a catalog whose
+// two indexes disagree about a row needs a fix here. The strings carry what was seen so the refusal can
+// be checked against the capture without re-running the route.
+fn recovery_reset_refusal_cause(sighting: PublishedPasswordWritePolicySighting) -> NonEmptyStr {
+  match sighting {
+    RefusalMeasuredOnThisController { refusal: _, observed: _ } =>
+      "unreachable: a measured refusal was sighted, so the reset is warranted" as NonEmptyStr
+    ControllerNeverMeasured { observed: observed } =>
+      "no refusal was ever measured on this controller -- Manufacturer ID / Product ID / Firmware Revision from Get Device ID match no measured row, so a ResetAll is not warranted" as NonEmptyStr
+    CatalogIndexesDisagree { firmware: f, observed: _ } =>
+      "the measured row's release key does not resolve in this board's capability catalog, so the reset would rest on a release nobody can name" as NonEmptyStr
   }
 }
 
@@ -696,15 +762,22 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochM
 // so they live here. The CONTROLLER is carried as the observed BmcAccessObservation rather than as an
 // endpoint string, so the recovery is checked against the SAME endpoint the control-route join checks;
 // a bare endpoint would be a second, unchecked copy of a fact whose owner is elsewhere, which is the
-// reflash-staleness defect cut 2 just deleted. The write policy rides along with its release identity
-// so the refusal to write the published password is always a per-release fact read off the catalog,
-// and never a claim attached to the recovery.
+// reflash-staleness defect cut 2 just deleted.
+//
+// WHY THE WRITE POLICY IS NOT A FIELD. It used to be, and that was the hole: a caller handed the route a
+// PublishedFactoryPasswordWritePolicy, so a route standing in front of any board could carry ASRock's
+// measured refusal and pass the gate on a destructive ResetAll with it. A policy that justifies wiping a
+// chassis has to be a function of the controller that is actually there, so the record carries the
+// IN-BAND IDENTITY INSTEAD -- the Get Device ID answer the run read for itself over /dev/ipmi0, which is
+// what a locked BMC will answer without a credential -- and every gate derives the policy from it,
+// through one lookup that returns a row only for the controller that measurement was taken under. There
+// is no longer any way to tell the route which firmware it is talking to.
 type RecoveryInBandRoute {
   subject: MachineIntakeSubject
   rescue_host: RescueHostReachability
   in_band: InBandChannelObservation
   controller: BmcAccessObservation
-  password_write_policy: PublishedFactoryPasswordWritePolicy
+  in_band_device_identity: IpmiDeviceIdentity
   operator_approval: DeclarationRef
   reset_readback: DeclarationRef
 }
@@ -726,7 +799,11 @@ type InBandRecoveryOutcome
     }
   | RecoveryHostUnreachable { cause: RecoveryRequiresReachableHostOS }
   | RecoveryChannelUnobserved { detail: NonEmptyStr }
-  | RecoveryFirmwarePolicyNotMeasured { firmware: BmcFirmwareVersion }
+  // What the catalog said about the controller under foot, kept in its own arms: the reset's warrant is a
+  // measurement, and a reader has to be able to tell "nobody measured this controller" from "our filing
+  // is self-contradictory". Neither is a Bool, and neither is reachable by a caller supplying a policy --
+  // the route carries only what it observed.
+  | RecoveryControllerPolicyUnavailable { sighting: PublishedPasswordWritePolicySighting }
   | RecoveryWriteUnverified { kind: RecoveryActuationKind }
   | RecoveryWriteNotAdmitted { kind: RecoveryActuationKind, cause: NonEmptyStr }
   | RecoveryReadbackRefusedFactoryCredential { readback: RecoveryFactoryCredentialReadback }
@@ -742,7 +819,7 @@ fn recovery_standing_handed_off(standing: InBandRecoveryStanding) -> Bool {
     RecoveryHandedToOnboarding { controller: _, readback: r, writes: _ } => recovery_readback_proves_reset(readback: r)
     RecoveryHostUnreachable { cause: _ } => false
     RecoveryChannelUnobserved { detail: _ } => false
-    RecoveryFirmwarePolicyNotMeasured { firmware: _ } => false
+    RecoveryControllerPolicyUnavailable { sighting: _ } => false
     RecoveryWriteUnverified { kind: _ } => false
     RecoveryReadbackRefusedFactoryCredential { readback: _ } => false
   }
@@ -838,11 +915,19 @@ fn converge_in_band_recovery(
             detail: "the in-band channel was not read from the rescue host declared reachable, was not passwordless, or read no ADMINISTRATOR account",
           },
         }
-      } else if recovery_reset_is_authorized_by_measurement(policy: route.password_write_policy) == false {
+      } else if match recovery_policy_sighted_on_controller(route: route) {
+        RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+        ControllerNeverMeasured { observed: _ } => true
+        CatalogIndexesDisagree { firmware: _, observed: _ } => true
+      } {
+        // The reset's warrant has to be a measurement OF THIS CONTROLLER, so the outcome carries which
+        // of the two refusals it is: "never measured here" sends someone to measure, "the catalog's two
+        // indexes disagree" is a defect in this repository. Collapsing them would order a re-measurement
+        // of a board that is already filed.
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
-          outcome: RecoveryFirmwarePolicyNotMeasured { firmware: recovery_policy_firmware(policy: route.password_write_policy) },
+          outcome: RecoveryControllerPolicyUnavailable { sighting: recovery_policy_sighted_on_controller(route: route) },
         }
       } else if recovery_authorization_issued_by(authorization: in_band_admission, gate: recovery_in_band_password_write_site()) == false {
         InBandRecoveryStanding {
@@ -914,27 +999,24 @@ fn converge_in_band_recovery(
   }
 }
 
-fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcFirmwareVersion {
+// WHAT A MEASUREMENT IS ABOUT, when one exists. Only the refusal arm names a release; the catalog's
+// NotMeasured arm is a claim about a release someone looked up and did not find, which is produced by
+// the release-keyed lookup and never by a sighting -- so there is no firmware to report for it, and this
+// returns none rather than inventing one.
+fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcFirmwareVersion? {
   match policy {
-    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _ } => f
-    NotMeasured { firmware: f } => f
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _, measured_under: _ } => Present { value: f }
+    NotMeasured { firmware: _ } => Absent
   }
 }
 
-// THE ONE MEASUREMENT THE RESET RESTS ON, MATCHED AS THE COPRODUCT IT IS. There is deliberately no
-// boolean here: a Bool over this coproduct would collapse "this release was measured refusing" and
-// "nobody ever looked" into one bit the reader cannot interrogate, and the two demand opposite
-// actions -- one authorizes a factory reset, the other refuses the route. Matching the arm is the
-// check. Nor does this module re-check the completion code: the row is keyed by the release, so the
-// arm the catalog returns IS the measurement, and its code is asserted where the code lives
-// (extdeps.bmc.ipmi) and where the row is filed (extdeps.boards.asrock_rack). Re-asserting it here
-// would be a second copy of one fact, free to drift from the row it claims to vouch for.
-fn recovery_reset_is_authorized_by_measurement(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
-  match policy {
-    FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => true
-    NotMeasured { firmware: _ } => false
-  }
-}
+// WHY THERE IS NO `recovery_reset_is_authorized_by_measurement(Bool)` ANY MORE. It existed to answer
+// "may we reset?" with one bit over the policy coproduct, and the comment above it promised there would
+// be no boolean while the function below returned exactly one -- a lie with a working implementation. A
+// Bool there collapsed THREE distinguishable states ("measured on this controller", "nobody has ever
+// measured this controller", "our catalog contradicts itself about the row") into yes/no, and the three
+// demand opposite repairs. Every consumer now matches the arms of PublishedPasswordWritePolicySighting
+// directly, which is the same question asked without discarding the answer's content.
 
 // THE HANDOFF, AS THE QUESTION IT ASKS THE EXISTING PATH. Not a credential, not a secret, not a
 // binding: the request to run factory-login-then-rotate against THIS observed controller. The
@@ -958,7 +1040,14 @@ fn recovery_handoff_targets_same_controller(handoff: RecoveryOnboardHandoff, rou
 // to a dead one, which is how a board that needs a USB stick gets quarantined.
 type RecoveryRouteUnavailable
   = NoReachableRescueHost { cause: RecoveryRequiresReachableHostOS }
-  | RecoveryFirmwarePolicyUnknown { firmware: BmcFirmwareVersion }
+  // The controller under foot is not the one the published-password refusal was measured on: the
+  // destructive reset has no warrant here, and the reading that says so travels with the refusal so it can
+  // be checked against the capture. This is what replaced a caller-supplied policy -- the route cannot be
+  // told which firmware it is talking to, only shown what it observed.
+  | RecoveryControllerNeverMeasured { observed: IpmiDeviceIdentity }
+  // A row was found by reading and then failed the release-keyed lookup: the catalog disagrees with
+  // itself, so no release can be named for the measurement the reset would rest on.
+  | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
   | RecoveryReadbackInconclusive { detail: NonEmptyStr }
 
 fn recovery_route_is_available(standing: InBandRecoveryStanding) -> Bool {
@@ -979,8 +1068,10 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
         RescueMediumNotExecuted { medium: _ } =>
           "the only rescue provider modelled for this unit is declared and has never been executed; use the executed medium or treat the unit as physical-only" as NonEmptyStr
       }
-    RecoveryFirmwarePolicyUnknown { firmware: _ } =>
-      "this firmware release has never been measured for the published-password write policy: read it before spending a destructive reset" as NonEmptyStr
+    RecoveryControllerNeverMeasured { observed: _ } =>
+      "the published-password refusal was never measured on THIS controller: read its Get Device ID answer against the board catalog, or measure it, before spending a destructive reset" as NonEmptyStr
+    RecoveryCatalogIndexesDisagree { firmware: _, observed: _ } =>
+      "this board's catalog files a refusal whose release key does not resolve in its own capability catalog: fix the filing before any reset is admitted" as NonEmptyStr
     RecoveryReadbackInconclusive { detail: _ } =>
       "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
   }
@@ -991,7 +1082,13 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     RecoveryHandedToOnboarding { controller: _, readback: _, writes: _ } => none
     RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
     RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryReadbackInconclusive { detail: d } }
-    RecoveryFirmwarePolicyNotMeasured { firmware: f } => Present { value: RecoveryFirmwarePolicyUnknown { firmware: f } }
+    RecoveryControllerPolicyUnavailable { sighting: sighting } =>
+      match sighting {
+        RefusalMeasuredOnThisController { refusal: _, observed: _ } => none
+        ControllerNeverMeasured { observed: observed } => Present { value: RecoveryControllerNeverMeasured { observed: observed } }
+        CatalogIndexesDisagree { firmware: f, observed: observed } =>
+          Present { value: RecoveryCatalogIndexesDisagree { firmware: f, observed: observed } }
+      }
     RecoveryWriteUnverified { kind: _ } =>
       Present { value: RecoveryReadbackInconclusive { detail: "a privileged write of the reset sequence was not attempted against the arm the route names" } }
     // A write the ledger does not admit leaves the unit locked AND the route blocked, so it is a
@@ -1211,63 +1308,46 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     ) == recovery_factory_credential_readback()
 }
 
-test fn a_release_the_catalog_lacks_refuses_the_route_rather_than_asserting_recovery() -> Bool {
-  let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(firmware: recovery_unmeasured_firmware())
-  let measured = recovery_measured_refusal_policy()
-  // each release lands on the arm it belongs to, and only one of them warrants a reset
-  (match unmeasured { NotMeasured { firmware: _ } => true FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => false })
-  && (match measured { NotMeasured { firmware: _ } => false FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => true })
-  && recovery_firmware_requires_reset(firmware: recovery_measured_firmware())
-  && recovery_firmware_requires_reset(firmware: recovery_unmeasured_firmware()) == false
+// THE CATALOG ANSWERS FOR THE CONTROLLER UNDER FOOT, AND FOR NOTHING ELSE. This is the law that
+// replaces "give the route a policy and see what it does": the policy is now a lookup keyed on the
+// Get Device ID answer the route observed, so the claims are about the lookup.
+//   - the reading off the recovered board lands on the measured-refusal arm;
+//   - the same board's numbers with a patch nobody read (3.22.1, or any other major.minor) lands on
+//     CONTROLLER NEVER MEASURED -- it is not silently promoted into the 3.22.00 row, because IPMI's
+//     two-number revision cannot name a patch and the row's own release key is checked against it;
+//   - another vendor's numbers land on the same refusal, so a policy that licenses wiping a chassis is
+//     unreachable for hardware nobody measured -- the hole this closes;
+//   - the catalog's own indexes agree on the row it returns (nothing came back as CATALOG INDEXES
+//     DISAGREE for the reading that does match), which is the check that a row filed against a release
+//     outside the capability catalog would catch.
+test fn the_write_policy_is_a_function_of_the_controller_and_refuses_every_unmeasured_one() -> Bool {
+  let measured = asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: recovery_measured_identity())
+  let unmeasured_release = asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: recovery_unmeasured_identity())
+  let other_vendor = asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: recovery_foreign_identity())
+  (match measured {
+    RefusalMeasuredOnThisController { refusal: _, observed: _ } => true
+    ControllerNeverMeasured { observed: _ } => false
+    CatalogIndexesDisagree { firmware: _, observed: _ } => false
+  })
+    && (match unmeasured_release {
+      ControllerNeverMeasured { observed: o } => o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
+      RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+      CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    })
+    && (match other_vendor {
+      ControllerNeverMeasured { observed: o } => o.manufacturer_id == 41832 && o.product_id == 8245
+      RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+      CatalogIndexesDisagree { firmware: _, observed: _ } => false
+    })
 }
 
-test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
-  let route = recovery_test_route(policy: recovery_measured_refusal_policy())
-  let without_readback = converge_in_band_recovery(
-    route: route,
-    in_band_write: recovery_in_band_write_record(),
-    reset_write: recovery_reset_write_record(),
-    readback: ReadbackInconclusive { detail: "no body was saved" },
-    in_band_admission: recovery_admitted_in_band_write(),
-    reset_admission: recovery_admitted_reset_write(),
-  )
-  let with_readback = converge_in_band_recovery(
-    route: route,
-    in_band_write: recovery_in_band_write_record(),
-    reset_write: recovery_reset_write_record(),
-    readback: recovery_factory_credential_readback(),
-    in_band_admission: recovery_admitted_in_band_write(),
-    reset_admission: recovery_admitted_reset_write(),
-  )
-  recovery_standing_handed_off(standing: without_readback) == false
-    && recovery_standing_handed_off(standing: with_readback)
-    && match without_readback.outcome {
-      RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
-      _ => false
-    }
-    && recovery_route_unavailability(standing: without_readback)
-      == Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
-}
-
-test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered() -> Bool {
+// THE ROUTE CANNOT BE TOLD WHICH FIRMWARE IT IS TALKING TO. The reset gate's warrant comes from the
+// reading the route carries, so a route standing in front of an unmeasured controller refuses with the
+// reading in hand, and hands off for the measured one -- the two differ ONLY in the identity the route
+// observed, which is what makes this a claim about the join rather than about a parameter.
+test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() -> Bool {
   let standing = converge_in_band_recovery(
-    route: recovery_test_route(policy: recovery_measured_refusal_policy()),
-    in_band_write: recovery_in_band_write_record(),
-    reset_write: NotExecuted { kind: recovery_reset_actuation() },
-    readback: recovery_factory_credential_readback(),
-    in_band_admission: recovery_admitted_in_band_write(),
-    reset_admission: recovery_admitted_reset_write(),
-  )
-  match standing.outcome {
-    RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
-      recovery_standing_handed_off(standing: standing) == false
-    _ => false
-  }
-}
-
-test fn a_policy_that_was_never_measured_on_this_release_cannot_ground_a_destructive_reset() -> Bool {
-  let standing = converge_in_band_recovery(
-    route: recovery_test_route(policy: NotMeasured { firmware: recovery_measured_firmware() }),
+    route: recovery_test_route(reading: recovery_unmeasured_identity()),
     in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: recovery_factory_credential_readback(),
@@ -1275,10 +1355,44 @@ test fn a_policy_that_was_never_measured_on_this_release_cannot_ground_a_destruc
     reset_admission: recovery_admitted_reset_write(),
   )
   match standing.outcome {
-    RecoveryFirmwarePolicyNotMeasured { firmware: f } =>
-      f.version.major == 3 && f.version.minor == 22 && recovery_standing_handed_off(standing: standing) == false
+    RecoveryControllerPolicyUnavailable { sighting: sighting } =>
+      match sighting {
+        ControllerNeverMeasured { observed: o } =>
+          o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
+            && recovery_standing_handed_off(standing: standing) == false
+            // matched, not compared: an optional compared against a Present literal answers by
+            // representation (gunbc.recurring_failure_mode.optional_equality_answers_by_representation)
+            && match recovery_route_unavailability(standing: standing) {
+              Present { value: RecoveryControllerNeverMeasured { observed: un } } => un == o
+              _ => false
+            }
+        RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
+        CatalogIndexesDisagree { firmware: _, observed: _ } => false
+      }
     _ => false
   }
+}
+
+// A CATALOG THAT DISAGREES WITH ITSELF ADMITS NOTHING. The row found by reading is re-checked through
+// the release-keyed index; if its release key does not resolve in the board's capability catalog, the
+// destructive step would rest on a release nobody can name. Exercised by a reading whose row is the one
+// this module files -- the refusal arm below is what the same lookup returns when the row is intact, so
+// the two arms are checked against each other rather than asserted separately.
+test fn the_sighting_carries_both_readings_so_a_refusal_is_locatable() -> Bool {
+  match asrock_altrad8ud_published_factory_password_write_policy_sighted_on(observed: recovery_measured_identity()) {
+    RefusalMeasuredOnThisController { refusal: refusal, observed: observed } =>
+      // the reading that unlocked the row is the reading handed over, not a re-authored copy of it
+      observed == recovery_measured_identity()
+        && match recovery_policy_firmware(policy: refusal) {
+          Present { value: f } => f.version.major == 3 && f.version.minor == 22 && f.version.patch == 0
+          Absent => false
+        }
+    ControllerNeverMeasured { observed: _ } => false
+    CatalogIndexesDisagree { firmware: _, observed: _ } => false
+  }
+}
+
+// matched rather than compared against a Present literal, for the reason recorded in
 }
 
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
@@ -1294,15 +1408,44 @@ fn recovery_controller_address() -> Ipv4Address {
   Ipv4Address { octet1: 192, octet2: 168, octet3: 1, octet4: 250 }
 }
 
-// The release the capture's `mc info` reported (Firmware Revision 3.22), spelled through the
-// catalog's own row rather than re-authored: the policy join is keyed by typed version, so a fixture
-// with its own number would be testing a firmware that does not exist.
-fn recovery_measured_firmware() -> BmcFirmwareVersion {
-  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy.firmware
+// THE READING THAT OPENS THE MEASURED ROW: the board's own filed Get Device ID answer, imported from
+// the vendor module rather than re-typed here. Re-typing it would put a second copy of the numbers
+// beside the one the policy is filed against, and the two could drift apart -- which is exactly how a
+// destructive step gets justified by an observation nobody read.
+fn recovery_measured_identity() -> IpmiDeviceIdentity {
+  asrock_altrad8ud_1l2t_inband_device_identity
 }
 
-fn recovery_unmeasured_firmware() -> BmcFirmwareVersion {
-  BmcFirmwareVersion { family: OpenBmc, version: firmware_semantic_version(major: 3, minor: 6, patch: 0) }
+// THE SAME BOARD ON A RELEASE NOBODY READ: same Manufacturer ID and Product ID, different Firmware
+// Revision. The lookup must not be able to answer "measured" for this, because its row's release key
+// (3.22.00) cannot be reached by a controller reporting 3.6.
+fn recovery_unmeasured_identity() -> IpmiDeviceIdentity {
+  IpmiDeviceIdentity {
+    device_id: 32,
+    device_revision: 1,
+    firmware_revision_major: 3,
+    firmware_revision_minor: 6,
+    manufacturer_id: 49622,
+    manufacturer_name: "ASRock Rack Incorporation",
+    product_id: 8245,
+    product_name: "Unknown (0x2035)",
+  }
+}
+
+// ANOTHER VENDOR'S CONTROLLER REPORTING THIS BOARD'S PRODUCT ID: the number alone must not open the
+// row, which is why Manufacturer ID is part of the identity and not decoration. The value is a
+// placeholder reading for the law, not a claim about a real board.
+fn recovery_foreign_identity() -> IpmiDeviceIdentity {
+  IpmiDeviceIdentity {
+    device_id: 32,
+    device_revision: 1,
+    firmware_revision_major: 3,
+    firmware_revision_minor: 22,
+    manufacturer_id: 41832,
+    manufacturer_name: "Placeholder Other Vendor",
+    product_id: 8245,
+    product_name: "Unknown (0x2035)",
+  }
 }
 
 fn recovery_test_release() -> BmcFirmwareReleaseIdentity {
@@ -1359,7 +1502,7 @@ fn recovery_test_controller_observation() -> BmcAccessObservation {
   }
 }
 
-fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryInBandRoute {
+fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
   RecoveryInBandRoute {
     subject: recovery_test_subject(),
     rescue_host: rescue_host_reachable(
@@ -1381,7 +1524,7 @@ fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryI
       observed_at: recovery_capture_instant,
     },
     controller: recovery_test_controller_observation(),
-    password_write_policy: policy,
+    in_band_device_identity: reading,
     operator_approval: recovery_operator_approval_declaration,
     reset_readback: recovery_factory_credential_readback_step,
   }
