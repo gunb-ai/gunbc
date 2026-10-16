@@ -721,7 +721,7 @@ fn fci1_manifest_lines(ctx: Fci1LiveContext, required: List<String>) -> List<Str
 // refusals. The identity line the caller reads is the manifest's own sha256sum.
 fn fci1_write_manifest(ctx: Fci1LiveContext, required: List<String>, original_status: Int, cleanup_failed: Bool, systemd_version: String) -> String? {
   let head = fci1_trimmed_stdout(words: ["git", "-C", ctx.root, "rev-parse", "HEAD"])
-  let tree = fci1_trimmed_stdout(words: ["git", "-C", ctx.root, "rev-parse", "HEAD^{tree}"])
+  let tree = fci1_trimmed_stdout(words: ["git", "-C", ctx.root, "rev-parse", "HEAD:"])
   let provenance = fci1_trimmed_stdout(words: [ctx.gunbc_bin, "--version"])
   let subject = fci1_trimmed_stdout(words: ["sha256sum", join([ctx.root, "/", fci1_subject_path], "")])
   match head {
