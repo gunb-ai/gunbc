@@ -4527,7 +4527,7 @@ fn observe_slot_population_over_host_effect_transport(
 // THE REFUSALS THE OLD `|| exit` ARMS CARRIED, EACH NOW TYPED:
 //   presence could not be established (transport refused, observer unspawnable, stat unreadable)
 //     -> EnsureInaccessible -> provider Refuse -> NotConverged naming the path;
-undefined
+//   the path exists but is not a directory, or carries a different owner or mode:
 //     -> provider Refuse (a foreign-owned directory is never adopted, and mode is never widened);
 //   the install did not run or failed -> Apply paired with NotApplied -> NotConverged;
 //   the readback disagrees with the demand -> NotConverged with the provider's mismatch text.
