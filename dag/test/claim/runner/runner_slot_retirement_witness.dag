@@ -52,7 +52,7 @@ import gunbc.host.host_operation_exec {
   HostOperationOutcome,
   host_operation_materialize_argv,
 }
-import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, HostEffectTransport }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.runner.runner_slot_retirement {
@@ -101,6 +101,8 @@ import gunbc.runner.runner_slot_retirement {
   RetirementActuationAuthorized,
   RetirementActuationRefused,
   transition_retirement_admission_over,
+  observe_transition_retirement_evidence_over,
+  SlotRetirementObserveResult,
   SlotRetirementEvidencePresent,
   SlotRetirementEvidenceAbsent,
 }
@@ -1051,6 +1053,51 @@ test fn srv1_admission_stays_absent_if_07_is_not_complete_on_this_readback() -> 
         SlotRetirementEvidencePresent { authorization: _, standings: _ } => false
         SlotRetirementEvidenceAbsent { cause: c } =>
           string_contains(s: c, pattern: "actions-runner@srv1-07.service")
+      }
+  }
+}
+
+data unexecutable_retirement_transport: HostEffectTransport = EmitArtifactThenThinRun {
+  bootstrap: BootstrapFragment { script: "true" },
+  invocation: ThinInvocation { argv: ["true"] },
+}
+
+fn standing_is_thin_run_unobserved(s: RunnerRetirementStanding) -> Bool {
+  match s {
+    RetirementUnobserved { unit: _, cause: c } =>
+      string_contains(s: c, pattern: "refused EmitArtifactThenThinRun transport")
+    _ => false
+  }
+}
+
+// INHABITANCE: observe_transition_retirement_evidence_over is the authorized arm of
+// observe_slot_retirement_evidence_wet, parameterized on transport. This row supplies
+// EmitArtifactThenThinRun and asserts the per-unit reads happened (one Unobserved standing per
+// required retiree, cause names that transport) and that admission consumed those standings
+// (Absent, because Unobserved does not discharge, naming 07). Deleting observe_retirement_standings
+// leaves standings empty and this fails.
+test fn the_wet_retirement_path_calls_observe_transition_retirement_evidence() -> Bool {
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match observe_transition_retirement_evidence_over(
+        transport: unexecutable_retirement_transport,
+        host: operator_host_srv1,
+        auth: auth,
+      ) {
+        SlotRetirementObserveResult { evidence: e, standings: ss } =>
+          match required_retirees_for_host(host: operator_host_srv1) {
+            RetireesUnresolved { host: _, cause: _ } => false
+            RetireesKnown { units: units } =>
+              list_length(ss) == list_length(units)
+                && list_length(ss) > 0
+                && all(ss, s => standing_is_thin_run_unobserved(s: s))
+                && match e {
+                  SlotRetirementEvidenceAbsent { cause: c } =>
+                    string_contains(s: c, pattern: "actions-runner@srv1-07.service")
+                  SlotRetirementEvidencePresent { authorization: _, standings: _ } => false
+                }
+          }
       }
   }
 }

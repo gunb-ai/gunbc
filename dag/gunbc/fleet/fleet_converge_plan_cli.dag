@@ -66,7 +66,8 @@ import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
-  observe_transition_retirement_evidence,
+  observe_transition_retirement_evidence_over,
+  SlotRetirementObserveResult,
   interruption_authorization_for_host,
   HostInterruptionAuthorizationPresent,
   HostInterruptionAuthorizationAbsent,
@@ -109,7 +110,7 @@ import gunbc.fabric.fabric_allocation_store_substrate {
   allocation_store_directory_absent,
   allocation_store_desired_stat_mode,
 }
-import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect { LocalShell, HostEffectTransport }
 import gunbc.host.host_effect_realize { srv3_observe_path_owner, srv3_observe_path_mode }
 import extdeps.posix.path_ownership {
   PathOwnerObserved,
@@ -126,7 +127,7 @@ import gunbc.runner.runner_service_activation {
   UnitStandingsUnobserved,
   runner_host_activation_units,
 }
-import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
 import extdeps.systemd { ActiveState, UnitFileState }
 import gunbc.host_convergence_protocol {
@@ -233,7 +234,7 @@ import gunbc.fleet.fleet_converge_receipt {
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible. FullHost retirement evidence is observe_slot_retirement_evidence_wet; its authorized arm is observe_transition_retirement_evidence."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible."
 
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
 // repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
@@ -490,28 +491,45 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 //
 // AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
 // a host with no deploy row has no transition and nothing here may speak for it.
-fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
-{
-  match runner_host_deploy_for(host: host as HostIdentity) {
+fn observe_slot_retirement_evidence_over(
+  host: HostIdentity,
+  transport: HostEffectTransport,
+) -> SlotRetirementObserveResult {
+  match runner_host_deploy_for(host: host) {
     RunnerHostDeployUnmodeled { host: h } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
+      SlotRetirementObserveResult {
+        evidence: SlotRetirementEvidenceAbsent {
+          cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
+        },
+        standings: [],
       }
     RunnerHostDeployRefused { host: h, cause: c } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+      SlotRetirementObserveResult {
+        evidence: SlotRetirementEvidenceAbsent {
+          cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+        },
+        standings: [],
       }
     RunnerHostDeployFound { deploy: _ } =>
-      match interruption_authorization_for_host(host: host as HostIdentity) {
+      match interruption_authorization_for_host(host: host) {
         HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
-          SlotRetirementEvidenceAbsent { cause: c }
+          SlotRetirementObserveResult {
+            evidence: SlotRetirementEvidenceAbsent { cause: c },
+            standings: [],
+          }
         HostInterruptionAuthorizationPresent { authorization: host_auth } =>
-          observe_transition_retirement_evidence(
-            transport: LocalShell,
-            host: host as HostIdentity,
+          observe_transition_retirement_evidence_over(
+            transport: transport,
+            host: host,
             auth: host_auth,
           )
       }
+  }
+}
+
+fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence {
+  match observe_slot_retirement_evidence_over(host: host as HostIdentity, transport: LocalShell) {
+    SlotRetirementObserveResult { evidence: e, standings: _ } => e
   }
 }
 

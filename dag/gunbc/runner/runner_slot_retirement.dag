@@ -1054,27 +1054,49 @@ fn authorized_retirement_actuation(
 // WHAT SURVIVES IS THE OBSERVATION HALF, which mutates nothing and is what the request was missing.
 // The completion bar was never "this function has a caller" -- it is "the sole production route
 // consumes this evidence".
+type SlotRetirementObserveResult {
+  evidence: SlotRetirementEvidence
+  standings: List<RunnerRetirementStanding>
+}
+
+fn observe_transition_retirement_evidence_over(
+  transport: HostEffectTransport,
+  host: HostIdentity,
+  auth: InterruptionAuthorization,
+) -> SlotRetirementObserveResult {
+  match transition_required_retiring(host: host) {
+    RetireesUnresolved { host: uh, cause: c } =>
+      SlotRetirementObserveResult {
+        evidence: SlotRetirementEvidenceAbsent {
+          cause: join([
+            "the retirement obligation for ", uh as String,
+            " is not derivable, so there is no set of required retirees to observe standings for: ", c,
+          ], ""),
+        },
+        standings: [],
+      }
+    RetireesKnown { units: units } => {
+      let standings = observe_retirement_standings(transport: transport, units: units)
+      SlotRetirementObserveResult {
+        evidence: transition_retirement_admission_over(
+          host: host,
+          auth: auth,
+          required: units,
+          standings: standings,
+        ),
+        standings: standings,
+      }
+    }
+  }
+}
+
 fn observe_transition_retirement_evidence(
   transport: HostEffectTransport,
   host: HostIdentity,
   auth: InterruptionAuthorization,
-) -> SlotRetirementEvidence
-{
-  match transition_required_retiring(host: host) {
-    RetireesUnresolved { host: uh, cause: c } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join([
-          "the retirement obligation for ", uh as String,
-          " is not derivable, so there is no set of required retirees to observe standings for: ", c,
-        ], ""),
-      }
-    RetireesKnown { units: units } =>
-      transition_retirement_admission_over(
-        host: host,
-        auth: auth,
-        required: units,
-        standings: observe_retirement_standings(transport: transport, units: units),
-      )
+) -> SlotRetirementEvidence {
+  match observe_transition_retirement_evidence_over(transport: transport, host: host, auth: auth) {
+    SlotRetirementObserveResult { evidence: e, standings: _ } => e
   }
 }
 
