@@ -11,6 +11,7 @@ import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, C
 import gunbc.compute.work_provider_local { compute_layout_in, compute_unit_properties }
 import std.materialization_store_grant { WitnessScratchRoot }
 import gunbc.compute.attempt_lifecycle {
+  DirectInvocation,
   AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
@@ -202,7 +203,7 @@ fn releases(d: SessionSettleDecision) -> Bool {
 }
 
 fn launching(rec: AttemptRecord) -> AttemptRecord {
-  AttemptRecord { identity: rec.identity, reference: rec.reference, unit: rec.unit, granted: rec.granted, opened_at: rec.opened_at, launch_deadline: rec.launch_deadline, state: AttemptLaunching }
+  AttemptRecord { identity: rec.identity, reference: rec.reference, unit: rec.unit, granted: rec.granted, opened_at: rec.opened_at, launch_deadline: rec.launch_deadline, state: AttemptLaunching, owner: rec.owner }
 }
 
 // THE DECISION: Reserved frees only after its declared window, Launching only when the unit has
