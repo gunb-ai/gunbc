@@ -201,3 +201,20 @@ fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict
       }
   }
 }
+
+// THE DMTF REDFISH `ResetToDefaultsType` ENUM ──────────────────────────────────────────────────
+//
+// WHY THIS LIVES HERE AND NOT IN WHICHEVER MODULE HAPPENS TO ACTUATE A RESET. The three arms below are
+// not a workflow's vocabulary: they are the members DMTF publishes for the Manager's ResetToDefaults
+// action (Redfish Task/Message and Base schema, DSP0266 Redfish Specification + Redfish Host Interface /
+// Manager schema `#Manager.ResetToDefaults.ResetToDefaultsType`), and they are versioned by DMTF, not by
+// this repository. DESIGN §3 requires an independently versioned upstream to be declared in its own
+// extdeps module, with its source cited and its real names kept -- which is also what makes it reusable:
+// a second Redfish consumer (a fleet-wide factory-reset job, a network-configuration audit) would
+// otherwise have to import a machine-intake route, or re-mint the enum and drift from it.
+//
+// THE WIRE NAMES ARE KEPT EXACTLY AS PUBLISHED, in the schema's own PascalCase, because that is the
+// string an implementation puts in ResetToDefaultsType. The recovery route's judgement about which arm
+// clears the user table is NOT here: that is a question about BMC recovery, not about the schema, and it
+// stays in the module that asks it.
+type RedfishResetToDefaultsType = ResetAll | ResetNetwork | ResetRestore

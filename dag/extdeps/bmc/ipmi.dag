@@ -502,7 +502,12 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
 // extdeps.boards.asrock_rack (the measured refusal records 0xCC's words) and
 // gunbc.machine_intake.bmc_recovery_route (a refusal quotes the code it saw).
 
-// THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED SUM ─────────────────────────────────────────────
+// THE IPMI COMMAND-LINE INTERFACE, AS A CLOSED PAIR OF SUMS ────────────────────────────────────
+//
+// ONE NAME SPACE, TWO TYPES. The wire names below are the complete set ipmitool's -I accepts, and the
+// parse decides ONCE which side of the in-band line each falls on. Consumers never see a single undivided
+// "interface" type they have to interrogate: see THE ONE CLASSIFICATION below for why the decision is in
+// the shape of the data and not in a predicate.
 //
 // WHY THIS IS A SUM AND NOT A STRING. `ipmitool -I <name>` picks the transport, and this route's most
 // consequential decision -- whether a write was made over a channel that needs no credential -- used to
@@ -518,7 +523,23 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
 // authority for what `-I` accepts: `src/plugins/ipmi_intf.c:93 ipmi_intf_table[]` and each plugin's
 // `.name` field (src/plugins/<p>/<p>.c). A transport ipmitool does not have cannot be named here, and a
 // transport it does have but which is not a host-to-controller path cannot be admitted as one.
-type IpmiCommandInterface
+// THE ONE CLASSIFICATION, DECLARED STRUCTURALLY RATHER THAN ANSWERED WITH A BOOL ────────────────
+//
+// WHY THE ARMS ARE SPLIT IN TWO AND NOT TAGGED WITH A PREDICATE. "Is this a transport from a host to the
+// controller inside its own chassis?" is the question this route's most consequential decision rests on,
+// and it used to be answered by a function matching 12 arms and returning true/false. That shape puts the
+// decision OUTSIDE the data: a value that is not an in-band path can still be carried around as
+// "an IpmiCommandInterface", and every consumer has to remember to ask -- and a consumer that forgets to
+// ask fails OPEN. Two sums make the distinction part of the type (DESIGN §5: stronger than catching a
+// wrong state is making it unwritable), so an out-of-band transport cannot be handed to anything that
+// wants an in-band one, and the parse is the only place that decides which side a name falls on.
+//
+// Out-of-band network transports are on the other side because they authenticate BY A SECRET -- admitting
+// "lanplus" would make this a route that assumes the very password it set out to recover. `dbus` lives on
+// the BMC itself and is not reachable from a host, `serial-terminal` is a console rather than an IPMI
+// transport, and `dummy` fabricates answers, so none of them can be an in-band path however they are
+// spelled.
+type InBandHostTransport
   = OpenIpmiDriver          // "open"            src/plugins/open: OpenIPMI kernel driver over /dev/ipmi0; upstream's default when built (configure.ac DEFAULT_INTF_NO_ENV=open)
   | BmcKernelDriver         // "bmc"             src/plugins/bmc: the legacy in-tree BMC driver, also /dev/ipmi0
   | FreeIpmiDriver          // "free"            src/plugins/free: the FreeBSD IPMI kernel interface, in-band
@@ -526,58 +547,44 @@ type IpmiCommandInterface
   | ImbDriver               // "imb"             src/plugins/imb: Intelligent Management Bus, inside the chassis
   | UsbTransport            // "usb"             src/plugins/usb: host-to-BMC over USB, physical presence required
   | SerialBasicTransport    // "serial-basic"    src/plugins/serial/serial_basic.c: IPMI over a serial lead inside the chassis
-  | LanTransport            // "lan"             src/plugins/lan: RMCP out-of-band over the network
+
+type OutOfBandOrNonHostTransport
+  = LanTransport            // "lan"             src/plugins/lan: RMCP out-of-band over the network
   | LanPlusTransport        // "lanplus"         src/plugins/lanplus/lanplus.c: RMCP+ out-of-band, REQUIRES a credential
   | DbusLocalService        // "dbus"            src/plugins/dbus: D-Bus on the BMC itself -- not reachable from a host
-  | SerialTerminal          // "serial-terminal" src/plugins/serial/serial_terminal.c: a console, not an IPMI transport
+  | SerialTerminal          // "serial-terminal" src/plugins/serial/terminal.c: a console, not an IPMI transport
   | DummyTestInterface      // "dummy"           src/plugins/dummy: fabricates responses; never a controller
 
+// WHICH SIDE OF THE LINE A NAME FELL ON, as the parse decided it, with the reason carried on the
+// refusing side so a reader learns WHY "lanplus" cannot be this route's channel without looking the
+// transport up. The reason is description, not decision: the decision is which arm this is.
+type IpmiCommandTransport
+  = InBandHostTransportChannel { transport: InBandHostTransport }
+  | NotInBandHostTransport { transport: OutOfBandOrNonHostTransport, why_not_in_band: NonEmptyStr }
+
 type IpmiCommandInterfaceParse
-  = IpmiCommandInterfaceParsed { wire: String, interface: IpmiCommandInterface }
+  = IpmiCommandInterfaceParsed { wire: String, transport: IpmiCommandTransport }
   | IpmiCommandInterfaceUnrecognized { wire: String }
 
-// A name becomes an arm or the parse REFUSES -- there is no "assume in-band" default, and no arm for
-// "unknown but tolerated". Matching is exact on purpose: ipmitool's own dispatch is `strcmp` against this
-// table (`src/plugins/ipmi_intf.c:150`), so "LANPLUS" and "lanplus " are not interfaces it would load, and
-// a capture that appears to name them was read wrong, which is a refusal worth having rather than a
-// transport silently invented.
+// A name becomes an arm on one side or the other, or the parse REFUSES -- there is no "assume in-band"
+// default, and no arm for "unknown but tolerated". Matching is exact on purpose: ipmitool's own dispatch
+// is `strcmp` against its plugin table (`src/plugins/ipmi_intf.c:150`), so "LANPLUS" and "lanplus " are
+// not interfaces it would load, and a capture that appears to name them was read wrong, which is a refusal
+// worth having rather than a transport silently invented.
 fn ipmi_command_interface_from_wire(wire: String) -> IpmiCommandInterfaceParse {
-  if wire == "open" { IpmiCommandInterfaceParsed { wire: wire, interface: OpenIpmiDriver } }
-  else if wire == "bmc" { IpmiCommandInterfaceParsed { wire: wire, interface: BmcKernelDriver } }
-  else if wire == "free" { IpmiCommandInterfaceParsed { wire: wire, interface: FreeIpmiDriver } }
-  else if wire == "lipmi" { IpmiCommandInterfaceParsed { wire: wire, interface: LipmiDriver } }
-  else if wire == "imb" { IpmiCommandInterfaceParsed { wire: wire, interface: ImbDriver } }
-  else if wire == "usb" { IpmiCommandInterfaceParsed { wire: wire, interface: UsbTransport } }
-  else if wire == "serial-basic" { IpmiCommandInterfaceParsed { wire: wire, interface: SerialBasicTransport } }
-  else if wire == "lan" { IpmiCommandInterfaceParsed { wire: wire, interface: LanTransport } }
-  else if wire == "lanplus" { IpmiCommandInterfaceParsed { wire: wire, interface: LanPlusTransport } }
-  else if wire == "dbus" { IpmiCommandInterfaceParsed { wire: wire, interface: DbusLocalService } }
-  else if wire == "serial-terminal" { IpmiCommandInterfaceParsed { wire: wire, interface: SerialTerminal } }
-  else if wire == "dummy" { IpmiCommandInterfaceParsed { wire: wire, interface: DummyTestInterface } }
+  if wire == "open" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: OpenIpmiDriver } } }
+  else if wire == "bmc" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: BmcKernelDriver } } }
+  else if wire == "free" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: FreeIpmiDriver } } }
+  else if wire == "lipmi" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: LipmiDriver } } }
+  else if wire == "imb" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: ImbDriver } } }
+  else if wire == "usb" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: UsbTransport } } }
+  else if wire == "serial-basic" { IpmiCommandInterfaceParsed { wire: wire, transport: InBandHostTransportChannel { transport: SerialBasicTransport } } }
+  else if wire == "lan" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: LanTransport, why_not_in_band: "out-of-band RMCP over the network: it authenticates by a secret, which is what this route exists to avoid assuming" as NonEmptyStr } } }
+  else if wire == "lanplus" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: LanPlusTransport, why_not_in_band: "out-of-band RMCP+ over the network, and it requires a credential: admitting it would make the recovery assume the password it set out to recover" as NonEmptyStr } } }
+  else if wire == "dbus" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: DbusLocalService, why_not_in_band: "D-Bus on the BMC itself: unreachable from the rescue host, so it cannot be the in-band path" as NonEmptyStr } } }
+  else if wire == "serial-terminal" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: SerialTerminal, why_not_in_band: "a console, not an IPMI transport: it carries no IPMI command" as NonEmptyStr } } }
+  else if wire == "dummy" { IpmiCommandInterfaceParsed { wire: wire, transport: NotInBandHostTransport { transport: DummyTestInterface, why_not_in_band: "fabricates responses: it can never stand for a controller, so it must never satisfy a precondition" as NonEmptyStr } } }
   else { IpmiCommandInterfaceUnrecognized { wire: wire } }
-}
-
-// THE ONE CLASSIFICATION: is this a transport from a host to the controller inside its own chassis? That
-// is the question the recovery route asks, and it is answered in exactly one place, over the arms.
-// Out-of-band network transports are refused because they authenticate by a secret -- accepting "lanplus"
-// would make this a route that assumes the very password it set out to recover. `dbus` lives on the BMC,
-// `serial-terminal` is a console, and `dummy` fabricates answers, so none of them can be an in-band path
-// however they are spelled.
-fn ipmi_command_interface_is_in_band_host_transport(interface: IpmiCommandInterface) -> Bool {
-  match interface {
-    OpenIpmiDriver => true
-    BmcKernelDriver => true
-    FreeIpmiDriver => true
-    LipmiDriver => true
-    ImbDriver => true
-    UsbTransport => true
-    SerialBasicTransport => true
-    LanTransport => false
-    LanPlusTransport => false
-    DbusLocalService => false
-    SerialTerminal => false
-    DummyTestInterface => false
-  }
 }
 
 // THE ANSWER TO `ipmitool mc info`, TYPED ─────────────────────────────────────────────────────
