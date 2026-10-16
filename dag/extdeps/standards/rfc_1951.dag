@@ -128,8 +128,10 @@ fn rfc_1951_fixed_stream(octets: List<Int>) -> List<Int> {
   if closed.n == 0 { closed.out } else { closed.out |> list_push(closed.acc) }
 }
 
-// An upper bound on the fixed stream's length: no symbol costs more than nine bits per octet it
-// codes, plus the block header and the end-of-block code.
+// An upper bound on the fixed stream's length in octets: no symbol costs more than nine bits per
+// octet it codes, plus the 3-bit block header and the 7-bit end-of-block code, so the stream is at
+// most ceil((9 * raw + 10) / 8) <= raw + raw / 8 + 3 octets. Written without forming 9 * raw, so it
+// stays inside a 64-bit Int for every raw below 2^62.
 fn rfc_1951_fixed_stream_bound(raw: Int) -> Int {
-  (3 + 9 * raw + 7 + 7) / 8
+  raw + raw / 8 + 3
 }

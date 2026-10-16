@@ -125,7 +125,7 @@ type PngAxis = PngWidth | PngHeight
 // read a different picture than the one described. Each carries where it is and what was found.
 type PngRefusal =
     PngDimensionOutOfRange { axis: PngAxis, observed: Int }
-  | PngIdatTooLarge { octets: Int }
+  | PngIdatUpperBoundExceedsLimit { upper_bound: Int }
   | PngPaletteSize { entries: Int }
   | PngPaletteColorInadmissible { entry: Int, color: Srgb8 }
   | PngPaletteAlphaOutOfRange { entry: Int, alpha: Int }
@@ -143,7 +143,8 @@ fn png_dimension_refusal(axis: PngAxis, v: Int) -> PngRefusal? {
 }
 
 // An upper bound on the IDAT data length, known before any octet is produced: zlib header, the
-// fixed stream's bound over the scanlines, and the Adler-32.
+// fixed stream's bound over the scanlines, and the Adler-32. It is a bound, not the length: an image
+// refused on it may compress below the limit, which is why its refusal names the bound.
 fn png_idat_length(width: Int, height: Int) -> Int {
   2 + rfc_1951_fixed_stream_bound(raw: height * (width + 1)) + 4
 }
@@ -210,7 +211,7 @@ fn png_first_refusal(image: PngIndexedImage) -> PngRefusal? {
     Present { value: _ } => dimension
     Absent =>
       if png_idat_length(width: image.width, height: image.height) > png_four_byte_limit {
-        Present { value: PngIdatTooLarge { octets: png_idat_length(width: image.width, height: image.height) } }
+        Present { value: PngIdatUpperBoundExceedsLimit { upper_bound: png_idat_length(width: image.width, height: image.height) } }
       } else if entries == 0 || entries > 256 {
         Present { value: PngPaletteSize { entries: entries } }
       } else {
