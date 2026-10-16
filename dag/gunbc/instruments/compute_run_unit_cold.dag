@@ -807,26 +807,37 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                             Present { value: frame_d } => {
                           let d = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_d, identity: to_string(value: frame_d), checkout_at: Present { value: path_a }, target_at: Present { value: target_a }, stop_observation: SccacheStatsAtStop)
                           let reset_d = drop_checkout(toolchain_homes: homes, frame: frame_d, path: path_a)
+                          let path_c = checkout_path_of(toolchain_homes: homes, frame: frame_c, identity: id_a)
+                          let reset_c = drop_checkout(toolchain_homes: homes, frame: frame_c, path: path_c)
+                          let aside_e = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run3")
+                          match observe_run_frame() {
+                            Absent => no_observation(bytes: cold_run_bytes(r: d), reason: "arm E frame unreadable")
+                            Present { value: frame_e } => {
+                          let e = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_e, identity: id_a, checkout_at: Present { value: path_c }, target_at: Present { value: target_a }, stop_observation: SccacheStatsAtStop)
+                          let reset_e = drop_checkout(toolchain_homes: homes, frame: frame_e, path: path_c)
                           let ta1 = cold_run_bytes(r: a1)
                           let ta2 = cold_run_bytes(r: a2)
                           let tb = cold_run_bytes(r: b)
                           let tc = cold_run_bytes(r: c)
                           let td = cold_run_bytes(r: d)
+                          let te = cold_run_bytes(r: e)
                           let bytes = join([
                             ta1, "\n=== A2: identity A at path PA ===\n", ta2,
                             "\n=== B: identity B at path PA ===\n", tb,
                             "\n=== C: identity A at path PC ===\n", tc,
-                            "\n=== D: identity B at path PA with identity A's target dir ===\n", td, "\n",
+                            "\n=== D: identity B at path PA with identity A's target dir ===\n", td,
+                            "\n=== E: identity A at path PC with identity A's target dir ===\n", te, "\n",
                             "path PA: ", path_a, "\n",
                             arm_rust_wire(label: "A1 (identity A, PA, cold fill)", text: ta1),
                             arm_rust_wire(label: "A2 (identity A, PA)", text: ta2),
                             arm_rust_wire(label: "B  (identity B, PA)", text: tb),
                             arm_rust_wire(label: "C  (identity A, PC)", text: tc),
                             arm_rust_wire(label: "D  (identity B, PA, A's target dir)", text: td),
-                            "target dir of A: ", target_a, " aside: ", aside_d, "\n",
-                            "cleanup: ", reset_a2, reset_b, reset_d, "\n",
+                            arm_rust_wire(label: "E  (identity A, PC, A's target dir)", text: te),
+                            "path PC: ", path_c, " target dir of A: ", target_a, " aside: ", aside_d, aside_e, reset_c, "\n",
+                            "cleanup: ", reset_a2, reset_b, reset_d, reset_e, "\n",
                           ], "")
-                          if !cold_run_succeeded(r: a2) || !cold_run_succeeded(r: b) || !cold_run_succeeded(r: c) || !cold_run_succeeded(r: d) {
+                          if !cold_run_succeeded(r: a2) || !cold_run_succeeded(r: b) || !cold_run_succeeded(r: c) || !cold_run_succeeded(r: d) || !cold_run_succeeded(r: e) {
                             arm_failed(bytes: bytes, reason: "an arm's build failed")
                           } else {
                             match arm_rust_hits(text: ta2) {
@@ -841,14 +852,20 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                                         match arm_rust_hits(text: td) {
                                           Absent => no_observation(bytes: bytes, reason: "no observation: D Rust stats unreadable")
                                           Present { value: h_d } =>
-                                        if h_a2 > 0 && h_d > 0 && h_b == 0 && h_c == 0 {
+                                        match arm_rust_hits(text: te) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: E Rust stats unreadable")
+                                          Present { value: h_e } =>
+                                        if h_a2 > 0 && h_d > 0 && h_e == 0 && h_b == 0 && h_c == 0 {
                                           CliWirePrintable { bytes: bytes, exit: ExitSuccess }
                                         } else {
-                                          arm_failed(bytes: bytes, reason: "target-dir causation does not hold: want A2>0, D>0, B=0, C=0")
+                                          arm_failed(bytes: bytes, reason: "target-dir causation does not hold: want A2>0, D>0, E=0, B=0, C=0")
+                                        }
                                         }
                                         }
                                     }
                                 }
+                            }
+                          }
                             }
                           }
                             }
