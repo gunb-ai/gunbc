@@ -3558,7 +3558,9 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   let spelled = rust_fn_sig_leaf_name(source_indices: source_indices, n: type_expr)
   // The alias hop below must not carry a kernel spelling past itself: `type Int = AbelianGroup<..>`
   // is declared in std.integer, and judging the hop's right-hand side wrapped every Int field in Rc.
-  let kernel_scalar = is_kernel_type(name: spelled) && !is_container_type(name: spelled)
+  // A reference to a declaration the target realizes natively (std.nat Nat = i64) is the host value,
+  // classified by the reference's declaration provenance and the realization authority, not by its name.
+  let kernel_scalar = !is_container_type(name: spelled) && (is_kernel_type(name: spelled) || realized_checkpoint(decision: type_reference_realization(n: type_expr, dag_name: spelled, target: Rust)) != none)
   let judged = match rust_operand_alias_or_refinement_continue(rt: type_expr, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
     Present { value: next } => next
     Absent =>
