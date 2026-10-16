@@ -14,6 +14,8 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
+
 // WHETHER A NODE'S NEXT ATTEMPT MAY START. Every attempt starts from the instance's base ref; there
 // is no second origin. Until gunbc.plans.harness_session_lifecycle slice S1 a terminal attempt was
 // CONTINUED by a new attempt on its branch -- a fresh worker, a fresh conversation, the prior turn's
@@ -175,5 +177,85 @@ fn continuation_after_approved_review(prior: PriorAttemptFacts) -> ContinuationD
         WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt's goal audit refused: ", a.detail], "") }
         WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit" }
       }
+  }
+}
+
+// THE OPERATOR'S RETIREMENT OF AN ENDED LINEAGE (ruling 2026-10-16, LINEAGE-RETIRE-1). Ended spawns
+// nothing because starting over would discard committed work silently; a retire record
+// (gunbc.roadmap.roadmap_lineage_retire LineageRetireRecord) is the operator's explicit, attributable
+// decision to discard, and it is read ONLY by the Ended arm. It changes no other arm's answer except
+// to refuse: retiring is for Ended only, so a record over a lineage that is active, held, complete or
+// refused, or over no lineage at all, is a refusal the dashboard shows, never a silent pass. A record
+// naming another attempt or node than the lineage's current end is stale and refuses. No record:
+// the decision is exactly continuation_decision. The ended branch is untouched by every arm.
+fn continuation_decision_with_retirement(prior: PriorAttemptFacts?, retire: LineageRetireRecord?) -> ContinuationDecision {
+  let base = continuation_decision(prior: prior)
+  match retire {
+    Absent => base
+    Present { value: record } =>
+      match prior {
+        Absent => ContinuationRefused { reason: join(["a retire record names attempt ", record.attempt_key, " of node ", record.node_id, " but the node has no prior attempt; retiring is for an Ended lineage only"], "") }
+        Present { value: p } =>
+          match base {
+            ContinuationEnded { reason: ended } =>
+              if record.attempt_key != p.attempt_key || record.node_id != p.node_id {
+                ContinuationRefused {
+                  reason: join(["the retire record names attempt ", record.attempt_key, " of node ", record.node_id, " but the lineage now ends at attempt ", p.attempt_key, " of node ", p.node_id, "; the record is stale and the operator decides again"], ""),
+                }
+              } else {
+                ContinuationSpawnFresh {
+                  reason: join([
+                    "the lineage ending at attempt ", p.attempt_key, " was retired by ", record.decided_by, " at ", record.decided_at,
+                    " (", continuation_bounded_detail(detail: record.reason), "); its branch ", p.branch,
+                    " is kept and the fresh attempt starts from base. It ended: ", ended,
+                  ], ""),
+                }
+              }
+            ContinuationSpawnFresh { reason: r } => continuation_retire_over_non_ended(record: record, state: "spawn-fresh", reason: r)
+            ContinuationRefused { reason: r } => continuation_retire_over_non_ended(record: record, state: "refused", reason: r)
+            ContinuationHold { reason: r } => continuation_retire_over_non_ended(record: record, state: "held or active", reason: r)
+            ContinuationComplete { reason: r } => continuation_retire_over_non_ended(record: record, state: "complete", reason: r)
+          }
+      }
+  }
+}
+
+fn continuation_retire_over_non_ended(record: LineageRetireRecord, state: String, reason: String) -> ContinuationDecision {
+  ContinuationRefused {
+    reason: join(["a retire record for attempt ", record.attempt_key, " exists but the lineage is ", state, ", not Ended; retiring is for an Ended lineage only: ", reason], ""),
+  }
+}
+
+// THE ADMISSION OF A RETIRE REQUEST, pure over the lineage's facts and the request's values; the
+// route is one realization (DESIGN 3). Who and when arrive as values the route took from its
+// authentication and clock. The request must name the lineage's CURRENT ended end: any other
+// attempt, a lineage that is not Ended, or an empty reason refuses with a located cause.
+type LineageRetireAdmission
+  = LineageRetireAdmitted { record: LineageRetireRecord }
+  | LineageRetireRefused { reason: String }
+
+fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reason: String, decided_by: String, decided_at: String) -> LineageRetireAdmission {
+  if reason == "" {
+    LineageRetireRefused { reason: "a retire request states the operator's reason; an empty reason is not a decision" }
+  } else {
+    match prior {
+      Absent => LineageRetireRefused { reason: "the node has no prior attempt, so there is no lineage to retire" }
+      Present { value: p } =>
+        match continuation_decision(prior: prior) {
+          ContinuationEnded { reason: _ } =>
+            if p.attempt_key != attempt_key {
+              LineageRetireRefused { reason: join(["the request names attempt ", attempt_key, " but the lineage ends at attempt ", p.attempt_key, "; only the ended end may be retired"], "") }
+            } else {
+              LineageRetireAdmitted { record: LineageRetireRecord {
+                node_id: p.node_id, attempt_key: p.attempt_key, branch: p.branch,
+                reason: reason, decided_by: decided_by, decided_at: decided_at,
+              } }
+            }
+          ContinuationSpawnFresh { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (spawn-fresh): ", r], "") }
+          ContinuationRefused { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (refused): ", r], "") }
+          ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
+          ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
+        }
+    }
   }
 }

@@ -30,13 +30,15 @@ import gunbc.auth.session {
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
+import gunbc.principal_projection { principal_ref_eq }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
-  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage,
   ServeWriteAuthorizationPolicy,
+  tracker_write_authorization_policy, operator_approver_principal,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -629,4 +631,46 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
         Permit => false
       }
   }
+}
+
+// RETIRING A LINEAGE IS THE OPERATOR'S DECISION (LINEAGE-RETIRE-1): a signed-in Workspace human
+// outside the approve roster is refused with the action's label; a rostered principal is admitted.
+test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+        action: ServeActionRetireLineage,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessActionNotGranted { action: a } => a == "retire-lineage"
+            _ => false
+          }
+        Permit => false
+      }
+        && human_write_admission(
+          route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+          action: ServeActionRetireLineage,
+          security: session_security(session: s),
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: "2026-09-25T00:05:00Z",
+        ) == Permit
+  }
+}
+
+// THE PRODUCTION ROSTER IS EXACTLY THE ENROLLED OPERATOR, an identity join rather than a count, so a
+// widened roster (a second principal minted beside the operator's) goes red here.
+test fn the_production_approve_roster_is_exactly_the_enrolled_operator() -> Bool {
+  let roster = tracker_write_authorization_policy.approve_roster
+  any(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+    && all(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
 }

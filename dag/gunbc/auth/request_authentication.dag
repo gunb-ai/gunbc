@@ -28,6 +28,7 @@ import gunbc.auth.session {
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
+  google_oidc_principal_authority, google_accounts_principal_namespace,
 }
 
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
@@ -330,6 +331,7 @@ type ServeRouteAction
   | ServeActionApproveDecision
   | ServeActionCreateAllocation
   | ServeActionReleaseAllocation
+  | ServeActionRetireLineage
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -340,6 +342,7 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
     ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
     ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+    ServeActionRetireLineage => "retire-lineage" as NonEmptyStr
   }
 }
 
@@ -354,8 +357,17 @@ type ServeWriteAuthorizationPolicy {
   approve_roster: List<PrincipalRef>
 }
 
+// THE FIRST APPROVER, ENROLLED AS THE DEPLOYMENT ROW THE ROSTER WAITED FOR. The operator signed in to
+// the srv1 lab on 2026-10-16 and asked for their login to be used for operator decisions; the subject
+// is the Google account's stable `sub` as the lab's session recorded it, never an email.
+data operator_approver_principal: PrincipalRef = PrincipalRef {
+  authority: google_oidc_principal_authority,
+  namespace: google_accounts_principal_namespace,
+  subject: "116084671989231734979" as NonEmptyStr,
+}
+
 data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
-  approve_roster: [],
+  approve_roster: [operator_approver_principal],
 }
 
 // ── The human-write law, projected into std.access ─────────────────────────────────────────────
@@ -446,6 +458,17 @@ fn human_action_authorization_decision(
         ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
+        ServeActionRetireLineage =>
+          if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
+            Permit
+          } else {
+            write_refused(
+              route_path: route_path,
+              action: action,
+              security: security,
+              cause: AccessActionNotGranted { action: serve_route_action_label(action: action) as String },
+            )
+          }
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
