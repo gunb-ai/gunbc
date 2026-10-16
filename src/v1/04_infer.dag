@@ -8068,13 +8068,6 @@ fn spine_root_is_shadowed(scope: InferScope, root: String) -> Bool {
   }
 }
 
-fn spine_is_declared_module_path(index: SymbolIndex, dotted: String) -> Bool {
-  match map_get(index.module_named_imports, dotted) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan, expected: Node?) -> InferResult? {
   match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
     Absent => none
@@ -9501,22 +9494,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match spine_root_is_shadowed(scope: scope, root: recv_spine.root) {
             true => none
             false =>
-              if spine_is_declared_module_path(index: scope.type_env.symbol_index, dotted: recv_spine.dotted) {
-                let dotted = concat(recv_spine.dotted, ".", method_name)
-                Present { value: infer_expr(
-                  texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                    name: dotted,
-                    expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: CallableTargetUndetermined } }, descent_evidence: none },
-                    children: mc_args,
-                    inferred: none,
-                    span: span,
-                    name_span: kernel_span(name: dotted)
-                  ),
-                  scope: scope,
-                  expected: expected
-                ) }
-              } else {
-                none
+              let dotted = concat(recv_spine.dotted, ".", method_name)
+              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+                Absent => none
+                Present { value: _ } =>
+                  Present { value: infer_expr(
+                    texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
+                      name: dotted,
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: CallableTargetUndetermined } }, descent_evidence: none },
+                      children: mc_args,
+                      inferred: none,
+                      span: span,
+                      name_span: kernel_span(name: dotted)
+                    ),
+                    scope: scope,
+                    expected: expected
+                  ) }
               }
           }
       }
