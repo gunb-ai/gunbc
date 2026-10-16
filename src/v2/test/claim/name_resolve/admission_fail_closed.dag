@@ -54,7 +54,7 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
         label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: ^dag_token_ident }
+            connective: Atom { identity: ^Int }
           },
           children: [],
           occurrence_id: OccurrenceSynthetic

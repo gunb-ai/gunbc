@@ -1315,10 +1315,6 @@ fn live_deploy_retract_prod_role_wet() -> ProcessExit {
   live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_retract_prod_role_operator_wet() -> ProcessExit {
-  live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
-}
-
 fn live_deploy_prod_role_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
   match live_deploy_prod_role_apply_selection(access: access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
