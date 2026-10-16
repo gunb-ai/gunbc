@@ -248,7 +248,7 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
-  resolve_node, is_width_nat_type_literal,
+  resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown, InductiveField }
@@ -695,7 +695,7 @@ fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String 
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.children |> first {
     Present { value: elem } =>
-      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: false)
     Absent => emit_rust_compile_error_expr(message: concat("optional carrier payload type node absent for ", n.name, " at ", n.span.file, ":", to_string(n.span.start)))
   }
 }
@@ -1510,7 +1510,7 @@ fn emit_width_type_arg_identity_refusal(n: Node, name: String) -> String {
 // literal or a Word8–128 token has no Rust type identity and is a located compile_error! carrying the
 // source span (same shape as UnitVariantPhantomEvidenceUnavailable) -- silent `()` was a second
 // identity for every such argument.
-fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, width_position: Bool) -> String? {
   let name = type_leaf_name_for_collapse(n: n, source_indices: source_indices)
   if generic_param_names |> any(g => g == name) {
     none
@@ -1518,7 +1518,9 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
     match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
       UnitVariantPhantomPresent { variant: _ } => Present { value: name }
       UnitVariantPhantomAbsent =>
-        if is_width_nat_type_literal(n: n) {
+        if is_width_nat_type_literal(n: n) && !width_position {
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+        } else if is_width_nat_type_literal(n: n) {
           match expr_literal_int_optional(expr: n) {
             Present { value: v } =>
               match static_width_index_declaring_module(env: env) {
@@ -1549,27 +1551,27 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   }
 }
 
-fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env, width_position: width_position) {
     Present { value: identity } => identity
     Absent =>
     render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
 }
 
-fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) {
+fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) {
     Present { value: identity } => identity
     Absent =>
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool) -> String {
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
-    rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
+  } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) != none {
+    rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position).value
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
   } else {
@@ -1621,9 +1623,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
@@ -1636,9 +1638,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
@@ -1837,9 +1839,9 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let arg_list = n.children |> map(arg =>
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
           if peel {
-            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-          } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
-            rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
+            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+          } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)) != none {
+            rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)).value
           } else {
             match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types, env: env) {
               Present { value: scalar } => scalar
@@ -2051,8 +2053,8 @@ fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String,
 // The root alias renderer below never calls rust_type_arg_identity_spelling: a bare
 // alias RHS is a declaration-level type reference, not an argument merely because
 // recursive applied children share the rest of its rendering machinery.
-fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env, width_position: width_position) {
     Present { value: identity } => identity
     Absent => render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
@@ -2121,9 +2123,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let arg_list = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       } else {
-        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       }
     )
     let args = arg_list |> join(separator: ", ")
@@ -2140,9 +2142,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let arg_list = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       } else {
-        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       }
     )
     let args = arg_list |> join(separator: ", ")
