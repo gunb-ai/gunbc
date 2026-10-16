@@ -1127,6 +1127,16 @@ test fn the_dependency_arm_marks_only_the_in_repo_dependency_of_the_built_binari
 
 // A marker must be able to reach a binary at all: a blank marker makes every contains_* false, and
 // both arms would then read a wrong capture as a clean exit 0.
+// C1's arm prints its label and its two marker strings; pin them literally so a rename in the
+// shared refactor cannot quietly change the bytes C1 reports (its verdict table is merged semantics,
+// stern-bat-401, and exit 1 means ONLY "some A output has B's marker and not A's").
+test fn the_top_crate_arm_keeps_c1_printed_identity() -> Bool {
+  let top = wrong_capture_top_crate_arm
+  (top.name == "compute-wrong-capture")
+    && (top.marker_a == "C1-WRONG-CAPTURE-MARKER-A")
+    && (top.marker_b == "C1-WRONG-CAPTURE-MARKER-B")
+}
+
 test fn both_arms_carry_distinct_non_blank_markers() -> Bool {
   let arms = [wrong_capture_top_crate_arm, wrong_capture_dependency_arm]
   (length(xs: arms) == 2)

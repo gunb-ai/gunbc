@@ -207,20 +207,20 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
       "  staged_a=", staged_a, "\n  staged_b=", staged_b, "\n",
       "  staging_collides_across_identities=", if staged_a == staged_b { "true" } else { "false" }, "\n",
       if wrong { "  WRONG_CAPTURE: request A captured request B's bytes\n" } else { "" },
-      if arm.per_output_verbose && b_has_a && !b_has_b { "  WRONG_CAPTURE: request B captured request A's bytes\n" } else { "" },
+      // Printed, NOT decided: C1's merged verdict table (stern-bat-401) reserves exit 1 for
+      // "some A output has B's marker and not A's". B carrying A's marker without its own is a
+      // not-own outcome, so it exits 2 -- this line names it as a diagnostic only, so a reader
+      // cannot mistake it for the exit-1 verdict word above.
+      if arm.per_output_verbose && b_has_a && !b_has_b { "  NOTE: request B carries A's marker without its own (not-own outcome, exit 2 by C1's table)\n" } else { "" },
     ], "")
   })
   let any_wrong = any(declared, d => {
     let staged_a = compute_staged_path(layout: layout_a, declared: d.path)
     wrong_capture_has(path: staged_a, marker: arm.marker_b) && !wrong_capture_has(path: staged_a, marker: arm.marker_a)
   })
-  // Arm-gated cross check: A carrying B's marker and B carrying A's marker are both wrong captures.
-  // C1's row never read B for A's marker and never will (per_output_verbose stays false there); the
-  // dependency arm, where a marker can only travel through the dependency's rlib, reads it.
-  let any_crossed = arm.per_output_verbose && any(declared, d => {
-    let staged_b = compute_staged_path(layout: layout_b, declared: d.path)
-    wrong_capture_has(path: staged_b, marker: arm.marker_a) && !wrong_capture_has(path: staged_b, marker: arm.marker_b)
-  })
+  // EXIT 1 IS ONLY any_wrong, on BOTH arms -- C1's merged verdict table, unchanged in the shared
+  // function. B carrying A's marker is caught by the b_own check below and exits 2, exactly as
+  // every other non-own outcome does; it is printed as a NOTE, never escalated.
   let own_bytes = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_a, declared: d.path), marker: arm.marker_a))
   let b_own = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_b, declared: d.path), marker: arm.marker_b))
   // Premise controls: disjoint leases and disjoint staged paths. shared target_dir is a printed reading only, never a gate.
@@ -241,7 +241,7 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     CliWirePrintable { bytes: join([bytes, "no observation: premise control failed (leases or staged paths not disjoint)\n"], ""), exit: ExitFailure { code: 2, reason: "premise control failed" } }
   } else if unobserved {
     CliWirePrintable { bytes: join([bytes, "no observation: a capture mismatched or a staged file was unreadable\n"], ""), exit: ExitFailure { code: 2, reason: "capture mismatch or unreadable staged file" } }
-  } else if any_wrong || any_crossed {
+  } else if any_wrong {
     CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "request A captured request B's bytes from the shared target_dir" } }
   } else if !(own_bytes && b_own) {
     CliWirePrintable { bytes: join([bytes, "no observation: not every staged A output has A's marker and every staged B output B's marker\n"], ""), exit: ExitFailure { code: 2, reason: "own marker absent from a staged output" } }
