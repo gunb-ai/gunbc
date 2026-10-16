@@ -6,6 +6,7 @@ import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
 import gunbc.host.host_software_surface {
+  HostSoftwareSurface,
   srv1_software_surface,
   host_software_surface_for_identity,
   unobserved_software_surface,
@@ -218,6 +219,34 @@ test fn a_shell_builtin_kill_does_not_inherit_the_procps_pgid_quirk() -> Bool {
     && procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234)
       == Present { value: procps_ng_kill_term_pgid_argv(pgid: 1234) }
     && host_kill_signal_realizations(surface: unobserved_software_surface(host: operator_host_srv2)).length() == 0
+}
+
+// THE REALIZATIONS FOLLOW THE SURFACE'S OBSERVATION, NOT THE HOST'S NAME (review 81037). srv1's own
+// observed surface with the builtin observed as NOT listed, or not observed at all, yields procps-ng
+// alone. The earlier fold read the receipt for srv1 whatever the surface said, so this row was red.
+fn srv1_surface_with_kill_builtin(listed: Bool?) -> HostSoftwareSurface {
+  let s = srv1_software_surface()
+  HostSoftwareSurface {
+    host: s.host,
+    os_release: s.os_release,
+    kernel_release: s.kernel_release,
+    apparmor_userns: s.apparmor_userns,
+    programs: s.programs,
+    sudo_policy: s.sudo_policy,
+    user_cgroup_delegation: s.user_cgroup_delegation,
+    toolchain_paths: s.toolchain_paths,
+    kill_shell_builtin: listed,
+  }
+}
+
+test fn kill_realizations_follow_the_surface_observation_not_the_host_identity() -> Bool {
+  let not_listed = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: Present { value: false }))
+  let unobserved = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: none))
+  let listed = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: Present { value: true }))
+  !any(not_listed, realization_is_shell_builtin)
+    && any(not_listed, realization_is_procps_argv)
+    && !any(unobserved, realization_is_shell_builtin)
+    && any(listed, realization_is_shell_builtin)
 }
 
 test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {

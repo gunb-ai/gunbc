@@ -140,6 +140,9 @@ type HostSoftwareSurface {
   sudo_policy: HostResource<SudoPolicyRole, HostSudoPolicyFact>
   user_cgroup_delegation: HostResource<CgroupDelegationRole, HostCgroupDelegationFact>
   toolchain_paths: HostResource<ToolchainPathsRole, HostToolchainPathFact>
+  // Whether the host's shell lists a builtin `kill` beside procps-ng's binary. Absent is not
+  // observed, never "no builtin": only an observed surface may say which realizations exist.
+  kill_shell_builtin: Bool?
 }
 
 fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
@@ -172,6 +175,7 @@ fn software_surface(
   sudo_policy: HostSudoPolicyFact,
   cgroup: HostCgroupDelegationFact,
   toolchain: HostToolchainPathFact,
+  kill_shell_builtin: Bool? = none,
 ) -> HostSoftwareSurface {
   let a0 = resource_occurrence_allocator_initial()
   let m0 = alloc_resource_occurrence(alloc: a0)
@@ -218,6 +222,7 @@ fn software_surface(
       role: ToolchainPaths,
       value: toolchain,
     },
+    kill_shell_builtin: kill_shell_builtin,
   }
 }
 
@@ -367,6 +372,7 @@ fn srv1_software_surface() -> HostSoftwareSurface {
       systemd_run: Present { value: r.systemd_run_path },
       standing: standing,
     },
+    kill_shell_builtin: Present { value: r.kill_shell_builtin_listed },
   )
 }
 
@@ -467,7 +473,7 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
   )
 }
 
-fn srv1_observed_kill_realizations() -> List<KillSignalRealization> {
+fn kill_realizations_with_shell_builtin() -> List<KillSignalRealization> {
   [ProcpsNgArgvKill, ShellBuiltinKill]
 }
 
@@ -478,14 +484,10 @@ fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> List<KillSigna
       match fact.version_label {
         Absent => []
         Present { value: _ } =>
-          if host_identity_eq(a: surface.host, b: operator_host_srv1) {
-            if srv1_software_inhabitance_receipt.kill_shell_builtin_listed {
-              srv1_observed_kill_realizations()
-            } else {
-              [ProcpsNgArgvKill]
-            }
-          } else {
-            [ProcpsNgArgvKill]
+          match surface.kill_shell_builtin {
+            Present { value: listed } =>
+              if listed { kill_realizations_with_shell_builtin() } else { [ProcpsNgArgvKill] }
+            Absent => [ProcpsNgArgvKill]
           }
       }
   }
