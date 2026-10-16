@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
 import gunbc.machine_intake.subject {
   IntakeAttemptId,
@@ -18,7 +17,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
 import gunbc.rung_drop { RungDrop, Standing, Retired }
 import gunbc.rung_drop.standing { standing_rung_drops }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 import gunbc.machine_intake.ampere_smpro_observation {
@@ -108,7 +107,6 @@ type ManagedHostAdmission sole_constructor {
   host: HostIdentity
   subject: MachineIntakeSubject
   access: BmcAccessObservationStanding
-  capability_row: BmcFirmwareReleaseCapabilityRow
   secure: BmcSecureStanding
   hold: ManagedHostAdmissionHold
   smpro: SmproSiteStanding
@@ -121,7 +119,6 @@ fn managed_host_admission(
   host: HostIdentity,
   subject: MachineIntakeSubject,
   access: BmcAccessObservationStanding,
-  capability_row: BmcFirmwareReleaseCapabilityRow,
   secure: BmcSecureStanding,
   hold: ManagedHostAdmissionHold,
   smpro: SmproSiteStanding,
@@ -143,7 +140,6 @@ fn managed_host_admission(
     host: host,
     subject: subject,
     access: access,
-    capability_row: capability_row,
     secure: secure,
     hold: hold,
     smpro: smpro,
@@ -374,7 +370,6 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                   host: operator_host_mtcollins1,
                   subject: subject,
                   access: mtcollins1_access_standing,
-                  capability_row: mtcollins1_capability_row,
                   secure: secure,
                   hold: AdmissionHoldDecided { hold: mtcollins1_unit_hold() },
                   smpro: mtcollins1_smpro_site(),
