@@ -398,11 +398,15 @@ fn provide_result_document(r: ProvideResult) -> String {
 // THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
 // request ran it hermetic while its identity said wet -- the key and the realization answering two
 // different questions. Both arms now name their mode, so the run is the operation the key describes.
+// THE ONE TARGET AUTHORITY IS cargo's --target-dir, NOT the CARGO_TARGET_DIR environment variable:
+// sccache hashes every CARGO_* variable of a rustc invocation into the Rust compile key
+// (extdeps.cache.sccache sccache_rust_key_facts), so exporting the per-identity target through the
+// environment made every identity's key unique and no Rust compile was ever reused across identities.
 fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
-        concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
+        concat([compute_program(instance: instance, cap: CargoCapability), "build", "--target-dir", layout.target_dir], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
         concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
@@ -590,7 +594,6 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       setenv_bindings: concat(
         concat(
           [
-            SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
             SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
           ],
           compute_unit_sccache_setenv(user_runtime_dir: user_runtime_dir),

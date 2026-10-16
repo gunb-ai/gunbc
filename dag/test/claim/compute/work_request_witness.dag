@@ -258,7 +258,7 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 }
 
 // Declared outputs follow the operation: a build names its binaries under the profile directory of
-// the TARGET root (the shared per-host CARGO_TARGET_DIR, not the checkout -- the first wet run
+// the TARGET root (the shared per-host cargo --target-dir, not the checkout -- the first wet run
 // declared the checkout and mismatched a build that had succeeded); checking operations declare
 // none, so an absent binary is a mismatch and an absent nothing is not.
 test fn declared_outputs_follow_the_operation() -> Bool {

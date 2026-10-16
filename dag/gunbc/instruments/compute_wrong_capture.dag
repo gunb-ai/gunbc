@@ -28,7 +28,7 @@ import gunbc.instruments.compute_run_unit_cold {
 //
 // compute_layout gives each work identity its own checkout, staging path and lease
 // (lease_path = <root>/leases/<identity_hex>, the key compute_reserve_and_run takes under), but ONE
-// target_dir per host. compute_run_unit exports it as CARGO_TARGET_DIR and compute_return_outputs
+// target_dir per host. compute_command_argv passes it to cargo as --target-dir and compute_return_outputs
 // reads the declared TargetRoot outputs back out of it. This instrument drives exactly those two
 // steps for two identities from two distinguishable trees, in the order
 //     A builds -> B builds (writes the shared target) -> A captures -> B captures

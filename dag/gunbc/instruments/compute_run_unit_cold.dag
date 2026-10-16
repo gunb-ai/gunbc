@@ -419,7 +419,7 @@ fn layout_with_checkout(layout: ComputeLayout, checkout: String) -> ComputeLayou
   }
 }
 
-// Likewise for the cargo target directory (the CARGO_TARGET_DIR the unit is given): a control only,
+// Likewise for the cargo target directory (the --target-dir the unit's cargo is given): a control only,
 // run sequentially after the original owner's target is moved aside, never a shared writable target.
 fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
   ComputeLayout {
