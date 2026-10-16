@@ -640,8 +640,8 @@ fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
   }
 }
 
-// Two identities back to back in ONE dispatch: same slot, uid and cache directory. Each unit reads
-// the second unit's own server's stats (SccacheStatsAtStop), so the second reading is whole, not a difference.
+// Two identities back to back in ONE dispatch: same slot, uid and cache directory. Only the second
+// unit carries SccacheStatsAtStop, so its reading is that unit's own server's whole counters, not a difference.
 fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
   let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame, stop_observation: NoStopObservation)
   if !cold_run_succeeded(r: first) {
@@ -676,9 +676,6 @@ fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToo
   }
 }
 
-// C9 READINGS. Inferred cause of no cross-identity Rust sccache reuse: each identity checks out at
-// its own absolute path (ComputeLayout checkout), and sccache's Rust key carries the source path.
-// compute_run_unit_cold_same_path_exit below separates path from identity.
 fn rust_sccache_hits(text: String) -> Int? {
   sccache_stat_value(text: text, label: "Cache hits (Rust)")
 }
