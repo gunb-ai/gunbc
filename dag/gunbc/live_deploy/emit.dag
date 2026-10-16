@@ -152,6 +152,8 @@ import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
   user_work_slice_memory_max_of, user_work_slice_memory_high_of,
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
+  attempt_worker_slice_memory_high,
 }
 import gunbc.live_deploy.user_work_pool_slots {
   user_work_pool_slots, UserWorkPoolSlotsDerived,
@@ -163,11 +165,22 @@ import gunbc.owned_directory {
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
 }
 import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
-import gunbc.roadmap.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_dispatch_worktree_member, dashboard_attempt_state_member,
+  dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
+  HostDashboardInstance,
+}
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_sudoers_body, attempt_system_unit_sudoers_path,
+  AttemptSystemUnitSudoersReady, AttemptSystemUnitSudoersRefused,
+  attempt_system_unit_launch_argv_refused_detail,
+  attempt_system_unit_launcher_locus, attempt_system_unit_launcher_revision_receipt_path,
+}
 import gunbc.live_deploy.lab_host_plan {
   LabPlanReady,
   LabPlanRefused,
   lab_plan_refused_emit_line,
+  SystemManagerLauncherSelected,
 }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
@@ -179,6 +192,7 @@ import gunbc.live_deploy.spec {
   gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_user_work_slice_unit_path,
+  gunbc_attempt_worker_slice_unit_path,
   gunbc_service_uid,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
@@ -236,6 +250,8 @@ import gunbc.host.host_layout {
   publication_refused_dir,
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+  attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_drain_lock_path,
 }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_converge {
@@ -1092,6 +1108,181 @@ data publication_spool_request_mode: FileMode = FileMode {
 
 data publication_spool_answer_mode: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
 
+data attempt_unit_spool_answer_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: true, write: false, execute: true },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+fn apply_attempt_unit_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  let root_principal = approval_broker_helper_root_principal
+  let service = spec.service.service_user
+  let instance_root = spec.service.instance_root as String
+  [
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse),
+      owner: root_principal,
+      group: root_principal,
+      path: attempt_unit_spool_root(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_staging_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_request_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: declared_directory_mode(m: DirectoryOwnerOnly),
+      owner: root_principal,
+      group: root_principal,
+      path: attempt_unit_spool_claimed_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: attempt_unit_spool_answer_mode,
+      owner: root_principal,
+      group: service,
+      path: attempt_unit_spool_answer_dir(instance_root: instance_root),
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
+      content: "",
+    )),
+    deploy_raw(command: deploy_stage_install_owned_command(
+      stage_name: join(["gunbc-attempt-unit-spool-drain-lock-", spec.instance_id as String], ""),
+      mode: "0644" as NonEmptyStr,
+      owner: root_principal,
+      group: root_principal,
+      dest: attempt_unit_spool_drain_lock_path(instance_root: instance_root),
+    )),
+  ]
+}
+
+data attempt_system_unit_grant_unknown_instance_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant has no HostDashboardInstance for this spec.instance_id, so it will not install a host-global file or another instance's grant. instance="
+data attempt_system_unit_grant_revision_unbound_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit launcher grant was asked to install under RevisionNotInstalled; a sha-addressed root-owned release has no path that could mean.\n"
+data attempt_system_unit_grant_launch_argv_refused_poison: String = "__GUNBC_DEPLOY_REFUSED__ attempt-system-unit sudoers grant: the launcher named argument was refused, so it will not pin a false argv. "
+
+fn attempt_system_unit_grant_steps_for_instance(
+  spec: DeploymentSpec,
+  principal: GroundedPosixPrincipal,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+) -> List<PipelineStep> {
+  match attempt_system_unit_sudoers_body(instance: instance, revision: revision) {
+    AttemptSystemUnitSudoersRefused { cause } => [
+      deploy_raw(command: join([
+        attempt_system_unit_grant_launch_argv_refused_poison,
+        attempt_system_unit_launch_argv_refused_detail(cause: cause),
+        "\n",
+      ], "")),
+    ]
+    AttemptSystemUnitSudoersReady { text: sudoers_text } =>
+      attempt_system_unit_grant_steps_for_sudoers(
+        spec: spec,
+        principal: principal,
+        instance: instance,
+        revision: revision,
+        sudoers_text: sudoers_text,
+      )
+  }
+}
+
+fn attempt_system_unit_grant_steps_for_sudoers(
+  spec: DeploymentSpec,
+  principal: GroundedPosixPrincipal,
+  instance: HostDashboardInstance,
+  revision: ReleaseRevisionBinding,
+  sudoers_text: String,
+) -> List<PipelineStep> {
+  let locus = attempt_system_unit_launcher_locus(instance: instance)
+  let final_path = attempt_system_unit_sudoers_path(instance: instance)
+  let temp_path = join([final_path, ".new"], "")
+  let stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String], "")
+  let readback = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-readback"], "")
+  let rev_stage = join(["gunbc-attempt-system-unit-", instance.instance_id as String, "-revision"], "")
+  concat(
+    apply_attempt_unit_spool_steps(spec: spec),
+    concat(
+      root_owned_helper_snapshot_steps(locus: locus, revision: revision),
+      [
+          deploy_raw(command: deploy_stage_write_command(
+            stage_name: rev_stage,
+            content: join([release_revision_execstart_text(binding: revision), "\n"], ""),
+          )),
+          deploy_raw(command: deploy_stage_install_owned_command(
+            stage_name: rev_stage,
+            mode: "0644" as NonEmptyStr,
+            owner: approval_broker_helper_root_principal,
+            group: approval_broker_helper_root_principal,
+            dest: attempt_system_unit_launcher_revision_receipt_path(instance: instance),
+          )),
+          deploy_raw(command: deploy_stage_write_command(stage_name: stage, content: sudoers_text)),
+          deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+          deploy_raw(command: deploy_stage_install_owned_command(
+            stage_name: stage,
+            mode: "0440" as NonEmptyStr,
+            owner: approval_broker_helper_root_principal,
+            group: approval_broker_helper_root_principal,
+            dest: temp_path,
+          )),
+          deploy_raw(command: installed_visudo_policy_check_command(path: temp_path)),
+          deploy_raw(command: rename_no_target_directory_command(source: temp_path, dest: final_path)),
+          deploy_raw(command: installed_visudo_policy_check_command(path: final_path)),
+          deploy_raw(command: deploy_stage_install_from_command(
+            source: final_path,
+            mode: "0400" as NonEmptyStr,
+            owner: grounded_posix_principal_name(p: principal),
+            group: grounded_posix_principal_name(p: principal),
+            stage_name: readback,
+          )),
+          deploy_raw(command: deploy_stage_cmp_stages_command(left: stage, right: readback)),
+          deploy_raw(command: helper_snapshot_retire_command(base: locus.base, revision: revision)),
+        ],
+    ),
+  )
+}
+
+fn attempt_system_unit_grant_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match revision {
+    RevisionNotInstalled => [
+      deploy_raw(command: attempt_system_unit_grant_revision_unbound_poison),
+    ]
+    RevisionBoundAtEmission { revision: _ } =>
+      match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+        DashboardInstanceIdUnknown { instance_id: id } => [
+          deploy_raw(command: join([attempt_system_unit_grant_unknown_instance_poison, id, "\n"], "")),
+        ]
+        DashboardInstanceForId { instance: instance } =>
+          attempt_system_unit_grant_steps_for_instance(spec: spec, principal: principal, instance: instance, revision: revision)
+      }
+  }
+}
+
+// THE PLAN'S WORKER-SANDBOX CHOICE IS THE REALIZATION SELECTOR. User-manager ProtectHome is not
+// an option on a host whose user manager does not enforce; LabPlanReady.worker_sandbox is
+// SystemManagerLauncherSelected, and that identity is this grant plus the attempt-worker slice,
+// not a second start path beside them.
+fn apply_selected_worker_sandbox_steps(spec: DeploymentSpec, principal: GroundedPosixPrincipal, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  match spec.target.lab_plan {
+    LabPlanRefused { cause: _ } => []
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => concat(
+          apply_attempt_worker_slice_install_steps(),
+          attempt_system_unit_grant_steps(spec: spec, principal: principal, revision: revision),
+        )
+      }
+  }
+}
+
 fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [
     deploy_raw(command: install_directory_owned_command(
@@ -1619,6 +1810,53 @@ fn apply_user_work_slice_install_steps() -> List<PipelineStep> {
       )),
       deploy_raw(command: shell_privileged_command_text_of_argv(
         argv: systemctl_user_daemon_reload_argv(uid: gunbc_service_uid),
+      )),
+    ]
+  }
+}
+
+type AttemptWorkerSliceUnitFile
+  = AttemptWorkerSliceUnitFileReady { file: SystemdUnitFile }
+  | AttemptWorkerSliceUnitFileRefused { cause: String }
+
+fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
+  match attempt_worker_slice_memory_high() {
+    UserWorkSliceHighGapExceedsMax =>
+      AttemptWorkerSliceUnitFileRefused {
+        cause: "attempt-worker MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
+      }
+    UserWorkSliceHighDerived { bytes: high } =>
+      AttemptWorkerSliceUnitFileReady {
+        file: SliceUnitFile {
+          unit: [
+            Description { text: "gunbc system-manager cgroup bound for attempt worker transients" as NonEmptyStr },
+          ],
+          slice: [
+            slice_memory_max(bytes: attempt_worker_slice_memory_max),
+            slice_memory_high(bytes: high),
+            slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
+          ],
+          install: NotInstallable,
+        },
+      }
+  }
+}
+
+fn apply_attempt_worker_slice_install_steps() -> List<PipelineStep> {
+  match attempt_worker_slice_unit_file() {
+    AttemptWorkerSliceUnitFileRefused { cause } => [
+      Comment { text: cause },
+      Exit { status: "1" },
+    ]
+    AttemptWorkerSliceUnitFileReady { file } => [
+      deploy_raw(command: deploy_stage_write_command(
+        stage_name: attempt_worker_slice_unit_name as String,
+        content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+      )),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: attempt_worker_slice_unit_name as String,
+        mode: install_file_shared_mode,
+        dest: gunbc_attempt_worker_slice_unit_path() as String,
       )),
     ]
   }
@@ -2842,43 +3080,6 @@ fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> Stri
   join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
 }
 
-// 🟡 dissolve-on: the last step below assembles `sha256sum … | sudo install /dev/stdin` as a string
-// (medium-as-string); it dissolves when v2.workflow.bash_emit can render a piped command from
-// modeled parts, exactly as approval_broker_tree_digest_expr's marker says.
-fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let rel = microvm_controller_firecracker_release
-  let dir = microvm_controller_release_dir(revision: revision)
-  let stage = microvm_controller_tarball_stage_path()
-  let extracted = microvm_controller_stage_dir
-  [
-    deploy_raw(command: join(argv_words(command: mkdir_parents_command(path: extracted)), " ")),
-    deploy_raw(command: join(argv_words(command: curl_download_command(url: firecracker_release_download_url(rel: rel), destination: stage)), " ")),
-    deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: firecracker_release_aarch64_tarball_sha256), file_path: stage as NonEmptyStr)),
-    deploy_raw(command: join(argv_words(command: tar_extract_command(archive: stage, into_directory: extracted, strip_components: 0)), " ")),
-    deploy_raw(command: install_file_owned_command(
-      mode: install_executable_shared_mode,
-      owner: microvm_controller_owner,
-      group: microvm_controller_owner,
-      source: join([extracted, "/", firecracker_release_binary_path_in_tarball(rel: rel)], ""),
-      dest: microvm_controller_vmm_binary(release_dir: dir),
-    )),
-    deploy_raw(command: install_file_owned_command(
-      mode: install_executable_shared_mode,
-      owner: microvm_controller_owner,
-      group: microvm_controller_owner,
-      source: join([extracted, "/", firecracker_release_jailer_path_in_tarball(rel: rel)], ""),
-      dest: microvm_controller_jailer_binary(release_dir: dir),
-    )),
-    deploy_raw(command: join([
-      sha256sum_program().invocation as String, " ",
-      microvm_controller_vmm_binary(release_dir: dir), " ",
-      microvm_controller_jailer_binary(release_dir: dir),
-      " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", microvm_controller_owner as String, "-g", microvm_controller_owner as String, "/dev/stdin",
-        microvm_controller_vmm_receipt_path(revision: revision)]), " "),
-    ], "")),
-  ]
-}
-
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus
 // belong to this module while the unit's shape belongs to gunbc.runner.runner_microvm_slot_unit: the
 // service section is that module's list plus one directive, inserted rather than re-authored.
@@ -2892,85 +3093,6 @@ fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUni
   microvm_locus_unit_with_workspace_root(
     file: microvm_slot_unit_file(release_dir: release_dir, timeout_stop_sec: microvm_slot_unit_timeout_stop_sec()),
     release_dir: release_dir,
-  )
-}
-
-fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  [
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_controller_slice_unit_name as String,
-      content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_controller_slice_unit_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_controller_slice_unit_path() as String,
-    )),
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_slot_unit_template_name as String,
-      content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
-        release_dir: microvm_controller_release_dir(revision: revision),
-      )),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_slot_unit_template_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_slot_unit_path() as String,
-    )),
-  ] + (if microvm_controller_requires_ci_reservation_unit() { [
-    deploy_raw(command: deploy_stage_write_command(
-      stage_name: microvm_slot_reserve_unit_name as String,
-      content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
-        file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
-        release_dir: microvm_controller_release_dir(revision: revision),
-      )),
-    )),
-    deploy_raw(command: deploy_stage_install_command(
-      stage_name: microvm_slot_reserve_unit_name as String,
-      mode: install_file_shared_mode,
-      dest: microvm_slot_reserve_unit_path() as String,
-    )),
-  ] } else { [] })
-}
-
-// THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
-// the manager. An instance is started by the shakedown's own dispatch (systemctl start
-// gunbc-microvm-slot@srv1-13), never by the deploy, because starting the controller IS running an
-// attempt and an attempt is admitted by the readiness store and a reservation, not by a deploy.
-fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      concat(
-        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        concat(
-          release_locus_install_steps(
-            owner: microvm_controller_owner,
-            base_root: microvm_controller_root,
-            revision: revision,
-          ),
-          microvm_controller_vmm_install_steps(revision: revision) + workspace_image_install_steps(revision: revision),
-        ),
-      ),
-      concat(
-        [
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
-          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: runner_microvm_converged_receipt_root)),
-        ],
-        concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
-      ),
-    ),
-    on_failure: FailFast,
-  }
-}
-
-data microvm_controller_install_emit_refused_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the microVM slot controller install pipeline did not emit; the stage refuses rather than running a partial script (DESIGN section 5)."
-
-fn microvm_controller_install_script(revision: ReleaseRevisionBinding) -> String {
-  emit_pipeline_or_poison(
-    p: microvm_controller_install_intent(revision: revision),
-    refused: microvm_controller_install_emit_refused_poison,
   )
 }
 
@@ -3216,22 +3338,27 @@ fn approval_broker_helper_snapshot_readback_command(dir: String) -> String {
 // release's directory. It is one argv, rendered by the same argv authority as every other deploy
 // command. find receives `!`, `{}` and `+` as words; the renderer quotes them and the shell strips
 // the quotes.
-fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+fn helper_snapshot_retire_command(base: String, revision: ReleaseRevisionBinding) -> String {
   shell_command_text_of_argv(argv: concat(
     [
-      find_program().invocation as String, approval_broker_helper_snapshot_base,
-      "-mindepth", "1", "-maxdepth", "1", "!", "-name", release_revision_execstart_text(binding: revision),
+      find_program().invocation as String, base,
+      "-mindepth", "1", "-maxdepth", "1", "-type", "d", "!", "-name", release_revision_execstart_text(binding: revision),
       "-exec",
     ],
     concat(sudo_elevate_argv(command: [fleet_rm_binary_path as String, "-rf", "--"]), ["{}", "+"]),
   ))
 }
 
-fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = helper_locus_dir(locus: approval_broker_helper_snapshot_locus(), revision: revision)
+fn approval_broker_helper_snapshot_retire_command(revision: ReleaseRevisionBinding) -> String {
+  helper_snapshot_retire_command(base: approval_broker_helper_snapshot_base, revision: revision)
+}
+
+fn root_owned_helper_snapshot_steps(locus: HelperLocus, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = helper_locus_dir(locus: locus, revision: revision)
   concat(
     [
-      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: approval_broker_helper_snapshot_base, privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: "/opt/gunbc", privileged: true)),
+      deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: locus.base, privileged: true)),
       deploy_raw(command: rm_force_recursive_command(path: dir)),
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: dir, privileged: true)),
       deploy_raw(command: install_directory_command(mode: install_d_shared_mode, path: join([dir, "/src"], ""), privileged: true)),
@@ -3243,15 +3370,23 @@ fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> Li
         deploy_raw(command: pwd_file_install_privileged_command(
           rel: join(["target/release/", gunbc_release_bin_name], ""),
           mode: install_executable_shared_mode,
-          owner: approval_broker_helper_root_principal,
-          group: approval_broker_helper_root_principal,
+          owner: locus.owner,
+          group: locus.owner,
           dest: join([dir, "/", gunbc_release_bin_name], ""),
         )),
-        locus_tree_receipt_step_at(owner: approval_broker_helper_root_principal, dir: dir, revision: revision),
-        deploy_raw(command: approval_broker_helper_snapshot_readback_command(dir: dir)),
+        locus_tree_receipt_step_at(owner: locus.owner, dir: dir, revision: revision),
+        deploy_raw(command: helper_snapshot_readback_command_at(
+          ancestors: path_ancestors_inclusive(path: locus.base),
+          dir: dir,
+          owner: bash_build_word_lit(text: locus.owner as String),
+        )),
       ],
     ),
   )
+}
+
+fn approval_broker_helper_snapshot_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  root_owned_helper_snapshot_steps(locus: approval_broker_helper_snapshot_locus(), revision: revision)
 }
 
 fn approval_broker_helper_grant_admitted_install_steps(revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
@@ -3420,7 +3555,10 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       LiveDeployServeUnitOidcReadbackRefused { cause: _ } => []
       LiveDeployServeUnitEmitted { file } => concat(
         if !plan_writes_unit(plan: plan) { [] } else { concat(
-          apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+          concat(
+            apply_selected_worker_sandbox_steps(spec: spec, principal: principal, revision: revision),
+            apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision),
+          ),
           concat(
             apply_systemd_unit_write_steps(spec: spec, file: file),
             [deploy_raw(command: deploy_stage_install_command(
@@ -4576,23 +4714,26 @@ fn live_deploy_apply_script_for(
 ) -> String {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "apply")
-    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
-      match spec.target.tailscale_client {
-        ScopedRemovalUnobserved { reason: r } => apply_unobserved_client_poison(reason: r)
-        ScopedRemovalUnsupported { observed: _ } => live_deploy_apply_script_when_client_observed(
-          spec: spec,
-          plan: plan,
-          cap_authorization: cap_authorization,
-          oidc_now: oidc_now,
-          access: access,
-        )
-        ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
-          spec: spec,
-          plan: plan,
-          cap_authorization: cap_authorization,
-          oidc_now: oidc_now,
-          access: access,
-        )
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected =>
+          match spec.target.tailscale_client {
+            ScopedRemovalUnobserved { reason: r } => apply_unobserved_client_poison(reason: r)
+            ScopedRemovalUnsupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+              spec: spec,
+              plan: plan,
+              cap_authorization: cap_authorization,
+              oidc_now: oidc_now,
+              access: access,
+            )
+            ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
+              spec: spec,
+              plan: plan,
+              cap_authorization: cap_authorization,
+              oidc_now: oidc_now,
+              access: access,
+            )
+          }
       }
   }
 }
@@ -4785,65 +4926,5 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     module_path: "v2.compiler.emit_orchestration",
     decl_name: "orch_emit_pipeline",
     field: WholeDeclaration,
-  }
-}
-
-// Additive installation only: the executor is not enabled or started here. Its native waiter,
-// bounded adapter and unit are derived from the same installed release as the slot controller.
-fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = microvm_controller_release_dir(revision: revision)
-  [
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_script_name,
-      content: workspace_commissioning_executor_script())),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_script_name,
-      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_script_name], ""))),
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_helper_name,
-      content: workspace_executor_helper_script(release_dir: dir))),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_helper_name,
-      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_helper_name], ""))),
-    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_template_name as String,
-      content: workspace_executor_unit_text(release_dir: dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))),
-    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_template_name as String,
-      mode: install_file_shared_mode, dest: workspace_executor_unit_path() as String)),
-  ]
-}
-
-// The installer has already installed the exact controller release under root custody. These
-// argument-free grants name that binary, tree and the fixed entry roster; no job code is elevated.
-// The same policy also grants its exact readback operation to the installation observer.
-fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let stage = "workspace-commissioning-sudoers"
-  let pending = concat(workspace_dispatch_grant_path, ".pending")
-  [
-    deploy_raw(command: deploy_stage_write_command(stage_name: stage,
-      content: concat(workspace_dispatch_grant_content(release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr), "\n"))),
-    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
-    deploy_raw(command: deploy_stage_install_owned_command(stage_name: stage, mode: "0440", owner: microvm_controller_owner, group: microvm_controller_owner, dest: pending)),
-    deploy_raw(command: installed_visudo_policy_check_command(path: pending)),
-    deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
-    deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
-  ]
-}
-
-// Copy only the named files, never extract an archive as root. Verify the administrator-owned
-// destination after copying: a transport/staging race cannot turn different bytes into admission.
-fn workspace_image_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
-  let dir = workspace_installed_image_root(release_dir: microvm_controller_release_dir(revision: revision), identity: workspace_demo_image_identity())
-  let kernel = concat(concat(dir, "/"), runner_guest_kernel_artifact.filename as String)
-  let rootfs = concat(dir, "/workspace.ext4")
-  match runner_guest_kernel_artifact.integrity {
-    ArtifactDigestPinned { digest, provenance: _ } => [
-      deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: dir)),
-      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
-        owner: microvm_controller_owner, group: microvm_controller_owner,
-        source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact), dest: kernel)),
-      deploy_raw(command: digest_shell_verify_line(digest: digest, file_path: kernel as NonEmptyStr)),
-      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
-        owner: microvm_controller_owner, group: microvm_controller_owner,
-        source: workspace_image_path(root: workspace_image_staging_root), dest: rootfs)),
-      deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: workspace_demo_image_identity()), file_path: rootfs as NonEmptyStr)),
-    ]
-    ArtifactDigestUnpinned { cause: _ } => [deploy_raw(command: "exit 1")]
-    ArtifactDigestNotPinnable { cause: _ } => [deploy_raw(command: "exit 1")]
   }
 }
