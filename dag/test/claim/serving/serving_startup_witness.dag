@@ -97,7 +97,7 @@ test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
   let r = ninfer_serve_81c8ce09_sm120_release
   match serving_engine_verdict(
     engine: r,
-    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "00" } },
+    binary: ServingInstalledFileRead { bytes: r.binary.bytes, sha256: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } },
     rev_file: ServingInstalledFileRead { bytes: r.rev_file.bytes, sha256: r.rev_file.sha256 },
   ) {
     ServingEngineFileDigestDiffers { relative_path: _, pinned: _, observed: _ } => true
@@ -171,7 +171,7 @@ fn placement_commands_of(p: ServingStartupProgram) -> List<ArgvCommand> {
 // REVIEW 80987: an unreadable or differing copy refuses typed and carries only its own partial's removal; an
 // unreadable model link refuses the switch instead of switching it blind.
 test fn a_differing_or_unreadable_copy_refuses_typed_and_endangers_nothing() -> Bool {
-  let differs = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyDiffers { observed: Sha256Digest { hex: "00" } }, fetch: ServingFetchSucceeded)
+  let differs = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyDiffers { observed: Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" } }, fetch: ServingFetchSucceeded)
   let unreadable = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyUnreadable { cause: "io error" as NonEmptyStr }, fetch: ServingFetchSucceeded)
   (match differs { ServingArtifactRefusedCopyDiffers { observed: _, own_partial_cleanup: _ } => true  _ => false })
     && (match unreadable { ServingArtifactRefusedCopyUnreadable { cause: _, own_partial_cleanup: _ } => true  _ => false })
