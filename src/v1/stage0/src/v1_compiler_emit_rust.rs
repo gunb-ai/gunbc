@@ -32424,40 +32424,83 @@ pub fn emit_rc_deeper_inner_arm_strs(
             }
             __result
         });
-        rc_grouped_match_arm_strs(
-            posed.clone(),
-            scope.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            "".to_string(),
-            true,
-            |inner_members, inner_plan| {
-                emit_rc_grouped_match_arm(
-                    inner_members.clone(),
-                    inner_plan.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    match_result_type.clone(),
+        if {
+            let mut __found = false;
+            for a in posed.iter().cloned() {
+                if crate::v1_std_core::match_pattern_is_irrefutable(
+                    crate::v1_std_core::arm_pattern(a.clone()),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            Rc::new({
+                let mut __result = Vec::new();
+                for pair in Rc::new(
+                    posed
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
                 )
-            },
-            |index, arm| {
-                emit_typed_match_arm(
-                    arm.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    "".to_string(),
-                    match_result_type.clone(),
-                    false,
-                    false,
-                )
-            },
-        )
+                .iter()
+                .cloned()
+                {
+                    __result.push(emit_typed_match_arm(
+                        pair.1.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        "".to_string(),
+                        match_result_type.clone(),
+                        false,
+                        false,
+                    ));
+                }
+                __result
+            })
+        } else {
+            rc_grouped_match_arm_strs(
+                posed.clone(),
+                scope.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                "".to_string(),
+                true,
+                |inner_members, inner_plan| {
+                    emit_rc_grouped_match_arm(
+                        inner_members.clone(),
+                        inner_plan.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        match_result_type.clone(),
+                    )
+                },
+                |index, arm| {
+                    emit_typed_match_arm(
+                        arm.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        "".to_string(),
+                        match_result_type.clone(),
+                        false,
+                        false,
+                    )
+                },
+            )
+        }
     }
 }
 
