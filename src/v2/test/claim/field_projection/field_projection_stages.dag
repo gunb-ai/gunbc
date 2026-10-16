@@ -669,30 +669,21 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
   fps_resolves_of(o: fps_match_binder_source(field: "tree"))
 }
 
-// A MATCH-ARM BINDER AS A RECEIVER IS NOT YET TYPED, AND THIS ROW PINS EXACTLY HOW. It is the population of
-// the DECLARED RUNG DROP gunbc.rung_drop match_arm_binder_typing_lost_to_lexical_carrier: gunbc#12641 typed a
-// match-arm binder, and that typing rode on infer_parameter_scope_search, which #12766 narrowed to lambdas and
-// main's lexical-reference cut deleted. The binder's use is now a lexical reference whose recorded binding
-// declares no type, so the program INFERS and the projection off the binder is accepted UNDERIVED -- not
-// refused, and not fabricated. (Before the pattern-field reader read a lexical binder, the whole program
-// refused with infer_grounding_not_derived; that was a reader defect, repaired in gunbc#12506, and is why this
-// row no longer asserts a refusal.)
-//
+// A MATCH-ARM BINDER AS A RECEIVER IS TYPED, AND THIS ROW PINS THE ROUTE. It was the population of the
+// rung drop match_arm_binder_typing_lost_to_lexical_carrier (retired): the binder's use is a lexical
+// reference whose binding records the matched variant field, and infer types it at the scrutinee's
+// instantiation, so the projection off it GROUNDS. It stays as the control that the restoration is real
+// (DESIGN section 4b(4)); the discriminating RED is the parameter receiver's absent field
+// (fps_an_absent_field_does_not_infer) and the binder's own undeclared field
+// (v2.test.claim.match_binder.match_binder_typing).
 // EXACT ROUTE, SO AN UNRELATED REFUSAL REDS IT: the program must infer, the projection node must be found in
-// the inferred tree, and ITS facts must carry no derived grounding. A program refused for any cause, or a
-// projection typed by some other route, makes it false.
-//
-// WHY THIS IS NOT "EVERYTHING IS UNDERIVED": the PARAMETER receiver in this same file grounds
-// (fps_a_valid_field_projection_grounds) and its absent field IS refused (fps_an_absent_field_does_not_infer).
-// Those are the discriminating positive controls. RESTORATION TRIGGER, the drop's: match-arm binder typing
-// through the lexical-binding carrier (N7-3). This row then flips to the projection grounded, and under DESIGN
-// section 4b(4) it stays as the control that the restoration is real.
+// the inferred tree, and ITS facts must carry a derived grounding.
 // projection_grounded is Present only on exactly that route (resolved, inferred, the projection node found
 // in the inferred tree, its facts present), so Absent -- any refusal, a missing node, missing facts -- reds it.
-test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
+test fn fps_a_match_binder_receiver_is_typed_holds() -> Bool {
   match fps_projection_grounded_of(o: fps_match_binder_source(field: "tree")) {
     Absent => false
-    Present { value: derived } => !derived
+    Present { value: derived } => derived
   }
 }
 
