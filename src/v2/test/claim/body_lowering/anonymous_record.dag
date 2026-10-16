@@ -435,17 +435,17 @@ data ar_carrier_pos_headed_source: String = "module v2.test.ar_carrier_pos_heade
 // whole. diagnostics_fatal_reason is the single authority for which element of a chain is the fatal, so
 // the reason asserted below is the census's own reason read the census reads it.
 data ar_carrier_ingest: SourceRootIngest = Cons {
-  head: ar_read(source: ar_provider_source, unit: ^ar_provider_cu, id: ^ar_provider_read, path: "src/v2/test/fixture/anonymous_record/provider.dag"),
+  head: ar_read(source: ar_provider_source, id: ^ar_provider_read, unit: ^ar_provider_cu, path: "src/v2/test/fixture/anonymous_record/provider.dag"),
   tail: Cons {
-    head: ar_read(source: ar_types_source, unit: ^ar_types_cu, id: ^ar_types_read, path: "src/v2/test/fixture/anonymous_record/types.dag"),
+    head: ar_read(source: ar_types_source, id: ^ar_types_read, unit: ^ar_types_cu, path: "src/v2/test/fixture/anonymous_record/types.dag"),
     tail: Cons {
-      head: ar_read(source: ar_carrier_source, unit: ^ar_carrier_cu, id: ^ar_carrier_read, path: "src/v2/test/fixture/anonymous_record/carrier.dag"),
+      head: ar_read(source: ar_carrier_source, id: ^ar_carrier_read, unit: ^ar_carrier_cu, path: "src/v2/test/fixture/anonymous_record/carrier.dag"),
       tail: Cons {
-        head: ar_read(source: ar_carrier_headed_source, unit: ^ar_carrier_headed_cu, id: ^ar_carrier_headed_read, path: "src/v2/test/fixture/anonymous_record/carrier_headed.dag"),
+        head: ar_read(source: ar_carrier_headed_source, id: ^ar_carrier_headed_read, unit: ^ar_carrier_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_headed.dag"),
         tail: Cons {
-          head: ar_read(source: ar_carrier_pos_source, unit: ^ar_carrier_pos_cu, id: ^ar_carrier_pos_read, path: "src/v2/test/fixture/anonymous_record/carrier_pos.dag"),
+          head: ar_read(source: ar_carrier_pos_source, id: ^ar_carrier_pos_read, unit: ^ar_carrier_pos_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos.dag"),
           tail: Cons {
-            head: ar_read(source: ar_carrier_pos_headed_source, unit: ^ar_carrier_pos_headed_cu, id: ^ar_carrier_pos_headed_read, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag"),
+            head: ar_read(source: ar_carrier_pos_headed_source, id: ^ar_carrier_pos_headed_read, unit: ^ar_carrier_pos_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag"),
             tail: Empty
           }
         }
@@ -464,17 +464,15 @@ fn ar_carrier_rows(entry: NativeCensusModule) -> List<NativeCensusResidualRow> {
   match native_test_context_from_ingest(ingest: ar_carrier_ingest) {
     Rejected { diagnostics: _ } => Empty
     Accepted { value: context, diagnostics: _ } =>
-      let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
-      let step = native_census_module_resolution(
-        context: context,
-        refusal_index: refusal_index,
-        entry: entry
-      )
-      match step.outcome {
-        NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
-          native_census_residual_rows(positions: context.positions, entry: entry, first: f, rest: r)
-        NativeCensusModuleFileRefused => Empty
-        NativeCensusModuleResolved => Empty
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let step = native_census_module_resolution(context: context, refusal_index: refusal_index, entry: entry)
+        match step.outcome {
+          NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
+            native_census_residual_rows(positions: context.positions, entry: entry, first: f, rest: r)
+          NativeCensusModuleFileRefused => Empty
+          NativeCensusModuleResolved => Empty
+        }
       }
   }
 }
@@ -484,7 +482,7 @@ data ar_carrier_entry_red_headed: NativeCensusModule = ar_carrier_entry(module: 
 data ar_carrier_entry_pos: NativeCensusModule = ar_carrier_entry(module: "v2.test.ar_carrier_pos", unit: ^ar_carrier_pos_cu)
 
 fn ar_row_reasons(rows: List<NativeCensusResidualRow>) -> List<Symbol> {
-  fold(rows, init: Empty, f: fn(acc: List<Symbol>, row: NativeCensusResidualRow) -> List<Symbol> {
+  fold(rows, init: Empty, f: fn(acc, row) {
     list_snoc_item(xs: acc, item: diagnostics_fatal_reason(d: row.chain))
   })
 }
@@ -492,7 +490,7 @@ fn ar_row_reasons(rows: List<NativeCensusResidualRow>) -> List<Symbol> {
 // THE LOCATED LINES, as the census measured them. An UnresolvedNode row -- a refusal that could not be
 // placed -- is reported as -1, never dropped: a row that loses its position is caught, not laundered.
 fn ar_row_lines(rows: List<NativeCensusResidualRow>) -> List<Int> {
-  fold(rows, init: Empty, f: fn(acc: List<Int>, row: NativeCensusResidualRow) -> List<Int> {
+  fold(rows, init: Empty, f: fn(acc, row) {
     let line = match row.at {
       FileRefusalAtLine { line: l, byte_column: _ } => l
       FileRefusalAtOtherFile { file: _ } => -2
