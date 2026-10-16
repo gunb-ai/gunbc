@@ -39,7 +39,7 @@ import extdeps.tools.gnu_coreutils { cp_command, install_empty_file_command, ins
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.e2fsprogs { dumpe2fs_superblock_command }
 import extdeps.systemd { MemoryMax, MemorySwapMax, CPUQuota }
-import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting }
 
 // A public-key reference is resolved by administrator-owned configuration. The browser cannot
 // supply a host path or smuggle authorized_keys options into the bootstrap record.
@@ -227,9 +227,9 @@ fn workspace_launch_plan(binding: WorkspaceLaunchBinding, ground: AttemptGround,
         workspace_grant: workspace_disk_bytes(),
         lease_expires_unix: Present { value: binding.lease_expires_unix },
         runtime_properties: [
-          SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: memory_grant_bytes(g: binding.reservation.grant)) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
-          SystemdRunProperty { property: MemorySwapMax, value: "0" },
-          SystemdRunProperty { property: CPUQuota, value: concat(to_string(workspace_profile_vcpus(profile: binding.reservation.request.profile) * 100), "%") as NonEmptyStr },
+          NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: memory_grant_bytes(g: binding.reservation.grant)) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))) as NonEmptyStr },
+          NamedUnitSetting { property: MemorySwapMax, value: "0" },
+          NamedUnitSetting { property: CPUQuota, value: concat(to_string(workspace_profile_vcpus(profile: binding.reservation.request.profile) * 100), "%") as NonEmptyStr },
         ],
         tap_device: net.tap_device, guest_ip_boot_arg: runner_slot_guest_network_boot_args(net: net),
         slice: runner_microvm_attempt_slice_property(attempt: attempt), jail_root: jail_root,

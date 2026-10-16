@@ -21,6 +21,8 @@ gunbc_bin="$repo_root/target/release/gunbc"
 canonical_root=/var/lib/gunbc/fabric/allocation
 scratch=$(mktemp -d /tmp/fci1-bounded-controls.XXXXXX)
 trap 'rm -rf -- "$scratch"' EXIT
+fci1_install_controls_slice || exit 2
+trap 'rm -rf -- "$scratch"; fci1_remove_controls_slice || exit 1' EXIT
 
 store_digest() {
   if [[ -d $canonical_root ]]; then
@@ -72,8 +74,8 @@ if fci1_run_unbounded_memory_control fci1-driver-unbounded-control.service "$rep
   "${run_pure_entry[@]}" >"$scratch/driver-unbounded" 2>&1; then
   echo 'ControlRefused: parent unbounded-MemoryMax row succeeded' >&2; exit 1
 fi
-grep -q 'HostBudgetUnreadable' "$scratch/driver-unbounded" || {
-  echo 'ControlRefused: parent unbounded row did not name HostBudgetUnreadable' >&2; exit 1;
+grep -q 'UncappedSystemSlice' "$scratch/driver-unbounded" || {
+  echo 'ControlRefused: parent unbounded row did not name UncappedSystemSlice' >&2; exit 1;
 }
 assert_unit_collected fci1-driver-unbounded-control.service
 
@@ -92,8 +94,8 @@ if fci1_run_unbounded_memory_control fci1-submitter-unbounded-control.service "$
   "${run_pure_entry[@]}" >"$scratch/submitter-unbounded" 2>&1; then
   echo 'ControlRefused: submitter unbounded-MemoryMax row succeeded' >&2; exit 1
 fi
-grep -q 'HostBudgetUnreadable' "$scratch/submitter-unbounded" || {
-  echo 'ControlRefused: submitter unbounded row did not name HostBudgetUnreadable' >&2; exit 1;
+grep -q 'UncappedSystemSlice' "$scratch/submitter-unbounded" || {
+  echo 'ControlRefused: submitter unbounded row did not name UncappedSystemSlice' >&2; exit 1;
 }
 assert_unit_collected fci1-submitter-unbounded-control.service
 

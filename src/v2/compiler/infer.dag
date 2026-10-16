@@ -17,7 +17,7 @@ import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, KernelStringLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at, kernel_grounding_admits, kernel_grounding_for }
 import gunbc.structural_realization_bindings { kernel_grounding_rows, literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref }
-import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls, dag_algebra_inhabitance_row_type_params, DagCanonicalBoolLiteral, DagCanonicalIntLiteral, DagCanonicalSymbolLiteral, DagCanonicalStringLiteral, DagCanonicalFloatLiteral, DagCanonicalLiteral, dag_binding_denotation, dag_kernel_type_declaration_binding_optional, dag_canonical_literal_from_node, dag_declared_inhabitants_root, dag_declared_inhabitants_subject_field, dag_grammar_production_member_declared_type, parse_production_captured_child_optional, qualified_name_from_module_node }
 import v2.extdeps.languages.python { python_declared_inhabitants_root, python_declared_inhabitants_subject_field }
 import v2.extdeps.languages.typescript { ts_declared_inhabitants_root, ts_declared_inhabitants_subject_field }
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
@@ -918,6 +918,8 @@ fn infer_term_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIn
           Rejected { diagnostics: diagnostics_singleton(d: d) }
         Holds { value: descent_proof } =>
           match dag_canonical_literal_from_node(node: n) {
+            Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } =>
+              Rejected { diagnostics: diagnostics_singleton(d: infer_float_literal_home_unruled_diagnostic(at: n)) }
             Accepted { value: literal, diagnostics: _ } =>
               match infer_literal_value_type(literal: literal) {
                 Present { value: literal_type } =>
@@ -1514,6 +1516,53 @@ fn infer_variant_arm_reference_value_optional(
   }
 }
 
+// EMIT'S NULLARY-ARM PROJECTOR KEYS THIS, NOT TYPE-NODE SHAPE. A use is a zero-parameter
+// coproduct's empty-product arm when the RESOLVED declaration says so: VariantArmPayload, the
+// arm's declaring identity is a coproduct (infer_coproduct_path_of_variant_arm, never the
+// spelling's parent), that coproduct has no type parameters, and the arm body is the empty
+// product. An Atom or Conj rhs whose resolved declaration is a record or an alias is false
+// here, so emit does not project it as a nullary arm.
+fn infer_nullary_zero_param_coproduct_arm_use(
+  node: Node,
+  index: SymbolIndex,
+  facts: InferredFacts
+) -> Bool {
+  match facts.denotation {
+    Absent => false
+    Present { value: denoted } =>
+      if !infer_empty_product_shape(node: denoted) {
+        false
+      } else {
+        match declaration_reference_path_optional(node: node) {
+          Absent => false
+          Present { value: path } =>
+            match symbol_index_lookup(index: index, qualified_path: path) {
+              Absent => false
+              Present { value: declared } =>
+                match infer_variant_arm_reference_value_joined(
+                  bindings: index,
+                  arm_path: path,
+                  declared: declared
+                ) {
+                  VariantArmReferenceValueIdentityUnavailable => false
+                  VariantArmReferenceValueIdentityContested { claimants: _ } => false
+                  VariantArmReferenceValueBodyUnavailable => false
+                  VariantArmReferenceValueNotDerived => false
+                  VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+                    match symbol_index_declared_type_params_at(
+                      index: index,
+                      qualified_path: coproduct
+                    ) {
+                      Empty => true
+                      Cons { head: _, tail: _ } => false
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
 fn infer_variant_arm_value_reference_facts(
   n: Node,
   resolved: ResolvedTree,
@@ -1741,17 +1790,40 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
 // declared return). A type-expression atom that names such a binding derives its KIND, not the type
 // it denotes: the type of the expression `Int` is a type, and taking the denotation would type the
 // atom as a node structurally equal to itself (docs/plans/arrow-elimination-model.md).
-fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Symbol {
+fn infer_literal_type_binding(literal: DagCanonicalLiteral) -> Optional<Symbol> {
   match literal {
-    DagCanonicalBoolLiteral { value: _ } => ^bool_node_symbol
-    DagCanonicalIntLiteral { magnitude: _ } => ^dag_binding_type_int
-    DagCanonicalSymbolLiteral { symbol: _ } => ^symbol_node_symbol
-    DagCanonicalStringLiteral { value: _ } => ^string_node_symbol
+    DagCanonicalBoolLiteral { value: _ } => optional_present(value: ^bool_node_symbol)
+    DagCanonicalIntLiteral { magnitude: _ } => optional_present(value: ^dag_binding_type_int)
+    DagCanonicalSymbolLiteral { symbol: _ } => optional_present(value: ^symbol_node_symbol)
+    DagCanonicalStringLiteral { value: _ } => optional_present(value: ^string_node_symbol)
+    DagCanonicalFloatLiteral { lexeme: _ } => optional_absent()
   }
 }
 
+// A FLOAT LITERAL HAS NO TYPE BINDING UNTIL ITS HOME IS RULED (operator home table, N3): typing it as
+// the kernel binary64 or as std.decimal would each choose that home. It is the one literal whose
+// binding is Absent, and every consumer refuses it with infer_float_literal_home_unruled_diagnostic
+// rather than treating Absent as "not a literal".
 fn infer_literal_value_type(literal: DagCanonicalLiteral) -> Optional<Node> {
-  dag_binding_denotation(sym: infer_literal_type_binding(literal: literal))
+  match infer_literal_type_binding(literal: literal) {
+    Present { value: binding } => dag_binding_denotation(sym: binding)
+    Absent => optional_absent()
+  }
+}
+
+fn infer_literal_value_type_witness(literal: DagCanonicalLiteral, at: Node) -> Witness<Node> {
+  match infer_literal_type_binding(literal: literal) {
+    Present { value: binding } => infer_binding_value_type_witness(binding: binding, at: at)
+    Absent => Violates { diagnostic: infer_float_literal_home_unruled_diagnostic(at: at) }
+  }
+}
+
+fn infer_float_literal_home_unruled_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_float_literal_home_unruled,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 fn infer_binding_value_type_witness(binding: Symbol, at: Node) -> Witness<Node> {
@@ -1967,7 +2039,7 @@ fn infer_branch_operand_resolved_type_with_entries(
 ) -> Witness<Node> {
   match dag_canonical_literal_from_node(node: node) {
     Accepted { value: literal, diagnostics: _ } =>
-      infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
+      infer_literal_value_type_witness(literal: literal, at: node)
     Rejected { diagnostics: _ } =>
       match infer_variant_arm_reference_value_optional(node: node, resolved: resolved) {
         Present { value: verdict } =>
@@ -2140,7 +2212,7 @@ fn inferred_facts_resolved_type_optional(facts: InferredFacts) -> Optional<Node>
 fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Witness<Node> {
   match dag_canonical_literal_from_node(node: node) {
     Accepted { value: literal, diagnostics: _ } =>
-      infer_binding_value_type_witness(binding: infer_literal_type_binding(literal: literal), at: node)
+      infer_literal_value_type_witness(literal: literal, at: node)
     Rejected { diagnostics: _ } => inferred_facts_resolved_type(facts: facts)
   }
 }
@@ -2234,6 +2306,8 @@ fn infer_match_bool_arm_body_type(
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+      infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
+    Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
     Rejected { diagnostics: _ } =>
       infer_branch_operand_resolved_type(node: body_target, facts: body_facts)
@@ -2498,6 +2572,8 @@ fn infer_bool_literal_pattern_classify(pattern: Node) -> InferBoolLiteralPattern
     Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } =>
+      InferBoolLiteralPatternOther
+    Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } =>
       InferBoolLiteralPatternOther
     Rejected { diagnostics: _ } => InferBoolLiteralPatternOther
   }
@@ -4367,6 +4443,7 @@ fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations:
         DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
         DagCanonicalSymbolLiteral { symbol: _ } => InferLiteralNotElaborated
         DagCanonicalStringLiteral { value: _ } => infer_string_literal_at(expected: expected, declarations: declarations, bindings: bindings)
+        DagCanonicalFloatLiteral { lexeme: _ } => InferLiteralNotElaborated
       }
   }
 }
@@ -6139,6 +6216,7 @@ fn infer_literal_edge_payload(parent: Node, edge: Edge) -> InferLiteralPayload {
         StructuralLabel { label: _ } => InferNotALiteralPayload
         Positional => InferNotALiteralPayload
       }
+    Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } => InferNotALiteralPayload
     Rejected { diagnostics: _ } => InferNotALiteralPayload
   }
 }
