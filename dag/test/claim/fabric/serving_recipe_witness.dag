@@ -52,7 +52,7 @@ import gunbc.serving.rented_ninfer_source { rented_qwen3_8_27b_nvfp4_weights_pla
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_release }
 import extdeps.external_authority { TranscribedUncited, CitedFigureStanding }
 import extdeps.procps.kill { procps_kill_standing }
-import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.roster_frontier { frontier_rows_keyed_roster_build }
 import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 
@@ -419,11 +419,11 @@ fn flash_hourly(micro: Int) -> ServingHourlyCost {
 test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unread_where_not() -> Bool {
   // Flash-Next: operator reading ~900 tok/s. 1.05/h -> 1050000 * 1e6 / (900 * 3600) = 324074 micro per Mtok.
   (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: flash_hourly(micro: 1050000)) {
-    UnitCostEstimated { amount: a, currency: _, standing: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+    UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 324075
     _ => false
   })
     && (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: flash_hourly(micro: 3240000)) {
-      UnitCostEstimated { amount: a, currency: _, standing: _ } => (money_amount_micro_count(m: a) as Int) == 1000000
+      UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 1000000
       _ => false
     })
     && (match serving_cost_per_million_tokens(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, hourly: flash_hourly(micro: 1050000)) {
@@ -478,7 +478,7 @@ fn flash_with_disk_setting(setting: ServingSettingStanding) -> ServingRecipe {
 fn selection_quote_is_established(c: ServingUnitCost) -> Bool {
   match serving_unit_cost_for_selection(cost: c) {
     SelectionQuoteEstablished { amount: _, currency: _ } => true
-    SelectionQuoteRefusedEstimated { standing: _ } => false
+    SelectionQuoteRefusedEstimated { standings: _ } => false
     SelectionQuoteRefusedUnavailable => false
   }
 }
@@ -488,7 +488,7 @@ test fn an_uncited_throughput_makes_the_cost_estimated_and_its_cited_twin_establ
   let uncited = serving_cost_per_million_tokens(recipe: flash_with_throughput_standing(sd: serving_recipe_flash_next_lab_vllm.driver_floor.standing), hourly: flash_hourly(micro: 1050000))
   let cited = serving_cost_per_million_tokens(recipe: flash_with_throughput_standing(sd: procps_kill_standing()), hourly: flash_hourly(micro: 1050000))
   (match uncited {
-    UnitCostEstimated { amount: a, currency: _, standing: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+    UnitCostEstimated { amount: a, currency: _, standings: _ } => (money_amount_micro_count(m: a) as Int) == 324075
     _ => false
   })
     && (match cited {
@@ -531,8 +531,52 @@ test fn the_flash_template_settings_cite_the_operator_template_ruling() -> Bool 
       SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
       SettingReading { standing: _ } => false
     })
-    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.disk {
-      SettingReading { standing: TranscribedUncited { read_obligation: _ } } => true
+    && qwen_settings_cite_ruling(ruling: ruling)
+}
+
+fn qwen_settings_cite_ruling(ruling: DeclarationRef) -> Bool {
+  (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.disk {
+    SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+    SettingReading { standing: _ } => false
+  })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.cache {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.port {
+      SettingOperatorPolicy { ruling: r } => declaration_ref_eq(a: r, b: ruling)
+      SettingReading { standing: _ } => false
+    })
+}
+
+fn flash_uncited_throughput_and_disk() -> ServingRecipe {
+  let base = flash_with_disk_setting(setting: SettingReading { standing: serving_recipe_flash_next_lab_vllm.driver_floor.standing })
+  ServingRecipe {
+    id: base.id,
+    model: base.model,
+    engine: base.engine,
+    catalog_unit: base.catalog_unit,
+    published_tcp_port: base.published_tcp_port,
+    cards: base.cards,
+    driver_floor: base.driver_floor,
+    disk: base.disk,
+    cache: base.cache,
+    start: base.start,
+    throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 900), at_concurrency: 16, standing: serving_recipe_flash_next_lab_vllm.driver_floor.standing },
+    settings: base.settings,
+  }
+}
+
+test fn an_estimate_carries_every_uncited_obligation_it_rests_on_through_to_the_refused_quote() -> Bool {
+  let r = flash_uncited_throughput_and_disk()
+  let h = serving_card_hourly(recipe: r, supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() })
+  let c = serving_cost_per_million_tokens(recipe: r, hourly: h)
+  (match c {
+    UnitCostEstimated { amount: _, currency: _, standings: ss } => length(ss) == 2
+    _ => false
+  })
+    && (match serving_unit_cost_for_selection(cost: c) {
+      SelectionQuoteRefusedEstimated { standings: ss } => length(ss) == 2
       _ => false
     })
 }
@@ -578,10 +622,7 @@ test fn the_qwen_start_source_is_derived_from_its_placement() -> Bool {
 }
 
 test fn bare_flash_settings_carry_standing() -> Bool {
-  match serving_recipe_qwen3_8_27b_nvfp4_ninfer.settings.disk {
-    SettingReading { standing: TranscribedUncited { read_obligation: _ } } => true
-    _ => false
-  }
+  qwen_settings_cite_ruling(ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"))
 }
 
 test fn cache_sizes_follow_the_host() -> Bool {

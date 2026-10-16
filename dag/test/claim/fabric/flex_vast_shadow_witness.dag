@@ -506,7 +506,7 @@ fn objective_is_cost_per_accepted_unit() -> Bool {
 fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> Bool {
   match flex_offer_screen_by_recipe(offer: offer, recipe: recipe) {
     ShadowEntryEstablished => true
-    ShadowEntryEstimated { standings: _ } => true
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
     ShadowEntryExcluded => false
   }
 }
@@ -514,7 +514,7 @@ fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> B
 fn field_member(offer: VastAiOffer) -> Bool {
   match flex_offer_in_shadow_field(offer: offer) {
     ShadowEntryEstablished => true
-    ShadowEntryEstimated { standings: _ } => true
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
     ShadowEntryExcluded => false
   }
 }
@@ -997,7 +997,7 @@ fn recipe_with_driver_standing(sd: CitedFigureStanding) -> ServingRecipe {
 
 fn estimated_standing_count(e: FlexShadowFieldEntry) -> Int {
   match e {
-    ShadowEntryEstimated { standings: ss } => length(ss)
+    ShadowEntryEstimated { provisional_member: _, standings: ss } => length(ss)
     _ => -1
   }
 }
@@ -1031,13 +1031,32 @@ test fn the_vram_tolerance_is_an_uncited_standing_carried_only_when_it_was_used(
     })
 }
 
-test fn a_floor_not_met_is_excluded_whatever_the_standing() -> Bool {
-  let low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.0" })
-  (match flex_offer_screen_by_recipe(offer: low, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
-    ShadowEntryExcluded => true
+fn is_provisional_non_member(e: FlexShadowFieldEntry, standings: Int) -> Bool {
+  match e {
+    ShadowEntryEstimated { provisional_member: m, standings: ss } => !m && length(ss) == standings
     _ => false
-  })
+  }
+}
+
+test fn a_floor_not_met_on_an_uncited_floor_is_a_provisional_non_member_and_on_a_cited_floor_excluded() -> Bool {
+  // 575 and 570 are below the 580 floor. The floor is uncited, so the rejection itself is a bet: Estimated, not a member.
+  let low = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "575.0" })
+  let lower = wire_offer_driver(name: "RTX PRO 6000 S", ram: 98304, driver: Present { value: "570.0" })
+  is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: low, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
+    && is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: lower, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
     && (match flex_offer_screen_by_recipe(offer: low, recipe: recipe_with_driver_standing(sd: procps_kill_standing())) {
+      ShadowEntryExcluded => true
+      _ => false
+    })
+}
+
+test fn a_name_vram_gap_beyond_the_tolerance_is_a_provisional_non_member_carrying_the_tolerance() -> Bool {
+  // The 1 GiB tolerance is uncited, so a gap just over it cannot establish "no card". An unmapped name stays structural.
+  let gap = wire_offer_driver(name: "RTX PRO 5000", ram: 98304, driver: Present { value: "580.65.06" })
+  let unmapped = wire_offer_driver(name: "H100", ram: 73728, driver: Present { value: "580.65.06" })
+  is_provisional_non_member(e: flex_offer_screen_by_recipe(offer: gap, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer), standings: 1)
+    && !field_member(offer: wire_offer(name: "RTX PRO 5000", ram: 98304, bid: true, rentable: true))
+    && (match flex_offer_screen_by_recipe(offer: unmapped, recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
       ShadowEntryExcluded => true
       _ => false
     })
@@ -1051,6 +1070,7 @@ test fn the_operator_template_ruling_is_a_dated_design_ruling_that_leaves_empiri
       acc || (declaration_ref_eq(a: r.reference, b: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"))
         && r.decided == "2026-10-16"
         && string_contains(s: r.provenance, pattern: "400 GiB disk")
+        && string_contains(s: r.provenance, pattern: "qwen oct 11")
         && string_contains(s: r.provenance, pattern: "stay TranscribedUncited")),
   )
 }

@@ -188,9 +188,9 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   start: StartFromPlacedWeights,
   throughput: ThroughputUnread,
   settings: ServingSettingStandings {
-    disk: SettingReading { standing: TranscribedUncited { read_obligation: "32 GiB is the retired flex_qwen_* disk figure; read the ninfer launch image plus weights container size" as NonEmptyStr } },
-    cache: SettingReading { standing: TranscribedUncited { read_obligation: "no cache tier is declared for ninfer; read whether ninfer has a host cache tier" as NonEmptyStr } },
-    port: SettingReading { standing: TranscribedUncited { read_obligation: "operator_pod_listen_port is the --port of one observed operator launch; read the engine's own default" as NonEmptyStr } },
+    disk: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    cache: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    port: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
   },
 }
 
@@ -406,7 +406,7 @@ fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> Serv
 // input is established: an uncited throughput or an Estimated hourly cost makes it Estimated.
 type ServingUnitCost
   = UnitCostQuoted { amount: MoneyAmountMicro, currency: CurrencyCode }
-  | UnitCostEstimated { amount: MoneyAmountMicro, currency: CurrencyCode, standing: CitedFigureStanding }
+  | UnitCostEstimated { amount: MoneyAmountMicro, currency: CurrencyCode, standings: List<CitedFigureStanding> }
   | UnitCostThroughputUnread
   | UnitCostHourlyUnavailable
 
@@ -428,13 +428,29 @@ fn serving_unit_cost_at(recipe: ServingRecipe, hourly: MoneyPerHour, hourly_stan
         UnitCostThroughputUnread
       } else {
         let amount = money_amount_micro(count: (money_per_hour_micros(q: hourly) * 1000000 + (tps * 3600 - 1)) / (tps * 3600))
-        match sd {
-          TranscribedUncited { read_obligation: _ } => UnitCostEstimated { amount: amount, currency: hourly.currency, standing: sd }
-          _ =>
-            match hourly_standing {
-              Present { value: hs } => UnitCostEstimated { amount: amount, currency: hourly.currency, standing: hs }
-              Absent => UnitCostQuoted { amount: amount, currency: hourly.currency }
-            }
+        let throughput_uncited = match sd {
+          TranscribedUncited { read_obligation: _ } => true
+          _ => false
+        }
+        let hourly_uncited = match hourly_standing {
+          Present { value: _ } => true
+          Absent => false
+        }
+        if !throughput_uncited && !hourly_uncited {
+          UnitCostQuoted { amount: amount, currency: hourly.currency }
+        } else {
+          // every uncited input's obligation survives into the estimate
+          UnitCostEstimated {
+            amount: amount,
+            currency: hourly.currency,
+            standings: concat(
+              if throughput_uncited { [sd] } else { [] },
+              match hourly_standing {
+                Present { value: hs } => [hs]
+                Absent => []
+              },
+            ),
+          }
         }
       }
   }
@@ -444,13 +460,13 @@ fn serving_unit_cost_at(recipe: ServingRecipe, hourly: MoneyPerHour, hourly_stan
 // price (DESIGN 4d): the selection fold is handed only a Quoted cost.
 type ServingSelectionQuote
   = SelectionQuoteEstablished { amount: MoneyAmountMicro, currency: CurrencyCode }
-  | SelectionQuoteRefusedEstimated { standing: CitedFigureStanding }
+  | SelectionQuoteRefusedEstimated { standings: List<CitedFigureStanding> }
   | SelectionQuoteRefusedUnavailable
 
 fn serving_unit_cost_for_selection(cost: ServingUnitCost) -> ServingSelectionQuote {
   match cost {
     UnitCostQuoted { amount: a, currency: c } => SelectionQuoteEstablished { amount: a, currency: c }
-    UnitCostEstimated { amount: _, currency: _, standing: sd } => SelectionQuoteRefusedEstimated { standing: sd }
+    UnitCostEstimated { amount: _, currency: _, standings: ss } => SelectionQuoteRefusedEstimated { standings: ss }
     UnitCostThroughputUnread => SelectionQuoteRefusedUnavailable
     UnitCostHourlyUnavailable => SelectionQuoteRefusedUnavailable
   }
@@ -474,7 +490,7 @@ data serving_recipe_frontier: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
-    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are TranscribedUncited. The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The recipe's model placement, engine release (ninfer_serve_81c8ce09_sm120_release), port, start source (serving_start_source) and settings have no production reader: the S3 InferenceServingProvision phase (deep-bear-539) has not landed.",
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The recipe's model placement, engine release (ninfer_serve_81c8ce09_sm120_release), port, start source (serving_start_source) and settings have no production reader: the S3 InferenceServingProvision phase (deep-bear-539) has not landed.",
     dissolution: unbound_dissolution(description: "feature:inference-serving-provision — the S3 provision phase derives the model placement, engine release, published port, start source (serving_start_source) and cache sizes (serving_cache_bytes) from the ServingRecipe it is handed; plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(

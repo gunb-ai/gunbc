@@ -61,7 +61,7 @@ data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolu
 
 data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
 
-data flex_wet_create_estimated_refusal_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path REFUSES to ask for an offer whose FlexShadowFieldEntry is ShadowEntryEstimated, and a quote whose serving_unit_cost_for_selection is not SelectionQuoteEstablished never reaches select_supply (today only test.claim.fabric.flex_vast_shadow_witness and serving_recipe_witness execute these). TRIGGER: the wet create loop executes with the standings it was handed, or the screens rest on cited figures. SUFFICIENT FOR deleting this row.")
+data flex_wet_create_estimated_refusal_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path REFUSES to ask for an offer whose FlexShadowFieldEntry is ShadowEntryEstimated (member or non-member: the verdict is provisional on both sides), and a quote whose serving_unit_cost_for_selection is not SelectionQuoteEstablished never reaches select_supply (today only test.claim.fabric.flex_vast_shadow_witness and serving_recipe_witness execute these). TRIGGER: the wet create loop executes with the standings it was handed, or the screens rest on cited figures. SUFFICIENT FOR deleting this row.")
 
 data flex_wet_create_template_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path builds the Vast create body from flex_serving_template(flex_serving_recipe), which reads flex_host_images and the recipe's published port, served model id and disk. TRIGGER: that wet create executes the template (flex_serving_template and flex_host_image have no production caller today; only test.claim.fabric.flex_vast_shadow_witness calls them). SUFFICIENT FOR deleting this row. The later InferenceServingProvision path reading model placement, engine release, start source and cache from the ServingRecipe is the separate serving_recipe_frontier row for serving_recipe_qwen3_8_27b_nvfp4_ninfer.")
 
@@ -407,16 +407,18 @@ data flex_objective: DemandObjective = debt_payoff_objective
 data flex_serving_recipe: ServingRecipe = serving_recipe_qwen3_8_27b_nvfp4_ninfer
 
 // THE VAST CONTAINER REALIZATION OF A RECIPE: the image a rented Vast card boots is a Vast fact, not a
-// recipe fact (an owned card has no image). A recipe with no row here has no Vast realization.
+// recipe fact (an owned card has no image). The image is operator policy, standing on the cited ruling. A recipe with no row here has no Vast realization.
 type FlexHostImageRow {
   recipe: DeclarationRef
   image: NonEmptyStr
+  ruling: DeclarationRef
 }
 
 data flex_host_images: List<FlexHostImageRow> = [
   FlexHostImageRow {
     recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
     image: "vastai/vllm:v0.30.0-cuda-13.0" as NonEmptyStr,
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   },
 ]
 
@@ -533,10 +535,12 @@ fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
 // An offer is a member of the shadow field with a STANDING (DESIGN 4d). A screen that rests on an
 // uncited figure (the recipe's driver floor, the 1 GiB name/VRAM tolerance) admits the offer as ESTIMATED,
 // never established: the uncited standings it rests on travel with it, and flex_wet_create_estimated_refusal_frontier
-// states that a wet create refuses on them.
+// states that a wet create refuses on them. The VERDICT is provisional on BOTH sides: an uncited screen that
+// would reject (floor not met, VRAM outside the tolerance) is Estimated with provisional_member false, never an
+// established exclusion, because the figure that rejected it was never cited.
 type FlexShadowFieldEntry
   = ShadowEntryEstablished
-  | ShadowEntryEstimated { standings: List<CitedFigureStanding> }
+  | ShadowEntryEstimated { provisional_member: Bool, standings: List<CitedFigureStanding> }
   | ShadowEntryExcluded
 
 data flex_vram_tolerance_standing: CitedFigureStanding = TranscribedUncited {
@@ -554,20 +558,39 @@ fn flex_offer_vram_tolerance_used(offer: VastAiOffer) -> Bool {
   }
 }
 
+fn flex_offer_vram_beyond_tolerance(offer: VastAiOffer) -> Bool {
+  match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
+    Absent => false
+    Present { value: vram } =>
+      match flex_vast_gpu_catalog_row(gpu_name: offer.gpu_name) {
+        Absent => false
+        Present { value: _ } =>
+          match flex_offer_card_product(gpu_name: offer.gpu_name, vram: vram) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+  }
+}
+
 fn flex_offer_screen_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> FlexShadowFieldEntry {
   match flex_offer_card_facts(offer: offer) {
     Absent => ShadowEntryExcluded
     Present { value: card } =>
+      if flex_offer_vram_beyond_tolerance(offer: offer) {
+        ShadowEntryEstimated { provisional_member: false, standings: [flex_vram_tolerance_standing] }
+      } else {
       let tolerance_used = flex_offer_vram_tolerance_used(offer: offer)
       let tolerance = if tolerance_used { [flex_vram_tolerance_standing] } else { [] }
       match serving_recipe_accepts_card(recipe: recipe, card: card) {
         CardAccepted { class: _ } =>
-          if tolerance_used { ShadowEntryEstimated { standings: tolerance } } else { ShadowEntryEstablished }
+          if tolerance_used { ShadowEntryEstimated { provisional_member: true, standings: tolerance } } else { ShadowEntryEstablished }
         CardRefusedWrongCard => ShadowEntryExcluded
         CardRefusedDriverBelowFloor { required: _, observed: _ } => ShadowEntryExcluded
         CardRefusedDriverUnread => ShadowEntryExcluded
         CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } =>
-          if met { ShadowEntryEstimated { standings: concat([recipe.driver_floor.standing], tolerance) } } else { ShadowEntryExcluded }
+          ShadowEntryEstimated { provisional_member: met, standings: concat([recipe.driver_floor.standing], tolerance) }
+      }
       }
   }
 }
