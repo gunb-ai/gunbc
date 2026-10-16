@@ -4569,7 +4569,7 @@ fn realize_live_deploy_apply_on_host(
 // it replaces (gunbc.live_deploy.emit live_deploy_retract_script_for -> retained_srvn) was never
 // modeled over ssh or the thin-run artifact locus, so a non-local locus has no admissible typed
 // realization here: refuse it rather than emit a script to run remotely. Fail-closed narrowing
-// (msg_80026187 option A): LocalShell proceeds to the typed fold; every other locus refuses before
+// (operator-ruled narrowing): LocalShell proceeds to the typed fold; every other locus refuses before
 // any step runs. The discriminant is the locus, not the effect — an SshShell or FleetSsh retract
 // spec refuses with this refusal and dispatches nothing.
 fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -> String {
@@ -5878,12 +5878,22 @@ fn host_remove_verdict(
           // pre-observation carries the distinction. Widening to -rf here would turn a loud
           // refusal into silent destruction.
           let was_present = fold_list(xs: pre_present, empty: false, cons: (acc, b) => acc || b)
-          if was_present {
+          if string_contains(s: o.stderr, pattern: "Directory not empty") {
             NotConverged {
               reason: host_remove_reason(
                 target: target,
                 verb: "refused",
                 detail: join([p_s, " is not empty; rm -d failed (loud refusal, never widened to -rf)"], ""),
+                pathfield: p_s,
+              ),
+              applied: target,
+            }
+          } else if was_present {
+            NotConverged {
+              reason: host_remove_reason(
+                target: target,
+                verb: "refused",
+                detail: join(["rm -d failed on a present path (exit ", to_string(o.exit_code), "); never widened to -rf"], ""),
                 pathfield: p_s,
               ),
               applied: target,

@@ -17,7 +17,9 @@ module test.claim.host.host_remove_on_host_witness
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.algebra { Empty }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell }
 import gunbc.host.host_effect_realize {
+  live_deploy_retract_candidate_locus_refusal,
   HostRemoveTarget,
   HostRemoveEvidence,
   host_remove_target_argv,
@@ -241,4 +243,31 @@ test fn witness_gunbc_source_tree_teardown_argv_shapes_are_inhabited() -> Bool {
       && string_contains(s: join(unit_argv, " "), pattern: "sudo -n")
       && string_contains(s: join(tree_argv, " "), pattern: "sudo -n")
   root_shape && unit_shape && tree_shape && all_elevated
+}
+
+// -- the LocalShell retract gate: the local locus proceeds (empty refusal); a remote locus refuses
+// with the typed locus refusal naming it, before any step runs.
+test fn witness_retract_gate_admits_local_and_refuses_ssh() -> Bool {
+  live_deploy_retract_candidate_locus_refusal(transport: LocalShell) == ""
+    && string_contains(
+      s: live_deploy_retract_candidate_locus_refusal(transport: SshShell { ssh_host: "srv-x" }),
+      pattern: "live_deploy retract refused over ssh host=srv-x",
+    )
+}
+
+// -- RemoveEmptyDirectory failing on a PRESENT path with a stderr other than rm's own "Directory
+// not empty" must not be attributed to non-emptiness.
+test fn witness_remove_empty_directory_other_failure_is_not_called_non_empty() -> Bool {
+  match host_remove_verdict(
+    target: RemoveEmptyDirectory { path: "/var/lib/gunbc/x" as NonEmptyStr },
+    pre_present: [true],
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved { exit_code: 1, success: false, stdout: "", stderr: "rm: cannot remove '/var/lib/gunbc/x': Permission denied" },
+    },
+    post_present: [true],
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "rm -d failed on a present path") && !string_contains(s: r, pattern: "is not empty")
+    Converged { evidence: _, applied: _ } => false
+  }
 }
