@@ -40,7 +40,7 @@ import v2.std.runtime {
   RuntimeValue
 }
 import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_i32_le_bytes_to_int }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceSynthetic, TypeOccurrence }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { NodeFold, fold_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -819,7 +819,7 @@ fn fps_qualified_path_reads_as_the_declaration() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: index, diagnostics: _ } =>
       match resolve_dotted_path_reading(
-        ctx: claim_resolve_context(module: [^p], index: index),
+        ctx: claim_resolve_context(module: [^p], index: index, category: TypeOccurrence),
         n: claim_lowered_path(segments: [^a, ^b, ^c, ^Box], n: 50),
         path: [^a, ^b, ^c, ^Box],
         head_binding: BoundAtRoot { canonical: ^a },
@@ -977,9 +977,12 @@ test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
 // IT ASSERTS BOTH DIRECTIONS. The unavailable reason must be present AND declares_no_fields must be absent,
 // because the whole defect being repaired was a correct program being told its receiver declares no fields.
 
-// THE RESOLVE HALF: a provider carrying an unresolvable body beside the record is DROPPED from the closure
-// index, so its record is not there to retrieve. Its control is the cross-module resolve row above: the same
-// provider without the broken body does index the record.
+// THE RESOLVE HALF: the closure publishes by DECLARATION (v2.compiler.name_resolve closure_declarations_demand),
+// so a provider carrying an unresolvable body beside the record publishes the record and withholds the broken
+// function. This row used to assert the whole provider was dropped; that held only because the index was empty
+// for every grafted module (closure_filter_root_published had dropped the module shell), so it greened for the
+// wrong reason. Its control is the cross-module resolve row above: the same provider without the broken body
+// indexes the record too.
 fn fps_lowered_broken_provider() -> ClaimLoweredModule {
   fps_lowered_module(
     module: [^q],
@@ -1001,8 +1004,10 @@ fn fps_broken_provider_is_refused_as_named() -> Bool {
   }
 }
 
-test fn fps_an_unresolvable_provider_drops_from_the_closure_index_holds() -> Bool {
-  fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^Leg]) && fps_broken_provider_is_refused_as_named()
+test fn fps_an_unresolvable_declaration_is_withheld_from_the_closure_index_holds() -> Bool {
+  fps_closure_holds(modules: [fps_lowered_broken_provider()], record: fps_imported_leg())
+    && fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^broken])
+    && fps_broken_provider_is_refused_as_named()
 }
 
 // THE NAMED ROSTER ENTRY: provider q, refused as unbound at its body.
