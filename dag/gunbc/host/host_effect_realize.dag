@@ -138,7 +138,11 @@ import extdeps.package_managers.apt {
   apt_get_binary_path,
 }
 import extdeps.tools { CliTool, apt_binary_path_of }
-import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
+import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command, curl_localhost_max_time }
+import extdeps.http.client
+import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
+import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
+import extdeps.languages.json.parse { json_text_parseable }
 import extdeps.tools.xorriso { xorriso_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
@@ -226,7 +230,8 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheIn
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_digest_readback_script }
+import gunbc.roadmap.roadmap_static_site { roadmap_site_dispatch_json_artifact }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
 import gunbc.cli_services
@@ -4941,19 +4946,128 @@ fn realize_live_deploy_serve_route_on_host(
   }
 }
 
+// THE READ VERDICT, as a pure fn on the TYPED GET (success, body) — the §3 boundary-witness
+// subject: the witness SUPPLIES each boundary value (success:false and body:"" — the hermetic
+// mock's shape; the dispatch body with its digest; an unparseable body) and asserts the leg that
+// fires. Leg order and strings are VERBATIM from the dissolved script
+// (roadmap_site_readback_curl_digest_check + the node JSON.parse leg):
+//   (1) !success -> "roadmap-site-readback: curl failed url=<url>"
+//   (2) the body hashes to something other than the dispatch artifact's digest (content_hash_atom
+//       is the same FNV-1a-64 over UTF-8 the script's node one-liner ran — offset basis
+//       0xcbf29ce484222325, prime 0x100000001b3, the parity node_hash_protocol_witness pins; an
+//       empty body hashes to the offset basis, never the dispatch digest, so it refuses HERE)
+//       -> "roadmap-site-readback: digest mismatch url=<url>"
+//   (3) !json_text_parseable(body) -> "roadmap-site-readback: dispatch json parse failed"
+//   (4) else Converged { ShellEffectApplied { 0, body, "" } } — the read-back bytes ARE the
+//       evidence, which is more faithful than the script's static receipt echo.
+fn live_deploy_digest_readback_verdict(
+  intent: HostEffectIntent,
+  url: String,
+  success: Bool,
+  body: String,
+  expected: Fnv1a64Structural,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if !success {
+    NotConverged { reason: concat("roadmap-site-readback: curl failed url=", url), applied: intent }
+  } else {
+    if body == "" || !content_hash_eq_structural(
+      left: content_hash_atom(value: body as NonEmptyStr),
+      right: expected,
+    ) {
+      NotConverged { reason: concat("roadmap-site-readback: digest mismatch url=", url), applied: intent }
+    } else {
+      if !json_text_parseable(s: body) {
+        NotConverged { reason: "roadmap-site-readback: dispatch json parse failed", applied: intent }
+      } else {
+        Converged { evidence: ShellEffectApplied { exit_code: 0, stdout: body, stderr: "" }, applied: intent }
+      }
+    }
+  }
+}
+
+fn live_deploy_digest_readback_url(port: Int) -> String {
+  concat(concat("http://127.0.0.1:", to_string(port)), roadmap_site_dispatch_url_path as String)
+}
+
+// THE SAME GET the script ran, as TYPED ARGV WORDS (DESIGN §0c: argv, not a command string). The
+// bound flags come from the kernel (curl_localhost_max_time == the script's --max-time 5); the
+// url is a PARAMETER, never a policy literal baked into an argv build.
+fn live_deploy_digest_readback_argv(port: Int) -> List<String> {
+  http_client_get_argv(
+    url: live_deploy_digest_readback_url(port: port) as NonEmptyStr,
+    max_time: curl_localhost_max_time,
+  )
+}
+
+// LiveDeployDigestReadback realization (roadmap static-site dispatch digest read-back; the
+// live_deploy readiness poll on the reconcile spine). AN OBSERVATION, and it RUNS on the caller
+// (runtime present), so it dissolves to its typed effects the way the landed readiness sibling
+// does (DESIGN §3; §0c native-handler arm) — no bash emitter, no retained_srvn, and no
+// RetainedShellScript row is minted:
+//   - LocalShell takes the NATIVE arm: the http.Client.GetWithin op with the script's 5 s wall
+//     passed as a PARAMETER (the op's argv is materializable words — the same arm the sibling
+//     probe lands on; GetLocalhostBounded's argv embeds two flag-expression residues, so the
+//     parameterized op is the one that reaches this seam as words);
+//   - SshShell / FleetSsh route the SAME typed argv through typed_argv_exec_over_{ssh,fleet_ssh}
+//     and judge the brought-back (success, stdout): the FleetSsh refusal the SCRIPT CARRIER
+//     carried dissolves because typed argv words are exactly what the fleet path admits — the
+//     wall the readiness sibling already ran down;
+//   - EmitArtifactThenThinRun has no thin argv to run against an observation and keeps its typed
+//     refusal, now in the per-effect template's words.
 fn realize_live_deploy_digest_readback_on_host(
   port: Int,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: roadmap_site_digest_readback_script(port: port),
-      reason: "live_deploy digest readback probe",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  let url = live_deploy_digest_readback_url(port: port)
+  let expected = roadmap_site_dispatch_json_artifact().digest
+  match transport {
+    LocalShell => {
+      let got = http.Client.GetWithin(
+        url: url as NonEmptyStr,
+        max_seconds: http_client_max_time_flag(max_time: curl_localhost_max_time),
+      )
+      live_deploy_digest_readback_verdict(
+        intent: intent,
+        url: url,
+        success: got.success,
+        body: got.body,
+        expected: expected,
+      )
+    }
+    SshShell { ssh_host: h } =>
+      match typed_argv_exec_over_ssh(host: h, argv: live_deploy_digest_readback_argv(port: port)) {
+        TypedArgvExecConverged { result: r } =>
+          live_deploy_digest_readback_verdict(
+            intent: intent,
+            url: url,
+            success: r.success,
+            body: r.stdout,
+            expected: expected,
+          )
+        TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
+      }
+    FleetSsh { target: t, context: c } =>
+      match typed_argv_exec_over_fleet_ssh(
+        target: t,
+        context: c,
+        argv: live_deploy_digest_readback_argv(port: port),
+      ) {
+        TypedArgvExecConverged { result: r } =>
+          live_deploy_digest_readback_verdict(
+            intent: intent,
+            url: url,
+            success: r.success,
+            body: r.stdout,
+            expected: expected,
+          )
+        TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => NotConverged {
+      reason: "host_effect_apply: LiveDeployDigestReadback cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+      applied: intent,
+    }
+  }
 }
 
 // THE UNGATED DISPATCHER HAS NO DeployAccess, so it cannot emit a live-deploy apply, retract or broker
