@@ -203,13 +203,17 @@ test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
 // edge can be a shell interpreter. `sh`/`bash`/`dash` appearing as a program
 // would mean the shell carrier had crept back onto the edge, and this claim
 // goes red the moment that happens.
-// Each entry is the invocation a real op declares: `install`
-// (gnu_coreutils install_program), `/usr/bin/mkdir` (mkdir_binary_path), `curl`,
-// `tar`, `sha256sum`, `dd`, `mv`, and `/usr/bin/sudo` (elevation.sudo_program --
-// the elevated legs, and the visudo / daemon-reload ops, whose PROGRAM is sudo
-// with the tool named as an argument).
+// Each entry is the invocation a real op DECLARES, read off the op rather than
+// guessed: `install` (gnu_coreutils coreutils_install_binary_name), `mkdir`
+// (mkdir_program — bare, not an absolute path), `curl` (curl_program), `tar`
+// (tar_program), `sha256sum` (sha256sum_program), `dd`
+// (coreutils_dd_binary_name), `mv` (mv_program), and `/usr/bin/sudo`
+// (elevation.sudo_program — the elevated legs, and the daemon-reload and
+// visudo ops, whose PROGRAM is sudo with the tool named as an argument:
+// systemctl_daemon_reload_command puts systemctl_path_resolved_program() in
+// arguments, not in program).
 data microvm_w5_cataloged_programs: List<String> = [
-  "install", "/usr/bin/mkdir", "curl", "tar", "sha256sum", "dd", "mv", "/usr/bin/sudo",
+  "install", "mkdir", "curl", "tar", "sha256sum", "dd", "mv", "/usr/bin/sudo",
 ]
 
 test fn microvm_w5_every_leg_inhabits_a_cataloged_argv_program() -> Bool {
