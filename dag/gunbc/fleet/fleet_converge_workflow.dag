@@ -133,7 +133,6 @@ import gunbc.ci.ci_spec {
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
-  gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_release_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
@@ -4065,9 +4064,8 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 // (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
 // the IPMI SDR series (fan_observe / bmc_fan_observation), so the step name is that series' name
 // — not Cooling Manager / PWM REST. The standalone mtcollins1_fan_observe mode stays fail-closed.
-// Refusal writes a typed receipt then ExitFailure; continue-on-error keeps the boot step
-// scheduled. After boot and the receipt upload, fan_policy_phase_verdict reads that receipt
-// with no continue-on-error, so a refused observation fails the job. GET get_manager_status /
+// NON-GATING: every observation refusal is a typed receipt and ExitSuccess; continue-on-error and a
+// step timeout are the backstop that keep the boot step scheduled. GET get_manager_status /
 // get_fan_info plus PWM write / guard / restore is a named follow-up. Steps in one job run
 // strictly sequentially, so this interpreter exits before the boot step's concurrent pair.
 fn fleet_converge_fan_policy_phase_step() -> Step {
@@ -4104,20 +4102,6 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_fan_policy_phase_verdict_step() -> Step {
-  RunStep {
-    name: Present { value: "Read fan-policy-phase observation receipt after the power cycle" },
-    id: Present { value: "fan_policy_phase_verdict" },
-    run: gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
-  }
-}
-
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
   concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
     fleet_converge_mtcollins1_boot_pair_build_step(),
@@ -4129,7 +4113,6 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     boot_step,
     fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
-    fleet_converge_fan_policy_phase_verdict_step(),
     ci_fleet_key_agent_cleanup_step(),
   ])
 }

@@ -276,9 +276,9 @@ test fn fan_control_paths_are_the_served_ui_routes() -> Bool {
     && (megarac_op_fan_set_fan_speed.http_method as String) == "POST"
 }
 
-test fn executed_megarac_ops_include_fan_gets_not_unexecuted_posts() -> Bool {
-  filter(megarac_api_operations, op => op == megarac_op_fan_get_manager_status).length() == 1
-    && filter(megarac_api_operations, op => op == megarac_op_fan_get_fan_info).length() == 1
+test fn executed_megarac_ops_exclude_all_four_cited_fan_rows() -> Bool {
+  filter(megarac_api_operations, op => op == megarac_op_fan_get_manager_status).length() == 0
+    && filter(megarac_api_operations, op => op == megarac_op_fan_get_fan_info).length() == 0
     && filter(megarac_api_operations, op => op == megarac_op_fan_set_manager_status).length() == 0
     && filter(megarac_api_operations, op => op == megarac_op_fan_set_fan_speed).length() == 0
 }
