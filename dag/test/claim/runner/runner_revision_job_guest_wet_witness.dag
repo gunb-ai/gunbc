@@ -1,0 +1,90 @@
+module test.claim.runner.runner_revision_job_guest_wet_witness
+
+import extdeps.shell
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.tar { tar_create_from_list_command }
+import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.runner.runner_revision_job_guest {
+  revision_job_tree_steps, RevisionJobGuestUnit, RevisionJobGuestUnitRendered, RevisionJobGuestUnitRefused,
+  revision_job_guest_unit, revision_job_exec_line,
+}
+import extdeps.systemd.service_exec { ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line_with_environment
+}
+
+// THE GUEST'S TREE VERIFICATION, RUN FOR REAL OVER A STAND-IN: an archive file in place of /dev/vdc
+// and a temp directory in place of /work/tree, through exactly the commands the unit's ExecStartPre
+// lines run (revision_job_tree_steps). The expected tree ids are the controlled fixture's own, read
+// once with git over the same two files: fd63f238... for `a.txt = "hello\n"`, `sub/b.txt = "x\n"`,
+// and b3cbfd50... after a.txt becomes "hello!\n".
+
+data fixture_tree: String = "fd63f238e060de2f14f5d2720fb966e1832c7e18"
+data changed_tree: String = "b3cbfd5001e243c294f7ead87ca72efcd3eb2fc4"
+
+fn ran(o: ProcessOutcome) -> Bool {
+  match o {
+    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessOutputPresent { text: _ } => true
+    ProcessOutputAbsent => true
+  }
+}
+
+fn run_all(steps: List<ArgvCommand>) -> Bool {
+  fold(steps, init: true, f: (acc, c) => acc && ran(o: run_shell_command_capture(command: c, transport: LocalExec)))
+}
+
+fn archive(root: String, a_txt: String) -> Bool {
+  let src = concat(root, "/src")
+  run_all(steps: [mkdir_parents_command(path: concat(src, "/sub"))])
+    && Filesystem.Write(path: concat(src, "/a.txt"), content: a_txt).success
+    && Filesystem.Write(path: concat(src, "/sub/b.txt"), content: "x\n").success
+    && Filesystem.Write(path: concat(root, "/members"), content: "a.txt\nsub\nsub/b.txt\n").success
+    && run_all(steps: [tar_create_from_list_command(archive: concat(root, "/tree.tar"), from_directory: src, member_list: concat(root, "/members"))])
+}
+
+fn verify(root: String, work: String, tree: String) -> Bool {
+  run_all(steps: revision_job_tree_steps(tree_archive: concat(root, "/tree.tar"), work_dir: concat(root, work), tree: tree))
+}
+
+test fn the_staged_tree_verifies_only_against_its_own_tree_id_by_real_execution() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_revjob.XXXXXX").path
+  let staged = archive(root: root, a_txt: "hello\n")
+  let matches = verify(root: root, work: "/w1", tree: fixture_tree)
+  let other = verify(root: root, work: "/w2", tree: changed_tree)
+  let absent = verify(root: root, work: "/w3", tree: "0000000000000000000000000000000000000000")
+  let removed = shell.Remove.RecursiveForce(path: root)
+  staged && matches && !other && !absent && removed.success
+}
+
+test fn a_changed_file_fails_verification_against_the_admitted_tree_by_real_execution() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_revjob.XXXXXX").path
+  let staged = archive(root: root, a_txt: "hello!\n")
+  let admitted = verify(root: root, work: "/w1", tree: fixture_tree)
+  let own = verify(root: root, work: "/w2", tree: changed_tree)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  staged && !admitted && own && removed.success
+}
+
+test fn the_unit_renders_and_a_word_systemd_would_reinterpret_refuses() -> Bool {
+  let unit_ok = match revision_job_guest_unit() {
+    RevisionJobGuestUnitRendered { unit: _ } => true
+    RevisionJobGuestUnitRefused { reason: _ } => false
+  }
+  let refused = match revision_job_exec_line(command: mkdir_parents_command(path: "/tmp/100%")) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  let newline = match revision_job_exec_line(command: mkdir_parents_command(path: "/tmp/a\nb")) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  let undeclared = match exec_command_line_with_environment(command: mkdir_parents_command(path: join(["$", "{", "OTHER", "}"], "")), environment: ["GUNBC_CLAIM_SET_TREE"]) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  unit_ok && refused && newline && undeclared
+}
