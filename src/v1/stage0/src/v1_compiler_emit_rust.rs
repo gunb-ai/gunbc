@@ -58,7 +58,7 @@ pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, target_cal
 pub use crate::v1_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v1_compiler_dag_collect_support::{connective_name};
 pub use crate::v1_compiler_emit::{BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, EmitterOutcome, ServiceFieldSet, BoundOperation, ShellResultField, ShellResultChannel, NativeEffectRealizationAdmission, NativeEffectDeclSite, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
-pub use crate::v1_compiler_emit::{rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal};
+pub use crate::v1_compiler_emit::{rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_emit_core_support::{escape_json_string, module_to_filename, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
 pub use crate::v1_compiler_infer::{InferScope};
@@ -38809,6 +38809,7 @@ pub fn emit_operation_method(
             env.source_indices.clone(),
             shared_types.clone(),
             env.clone(),
+            emit_info.clone(),
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -39037,6 +39038,7 @@ pub fn emit_transport_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
@@ -39063,6 +39065,8 @@ pub fn emit_transport_call(
             op_node.clone(),
             source_indices.clone(),
             env.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
         ),
         BoundOperation::FileBound {
             verb: v,
@@ -40483,6 +40487,8 @@ pub fn emit_shell_call(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let argv = transport.children.clone();
@@ -40511,27 +40517,7 @@ pub fn emit_shell_call(
                 )
             },
         );
-        let list_params = Rc::new({
-            let mut __result = Vec::new();
-            for p in op_node.params.clone().iter().cloned() {
-                if shell_argv_param_is_word_list(p.clone(), source_indices.clone()) {
-                    __result.push(p);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()),
-                    true,
-                )
-            },
-        );
+        let argv_scope = shell_argv_emit_scope(env.clone(), registry.clone());
         let has_stdin =
             match crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone()) {
                 Some(_) => true,
@@ -40551,7 +40537,12 @@ pub fn emit_shell_call(
                         emit_shell_argv_element(
                             first_arg.clone(),
                             optional_params.clone(),
+                            registry.clone(),
+                            argv_scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
                             source_indices.clone(),
+                            emit_info.clone(),
                         ),
                     ),
                     ")".to_string(),
@@ -40583,36 +40574,15 @@ pub fn emit_shell_call(
             Rc::new({
                 let mut __result = Vec::new();
                 for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
-                    __result.push(
-                        if shell_argv_element_is_word_list(
-                            arg.clone(),
-                            list_params.clone(),
-                            source_indices.clone(),
-                        ) {
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "    .args(".to_string(),
-                                    emit_shell_argv_word_list_element(
-                                        arg.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                ),
-                                ".iter())".to_string(),
-                            )
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "    .arg(".to_string(),
-                                    emit_shell_argv_element(
-                                        arg.clone(),
-                                        optional_params.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                ),
-                                ")".to_string(),
-                            )
-                        },
-                    );
+                    __result.push(if shell_argv_element_is_word_list(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
+                v1_rt::concat(v1_rt::concat("    .args(".to_string(), emit_shell_argv_word_list_element(arg.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone())), ".iter())".to_string())
+            } else {
+                if shell_argv_element_is_string_word(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
+                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone())), ")".to_string())
+                } else {
+                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("argv element is not String or List<String> at ".to_string(), arg.span.clone().file.clone()), ":".to_string()), crate::v1_compiler_emit_core_support::to_string(arg.span.clone().start.clone())))), ")".to_string())
+                }
+            });
                 }
                 __result
             })
@@ -40783,49 +40753,234 @@ pub fn emit_shell_call(
     }
 }
 
-pub fn shell_argv_param_is_word_list(
-    param: Rc<Node>,
+pub fn shell_argv_emit_scope(
+    env: Rc<TypeEnv>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<InferScope> {
+    {
+        let empty = crate::v1_compiler_emit::empty_emit_scope();
+        Rc::new(InferScope {
+            type_env: env.clone(),
+            func_env: empty.func_env.clone(),
+            locals: empty.locals.clone(),
+            body_locals: empty.body_locals.clone(),
+            match_bound_names: empty.match_bound_names.clone(),
+            module_name: env.module_path.clone(),
+            service_registry: empty.service_registry.clone(),
+            item_registry: registry.clone(),
+            lambda_param_provenance: empty.lambda_param_provenance.clone(),
+            caller_decl_name: empty.caller_decl_name.clone(),
+            in_flight_lambda_param_names: empty.in_flight_lambda_param_names.clone(),
+            enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names.clone(),
+        })
+    }
+}
+
+pub fn argv_follow_inferred(n: Rc<Node>) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+        _ => match n.type_annotation.clone() {
+            Some(t) => t.clone(),
+            std::option::Option::None => n,
+        },
+    }
+}
+
+pub fn argv_element_type_after_alias_hop(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    type_node_is_ordered_element_run(
-        crate::v1_std_core::param_node_type_expr(param.clone()),
-        source_indices.clone(),
-    )
+    fuel: i64,
+) -> Option<Rc<Node>> {
+    match arg.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => Some(hop_argv_element_type(
+            rt.clone(),
+            scope.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+            fuel.clone(),
+        )),
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn hop_argv_element_type(
+    mut __tco_loop_rt: Rc<Node>,
+    mut __tco_loop_scope: Rc<InferScope>,
+    mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_fuel: i64,
+) -> Rc<Node> {
+    loop {
+        #[allow(unused_mut)]
+        let mut rt = __tco_loop_rt;
+        #[allow(unused_mut)]
+        let mut scope = __tco_loop_scope;
+        #[allow(unused_mut)]
+        let mut emit_info = __tco_loop_emit_info;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        #[allow(unused_mut)]
+        let mut fuel = __tco_loop_fuel;
+        if (fuel.clone() <= 0) {
+            break rt.clone();
+        } else {
+            if (type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
+                || is_rust_string_like(rt.clone(), source_indices.clone()))
+            {
+                break rt.clone();
+            } else {
+                if rust_type_node_is_arrow(rt.clone()) {
+                    {
+                        let __tco_0 = argv_follow_inferred(rt);
+                        let __tco_1 = scope;
+                        let __tco_2 = emit_info;
+                        let __tco_3 = source_indices;
+                        let __tco_4 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_rt = __tco_0;
+                        __tco_loop_scope = __tco_1;
+                        __tco_loop_emit_info = __tco_2;
+                        __tco_loop_source_indices = __tco_3;
+                        __tco_loop_fuel = __tco_4;
+                        continue;
+                    }
+                } else {
+                    match rust_operand_alias_or_refinement_continue(
+                        rt.clone(),
+                        scope.clone(),
+                        fuel.clone(),
+                    ) {
+                        Some(next) => {
+                            let __tco_0 = next.clone();
+                            let __tco_1 = scope;
+                            let __tco_2 = emit_info;
+                            let __tco_3 = source_indices;
+                            let __tco_4 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_rt = __tco_0;
+                            __tco_loop_scope = __tco_1;
+                            __tco_loop_emit_info = __tco_2;
+                            __tco_loop_source_indices = __tco_3;
+                            __tco_loop_fuel = __tco_4;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                                emit_info.type_decl_items.clone(),
+                                rt.clone(),
+                                source_indices.clone(),
+                            ))
+                            .clone()
+                            {
+                                TypeDeclResolution::TypeDeclResolved { decl: d, .. } => {
+                                    let __tco_0 = argv_follow_inferred(d.clone());
+                                    let __tco_1 = scope;
+                                    let __tco_2 = emit_info;
+                                    let __tco_3 = source_indices;
+                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                    __tco_loop_rt = __tco_0;
+                                    __tco_loop_scope = __tco_1;
+                                    __tco_loop_emit_info = __tco_2;
+                                    __tco_loop_source_indices = __tco_3;
+                                    __tco_loop_fuel = __tco_4;
+                                    continue;
+                                }
+                                TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
+                                    break rt.clone();
+                                }
+                                TypeDeclResolution::TypeDeclKernelSpellingUndecided {
+                                    leaf: _,
+                                    ..
+                                } => {
+                                    break rt.clone();
+                                }
+                                TypeDeclResolution::TypeDeclNotDeclared => {
+                                    break rt.clone();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn shell_argv_element_is_word_list(
     arg: Rc<Node>,
-    list_params: Rc<HashMap<String, bool>>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match argv_element_type_after_alias_hop(
+        arg.clone(),
+        scope.clone(),
+        emit_info.clone(),
+        source_indices.clone(),
+        8,
+    ) {
+        Some(t) => type_node_is_ordered_element_run(t.clone(), source_indices.clone()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn shell_argv_element_is_string_word(
+    arg: Rc<Node>,
+    scope: Rc<InferScope>,
+    emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => match v1_rt::map_get(
-            &list_params,
-            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+        {
+            let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        ExprData::ExprStringInterp => true,
+        _ => match argv_element_type_after_alias_hop(
+            arg.clone(),
+            scope.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+            8,
         ) {
-            Some(_) => true,
+            Some(t) => is_rust_string_like(t.clone(), source_indices.clone()),
             std::option::Option::None => false,
         },
-        _ => false,
     }
 }
 
 pub fn emit_shell_argv_word_list_element(
     arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    crate::v1_compiler_emit::emit_ident(
-        crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
-        RenderTarget::Rust,
+    emit_typed_expr(
+        arg.clone(),
+        registry.clone(),
+        scope.clone(),
+        depth.clone(),
+        shared_types.clone(),
+        emit_info.clone(),
+        1024,
     )
 }
 
 pub fn emit_shell_argv_element(
     arg: Rc<Node>,
     optional_params: Rc<HashMap<String, bool>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
@@ -40944,10 +41099,14 @@ pub fn emit_shell_argv_element(
                 emit_rust_dag_string_to_host_via_seam(var_name.clone())
             }
         }
-        _ => crate::v1_compiler_emit::emit_simple_expr(
+        _ => emit_typed_expr(
             arg.clone(),
-            RenderTarget::Rust,
-            source_indices.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+            1024,
         ),
     }
 }

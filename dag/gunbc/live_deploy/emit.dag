@@ -170,6 +170,7 @@ import gunbc.live_deploy.lab_host_plan {
   lab_plan_refused_emit_line,
 }
 import gunbc.live_deploy.spec {
+  deployment_serve_source_roots,
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -685,7 +686,8 @@ fn live_deploy_serve_unit_file_over_listener(
     ], concat(user_manager_environment_directives(uid: svc.service_uid), concat(oidc_env, [
       ExecStart { command: join([
         svc.serve_binary as String,
-        " serve --source-root dag --source-root src/v2",
+        " serve",
+        deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", function as String,
         listener,
         " --release-revision ", release_revision_execstart_text(binding: revision),
@@ -765,7 +767,8 @@ fn live_deploy_fabric_storage_unit_file(spec: DeploymentSpec, revision: ReleaseR
     ], concat(user_manager_environment_directives(uid: svc.service_uid), [
       ExecStart { command: join([
         svc.serve_binary as String,
-        " serve --source-root dag --source-root src/v2",
+        " serve",
+        deployment_serve_source_root_flags_text(),
         " --entry dag/gunbc/fabric/fabric_storage_serve.dag --function fabric_storage_serve_handle",
         " --unix-socket ", door_socket as String,
         " --release-revision ", release_revision_execstart_text(binding: revision),
@@ -889,7 +892,8 @@ fn live_deploy_approval_broker_unit_file_on(
       approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
-        " serve --source-root dag --source-root src/v2",
+        " serve",
+        deployment_serve_source_root_flags_text(),
         " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
         " --host ", svc.listen.host, " --port ", to_string(port),
         " --release-revision ", release_revision_execstart_text(binding: revision),
@@ -1229,6 +1233,10 @@ fn live_deploy_belt_answer_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
+}
+
+fn deployment_serve_source_root_flags_text() -> String {
+  join(map(deployment_serve_source_roots, r => concat(" --source-root ", r)), "")
 }
 
 fn emit_belt_unit_file_doc(file: SystemdUnitFile) -> Doc {

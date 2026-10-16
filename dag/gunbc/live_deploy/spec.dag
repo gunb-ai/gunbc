@@ -46,7 +46,7 @@ import gunbc.fleet.fleet_intent_network {
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
-import std.materialization_store_grant { materialization_store_durable_root_path, materialization_store_staging_root_path, DurableHostVolumeRoot }
+import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
 import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
@@ -60,6 +60,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
+  srv1_live_dashboard_instance,
   ProdRoleRealization,
   ProdRoleHolder,
   ProdRoleRealizedBy,
@@ -389,6 +390,11 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // a different module, and an emitter that reaches for a literal cannot render it. The entry is a
 // fact about WHICH SERVER this config describes, so it sits beside serve_function, which is the
 // other half of the same fact.
+
+// THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
+// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// this one value rather than each spelling the flags.
+data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
 
 data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
 
@@ -1258,7 +1264,7 @@ fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> Lis
 // layout resolved through a total host-identity lookup.
 fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
   let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
-  [
+  let host = [
     OwnedDirectoryDeclared {
       member: "devboot-artifact-store" as NonEmptyStr,
       path: srv1_devboot_artifact_store_root,
@@ -1271,19 +1277,24 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
-    OwnedDirectoryDeclared {
-      member: "materialization-store" as NonEmptyStr,
-      path: materialization_store_durable_root_path as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
-    OwnedDirectoryDeclared {
-      member: "materialization-store-staging" as NonEmptyStr,
-      path: materialization_store_staging_root_path(root: DurableHostVolumeRoot) as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
   ]
+  match srv1_live_dashboard_instance().materialization_store_root {
+    Absent => host
+    Present { value: store } => concat(host, [
+      OwnedDirectoryDeclared {
+        member: "materialization-store" as NonEmptyStr,
+        path: materialization_store_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+      OwnedDirectoryDeclared {
+        member: "materialization-store-staging" as NonEmptyStr,
+        path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+    ])
+  }
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget, holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
