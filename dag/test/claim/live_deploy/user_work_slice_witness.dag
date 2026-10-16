@@ -944,6 +944,8 @@ test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
   bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
     && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
     && bound_standing(levels: [], swap: []) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "0")], swap: ["0"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "0")], swap: ["0", "max"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
     && user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
          cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
          user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable

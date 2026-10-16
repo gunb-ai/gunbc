@@ -168,8 +168,9 @@ type UserWorkScopeCgroupRead
 // through the one authority for those files, extdeps.linux.cgroup_v2_memory: each level's memory.max
 // parsed by parse_cgroup_memory_limit and folded by cgroup_tightest_hard_memory_limit (any ancestor's
 // limit binds the process, the tightest wins), and each level's memory.swap.max parsed by the same
-// parser. The process is bounded when a hard limit binds AND some level sets memory.swap.max to 0 (a
-// swap ceiling of 0 anywhere on the chain forbids swap below it). No binding limit, or swap allowed
+// parser. The process is bounded when a NONZERO hard limit binds AND some level sets memory.swap.max to 0 (a
+// swap ceiling of 0 anywhere on the chain forbids swap below it). A tightest limit of 0 is not a bound:
+// it is the zero cap this fold's other arms already refuse as uncapped. No binding limit, or swap allowed
 // on every level, is unbounded; a chain that could not be read is unread; neither admits (they fall
 // through to the user-manager arms below, which refuse where no user manager exists). The readings
 // are supplied, so the fold is the only policy; the seed trampoline performs the walk and mirrors
@@ -200,7 +201,7 @@ fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
     CgroupChainRead { levels: l, swap_max: w } => match cgroup_tightest_hard_memory_limit(levels: l) {
       CgroupNoHardLimit => CgroupChainUnbounded
       CgroupHardLimitBinds { dir: d, bytes: b } =>
-        if swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
+        if byte_size_count(b: b) > 0 && swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
     }
   }
 }
