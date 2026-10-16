@@ -573,8 +573,9 @@ fn mbt_reports_within(r: MbtDeclReading, reason: Symbol) -> Bool {
 // The earlier form of this row asserted infer_match_scrutinee_type_underived here and went red when the
 // call's return derived, as its own comment predicted. CONSEQUENCE, STATED: no source-route program reaches
 // the underived-scrutinee arm any more, so that arm is executed only at the supplied boundary below
-// (mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds); a source program whose
-// scrutinee cannot derive is its next inhabitance claim.
+// (mbt_the_frontier_arm_accepts_and_reports_the_underived_scrutinee_holds); its source-route
+// inhabitance claim is the tracked row gunbc.recurring_failure_mode
+// underived_scrutinee_arm_has_no_source_route_inhabitance.
 
 test fn mbt_the_sevens_call_scrutinee_is_typed_and_its_constructor_bodies_are_counted_holds() -> Bool {
   mbt_program_reading().infers
