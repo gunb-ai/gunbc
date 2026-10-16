@@ -3486,21 +3486,17 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
         TypeDeclResolved { identity: identity, decl: _ } =>
           if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
         TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
-        _ => SharedLayerAtValue
+        _ => SharedLayerRefuse { leaf: leaf, cause: "TypeDeclNotResolved" }
       }
     }
   } else if is_kernel_type(name: leaf) {
     // A kernel spelling realizes as the host type (i64, String, ...), at the value layer, whichever
     // declaration the corpus also gives the same leaf (emitted Int enum-variant fields as Rc<i64>).
     SharedLayerAtValue
-  } else if set_contains(shared_types, leaf) {
-    // The bare leaf key is inserted only for a unique declarer (or a container template), so it names
-    // the one declaration the leaf means; identity lookup alone answered the value layer for FreeMonoid.
-    SharedLayerAtShared
   } else {
     match resolution {
       TypeDeclResolved { identity: identity, decl: _ } =>
-        if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
+        if shared_types_contains_identity(shared_types: shared_types, identity: identity) || declaration_realizes_as_shared_container_template(shared_types: shared_types, identity: identity, leaf: leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
       TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
       TypeDeclKernelSpellingUndecided { leaf: und } =>
         shared_layer_of_undecided_kernel_spelling(shared_types: shared_types, leaf: und, type_decl_items: type_decl_items)
@@ -3643,6 +3639,16 @@ fn identity_keyed_recursive_type_set(leaf_set: Set<String>, type_decl_items: Typ
 
 fn shared_layer_of_leaf(shared_types: Set<String>, leaf: String, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   shared_layer_of_resolution(shared_types: shared_types, leaf: leaf, resolution: resolve_type_decl_leaf(index: type_decl_items, leaf: leaf), type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+}
+
+// A grounded coproduct native alias (FreeMonoid = Vec) is never marked shared by identity: it has no
+// emitted struct. Its constructors still wrap by the container template the target realizes it as,
+// so the declaration answers the shared layer when the resolved declaration is that native alias and
+// the target's template key for its leaf is active; the answer is read from the declaration, not the spelling.
+fn declaration_realizes_as_shared_container_template(shared_types: Set<String>, identity: String, leaf: String) -> Bool {
+  let segments = identity |> split(delimiter: ".")
+  declaration_is_grounded_coproduct_native_alias(module_path: segments |> take((segments |> count) - 1) |> join(separator: "."), decl_name: leaf)
+    && set_contains(shared_types, leaf)
 }
 
 fn shared_types_contains_identity(shared_types: Set<String>, identity: String) -> Bool {
