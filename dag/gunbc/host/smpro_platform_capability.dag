@@ -1,76 +1,41 @@
-// AMPERE SMpro ACCESS IS A PLATFORM CAPABILITY, not a controller fact and not a MegaRAC reading.
+// WHAT SMpro WAS READ ON THIS MACHINE, kept separate from the controller and from MegaRAC.
 //
 // SMpro is the Ampere SoC's own out-of-band register interface (the master-write-read path into the
-// RAS error registers). It is present on the Ampere (Aarch64) platform and ABSENT on a non-Ampere
-// (x86) machine: an x86 board has no SMpro to read, so the capability is ABSENT for it, not an
-// empty reading and not a refused one. That distinction is the point of this owner — a machine
-// whose platform does not carry SMpro is still a valid controlled machine, and the absence must be
-// readable as a platform fact rather than mistaken for a failed probe.
+// RAS error registers). It belongs to the platform, not to the BMC controller: whether a machine can
+// answer an SMpro read is a fact about its SoC, and it is read through a different path than any
+// IPMI/Redfish control route. That is why the reading is owned here and not inside a controller
+// adapter -- a MegaRAC board and an SMpro-less board are the same thing to the controller and differ
+// only as platforms.
 //
-// The reading itself is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
-// .mtcollins1_boot_diagnostic_bundle) because the bundle's own SmproReading is consumed by more than
-// the bundle: the MegaRAC boot diagnostic bundle carries an SMpro field, and it must not mint the
-// type in its own public surface. Both the bundle and the MegaRAC module import the type from here.
-// The raw pass observation it wraps still comes from the observation module this reads through.
+// The reading is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
+// .megarac_boot_diagnostic_bundle) because it is consumed by more than the bundle: the MegaRAC
+// boot diagnostic bundle carries an SMpro field, and it must not mint the type in its own public
+// surface. Both import the type from here. The raw pass observation it wraps still comes from the
+// observation module this reads through.
 module gunbc.host.smpro_platform_capability
 
 import std.types { NonEmptyStr }
-import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.machine_intake.ampere_smpro_observation { SmproPassObservation }
 
 // AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
 // including when none of them was answered), or the typed fact that no pass was taken and why.
-// The platform capability below stands on top of this reading.
+// The two arms are exhaustive and carry no more than what happened: a reading never claims a pass
+// it did not take, and a not-taken fact never carries probe data that could contradict it.
 type SmproReading
   = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
-// THE SMpro PLATFORM CAPABILITY: one arm per fact, so a capability cannot describe a state that
-// did not happen. The earlier shape was a record of {standing, reading: SmproReading?} and admitted
-// SmproCapabilityPresent { standing: SmproCapabilityPresent, reading: none } -- a capability that
-// claims to be present while carrying no reading, the two halves free to disagree (review 81074;
-// DESIGN §5: make the wrong fact unwritable rather than validated). It also filed the REASON a
-// capability was not exercised under the field named `platform`, so the one field carried two
-// different kinds of cause. Here: the platform is always the platform, a cause is always a cause,
-// and Present is the only arm that can hold a reading -- so Present without one is not a program.
+// WHY THERE IS NO CAPABILITY TYPE HERE. An earlier revision of this owner derived a platform
+// capability by keying on Architecture: Aarch64 => "the platform carries SMpro". That fabricated a
+// platform fact from the instruction set. SMpro is the Ampere SoC's interface, not the ARM ISA's, so
+// an Aarch64 board without it (Graviton, Grace) came out as carrying SMpro -- and a machine with no
+// reading came out as SmproCapabilityPassNotTaken, which asserts "the platform DOES carry SMpro and
+// no pass was taken", when the truth was that it never carried it (review 81108; DESIGN §5: no
+// plausible output is fabricated). The deciding fact is the SoC / platform identity, and the corpus
+// has no such identity to key on yet, so nothing is inferred in its place.
 //
-// Absent is a platform fact, not a failure: a non-Ampere (x86) board has no SMpro to read and is
-// still a valid controlled machine. PassNotTaken is the other fact on its own: the platform DOES
-// carry SMpro and no pass was taken, with the reason located.
-type SmproCapability
-  = SmproCapabilityPresent { reading: SmproReading }
-  | SmproCapabilityPassNotTaken { reason: NonEmptyStr }
-  | SmproCapabilityPlatformAbsent { architecture: Architecture }
-
-// THE SMpro READ: derive the platform capability from the machine's architecture and the SMpro
-// reading taken (or the typed fact that it was not). The architecture decides whether the platform
-// carries the capability at all; the reading decides whether it was exercised. A non-Ampere platform
-// is ABSENT whatever the reading — a reading reported for a platform that has no SMpro is not
-// promoted into a capability, it is dropped, because the platform fact is the one that is known.
-// Only the arm whose FACT is the platform carries it: the other two arms are derived from Aarch64,
-// so restating it there would be a second copy able to disagree with how it was derived. This is the
-// neutral read the bundle and the MegaRAC module both import.
-fn smpro_capability(architecture: Architecture, reading: SmproReading?) -> SmproCapability {
-  match architecture {
-    Aarch64 => match reading {
-      Present { value: r } => SmproCapabilityPresent { reading: r }
-      Absent => SmproCapabilityPassNotTaken {
-        reason: "the SMpro pass was not taken on an Aarch64 platform" as NonEmptyStr,
-      }
-    }
-    _ => SmproCapabilityPlatformAbsent { architecture: architecture }
-  }
-}
-
-// THE CAUSE, as text: where the capability stands and why. Total over the three arms, so a caller
-// never has to re-derive the standing from the fields.
-fn smpro_capability_text(capability: SmproCapability) -> String {
-  match capability {
-    SmproCapabilityPresent { reading: _ } => "SMpro capability present (Aarch64)"
-    SmproCapabilityPassNotTaken { reason: r } =>
-      join(["SMpro not exercised on an Aarch64 platform: ", r as String], "")
-    SmproCapabilityPlatformAbsent { architecture: a } =>
-      join([architecture_diagnostic_name(arch: a) as String,
-            " carries no SMpro (an Ampere/Aarch64 capability)"], "")
-  }
-}
+// What this owner reports is therefore the READING: was a pass taken, with its raw observation, or
+// the typed reason it was not. A consumer that genuinely needs "does this platform carry SMpro"
+// must ask the platform -- a board identity, once one exists -- not the ISA. Until that fact has a
+// home, an x86 or SMpro-less machine simply has no SMpro reading, which is what SmproNotTaken
+// already says without the module pretending to know why.

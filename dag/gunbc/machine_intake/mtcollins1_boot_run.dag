@@ -2040,7 +2040,7 @@ fn smpro_phase_result(reading: SmproReading) -> BootPhaseRunResult {
 
 fn power_after_phase_result(p: MegaRacPowerAfter) -> BootPhaseRunResult {
   match p {
-    MegaRacPowerAfterUnobserved { observation: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
+    MegaRacPowerAfterUnobserved { reason: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
     MegaRacPowerAfterNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
     MegaRacPoweredOffAfterCensusEnd => PhaseVerified
     MegaRacPoweredOffWithoutCensusEnd => PhaseVerified
@@ -2169,7 +2169,7 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
           }
         MegaRacPoweredOffAfterCensusEnd => observed
         MegaRacPoweredOffWithoutCensusEnd => observed
-        MegaRacPowerAfterUnobserved { observation: _ } => observed
+        MegaRacPowerAfterUnobserved { reason: _ } => observed
         MegaRacPowerAfterNotTaken { reason: _ } => observed
       }
     }
@@ -2771,7 +2771,7 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
           MegaRacPoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
           MegaRacPoweredOffWithoutCensusEnd => mtcollins1_boot_smpro_read(username: user, password_file: pf)
           MegaRacPoweredOnAfterAttempt => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          MegaRacPowerAfterUnobserved { observation: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
+          MegaRacPowerAfterUnobserved { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
           MegaRacPowerAfterNotTaken { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
         },
         inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),

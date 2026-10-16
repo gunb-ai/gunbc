@@ -34,6 +34,8 @@ import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionStatus, dissolution_status, retires_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.tools.coreutils_stat
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -89,12 +91,43 @@ fn host_power_text(state: HostPowerState) -> String {
 }
 
 // THE MEDIA PRESENTATION STATE, protocol-agnostic: is the medium the attempt wants actually being
-// served. (The MegaRAC adapter maps its MegaRacAttachResult to this.)
+// served, and if not, in which of three different ways not. The three are NOT interchangeable and the
+// old two-arm shape collapsed two of them:
+//
+//   Presented                    — the controller says the medium is being served.
+//   PresentationSessionHeld      — it was served, but only while OUR attach session lived, and that
+//                                  session is now closed. A presentation that dies with the session is
+//                                  not a presentation the boot will find; it is also not a failed read.
+//   PresentationNotServed        — the controller answered, and what it answered is that the medium is
+//                                  not being served, with its reason. "Not attempted" used to be this
+//                                  arm's name, which read as "nobody looked" for a look that was made
+//                                  and came back negative.
+//   PresentationUnread           — the read itself did not answer. Indeterminate: neither served nor
+//                                  not served is known.
+//
+// The adapter classifies an ATTACH result and a read-only LOOK with two different functions
+// (megarac_presentation / megarac_look_presentation). They must not share one: an attach result and a
+// look are different observations, and classifying a look with the attach classifier reports every
+// healthy look as "not attempted", because a look is by construction not an attach.
 
 type BootPresentation
   = Presented
-  | PresentationNotAttempted { reason: NonEmptyStr }
+  | PresentationSessionHeld { detail: NonEmptyStr }
+  | PresentationNotServed { reason: NonEmptyStr }
   | PresentationUnread { reason: NonEmptyStr }
+
+// THE ONE RENDERING of a presentation state, beside host_power_text for the same reason: the media
+// attach line, the handoff after-look line and the end-of-attempt look line all describe this one
+// concept, and an arm added here shows up in all three at once. Anywhere else that needs these words
+// asks for them; a fourth match on BootPresentation outside these two fns is the drift this prevents.
+fn presentation_text(p: BootPresentation) -> String {
+  match p {
+    Presented => "presented"
+    PresentationSessionHeld { detail: d } => concat("served only under our attach session: ", d as String)
+    PresentationNotServed { reason: r } => concat("not served: ", r as String)
+    PresentationUnread { reason: r } => concat("unread: ", r as String)
+  }
+}
 
 // ── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ────────────────────────────────────────────────────
 // The handoff is gated on this record, and the run record carries the same record (side chat on
@@ -141,7 +174,8 @@ fn media_attach_ready(record: MediaAttachRecord) -> Bool {
     MediaAttachNotAttempted { reason: _ } => false
     MediaAttachAttempted { medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p } => match p {
       Presented => true
-      PresentationNotAttempted { reason: _ } => false
+      PresentationSessionHeld { detail: _ } => false
+      PresentationNotServed { reason: _ } => false
       PresentationUnread { reason: _ } => false
     }
   }
@@ -160,11 +194,7 @@ fn media_attach_text(record: MediaAttachRecord) -> String {
         },
         "; ", (stale_power_off_text(record: s) as String),
         "; presentation: ",
-        match pr {
-          Presented => "presented"
-          PresentationNotAttempted { reason: rr } => join(["not attempted: ", rr as String], "")
-          PresentationUnread { reason: rr } => join(["unread: ", rr as String], "")
-        }
+        presentation_text(p: pr)
       ], "")
   }
 }
@@ -174,10 +204,14 @@ fn media_attach_text(record: MediaAttachRecord) -> String {
 // record keeps the neutral outcome (confirmed / attempted-unconfirmed / refused) and the presentation
 // state after.
 
+// Two arms, not three. A third, "the controller refused the handoff", was here and was deleted: the
+// raw record the adapter stores is built from the handoff COMMAND's exit (exit 0 => confirmed, a
+// failure => attempted-but-unconfirmed), so no observation can ever produce a refusal, the classifier
+// that is the only writer has no arm for one, and the harness never raises one. An arm nothing can
+// construct is not safety, it is a word in the vocabulary that means nothing.
 type HandoffCallResult
   = HandoffConfirmed
   | HandoffAttemptedUnconfirmed { reason: NonEmptyStr }
-  | HandoffRefused { reason: NonEmptyStr }
 
 type HandoffMedia
   = HandoffMediaNotReached { reason: NonEmptyStr }
@@ -196,14 +230,9 @@ fn handoff_media_text(record: HandoffMedia) -> String {
         match h {
           HandoffConfirmed => "confirmed"
           HandoffAttemptedUnconfirmed { reason: rr } => join(["attempted, unconfirmed: ", rr as String], "")
-          HandoffRefused { reason: rr } => join(["refused: ", rr as String], "")
         },
         "; presentation after: ",
-        match a {
-          Presented => "presented"
-          PresentationNotAttempted { reason: rr } => join(["not attempted: ", rr as String], "")
-          PresentationUnread { reason: rr } => join(["unread: ", rr as String], "")
-        }], "")
+        presentation_text(p: a)], "")
   }
 }
 
@@ -218,11 +247,10 @@ fn end_media_text(record: EndMedia) -> String {
   match record {
     EndMediaNotTaken { reason: r } => concat("not taken: ", r as String)
     EndMediaObserved { look: l } =>
-      match l {
-        Presented => "end look: presented"
-        PresentationNotAttempted { reason: rr } => join(["end look not attempted: ", rr as String], "")
-        PresentationUnread { reason: rr } => join(["end look unread: ", rr as String], "")
-      }
+      // One prefix over the ONE presentation rendering. The end look and the handoff after-look are
+      // the same kind of fact read at a different moment, so they render identically apart from which
+      // moment the line names; a fifth presentation arm is one edit in presentation_text, not three.
+      concat("end look ", presentation_text(p: l))
   }
 }
 
@@ -248,7 +276,7 @@ type PowerAfterAttempt
   = PoweredOffAfterTerminal
   | PoweredOffWithoutTerminal
   | PoweredOnAfterAttempt
-  | PowerAfterUnobserved { power: HostPowerState }
+  | PowerAfterUnobserved { reason: NonEmptyStr }
   | PowerAfterNotTaken { reason: NonEmptyStr }
 
 // THE CLASSIFICATION, from the power state and whether a terminal marker was observed. The census
@@ -263,7 +291,7 @@ fn power_after_attempt(power: HostPowerState, terminal: TerminalObserved) -> Pow
         TerminalMarker { marker: _ } => PoweredOffAfterTerminal
         TerminalNotObserved => PoweredOffWithoutTerminal
       }
-    PowerUnread { reason: r } => PowerAfterUnobserved { power: PowerUnread { reason: r } }
+    PowerUnread { reason: r } => PowerAfterUnobserved { reason: r }
   }
 }
 
@@ -272,7 +300,7 @@ fn power_after_text(p: PowerAfterAttempt) -> String {
     PoweredOffAfterTerminal => "off after the observed terminal marker (expected: the attempt's image ends with a power-off)"
     PoweredOffWithoutTerminal => "off without an observed terminal marker"
     PoweredOnAfterAttempt => "on"
-    PowerAfterUnobserved { power: o } => concat("unobserved: ", host_power_text(state: o))
+    PowerAfterUnobserved { reason: r } => concat("unobserved: ", r as String)
     PowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
   }
 }
@@ -339,63 +367,70 @@ fn attempt_identity_text(a: AttemptIdentityReading) -> String {
 type DiagnosticRef
   = DiagnosticRetained {
       path: NonEmptyStr,
-      digest: Sha256FileDigest,
-      findings: List<BootFinding>
+      digest: Sha256FileDigest
     }
   | DiagnosticNotRetained { reason: NonEmptyStr }
   | DiagnosticUnavailable { reason: NonEmptyStr }
 
 fn diagnostic_ref_text(d: DiagnosticRef) -> String {
   match d {
-    DiagnosticRetained { path: p, digest: dg, findings: _ } => concat("retained at ", p)
+    // The digest is part of the reference -- it is how a consumer proves the file at that path is the
+    // bytes this attempt captured -- so the renderer names it rather than dropping it.
+    DiagnosticRetained { path: p, digest: dg } => match dg {
+      Sha256FileDigest { digest: x } => concat(concat("retained at ", p), concat(" (sha256 ", x.hex as String))
+      Sha256FileDigestUnavailable { path: up, reason: r } =>
+        concat(concat("retained at ", p), concat(" (digest unavailable for ", concat(up, concat(": ", r))))
+    }
     DiagnosticNotRetained { reason: r } => concat("not retained: ", r as String)
     DiagnosticUnavailable { reason: r } => concat("unavailable: ", r as String)
   }
 }
 
-// ── THE NEUTRAL FINDINGS ──────────────────────────────────────────────────────────────────────────
-// The typed findings the run record carries (correction 4: no stringly catch-all; every arm is a
-// named, typed fact about the attempt). Findings the boot could not type (a controller-specific read
-// failure, a raw reading) stay in the adapter's findings, not here.
+// ── THE NEUTRAL FINDINGS, IN TWO KINDS ────────────────────────────────────────────────────────────
+// (correction 4: no stringly catch-all; every arm is a named, typed fact about the attempt. Findings
+// the boot could not type — a controller-specific read failure, a raw reading — stay in the adapter's
+// findings, not here.)
+//
+// Two kinds, because they have two different sources and DESIGN §3 wants each fact in exactly one:
+//
+//   StandingFinding      — a fact the run record's own fields CANNOT state, because it was observed
+//                          beside the attempt rather than in it: which BMC channels failed, and whether
+//                          the per-attempt credential was removed. Only a caller can supply these, so
+//                          they are STORED on the record.
+//   Derived               — a classification OF a field the record already holds: an attach that is not
+//                          ready is what `media` says, a handoff that was refused is what `handoff_media`
+//                          says, an override still pending is what `override` says. These are never
+//                          stored. `run_record_findings` derives them, so the answer cannot disagree
+//                          with the fields it is read from and cannot be stated twice. An earlier
+//                          revision stored ONE `findings` list beside those fields and APPENDED these
+//                          same classifications to it, which let a caller report a fact twice or report
+//                          one its own fields contradict — review 81154, the same class of defect as
+//                          correction 2's removal of the stored `ready`.
+//
 
-type BootFinding
+
+type StandingFinding
   = EveryReadFailed { count: Int, channels: List<NonEmptyStr> }
-  | MediaAttachNotReady { record: MediaAttachRecord }
+  | CredentialMayRemain
+
+type DerivedFinding
+  = MediaAttachNotReady { record: MediaAttachRecord }
   | MediaAttachSessionHeld { record: MediaAttachRecord }
   | HandoffWithheldAtRecheck { handoff: HandoffMedia }
-  | HandoffRefusedByController { handoff: HandoffMedia }
   | HandoffUnconfirmed { handoff: HandoffMedia }
   | OverrideNotConsumed { consumption: BootOverrideConsumption }
   | PoweredOffWithoutTerminalMarker
-  | CredentialMayRemain
   | PresentationAfterHandoff { presentation: BootPresentation }
-  | ConsoleNotRetained { path: NonEmptyStr }
 
-// THE MEDIA LOSS AFTER HANDOFF, as a finding: whether the medium the OS is booting from was still the
-// one attached after the handoff (the presentation read after the handoff says so).
-
-type MediaLossPhase
-  = MediaLossAfterHandoffPhase
-  | MediaLossAtEndLook
-
-type MediaLossAfterHandoff
-  = MediaLossAffirmed { phase: MediaLossPhase, reason: NonEmptyStr }
-  | MediaLossNotAffirmed
-
-fn media_loss_text(loss: MediaLossAfterHandoff) -> String {
-  match loss {
-    MediaLossAffirmed { phase: ph, reason: r } =>
-      join([
-        "media loss affirmed after the ",
-        match ph {
-          MediaLossAfterHandoffPhase => "handoff"
-          MediaLossAtEndLook => "end look"
-        },
-        ": ", r as String
-      ], "")
-    MediaLossNotAffirmed => "no media loss affirmed after the handoff (the presentation read back as served)"
-  }
+// THE ANSWER TO "WHAT WENT WRONG WITH THIS ATTEMPT", kept as the TWO sources it has rather than one
+// flattened list. Two sums may not share an arm name in this language, which is a fact of the checker
+// and a fact of the design at once: the two lists answer different questions and a single vocabulary
+// would let one carry the other's facts. `run_record_findings` is the only way to ask.
+type RunRecordFindings {
+  standing: List<StandingFinding>,
+  derived: List<DerivedFinding>,
 }
+
 
 // ── THE RUN RECORD ────────────────────────────────────────────────────────────────────────────────
 // THE RECORD OF ONE BOOT ATTEMPT, neutral (operator ruling 2026-10-14). It carries the attempt's
@@ -415,46 +450,73 @@ type BootRunRecord {
   timing: BootPhaseTiming,
   identity: AttemptIdentityReading,
   diagnostic: DiagnosticRef,
-  findings: List<BootFinding>
+  // Standing facts only (see StandingFinding): what the attempt observed BESIDE these fields. A
+  // finding the fields themselves state has no arm here, so it cannot be stored, duplicated, or
+  // contradicted. Ask run_record_findings, which returns the standing list it stores and the derived
+  // list it computes as the TWO things they are -- it does not flatten them into one vocabulary, so a
+  // consumer cannot mistake a stored claim for a computed one or vice versa.
+  standing: List<StandingFinding>
 }
 
-// THE NOT-TAKEN RUN RECORD: a boot that never reached the run section (the actuation refused, the
-// medium attach failed before the handoff). Every field is its not-taken arm.
-
-fn run_record_not_taken(reason: NonEmptyStr) -> BootRunRecord {
-  BootRunRecord {
-    terminal: TerminalNotObserved,
-    end_media: EndMediaNotTaken { reason: reason },
-    handoff_media: HandoffMediaNotReached { reason: reason },
-    media: MediaAttachNotAttempted { reason: reason },
-    override: OverrideNotHandedOff { reason: reason },
-    power_after: PowerAfterNotTaken { reason: reason },
-    timing: boot_phase_timing_not_taken(reason: reason),
-    identity: AttemptIdentityUnavailable { variable: "attempt run id", detail: (reason as String) },
-    diagnostic: DiagnosticNotRetained { reason: reason },
-    findings: []
-  }
-}
 
 // ── THE RUN RECORD, AS A FINDINGS LIST AND AS TEXT ────────────────────────────────────────────────
 
-// The run record's own findings, in the order the harness checks them. The findings list the harness
-// emits is the run record's `findings` field; this fn derives the ones the record's own fields imply
-// (a not-ready attach, a withheld handoff, an unconfirmed handoff, an unconsumed override, a
-// powered-off-without-terminal power-after) so the harness does not re-derive them.
+// THE ONE WAY TO ASK WHAT WENT WRONG. Two sources are concatenated, each with exactly one home:
+//
+//   record.standing      — stored, because no field states it (which BMC channels failed, whether the
+//                          per-attempt credential was removed).
+//   derived from fields  — computed here, never stored: a not-ready attach is what `media` says, a
+//                          withheld / refused / unconfirmed handoff is what `handoff_media` says, an
+//                          override still pending is what `override` says, a powered-off run with no
+//                          terminal marker is what `power_after` and `terminal` say together.
+//
+// Review 81154: these used to be APPENDED to a stored `findings` list, so a caller could store one of
+// them and have it reported twice, or store one its own fields contradict. Narrowing the stored field
+// to `StandingFinding` makes both unwritable rather than merely wrong -- §5's construction over
+// validation, and the same correction the stored `ready` boolean already got.
 
-fn run_record_findings(record: BootRunRecord) -> List<BootFinding> {
-  let attach = if media_attach_ready(record: record.media) { [] } else { [MediaAttachNotReady { record: record.media }] }
+fn run_record_findings(record: BootRunRecord) -> RunRecordFindings {
+  RunRecordFindings {
+    standing: record.standing,
+    derived: run_record_derived_findings(record: record),
+  }
+}
+
+// The seven classifications, read out of the record's own fields. Split out so a witness can assert a
+// single derived finding without also having to assert the standing list the caller supplied.
+fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
+  // An attach that was never attempted is not a not-ready attach, and a medium served only under our
+  // own closing session is a different fact from one the controller refused to serve: the three are the
+  // harness's own three arms (media_attach_harness), restated here from the fields the record holds.
+  // `media_attach_ready` is NOT used -- it answers "can this boot proceed", which folds session-held and
+  // not-served together, and a finding must keep them apart.
+  let attach = match record.media {
+    MediaAttachNotAttempted { reason: _ } => []
+    MediaAttachAttempted {
+      medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p
+    } =>
+      match p {
+        Presented => []
+        PresentationNotServed { reason: _ } => [MediaAttachNotReady { record: record.media }]
+        PresentationSessionHeld { detail: _ } => [MediaAttachSessionHeld { record: record.media }]
+        // The read never answered, so neither "not ready" nor "session held" is known; the record's own
+        // presentation field already says that, and a finding repeating it would be a second home for it.
+        PresentationUnread { reason: _ } => []
+      }
+  }
   let handoff =
     match record.handoff_media {
       HandoffMediaNotReached { reason: _ } => []
       HandoffMediaWithheldAtRecheck { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
-      HandoffMediaAttempted { handoff: h, after: _ } =>
-        match h {
-          HandoffConfirmed => []
-          HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
-          HandoffRefused { reason: _ } => [HandoffRefusedByController { handoff: record.handoff_media }]
-        }
+      // The call result and the after-look are two separate facts of one record, and the harness raises
+      // a finding for each: an unconfirmed (or refused) call, and a medium still being served after the
+      // handoff. Both are read from the fields here, so a record cannot state one and omit the other.
+      HandoffMediaAttempted { handoff: h, after: a } =>
+        (match h {
+           HandoffConfirmed => []
+           HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
+         })
+        + (match a { Presented => []  _ => [PresentationAfterHandoff { presentation: a }] })
     }
   let override =
     match record.override {
@@ -470,29 +532,12 @@ fn run_record_findings(record: BootRunRecord) -> List<BootFinding> {
       PoweredOffWithoutTerminal => [PoweredOffWithoutTerminalMarker]
       _ => []
     }
-  join_list(join_list(join_list(join_list(record.findings, attach), handoff), override), power)
-}
-
-fn join_list(a: List<T>, b: List<T>) -> List<T> {
-  a + b
+  attach + handoff + override + power
 }
 
 // THE RUN RECORD, RENDERED. The run section's text, one line per classification, in the order the
 // harness reads it.
 
-fn run_record_text(record: BootRunRecord) -> String {
-  join([
-    "run id: ", (attempt_identity_text(a: record.identity) as String),
-    "\nterminal: ", (terminal_text(t: record.terminal) as String),
-    "\nmedia: ", (media_attach_text(record: record.media) as String),
-    "\nhandoff: ", (handoff_media_text(record: record.handoff_media) as String),
-    "\nend media: ", (end_media_text(record: record.end_media) as String),
-    "\noverride: ", (override_consumption_text(c: record.override) as String),
-    "\npower after: ", (power_after_text(p: record.power_after) as String),
-    "\ndiagnostic: ", (diagnostic_ref_text(d: record.diagnostic) as String),
-    "\ntiming: ", (boot_phase_timing_text(t: record.timing) as String)
-  ], "")
-}
 
 // ── THE NEUTRAL BUDGETS (correction 5: only the console bound and the publish allowance are core;
 // the Redfish read budgets belong to the adapter) ──────────────────────────────────────────────────
@@ -525,10 +570,88 @@ data publish_allowance: Second = second(count: 60)
 // The mtcollins1 receipts -- the retained-artifact prefix, the census SOL reference capture path,
 // the two reference scopes, and the expected socket count -- are facts measured on mtcollins1's
 // row. They are PARAMETERS here (supplied by the mtcollins1 row via mtcollins1_boot_run) so that a
-// non-mtcollins1 row supplies its own; nothing below references an mtcollins1_ constant. The byte
+// non-mtcollins1 row supplies its own; nothing below references an mtcollins1_ CONSTANT. The byte
 // bound uses the core console_bound policy constant (correction 5).
+//
+// WHAT THIS BLOCK IS NOT (review 81108, ruling by merry-fox-82 2026-10-16): the console CONCEPT is
+// neutral; THIS TYPE IS NOT. ConsoleReading carries dram, nvparam, firmware, grub, linux, modules,
+// sockets, kernel-version and checkpoint arms -- one platform's boot grammar, imported here from the
+// gunbc.machine_intake console observation modules and, for SpanConsoleReading/span_console_readings
+// and the milestone sightings, from gunbc.machine_intake.mtcollins1_power_on_account and
+// mtcollins1_console_milestone_observation. So this module imports machine-named modules while
+// importing NO controller-protocol type: the direction the manager required (adapters depend on the
+// core, never the core on an adapter) holds, console neutrality does not, and it is not claimed here.
+// The split is a named follow-up owned by merry-otter-837 (starts when this PR merges): the neutral
+// reading -- bound, elapsed, retained path plus digest, an opaque evidence list, console_bound --
+// moves to gunbc.host.boot_console_observation; the typed arms go beside the existing Ampere console
+// observation modules, because that grammar belongs to the platform firmware, not the BMC; the
+// expected socket list and the census SOL reference path stay as receipts on the mtcollins1 row.
+// That follow-up is NOT tracked by this paragraph. It is tracked by the DissolutionCondition below,
+// which a program can read; this prose only explains what the carrier means.
 
-type ReferenceCaptureRead { text: String, ok: Bool, error: String, digest: Sha256FileDigest }
+// THE DEBT, ON A CARRIER A PROGRAM CAN READ (review 81187, DESIGN §5: "a dissolution condition
+// describes how admitted debt ends; it does not authorize creating it"). The paragraph above says in
+// prose what this row says in data, and the prose is not what the debt is tracked by: this is a
+// DissolutionCondition, so std.dissolution answers "is the console debt still live?" from the
+// declaration census without anyone rereading a comment.
+//
+// THE SHAPE IS DELIBERATE: a retirement trigger, not a forward one. The forward shape would name
+// gunbc.host.boot_console_observation before anyone has declared it -- a promise about a name someone
+// may still choose not to use, which is the fabricated-citation class a runner spec refuses by name
+// (std.dissolution's header says the same, and says the retirement trigger was missing for want of an
+// author, not for want of a reason). A retirement trigger names a declaration that EXISTS TODAY, in this
+// module, so the condition is verifiable the moment it is written: the debt is discharged exactly when
+// ConsoleReading is no longer declared here.
+data boot_attempt_console_reading_decl_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.host.boot_attempt",
+  decl_name: "ConsoleReading",
+)
+
+data boot_attempt_console_debt_dissolves_when_the_typed_reading_retires: DissolutionCondition = retires_dissolution(
+  ref: boot_attempt_console_reading_decl_ref,
+)
+
+// THE ONE QUESTION THE CARRIER ANSWERS, exposed instead of left for each consumer to pattern-match, so a
+// witness and a later census ask it the same way. CAVEAT carried from std.dissolution's own header: an
+// empty census reports FIRED, which is "nothing is present" and not a default -- a caller must hand over
+// the real declaration population or it is answering about a corpus it never read.
+fn boot_attempt_console_debt_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(
+    condition: boot_attempt_console_debt_dissolves_when_the_typed_reading_retires,
+    present_decls: present_decls,
+  )
+}
+
+// A CAPTURE, AS IT WAS FOUND -- the console capture and the census SOL reference capture are the
+// same kind of thing, so they get ONE type. A coproduct, not a record with a success flag: whether a
+// capture has text and whether it has an error are the SAME fact seen two ways, and a record holding
+// both lets a value claim it read the file while also carrying an error for it, and lets it carry a
+// digest of text that was never read (review 81117; DESIGN §5: correctness by construction, not
+// validation). The read arm has text and its digest; the unread arm has only the reason -- there is
+// no text to classify and no honest digest of a file that could not be read, so neither field exists
+// to be lied about.
+type CaptureContents
+  = CaptureContentsRead { text: String, digest: Sha256FileDigest }
+  | CaptureContentsUnread { reason: String }
+
+fn capture_digest_of(capture: CaptureContents, path: NonEmptyStr) -> Sha256FileDigest {
+  match capture {
+    CaptureContentsRead { text: _, digest: d } => d
+    CaptureContentsUnread { reason: r } => Sha256FileDigestUnavailable { path: path, reason: r }
+  }
+}
+
+// THE ONE MATCH into the socket comparison. Its API predates CaptureContents and takes the read
+// apart (reference_text / read_ok / read_error); spreading the sum back into three fields is exactly
+// where a success flag and a contradicting error string would reappear, so it happens once, here.
+fn capture_socket_comparison(reference: CaptureContents, reference_path: NonEmptyStr, subject: AmpereSocketConsoleObservation) -> AmpereSocketReferenceComparison {
+  match reference {
+    CaptureContentsRead { text: t, digest: _ } => ampere_socket_reference_comparison(
+      reference_path: reference_path, reference_text: t, read_ok: true, read_error: "", subject: subject)
+    CaptureContentsUnread { reason: r } => ampere_socket_reference_comparison(
+      reference_path: reference_path, reference_text: "", read_ok: false, read_error: r as String, subject: subject)
+  }
+}
 
 // The SOL console capture reading. The retained arm carries the classification of the capture by
 // every host-side console grammar; the other arms are the read's own failure modes.
@@ -539,10 +662,38 @@ type ConsoleReading
   | ConsoleUnread { path: NonEmptyStr, detail: String }
   | ConsoleNotConfigured
 
-// The capture is retained only if its path sits under the row's retained-artifact prefix (a
-// receipt: where this row keeps its retained artifacts).
+// The capture is retained only if its path sits under the row's retained-artifact root (a receipt:
+// where this row keeps its retained artifacts).
+//
+// THE CHECK IS ANCHORED AT PATH SEPARATORS, NOT AT ANYWHERE INSIDE A SEGMENT. An earlier revision
+// accepted a path when the prefix appeared anywhere in it after a slash, so "/tmp/xartifacts/
+// mtcollins1-boot-sol.capture" (a directory whose name merely ends in "artifacts") and
+// "/tmp/evil/artifacts/mtcollins1-boot-sol.capture" alike read as retained, and console_text then
+// told the reader the capture was "retained in this artifact" for a file that is nowhere near the
+// row's artifact root (review 81108; DESIGN §5: a failure arm refuses, never widens). Here the path
+// is compared segment by segment: the root's directory segments must be WHOLE segments of the path
+// immediately before the file name, and only the file name itself may be a prefix-match, because the
+// root name is a prefix by construction (it is "…-boot-", and the attempt suffix follows).
+//
+// What this does NOT claim: the root is workspace-relative, so any path whose parent directory is
+// named "artifacts" and whose file name carries this row's prefix reads as retained. Distinguishing
+// the workspace's own artifacts directory from another one of the same name needs a workspace-root
+// fact, which no row carries today; that is a receipt to add, not something to infer here.
 fn console_path_retained(path: String, prefix: NonEmptyStr) -> Bool {
-  starts_with(s: path, prefix: prefix) || string_contains(s: path, pattern: concat("/", prefix))
+  let root = filter(split(s: prefix as String, delimiter: "/"), seg => seg != "")
+  let segs = filter(split(s: path, delimiter: "/"), seg => seg != "")
+  if count(root) == 0 {
+    false
+  } else if count(segs) < count(root) {
+    false
+  } else {
+    let dirs = root.take(n: count(root) - 1)
+    let root_name = match last(root) { Present { value: v } => v Absent => "\x00never-matches" }
+    let file = match last(segs) { Present { value: v } => v Absent => "" }
+    let parents = segs.take(n: count(segs) - 1).skip(n: (count(segs) - 1) - count(dirs))
+    starts_with(s: file, prefix: root_name)
+      && (count(dirs) == 0 || join(dirs, "/") == join(parents, "/"))
+  }
 }
 
 // stat(1)'s "%s" field is a byte count as text; parse it to a ByteSize.
@@ -560,83 +711,131 @@ fn console_size_of_stat(size_text: String) -> ByteSize? {
 // Build the per-span checkpoint relations against the reference capture. The reference path and
 // the two scopes are receipts (supplied by the row; they describe the reference the row was
 // censused against), so they are parameters, not constants.
-fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture: Sha256FileDigest, reference: ReferenceCaptureRead, reference_path: NonEmptyStr, firmware_scope: NonEmptyStr, configuration_scope: NonEmptyStr) -> List<AmpereCheckpointRelation> {
-  flat_map(checkpoints.spans, span => match if reference.ok {
+fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture: Sha256FileDigest, reference: CaptureContents, reference_path: NonEmptyStr, firmware_scope: NonEmptyStr, configuration_scope: NonEmptyStr) -> List<AmpereCheckpointRelation> {
+  // Both arms build the same reference identity (path, digest and the row's two scopes) and differ in
+  // exactly one thing: a read reference carries its observation, an unread one carries the reason it
+  // could not be read. The match is on the coproduct itself, so neither arm can claim the other's fact.
+  flat_map(checkpoints.spans, span => match reference {
+    CaptureContentsRead { text: t, digest: _ } =>
       ampere_checkpoint_relation(span: span, capture: capture, reference: AmpereCheckpointReference {
-        path: reference_path, digest: reference.digest,
+        path: reference_path, digest: capture_digest_of(capture: reference, path: reference_path),
         firmware_scope: firmware_scope, configuration_scope: configuration_scope,
-        observation: ampere_checkpoint_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: reference.text })),
+        observation: ampere_checkpoint_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: t })),
       })
-    } else {
-      ampere_checkpoint_relation_unread(span: span, capture: capture, path: reference_path, digest: reference.digest,
-        firmware_scope: firmware_scope, configuration_scope: configuration_scope, detail: reference.error)
-    } { Absent => [] Present { value: r } => [r] })
+    CaptureContentsUnread { reason: r } =>
+      ampere_checkpoint_relation_unread(span: span, capture: capture, path: reference_path,
+        digest: capture_digest_of(capture: reference, path: reference_path),
+        firmware_scope: firmware_scope, configuration_scope: configuration_scope,
+        detail: r as String)
+  })
 }
 
-// The console reading: classify the capture. The retained-artifact prefix, the census SOL
-// reference path, the two reference scopes, and the expected socket count are receipts
-// (parameters), so a non-mtcollins1 row derives its own reading from its own capture and its own
-// reference.
-fn console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String, capture_digest: Sha256FileDigest, reference: ReferenceCaptureRead, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr, expected_sockets: List<Int>) -> ConsoleReading {
+// THE CONSOLE GUARDS, DEFINED ONCE AND ASKED BY BOTH HALVES. Three things stop a capture from being
+// classified at all: the path is empty, the path is not under the row's retained-artifact root, and
+// the capture is bigger than console_bound. An earlier revision stated all three TWICE -- once in the
+// reading, once in the write -- which is the same class of defect the reviewer called out for the
+// capture read (review 81117; DESIGN §5): two copies of a guard are two chances to disagree about
+// whether a capture may be read at all. Now each answer exists once and both halves ask it. They are
+// two functions rather than one because the write half cannot ask the size question until stat has
+// answered, while the path questions must be settled BEFORE any filesystem call: the reading asks
+// both, the write asks each at its own moment. Absent means the guard did not fire.
+fn console_path_guard(path: String, retained_prefix: NonEmptyStr) -> ConsoleReading? {
   if path == "" {
-    ConsoleNotConfigured
+    Present { value: ConsoleNotConfigured }
   } else if !console_path_retained(path: path, prefix: retained_prefix) {
-    NotRetained { path: path as NonEmptyStr }
-  } else if (byte_size_count(b: size) as Int) > (byte_size_count(b: console_bound) as Int) {
-    ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: console_bound }
-  } else if !read_ok {
-    ConsoleUnread { path: path as NonEmptyStr, detail: read_error }
+    Present { value: NotRetained { path: path as NonEmptyStr } }
   } else {
-    let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
-    let sockets = ampere_socket_console_observation(lines: lines)
-    let checkpoints = ampere_checkpoint_console_observation(lines: lines)
-    ConsoleRetained {
-      path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines),
-      firmware_error_lines: count(filter(lines, l => is_firmware_error_line(line: l) || is_firmware_err_code_line(line: l))),
-      capture_digest: capture_digest,
-      dram: ampere_dram_console_observation(lines: lines),
-      checkpoints: checkpoints,
-      checkpoint_relations: checkpoint_relations(checkpoints: checkpoints, capture: capture_digest, reference: reference, reference_path: census_sol_reference_path, firmware_scope: reference_firmware_scope, configuration_scope: reference_configuration_scope),
-      milestones: mtcollins1_console_milestones(lines: lines),
-      sockets: sockets,
-      against_reference: ampere_socket_reference_comparison(reference_path: census_sol_reference_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
-      loader: grub_console_report(lines: lines),
-      linux: linux_boot_console_observation(lines: lines),
-      modules: kernel_module_decompression_observation(lines: lines),
-      nvparam: ampere_nvparam_console_observation(lines: lines),
-      span_readings: span_console_readings(lines: lines),
+    none
+  }
+}
+
+fn console_size_guard(path: String, size: ByteSize) -> ConsoleReading? {
+  if (byte_size_count(b: size) as Int) > (byte_size_count(b: console_bound) as Int) {
+    Present { value: ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: console_bound } }
+  } else {
+    none
+  }
+}
+
+// The console reading: classify the capture. The retained-artifact prefix, the census SOL reference
+// path and the two reference scopes are receipts (parameters): mtcollins1's row supplies its own, and
+// any other row supplies its own. The capture and the reference capture arrive as CaptureContents --
+// coproducts, so a capture that could not be read carries its reason and cannot also carry text or a
+// digest. expected_sockets was dropped from this signature: nothing in the console classification
+// reads it (the socket observation is derived from the capture text, and the row's census socket
+// population is consumed where the sensors are read), so it was a parameter that only pretended to
+// decide something.
+fn console_reading(path: String, size: ByteSize, capture: CaptureContents, reference: CaptureContents, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr) -> ConsoleReading {
+  match console_path_guard(path: path, retained_prefix: retained_prefix) {
+    Present { value: refused } => refused
+    Absent => match console_size_guard(path: path, size: size) {
+      Present { value: over_bound } => over_bound
+      Absent => match capture {
+        // The capture could not be read: that is the reading, with its reason. Nothing was seen, so
+        // nothing is classified and no digest is claimed.
+        CaptureContentsUnread { reason: r } => ConsoleUnread { path: path as NonEmptyStr, detail: r }
+        CaptureContentsRead { text: text, digest: capture_digest } => {
+          let lines = host_capture_lines(capture: HostCaptureLiveStream { text: text })
+          let sockets = ampere_socket_console_observation(lines: lines)
+          let checkpoints = ampere_checkpoint_console_observation(lines: lines)
+          ConsoleRetained {
+            path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines),
+            firmware_error_lines: count(filter(lines, l => is_firmware_error_line(line: l) || is_firmware_err_code_line(line: l))),
+            capture_digest: capture_digest,
+            dram: ampere_dram_console_observation(lines: lines),
+            checkpoints: checkpoints,
+            checkpoint_relations: checkpoint_relations(checkpoints: checkpoints, capture: capture_digest, reference: reference, reference_path: census_sol_reference_path, firmware_scope: reference_firmware_scope, configuration_scope: reference_configuration_scope),
+            milestones: mtcollins1_console_milestones(lines: lines),
+            sockets: sockets,
+            against_reference: capture_socket_comparison(reference: reference, reference_path: census_sol_reference_path, subject: sockets),
+            loader: grub_console_report(lines: lines),
+            linux: linux_boot_console_observation(lines: lines),
+            modules: kernel_module_decompression_observation(lines: lines),
+            nvparam: ampere_nvparam_console_observation(lines: lines),
+            span_readings: span_console_readings(lines: lines),
+          }
+        }
+      }
     }
   }
 }
 
-// The console write: the IO half. stat the capture, read it, read the reference capture, and
-// classify. The retained prefix, the census SOL reference path, and the expected socket count are
-// receipts (parameters). (The two reference scopes travel with checkpoint_relations via the
-// reference; they are threaded the same way here.)
-fn console(path: String, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr, expected_sockets: List<Int>) -> ConsoleReading {
-  if path == "" {
-    ConsoleNotConfigured
-  } else if !console_path_retained(path: path, prefix: retained_prefix) {
-    NotRetained { path: path as NonEmptyStr }
-  } else {
-    let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
-    match if st.success { console_size_of_stat(size_text: st.size_text) } else { none } {
-      Absent => ConsoleUnread { path: path as NonEmptyStr, detail: concat("stat -c %s could not size the capture: ", trim(st.size_text)) }
-      Present { value: size } =>
-        if (byte_size_count(b: size) as Int) > (byte_size_count(b: console_bound) as Int) {
-          ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: console_bound }
-        } else {
-          let r = Filesystem.Read(path: path)
-          let reference = Filesystem.Read(path: census_sol_reference_path as String)
-          console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error,
-            capture_digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr),
-            reference: ReferenceCaptureRead { text: reference.content, ok: reference.success, error: reference.error,
-              digest: sha256sum_file_digest_via_shell(path: census_sol_reference_path) },
+// The console write: the IO half. Ask the path guard BEFORE touching the filesystem, stat the
+// capture, ask the size guard, then read both captures as CaptureContents and hand them to the
+// reading -- which asks the same two guards and cannot answer differently, because it asks the same
+// functions. The retained prefix and the census SOL reference path with its two scopes are receipts
+// (parameters).
+fn console(path: String, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr) -> ConsoleReading {
+  match console_path_guard(path: path, retained_prefix: retained_prefix) {
+    Present { value: refused } => refused
+    Absent => {
+      let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
+      match if st.success { console_size_of_stat(size_text: st.size_text) } else { none } {
+        Absent => ConsoleUnread { path: path as NonEmptyStr, detail: concat("stat -c %s could not size the capture: ", trim(st.size_text)) }
+        Present { value: size } => match console_size_guard(path: path, size: size) {
+          Present { value: over_bound } => over_bound
+          Absent => console_reading(path: path, size: size,
+            capture: file_capture_contents(path: path),
+            reference: file_capture_contents(path: census_sol_reference_path as String),
             retained_prefix: retained_prefix, census_sol_reference_path: census_sol_reference_path,
-            reference_firmware_scope: reference_firmware_scope, reference_configuration_scope: reference_configuration_scope,
-            expected_sockets: expected_sockets)
+            reference_firmware_scope: reference_firmware_scope,
+            reference_configuration_scope: reference_configuration_scope)
         }
+      }
     }
+  }
+}
+
+// A capture read from disk, as CaptureContents: the read arm carries what was read plus the digest of
+// exactly those bytes; the unread arm carries only why the file could not be read. The digest is
+// taken from the READ, not from a separate path argument, so a capture that was never read cannot
+// arrive with a digest of it.
+fn file_capture_contents(path: String) -> CaptureContents {
+  let r = Filesystem.Read(path: path)
+  if r.success {
+    CaptureContentsRead { text: r.content, digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
+  } else {
+    CaptureContentsUnread { reason: r.error }
   }
 }
 

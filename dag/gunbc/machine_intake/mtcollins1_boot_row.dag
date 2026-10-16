@@ -22,9 +22,8 @@ module gunbc.machine_intake.mtcollins1_boot_row
 import std.types { NonEmptyStr, String }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.tools.sha256sum { Sha256FileDigest }
 import gunbc.host.boot_attempt {
-  ConsoleReading, ReferenceCaptureRead, console, console_reading, publish_allowance,
+  ConsoleReading, CaptureContents, console, console_reading, publish_allowance,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,
@@ -106,7 +105,6 @@ fn mtcollins1_boot_console(path: String) -> ConsoleReading {
     census_sol_reference_path: mtcollins1_census_sol_artifact_path,
     reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
     reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
-    expected_sockets: mtcollins1_census_sockets(),
   )
 }
 
@@ -119,25 +117,18 @@ fn mtcollins1_boot_console(path: String) -> ConsoleReading {
 fn mtcollins1_boot_console_reading(
   path: String,
   size: ByteSize,
-  capture: String,
-  read_ok: Bool,
-  read_error: String,
-  capture_digest: Sha256FileDigest,
-  reference: ReferenceCaptureRead,
+  capture: CaptureContents,
+  reference: CaptureContents,
 ) -> ConsoleReading {
   console_reading(
     path: path,
     size: size,
     capture: capture,
-    read_ok: read_ok,
-    read_error: read_error,
-    capture_digest: capture_digest,
     reference: reference,
     retained_prefix: mtcollins1_boot_retained_artifact_prefix as NonEmptyStr,
     census_sol_reference_path: mtcollins1_census_sol_artifact_path,
     reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
     reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
-    expected_sockets: mtcollins1_census_sockets(),
   )
 }
 

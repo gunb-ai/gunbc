@@ -160,22 +160,25 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 import gunbc.host.boot_attempt {
   ConsoleReading, ConsoleRetained, ConsoleExceedsBound, NotRetained, ConsoleUnread, ConsoleNotConfigured,
   AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  ReferenceCaptureRead, bracketed_int, firmware_report_text, grub_report_text, console_text,
+  bracketed_int, firmware_report_text, grub_report_text, console_text,
   console_path_retained, console_size_of_stat, checkpoint_relations, console, console_reading,
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
-  BootPresentation, Presented, PresentationNotAttempted, PresentationUnread,
+  BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
   StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,
   StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted,
   media_attach_ready, media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
-  HandoffRefused, HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
+  HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
   handoff_media_text, EndMedia, EndMediaNotTaken, EndMediaObserved, end_media_text,
   PowerAfterAttempt, PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
   PowerAfterUnobserved, PowerAfterNotTaken, power_after_text, BootOverrideConsumption,
   OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt,
-  OverrideStillPendingAfterAttempt, override_consumption_text, BootFinding, HandoffRefusedByController, TerminalObserved,
+  OverrideStillPendingAfterAttempt, override_consumption_text, StandingFinding, TerminalObserved,
   TerminalMarker, TerminalNotObserved, terminal_text, DiagnosticRef, DiagnosticRetained,
-  DiagnosticNotRetained, DiagnosticUnavailable, diagnostic_ref_text, BootRunRecord, run_record_text,
-  run_record_findings,
+  DiagnosticNotRetained, DiagnosticUnavailable, diagnostic_ref_text, BootRunRecord,
+  // The neutral record does not answer "what went wrong" itself: run_record_findings (imported by
+  // whoever asks, not re-exported through here) reads the answer out of the fields this mapping fills.
+  // Importing it here and never calling it would suggest the adapter produced the findings.
+
 }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
@@ -458,18 +461,45 @@ fn megarac_host_power(o: ChassisPowerObservation) -> HostPowerState {
   }
 }
 
-// WAS THE MEDIUM PRESENTED? The MegaRAC attach outcome is silent on success and carries a reason when
-// it did not reach a bound presentation, so absence of a reason IS the observation. A session the BMC
-// refused to release is not "presented": the medium is being served only as long as our session holds
-// it, which is the neutral PresentationUnread -- we cannot tell what another session would see.
+// THE ONE CLASSIFIER THAT MAY READ AN ATTACH RESULT. An attach is an action, so its outcome says
+// whether the action reached a bound presentation, and separately whether the session it opened was
+// released. A session the BMC refused to release is NOT "presented": the medium is being served only
+// while our session holds it, which is the neutral PresentationSessionHeld -- another session's view is
+// unknown, and the boot will not have our session.
+//
+// DO NOT USE THIS ON A READ-ONLY LOOK (use megarac_look_presentation). A look is by construction not
+// an attach: its outcome arm is MegaRacPresentationObserved, which this function must answer as "the
+// observation reached an attach decision" -- so classifying a look here reports every healthy look as
+// not-served (media_attach_outcome_reason answers that arm with a Present reason, so the classifier
+// never even looks at the share, the readiness row or the cd_error the read did return). main never hit
+// this: it stored the look RAW and classified it with presentation_still_served at render time. This
+// cut introduced it by routing every presentation site through one classifier when it created the
+// neutral BootPresentation, and review 81154's demand that the findings be DERIVED from these values is
+// what surfaced it -- a derived finding inherits whatever the field says, so a field mistranslated on
+// every handoff would silently invent or drop a finding on every attempt that handed off.
 fn megarac_presentation(r: MegaRacAttachResult) -> BootPresentation {
   match media_attach_outcome_reason(outcome: r.outcome) {
     Absent => match r.session_release {
       SessionReleased => Presented
-      SessionReleaseRefused { detail: d } => PresentationUnread { reason: d as NonEmptyStr }
-      SessionReleaseNotAttempted => PresentationUnread { reason: "the attach session was never released" }
+      SessionReleaseRefused { detail: d } => PresentationSessionHeld { detail: d as NonEmptyStr }
+      SessionReleaseNotAttempted => PresentationSessionHeld { detail: "the attach session was never released" }
     }
-    Present { value: why } => PresentationNotAttempted { reason: why as NonEmptyStr }
+    Present { value: why } => PresentationNotServed { reason: why as NonEmptyStr }
+  }
+}
+
+// THE ONE CLASSIFIER THAT MAY READ A READ-ONLY LOOK (the handoff's after-look, the end-of-attempt look).
+// A look has no attach outcome to consult and no session of its own to release, so it is classified by
+// presentation_still_served -- the same function the harness conditions on, which is what lets
+// run_record_findings derive the presentation findings from this value and agree with the harness
+// arm-for-arm rather than by luck.
+fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
+  match presentation_still_served(result: r) {
+    PresentationStillReady => Presented
+    PresentationReadyButSessionHeld { held: h } =>
+      PresentationSessionHeld { detail: session_release_text(standing: h) as NonEmptyStr }
+    PresentationNoLongerReady { reason: why } => PresentationNotServed { reason: why as NonEmptyStr }
+    PresentationUnobserved { reason: why } => PresentationUnread { reason: why as NonEmptyStr }
   }
 }
 
@@ -505,9 +535,12 @@ fn megarac_media_attach_record(r: MegaRacMediaAttach) -> MediaAttachRecord {
   }
 }
 
-// THE HANDOFF, raw call result to neutral. A refusal the transport answered with is the neutral
-// HandoffRefused; "attempted but not confirmed" stays unconfirmed rather than being read as a refusal,
-// because the transport gave no answer to confirm either way.
+// THE HANDOFF, raw call result to neutral: two arms both ways, and they are not synonyms. "Attempted
+// but not confirmed" is what a failed handoff COMMAND says -- the transport gave no answer to confirm
+// either way -- and must not be softened into a refusal or hardened into a confirmation. The third arm
+// an earlier revision had here ("the controller refused the handoff") was deleted: the raw arm is
+// chosen by the command's exit code, which cannot express a refusal, so it was an arm no observation
+// could ever fill.
 fn megarac_handoff_call_result(h: MegaRacHandoffCallResult) -> HandoffCallResult {
   match h {
     MegaRacHandoffConfirmed => HandoffConfirmed
@@ -521,14 +554,14 @@ fn megarac_handoff_media_record(h: MegaRacHandoff) -> HandoffMedia {
     MegaRacHandoffWithheldAtRecheck { before: _ } =>
       HandoffMediaWithheldAtRecheck { reason: "the pre-handoff re-check withheld the handoff" }
     MegaRacHandoffAttempted { before: _, handoff: call, after: a } =>
-      HandoffMediaAttempted { handoff: megarac_handoff_call_result(h: call), after: megarac_presentation(r: a) }
+      HandoffMediaAttempted { handoff: megarac_handoff_call_result(h: call), after: megarac_look_presentation(r: a) }
   }
 }
 
 fn megarac_end_media_record(e: MegaRacEndMedia) -> EndMedia {
   match e {
     MegaRacEndMediaNotTaken { reason: reason } => EndMediaNotTaken { reason: reason }
-    MegaRacEndMediaObserved { look: l } => EndMediaObserved { look: megarac_presentation(r: l) }
+    MegaRacEndMediaObserved { look: l } => EndMediaObserved { look: megarac_look_presentation(r: l) }
   }
 }
 
@@ -541,7 +574,7 @@ fn megarac_power_after_attempt(p: MegaRacPowerAfter) -> PowerAfterAttempt {
     MegaRacPoweredOffAfterCensusEnd => PoweredOffAfterTerminal
     MegaRacPoweredOffWithoutCensusEnd => PoweredOffWithoutTerminal
     MegaRacPoweredOnAfterAttempt => PoweredOnAfterAttempt
-    MegaRacPowerAfterUnobserved { observation: o } => PowerAfterUnobserved { power: megarac_host_power(o: o) }
+    MegaRacPowerAfterUnobserved { reason: reason } => PowerAfterUnobserved { reason: reason }
     MegaRacPowerAfterNotTaken { reason: reason } => PowerAfterNotTaken { reason: reason }
   }
 }
@@ -561,22 +594,32 @@ fn megarac_override_consumption(o: MegaRacOverride) -> BootOverrideConsumption {
   }
 }
 
-// THE RAW HARNESS FINDINGS AS NEUTRAL FINDINGS. Every raw arm has a neutral arm; the ones the neutral
-// vocabulary names after its own record types are re-anchored on the classified records, so a neutral
-// consumer reasons about a BootFinding without ever importing a MegaRAC type.
-fn megarac_harness_findings_neutral(raw: List<HarnessFinding>) -> List<BootFinding> {
-  map(raw, f => match f {
-    MegaRacEveryReadFailed { failed: ch } =>
-      EveryReadFailed { count: count(ch), channels: map(ch, c => c.channel) }
-    MegaRacMediaAttachNotReady { record: r } => MediaAttachNotReady { record: megarac_media_attach_record(r: r) }
-    MegaRacMediaAttachSessionHeld { record: r } => MediaAttachSessionHeld { record: megarac_media_attach_record(r: r) }
-    MegaRacHandoffWithheld { handoff: h } => HandoffWithheldAtRecheck { handoff: megarac_handoff_media_record(h: h) }
-    MegaRacHandoffUnconfirmed { handoff: h } => HandoffUnconfirmed { handoff: megarac_handoff_media_record(h: h) }
-    MegaRacPresentationAfterHandoff { look: l } => PresentationAfterHandoff { presentation: megarac_presentation(r: l) }
-    MegaRacOverrideNotConsumed { consumption: o } =>
-      OverrideNotConsumed { consumption: megarac_override_consumption(o: o) }
-    MegaRacPoweredOffWithoutCensusEndMarker => PoweredOffWithoutTerminalMarker
-    MegaRacCredentialMayRemain => CredentialMayRemain
+// THE RAW HARNESS FINDINGS, NARROWED TO WHAT THE NEUTRAL RECORD MAY STORE.
+//
+// The harness raises nine kinds of finding. SEVEN of them are classifications of a raw record that the
+// neutral record already carries classified (an attach that was not ready, a withheld handoff, an
+// unconsumed override, a powered-off run with no terminal marker, a still-served after-look, a session
+// held by our closing attach, an unconfirmed handoff): the neutral record's own fields say those, and
+// `run_record_findings` derives them there. They map to NOTHING here. Storing them would be a second
+// home for one fact, which is what review 81154 was about, and it would let the two disagree.
+//
+// TWO of them are facts observed BESIDE the attempt, which no field of the record can state: which BMC
+// channels all failed, and whether the per-attempt credential was removed. Those are the only arms with
+// a `StandingFinding` to become, and they are the only ones a caller can supply to
+// megarac_boot_run_record. A derived arm cannot be written into the record at all -- its type has no arm
+// for it -- so the agreement between the harness and the derivation is checked by the witness against
+// `run_record_findings` itself, not by a second translation of the same list.
+fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding> {
+  flat_map(raw, f => match f {
+    MegaRacEveryReadFailed { failed: ch } => [EveryReadFailed { count: count(ch), channels: map(ch, c => c.channel) }]
+    MegaRacCredentialMayRemain => [CredentialMayRemain]
+    MegaRacMediaAttachNotReady { record: _ } => []
+    MegaRacMediaAttachSessionHeld { record: _ } => []
+    MegaRacHandoffWithheld { handoff: _ } => []
+    MegaRacHandoffUnconfirmed { handoff: _ } => []
+    MegaRacPresentationAfterHandoff { look: _ } => []
+    MegaRacOverrideNotConsumed { consumption: _ } => []
+    MegaRacPoweredOffWithoutCensusEndMarker => []
   })
 }
 
@@ -588,7 +631,7 @@ fn megarac_console_diagnostic_ref(c: ConsoleReading) -> DiagnosticRef {
     ConsoleRetained { path: p, capture_digest: dg, lines: _, firmware: _, firmware_error_lines: _,
       size: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _,
       against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } =>
-      DiagnosticRetained { path: p, digest: dg, findings: [] }
+      DiagnosticRetained { path: p, digest: dg }
     ConsoleExceedsBound { path: p, size: s, bound: b } =>
       DiagnosticNotRetained { reason: concat("the capture at ", p, " is ", to_string(byte_size_count(b: s)), " bytes, over the bound of ", to_string(byte_size_count(b: b))) }
     NotRetained { path: p } => DiagnosticNotRetained { reason: concat("the capture at ", p, " is not retained with this attempt") }
@@ -603,7 +646,6 @@ fn megarac_console_diagnostic_ref(c: ConsoleReading) -> DiagnosticRef {
 fn megarac_boot_run_record(raw: MegaRacRunRecord, console: ConsoleReading, identity: AttemptIdentityReading,
                            harness: List<HarnessFinding>) -> BootRunRecord {
   let diagnostic = megarac_console_diagnostic_ref(c: console)
-  let findings = megarac_harness_findings_neutral(raw: harness)
   BootRunRecord {
     // The census that ended is this row's terminal read, reported as observed or not; the boot does not
     // decide what counts as terminal, it reports which terminal it saw.
@@ -616,7 +658,7 @@ fn megarac_boot_run_record(raw: MegaRacRunRecord, console: ConsoleReading, ident
     timing: raw.timing,
     identity: identity,
     diagnostic: diagnostic,
-    findings: findings,
+    standing: megarac_standing_findings(raw: harness),
   }
 }
 
@@ -677,7 +719,14 @@ type MegaRacPowerAfter
   = MegaRacPoweredOffAfterCensusEnd
   | MegaRacPoweredOffWithoutCensusEnd
   | MegaRacPoweredOnAfterAttempt
-  | MegaRacPowerAfterUnobserved { observation: ChassisPowerObservation }
+  // WHY A REASON AND NOT THE CHASSIS OBSERVATION. The arm once carried the whole
+  // ChassisPowerObservation, whose own sum includes ChassisPowerRead { power_on: Bool } -- so a value
+  // could say the post-attempt power was never observed while carrying a decoded power-on, and the
+  // classifier that is supposed to be the only writer never does that. The arm is the RAW fact that the
+  // read did not answer: undecodable carries the decoder's cause, unreadable carries its fixed reason.
+  // Nothing is lost -- ChassisUnreadable itself carries no data -- and the contradiction is unwritable
+  // (review 81117, DESIGN §5, applied one layer down from the neutral record the reviewer named).
+  | MegaRacPowerAfterUnobserved { reason: NonEmptyStr }
   | MegaRacPowerAfterNotTaken { reason: NonEmptyStr }
 
 // ─── THE MEDIA ATTACH, AS THIS ATTEMPT'S RECORD ─────────────────────────────────────────────────
@@ -1171,8 +1220,8 @@ fn megarac_power_after_from_observation(observation: ChassisPowerObservation, ce
   match observation {
     ChassisPowerRead { power_on: on } =>
       if on { MegaRacPoweredOnAfterAttempt } else if census_ended { MegaRacPoweredOffAfterCensusEnd } else { MegaRacPoweredOffWithoutCensusEnd }
-    ChassisStatusUndecodable { cause: _ } => MegaRacPowerAfterUnobserved { observation: observation }
-    ChassisUnreadable => MegaRacPowerAfterUnobserved { observation: observation }
+    ChassisStatusUndecodable { cause: c } => MegaRacPowerAfterUnobserved { reason: c }
+    ChassisUnreadable => MegaRacPowerAfterUnobserved { reason: "the chassis status read returned nothing decodable" }
   }
 }
 
@@ -1192,7 +1241,7 @@ fn power_after_harness(p: MegaRacPowerAfter) -> List<HarnessFinding> {
     MegaRacPoweredOffWithoutCensusEnd => [MegaRacPoweredOffWithoutCensusEndMarker]
     MegaRacPoweredOffAfterCensusEnd => []
     MegaRacPoweredOnAfterAttempt => []
-    MegaRacPowerAfterUnobserved { observation: _ } => []
+    MegaRacPowerAfterUnobserved { reason: _ } => []
     MegaRacPowerAfterNotTaken { reason: _ } => []
   }
 }
@@ -1213,7 +1262,7 @@ fn megarac_power_after_text(p: MegaRacPowerAfter) -> String {
     MegaRacPoweredOffAfterCensusEnd => "off after the census END marker (expected: the census image ends with poweroff -f)"
     MegaRacPoweredOffWithoutCensusEnd => "OFF without the census END marker"
     MegaRacPoweredOnAfterAttempt => "on"
-    MegaRacPowerAfterUnobserved { observation: o } => concat("unobserved: ", chassis_observation_text(observation: o) as String)
+    MegaRacPowerAfterUnobserved { reason: r } => concat("unobserved: ", r as String)
     MegaRacPowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
   }
 }
@@ -1729,7 +1778,7 @@ fn sensor_coverage(s: SensorReading) -> CarrierStanding {
 
 fn chassis_coverage(p: MegaRacPowerAfter) -> CarrierStanding {
   match p {
-    MegaRacPowerAfterUnobserved { observation: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
+    MegaRacPowerAfterUnobserved { reason: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
     MegaRacPowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
     MegaRacPoweredOffAfterCensusEnd => CarrierRead
     MegaRacPoweredOffWithoutCensusEnd => CarrierRead
