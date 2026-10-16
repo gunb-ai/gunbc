@@ -584,7 +584,7 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcome, AcceptanceUnavailable,
   AcceptanceOutcomeRecord, acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_key, acceptance_outcome_basename,
 }
-import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord, LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord, LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
 import gunbc.roadmap.roadmap_lineage_retire_record {
   LineageRetireRead, LineageRetireFound, LineageRetireAbsent, LineageRetireUnreadable,
   LineageRetireCommit, LineageRetireCommitted, LineageRetireCommitRefused,
@@ -2528,7 +2528,7 @@ fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_
     Present { value: p } =>
       match lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key) {
         LineageRetireFound { record } => LineageRetirePanelRecorded { record: record }
-        LineageRetireUnreadable { reason: _ } => LineageRetirePanelNone
+        LineageRetireUnreadable { reason } => LineageRetirePanelUnreadable { reason: reason }
         LineageRetireAbsent =>
           match continuation_decision_with_retirement(prior: Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }, retire: none) {
             ContinuationEnded { reason: _ } => LineageRetirePanelOffer { attempt_key: p.attempt_key, branch: p.branch }

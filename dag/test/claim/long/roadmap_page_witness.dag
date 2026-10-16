@@ -2987,3 +2987,11 @@ test fn witness_lineage_retire_recorded_shows_the_record_and_no_form() -> Bool {
     EmitOk { html: h } => !string_contains(s: h, pattern: "<form") && !string_contains(s: h, pattern: "retired")
   }
 }
+
+// An unreadable retire record is shown, loudly and with its cause, never as an empty panel.
+test fn witness_lineage_retire_unreadable_record_is_shown_not_hidden() -> Bool {
+  match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelUnreadable { reason: "schema is x" }, csrf: "tok-1") {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => string_contains(s: h, pattern: "cannot be read") && string_contains(s: h, pattern: "schema is x") && !string_contains(s: h, pattern: "<form")
+  }
+}
