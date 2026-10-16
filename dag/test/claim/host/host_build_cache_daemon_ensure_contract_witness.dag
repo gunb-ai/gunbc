@@ -74,13 +74,7 @@ data zeroed_stats_table: String = "Compile requests                      0\nComp
 data contract_fatal_fragment: String = sccache_fatal_error_log_fragment
 
 test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -> Bool {
-  let presence =
-    Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } }
-  let stats =
-    Ran {
-      observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
-    }
-  let observe = build_cache_observe_observed(presence: presence, stats: Present { value: stats })
+  let observe = build_cache_contract_observe()
   // (1) CONTROL, true today: the two captures are read as they should be -- binary present, and an rc-0 stats
   // table. If this arm were wrong the rest of the claim would be measuring a different host than it names.
   build_cache_observe_is_stats_ok(observe: observe)
@@ -96,6 +90,49 @@ test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -
     // nothing to drain. Every outcome other than "the daemon answered" already requires the ensure; this is
     // the one that does not, and it is the one the fleet is made of.
     && build_cache_ensure_is_needed(observe: observe)
+}
+
+// THE THREE CONTROLS, RUNNABLE ON THEIR OWN -- and that is why they are three claims rather than only
+// three conjuncts. Inside the contract above they are invisible at run time: `&&` reports one verdict for
+// the whole expression, so a red contract cannot tell you WHETHER the other three held, and a known-red row
+// whose red might be caused by something other than the defect it names is worth nothing. As siblings, each
+// control reports for itself. Run from one head they give: three HELD, one DID NOT HOLD, and the one that
+// did not hold is this file's contract claim -- which is exactly the diagnosis the trace gives, and the only
+// reading under which the quarantine row means what it says.
+//
+// They are GREEN claims and are deliberately NOT enrolled in gunbc.explicit_witness_admission: only the
+// contract is known-red, and enrolling a green claim would let it rot. If the machinery around the fix
+// breaks, the control that goes red names itself here instead of adding a second cause to the contract's
+// single, isolated red.
+
+test fn control_the_two_captures_are_read_as_the_observer_claims() -> Bool {
+  build_cache_observe_is_stats_ok(observe: build_cache_contract_observe())
+}
+
+test fn control_the_ensure_operations_are_derivable_in_the_right_order() -> Bool {
+  build_cache_contract_plan_derives_the_ensure_legs()
+}
+
+test fn control_a_completed_ensure_with_an_answering_read_back_converges() -> Bool {
+  build_cache_contract_converges_on_an_answering_read_back()
+}
+
+// THE HOST THE CONTRACT IS ABOUT, BUILT IN ONE PLACE so the controls and the contract cannot drift apart
+// into two different hypothetical hosts. Binary installed and executable, stats query answered zero with a
+// zeroed table, placement absent.
+fn build_cache_contract_observe() -> BuildCacheObserve {
+  build_cache_observe_observed(
+    presence: build_cache_presence_ran(),
+    stats: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+      },
+    },
+  )
+}
+
+fn build_cache_presence_ran() -> BuildCacheHostRunOutcome {
+  Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } }
 }
 
 // THE OBSERVER READ THE CAPTURES AS CLAIMED: the presence probe exited zero (which is why the stats query ran
