@@ -987,7 +987,7 @@ fn srv3_shell_reconcile(
           observed: observed,
           header: "host_effect_apply: srv3 shell exec returned a nonzero exit code; fail-closed",
         ),
-
+      }
     }
   reconcile_grounded(
     apply_effect: intent,
@@ -1536,6 +1536,7 @@ fn codex_runtime_materialize_step(
         claim_run: false,
       )
       CodexRuntimeStepRan {
+        observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
     }
     SshShell { ssh_host: _ } =>

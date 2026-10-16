@@ -24,7 +24,8 @@
 // itself falsifiable: a fold that kept running legs after a refusal would report the same final state.
 module test.claim.live_deploy.live_deploy_apply_preamble_witness
 
-import std.types { String, Bool, List, NonEmptyStr, Int, list_length, list_map, string_contains, to_string }
+import std.types { String, Bool, List, NonEmptyStr, Int, list_length }
+import std.algebra { list_map }
 import std.optional { Optional, Absent, Present }
 import extdeps.exec.command { argv_words }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
@@ -42,7 +43,6 @@ import gunbc.host.host_effect_realize {
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
-import gunbc.iam.socket_address_model { socket_address, host_by_ipv4, ipv4_address }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 
 // The publication principal the apply spec carries (gunbc.live_deploy.spec names.publication_principal
