@@ -1199,3 +1199,22 @@ test fn every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller() -> Bool 
     _ => false
   }
 }
+
+// THE SEED'S LIST IS THE DECLARED ROWS, IN BOTH DIRECTIONS. `RECOGNIZED_SYSTEM_SLICES` in the
+// hand-retained seed (a declared seed-retained row of v2.compiler.self_host.seed_retention_frontier,
+// so no stage0 regen rewrites it) must equal the capped rows of `declared_system_slice_memory_maxes`
+// followed by the sessions slice, byte for byte. The older mirror claim checks that each declared
+// capped unit appears in the seed; this one also refuses a seed literal no row declares, and any
+// reordering, so the two sources cannot drift apart in either direction.
+test fn the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let capped = declared_system_slice_memory_maxes() |> filter(row => byte_size_count(b: row.memory_max) > 0)
+  let rendered = join(
+    concat(
+      map(capped, row => join(["    \"", row.unit as String, "\",\n"], "")),
+      [join(["    \"", gunbc_oomd_sessions_slice as String, "\",\n"], "")],
+    ),
+    "",
+  )
+  string_contains(s: seed, pattern: join(["const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[\n", rendered, "];"], ""))
+}
