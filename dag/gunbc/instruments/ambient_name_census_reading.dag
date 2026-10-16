@@ -235,7 +235,13 @@ fn ambient_name_census_standing(
   let observed = observed_modules(tree_stdout: tree_stdout)
   let unreached = distinct_lines(lines: unreached_lines(stdout: tree_stdout))
     |> filter(l => match map_get(observed, field_at(line: l, index: 1)) { Present { value: _ } => false  Absent => true })
-  let missing = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
+  // A rewritten module the run reached but whose resolve refused has no binding rows: it was read, and
+  // refused, which is not the same fact as never read. Both leave the wave's edits unjudged at
+  // occurrence grain, so both answer 2; they are named apart so the cause is not misreported.
+  let refused_modules = fold(distinct_lines(lines: unreached_lines(stdout: tree_stdout)), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), field_at(line: l, index: 2)) })
+  let not_observed = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
+  let refused_rewritten = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => true  Absent => false })
+  let missing = not_observed |> filter(m => match map_get(refused_modules, m) { Present { value: _ } => false  Absent => true })
   let failed = failed_subject_runs(tree_runs: tree_runs)
   let attribution = module_subject_attribution(tree_stdout: tree_stdout)
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
@@ -245,6 +251,7 @@ fn ambient_name_census_standing(
     + (subject_lines |> join(separator: "\n")) + "\n"
     + (unreached |> join(separator: "\n")) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
+    + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
@@ -263,6 +270,8 @@ fn ambient_name_census_standing(
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no subject run observed any module; an empty census is no observation, never a held one" } }
               } else if count(missing) != 0 {
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(missing)) + " rewritten module(s) no subject run observed (unobserved_rewritten rows above): the wave's edits were not read" } }
+              } else if count(refused_rewritten) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(refused_rewritten)) + " rewritten module(s) reached but refused at resolve (refused_rewritten rows above): their occurrences have no binding rows, so the wave's edits were not judged" } }
               } else if count(failed) != 0 {
                 CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(failed)) + " subject run(s) did not complete (unobserved_subject rows above)" } }
               } else if count(unreadable_modules(stdout: tree_stdout)) != 0 {
