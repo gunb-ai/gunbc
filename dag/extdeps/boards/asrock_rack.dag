@@ -1175,7 +1175,7 @@ data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
 // files is a fact about one controller on one release. A route may only use it for a controller it has
 // IDENTIFIED, and the only identification a locked BMC gives up is its answer to Get Device ID. So the
 // measurement carries the reading it was measured under, and the route compares that reading with the
-// one it observed itself (recovery_in_band_device_identity on its route record). A policy is therefore
+// one it observed itself (the route record's in_band_device_identity field). A policy is therefore
 // never a value a caller picks: it is the row whose reading matches the controller under foot, or there
 // is no policy and the route refuses. Names are not in the comparison (see ipmi_device_identity_runs_same_firmware)
 // because this same capture proves a controller reports `Product Name : Unknown (0x2035)`.
@@ -1304,7 +1304,7 @@ type PublishedPasswordWritePolicySighting
 fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
   observed: IpmiDeviceIdentity,
 ) -> PublishedPasswordWritePolicySighting {
-  match filter(asrock_altrad8ud_published_factory_password_write_policy_catalog, p =>
+  let matches = filter(asrock_altrad8ud_published_factory_password_write_policy_catalog, p =>
     match p {
       FirmwareRefusesPublishedPassword {
         firmware: f,
@@ -1315,25 +1315,34 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on(
         ipmi_device_identity_runs_same_firmware(a: measured_under, b: observed)
           && published_password_refusal_row_agrees_with_its_reading(firmware: f, measured_under: measured_under)
       NotMeasured { firmware: _ } => false
-    }) {
-    [row] =>
-      match row {
-        FirmwareRefusesPublishedPassword {
-          firmware: f,
-          completion_code: _,
-          capture: _,
-          measured_under: _,
-        } =>
-          if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
-            FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } => g == f
-            NotMeasured { firmware: _ } => false
-          } {
-            RefusalMeasuredOnThisController { refusal: row, observed: observed }
-          } else {
-            CatalogIndexesDisagree { firmware: f, observed: observed }
-          }
-        NotMeasured { firmware: nf } => CatalogIndexesDisagree { firmware: nf, observed: observed }
-      }
-    _ => ControllerNeverMeasured { observed: observed }
+    })
+  // ZERO or MORE THAN ONE are both "no measurement offered", and for the same reason: with none there is
+  // nothing to rest a reset on, and with two the reading cannot say which release it is -- and choosing
+  // the first would be a coin flip standing behind wiping a chassis. Both refuse; neither is a default.
+  if list_length(items: matches) != 1 {
+    ControllerNeverMeasured { observed: observed }
+  } else {
+    match matches |> first() {
+      Present { value: row } =>
+        match row {
+          FirmwareRefusesPublishedPassword {
+            firmware: f,
+            completion_code: _,
+            capture: _,
+            measured_under: _,
+          } =>
+            if match asrock_altrad8ud_published_factory_password_write_policy_for(firmware: f) {
+              FirmwareRefusesPublishedPassword { firmware: g, completion_code: _, capture: _, measured_under: _ } => g == f
+              NotMeasured { firmware: _ } => false
+            } {
+              RefusalMeasuredOnThisController { refusal: row, observed: observed }
+            } else {
+              CatalogIndexesDisagree { firmware: f, observed: observed }
+            }
+          NotMeasured { firmware: nf } => CatalogIndexesDisagree { firmware: nf, observed: observed }
+        }
+      // unreachable while the length is one; stated rather than defaulted so no arm is missing
+      Absent => ControllerNeverMeasured { observed: observed }
+    }
   }
 }

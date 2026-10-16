@@ -286,11 +286,6 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
 // THE TWO IN-BAND RECOVERY WRITES, CLASSIFIED. Both are DeviceOnce: each actuation is one physical
 // occasion at one chassis, not a recurring control-plane operation, and neither is a read.
 //
-// The temporary Administrator password is REVERSIBLE in the sense the ledger means -- a later reset
-// clears it and the ordinary rotation replaces it with a managed secret, which is exactly what the
-// recovery route hands off to. It mints no credential in our store: the password sits transiently on
-// the BMC and is never taken into a secret store here, so it is not a credential-minting effect and
-// owes no witness discharge.
 // THE PASSWORD WRITE, CLASSIFIED BY WHAT IT ACTUALLY DOES. Its subject says the write happens "so an
 // authenticated in-band session can be opened", and that sentence is the classification: the write puts a
 // password into one controller's ADMINISTRATOR account and thereby brings a device-scoped credential into
@@ -311,7 +306,7 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
 // `open` (upstream configure.ac DEFAULT_INTF_NO_ENV), which is the OpenIPMI driver over /dev/ipmi0. The
 // passwordlessness that matters is that no credential appears on the command line and no network
 // authentication happens -- not the absence of an option, which was never true. Likewise the in-band
-// transport is named by its arm in extdeps.bmc.ipmi (IpmiCommandInterface), and SSIF is recorded where it
+// transport is named by its arm in extdeps.bmc.ipmi (InBandHostTransport), and SSIF is recorded where it
 // is a fact: the kernel module under /dev/ipmi0 in the capture, not the interface ipmitool was told to use.
 fn recovery_in_band_set_user_password_effect() -> PrivilegedEffect {
   PrivilegedEffect {
