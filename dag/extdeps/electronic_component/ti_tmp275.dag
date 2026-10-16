@@ -4,7 +4,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
-import extdeps.electronic_component.types { SignalComponentRow, DatasheetPin }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { ElectronicComponentRow, TemperatureSensorSpec, TemperatureSensorSpecification, MillivoltRange, I2cOrSmbus, SensorPin, SerialData, SerialClock, AlertOutput, GroundReturn, SupplyInput, AddressSelect }
 
 // TI's TMP275 datasheet, SBOS363F (June 2006, revised May 2018), read 2026-10-15: the title "TMP275
 // +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and
@@ -29,21 +30,26 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data tmp275_dgk: SignalComponentRow = SignalComponentRow {
+data tmp275_dgk: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TMP275AIDGKR",
   package: "VSSOP-8 (DGK)",
   top_marking: "T275",
-  function: "digital temperature sensor with I2C and SMBus interface and an SMBus overtemperature alert",
-  supply_range: "2.7 V to 5.5 V",
-  pins: [
-    DatasheetPin { number: 1, name: "SDA", function: "serial data; open-drain, requires a pullup" },
-    DatasheetPin { number: 2, name: "SCL", function: "serial clock; requires a pullup" },
-    DatasheetPin { number: 3, name: "ALERT", function: "overtemperature alert; open-drain output, requires a pullup" },
-    DatasheetPin { number: 4, name: "GND", function: "ground" },
-    DatasheetPin { number: 5, name: "A2", function: "address select; to GND or V+" },
-    DatasheetPin { number: 6, name: "A1", function: "address select; to GND or V+" },
-    DatasheetPin { number: 7, name: "A0", function: "address select; to GND or V+" },
-    DatasheetPin { number: 8, name: "V+", function: "supply" },
+  specification: TemperatureSensorSpec { sensor: TemperatureSensorSpecification {
+    supply: MillivoltRange { minimum: millivolt(count: 2700), maximum: millivolt(count: 5500) },
+    bus: I2cOrSmbus,
+    pins: [
+      SensorPin { number: 1, name: "SDA", role: SerialData { bus: I2cOrSmbus, open_drain: true } },
+      SensorPin { number: 2, name: "SCL", role: SerialClock { bus: I2cOrSmbus } },
+      SensorPin { number: 3, name: "ALERT", role: AlertOutput { open_drain: true } },
+      SensorPin { number: 4, name: "GND", role: GroundReturn },
+      SensorPin { number: 5, name: "A2", role: AddressSelect { bit: 2 } },
+      SensorPin { number: 6, name: "A1", role: AddressSelect { bit: 1 } },
+      SensorPin { number: 7, name: "A0", role: AddressSelect { bit: 0 } },
+      SensorPin { number: 8, name: "V+", role: SupplyInput },
+    ],
+  } },
+  vendor_application_statements: [
+    "TMP275 +/-0.5 C Temperature Sensor With I2C and SMBus Interface in Industry Standard LM75 Form Factor and Pinout",
   ],
 }

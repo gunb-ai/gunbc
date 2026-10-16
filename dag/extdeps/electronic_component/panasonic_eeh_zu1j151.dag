@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.panasonic { panasonic }
-import extdeps.electronic_component.types { ElectronicComponentRow, ComponentVoltageRating, CapacitorRatedVoltage }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ConductivePolymerHybridAluminium }
 
 // THE MARKING SCHEME AND THE ORDERING CODE COME FROM TWO SOURCES, and each is cited for what it says.
 // Panasonic's ZUU-series datasheet (dated 01-Sep-25, read 2026-10-15) gives the top marking of its
@@ -41,8 +41,11 @@ data eeh_zu1j151: ElectronicComponentRow = ElectronicComponentRow {
   ordering_code: "EEH-ZU1J151P or EEH-ZU1J151V (standard or vibration-proof; same top marking)",
   package: "SMD radial can, 10 mm diameter; 16.5 mm long for the P (standard) variant, 16.8 mm for the V (vibration-proof) variant, per the series G16 size table -- which variant is installed is unread",
   top_marking: "150 / J ZU / <lot>",
-  voltage_rating: ComponentVoltageRating { kind: CapacitorRatedVoltage, maximum: volt(count: 63) },
-  current_rating: Absent,
+  specification: CapacitorSpec { capacitor: CapacitorSpecification {
+    technology: ConductivePolymerHybridAluminium,
+    capacitance_microfarads: 150,
+    rated_voltage: volt(count: 63),
+  } },
   vendor_application_statements: [
     "Conductive Polymer Hybrid Aluminum Electrolytic Capacitors",
     "Surge voltage (V): Rated voltage x 1.25 (15 C to 35 C)",

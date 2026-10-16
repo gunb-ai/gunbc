@@ -1,11 +1,11 @@
 module extdeps.electronic_component.bourns_5_0smdj60a
 
-import std.measure { volt }
+import std.measure { volt, millivolt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.bourns { bourns }
-import extdeps.electronic_component.types { ElectronicComponentRow, ComponentVoltageRating, TvsReverseStandoff }
+import extdeps.electronic_component.types { ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
 
 // Bourns's 5.0SMDJ datasheet, REV. 08/26, read 2026-10-15. Its electrical table pairs part number
 // 5.0SMDJ60A with marking 5PGK (unidirectional; the bidirectional 5.0SMDJ60CA is 5BGK), and gives
@@ -36,8 +36,12 @@ data tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
   ordering_code: "5.0SMDJ60A",
   package: "DO-214AB (SMC)",
   top_marking: "5PGK",
-  voltage_rating: ComponentVoltageRating { kind: TvsReverseStandoff, maximum: volt(count: 60) },
-  current_rating: Absent,
+  specification: TvsDiodeSpec { tvs: TvsSpecification {
+    polarity: Unidirectional,
+    reverse_standoff: volt(count: 60),
+    breakdown_minimum: millivolt(count: 66700),
+    breakdown_maximum: millivolt(count: 73700),
+  } },
   vendor_application_statements: [
     "Polarity: Cathode band indicates unidirectional device",
   ],
