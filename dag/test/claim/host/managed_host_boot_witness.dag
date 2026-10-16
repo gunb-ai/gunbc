@@ -3,15 +3,16 @@ module test.claim.host.managed_host_boot_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64 }
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, CapabilityPowerControl }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_firmware }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionAdmitted,
   VirtualMediaBootSelectionRefused,
+  VirtualMediaUnestablished,
 }
+import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
@@ -120,9 +121,14 @@ test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
 // branch.
 test fn w_a_bound_host_with_no_boot_selection_is_refused() -> Bool {
   managed_hosts() |> all(h => {
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: BmcFirmwareReleaseCapabilityRow { firmware: mtcollins1_firmware, capabilities: [CapabilityPowerControl] }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    // (d) NO PER-UNIT ROW DECIDES THIS: the decider reads the capability row from the firmware
+    // release the access observation REPORTS (the per-release catalog lookup). A build the catalog
+    // has not yet read is uncatalogued, so the row does not resolve and the selection refuses with
+    // its cause named -- no media-less per-unit datum is needed.
+    let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
+    let unselected = managed_host_fixture(host: "fixture-uncatalogued-build", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match admit_boot_subject(host: unselected, medium: mtcollins1_boot_medium, execution_revision: revision) {
-      BootSubjectRefused { host: x, cause: BootSubjectNoSelection { cause: _ } } => (x as String) == "fixture-unselected-host"
+      BootSubjectRefused { host: x, cause: BootSubjectNoSelection { cause: _ } } => (x as String) == "fixture-uncatalogued-build"
       _ => false
     }
   }) && count(managed_hosts()) == 1
@@ -180,6 +186,30 @@ test fn w_a_second_machine_with_the_same_profile_gets_the_same_selection() -> Bo
         VirtualMediaBootSelectionAdmitted { selection: real_sel } => (ipmi_boot_selection_label(selection: second_sel) as String) == (ipmi_boot_selection_label(selection: real_sel) as String)
       }
     }
+  }) && count(managed_hosts()) == 1
+}
+
+// (d) RED: A REFASH CHANGES THE UNIT'S REPORTED BUILD, AND THE LOOKUP FOLLOWS IT. The capability row
+// is a per-release fact: the same unit observed at the catalogued 0.32 build resolves that build's row
+// and admits its selection; observed at a build the catalog has not yet read, it refuses with the
+// uncatalogued cause -- with NO per-unit edit, because no per-unit row exists to go stale. This is the
+// defect the per-unit mtcollins1_capability_row datum had: a reflash would have left it describing the
+// old build. The next boot's pre-power hpm check is the reading that would catalogue the new build.
+test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit() -> Bool {
+  managed_hosts() |> all(h => {
+    // The unit observed at its catalogued build resolves and admits.
+    let at_0_32 = match boot_selection(host: h) {
+      VirtualMediaBootSelectionRefused { cause: _ } => false
+      VirtualMediaBootSelectionAdmitted { selection: _ } => true
+    }
+    // The same unit observed at a build the catalog has not read refuses, with no per-unit edit.
+    let new_build = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
+    let reflashed = managed_host_fixture(host: "fixture-reflash-build", access: host_access_repoint_firmware(access: h.access, firmware: new_build), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let refused_uncatalogued = match boot_selection(host: reflashed) {
+      VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished } => true
+      _ => false
+    }
+    at_0_32 && refused_uncatalogued
   }) && count(managed_hosts()) == 1
 }
 

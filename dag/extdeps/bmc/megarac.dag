@@ -1,15 +1,21 @@
 module extdeps.bmc.megarac
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
+import std.nat { Nat }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
   BmcFirmwareReleaseIdentity,
+  BmcFirmwareReleaseCapabilityRow,
+  BmcCapability,
+  CapabilityPowerControl,
+  CapabilityBootSourceOverride,
+  CapabilityOemRemoteMedia,
   bmc_firmware_release_identity_eq,
   bmc_firmware_release_identity_of_wire,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -400,5 +406,69 @@ service megarac.Media {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
     }
+  }
+}
+
+// THE RELEASE CAPABILITY CATALOG. A capability row is a fact about a vendor FIRMWARE RELEASE, keyed
+// by the exact release identity (family + raw version), true of every unit running that build -- not
+// a fact about one unit. A reflash changes the unit's release, and the next lookup resolves the new
+// build's row (or refuses, if that build is not yet catalogued); nothing per-unit edits. Each entry
+// cites the evidence its row was read from.
+type MegaRacReleaseCapabilityEntry {
+  firmware: BmcFirmwareReleaseIdentity
+  row: BmcFirmwareReleaseCapabilityRow
+  citations: List<FactCitation>
+}
+
+// The 0.32 release's capabilities as read on the Foxconn Mt. Collins build: the automation-exercisable
+// set -- a boot-source override, power control, and the OEM REST remote-media route. What is deliberately
+// ABSENT is the point: generic virtual media (the controller serves no Redfish, so the exercised surface
+// is the OEM remote-media route specifically), account management (rotation has no modeled operation),
+// and serial console (SOL was driven by hand, not through a modeled route). A capability this row
+// asserts is one the AUTOMATION can perform. Cited to the AMI MegaRAC family authority; the build
+// observation is corroboration, carried per-unit.
+data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
+  MegaRacReleaseCapabilityEntry {
+    firmware: megarac_firmware_0_32,
+    row: BmcFirmwareReleaseCapabilityRow {
+      firmware: megarac_firmware_0_32,
+      capabilities: [
+        CapabilityBootSourceOverride,
+        CapabilityPowerControl,
+        CapabilityOemRemoteMedia,
+      ],
+    },
+    citations: [
+      {
+        fact: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.bmc", decl_name: "mt_collins_bmc_implementation_expected"),
+        authority: extdeps_external_authority_anchor,
+      },
+    ],
+  },
+]
+
+// THE TYPED RELEASE CAPABILITY LOOKUP. Resolve the capability row for an observed firmware release
+// identity against the catalog: one matching entry resolves its row; no entry is a typed uncatalogued
+// refusal (never a default); more than one is an ambiguous refusal with its count. This is the
+// per-release grain the per-unit row was conflating with the unit.
+type MegaRacReleaseCapabilityLookup
+  = MegaRacReleaseCapabilityKnown { row: BmcFirmwareReleaseCapabilityRow }
+  | MegaRacReleaseCapabilityUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+  | MegaRacReleaseCapabilityAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
+
+fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> MegaRacReleaseCapabilityLookup {
+  let hits = megarac_release_capability_catalog
+    |> filter(entry => bmc_firmware_release_identity_eq(a: entry.firmware, b: firmware))
+  let n = count(hits)
+  if n == 0 {
+    MegaRacReleaseCapabilityUncatalogued { firmware: firmware }
+  } else if n == 1 {
+    fold(
+      hits,
+      init: MegaRacReleaseCapabilityUncatalogued { firmware: firmware },
+      f: (_acc, entry) => MegaRacReleaseCapabilityKnown { row: entry.row },
+    )
+  } else {
+    MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: n }
   }
 }

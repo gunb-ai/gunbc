@@ -6,7 +6,8 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
 import gunbc.host.board_platform_facts { host_board_architecture }
-import gunbc.host.controller_capability { controller_capability }
+import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
+import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowKnown }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
   VirtualMediaBootSelectionRefusal,
@@ -38,7 +39,11 @@ import gunbc.host.managed_host {
 // have a selection decided for it is not bootable however capable its controller.
 fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
   let arch = host_board_architecture(access: host.access)
-  let media = controller_capability(row: host.capability_row).virtual_media
+  let media =
+    match host_capability_row(access: host.access) {
+      HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
+      _ => CapabilityUnestablished
+    }
   virtual_media_boot_selection(arch: arch, media: media)
 }
 

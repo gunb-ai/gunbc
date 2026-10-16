@@ -2,10 +2,10 @@ module test.claim.host.managed_host_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, CapabilityPowerControl }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_firmware }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
+import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
   managed_host_fixture,
@@ -109,14 +109,16 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
   }) && count(managed_hosts()) == 1
 }
 
-// RED: A HOST ITS CONTROLLER CANNOT GIVE A SELECTION TO. The real row's standings are kept under a
-// host name whose controller row carries no virtual-media capability; it binds, but the derived
-// boot selection refuses (virtual media unestablished) and admission refuses the host as
-// selection-less, so the roster over both hosts is exactly mtcollins1. No host-name branch decides
-// this: the refusal is the capability row's.
+// (d) RED: A HOST ITS CONTROLLER CANNOT GIVE A SELECTION TO. The real row's standings are kept under
+// a host name whose controller REPORTS a build the catalog has not yet read; it binds (the endpoint
+// and secure are the same), but the derived boot selection refuses because the per-release row does
+// not resolve (virtual media unestablished), and admission refuses the host as selection-less, so the
+// roster over both hosts is exactly mtcollins1. No host-name or per-unit row decides this: the refusal
+// is the catalog lookup's.
 test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
   managed_hosts() |> all(h => {
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: BmcFirmwareReleaseCapabilityRow { firmware: mtcollins1_firmware, capabilities: [CapabilityPowerControl] }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let bound = match managed_host_binding(host: unselected) {
       ManagedHostBound { binding: _ } => true
       ManagedHostAccessUnobserved { endpoint: _ } => false
