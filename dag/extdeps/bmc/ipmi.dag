@@ -520,7 +520,8 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
 //
 // So the names are declared once, here, and anything that does not map to one is refused at the parse
 // rather than admitted and then second-guessed. The set mirrors upstream's own registry, which is the only
-// authority for what `-I` accepts: `src/plugins/ipmi_intf.c:93 ipmi_intf_table[]` and each plugin's
+// authority for what `-I` accepts: the `ipmi_intf_table[]` array in `src/plugins/ipmi_intf.c`, plus each
+// plugin's
 // `.name` field (src/plugins/<p>/<p>.c). A transport ipmitool does not have cannot be named here, and a
 // transport it does have but which is not a host-to-controller path cannot be admitted as one.
 // THE ONE CLASSIFICATION, DECLARED STRUCTURALLY RATHER THAN ANSWERED WITH A BOOL ────────────────
@@ -568,7 +569,8 @@ type IpmiCommandInterfaceParse
 
 // A name becomes an arm on one side or the other, or the parse REFUSES -- there is no "assume in-band"
 // default, and no arm for "unknown but tolerated". Matching is exact on purpose: ipmitool's own dispatch
-// is `strcmp` against its plugin table (`src/plugins/ipmi_intf.c:150`), so "LANPLUS" and "lanplus " are
+// is `strcmp` on `i->name` inside `ipmi_intf_load()` (`src/plugins/ipmi_intf.c`), which returns NULL for a
+// name no plugin claims -- so "LANPLUS" and "lanplus " are
 // not interfaces it would load, and a capture that appears to name them was read wrong, which is a refusal
 // worth having rather than a transport silently invented.
 fn ipmi_command_interface_from_wire(wire: String) -> IpmiCommandInterfaceParse {

@@ -919,7 +919,7 @@ fn converge_in_band_recovery(
           route: route,
           outcome: RecoveryControllerPolicyUnavailable { sighting: recovery_policy_sighted_on_controller(route: route) },
         }
-      } else
+      } else {
         // EACH ADMISSION IS MATCHED EXACTLY ONCE, and the match is what routes the refusal: the refused
         // arm's own cause is what the outcome carries, so there is no invented "unreachable" arm and no
         // Bool asked first and then re-matched to build the answer. Which gate ISSUED an admission is a
@@ -980,6 +980,7 @@ fn converge_in_band_recovery(
               }
             }
         }
+      }
     }
 }
 
