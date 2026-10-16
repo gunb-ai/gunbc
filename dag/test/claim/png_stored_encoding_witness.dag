@@ -89,7 +89,7 @@ test fn a_two_pixel_image_is_the_reference_file() -> Bool {
 fn png_witness_refusal(image: PngIndexedImage) -> PngRefusal? {
   match png_encode(image: image) {
     PngRefused { cause } => Present { value: cause }
-    PngEncoded { octets: _ } => Absent
+    PngEncoded { octets: _ } => none
   }
 }
 

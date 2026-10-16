@@ -139,7 +139,7 @@ type PngEncoding = PngEncoded { octets: List<Int> } | PngRefused { cause: PngRef
 data png_four_byte_limit: Int = 2147483647
 
 fn png_dimension_refusal(axis: PngAxis, v: Int) -> PngRefusal? {
-  if v < 1 || v > png_four_byte_limit { Present { value: PngDimensionOutOfRange { axis: axis, observed: v } } } else { Absent }
+  if v < 1 || v > png_four_byte_limit { Present { value: PngDimensionOutOfRange { axis: axis, observed: v } } } else { none }
 }
 
 // The IDAT data length, known before any octet is produced: zlib header, one stored-block header
