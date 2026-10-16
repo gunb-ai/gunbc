@@ -239,7 +239,7 @@ import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
-  TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference, resolve_type_decl_routed, resolve_type_decl_leaf,
+  TypeDeclResolution, TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference, resolve_type_decl_routed, resolve_type_decl_leaf, RouteKernelMint,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
@@ -3456,7 +3456,7 @@ fn shared_layer_refuse_text(answer: SharedLayerAnswer) -> String {
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   if is_container_type(name: leaf) {
     if set_contains(shared_types, leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
-  } else if is_kernel_type(name: leaf) || rust_opaque_kernel_alias_carrier(name: leaf) != none {
+  } else if is_kernel_type(name: leaf) {
     // A kernel spelling realizes as the host type (i64, String, ...), at the value layer, whichever
     // declaration the corpus also gives the same leaf (emitted Int enum-variant fields as Rc<i64>).
     SharedLayerAtValue
@@ -3558,7 +3558,7 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   let spelled = rust_fn_sig_leaf_name(source_indices: source_indices, n: type_expr)
   // The alias hop below must not carry a kernel spelling past itself: `type Int = AbelianGroup<..>`
   // is declared in std.integer, and judging the hop's right-hand side wrapped every Int field in Rc.
-  let kernel_scalar = (is_kernel_type(name: spelled) && !is_container_type(name: spelled)) || rust_opaque_kernel_alias_carrier(name: spelled) != none
+  let kernel_scalar = is_kernel_type(name: spelled) && !is_container_type(name: spelled)
   let judged = match rust_operand_alias_or_refinement_continue(rt: type_expr, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
     Present { value: next } => next
     Absent =>
@@ -3573,11 +3573,14 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   // answer shared for it. Only an alias whose right-hand side is a container hands its layer on.
   let judged_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: judged)
   let alias_to_non_container = judged_leaf != spelled && !is_container_type(name: judged_leaf)
-  if kernel_scalar || alias_to_non_container || rust_type_node_is_arrow(n: judged) {
+  let routed = resolve_type_decl_routed(index: type_decl_items, type_expr: judged, source_indices: source_indices)
+  // A kernel-minted type (Hash in v1.std.core hash_type) has no declaration to wrap, share or copy.
+  let kernel_minted = match routed.route { RouteKernelMint => true  _ => false }
+  if kernel_scalar || kernel_minted || alias_to_non_container || rust_type_node_is_arrow(n: judged) {
     SharedLayerAtValue
   } else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: judged)
-    shared_layer_of_resolution(shared_types: shared_types, leaf: leaf, resolution: resolve_type_decl_routed(index: type_decl_items, type_expr: judged, source_indices: source_indices).resolution, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
+    shared_layer_of_resolution(shared_types: shared_types, leaf: leaf, resolution: routed.resolution, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
   }
 }
 
