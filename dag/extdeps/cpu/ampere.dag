@@ -380,11 +380,12 @@ data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
 // "Ampere's Altra Family SoC BMC Interface Specification" (extdeps.ampere.smpro_register). Listing the
 // families here is that cited set in the corpus's own SoCFamily terms.
 //
-// Membership is compared on the family NAME, which is the identity the upstream states: the readme
-// names families, not models. It is NOT inferred from the instruction-set architecture, and that
-// distinction is the whole point. Aarch64 does not imply SMpro — an AWS Graviton or an NVIDIA Grace
-// is aarch64 silicon with no SMpro — so keying the capability on the architecture would assert a
-// facility these machines do not have.
+// Membership is tested by FAMILY IDENTITY, not by name and never by the instruction-set architecture.
+// A family is its cited model rows (extdeps.cpu.types.soc_family_eq), so a row that merely spells its
+// name "Altra" while grouping different models does NOT carry SMpro — the earlier name comparison let it
+// (review 81149, finding 3). And aarch64 does not imply SMpro: an AWS Graviton or an NVIDIA Grace is
+// aarch64 silicon with no SMpro interface at all, so keying on the architecture would assert a facility
+// these machines do not have.
 data ampere_smpro_carrying_soc_families: List<SoCFamily> = [
   ampere_altra_soc_family,
   ampere_altra_max_soc_family,
@@ -404,7 +405,7 @@ data ampere_smpro_carrying_soc_families_citations: List<FactCitation> = [
 // (gunbc.host.smpro_platform_capability.smpro_facility).
 fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
   match ampere_smpro_carrying_soc_families
-    |> filter(c => (c.name as String) == (family.name as String))
+    |> filter(c => soc_family_eq(a: c, b: family))
     |> first() {
     Present { value: _ } => true
     Absent => false

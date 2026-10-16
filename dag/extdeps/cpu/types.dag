@@ -193,6 +193,39 @@ type SoCFamily {
   models: List<CpuModelCatalogRow>
 }
 
+// WHETHER TWO FAMILY ROWS ARE THE SAME SILICON LINE, tested by IDENTITY — never by name.
+//
+// A family IS the grouping of its catalog model rows ("the grouping of catalog models that share one So
+// silicon line", above), so two rows name one family exactly when they group the same models. Comparing
+// `name` would let any unrelated row that spells its name "Altra" inherit everything cited about Altra —
+// review 81149, finding 3, which was exactly how SMpro carrying was decided here. The name stays on the
+// type because upstream names families in prose and a refusal must be readable, but it decides nothing.
+//
+// The model-row comparison is on the row's IDENTITY — vendor + model number + OEM listing — which is the
+// key an OEM lists a part under. Architecture, core counts and cache geometry are cited ATTRIBUTES of
+// that key, not part of what makes the part itself; two rows agreeing on the key but disagreeing on an
+// attribute are a contradiction to fix at the citation, not two different parts.
+fn cpu_model_catalog_row_eq(a: CpuModelCatalogRow, b: CpuModelCatalogRow) -> Bool {
+  (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
+    && (a.model_number as String) == (b.model_number as String)
+    && match a.oem_listing_id {
+      Present { value: av } => match b.oem_listing_id {
+        Present { value: bv } => (av as String) == (bv as String)
+        Absent => false
+      }
+      Absent => match b.oem_listing_id {
+        Present { value: _ } => false
+        Absent => true
+      }
+    }
+}
+
+fn soc_family_eq(a: SoCFamily, b: SoCFamily) -> Bool {
+  count(a.models) == count(b.models)
+    && all(a.models, m => any(b.models, n => cpu_model_catalog_row_eq(a: m, b: n)))
+    && all(b.models, m => any(a.models, n => cpu_model_catalog_row_eq(a: m, b: n)))
+}
+
 // THE FIRMWARE ARCHITECTURE A FAMILY ESTABLISHES, OR NONE.
 //
 // A family establishes an architecture only when every model in it reports the SAME one. A family

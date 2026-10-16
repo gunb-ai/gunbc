@@ -37,7 +37,7 @@ import extdeps.bmc.capability {
   CapabilityPowerControl,
   release_row_has_capability,
 }
-import extdeps.bmc.megarac {
+import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityKnown,
   MegaRacReleaseCapabilityUncatalogued,
   MegaRacReleaseCapabilityAmbiguous,
