@@ -1,0 +1,444 @@
+module test.claim.machine_intake.megarac_boot_record_mapping_witness
+
+// ── THE RAW-TO-NEUTRAL MAPPING WITNESS (cut 4d-ii) ──────────────────────────────────
+//
+// The bundle stores the RAW MegaRAC records once. There is no neutral BootRunRecord stored beside
+// them -- that would be two representations of one boot, free to disagree. The neutral record is a
+// CLASSIFICATION, produced on demand by gunbc.machine_intake.megarac_boot_diagnostic_bundle's
+// mapping functions.
+//
+// This witness is what makes that safe. Every raw arm of every per-attempt record is pinned here to
+// the neutral arm it must classify into. Add a raw arm without giving it a neutral case and this
+// module stops compiling (the match is exhaustive); add one with a case that maps to the wrong arm,
+// and the claim that fails is precisely "this raw arm classifies into that neutral arm". Without it,
+// the single-storage rule would have no check at all: the raw records would be the only thing anyone
+// ever looked at, and the neutral module's careful vocabulary would drift from them unnoticed.
+//
+// Each claim reads the mapping only -- no transport, no host, no row needed beyond the classifier's
+// own inputs -- so a failure means the classification is wrong, not the read.
+
+import std.types { NonEmptyStr }
+import std.text { string_contains }
+import std.measure { byte_size }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
+import gunbc.host.boot_attempt {
+  HostPowerState, PowerOn, PowerOff, PowerUnread,
+  BootPresentation, Presented, PresentationNotAttempted, PresentationUnread,
+  StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused, StalePowerOffNotObserved,
+  MediaAttachNotAttempted, MediaAttachAttempted,
+  HandoffConfirmed, HandoffAttemptedUnconfirmed,
+  HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
+  EndMediaNotTaken, EndMediaObserved,
+  PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt, PowerAfterUnobserved, PowerAfterNotTaken,
+  OverrideConsumedByAttempt, OverrideNoLongerPendingAfterAttempt, OverridePendingBeforeAttempt,
+  OverrideStillPendingAfterAttempt, OverrideNotHandedOff, OverrideConsumptionUnread,
+  BootFinding, EveryReadFailed, MediaAttachNotReady, MediaAttachSessionHeld, HandoffWithheldAtRecheck,
+  HandoffUnconfirmed, OverrideNotConsumed, PoweredOffWithoutTerminalMarker, CredentialMayRemain,
+  PresentationAfterHandoff,
+}
+import gunbc.machine_intake.megarac_media_attach {
+  MegaRacAttachResult, MegaRacAttachOutcome, MegaRacPresentationReady, MegaRacPresentationEvidence,
+  MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, CdErrorUnread, SessionRelease,
+  SessionReleased, SessionReleaseRefused, SessionReleaseNotAttempted, RouteAlreadyPresented,
+}
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, AmiMegaRac }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffObserved,
+  MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotObserved,
+  MegaRacMediaAttach, MegaRacMediaAttachNotAttempted, MegaRacMediaAttachAttempted,
+  MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
+  MegaRacHandoffCallResult, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed,
+  MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved,
+  MegaRacPowerAfter, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd,
+  MegaRacPoweredOnAfterAttempt, MegaRacPowerAfterUnobserved, MegaRacPowerAfterNotTaken,
+  MegaRacOverride, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt,
+  MegaRacOverridePendingBeforeAttempt, MegaRacOverrideStillPendingAfterAttempt, MegaRacOverrideNotHandedOff,
+  MegaRacOverrideConsumptionUnread,
+  HarnessFinding, MegaRacEveryReadFailed, MegaRacMediaAttachNotReady, MegaRacMediaAttachSessionHeld,
+  MegaRacHandoffWithheld, MegaRacHandoffUnconfirmed, MegaRacPresentationAfterHandoff,
+  MegaRacOverrideNotConsumed, MegaRacPoweredOffWithoutCensusEndMarker, MegaRacCredentialMayRemain,
+  megarac_host_power, megarac_presentation, megarac_stale_power_off_record, megarac_media_attach_record,
+  megarac_handoff_call_result, megarac_handoff_media_record, megarac_end_media_record,
+  megarac_power_after_attempt, megarac_override_consumption, megarac_harness_findings_neutral,
+}
+import gunbc.machine_intake.mtcollins1_power_on_account { BmcChannelRead }
+
+// ── FIXTURES ─────────────────────────────────────────────────────────────────────────
+
+fn a_power() -> ChassisPowerObservation = ChassisPowerRead { power_on: true }
+
+fn a_firmware() -> BmcFirmwareReleaseIdentity {
+  bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.32" as NonEmptyStr)
+}
+
+fn an_evidence() -> MegaRacPresentationEvidence {
+  MegaRacPresentationEvidence {
+    firmware: a_firmware(),
+    image_name: "census.iso",
+    media_index: none,
+    session_index: none,
+    redirection_wire: 1,
+    established_at: 13000,
+    looks: 1,
+    cd_before_any_write: CdErrorUnread { detail: "fixture" },
+    cd_at_ready: CdErrorUnread { detail: "fixture" },
+    general_at_ready: MegaRacRawRead { answered: true, body: "{}", observed_at: none },
+  }
+}
+
+// An attach result the transport answered with, session released: the presented case.
+fn presented_result() -> MegaRacAttachResult {
+  MegaRacAttachResult {
+    outcome: MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: an_evidence() },
+    session_release: SessionReleased,
+    baseline: none,
+  }
+}
+
+// The same result with the session held: what the BMC served only while our session lived.
+fn held_result() -> MegaRacAttachResult {
+  MegaRacAttachResult {
+    outcome: MegaRacPresentationReady { route: RouteAlreadyPresented, evidence: an_evidence() },
+    session_release: SessionReleaseRefused { detail: "the BMC kept the session" },
+    baseline: none,
+  }
+}
+
+// An attach result the transport could not complete.
+fn refused_result() -> MegaRacAttachResult {
+  MegaRacAttachResult {
+    outcome: MegaRacSessionRefused { detail: "no response" },
+    session_release: SessionReleaseNotAttempted,
+    baseline: none,
+  }
+}
+
+// ── POWER: the transport's three arms onto the neutral three ─────────────────────────
+
+test fn chassis_on_classifies_as_power_on() -> Bool {
+  megarac_host_power(o: ChassisPowerRead { power_on: true }) == PowerOn
+}
+
+test fn chassis_off_classifies_as_power_off() -> Bool {
+  megarac_host_power(o: ChassisPowerRead { power_on: false }) == PowerOff
+}
+
+// An unread chassis is never reported as off: it is unread, carrying the transport's own cause.
+test fn an_undecodable_chassis_is_unread_not_off() -> Bool {
+  match megarac_host_power(o: ChassisStatusUndecodable { cause: "garbage" }) {
+    PowerUnread { reason: r } => r == "garbage"
+    PowerOn => false
+    PowerOff => false
+  }
+}
+
+test fn an_unreadable_chassis_is_unread() -> Bool {
+  match megarac_host_power(o: ChassisUnreadable) {
+    PowerUnread { reason: _ } => true
+    PowerOn => false
+    PowerOff => false
+  }
+}
+
+// ── PRESENTATION: read off what the transport actually answered ──────────────────────
+
+test fn a_released_presentation_is_presented() -> Bool {
+  megarac_presentation(r: presented_result()) == Presented
+}
+
+// A medium served only while our session holds it is NOT "presented": we cannot say what another
+// session would see, so the neutral answer is unread rather than presented or not-attempted.
+test fn a_session_held_medium_is_unread_not_presented() -> Bool {
+  match megarac_presentation(r: held_result()) {
+    PresentationUnread { reason: r } => r == "the BMC kept the session"
+    Presented => false
+    PresentationNotAttempted { reason: _ } => false
+  }
+}
+
+test fn a_transport_failure_is_not_an_attempt() -> Bool {
+  match megarac_presentation(r: refused_result()) {
+    PresentationNotAttempted { reason: r } => string_contains(s: r, pattern: "no response")
+    Presented => false
+    PresentationUnread { reason: _ } => false
+  }
+}
+
+// ── STALE POWER OFF: all four arms, with the power readings classified too ───────────
+
+test fn stale_not_needed_carries_its_reason() -> Bool {
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffNotNeeded { reason: "already off" }) {
+    StalePowerOffNotNeeded { reason: r } => r == "already off"
+    _ => false
+  }
+}
+
+test fn stale_observed_keeps_the_image_and_classifies_before() -> Bool {
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffObserved { stale_image: "i", before: a_power() }) {
+    StalePowerOffObserved { stale_image: i, before: b } => i == "i" && b == PowerOn
+    _ => false
+  }
+}
+
+test fn a_refused_stale_power_off_stays_a_refusal() -> Bool {
+  match megarac_stale_power_off_record(r: MegaRacStalePowerOffCommandRefused { stale_image: "i", before: a_power() }) {
+    StalePowerOffCommandRefused { stale_image: _, before: _ } => true
+    _ => false
+  }
+}
+
+test fn a_stale_power_off_never_observed_keeps_both_readings() -> Bool {
+  match megarac_stale_power_off_record(
+    r: MegaRacStalePowerOffNotObserved {
+      stale_image: "i", before: ChassisPowerRead { power_on: true }, last: ChassisPowerRead { power_on: false },
+    }) {
+    StalePowerOffNotObserved { before: b, last: l } => b == PowerOn && l == PowerOff
+    _ => false
+  }
+}
+
+// ── MEDIA ATTACH: both arms, with the transport detail dropped, not smuggled ─────────
+
+test fn media_not_attempted_carries_only_its_reason() -> Bool {
+  match megarac_media_attach_record(r: MegaRacMediaAttachNotAttempted { reason: "no medium" }) {
+    MediaAttachNotAttempted { reason: r } => r == "no medium"
+    MediaAttachAttempted {
+      medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, presentation: _,
+    } => false
+  }
+}
+
+// The transport's own attempt identifier is MegaRAC's business; the neutral record keeps what the
+// medium WAS and how the host was powered, not the call's handle.
+test fn media_attempted_keeps_the_medium_and_drops_the_transport_handle() -> Bool {
+  match megarac_media_attach_record(
+    r: MegaRacMediaAttachAttempted {
+      attempt: "ipmi-77",
+      medium_image_name: "census.iso",
+      medium_image_sha256: "ab",
+      power: a_power(),
+      stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "already off" },
+      result: presented_result(),
+    }) {
+    MediaAttachAttempted { medium_image_name: n, medium_image_sha256: s, power: p, presentation: pr, stale_power_off: _ } =>
+      n == "census.iso" && s == "ab" && p == PowerOn && pr == Presented
+    MediaAttachNotAttempted { reason: _ } => false
+  }
+}
+
+// ── HANDOFF: the call result and the three media arms ────────────────────────────────
+
+test fn a_confirmed_handoff_call_stays_confirmed() -> Bool {
+  megarac_handoff_call_result(h: MegaRacHandoffConfirmed) == HandoffConfirmed
+}
+
+test fn an_unconfirmed_handoff_call_stays_unconfirmed() -> Bool {
+  match megarac_handoff_call_result(h: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" }) {
+    HandoffAttemptedUnconfirmed { reason: r } => r == "no answer"
+    HandoffConfirmed => false
+  }
+}
+
+test fn handoff_not_reached_carries_its_reason() -> Bool {
+  match megarac_handoff_media_record(h: MegaRacHandoffNotReached { reason: "attach failed" }) {
+    HandoffMediaNotReached { reason: r } => r == "attach failed"
+    _ => false
+  }
+}
+
+test fn a_withheld_handoff_is_withheld() -> Bool {
+  match megarac_handoff_media_record(h: MegaRacHandoffWithheldAtRecheck { before: presented_result() }) {
+    HandoffMediaWithheldAtRecheck { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_attempted_handoff_classifies_its_call_and_its_after_state() -> Bool {
+  match megarac_handoff_media_record(
+    h: MegaRacHandoffAttempted {
+      before: presented_result(), handoff: MegaRacHandoffConfirmed, after: presented_result(),
+    }) {
+    HandoffMediaAttempted { handoff: h2, after: a } => h2 == HandoffConfirmed && a == Presented
+    _ => false
+  }
+}
+
+// ── END MEDIA: the look is classified as a presentation ─────────────────────────────
+
+test fn end_media_not_taken_carries_its_reason() -> Bool {
+  match megarac_end_media_record(e: MegaRacEndMediaNotTaken { reason: "host went down" }) {
+    EndMediaNotTaken { reason: r } => r == "host went down"
+    _ => false
+  }
+}
+
+test fn an_observed_end_look_is_a_presentation() -> Bool {
+  match megarac_end_media_record(e: MegaRacEndMediaObserved { look: presented_result() }) {
+    EndMediaObserved { look: l } => l == Presented
+    _ => false
+  }
+}
+
+// ── POWER AFTER: the census end becomes a terminal, not a boot fact ──────────────────
+
+// The two raw arms differ by THIS consumer's terminal (the diagnostic census). Neutrally they differ
+// only by whether a terminal was observed; which terminal counts as "the census ended" is decided by
+// the census consumer, not by the boot.
+test fn powered_off_after_the_census_is_powered_off_after_a_terminal() -> Bool {
+  megarac_power_after_attempt(p: MegaRacPoweredOffAfterCensusEnd) == PoweredOffAfterTerminal
+}
+
+test fn powered_off_without_the_census_is_powered_off_without_a_terminal() -> Bool {
+  megarac_power_after_attempt(p: MegaRacPoweredOffWithoutCensusEnd) == PoweredOffWithoutTerminal
+}
+
+test fn powered_on_after_the_attempt_is_powered_on() -> Bool {
+  megarac_power_after_attempt(p: MegaRacPoweredOnAfterAttempt) == PoweredOnAfterAttempt
+}
+
+test fn an_unobserved_power_after_carries_the_classified_reading() -> Bool {
+  match megarac_power_after_attempt(p: MegaRacPowerAfterUnobserved { observation: a_power() }) {
+    PowerAfterUnobserved { power: p2 } => p2 == PowerOn
+    _ => false
+  }
+}
+
+test fn a_power_after_never_read_says_so() -> Bool {
+  match megarac_power_after_attempt(p: MegaRacPowerAfterNotTaken { reason: "no time left" }) {
+    PowerAfterNotTaken { reason: r } => r == "no time left"
+    _ => false
+  }
+}
+
+// ── OVERRIDE: the census boot IS the attempt's readback ──────────────────────────────
+
+test fn an_override_consumed_by_the_census_boot_is_consumed_by_the_attempt() -> Bool {
+  megarac_override_consumption(o: MegaRacOverrideConsumedByCensusBoot) == OverrideConsumedByAttempt
+}
+
+test fn an_override_no_longer_pending_after_the_attempt_stays_that() -> Bool {
+  megarac_override_consumption(o: MegaRacOverrideNoLongerPendingAfterAttempt) == OverrideNoLongerPendingAfterAttempt
+}
+
+test fn an_override_pending_before_the_attempt_stays_that() -> Bool {
+  megarac_override_consumption(o: MegaRacOverridePendingBeforeAttempt) == OverridePendingBeforeAttempt
+}
+
+test fn an_override_still_pending_after_the_attempt_stays_that() -> Bool {
+  megarac_override_consumption(o: MegaRacOverrideStillPendingAfterAttempt) == OverrideStillPendingAfterAttempt
+}
+
+test fn an_override_never_handed_off_carries_its_reason() -> Bool {
+  match megarac_override_consumption(o: MegaRacOverrideNotHandedOff { reason: "no key" }) {
+    OverrideNotHandedOff { reason: r } => r == "no key"
+    _ => false
+  }
+}
+
+test fn an_override_read_that_failed_says_so() -> Bool {
+  match megarac_override_consumption(o: MegaRacOverrideConsumptionUnread { reason: "ipmi down" }) {
+    OverrideConsumptionUnread { reason: r } => r == "ipmi down"
+    _ => false
+  }
+}
+
+// ── HARNESS FINDINGS: every raw arm onto its neutral arm ─────────────────────────────
+
+fn every_read() -> List<HarnessFinding> {
+  [MegaRacEveryReadFailed { failed: [BmcChannelRead { channel: "ipmi", ok: false, detail: "timeout" }] }]
+}
+
+test fn an_all_channels_failed_finding_counts_and_names_the_channels() -> Bool {
+  match megarac_harness_findings_neutral(raw: every_read()) {
+    [EveryReadFailed { count: c, channels: ch }] => c == 1 && count(ch) == 1
+    _ => false
+  }
+}
+
+test fn a_media_not_ready_finding_anchors_on_the_classified_record() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacMediaAttachNotReady {
+    record: MegaRacMediaAttachAttempted {
+      attempt: "a", medium_image_name: "m", medium_image_sha256: "s", power: a_power(),
+      stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "already off" }, result: refused_result(),
+    },
+  }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [MediaAttachNotReady { record: r }] => match r {
+      MediaAttachAttempted { medium_image_name: n, presentation: p, _ } => n == "m" && p != Presented
+      MediaAttachNotAttempted { reason: _ } => false
+    }
+    _ => false
+  }
+}
+
+test fn a_session_held_finding_anchors_on_the_classified_record() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacMediaAttachSessionHeld {
+    record: MegaRacMediaAttachAttempted {
+      attempt: "a", medium_image_name: "m", medium_image_sha256: "s", power: a_power(),
+      stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "already off" }, result: held_result(),
+    },
+  }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [MediaAttachSessionHeld { record: _ }] => true
+    _ => false
+  }
+}
+
+test fn a_withheld_handoff_finding_anchors_on_the_classified_handoff() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacHandoffWithheld { handoff: MegaRacHandoffWithheldAtRecheck { before: presented_result() } }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [HandoffWithheldAtRecheck { handoff: _ }] => true
+    _ => false
+  }
+}
+
+test fn an_unconfirmed_handoff_finding_anchors_on_the_classified_handoff() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacHandoffUnconfirmed {
+    handoff: MegaRacHandoffAttempted {
+      before: presented_result(), handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" }, after: presented_result(),
+    },
+  }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [HandoffUnconfirmed { handoff: _ }] => true
+    _ => false
+  }
+}
+
+test fn an_unconsumed_override_finding_anchors_on_the_classified_consumption() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacOverrideNotConsumed { consumption: MegaRacOverrideStillPendingAfterAttempt }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [OverrideNotConsumed { consumption: c }] => c == OverrideStillPendingAfterAttempt
+    _ => false
+  }
+}
+
+test fn a_presentation_after_handoff_finding_classifies_the_look() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacPresentationAfterHandoff { look: presented_result() }]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [PresentationAfterHandoff { presentation: p }] => p == Presented
+    _ => false
+  }
+}
+
+// The raw marker names the census; the neutral marker says only that no terminal was seen. Which
+// terminal the consumer meant is the consumer's to decide.
+test fn the_census_end_marker_becomes_a_terminal_marker_absence() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacPoweredOffWithoutCensusEndMarker]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [PoweredOffWithoutTerminalMarker] => true
+    _ => false
+  }
+}
+
+test fn a_credential_may_remain_finding_survives_the_mapping() -> Bool {
+  let raw: List<HarnessFinding> = [MegaRacCredentialMayRemain]
+  match megarac_harness_findings_neutral(raw: raw) {
+    [CredentialMayRemain] => true
+    _ => false
+  }
+}
+
+// No finding is invented by the mapping: an empty raw list classifies to an empty neutral list.
+test fn no_raw_findings_is_no_findings() -> Bool {
+  count(megarac_harness_findings_neutral(raw: [])) == 0
+}
