@@ -1,6 +1,0 @@
-module test.gap_depth_1
-import std.types { Int }
-fn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }
-fn probe() -> Int {
-  gar_bind(o: 1, f: fn(a) { a })
-}
