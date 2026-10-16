@@ -89,10 +89,13 @@ import gunbc.machine_intake.ampere_smpro_observation {
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved,
+  BmcControlNotSecured, BmcControlEndpointMismatch,
+}
 import gunbc.host.managed_host {
   ManagedHost,
-  managed_host_binding, managed_host_smpro_subject, managed_membership_for,
-  ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  managed_host_smpro_subject, managed_membership_for,
   OrdinaryMember, MemberUnderDeclaredDrop,
 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -103,10 +106,11 @@ import gunbc.host.host_boot_attempt_admission {
   attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
 }
 import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
+import gunbc.host.smpro_platform_capability { SmproProbed, SmproNotTaken }
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, mtcollins1_kvm_observer_dir, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
-  SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
+  SensorsNotTaken, mtcollins1_boot_sensors,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_hpm_check, mtcollins1_boot_console,
   mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_findings, harness_finding_text, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
@@ -179,7 +183,7 @@ data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
 // mtcollins1_media_general_2026_09_27). The generic attach (gunbc.machine_intake.megarac_boot_media_attach)
 // takes it as the boot's fact.
 // THE ACCOUNT THIS UNIT'S BOOT DRIVES ITS CONTROLLER AS: the bound managed host's account
-// (gunbc.host.managed_host ManagedHostBinding account), never the published factory literal "admin" and
+// (gunbc.host.bmc_control_binding bmc_control_route_account), never the published factory literal "admin" and
 // never a second spelling of "gunbc". Absent means the host is not a bound managed host (no BmcSecured,
 // or its access names another controller), and the reads that need it refuse before any controller
 // write. It moved here from the deleted unit actuation module with its value unchanged; the handoff
@@ -1939,16 +1943,17 @@ fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, att
 // the row's bound controller joined to its SMpro site, so the reads go to the controller the site is
 // evidence about or are not taken, with the refusal as the reason.
 fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, password_file: NonEmptyStr) -> SmproReading {
-  match managed_host_binding(host: h) {
-    ManagedHostAccessUnobserved { endpoint: _ } => SmproNotTaken { reason: "mtcollins1's controller access is unobserved, so no SMpro subject binds" }
-    ManagedHostNotSecured { cause: _ } => SmproNotTaken { reason: "mtcollins1's controller is not secured, so no SMpro subject binds" }
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => SmproNotTaken { reason: "mtcollins1's access and secure standings name different controllers, so no SMpro subject binds" }
-    ManagedHostBound { binding: b } => {
-      let subject = managed_host_smpro_subject(binding: b)
-      match subject {
+  let control = bmc_control_binding(observed: h.access, secured: h.secure)
+  match control {
+    BmcControlAccessUnobserved { endpoint: _ } => SmproNotTaken { reason: "mtcollins1's controller access is unobserved, so no SMpro subject binds" }
+    BmcControlNotSecured { cause: _ } => SmproNotTaken { reason: "mtcollins1's controller is not secured, so no SMpro subject binds" }
+    BmcControlEndpointMismatch { observed: _, secured: _ } => SmproNotTaken { reason: "mtcollins1's access and secure standings name different controllers, so no SMpro subject binds" }
+    BmcControlBound { route: _ } => match managed_host_smpro_subject(host: h, control: control) {
+      Absent => SmproNotTaken { reason: "mtcollins1 has no bound controller to read SMpro through" }
+      Present { value: standing } => match standing {
         SmproPassSubjectBound { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-        SmproPassSiteRefused { cause: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site is not admitted" } }
-        SmproPassEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site names another controller" } }
+        SmproPassSiteRefused { cause: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: standing) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site is not admitted" } }
+        SmproPassEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: standing) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site names another controller" } }
       }
     }
   }

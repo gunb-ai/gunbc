@@ -10,17 +10,19 @@ import gunbc.machine_intake.oob_boot_handoff {
 }
 import gunbc.host.managed_host {
   ManagedHost,
-  ManagedHostBinding,
-  ManagedHostBindingStanding,
-  ManagedHostAccessUnobserved,
-  ManagedHostBound,
-  ManagedHostEndpointMismatch,
-  ManagedHostNotSecured,
   ManagedHostMembership,
   OrdinaryMember,
   MemberUnderDeclaredDrop,
-  managed_host_binding,
   managed_host_memberships,
+}
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding,
+  BmcControlBound,
+  BmcControlBoundRoute,
+  BmcControlAccessUnobserved,
+  BmcControlNotSecured,
+  BmcControlEndpointMismatch,
+  bmc_control_binding,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import std.decl_ref { DeclarationRef }
@@ -43,43 +45,44 @@ import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 // naming authority underneath both: every identity here comes from gunbc.fleet.fleet_intent_network.
 //
 // MEMBERSHIP IS THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS, AND NOTHING THE RUN DOES NOT USE.
-// A managed host is a reset subject exactly when gunbc.host.managed_host managed_host_binding binds its
-// secured account to an access observation of the same controller, gunbc.host.host_reset_boot_selection
-// gives it a reset selection, and oob_boot_handoff_admission -- the fold
-// gunbc.machine_intake.oob_boot_handoff runs before it writes anything to a controller -- admits the
-// observation against its capability row. The admitted subject carries the binding and the
-// selection, and the run reads both from it, so a roster member can never fail dispatch for want of
-// a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
+// A managed host is a reset subject exactly when gunbc.host.bmc_control_binding bmc_control_binding
+// binds its secured standing to an access observation of the same controller,
+// gunbc.host.host_reset_boot_selection gives it a reset selection, and oob_boot_handoff_admission -- the
+// fold gunbc.machine_intake.oob_boot_handoff runs before it writes anything to a controller -- admits
+// the observation against the capability row of the release that observation reports. The admitted
+// subject carries the row and the bound route, and the run reads both from it, so a roster member can
+// never fail dispatch for want of a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
 // its only mint and no module can hand the run a subject that skipped this admission.
 type AdmittedResetSubject sole_constructor {
-  binding: ManagedHostBinding
+  host: ManagedHost
+  route: BmcControlBoundRoute
   boot_selection: IpmiBootSelection
 }
 
 type ResetSubjectAdmission
   = ResetSubjectAdmitted { subject: AdmittedResetSubject }
-  | ResetSubjectUnbound { standing: ManagedHostBindingStanding }
+  | ResetSubjectUnbound { standing: BmcControlStanding }
   | ResetSubjectNoSelection { host: HostIdentity, cause: VirtualMediaBootSelectionRefusal }
   | ResetSubjectControllerNotAdmitted { admission: OobBootHandoffAdmission }
 
 fn admit_reset_subject(host: ManagedHost) -> ResetSubjectAdmission {
-  match managed_host_binding(host: host) {
-    ManagedHostBound { binding: b } =>
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: route } =>
       match reset_boot_selection(host: host) {
         VirtualMediaBootSelectionRefused { cause: c } => ResetSubjectNoSelection { host: host.host, cause: c }
         VirtualMediaBootSelectionAdmitted { selection: selection } => {
-          let admission = oob_boot_handoff_admission(observation: b.observation)
+          let admission = oob_boot_handoff_admission(observation: bmc_control_route_observation(route: route))
           if oob_handoff_is_admitted(admission: admission) {
-            ResetSubjectAdmitted { subject: AdmittedResetSubject { binding: b, boot_selection: selection } }
+            ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection } }
           } else {
             ResetSubjectControllerNotAdmitted { admission: admission }
           }
         }
       }
-    ManagedHostAccessUnobserved { endpoint: e } => ResetSubjectUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } }
-    ManagedHostNotSecured { cause: c } => ResetSubjectUnbound { standing: ManagedHostNotSecured { cause: c } }
-    ManagedHostEndpointMismatch { observed: o, secured: sc } =>
-      ResetSubjectUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: sc } }
+    BmcControlAccessUnobserved { endpoint: e } => ResetSubjectUnbound { standing: BmcControlAccessUnobserved { endpoint: e } }
+    BmcControlNotSecured { cause: c } => ResetSubjectUnbound { standing: BmcControlNotSecured { cause: c } }
+    BmcControlEndpointMismatch { observed: o, secured: sc } =>
+      ResetSubjectUnbound { standing: BmcControlEndpointMismatch { observed: o, secured: sc } }
   }
 }
 
@@ -99,7 +102,7 @@ fn admitted_reset_subjects(hosts: List<ManagedHost>) -> List<AdmittedResetSubjec
 }
 
 fn reset_subject_roster_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
-  map(admitted_reset_subjects(hosts: hosts), s => s.binding.host.host as NonEmptyStr)
+  map(admitted_reset_subjects(hosts: hosts), s => s.host.host as NonEmptyStr)
 }
 
 type ResetRosterEntry
@@ -174,14 +177,14 @@ fn reset_subject_for(host: NonEmptyStr) -> ResetSubjectLookup {
         match m {
           OrdinaryMember { host: h } =>
             fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) {
+              if (s.host.host as String) == (host as String) {
                 ResetSubjectAdmittedOrdinary { subject: s }
               } else {
                 inner
               })
           MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
             fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) {
+              if (s.host.host as String) == (host as String) {
                 ResetSubjectAdmittedUnderDeclaredDrop {
                   subject: s,
                   drop: d,

@@ -18,16 +18,18 @@ import gunbc.host.virtual_media_boot_selection {
 }
 import gunbc.host.managed_host {
   ManagedHost,
-  ManagedHostBinding,
-  ManagedHostBindingStanding,
-  ManagedHostAccessUnobserved,
-  ManagedHostBound,
-  ManagedHostEndpointMismatch,
-  ManagedHostNotSecured,
   OrdinaryMember,
   MemberUnderDeclaredDrop,
-  managed_host_binding,
   managed_membership_for,
+}
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding,
+  BmcControlBound,
+  BmcControlBoundRoute,
+  BmcControlAccessUnobserved,
+  BmcControlNotSecured,
+  BmcControlEndpointMismatch,
+  bmc_control_binding,
 }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
@@ -48,12 +50,14 @@ fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
 }
 
 // THE ONE RECORD A BOOT ATTACHES, SELECTS, POWER-CYCLES AND JUDGES. sole_constructor, so admit_boot_subject
-// is its only mint: the binding is the managed host's join (the account and endpoint every write reads),
-// the selection is the boot arm's policy for that host, and the medium is the value the boot was
-// admitted with. Nothing downstream takes a second copy of any of them, so an attach cannot present
-// one medium while the verdict judges another.
+// is its only mint: the host is the managed row the boot is for, the route is its BOUND CONTROL ROUTE
+// (gunbc.host.bmc_control_binding BmcControlBoundRoute, minted by the join beside the endpoint check) --
+// every write reads the endpoint, the account and the observed reading through it -- the selection is the boot arm's policy for that host, and the medium is the value
+// the boot was admitted with. Nothing downstream takes a second copy of any of them, so an attach cannot
+// present one medium while the verdict judges another.
 type AdmittedBootSubject sole_constructor {
-  binding: ManagedHostBinding
+  host: ManagedHost
+  route: BmcControlBoundRoute
   medium: BootMedium
   selection: IpmiBootSelection
   execution_revision: NonEmptyStr
@@ -61,7 +65,7 @@ type AdmittedBootSubject sole_constructor {
 
 type BootSubjectRefusalCause
   = BootSubjectHostNotManaged
-  | BootSubjectHostUnbound { standing: ManagedHostBindingStanding }
+  | BootSubjectHostUnbound { standing: BmcControlStanding }
   | BootSubjectNoSelection { cause: VirtualMediaBootSelectionRefusal }
 
 type BootSubjectAdmission
@@ -69,20 +73,20 @@ type BootSubjectAdmission
   | BootSubjectRefused { host: HostIdentity, cause: BootSubjectRefusalCause }
 
 fn admit_boot_subject(host: ManagedHost, medium: BootMedium, execution_revision: NonEmptyStr) -> BootSubjectAdmission {
-  match managed_host_binding(host: host) {
-    ManagedHostBound { binding: b } =>
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: route } =>
       match boot_selection(host: host) {
         VirtualMediaBootSelectionRefused { cause: c } =>
           BootSubjectRefused { host: host.host, cause: BootSubjectNoSelection { cause: c } }
         VirtualMediaBootSelectionAdmitted { selection: s } =>
-          BootSubjectAdmitted { subject: AdmittedBootSubject { binding: b, medium: medium, selection: s, execution_revision: execution_revision } }
+          BootSubjectAdmitted { subject: AdmittedBootSubject { host: host, route: route, medium: medium, selection: s, execution_revision: execution_revision } }
       }
-    ManagedHostAccessUnobserved { endpoint: e } =>
-      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
-    ManagedHostNotSecured { cause: c } =>
-      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
-    ManagedHostEndpointMismatch { observed: o, secured: s } =>
-      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+    BmcControlAccessUnobserved { endpoint: e } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlAccessUnobserved { endpoint: e } } }
+    BmcControlNotSecured { cause: c } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlNotSecured { cause: c } } }
+    BmcControlEndpointMismatch { observed: o, secured: s } =>
+      BootSubjectRefused { host: host.host, cause: BootSubjectHostUnbound { standing: BmcControlEndpointMismatch { observed: o, secured: s } } }
   }
 }
 
@@ -114,10 +118,10 @@ fn boot_subject_refusal_cause_text(cause: BootSubjectRefusalCause) -> String {
     BootSubjectNoSelection { cause: c } => virtual_media_boot_selection_refusal_text(cause: c)
     BootSubjectHostUnbound { standing: s } =>
       match s {
-        ManagedHostBound { binding: _ } => "it is bound"
-        ManagedHostAccessUnobserved { endpoint: e } => concat("its controller access is unobserved at ", e.host as String)
-        ManagedHostNotSecured { cause: _ } => "its controller is not BmcSecured"
-        ManagedHostEndpointMismatch { observed: o, secured: x } => concat("its observed controller ", concat(o.host as String, concat(" is not the secured controller ", x.host as String)))
+        BmcControlBound { route: _ } => "it has a bound control route"
+        BmcControlAccessUnobserved { endpoint: e } => concat("its controller access is unobserved at ", e.host as String)
+        BmcControlNotSecured { cause: _ } => "its controller is not BmcSecured"
+        BmcControlEndpointMismatch { observed: o, secured: x } => concat("its observed controller ", concat(o.host as String, concat(" is not the secured controller ", x.host as String)))
       }
   }
 }
@@ -134,9 +138,9 @@ fn boot_subject_admission_refusal(admission: BootSubjectAdmission) -> NonEmptySt
 // THE NAME THE HOST'S CAPTURE ENVELOPE BINDS TO, and the controller the subject drives, read off the
 // admitted binding rather than restated.
 fn boot_subject_machine(subject: AdmittedBootSubject) -> NonEmptyStr {
-  subject.binding.host.host as NonEmptyStr
+  subject.host.host as NonEmptyStr
 }
 
 fn boot_subject_host(subject: AdmittedBootSubject) -> HostIdentity {
-  subject.binding.host.host
+  subject.host.host
 }

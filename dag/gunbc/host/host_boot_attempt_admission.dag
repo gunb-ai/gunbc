@@ -29,9 +29,10 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDi
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
 import gunbc.fleet.fleet_intent_network { operator_host_mtcollins1 }
-import gunbc.host.managed_host {
-  ManagedHost, ManagedHostBinding, managed_host_binding,
-  ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+import gunbc.host.managed_host { ManagedHost }
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
+  BmcControlEndpointMismatch,
 }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof, UnitHoldStoreExecutor, UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor }
 import gunbc.machine_intake.mtcollins1_power_on_account {
@@ -44,7 +45,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
 import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, hpm_version_cell_text }
 
 // THE ADMISSION OF ONE BOOT ATTEMPT'S CONFIGURATION RECEIPT, host-generic over a gunbc.host.managed_host
-// ManagedHostBinding (docs/plans/power-on-sequence-model.md section 12; Q5 decided by eager-gull-22
+// BmcControlBoundRoute (docs/plans/power-on-sequence-model.md section 12; Q5 decided by eager-gull-22
 // 2026-10-03; Q6 decided by the operator, escalation msg_1b57e749 approved by default after 15
 // minutes without an answer). It sits BEHIND the boot's existing refusals -- boot admission, boot
 // authorization and the unit hold -- because it consumes the unit hold's store-host executor, and
@@ -728,17 +729,17 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
           match unit_hold_store_executor(subject: proof.subject) {
             UnitHoldNotOnStoreHost { reason: r } => BootAttemptRefused { cause: ReceiptExecutorNotOnStoreHost { reason: r } }
             UnitHoldOnStoreHost { executor: e } =>
-              match managed_host_binding(host: host) {
-                ManagedHostAccessUnobserved { endpoint: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller access is unobserved" } }
-                ManagedHostNotSecured { cause: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller is not secured" } }
-                ManagedHostEndpointMismatch { observed: _, secured: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its access and secure standings name different controllers" } }
-                ManagedHostBound { binding: b } =>
-                  if !host_identity_eq(a: e.subject.host.host, b: b.host.host) {
-                    BootAttemptRefused { cause: ReceiptExecutorForAnotherHost { executor_host: e.subject.host.host, bound: b.host.host } }
+              match bmc_control_binding(observed: host.access, secured: host.secure) {
+                BmcControlAccessUnobserved { endpoint: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller access is unobserved" } }
+                BmcControlNotSecured { cause: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller is not secured" } }
+                BmcControlEndpointMismatch { observed: _, secured: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its access and secure standings name different controllers" } }
+                BmcControlBound { route: _ } =>
+                  if !host_identity_eq(a: e.subject.host.host, b: host.host) {
+                    BootAttemptRefused { cause: ReceiptExecutorForAnotherHost { executor_host: e.subject.host.host, bound: host.host } }
                   } else {
                     match actions_variable_read(name: route.nonce_env as String) {
                       ActionsVariableAbsent { variable: v, detail: d } => BootAttemptRefused { cause: ReceiptNonceMissing { variable: v as NonEmptyStr, detail: d } }
-                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: b.host.host, nonce: nonce, path: path, revision: revision, slots: route.slots)
+                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: host.host, nonce: nonce, path: path, revision: revision, slots: route.slots)
                     }
                   }
               }

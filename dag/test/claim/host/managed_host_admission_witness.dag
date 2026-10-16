@@ -210,8 +210,8 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
 test fn w_mtjade1_has_no_record_and_is_not_managed() -> Bool {
   match managed_host_binding_for(host: "mtjade1" as NonEmptyStr) {
     ManagedHostNotManaged { host: h } => (h as String) == "mtjade1" && count(managed_hosts()) == 1
-    ManagedHostFound { standing: _, control: _ } => false
-    ManagedHostFoundUnderDeclaredDrop { standing: _, control: _, drop: _, standing_subject: _, current_subject: _ } => false
+    ManagedHostFound { control: _ } => false
+    ManagedHostFoundUnderDeclaredDrop { control: _, drop: _, standing_subject: _, current_subject: _ } => false
   }
 }
 

@@ -9,13 +9,8 @@ import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
   managed_host_fixture,
-  ManagedHostAccessUnobserved,
-  ManagedHostBound,
-  ManagedHostEndpointMismatch,
-  ManagedHostNotSecured,
   ResetNoUnitHold,
   ResetUnitHoldRequired,
-  managed_host_binding,
   managed_host_smpro_subject,
   managed_hosts,
 }
@@ -25,7 +20,10 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
 }
 import extdeps.toolchain.types { X86_64 }
-import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound }
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
+  BmcControlEndpointMismatch, bmc_control_route_endpoint,
+}
 import gunbc.host.smpro_platform_capability { smpro_capability, SmproCapabilityAbsent }
 import gunbc.host.host_reset_subject_roster {
   OrdinaryResetRosterHost,
@@ -51,11 +49,11 @@ test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission()
   count(hosts) == 1
     && hosts |> all(h =>
       (h.host as String) == (operator_host_mtcollins1 as String)
-        && match managed_host_binding(host: h) {
-          ManagedHostBound { binding: b } => (b.observation.endpoint.host as String) != ""
-          ManagedHostAccessUnobserved { endpoint: _ } => false
-          ManagedHostNotSecured { cause: _ } => false
-          ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+        && match bmc_control_binding(observed: h.access, secured: h.secure) {
+          BmcControlBound { route: r } => (bmc_control_route_endpoint(route: r).host as String) != ""
+          BmcControlAccessUnobserved { endpoint: _ } => false
+          BmcControlNotSecured { cause: _ } => false
+          BmcControlEndpointMismatch { observed: _, secured: _ } => false
         }
         && match admit_reset_subject(host: h) {
           ResetSubjectAdmitted { subject: _ } => true
@@ -99,11 +97,11 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
       BmcAccessObserved { observation: o } =>
         managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     }
-    let mismatched = match managed_host_binding(host: crossed) {
-      ManagedHostEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
-      ManagedHostBound { binding: _ } => false
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
+    let mismatched = match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
+      BmcControlEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
+      BmcControlBound { route: _ } => false
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
     }
     mismatched && count(reset_subject_roster_of(hosts: [crossed])) == 0
   }) && count(managed_hosts()) == 1
@@ -119,11 +117,11 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
   managed_hosts() |> all(h => {
     let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
     let unselected = managed_host_fixture(host: "fixture-unselected-host", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-    let bound = match managed_host_binding(host: unselected) {
-      ManagedHostBound { binding: _ } => true
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    let bound = match bmc_control_binding(observed: unselected.access, secured: unselected.secure) {
+      BmcControlBound { route: _ } => true
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
+      BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
     let refused = match admit_reset_subject(host: unselected) {
       ResetSubjectNoSelection { host: x, cause: _ } => (x as String) == "fixture-unselected-host"
@@ -141,19 +139,19 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
 // claim for gunbc.machine_intake.ampere_smpro_observation SmproPassSubject: the subject every SMpro
 // pass reads through is minted from the real row, not supplied.
 test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
-  managed_hosts() |> all(h => match managed_host_binding(host: h) {
-    ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
+  managed_hosts() |> all(h => match bmc_control_binding(observed: h.access, secured: h.secure) {
+    BmcControlBound { route: r } => match managed_host_smpro_subject(host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
       SmproPassSubjectBound { subject: s } =>
-        (s.endpoint.host as String) == (b.observation.endpoint.host as String)
-          && (s.site.endpoint.host as String) == (b.observation.endpoint.host as String)
+        (s.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+          && (s.site.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
           && s.site.control.socket == 0
           && (s.host as String) == (operator_host_mtcollins1 as String)
       SmproPassSiteRefused { cause: _ } => false
       SmproPassEndpointMismatch { bound: _, site: _ } => false
     }
-    ManagedHostAccessUnobserved { endpoint: _ } => false
-    ManagedHostNotSecured { cause: _ } => false
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    BmcControlAccessUnobserved { endpoint: _ } => false
+    BmcControlNotSecured { cause: _ } => false
+    BmcControlEndpointMismatch { observed: _, secured: _ } => false
   }) && count(managed_hosts()) == 1
 }
 
@@ -172,7 +170,7 @@ test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
     // The control route for the same machine still binds from its access + secure standings:
     // BmcControlBound, not refused. The control route never reads the SMpro fact.
     let control_bound = match bmc_control_binding(observed: h.access, secured: h.secure) {
-      BmcControlBound { binding: _ } => true
+      BmcControlBound { route: _ } => true
       _ => false
     }
     smpro_absent && control_bound
@@ -193,15 +191,15 @@ test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> 
         control_socket: 0,
         evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
       ))
-    match managed_host_binding(host: crossed) {
-      ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
-        SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (b.observation.endpoint.host as String)
+    match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
+      BmcControlBound { route: r } => match managed_host_smpro_subject(host: crossed, control: bmc_control_binding(observed: crossed.access, secured: crossed.secure)) {
+        SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
         SmproPassSubjectBound { subject: _ } => false
         SmproPassSiteRefused { cause: _ } => false
       }
-      ManagedHostAccessUnobserved { endpoint: _ } => false
-      ManagedHostNotSecured { cause: _ } => false
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+      BmcControlAccessUnobserved { endpoint: _ } => false
+      BmcControlNotSecured { cause: _ } => false
+      BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
   }) && count(managed_hosts()) == 1
 }

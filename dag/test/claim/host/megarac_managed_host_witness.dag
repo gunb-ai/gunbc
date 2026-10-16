@@ -8,10 +8,12 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
-  ManagedHost, managed_host_fixture, managed_hosts, ManagedHostAccessUnobserved, ManagedHostEndpointMismatch,
-  ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_account_driving,
+  ManagedHost, managed_host_fixture, managed_hosts,
+  ManagedHostFound, managed_host_binding_for, managed_host_account_driving,
 }
-import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.host.bmc_control_binding {
+  bmc_control_binding, BmcControlAccessUnobserved, BmcControlEndpointMismatch,
+}
 import std.types { EpochMs }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
@@ -100,7 +102,7 @@ test fn w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_o
     BmcAccessObserved { observation: o } => {
       let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
       refused_for_every_operation(h: unobserved, refused: a => match a {
-        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: _ } } } => true
+        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: BmcControlAccessUnobserved { endpoint: _ } } } => true
         _ => false
       })
     }
@@ -133,7 +135,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_admitted_for_no
     BmcAccessObserved { observation: o } => {
       let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
       refused_for_every_operation(h: crossed, refused: a => match a {
-        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
+        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: BmcControlEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
         _ => false
       })
     }
@@ -230,7 +232,7 @@ test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> B
     BmcAccessObserved { observation: o } => {
       let lookup = managed_host_binding_for(host: h.host as NonEmptyStr)
       let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      let crossed_lookup = ManagedHostFound { standing: managed_host_binding(host: crossed), control: bmc_control_binding(observed: crossed.access, secured: crossed.secure) }
+      let crossed_lookup = ManagedHostFound { host: crossed, control: bmc_control_binding(observed: crossed.access, secured: crossed.secure) }
       (match managed_host_account_driving(lookup: lookup, endpoint: o.endpoint) { Present { value: a } => (a as String) == "gunbc"  Absent => false })
         && (match managed_host_account_driving(lookup: lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
         && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })

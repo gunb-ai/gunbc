@@ -25,7 +25,10 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding, bmc_control_binding,
+  bmc_control_route_account, bmc_control_route_endpoint,
+}
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
@@ -62,42 +65,6 @@ type ManagedHost sole_constructor {
 type ResetUnitHold
   = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
   | ResetNoUnitHold
-
-// THE ONE JOIN A CONTROLLER WRITE MAY READ ITS ACCOUNT AND ENDPOINT FROM. A secure standing names the
-// controller it secured; an access observation names the controller it read. They are evidence about
-// one machine only when they name the same controller, so a write takes the observation and the
-// account from here and never pairs a secured account with some other row's access. The secured
-// subject reaches the row's host through that controller: no carrier binds a MachineIntakeSubject to
-// a HostIdentity directly, so the join is held at controller grain, which is the grain the write uses.
-type ManagedHostBinding sole_constructor {
-  host: ManagedHost
-  observation: BmcAccessObservation
-  account: NonEmptyStr
-}
-
-// ManagedHostBinding is sole_constructor, so managed_host_binding is its only mint: a binding cannot
-// be authored around the endpoint check.
-type ManagedHostBindingStanding
-  = ManagedHostBound { binding: ManagedHostBinding }
-  | ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint }
-  | ManagedHostNotSecured { cause: BmcSecureRefusalCause }
-  | ManagedHostEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
-
-fn managed_host_binding(host: ManagedHost) -> ManagedHostBindingStanding {
-  match host.secure.outcome {
-    BmcSecureRefused { cause: c } => ManagedHostNotSecured { cause: c }
-    BmcSecured { endpoint: secured, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
-      match host.access {
-        BmcAccessUnobserved { endpoint: e } => ManagedHostAccessUnobserved { endpoint: e }
-        BmcAccessObserved { observation: o } =>
-          if (o.endpoint.host as String) == (secured.host as String) {
-            ManagedHostBound { binding: ManagedHostBinding { host: host, observation: o, account: r.account } }
-          } else {
-            ManagedHostEndpointMismatch { observed: o.endpoint, secured: secured }
-          }
-      }
-  }
-}
 
 // ── MANAGED-HOST ADMISSION (cut O1c-3 PR a) ────────────────────────────────────────────────────
 //
@@ -495,19 +462,18 @@ fn managed_hosts() -> List<ManagedHost> {
   fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, [membership_host(membership: m)]))
 }
 
-// A MANAGED HOST BY LABEL, AS ITS WHOLE BINDING STANDING. A caller that knows only a host's name reaches
-// the row's join here, and gets the standing -- bound with its observed endpoint and account together,
-// or the refusal -- never an account on its own.
-// THE FLEET'S SECURED CONTROL ROUTE FOR THE ROW (gunbc.host.bmc_control_binding), decided from the
-// row's access observation and secure standing alone. Every found arm carries it beside the legacy
-// binding standing, so a consumer that only needs to know "can I drive this controller" takes the
-// control standing and never lifts the ManagedHost row. The legacy standing stays for the consumers
-// that still read the account, the observation, or the board facts off the binding (fan observe,
-// reset-return, boot handoff); it retires with the row.
+// A MANAGED HOST BY LABEL, AS ITS ROW PLUS ITS SECURED CONTROL ROUTE. The route is decided by
+// gunbc.host.bmc_control_binding from the row's access observation and secure standing alone, and it is
+// the ONLY standing a consumer reads to drive the controller: the bound arm carries the binding and the
+// observation the join checked, and the account is read through the binding, so no caller pairs a
+// secured account with some other row's access. A consumer that only needs to know whether it may drive
+// a controller takes the control standing and never lifts the row; one that needs the row's own facts
+// (its host identity, its access reading) takes them from the row beside it. The join and its
+// endpoint-mismatch refusal live in gunbc.host.bmc_control_binding; there is no second binding standing.
 type ManagedHostLookup
-  = ManagedHostFound { standing: ManagedHostBindingStanding, control: BmcControlStanding }
+  = ManagedHostFound { host: ManagedHost, control: BmcControlStanding }
   | ManagedHostFoundUnderDeclaredDrop {
-      standing: ManagedHostBindingStanding
+      host: ManagedHost
       control: BmcControlStanding
       drop: DeclarationRef
       standing_subject: MachineIntakeSubject
@@ -522,12 +488,12 @@ fn managed_host_binding_for(host: NonEmptyStr) -> ManagedHostLookup {
       match m {
         OrdinaryMember { host: h } =>
           ManagedHostFound {
-            standing: managed_host_binding(host: h),
+            host: h,
             control: bmc_control_binding(observed: h.access, secured: h.secure),
           }
         MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
           ManagedHostFoundUnderDeclaredDrop {
-            standing: managed_host_binding(host: h),
+            host: h,
             control: bmc_control_binding(observed: h.access, secured: h.secure),
             drop: d,
             standing_subject: standing,
@@ -538,25 +504,35 @@ fn managed_host_binding_for(host: NonEmptyStr) -> ManagedHostLookup {
 }
 
 // THE ACCOUNT, RELEASED ONLY TOGETHER WITH THE CONTROLLER IT WAS BOUND TO. A caller that is about to
-// drive `endpoint` gets the bound account only when `endpoint` is the controller the binding observed,
-// so one host's account is never sent to another controller. Absent is every other case: the host is
-// not managed, does not bind, or is bound to a different controller than the one the caller drives.
-fn account_driving_standing(standing: ManagedHostBindingStanding, endpoint: BmcControllerEndpoint) -> NonEmptyStr? {
+// drive `endpoint` gets the bound account only when `endpoint` is the controller the route binds, so
+// one host's account is never sent to another controller. The account is read through the binding
+// (gunbc.host.bmc_control_binding bmc_control_account), never stored a second time beside it. Absent is
+// every other case: the host is not managed, has no bound route, or is bound to a different controller
+// than the one the caller drives.
+fn account_driving_standing(standing: BmcControlStanding, endpoint: BmcControllerEndpoint) -> NonEmptyStr? {
   match standing {
-    ManagedHostBound { binding: b } =>
-      if (b.observation.endpoint.host as String) == (endpoint.host as String) { Present { value: b.account } } else { none }
-    ManagedHostAccessUnobserved { endpoint: _ } => none
-    ManagedHostNotSecured { cause: _ } => none
-    ManagedHostEndpointMismatch { observed: _, secured: _ } => none
+    BmcControlBound { route: r } =>
+      match bmc_control_route_account(route: r) {
+        Present { value: a } =>
+          if (bmc_control_route_endpoint(route: r).host as String) == (endpoint.host as String) {
+            Present { value: a }
+          } else {
+            none
+          }
+        Absent => none
+      }
+    BmcControlAccessUnobserved { endpoint: _ } => none
+    BmcControlNotSecured { cause: _ } => none
+    BmcControlEndpointMismatch { observed: _, secured: _ } => none
   }
 }
 
 fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControllerEndpoint) -> NonEmptyStr? {
   match lookup {
     ManagedHostNotManaged { host: _ } => none
-    ManagedHostFound { standing: s, control: _ } => account_driving_standing(standing: s, endpoint: endpoint)
-    ManagedHostFoundUnderDeclaredDrop { standing: s, control: _, drop: _, standing_subject: _, current_subject: _ } =>
-      account_driving_standing(standing: s, endpoint: endpoint)
+    ManagedHostFound { host: _, control: c } => account_driving_standing(standing: c, endpoint: endpoint)
+    ManagedHostFoundUnderDeclaredDrop { host: _, control: c, drop: _, standing_subject: _, current_subject: _ } =>
+      account_driving_standing(standing: c, endpoint: endpoint)
   }
 }
 
@@ -600,12 +576,20 @@ fn managed_host_fixture(
   ManagedHost { host: host, access: access, secure: secure, unit_hold: unit_hold, smpro: smpro }
 }
 
-// THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller the binding read,
-// minted by gunbc.machine_intake.ampere_smpro_observation smpro_pass_subject, which refuses a site
-// that names another controller. Every Ampere SMpro pass reads through the subject this returns, so
-// a pass cannot pair one host's controller with another board's site. DECLARED FRONTIER: smpro is a
+// THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller its bound route drives,
+// minted by gunbc.machine_intake.ampere_smpro_observation smpro_pass_subject, which refuses a site that
+// names another controller. The endpoint is read THROUGH the route's binding
+// (gunbc.host.bmc_control_binding bmc_control_endpoint), never carried a second time, and a host with
+// no bound route binds no subject. Every Ampere SMpro pass reads through the subject this returns, so a
+// pass cannot pair one host's controller with another board's site. DECLARED FRONTIER: smpro is a
 // SmproSiteStanding on every row because every managed host today is an Altra board; the first
 // managed host with no SMpro adds its arm with it.
-fn managed_host_smpro_subject(binding: ManagedHostBinding) -> SmproPassSubjectStanding {
-  smpro_pass_subject(host: binding.host.host, endpoint: binding.observation.endpoint, site: binding.host.smpro)
+fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) -> SmproPassSubjectStanding? {
+  match control {
+    BmcControlBound { route: r } =>
+      Present { value: smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: host.smpro) }
+    BmcControlAccessUnobserved { endpoint: _ } => none
+    BmcControlNotSecured { cause: _ } => none
+    BmcControlEndpointMismatch { observed: _, secured: _ } => none
+  }
 }

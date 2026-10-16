@@ -15,7 +15,8 @@ import gunbc.host.virtual_media_boot_selection {
 }
 import gunbc.host.host_capability_row { host_access_repoint_firmware, host_capability_row, HostCapabilityRowKnown }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
-import gunbc.host.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
+import gunbc.host.managed_host { managed_host_fixture, managed_hosts }
+import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.boot_medium {
   BootMedium,
@@ -109,7 +110,7 @@ test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
         managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     }
     match admit_boot_subject(host: crossed, medium: mtcollins1_boot_medium, execution_revision: revision) {
-      BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: ManagedHostEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
+      BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: BmcControlEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
       _ => false
     }
   }) && count(managed_hosts()) == 1

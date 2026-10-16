@@ -59,7 +59,7 @@ fn guest_controlled_as(host: HostIdentity, resource_id: String) -> Bool {
             && (a.account.account as String) == "default"
             && (a.account.api_credential.secret as String) == "hetzner-cloud-default-api-key"
             && (a.account.api_credential.project as String) == "gunbai-secrets"
-        BmcControlRoute { binding: _ } => false
+        BmcControlRoute { route: _ } => false
       }
     _ => false
   }
