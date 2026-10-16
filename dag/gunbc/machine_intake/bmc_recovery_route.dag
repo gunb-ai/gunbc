@@ -1392,7 +1392,68 @@ test fn the_sighting_carries_both_readings_so_a_refusal_is_locatable() -> Bool {
   }
 }
 
+// THE READBACK IS THE ONLY THING THAT MAKES A RESET A FACT RATHER THAN AN ASSERTION. Both sides are
+// checked, because "refuses without it" is only meaningful if the same run converges WITH it: a route
+// that refused in both cases would look identical here and be useless in the field. The cause stays
+// locatable -- the readback that named no PasswordChangeRequired message is a different repair from a
+// controller nobody measured.
+test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
+  let route = recovery_test_route(reading: recovery_measured_identity())
+  let without_readback = converge_in_band_recovery(
+    route: route,
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: ReadbackInconclusive { detail: "no body was saved" },
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  let with_readback = converge_in_band_recovery(
+    route: route,
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  recovery_standing_handed_off(standing: without_readback) == false
+    && recovery_standing_handed_off(standing: with_readback)
+    && match without_readback.outcome {
+      RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
+      _ => false
+    }
+    // matched rather than compared against a Present literal, for the reason recorded in
+    // gunbc.recurring_failure_mode.optional_equality_answers_by_representation
+    && matches_the_readback_inconclusive(
+      cause: recovery_route_unavailability(standing: without_readback),
+      detail: "the post-reset readback named no PasswordChangeRequired message",
+    )
+}
+
+// AN UNATTEMPTED WRITE IS NOT A RECOVERY. The record is evidence of an ATTEMPT, never of success; here
+// there is not even an attempt, so nothing about the chassis is known and the handoff is refused.
+test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered() -> Bool {
+  let standing = converge_in_band_recovery(
+    route: recovery_test_route(reading: recovery_measured_identity()),
+    in_band_write: recovery_in_band_write_record(),
+    reset_write: NotExecuted { kind: recovery_reset_actuation() },
+    readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
+  )
+  match standing.outcome {
+    RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
+      recovery_standing_handed_off(standing: standing) == false
+    _ => false
+  }
+}
+
 // matched rather than compared against a Present literal, for the reason recorded in
+// gunbc.recurring_failure_mode.optional_equality_answers_by_representation.
+fn matches_the_readback_inconclusive(cause: RecoveryRouteUnavailable?, detail: NonEmptyStr) -> Bool {
+  match cause {
+    Present { value: RecoveryReadbackInconclusive { detail: d } } => d == detail
+    _ => false
+  }
 }
 
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
