@@ -94,8 +94,9 @@ Consequence: the end state **deletes `std.algebra`**. It is not relocated; each 
 
 ## 3. Settled points
 
-1. **One `String`** (agreed 2026-10-16). One declaration, realized as host text (DESIGN §4's text-crossing
-   rule stands), with a **declared** unfold to `List<Char>`. `v2.std.text`'s `type String = FreeMonoid<Char>` is
+1. **One `String`** (agreed 2026-10-16). One declaration, realized as host text, with a **declared** unfold
+   to `List<Char>`. This amends DESIGN §4's text paragraph and its ruling `text_crossings_go_through_the_unfold`,
+   which today sanction two `String` representations (§9 item 7); the crossing-through-the-unfold rule itself stays. `v2.std.text`'s `type String = FreeMonoid<Char>` is
    deleted. This also removes a silent-correctness defect: today the host `String` binds "only where no other
    declaration of the spelling is visible" (`v2.std.node`), so which `String` a file gets depends on its
    imports. `NonEmptyString` is its own declaration in the same home.
