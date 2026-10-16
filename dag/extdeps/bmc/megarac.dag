@@ -442,10 +442,11 @@ type MegaRacExecutedRunEvidence {
   note: NonEmptyStr
 }
 
-// The fleet-converge run that exercised BMC 0.45.3 end to end. Committed under the artifact dir (PR
-// gunb-ai/gunbc#14117): power control, boot-source override, and MegaRAC OEM remote media (CD handoff,
-// cd_error_code 0). The run did NOT read the version: the pre-power hpm check was skipped because no
-// attempt receipt was named, so the version standing on the 0.45.3 entry is operator-attested.
+// The fleet-converge run that exercised BMC 0.45.3 end to end. Its artifacts are committed under the
+// artifact dir on main (gunb-ai/gunbc#14117): power control, boot-source override, and MegaRAC OEM
+// remote media (CD handoff, cd_error_code 0). The run did NOT read the version: the pre-power hpm check
+// was skipped because no attempt receipt was named, so the version standing on the 0.45.3 entry is
+// operator-attested.
 data megarac_run_38789347052_evidence: MegaRacExecutedRunEvidence = MegaRacExecutedRunEvidence {
   run_id: 38789347052,
   artifact_dir: "artifacts/bmc/mtcollins1-boot-run-38789347052/",
