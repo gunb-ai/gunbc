@@ -1,0 +1,215 @@
+module test.claim.machine_intake.machine_intake_bmc_recovery_route_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.bmc.ipmi {
+  IpmiCompletionCode, IpmiCompletionCodeByte, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
+  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_is_invalid_data_field,
+}
+import extdeps.boards.asrock_rack {
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+  asrock_altrad8ud_openbmc_3_06_00_capabilities,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
+  asrock_altrad8ud_published_factory_password_write_policy_for,
+  asrock_altrad8ud_published_factory_password_is_refused,
+  asrock_altrad8ud_inband_recovery_capture,
+}
+import gunbc.auth.privileged_effect_census {
+  SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
+  census_verdicts, recovery_kcs_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
+}
+import gunbc.auth.authorization_pattern_selection {
+  AuthorizationPatternSelection, PatternSelected, OperatorApprovedCapability,
+  EffectReversibility, ReversibleByReapply, IrreversibleEffect,
+}
+import std.decl_ref { declaration_ref_display_key }
+import gunbc.machine_intake.bmc_recovery_route {
+  RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
+  recovery_reset_actuation, KcsTemporaryAdministratorPassword,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── THE IN-BAND RECOVERY ROUTE, JUDGED WHERE ITS LOAD-BEARING FACTS LIVE ──────────────────────
+//
+// The route module deliberately does not carry these assertions, and not for tidiness. Every fact
+// under test here belongs to ANOTHER module: the per-release firmware write policy lives in
+// extdeps.boards.asrock_rack (it is a vendor-build fact, not an OpenBMC fact, and the route only ever
+// ASKS the catalog for it), the completion code belongs to extdeps.bmc.ipmi (a byte out of the IPMI
+// specification's completion-code list, with the English kept as its description), and the
+// authorization pattern belongs to gunbc.auth.privileged_effect_census -- which is the module that
+// answers which pattern a write is admitted under. Asserting any of them inside
+// gunbc.machine_intake.bmc_recovery_route would make the route vouch for its own upstream, which is
+// exactly how a firmware policy stops being a measured fact and starts being an assumption. Each test
+// here fails in the module that owns the fact it judges.
+
+// ── 1. THE PER-RELEASE WRITE POLICY, WHICH IS WHAT MAKES THE RESET NECESSARY ─────────────────
+//
+// The recovery actuates a factory reset because the firmware refuses a write of the published
+// factory password. That refusal is a property of ONE build, so the two ways it can be wrongly
+// generalized are the two ways it has to be refused: a release nobody measured, and a neighbouring
+// completion code.
+
+test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool {
+  let measured = asrock_altrad8ud_published_factory_password_write_policy_for(
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  )
+  let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(
+    firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
+  )
+  asrock_altrad8ud_published_factory_password_is_refused(policy: measured)
+    && asrock_altrad8ud_published_factory_password_is_refused(policy: unmeasured) == false
+    // The refusal has to say WHICH firmware it could not measure -- a NotMeasured that forgets the
+    // release is indistinguishable from a catalog that lost its rows, and the route reports this one
+    // to the operator as "this firmware was never read".
+    && match unmeasured {
+      NotMeasured { firmware: f } => f.version.major == 3 && f.version.minor == 6
+      _ => false
+    }
+}
+
+test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
+  let firmware = asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware
+  // 0xC7 "Request data length invalid" is the code a reader confuses with 0xCC. It indicts the LENGTH
+  // of the request and not the firmware's policy on the value -- and a route that read it as the
+  // policy refusal would spend a destructive ResetAll on a unit whose firmware would have accepted
+  // the write. Damage for nothing, on arriving metal.
+  asrock_altrad8ud_published_factory_password_is_refused(
+    policy: FirmwareRefusesPublishedPassword {
+      firmware: firmware,
+      completion_code: ipmi_completion_code_request_data_length_invalid,
+      completion_code_text: "Request data length invalid" as NonEmptyStr,
+      capture: asrock_altrad8ud_inband_recovery_capture,
+    },
+  ) == false
+    // The English is a description, not an identity: 0xCC wearing another code's words is not the
+    // measured refusal either. Both halves are required, which is why the code is typed and numeric
+    // and the text is carried beside it rather than instead of it.
+    && asrock_altrad8ud_published_factory_password_is_refused(
+      policy: FirmwareRefusesPublishedPassword {
+        firmware: firmware,
+        completion_code: ipmi_completion_code_invalid_data_field,
+        completion_code_text: "Request data length invalid" as NonEmptyStr,
+        capture: asrock_altrad8ud_inband_recovery_capture,
+      },
+    ) == false
+    && ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte })
+    && ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode { code: 203 as IpmiCompletionCodeByte }) == false
+    && (ipmi_completion_code_invalid_data_field_text as String) == "Invalid data field in request"
+}
+
+test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable_string() -> Bool {
+  match asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, completion_code_text: _, capture: _ } =>
+      f.family == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.family
+        && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
+        && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
+        && f.version.patch == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.patch
+        && ipmi_completion_code_is_invalid_data_field(code: c)
+        && capture == asrock_altrad8ud_inband_recovery_capture
+    NotMeasured { firmware: _ } => false
+  }
+}
+
+// ── 2. BOTH WRITES ARE CENSUSED, AND THE DESTRUCTIVE ONE CANNOT DODGE OPERATOR APPROVAL ───────
+//
+// The route claims its two writes run through gunbc.auth.authorization_pattern_selection with
+// gunbc.auth.privileged_effect_census rows. Claimed is not done: these tests read the CENSUS and
+// require the rows to exist, to conform, and -- for the reset -- to have selection land on
+// OperatorApprovedCapability. The pattern is what the effect's characteristics force, so a row cannot
+// realize a friendlier pattern than its own effect permits.
+
+data recovery_kcs_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_kcs_password_write"
+
+data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults"
+
+fn recovery_site_verdicts() -> List<SiteVerdict> {
+  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == recovery_kcs_site_name
+    || declaration_ref_display_key(v.site) == recovery_reset_site_name
+}
+
+fn verdict_for(wanted: String) -> SiteVerdict? {
+  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
+}
+
+fn selection_is_operator_approved(v: SiteVerdict?) -> Bool {
+  match v {
+    Present { value: verdict } =>
+      match verdict.selection {
+        PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn conformance_is_clean(v: SiteVerdict?) -> Bool {
+  match v {
+    Present { value: verdict } =>
+      match verdict.conformance {
+        Conforms => true
+        Diverges => false
+        DivergesWithReason { reason: _ } => false
+        SiteNotDecidable { standing: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn is_irreversible(r: Reversibility) -> Bool {
+  match r {
+    IrreversibleEffect { what_is_lost: _ } => true
+    ReversibleByReapply => false
+  }
+}
+
+test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
+  list_length(items: recovery_site_verdicts()) == 2
+    && conformance_is_clean(v: verdict_for(wanted: recovery_kcs_site_name))
+    && conformance_is_clean(v: verdict_for(wanted: recovery_reset_site_name))
+}
+
+test fn the_destructive_reset_is_admitted_only_under_an_operator_approved_capability() -> Bool {
+  selection_is_operator_approved(v: verdict_for(wanted: recovery_reset_site_name))
+    // The temporary password is reversible, so it is NOT the same pattern: if it ever became
+    // operator-approved too, the census would be claiming a destructive standing for a write the next
+    // rotation undoes.
+    && selection_is_operator_approved(v: verdict_for(wanted: recovery_kcs_site_name)) == false
+}
+
+test fn the_reset_effect_is_irreversible_where_the_temporary_password_effect_is_reversible() -> Bool {
+  // The characteristics are what selection reads. Asserted here so that softening the reset's
+  // reversibility -- which would silently change the authorization pattern a recovery run is admitted
+  // under -- is caught by this witness and not shipped.
+  is_irreversible(r: recovery_manager_reset_to_defaults_effect().reversibility)
+    && is_irreversible(r: recovery_kcs_set_user_password_effect().reversibility) == false
+    // Neither write mints a credential in our store: the route terminates by handing the factory
+    // credential to the existing factory-login-then-rotate path, and no secret is taken here.
+    && recovery_manager_reset_to_defaults_effect().minted_reach == recovery_kcs_set_user_password_effect().minted_reach
+}
+
+// ── 3. AN UNCATURED WRITE PROVES AN ATTEMPT AND NOTHING MORE ─────────────────────────────────
+//
+// Both privileged writes of the captured recovery were watched on the operator's terminal and never
+// byte-captured: the temporary password was wiped by the reset before it could be re-read, and the
+// ResetToDefaults exchange was observed without saving bodies. The model has to hold that state
+// honestly -- an executed-but-uncaptured write may satisfy "was this attempted, against the arm the
+// route names" and must NEVER satisfy "did this succeed". Anyone who later wants the reset to count
+// from its own exit code has to break this test first.
+
+test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_success() -> Bool {
+  let uncaptured_reset = ExecutedWithoutByteCapture {
+    kind: recovery_reset_actuation(),
+    observed_exit: 0,
+    detail: "observed in session; request and response bodies were not captured",
+  }
+  let wrong_kind = ExecutedWithoutByteCapture {
+    kind: KcsTemporaryAdministratorPassword,
+    observed_exit: 0,
+    detail: "the other arm of the same run, presented as the reset",
+  }
+  recovery_write_was_attempted(record: uncaptured_reset, kind: recovery_reset_actuation())
+    && recovery_write_grounds_success(record: uncaptured_reset) == false
+    && recovery_write_was_attempted(record: wrong_kind, kind: recovery_reset_actuation()) == false
+}

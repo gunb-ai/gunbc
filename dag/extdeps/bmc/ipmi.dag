@@ -450,3 +450,49 @@ service diagnostic.ipmi.Tool {
   }
 
 }
+
+// ── COMPLETION CODES ───────────────────────────────────────────────────────────────────────────
+// A completion code is a BYTE from the IPMI Platform Interface's completion-code list, and it is the
+// only thing a controller sends back to explain a refusal. Modelled as a NUMBER because that is what
+// the wire carries; the English is the specification's description of that number, useful to a human
+// and useless as an identity. Two consumers of this: a firmware behaviour keyed to one code, and an
+// operator-facing message. Conflating them is how "Invalid data field in request" ends up standing in
+// for the length complaint "Request data length invalid" (0xC7), which points at a different cause.
+//
+// The rendering matches what ipmitool prints, because ipmitool is what we run and observe: its
+// completion-code table (lib/ipmi_strings.c) maps { 0xcc, "Invalid data field in request" }.
+type IpmiCompletionCodeByte = Int where range(min: 0, max: 255)
+
+type IpmiCompletionCode {
+  code: IpmiCompletionCodeByte
+}
+
+// 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
+// controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
+// failure: the command was accepted, understood, and refused on policy.
+data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte }
+
+data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data field in request" as NonEmptyStr
+
+// 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
+// 0xCC when a password-related write is refused: length versus content, which is the difference
+// between "the form was wrong" and "the value is not acceptable to this firmware".
+data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }
+
+fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool {
+  a.code == b.code
+}
+
+fn ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode) -> Bool {
+  ipmi_completion_code_eq(a: code, b: ipmi_completion_code_invalid_data_field)
+}
+
+fn ipmi_completion_code_text(code: IpmiCompletionCode) -> NonEmptyStr? {
+  if ipmi_completion_code_eq(a: code, b: ipmi_completion_code_invalid_data_field) {
+    Present { value: ipmi_completion_code_invalid_data_field_text }
+  } else if ipmi_completion_code_eq(a: code, b: ipmi_completion_code_request_data_length_invalid) {
+    Present { value: "Request data length invalid" as NonEmptyStr }
+  } else {
+    none
+  }
+}

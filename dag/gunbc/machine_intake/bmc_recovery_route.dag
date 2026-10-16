@@ -1,0 +1,1071 @@
+module gunbc.machine_intake.bmc_recovery_route
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
+import extdeps.board_authority { BoardFruObservation, BoardFruUnreadCause }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareVersion, bmc_firmware_release_identity_eq }
+import extdeps.bmc.ipmi { IpmiCompletionCode, ipmi_completion_code_eq, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text, ipmi_completion_code_request_data_length_invalid }
+import extdeps.boards.asrock_rack {
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+  asrock_altrad8ud_published_factory_password_write_policy_for,
+  asrock_altrad8ud_published_factory_password_is_refused,
+  asrock_altrad8ud_inband_recovery_capture,
+}
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
+import extdeps.bmc.ipmi_channel { IpmiUserId, IpmiChannelNumber }
+import extdeps.bmc.redfish { RedfishPasswordChangeVerdict, redfish_message_id_is_password_change_required }
+import extdeps.linux.kernel { LinuxKernelModuleName }
+import extdeps.network.ipv4 { Ipv4Address, Octet }
+import gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject, UnitKey, IntakeAttemptId }
+import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+
+// ── THE IN-BAND RECOVERY ACCESS ROUTE ─────────────────────────────────────────────────────────
+//
+// THE GAP THIS MODULE CLOSES. gunbc.machine_intake.bmc_secure answers AccessDiscover through
+// BmcSecure, which needs a credential -- either a managed secret we hold or the published factory
+// one. gunbc.machine_intake.bmc_rotation_route rotates FROM a working credential. So a board whose
+// Administrator password is unknown has no route at all: every existing arm asks, first, for the
+// thing that is missing. This module models the one route that starts without it -- reach the
+// machine's own host OS, drive the BMC from inside the chassis over KCS, actuate a factory reset --
+// and it terminates by handing the factory credential to the EXISTING bmc_secure / bmc_onboard
+// factory-login-then-rotate path.
+//
+// WHAT IT DELIBERATELY IS NOT. Ruled with the cut-2 owner (gunbc.host.host_control_route /
+// gunbc.host.bmc_control_binding, PR #14063): this is not a control route and not a third arm of
+// HostControlRoute. The arms there answer "how do we drive this host's controller out-of-band"; this
+// answers "how do we get the controller back", and it does not terminate in a binding -- it
+// terminates in a BmcSecureStanding, and the ordinary join mints the binding. This module imports
+// gunbc.host.bmc_control_binding nowhere, mints no binding, and mints no credential store. The
+// dependency is one-way and short: this module -> BmcSecureStanding -> the control-route join.
+//
+// THE LOAD-BEARING FACT IS THE HOST OS, NOT THE MEDIUM (DESIGN §4d). Recovery is possible only
+// because a rescue OS is running on the board and can reach /dev/ipmi0. Whether that OS arrived on a
+// USB stick or over the network is a realisation of that ONE fact, so nothing here is named for USB:
+// the precondition is RescueHostReachability, and media are providers of it -- one executed, one
+// declared. Without a reachable rescue host there is no route, and this module says so with a named
+// cause rather than modelling a recovery that needs somebody to walk to the machine.
+
+// ── THE MEASURED FIRMWARE POLICY THAT MAKES THE RESET NECESSARY ────────────────────────────────
+//
+// THE FACT THAT DECIDES THE ACTUATION, AND WHERE IT LIVES. Writing the published factory password
+// to the Administrator account is refused by the firmware we measured -- completion code 0xCC,
+// "Invalid data field in request" -- on both the 8-byte and the 20-byte form, which is the
+// observation that rules password length out as the explanation. A refused Set User Password changes
+// nothing, so the unit stays locked: the route cannot be "write the factory password, log in", it has
+// to be a factory reset.
+//
+// That refusal is a property of ONE VENDOR BUILD, so it is not stated here (and not in
+// extdeps.bmc.openbmc either, which would make it a rule about OpenBMC in general). It is a per-
+// release row in extdeps.boards.asrock_rack, keyed by the catalog's own typed BmcFirmwareVersion
+// beside the release's other capabilities, and this module only ever ASKS for the release it is
+// looking at: asrock_altrad8ud_published_factory_password_write_policy_for. A release the catalog
+// lacks answers NotMeasured, and NotMeasured makes the route REFUSE (DESIGN §4d -- "we never read
+// this firmware" is not a licence to assert recovery is possible). The completion code arrives as a
+// typed value from the IPMI specification's completion-code list (extdeps.bmc.ipmi), with the English
+// as its description: a free string would let "Request data length invalid" (0xC7), a complaint about
+// the request LENGTH, be cited as the policy refusal and license a destructive ResetAll on a unit
+// whose firmware would have accepted the write.
+
+fn recovery_firmware_requires_reset(firmware: BmcFirmwareVersion) -> Bool {
+  asrock_altrad8ud_published_factory_password_is_refused(
+    policy: asrock_altrad8ud_published_factory_password_write_policy_for(firmware: firmware),
+  )
+}
+
+fn recovery_measured_refusal_policy() -> PublishedFactoryPasswordWritePolicy {
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy
+}
+
+// ── STEP 1: THE RESCUE MEDIUM, AS A PROVIDER OF THE REACHABLE HOST ─────────────────────────────
+//
+// The USB stick is not the precondition; the running rescue OS is. The medium is recorded because it
+// is what makes that OS exist, and because the two ways of getting one are NOT at the same rung: the
+// USB rescue has been executed and captured (an operator inserted a prepared Ubuntu live USB and the
+// host took DHCP at its address); network boot has never served a real host --
+// gunbc.network_boot_delivery says so of itself. Modelling both as equal would let a PXE path that
+// has never delivered a kernel ground a recovery, which is exactly the fabricated-possibility class
+// DESIGN §4d refuses. So a declared provider admits nothing: it can never satisfy
+// RescueHostReachable, and its refusal is named SEPARATELY from "there is no rescue host", so a
+// reader can tell "we have not built this provider" from "this unit has no way in".
+type RescueHostMedium
+  = UsbRescueMediumObserved { evidence: EvidenceRef, observed_at: EpochMs }
+  | NetbootRescueMediumDeclared
+
+fn rescue_medium_is_executed(medium: RescueHostMedium) -> Bool {
+  match medium {
+    UsbRescueMediumObserved { evidence: _, observed_at: _ } => true
+    NetbootRescueMediumDeclared => false
+  }
+}
+
+// The driver stack the observed rescue host loads, named rather than "modules present" because each
+// absence breaks the channel differently: ipmi_ssif binds the system interface (the host-to-BMC I2C
+// bridge -- without it there is no in-band link at all), ipmi_msghandler is the message router,
+// ipmi_devintf is what creates /dev/ipmi*, acpi_ipmi carries the ACPI-side IPMI description the
+// bridge is declared through. An SSH session to a machine missing any of them reaches a Linux box
+// that cannot talk to its own BMC, which is the same dead end as no session.
+data recovery_ipmi_kernel_modules: List<LinuxKernelModuleName> = [
+  "ipmi_ssif",
+  "ipmi_devintf",
+  "ipmi_msghandler",
+  "acpi_ipmi",
+]
+
+data recovery_ipmi_device_node: NonEmptyStr = "/dev/ipmi0"
+
+type InBandIpmiPresence {
+  device_node: NonEmptyStr
+  kernel_modules: List<LinuxKernelModuleName>
+  evidence: EvidenceRef
+}
+
+fn in_band_ipmi_presence_is_complete(presence: InBandIpmiPresence) -> Bool {
+  (presence.device_node as String) == (recovery_ipmi_device_node as String)
+    && recovery_ipmi_kernel_modules |> all(m => presence.kernel_modules |> any(h => h == m))
+}
+
+fn missing_recovery_kernel_modules(presence: InBandIpmiPresence) -> List<LinuxKernelModuleName> {
+  recovery_ipmi_kernel_modules |> filter(m => presence.kernel_modules |> any(h => h == m) == false)
+}
+
+// THE HONEST BOUNDARY, AND WHERE "PHYSICAL-ONLY" IS STATED. With no rescue OS we can reach there is
+// no route in this module, no credential at the end of it, and no pretending otherwise. The cause is
+// NAMED rather than a generic refusal because the consumer is gunbc.machine_intake.arrival_converge:
+// its AccessDiscover arm has to tell an operator "insert the rescue medium / netboot this board" from
+// "the rescue host is up but has no in-band IPMI -- this unit needs different hands" from "the only
+// provider we model is a declared one".
+type RecoveryRequiresReachableHostOS
+  = NoRescueHostAddressResponded { address: Ipv4Address, ssh_port: Int }
+  | RescueHostReachedWithoutInBandIpmi { address: Ipv4Address, missing_modules: List<LinuxKernelModuleName> }
+  | RescueMediumNotExecuted { medium: RescueHostMedium }
+
+type RescueHostReachability
+  = RescueHostReachable {
+      address: Ipv4Address
+      ssh_port: Int
+      ipmi: InBandIpmiPresence
+      medium: RescueHostMedium
+      evidence: EvidenceRef
+      observed_at: EpochMs
+    }
+  | RescueHostUnreachable { cause: RecoveryRequiresReachableHostOS }
+
+fn recovery_host_is_reachable(reachability: RescueHostReachability) -> Bool {
+  match reachability {
+    RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: medium, evidence: _, observed_at: _ } =>
+      rescue_medium_is_executed(medium: medium)
+    RescueHostUnreachable { cause: _ } => false
+  }
+}
+
+fn recovery_host_refusal(reachability: RescueHostReachability) -> RecoveryRequiresReachableHostOS? {
+  match reachability {
+    RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: medium, evidence: _, observed_at: _ } =>
+      if rescue_medium_is_executed(medium: medium) {
+        none
+      } else {
+        Present { value: RescueMediumNotExecuted { medium: medium } }
+      }
+    RescueHostUnreachable { cause: c } => Present { value: c }
+  }
+}
+
+// THE ONLY WAY A REACHABLE RESCUE HOST ENTERS THE MODEL. A rescue host that is "reachable" because a
+// caller typed an address is the assertion this whole step exists to refuse, so nothing constructs
+// RescueHostReachable except here -- and here the constructor checks its own inputs: the medium must
+// be an executed one, the port must be a port, and the driver stack must actually be the one claimed.
+// The executed check happens twice by design (here, and again in recovery_host_refusal) because the
+// second is the one the standing reads, and a reader of the standing must not have to know how the
+// value was built.
+fn rescue_host_reachable(
+  address: Ipv4Address,
+  ssh_port: Int,
+  ipmi: InBandIpmiPresence,
+  medium: RescueHostMedium,
+  evidence: EvidenceRef,
+  observed_at: EpochMs,
+) -> RescueHostReachability {
+  if rescue_medium_is_executed(medium: medium) == false {
+    RescueHostUnreachable { cause: RescueMediumNotExecuted { medium: medium } }
+  } else if ssh_port < 1 || ssh_port > 65535 {
+    RescueHostUnreachable { cause: NoRescueHostAddressResponded { address: address, ssh_port: ssh_port } }
+  } else if in_band_ipmi_presence_is_complete(presence: ipmi) == false {
+    RescueHostUnreachable {
+      cause: RescueHostReachedWithoutInBandIpmi {
+        address: address,
+        missing_modules: missing_recovery_kernel_modules(presence: ipmi),
+      },
+    }
+  } else {
+    RescueHostReachable {
+      address: address,
+      ssh_port: ssh_port,
+      ipmi: ipmi,
+      medium: medium,
+      evidence: evidence,
+      observed_at: observed_at,
+    }
+  }
+}
+
+// ── STEP 2: THE IN-BAND CHANNEL, OBSERVED ──────────────────────────────────────────────────────
+//
+// WHAT MAKES THIS ROUTE EXIST AT ALL: the KCS channel needs no credential. On the captured unit every
+// call was made against /dev/ipmi0 with no -I lanplus and no user name or password on the command
+// line, and it still read the Administrator account out of the controller. That is the whole reason a
+// board with an unknown password is reachable: the host-to-BMC interface inside the chassis
+// authenticates by PHYSICAL POSITION, not by a secret. So the fact is not a comment beside a
+// function -- it is a type, and it is the type the route admits on.
+type KcsAccessWithoutCredential
+  = KcsChannelPasswordless {
+      ipmi_interface: NonEmptyStr
+      argv_credential_words: List<String>
+    }
+  | KcsChannelNotObserved { detail: NonEmptyStr }
+
+// Passwordless is a claim about what was NOT on the command line, so it is made checkable rather than
+// asserted: the interface must not be a network one, and the credential-bearing words must be empty.
+// An empty list is not nothing -- it is the recorded fact that the argv was read and carried no -I,
+// no -U, no -P. A caller who passed a credential has to fill the list, and then this is false and the
+// channel admits nothing. The network interfaces are refused BY NAME because `ipmitool -I lanplus`
+// over the LAN DOES need a credential, and a route that accepted it would quietly be a route that
+// assumes the very password it set out to recover.
+fn kcs_channel_is_passwordless(channel: KcsAccessWithoutCredential) -> Bool {
+  match channel {
+    KcsChannelPasswordless { ipmi_interface, argv_credential_words } =>
+      (ipmi_interface as String) != ""
+        && (ipmi_interface as String) != "lanplus"
+        && (ipmi_interface as String) != "lan"
+        && (ipmi_interface as String) != "open"
+        && list_length(items: argv_credential_words) == 0
+    KcsChannelNotObserved { detail: _ } => false
+  }
+}
+
+// The account read back BEFORE anything is touched, so the reset is known to be aimed at a controller
+// that has an Administrator account to lose. What `ipmitool user list 1` printed on the captured unit
+// was id 1 / root / ADMINISTRATOR; the type asks for the id and the privilege that were read, not for
+// the pair to match a literal, because the precondition is "an ADMINISTRATOR account was read back at
+// this id on this channel" and not "the id was 1".
+type InBandAdministratorAccount {
+  user_id: IpmiUserId
+  channel: IpmiChannelNumber
+  privilege_is_administrator: Bool
+  evidence: EvidenceRef
+}
+
+fn in_band_administrator_account_reads_back(account: InBandAdministratorAccount) -> Bool {
+  account.privilege_is_administrator && account.user_id >= 1
+}
+
+// The channel observation as one carrier: which unit, which rescue host read it, the device node and
+// drivers, the passwordless fact, and the Administrator account that came back.
+type InBandKcsChannelObservation {
+  subject: MachineIntakeSubject
+  rescue_host_address: Ipv4Address
+  device_node: NonEmptyStr
+  kernel_modules: List<LinuxKernelModuleName>
+  channel: KcsAccessWithoutCredential
+  administrator: InBandAdministratorAccount
+  evidence: EvidenceRef
+  observed_at: EpochMs
+}
+
+// The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
+// drivers that host reported. A channel observation lifted from a different machine, or from before
+// the rescue OS booted, is not a precondition of anything -- it is a story about some BMC.
+fn in_band_kcs_channel_admits(
+  observation: InBandKcsChannelObservation,
+  reachability: RescueHostReachability,
+) -> Bool {
+  match reachability {
+    RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
+      kcs_channel_is_passwordless(channel: observation.channel)
+        && in_band_administrator_account_reads_back(account: observation.administrator)
+        && observation.rescue_host_address == a
+        && (observation.device_node as String) == (ipmi.device_node as String)
+        && observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m))
+        && ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m))
+    RescueHostUnreachable { cause: _ } => false
+  }
+}
+
+// ── STEP 3: THE ACTUATION ──────────────────────────────────────────────────────────────────────
+//
+// Two writes, both privileged, both registered as rows in gunbc.auth.privileged_effect_census and
+// both run through gunbc.auth.authorization_pattern_selection:
+//
+//   WRITE 1 -- the KCS Set User Password that puts a temporary credential on the Administrator
+//     account, which is what makes the authenticated Redfish session of Write 2 possible (the
+//     in-band channel cannot READ the existing password, so a known one is written). Reversible: the
+//     next reset clears it and rotation replaces it. EXECUTED BUT NOT BYTE-CAPTURED -- see
+//     RecoveryWriteRecord, and the capture README's own statement of it.
+//
+//   WRITE 2 -- POST /redfish/v1/Managers/<id>/Actions/Manager.ResetToDefaults with
+//     ResetToDefaultsType=ResetAll. DESTRUCTIVE by construction: ResetAll returns every account,
+//     every password, the network configuration and the user table to factory state, on a board being
+//     brought into the fleet rather than serviced. Operator approval, and it owes a readback.
+//
+// WHY NOT PATCH THE PASSWORD VIA REDFISH INSTEAD: because that is the write the firmware refuses
+// (PublishedFactoryPasswordWritePolicy), and because even where it were allowed it would be a
+// credential write standing in for the reset the unit needs -- the board is arriving from a prior
+// life, and gunbc.machine_intake.prior_life_boundary is the module that prices leaving one.
+type RedfishResetToDefaultsType = ResetAll | ResetNetwork | ResetRestore
+
+// ResetRestore keeps the user table, which is precisely the table holding the unknown password;
+// ResetNetwork likewise. Only ResetAll can produce a credential we hold. Spelled as a judgement on
+// the arm rather than an if inside the actuator, so a future reader cannot reach for the gentler arm
+// as a default and get a "recovery" that changed nothing an attacker would care about.
+fn reset_to_defaults_clears_unknown_credential(kind: RedfishResetToDefaultsType) -> Bool {
+  match kind {
+    ResetAll => true
+    ResetNetwork => false
+    ResetRestore => false
+  }
+}
+
+type RecoveryActuationKind
+  = KcsTemporaryAdministratorPassword
+  | RedfishManagerResetToDefaults { reset_type: RedfishResetToDefaultsType }
+
+fn recovery_actuation_is_destructive(kind: RecoveryActuationKind) -> Bool {
+  match kind {
+    KcsTemporaryAdministratorPassword => false
+    RedfishManagerResetToDefaults { reset_type: r } => reset_to_defaults_clears_unknown_credential(kind: r)
+  }
+}
+
+fn recovery_reset_actuation() -> RecoveryActuationKind {
+  RedfishManagerResetToDefaults { reset_type: ResetAll }
+}
+
+fn recovery_actuation_kinds_are_same(a: RecoveryActuationKind, b: RecoveryActuationKind) -> Bool {
+  match a {
+    KcsTemporaryAdministratorPassword =>
+      match b { KcsTemporaryAdministratorPassword => true  RedfishManagerResetToDefaults { reset_type: _ } => false }
+    RedfishManagerResetToDefaults { reset_type: t1 } =>
+      match b {
+        KcsTemporaryAdministratorPassword => false
+        RedfishManagerResetToDefaults { reset_type: t2 } => reset_arms_are_same(t1: t1, t2: t2)
+      }
+  }
+}
+
+fn reset_arms_are_same(t1: RedfishResetToDefaultsType, t2: RedfishResetToDefaultsType) -> Bool {
+  match t1 {
+    ResetAll => match t2 { ResetAll => true  ResetNetwork => false  ResetRestore => false }
+    ResetNetwork => match t2 { ResetAll => false  ResetNetwork => true  ResetRestore => false }
+    ResetRestore => match t2 { ResetAll => false  ResetNetwork => false  ResetRestore => true }
+  }
+}
+
+// WHAT THE WRITES LOOK LIKE IN THE LEDGER. Each is a gunbc.auth.privileged_effect_census row
+// (recovery_kcs_set_user_password_effect, recovery_manager_reset_to_defaults_effect) in the standing
+// scope selection assigns; the carrier below is the outcome of running the selection over those rows.
+// It is a carrier and not a boolean because DESIGN §4d: a write is authorized, or it is refused with
+// the refusal the selection actually gave. A destructive arm that arrives without its operator
+// approval is REFUSED here even if some row said otherwise -- the approval is not decoration.
+type RecoveryWriteAuthorization
+  = RecoveryWriteAdmitted {
+      kind: RecoveryActuationKind
+      authorized_by: DeclarationRef
+      destructive: Bool
+      operator_approval_required: Bool
+    }
+  | RecoveryWriteRefused { kind: RecoveryActuationKind, cause: NonEmptyStr }
+
+fn recovery_write_is_admissible(authorization: RecoveryWriteAuthorization) -> Bool {
+  match authorization {
+    RecoveryWriteAdmitted { kind: k, authorized_by: _, destructive: d, operator_approval_required: needed } =>
+      if recovery_actuation_is_destructive(kind: k) { needed && d } else { true }
+    RecoveryWriteRefused { kind: _, cause: _ } => false
+  }
+}
+
+// THE WRITES, AS THEY ACTUALLY HAPPENED. Both were witnessed by the operator's own terminal and
+// NEITHER request nor response was byte-captured: the temporary password was wiped by the reset
+// before it could be re-read, so it is not reproducible, and the ResetToDefaults exchange was
+// observed without saving bodies (both stated in the capture README). So the honest carrier is
+// ExecutedWithoutByteCapture, and the route's success condition does NOT rest on it -- it rests on
+// the post-reset readback below. A write record can therefore prove an ATTEMPT and nothing more.
+type RecoveryWriteRecord
+  = ExecutedWithCapturedExchange {
+      kind: RecoveryActuationKind
+      request: EvidenceRef
+      response: EvidenceRef
+      observed_at: EpochMs
+    }
+  | ExecutedWithoutByteCapture { kind: RecoveryActuationKind, observed_exit: Int, detail: NonEmptyStr }
+  | NotExecuted { kind: RecoveryActuationKind }
+
+fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
+  match record {
+    ExecutedWithCapturedExchange { kind: k, request: _, response: _, observed_at: _ } =>
+      recovery_actuation_kinds_are_same(a: k, b: kind)
+    ExecutedWithoutByteCapture { kind: k, observed_exit: _, detail: _ } => recovery_actuation_kinds_are_same(a: k, b: kind)
+    NotExecuted { kind: _ } => false
+  }
+}
+
+fn recovery_write_grounds_success(record: RecoveryWriteRecord) -> Bool {
+  match record {
+    ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
+    ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
+    NotExecuted { kind: _ } => false
+  }
+}
+
+// ── THE READBACK: THE ONLY THING THAT SAYS THE RESET HAPPENED ──────────────────────────────────
+//
+// "IT REFUSED" IS NOT THE SUCCESS SIGNAL. A 401 means the credential we sent is not the credential
+// the controller holds -- including the case where the reset did nothing at all. What says the reset
+// happened is HTTP 403 naming Base.1.16.0.PasswordChangeRequired: the published factory credential
+// AUTHENTICATED (so it is the active password again) and the service then refused the request until
+// that password is changed. Both shapes are committed bytes:
+//   artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json
+//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.json
+// The verdict comes from the Redfish message predicate rather than a literal equality here, because
+// the registry version travels with the service (Base.1.16.0 on these units today) and a hard
+// equality would stop matching silently the day a firmware bumps it.
+type RecoveryFactoryCredentialReadback
+  = FactoryCredentialActiveAwaitingChange {
+      message_id: NonEmptyStr
+      evidence: EvidenceRef
+      observed_at: EpochMs
+    }
+  | CredentialNotAccepted { evidence: EvidenceRef, observed_at: EpochMs }
+  | ReadbackInconclusive { detail: NonEmptyStr }
+
+fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -> Bool {
+  match readback {
+    FactoryCredentialActiveAwaitingChange { message_id, evidence: _, observed_at: _ } =>
+      redfish_message_id_is_password_change_required(id: message_id as String)
+    CredentialNotAccepted { evidence: _, observed_at: _ } => false
+    ReadbackInconclusive { detail: _ } => false
+  }
+}
+
+// The arms as the message decides them, so they cannot be chosen by taste: a body that does not name
+// the message is inconclusive, and a readback is never built from an operator's account of the
+// status line alone.
+fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochMs) -> RecoveryFactoryCredentialReadback {
+  match redfish_password_change_verdict(body: body) {
+    RedfishPasswordChangeRequired =>
+      FactoryCredentialActiveAwaitingChange {
+        message_id: "Base.1.16.0.PasswordChangeRequired",
+        evidence: evidence,
+        observed_at: observed_at,
+      }
+    RedfishPasswordChangeNotIndicated =>
+      ReadbackInconclusive { detail: "the post-reset response named no PasswordChangeRequired message" }
+  }
+}
+
+// ── THE ROUTE RECORD ───────────────────────────────────────────────────────────────────────────
+//
+// CARRIED FIELDS, AND WHY. The rescue host address and the KCS device node are this route's own
+// facts -- nothing else in the intake records that a rescue OS sat at that address, on that node --
+// so they live here. The CONTROLLER is carried as the observed BmcAccessObservation rather than as an
+// endpoint string, so the recovery is checked against the SAME endpoint the control-route join checks;
+// a bare endpoint would be a second, unchecked copy of a fact whose owner is elsewhere, which is the
+// reflash-staleness defect cut 2 just deleted. The write policy rides along with its release identity
+// so the refusal to write the published password is always a per-release fact read off the catalog,
+// and never a claim attached to the recovery.
+type RecoveryInBandRoute {
+  subject: MachineIntakeSubject
+  rescue_host: RescueHostReachability
+  kcs: InBandKcsChannelObservation
+  controller: BmcAccessObservation
+  password_write_policy: PublishedFactoryPasswordWritePolicy
+  operator_approval: DeclarationRef
+  reset_readback: DeclarationRef
+}
+
+// ── THE TERMINAL STANDING ──────────────────────────────────────────────────────────────────────
+//
+// ONE SEALED CARRIER, AND THE HANDOFF IS ITS ONLY SUCCESS ARM. RecoveryHandedToOnboarding carries no
+// credential and no binding: it carries the handoff -- the observed controller the existing
+// factory-login-then-rotate path is pointed at -- and the readback that justifies believing the
+// factory credential is active. From there gunbc.machine_intake.bmc_secure produces the
+// BmcSecureStanding and the control-route join mints the binding; this module does neither. Every
+// other arm is a named reason the route stopped, and each is a DIFFERENT next action for whoever is
+// standing at the machine.
+type InBandRecoveryOutcome
+  = RecoveryHandedToOnboarding {
+      controller: BmcAccessObservation
+      readback: RecoveryFactoryCredentialReadback
+      writes: List<RecoveryWriteRecord>
+    }
+  | RecoveryHostUnreachable { cause: RecoveryRequiresReachableHostOS }
+  | RecoveryChannelUnobserved { detail: NonEmptyStr }
+  | RecoveryFirmwarePolicyNotMeasured { firmware: BmcFirmwareVersion }
+  | RecoveryWriteUnverified { kind: RecoveryActuationKind }
+  | RecoveryReadbackRefusedFactoryCredential { readback: RecoveryFactoryCredentialReadback }
+
+type InBandRecoveryStanding sole_constructor {
+  subject: MachineIntakeSubject
+  route: RecoveryInBandRoute
+  outcome: InBandRecoveryOutcome
+}
+
+fn recovery_standing_handed_off(standing: InBandRecoveryStanding) -> Bool {
+  match standing.outcome {
+    RecoveryHandedToOnboarding { controller: _, readback: r, writes: _ } => recovery_readback_proves_reset(readback: r)
+    RecoveryHostUnreachable { cause: _ } => false
+    RecoveryChannelUnobserved { detail: _ } => false
+    RecoveryFirmwarePolicyNotMeasured { firmware: _ } => false
+    RecoveryWriteUnverified { kind: _ } => false
+    RecoveryReadbackRefusedFactoryCredential { readback: _ } => false
+  }
+}
+
+// ── THE CONVERGENCE STEPS ──────────────────────────────────────────────────────────────────────
+//
+// ORDER IS NOT A COMMENT. Each step's precondition names the step before it, and a step whose
+// precondition was not read back in this run refuses. A recovery is exactly the sequence an operator
+// might be tempted to enter in the middle -- a reset without a channel observation, or a handoff
+// without a readback -- and the fold, not a prose rule, is what refuses it.
+data recovery_reachable_host_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_reachable_host_step",
+)
+
+data recovery_channel_observation_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_channel_observation_step",
+)
+
+data recovery_kcs_password_write_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_kcs_password_write_step",
+)
+
+data recovery_reset_to_defaults_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_reset_to_defaults_step",
+)
+
+data recovery_factory_credential_readback_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_factory_credential_readback_step",
+)
+
+data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_onboard_handoff_step",
+)
+
+data recovery_operator_approval_declaration: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake.bmc_recovery_route",
+  decl_name: "recovery_operator_approval_declaration",
+)
+
+fn recovery_convergence_steps() -> List<DeclarationRef> {
+  [
+    recovery_reachable_host_step,
+    recovery_channel_observation_step,
+    recovery_kcs_password_write_step,
+    recovery_reset_to_defaults_step,
+    recovery_factory_credential_readback_step,
+    recovery_onboard_handoff_step,
+  ]
+}
+
+// What the handoff requires to have been read back first. The readback step is required as a STEP and
+// its content is required again in the standing: one makes the sequence honest, the other makes the
+// standing unprovable from an operator's word that the reset "looked like it worked".
+fn recovery_handoff_requires() -> List<DeclarationRef> {
+  [
+    recovery_reachable_host_step,
+    recovery_channel_observation_step,
+    recovery_reset_to_defaults_step,
+    recovery_factory_credential_readback_step,
+  ]
+}
+
+// THE ONE CONSTRUCTOR, AND WHAT IT REFUSES. Every step is checked here, so there is no path to
+// RecoveryHandedToOnboarding that skips the readback, ignores a NotMeasured firmware, enters on a
+// declared-but-unexecuted medium, or accepts a ResetNetwork/ResetRestore as a recovery. The writes are
+// checked for having been ATTEMPTED against the arm the route names (their own byte capture is not the
+// success condition, per RecoveryWriteRecord); the readback is checked for HAVING PROVEN the factory
+// credential is active.
+fn converge_in_band_recovery(
+  route: RecoveryInBandRoute,
+  kcs_write: RecoveryWriteRecord,
+  reset_write: RecoveryWriteRecord,
+  readback: RecoveryFactoryCredentialReadback,
+) -> InBandRecoveryStanding {
+  match recovery_host_refusal(reachability: route.rescue_host) {
+    Present { value: c } =>
+      InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
+    Absent =>
+      if in_band_kcs_channel_admits(observation: route.kcs, reachability: route.rescue_host) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryChannelUnobserved {
+            detail: "the in-band channel was not read from the rescue host declared reachable, was not passwordless, or read no ADMINISTRATOR account",
+          },
+        }
+      } else if asrock_altrad8ud_published_factory_password_is_refused(policy: route.password_write_policy) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryFirmwarePolicyNotMeasured { firmware: recovery_policy_firmware(policy: route.password_write_policy) },
+        }
+      } else if recovery_write_was_attempted(record: kcs_write, kind: KcsTemporaryAdministratorPassword) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryWriteUnverified { kind: KcsTemporaryAdministratorPassword },
+        }
+      } else if recovery_write_was_attempted(record: reset_write, kind: recovery_reset_actuation()) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryWriteUnverified { kind: recovery_reset_actuation() },
+        }
+      } else if recovery_readback_proves_reset(readback: readback) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryReadbackRefusedFactoryCredential { readback: readback },
+        }
+      } else {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryHandedToOnboarding {
+            controller: route.controller,
+            readback: readback,
+            writes: [kcs_write, reset_write],
+          },
+        }
+      }
+  }
+}
+
+fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcFirmwareVersion {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, completion_code_text: _, capture: _ } => f
+    NotMeasured { firmware: f } => f
+  }
+}
+
+// THE HANDOFF, AS THE QUESTION IT ASKS THE EXISTING PATH. Not a credential, not a secret, not a
+// binding: the request to run factory-login-then-rotate against THIS observed controller. The
+// consumers are gunbc.tools.bmc_onboard's plan (FactoryCredentialActive -> BmcStoreAndRotate) and
+// gunbc.machine_intake.bmc_secure; neither is edited here, and nothing here can mint their standing.
+type RecoveryOnboardHandoff {
+  subject: MachineIntakeSubject
+  controller: BmcAccessObservation
+  secured: BmcSecureStanding
+}
+
+fn recovery_handoff_targets_same_controller(handoff: RecoveryOnboardHandoff, route: RecoveryInBandRoute) -> Bool {
+  handoff.controller == route.controller && handoff.subject == route.subject
+}
+
+// THE ROUTE'S REFUSAL, AS ONE CAUSE THE CONSUMER CAN BRANCH ON -- carried on the AccessDiscover arm
+// in gunbc.machine_intake.arrival_converge. RecoveryRouteUnavailable is deliberately NOT
+// AccessObserveRefusal's ControllerUnreachable: that one says the controller did not answer
+// out-of-band, and the whole point of this module is that the controller may be answering perfectly
+// well while being unreachable TO US. Collapsing the two would make a recoverable unit look identical
+// to a dead one, which is how a board that needs a USB stick gets quarantined.
+type RecoveryRouteUnavailable
+  = NoReachableRescueHost { cause: RecoveryRequiresReachableHostOS }
+  | RecoveryFirmwarePolicyUnknown { firmware: BmcFirmwareVersion }
+  | RecoveryReadbackInconclusive { detail: NonEmptyStr }
+
+fn recovery_route_is_available(standing: InBandRecoveryStanding) -> Bool {
+  recovery_standing_handed_off(standing: standing)
+}
+
+// The next PHYSICAL action, spelled out of the named cause. Two of these need nobody at the machine
+// and one does; the consumer tells them apart only because the cause is named rather than collapsed
+// into one "unavailable".
+fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmptyStr {
+  match unavailable {
+    NoReachableRescueHost { cause: c } =>
+      match c {
+        NoRescueHostAddressResponded { address: _, ssh_port: _ } =>
+          "bring up the rescue OS on the board (insert the prepared rescue medium, or netboot it once a netboot provider is executed) -- nothing is reachable at the rescue address" as NonEmptyStr
+        RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: _ } =>
+          "the rescue host is up but has no in-band IPMI: load the missing ipmi modules; without /dev/ipmi0 there is no route to the controller from inside the chassis" as NonEmptyStr
+        RescueMediumNotExecuted { medium: _ } =>
+          "the only rescue provider modelled for this unit is declared and has never been executed; use the executed medium or treat the unit as physical-only" as NonEmptyStr
+      }
+    RecoveryFirmwarePolicyUnknown { release: _ } =>
+      "this firmware release has never been measured for the published-password write policy: read it before spending a destructive reset" as NonEmptyStr
+    RecoveryReadbackInconclusive { detail: _ } =>
+      "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
+  }
+}
+
+fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRouteUnavailable? {
+  match standing.outcome {
+    RecoveryHandedToOnboarding { controller: _, readback: _, writes: _ } => none
+    RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
+    RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryReadbackInconclusive { detail: d } }
+    RecoveryFirmwarePolicyNotMeasured { firmware: f } => Present { value: RecoveryFirmwarePolicyUnknown { firmware: f } }
+    RecoveryWriteUnverified { kind: _ } =>
+      Present { value: RecoveryReadbackInconclusive { detail: "a privileged write of the reset sequence was not attempted against the arm the route names" } }
+    RecoveryReadbackRefusedFactoryCredential { readback: _ } =>
+      Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
+  }
+}
+
+// ── COMMITTED EVIDENCE ──────────────────────────────────────────────────────────────────────────
+//
+// CITED BY SHA256, AND ONLY WHAT WAS CAPTURED. These digests are the entries of
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/SHA256SUMS, so a standing that claims a
+// capture is checked against the file bytes and not against a sentence about them. The capture is
+// committed at 518342bf41d on session/royal-seal-46 (the run was executed there); until those paths
+// land on main, a digest below is verifiable against THAT commit and no other -- check it there before
+// treating a standing as evidenced, and treat it as unevidenced if the commit is unreachable.
+//
+//   02_inband_channel.txt -- the rescue OS (Linux ubuntu-server 6.8.0-139-generic aarch64,
+//     openssh-server: the HOST OS and not the BMC), /dev/ipmi0 crw------- 235,0, the four ipmi
+//     modules, `mc info` (Firmware Revision 3.22, ASRock Rack), `channel 1 info`, `user list 1`
+//     (id 1 root ADMINISTRATOR), `lan print 1`, and the two refused `user set password` calls.
+//   04_post_reset_readback.json -- the post-reset login with the published factory credential,
+//     answered HTTP 403 with Base.1.16.0.PasswordChangeRequired.
+//
+// NOT cited, because it was not captured: the KCS temporary-password write, and the ResetToDefaults
+// request/response bodies. The capture README records both as in-session-observed; the temporary
+// password was wiped by the reset and cannot be reproduced. That is what
+// RecoveryWriteRecord::ExecutedWithoutByteCapture is for, and why the standing's success arm leans on
+// the readback instead.
+data recovery_inband_channel_capture: Sha256Digest = Sha256Digest {
+  hex: "ec0869623cf9cac1642080ee1711c35c7c0580bd15feee9d5cdeb02ce3b3cb51",
+}
+
+data recovery_post_reset_readback_capture: Sha256Digest = Sha256Digest {
+  hex: "898fef2cf2d57fcca4564b11b3630c050a34d85804e32cfd827fc22fa6da6ce1",
+}
+
+data recovery_inband_channel_capture_ref: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt",
+  digest: Sha256Hash(recovery_inband_channel_capture),
+}
+
+data recovery_post_reset_readback_capture_ref: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.json",
+  digest: Sha256Hash(recovery_post_reset_readback_capture),
+}
+
+// ── DOMAIN LAWS ─────────────────────────────────────────────────────────────────────────────────
+//
+// Each states a non-invertibility this module depends on, and each is built only through the mints --
+// a reachable host is unreachable until the drivers are present and the medium executed, and a
+// standing is handed off only once the readback names the right message. A fixture that hand-built a
+// reachable host or a standing would be proving the test and not the module.
+
+test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_module_is_missing() -> Bool {
+  let reached = rescue_host_reachable(
+    address: recovery_rescue_host_address(),
+    ssh_port: 22,
+    ipmi: InBandIpmiPresence {
+      device_node: recovery_ipmi_device_node,
+      kernel_modules: ["ipmi_devintf", "ipmi_msghandler", "acpi_ipmi"],
+      evidence: recovery_inband_channel_capture_ref,
+    },
+    medium: recovery_usb_medium(),
+    evidence: recovery_inband_channel_capture_ref,
+    observed_at: recovery_capture_instant,
+  )
+  match reached {
+    RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
+      a == recovery_rescue_host_address()
+        && list_length(items: m) == 1
+        && m |> first() == Present { value: "ipmi_ssif" }
+    _ => false
+  }
+}
+
+test fn a_declared_netboot_provider_never_satisfies_the_precondition_and_is_not_the_same_refusal_as_no_host() -> Bool {
+  let via_netboot = rescue_host_reachable(
+    address: recovery_rescue_host_address(),
+    ssh_port: 22,
+    ipmi: recovery_complete_ipmi_presence(),
+    medium: NetbootRescueMediumDeclared,
+    evidence: recovery_inband_channel_capture_ref,
+    observed_at: recovery_capture_instant,
+  )
+  match recovery_host_refusal(reachability: via_netboot) {
+    Present { value: RescueMediumNotExecuted { medium: NetbootRescueMediumDeclared } } =>
+      recovery_host_is_reachable(reachability: via_netboot) == false
+    _ => false
+  }
+}
+
+test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
+  let reached = rescue_host_reachable(
+    address: recovery_rescue_host_address(),
+    ssh_port: 22,
+    ipmi: recovery_complete_ipmi_presence(),
+    medium: recovery_usb_medium(),
+    evidence: recovery_inband_channel_capture_ref,
+    observed_at: recovery_capture_instant,
+  )
+  let observation = InBandKcsChannelObservation {
+    subject: recovery_test_subject(),
+    rescue_host_address: recovery_controller_address(),
+    device_node: recovery_ipmi_device_node,
+    kernel_modules: recovery_ipmi_kernel_modules,
+    channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+    administrator: recovery_administrator_account(),
+    evidence: recovery_inband_channel_capture_ref,
+    observed_at: recovery_capture_instant,
+  }
+  in_band_kcs_channel_admits(observation: observation, reachability: reached) == false
+}
+
+test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
+  kcs_channel_is_passwordless(
+    channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: ["-P", "0penBmc"] },
+  ) == false
+    && kcs_channel_is_passwordless(
+      channel: KcsChannelPasswordless { ipmi_interface: "lanplus", argv_credential_words: [] },
+    ) == false
+    && kcs_channel_is_passwordless(
+      channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+    )
+}
+
+test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
+  reset_to_defaults_clears_unknown_credential(kind: ResetAll)
+    && reset_to_defaults_clears_unknown_credential(kind: ResetNetwork) == false
+    && reset_to_defaults_clears_unknown_credential(kind: ResetRestore) == false
+    && recovery_actuation_is_destructive(kind: RedfishManagerResetToDefaults { reset_type: ResetRestore }) == false
+    && recovery_write_is_admissible(
+      authorization: RecoveryWriteAdmitted {
+        kind: recovery_reset_actuation(),
+        authorized_by: recovery_operator_approval_declaration,
+        destructive: true,
+        operator_approval_required: false,
+      },
+    ) == false
+}
+
+test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> Bool {
+  recovery_readback_proves_reset(
+    readback: FactoryCredentialActiveAwaitingChange {
+      message_id: "Base.1.16.0.NoResource",
+      evidence: recovery_post_reset_readback_capture_ref,
+      observed_at: recovery_capture_instant,
+    },
+  ) == false
+    && recovery_readback_proves_reset(
+      readback: FactoryCredentialActiveAwaitingChange {
+        message_id: "Base.1.16.0.PasswordChangeRequired",
+        evidence: recovery_post_reset_readback_capture_ref,
+        observed_at: recovery_capture_instant,
+      },
+    )
+    && recovery_readback_proves_reset(
+      readback: CredentialNotAccepted {
+        evidence: recovery_post_reset_readback_capture_ref,
+        observed_at: recovery_capture_instant,
+      },
+    ) == false
+    && recovery_readback_of(
+      body: "{\"error\":{\"@Message.ExtendedInfo\":[{\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\"}]}}",
+      evidence: recovery_post_reset_readback_capture_ref,
+      observed_at: recovery_capture_instant,
+    ) == recovery_factory_credential_readback()
+}
+
+test fn a_release_the_catalog_lacks_refuses_the_route_rather_than_asserting_recovery() -> Bool {
+  let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(firmware: recovery_unmeasured_firmware())
+  asrock_altrad8ud_published_factory_password_is_refused(policy: unmeasured) == false
+    && asrock_altrad8ud_published_factory_password_is_refused(policy: recovery_measured_refusal_policy())
+    && recovery_firmware_requires_reset(firmware: recovery_measured_firmware())
+    && recovery_firmware_requires_reset(firmware: recovery_unmeasured_firmware()) == false
+}
+
+test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
+  let route = recovery_test_route(policy: recovery_measured_refusal_policy())
+  let without_readback = converge_in_band_recovery(
+    route: route,
+    kcs_write: recovery_kcs_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: ReadbackInconclusive { detail: "no body was saved" },
+  )
+  let with_readback = converge_in_band_recovery(
+    route: route,
+    kcs_write: recovery_kcs_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+  )
+  recovery_standing_handed_off(standing: without_readback) == false
+    && recovery_standing_handed_off(standing: with_readback)
+    && match without_readback.outcome {
+      RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
+      _ => false
+    }
+    && recovery_route_unavailability(standing: without_readback)
+      == Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
+}
+
+test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered() -> Bool {
+  let standing = converge_in_band_recovery(
+    route: recovery_test_route(policy: recovery_measured_refusal_policy()),
+    kcs_write: recovery_kcs_write_record(),
+    reset_write: NotExecuted { kind: recovery_reset_actuation() },
+    readback: recovery_factory_credential_readback(),
+  )
+  match standing.outcome {
+    RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
+      recovery_standing_handed_off(standing: standing) == false
+    _ => false
+  }
+}
+
+test fn a_policy_that_was_never_measured_on_this_release_cannot_ground_a_destructive_reset() -> Bool {
+  let standing = converge_in_band_recovery(
+    route: recovery_test_route(policy: NotMeasured { firmware: recovery_measured_firmware() }),
+    kcs_write: recovery_kcs_write_record(),
+    reset_write: recovery_reset_write_record(),
+    readback: recovery_factory_credential_readback(),
+  )
+  match standing.outcome {
+    RecoveryFirmwarePolicyNotMeasured { firmware: f } =>
+      f.version.major == 3 && f.version.minor == 22 && recovery_standing_handed_off(standing: standing) == false
+    _ => false
+  }
+}
+
+// ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
+// The capture's own numbers, through the mints only.
+
+data recovery_capture_instant: EpochMs = 1760000000000
+
+fn recovery_rescue_host_address() -> Ipv4Address {
+  Ipv4Address { octet1: 192, octet2: 168, octet3: 1, octet4: 251 }
+}
+
+fn recovery_controller_address() -> Ipv4Address {
+  Ipv4Address { octet1: 192, octet2: 168, octet3: 1, octet4: 250 }
+}
+
+// The release the capture's `mc info` reported (Firmware Revision 3.22), spelled through the
+// catalog's own row rather than re-authored: the policy join is keyed by typed version, so a fixture
+// with its own number would be testing a firmware that does not exist.
+fn recovery_measured_firmware() -> BmcFirmwareVersion {
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy.firmware
+}
+
+fn recovery_unmeasured_firmware() -> BmcFirmwareVersion {
+  BmcFirmwareVersion { family: OpenBmc, version: firmware_semantic_version(major: 3, minor: 6, patch: 0) }
+}
+
+fn recovery_test_release() -> BmcFirmwareReleaseIdentity {
+  BmcFirmwareReleaseIdentity { family: OpenBmc, raw_version: "3.22", semantic_version: none }
+}
+
+fn recovery_usb_medium() -> RescueHostMedium {
+  UsbRescueMediumObserved { evidence: recovery_inband_channel_capture_ref, observed_at: recovery_capture_instant }
+}
+
+fn recovery_complete_ipmi_presence() -> InBandIpmiPresence {
+  InBandIpmiPresence {
+    device_node: recovery_ipmi_device_node,
+    kernel_modules: recovery_ipmi_kernel_modules,
+    evidence: recovery_inband_channel_capture_ref,
+  }
+}
+
+fn recovery_administrator_account() -> InBandAdministratorAccount {
+  InBandAdministratorAccount {
+    user_id: 1,
+    channel: 1,
+    privilege_is_administrator: true,
+    evidence: recovery_inband_channel_capture_ref,
+  }
+}
+
+fn recovery_test_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: QualificationSubject {
+      unit_key: "bmc-recovery-fixture-unit",
+      assembly_manifest_digest: content_hash_of_value(value: "assembly-digest-for-in-band-recovery-fixtures"),
+      firmware_manifest_digest: content_hash_of_value(value: "firmware-digest-for-in-band-recovery-fixtures"),
+    },
+    attempt_id: "in-band-recovery-attempt-1",
+  }
+}
+
+fn recovery_test_controller_observation() -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: "bmc-recovery-fixture-controller" },
+    identity: BmcObservedIdentity {
+      board: BoardFruNotRead { cause: BoardAreaFieldsUnreadable },
+      chassis_part_number: none,
+      firmware: recovery_test_release(),
+    },
+    discovered_surfaces: [],
+    boot_control_routes: [],
+    redfish_virtual_media_probe: none,
+    successful_read_surfaces: [],
+    successful_write_surfaces: [],
+    raw_response: content_hash_of_value(value: "in-band-recovery-fixture-raw-response"),
+    observed_at: recovery_capture_instant,
+  }
+}
+
+fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryInBandRoute {
+  RecoveryInBandRoute {
+    subject: recovery_test_subject(),
+    rescue_host: rescue_host_reachable(
+      address: recovery_rescue_host_address(),
+      ssh_port: 22,
+      ipmi: recovery_complete_ipmi_presence(),
+      medium: recovery_usb_medium(),
+      evidence: recovery_inband_channel_capture_ref,
+      observed_at: recovery_capture_instant,
+    ),
+    kcs: InBandKcsChannelObservation {
+      subject: recovery_test_subject(),
+      rescue_host_address: recovery_rescue_host_address(),
+      device_node: recovery_ipmi_device_node,
+      kernel_modules: recovery_ipmi_kernel_modules,
+      channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+      administrator: recovery_administrator_account(),
+      evidence: recovery_inband_channel_capture_ref,
+      observed_at: recovery_capture_instant,
+    },
+    controller: recovery_test_controller_observation(),
+    password_write_policy: policy,
+    operator_approval: recovery_operator_approval_declaration,
+    reset_readback: recovery_factory_credential_readback_step,
+  }
+}
+
+fn recovery_kcs_write_record() -> RecoveryWriteRecord {
+  ExecutedWithoutByteCapture {
+    kind: KcsTemporaryAdministratorPassword,
+    observed_exit: 0,
+    detail: "operator-observed only; wiped by the reset before it could be re-read",
+  }
+}
+
+fn recovery_reset_write_record() -> RecoveryWriteRecord {
+  ExecutedWithoutByteCapture {
+    kind: recovery_reset_actuation(),
+    observed_exit: 0,
+    detail: "observed in session; request and response bodies were not captured",
+  }
+}
+
+fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
+  FactoryCredentialActiveAwaitingChange {
+    message_id: "Base.1.16.0.PasswordChangeRequired",
+    evidence: recovery_post_reset_readback_capture_ref,
+    observed_at: recovery_capture_instant,
+  }
+}
