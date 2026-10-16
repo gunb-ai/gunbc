@@ -2,6 +2,8 @@ module v2.test.claim.compiler.float_literal_home_unruled
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { node_subtree_nodes }
+import v2.extdeps.languages.dag { dag_node_is_float_literal_atom, dag_node_is_int_literal_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,5 +51,21 @@ test fn zz_probe_grounding() -> Bool {
   match fmi_assemble(src: flhu_float_src) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree)) == ^infer_grounding_not_derived
+  }
+}
+
+test fn zz_probe_float_atom_in_assembled_tree() -> Bool {
+  match fmi_assemble(src: flhu_float_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) { acc || dag_node_is_float_literal_atom(node: n) })
+  }
+}
+
+test fn zz_probe_int_atom_in_assembled_tree() -> Bool {
+  match fmi_assemble(src: flhu_int_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) { acc || dag_node_is_int_literal_atom(node: n) })
   }
 }
