@@ -3,6 +3,7 @@ module std.machine_constraints
 import std.constructors { Phantom }
 import std.types { NonEmptyStr, Int, Bool }
 import std.power_of_two { bitwise_pow2 }
+import std.measure { BitWidth, bit_width_count }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // A TYPE ARGUMENT IS NOT A QUANTITY AND NOT A VALUE. What stands in MachineWidth's parameter
@@ -89,15 +90,16 @@ type Compose<Algebra, MachineConstraint> = Phantom
 // when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
 // below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally. A width
 // below 1 admits nothing: there is no zero-bit integer.
-fn machine_width_admits(signed: Bool, bits: Int, value: Int) -> Bool {
-  if bits < 1 {
+fn machine_width_admits(signed: Bool, bits: BitWidth, value: Int) -> Bool {
+  let n = bit_width_count(b: bits)
+  if n < 1 {
     false
-  } else if bits >= 64 || (!signed && bits >= 63) {
+  } else if n >= 64 || (!signed && n >= 63) {
     signed || value >= 0
   } else if signed {
-    let half = bitwise_pow2(n: bits - 1)
+    let half = bitwise_pow2(n: n - 1)
     value >= 0 - half && value < half
   } else {
-    value >= 0 && value < bitwise_pow2(n: bits)
+    value >= 0 && value < bitwise_pow2(n: n)
   }
 }
