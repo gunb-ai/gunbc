@@ -47,7 +47,7 @@ import product.fabric.flex_vast_shadow {
   flex_trial_fleet_rate_cap, flex_trial_total, flex_trial_policy, flex_objective,
   flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_screen_by_recipe, flex_offer_in_shadow_field,
-  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded, flex_vram_tolerance_standing,
+  FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded, FlexVramTolerance, flex_vram_tolerance, flex_offer_screen_with_tolerance,
   flex_wet_create_estimated_refusal_frontier,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, FlexAttemptBound, FlexAttemptCandidateUnestablished,
@@ -1025,8 +1025,34 @@ test fn the_vram_tolerance_is_an_uncited_standing_carried_only_when_it_was_used(
       ShadowEntryEstablished => true
       _ => false
     })
-    && (match flex_vram_tolerance_standing {
+    && (match flex_vram_tolerance.standing {
       TranscribedUncited { read_obligation: _ } => true
+      _ => false
+    })
+}
+
+fn cited_tolerance() -> FlexVramTolerance {
+  FlexVramTolerance { shortfall: flex_vram_tolerance.shortfall, standing: procps_kill_standing() }
+}
+
+test fn citing_the_vram_tolerance_changes_the_verdict_on_both_sides_of_it() -> Bool {
+  // same offers, same shortfall number: only the tolerance's standing differs.
+  let cited_floor = recipe_with_driver_standing(sd: procps_kill_standing())
+  let within = wire_offer_driver(name: "RTX PRO 5000", ram: 49140, driver: Present { value: "580.65.06" })
+  let beyond = wire_offer_driver(name: "RTX PRO 5000", ram: 98304, driver: Present { value: "580.65.06" })
+  // uncited: within is a provisional member, beyond a provisional non-member
+  (match flex_offer_screen_with_tolerance(offer: within, recipe: cited_floor, vram_tolerance: flex_vram_tolerance) {
+    ShadowEntryEstimated { provisional_member: m, standings: _ } => m
+    _ => false
+  })
+    && is_provisional_non_member(e: flex_offer_screen_with_tolerance(offer: beyond, recipe: cited_floor, vram_tolerance: flex_vram_tolerance), standings: 1)
+    // cited: within is established, beyond an established exclusion
+    && (match flex_offer_screen_with_tolerance(offer: within, recipe: cited_floor, vram_tolerance: cited_tolerance()) {
+      ShadowEntryEstablished => true
+      _ => false
+    })
+    && (match flex_offer_screen_with_tolerance(offer: beyond, recipe: cited_floor, vram_tolerance: cited_tolerance()) {
+      ShadowEntryExcluded => true
       _ => false
     })
 }
