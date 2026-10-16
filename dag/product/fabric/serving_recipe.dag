@@ -8,7 +8,6 @@ import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyRate, ByteSize, money_rate_micros, Second, second_count, TokensPerSecond, tokens_per_second, tokens_per_second_count,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
-  mebibyte, mebibyte_to_byte_size,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { unbound_dissolution }
@@ -75,7 +74,6 @@ type ServingModelArtifact {
 // not part of the recipe.
 type ServingCardRequirement
   = CardIsAnyCatalogProduct { identity: NonEmptyStr, products: List<GpuModelCatalogRow> }
-  | CardHasVramAtLeast { identity: NonEmptyStr, min_vram: ByteSize, standing: CitedFigureStanding }
 
 type ServingDriverFloor {
   major: Nat
@@ -120,22 +118,6 @@ fn gib(n: Nat) -> ByteSize {
   gibibyte_to_byte_size(g: gibibyte(count: n))
 }
 
-data serving_card_vram_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "operator-stated card classes (48, 72, 96 GB) for the 27B NVFP4 recipe; read the weights' resident bytes plus KV capacity at the launch's context to ground the smallest card" as NonEmptyStr,
-}
-
-data serving_card_class_48gb: ServingCardRequirement = CardHasVramAtLeast {
-  identity: "48gb-class",
-  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 49152)),
-  standing: serving_card_vram_standing,
-}
-
-data serving_card_class_72gb: ServingCardRequirement = CardHasVramAtLeast {
-  identity: "72gb-class",
-  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 73728)),
-  standing: serving_card_vram_standing,
-}
-
 data serving_card_class_rtx_pro_6000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
   identity: "rtx-pro-6000-blackwell",
   products: [nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog],
@@ -156,7 +138,7 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   },
   catalog_unit: Present { value: Qwen3_8_27bOnNinfer },
   published_tcp_port: operator_pod_listen_port,
-  cards: [serving_card_class_48gb, serving_card_class_72gb, serving_card_class_rtx_pro_6000_blackwell],
+  cards: [serving_card_class_rtx_pro_6000_blackwell],
   driver_floor: ServingDriverFloor {
     major: 580,
     standing: TranscribedUncited {
@@ -240,7 +222,6 @@ type ServingCardFacts {
 
 type ServingCardVerdict
   = CardAccepted { class: NonEmptyStr }
-  | CardRefusedBelowVram { required: ByteSize, observed: ByteSize }
   | CardRefusedWrongCard
   | CardRefusedDriverBelowFloor { required: Nat, observed: Nat }
   | CardRefusedDriverUnread
@@ -248,13 +229,11 @@ type ServingCardVerdict
 fn serving_requirement_identity(r: ServingCardRequirement) -> NonEmptyStr {
   match r {
     CardIsAnyCatalogProduct { identity: i, products: _ } => i
-    CardHasVramAtLeast { identity: i, min_vram: _, standing: _ } => i
   }
 }
 
 fn serving_requirement_matches(card: ServingCardFacts, r: ServingCardRequirement) -> Bool {
   match r {
-    CardHasVramAtLeast { identity: _, min_vram: m, standing: _ } => byte_size_count(b: card.vram) >= byte_size_count(b: m)
     CardIsAnyCatalogProduct { identity: _, products: ps } =>
       match card.product {
         Absent => false
@@ -262,22 +241,6 @@ fn serving_requirement_matches(card: ServingCardFacts, r: ServingCardRequirement
           fold(ps, init: false, f: (acc, q) => if acc { true } else { gpu_catalog_row_eq(a: p, b: q) })
       }
   }
-}
-
-fn serving_smallest_vram(classes: List<ServingCardRequirement>) -> Nat? {
-  fold(
-    classes,
-    init: none,
-    f: (acc, r) =>
-      match r {
-        CardIsAnyCatalogProduct { identity: _, products: _ } => acc
-        CardHasVramAtLeast { identity: _, min_vram: m, standing: _ } =>
-          match acc {
-            Absent => Present { value: byte_size_count(b: m) }
-            Present { value: n } => if byte_size_count(b: m) < n { Present { value: byte_size_count(b: m) } } else { Present { value: n } }
-          }
-      },
-  )
 }
 
 fn serving_first_matching_requirement(card: ServingCardFacts, classes: List<ServingCardRequirement>) -> ServingCardRequirement? {
@@ -304,21 +267,11 @@ fn serving_driver_verdict(recipe: ServingRecipe, card: ServingCardFacts, identit
   }
 }
 
-// A card below every VRAM class of a VRAM-classed recipe is BelowVram; one that meets no requirement
-// otherwise is WrongCard; a matching card is then judged on the driver floor.
+// A card that meets no requirement is WrongCard; a matching card is then judged on the driver floor.
 fn serving_recipe_accepts_card(recipe: ServingRecipe, card: ServingCardFacts) -> ServingCardVerdict {
   match serving_first_matching_requirement(card: card, classes: recipe.cards) {
     Present { value: r } => serving_driver_verdict(recipe: recipe, card: card, identity: serving_requirement_identity(r: r))
-    Absent =>
-      match serving_smallest_vram(classes: recipe.cards) {
-        Present { value: smallest } =>
-          if byte_size_count(b: card.vram) < smallest {
-            CardRefusedBelowVram { required: byte_size(count: smallest), observed: card.vram }
-          } else {
-            CardRefusedWrongCard
-          }
-        Absent => CardRefusedWrongCard
-      }
+    Absent => CardRefusedWrongCard
   }
 }
 
@@ -412,22 +365,12 @@ fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
 data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
-    reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn.",
-    dissolution: unbound_dissolution(description: "an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it. SUFFICIENT FOR deleting this row."),
+    reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
+    dissolution: unbound_dissolution(description: "(1) an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it; (2) an extdeps.lmcache module citing tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
     ref: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
-    reason: "DEPARTURE FROM THE RETIRED flex_qwen_* SCREEN: its 48 GB class also required the name RTX 5000; extdeps.gpu.nvidia has no RTX 5000 catalog row, so the 48 GB and 72 GB classes are VRAM-only and admit any card with that VRAM and driver >= 580, including pre-sm120 cards the ninfer sm120 build cannot run. The 96 GB class is now the catalogued RTX PRO 6000 rows.",
-    dissolution: unbound_dissolution(description: "extdeps.gpu.nvidia catalog rows for the RTX 5000 and 72 GB Blackwell cards, after which serving_card_class_48gb and _72gb become CardIsAnyCatalogProduct. SUFFICIENT FOR deleting this row."),
-  ),
-  frontier_row_decl(
-    ref: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
-    reason: "throughput and cache tiers of the 27B recipe are unread; its unit cost is UnitCostThroughputUnread rather than a guess.",
-    dissolution: unbound_dissolution(description: "an operator or measured throughput reading and the ninfer weight-fetch route for Qwen3.8-27B NVFP4 on a rented card. SUFFICIENT FOR deleting this row."),
-  ),
-  frontier_row_decl(
-    ref: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
-    reason: "ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
-    dissolution: unbound_dissolution(description: "an extdeps.lmcache module citing LMCache's tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting ServingCacheSizing."),
+    reason: "(1) FAIL-CLOSED NARROWING of the retired flex_qwen_* screen: its 48 GB (RTX 5000) and 72 GB classes cannot be named by catalog row because extdeps.gpu.nvidia has no such rows, and a VRAM-only class would admit pre-sm120 cards the ninfer sm120 build cannot run, so the recipe admits only the catalogued RTX PRO 6000 rows until they exist. (2) throughput and cache tiers are unread; unit cost is UnitCostThroughputUnread rather than a guess.",
+    dissolution: unbound_dissolution(description: "(1) extdeps.gpu.nvidia catalog rows for the RTX 5000 and the 72 GB card, added to the recipe's cards; (2) an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
 ]

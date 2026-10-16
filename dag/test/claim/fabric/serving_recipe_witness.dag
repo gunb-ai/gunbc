@@ -31,7 +31,7 @@ import product.fabric.selection {
 }
 import product.fabric.serving_recipe {
   ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
-  ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedBelowVram, CardRefusedWrongCard,
+  serving_recipe_frontier, ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedWrongCard,
   CardRefusedDriverBelowFloor, CardRefusedDriverUnread, serving_recipe_accepts_card,
   ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
   ServingHourlyCost, HourlyCostQuoted, HourlyCostUnamortizable, HourlyCostCurrencyMismatch,
@@ -45,6 +45,10 @@ import test.claim.fabric.provider_use_fixture {
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog }
+import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_release }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import std.roster_frontier { frontier_rows_keyed_roster_build }
+import std.keyed_roster { KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -157,7 +161,6 @@ fn card(name: String, vram_gib: Nat, driver: Nat?) -> ServingCardFacts {
 fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
   match v {
     CardAccepted { class: _ } => true
-    CardRefusedBelowVram { required: _, observed: _ } => false
     CardRefusedWrongCard => false
     CardRefusedDriverBelowFloor { required: _, observed: _ } => false
     CardRefusedDriverUnread => false
@@ -170,10 +173,8 @@ fn accepts(recipe: ServingRecipe, c: ServingCardFacts) -> Bool {
 
 // ── each recipe resolves to its card classes ─────────────────────────────────────────────────
 
-test fn qwen_recipe_resolves_to_its_three_card_classes() -> Bool {
-  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 580 }))
-    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX A6000", vram_gib: 72, driver: Present { value: 580 }))
-    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+test fn qwen_recipe_resolves_to_the_catalogued_pro_6000_class() -> Bool {
+  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
 }
 
 test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
@@ -182,15 +183,36 @@ test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
 
 // ── refusals ─────────────────────────────────────────────────────────────────────────────────
 
-test fn qwen_is_refused_on_a_card_below_its_vram() -> Bool {
-  match serving_recipe_accepts_card(
+test fn qwen_is_refused_on_cards_without_a_catalog_product_whatever_their_vram() -> Bool {
+  (match serving_recipe_accepts_card(
     recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
-    card: card(name: "RTX 4090", vram_gib: 24, driver: Present { value: 595 }),
+    card: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 595 }),
   ) {
-    CardRefusedBelowVram { required: r, observed: o } =>
-      byte_size_count(b: r) == byte_size_count(b: gib(n: 48)) && byte_size_count(b: o) == byte_size_count(b: gib(n: 24))
+    CardRefusedWrongCard => true
     _ => false
+  })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+      card: card(name: "H100", vram_gib: 80, driver: Present { value: 595 }),
+    ) {
+      CardRefusedWrongCard => true
+      _ => false
+    })
+}
+
+test fn serving_recipe_frontier_builds_a_keyed_roster() -> Bool {
+  match frontier_rows_keyed_roster_build(rows: serving_recipe_frontier) {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
+}
+
+test fn flash_next_engine_ref_names_the_lab_release_row() -> Bool {
+  serving_recipe_flash_next_lab_vllm.engine.decl_name as String == "local_inference_lab_vllm_release"
+    && (match local_inference_lab_vllm_release.standing {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+    })
 }
 
 test fn flash_next_is_refused_off_pro_6000_even_with_enough_vram() -> Bool {

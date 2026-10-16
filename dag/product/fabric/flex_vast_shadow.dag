@@ -35,7 +35,7 @@ import product.fabric.flex_market {
 }
 import product.fabric.serving_recipe {
   ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_id_eq, serving_recipe_ref,
-  ServingCardFacts, serving_recipe_accepts_card, CardAccepted, CardRefusedBelowVram,
+  ServingCardFacts, serving_recipe_accepts_card, CardAccepted,
   CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -505,7 +505,6 @@ fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> B
     Present { value: card } =>
       match serving_recipe_accepts_card(recipe: recipe, card: card) {
         CardAccepted { class: _ } => true
-        CardRefusedBelowVram { required: _, observed: _ } => false
         CardRefusedWrongCard => false
         CardRefusedDriverBelowFloor { required: _, observed: _ } => false
         CardRefusedDriverUnread => false
