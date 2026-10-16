@@ -7877,6 +7877,39 @@ fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<
   }
 }
 
+// (c) THE FORMAL-AS-FIRST-BINDING GUARD (stern-bat-401 msg_92f01032, ruling on the 63-class
+// census: "the fold stores the CALLEE'S FORMAL as the first binding, then compares it against
+// a concrete second actual and refuses ... compare the SETTLED first actual, never the callee's
+// formal"). unify_generics is called with formal: formal_raw, which is the callee's WRITTEN
+// signature -- param_node_type_expr at v1.compiler.infer unify_callable_shape_mismatch_region
+// and the formal_selection at the second call site -- so a generic callee's annotation such as
+// Map(K, V) can be stored as variable A's first binding with K and V still the callee's OWN
+// unsubstituted parameters, and a later settled actual Map(Symbol, Product(...)) is then
+// refused as a rebind. That is 'formal-vs-concrete', never 'two settled bindings': the
+// measurement is 5 such refusals at dag/std/parse.dag:11564-11571 and 9 at
+// src/v2/compiler/diagnostic_render.dag:10481-10488 (v2-bootstrap run 38918165053).
+// A node MENTIONS a generic when some leaf of it is still that parameter: either its own
+// TypeVariable id, or -- for a node with no resolution at all, which is what an annotation
+// leaf is -- a NoConnective leaf spelled like the parameter. A settled actual never looks like
+// this: its leaves carry resolution, and the reject controls (P vs Q, Int vs Bool,
+// FreeMonoid<Int> vs FreeMonoid<Bool>) name no generic at all, so they keep refusing.
+fn generic_node_mentions(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if n.inferred != none {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv_id } } => tv_id == name
+      _ => false
+    }
+  } else if n.connective == NoConnective && n.children |> count == 0 && generic_type_node_name(n: n, source_indices: source_indices) == name {
+    true
+  } else {
+    n.children |> any(c => generic_node_mentions(n: c, name: name, source_indices: source_indices))
+  }
+}
+
+fn binding_is_unsettled_formal_annotation(n: Node, generics: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  generics |> any(g => generic_node_mentions(n: n, name: g, source_indices: source_indices))
+}
+
 fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = expr_var_name_at(texpr: n, source_indices: source_indices)
   if string_length(s: name) == 0 { false }
@@ -14616,7 +14649,17 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     match map_get(acc, bind_name) {
       Absent => UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
       Present { value: bound } =>
-        if unify_binding_is_uninformative(n: bound) {
+        // (c) A binding that still MENTIONS one of this callee's own generics is the callee's
+        // UNSETTLED FORMAL, not a settled first binding: it is the written annotation carried in
+        // through `formal: formal_raw` at the call sites (v1.compiler.infer
+        // unify_callable_shape_mismatch_region and the lambda/callable sites), never a resolved
+        // actual. Comparing it is what produced the 63-class refusals, so it is REPLACED by this
+        // actual, which is the first settled binding for the variable. A settled actual never
+        // mentions a generic, so the reject twins (P vs Q, Int vs Bool, FreeMonoid<Int> vs
+        // FreeMonoid<Bool>) fall through to the refusal below.
+        if binding_is_unsettled_formal_annotation(n: bound, generics: generic_names, source_indices: source_indices) {
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if unify_binding_is_uninformative(n: bound) {
           if unify_binding_is_uninformative(n: actual) {
             UnifyGenericsAcc { subst: acc, diagnostics: [] }
           } else {
