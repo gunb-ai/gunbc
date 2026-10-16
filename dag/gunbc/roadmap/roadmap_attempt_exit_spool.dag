@@ -71,13 +71,42 @@ type AttemptExitHook
 // a re-review of a new head is a new launch with its own record, not a second record for one launch.
 type AttemptUnitRole
   = AttemptWorkerRole
+  | AttemptWorkerResumedRole { ordinal: Int }
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
   | AttemptObligationRole
 
+// A RESUMED WORKER IS A SECOND INVOCATION OF ONE ATTEMPT'S UNIT (gunbc.plans.harness_session_lifecycle
+// S3): the same session continued after an unexplained engine refusal. Its record carries its own
+// role word so the first invocation's record is never overwritten or read as the second's end.
+data attempt_worker_resumed_token_prefix: String = "worker-resumed-"
+
+// WHICH WORKER INVOCATION A ROLE WORD NAMES: 0 for the first, N for the Nth resume, absent for any
+// other role. The latest invocation's record is the worker's current end.
+fn attempt_worker_invocation_of_token(token: String) -> Int? {
+  if token == "worker" {
+    Present { value: 0 }
+  } else if starts_with(s: token, prefix: attempt_worker_resumed_token_prefix) {
+    match token.split(delimiter: attempt_worker_resumed_token_prefix).get(1) {
+      Present { value: tail } => parse_int(text: tail)
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn attempt_role_token_is_worker(token: String) -> Bool {
+  match attempt_worker_invocation_of_token(token: token) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
     AttemptWorkerRole => "worker"
+    AttemptWorkerResumedRole { ordinal } => join([attempt_worker_resumed_token_prefix, to_string(value: ordinal)], "")
     AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
     AttemptObligationRole => "obligation"
@@ -349,6 +378,37 @@ fn attempt_exit_record_matching(
       }
     }
   }
+}
+
+// THE WORKER'S CURRENT END: among the records of one attempt's worker invocations (the first and each
+// resume, AttemptWorkerResumedRole), the latest invocation's. A resume is the one way an attempt has
+// two worker records, and the earlier is history, not a rival. Each invocation still has exactly one
+// record: two for one ordinal are unreadable, as for any other role.
+fn attempt_exit_worker_record_matching(
+  subject: fn(String, String) -> Bool,
+  listings: List<AttemptExitStageListing>,
+) -> AttemptExitRecordObservation {
+  let ordinals = listings
+    |> flat_map(l => match l {
+      AttemptExitStageNames { names } => names
+      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+    })
+    |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryDecoded { record } =>
+        if subject(record.node_id, record.attempt_key) {
+          match attempt_worker_invocation_of_token(token: record.role) {
+            Present { value: n } => [n]
+            Absent => [] as List<Int>
+          }
+        } else {
+          [] as List<Int>
+        }
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<Int>
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<Int>
+    })
+  let latest = fold(ordinals, init: 0, f: (best, n) => if n > best { n } else { best })
+  let latest_token = if latest == 0 { "worker" } else { join([attempt_worker_resumed_token_prefix, to_string(value: latest)], "") }
+  attempt_exit_record_matching(matches: (n, a, r) => subject(n, a) && r == latest_token, listings: listings)
 }
 
 fn attempt_exit_stage_list(instance_root: String, stage: AttemptExitSpoolStage) -> AttemptExitStageListing {

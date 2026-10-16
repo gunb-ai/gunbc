@@ -15,7 +15,7 @@ import std.filesystem { path_parent_directory }
 import gunbc.harness.harness_tool { HarnessToolEnvironment, harness_tool_environment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, TurnAcceptanceUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, HarnessAcceptanceRoute, harness_tool_contract_wire,
-  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_resume_turn, TurnBackendRefusedUnexplained, TurnResumeRefused, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
   harness_outcome_detail, harness_event_placement_waiting, KeepBindingAlive, FleetSeatHeld, HarnessAcceptanceCapacity,
 }
 import gunbc.harness.harness_guidance {
@@ -292,6 +292,8 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnResumeRefused { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnRequestUnwritable { path: _, detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
@@ -854,7 +856,33 @@ fn harness_worker_cli(
   harness_worker_turn_cli(
     worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
     events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, handin_inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, turn: none,
+    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, handin_inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, turn: none, run: WorkerRunFresh,
+  )
+}
+
+// THE RESUME ENTRY THE BELT SPAWNS FOR A RECOVERY-NEEDED SESSION. The same arguments as the first run,
+// because it is the same session in the same worktree under the same attempt; it differs only in
+// reading the conversation back from the stream and wire log instead of starting one.
+fn harness_worker_resume_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  repo_root: String,
+  gunbc_program: String,
+  attempt_identity: String,
+  alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
+  handin_inbox: String,
+  node_id: String,
+  attempt_key: String,
+) -> ProcessExit {
+  harness_worker_turn_cli(
+    worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
+    events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
+    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, handin_inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, turn: none, run: WorkerRunResume,
   )
 }
 
@@ -886,10 +914,17 @@ fn harness_durable_worker_cli(
     Present { value: turn } => harness_worker_turn_cli(
       worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
       events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-      alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, handin_inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, turn: Present { value: turn },
+      alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, handin_inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key, turn: Present { value: turn }, run: WorkerRunFresh,
     )
   }
 }
+
+// WHICH TURN A WORKER ENTRY RUNS: the first one from the brief, or the resume of a session its own
+// stream records as recovery-needed (gunbc.harness.harness_session_recovery). One seat bind, one
+// config, one release either way; only the conversation's source differs.
+type HarnessWorkerRun
+  = WorkerRunFresh
+  | WorkerRunResume
 
 fn harness_worker_turn_cli(
   worktree: String,
@@ -907,6 +942,7 @@ fn harness_worker_turn_cli(
   node_id: String,
   attempt_key: String,
   turn: HarnessCallerTurn?,
+  run: HarnessWorkerRun,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn)
@@ -917,8 +953,7 @@ fn harness_worker_turn_cli(
       match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
         Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         Absent => {
-          let outcome = harness_run_turn(
-            config: harness_worker_config(
+          let config = harness_worker_config(
               worktree: worktree as FilePath,
               timeout_program: timeout_program as FilePath,
               request_scratch_path: request_scratch_path as FilePath,
@@ -932,10 +967,11 @@ fn harness_worker_turn_cli(
                 acceptance: HarnessAcceptanceRoute { inbox: handin_inbox, node_id: node_id, attempt_key: attempt_key },
               ),
               acceptance_capacity: harness_acceptance_capacity_of(binding: binding, admission: harness_cli_admission()),
-            ),
-            prompt: brief,
-            step_budget: harness_worker_step_budget,
-          )
+            )
+          let outcome = match run {
+            WorkerRunFresh => harness_run_turn(config: config, prompt: brief, step_budget: harness_worker_step_budget)
+            WorkerRunResume => harness_resume_turn(config: config, step_budget: harness_worker_step_budget)
+          }
           let completion = harness_worker_completion(turn: turn, binding: binding, outcome: outcome)
           let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
           harness_worker_exit_completed(outcome: outcome, seat: seat_release, completion: completion)

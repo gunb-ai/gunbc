@@ -52,6 +52,7 @@ import gunbc.dispatch_attempt_launch {
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
+  DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed,
   DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused,
   dispatch_harness_attempt_selection, prepared_attempt_provider,
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
@@ -586,9 +587,10 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
   continuation_decision,
 }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, ProviderAwaitingAcceptance }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
@@ -612,7 +614,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
-  AttemptWorkerRole, attempt_unit_role_token,
+  AttemptWorkerRole, attempt_unit_role_token, attempt_role_token_is_worker,
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
@@ -2230,6 +2232,32 @@ fn belt_snapshot_discarded_unless_consumed(
   }
 }
 
+// WHICH ATTEMPT THIS SPAWN IS FOR. A resume is for the prior attempt: its key is that attempt's, so
+// the sealed prepared launch, the worktree, the state and the unit all address the one session that is
+// being continued. Anything else mints a new attempt from the base ref, as always. The decision is the
+// one the route then consumes, read once.
+type BeltSpawnKey
+  = BeltSpawnKeyOf { attempt_key: String }
+  | BeltSpawnKeyRefused { detail: String }
+
+fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationDecision) -> BeltSpawnKey {
+  match decision {
+    ContinuationResume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    ContinuationSpawnFresh { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationRefused { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+  }
+}
+
+fn belt_spawn_minted_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String) -> BeltSpawnKey {
+  match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+    DispatchAttemptIdentityRefused { detail } => BeltSpawnKeyRefused { detail: detail }
+    DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => BeltSpawnKeyOf { attempt_key: minted_key }
+  }
+}
+
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2238,6 +2266,7 @@ fn belt_actuate_spawn_for_instance(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
+  let decision = belt_continuation_decision_for_instance(instance: instance, node: node)
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
       SpawnFailed {
@@ -2267,8 +2296,8 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
-        DispatchAttemptIdentityRefused { detail } =>
+      match belt_spawn_attempt_key(instance: instance, node: node, probed_at: probed_at, decision: decision) {
+        BeltSpawnKeyRefused { detail } =>
           SpawnFailed {
             node_id: node.node as String,
             step: "attempt-identity",
@@ -2276,7 +2305,7 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_unselected_provider_wire_label(),
             launch: launch,
           }
-        DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => {
+        BeltSpawnKeyOf { attempt_key: minted_key } => {
       let attempt = DispatchAttempt {
         instance: instance,
         node: node,
@@ -2322,6 +2351,7 @@ fn belt_actuate_spawn_for_instance(
                 launch: launch,
                 prepared: prepared,
                 request: request,
+                decision: decision,
               )
           }
           belt_snapshot_owned_outcome(
@@ -2346,6 +2376,7 @@ fn belt_actuate_spawn_exec_for_instance(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
+  decision: ContinuationDecision,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
@@ -2355,6 +2386,7 @@ fn belt_actuate_spawn_exec_for_instance(
     launch: launch,
     prepared: prepared,
     request: request,
+    decision: decision,
   )
 }
 
@@ -2367,14 +2399,17 @@ fn belt_actuate_spawn_exec_for_instance(
 // THE SPAWN ROUTE IS A PURE FUNCTION OF THE DECISION, factored so the law "an unresolved lineage
 // never reaches a spawn command" is witnessable without the actuator: only SpawnFresh reaches a
 // worker spawn; Hold, Complete, Ended and Refused are SpawnRouteNone -- no spawn command is
-// reachable from them.
+// reachable from them. A Resume reaches the worker spawn too, but as the continuation of the prior
+// attempt's own session (SpawnRouteResume), never as a new attempt.
 type BeltSpawnRoute
   = SpawnRouteWorker
+  | SpawnRouteResume { attempt_key: String, ordinal: Int }
   | SpawnRouteNone { step: String, detail: String }
 
 fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
   match decision {
     ContinuationSpawnFresh { reason: _ } => SpawnRouteWorker
+    ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
     ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
     ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
     ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
@@ -2417,11 +2452,12 @@ fn belt_actuate_spawn_exec_modeled(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
+  decision: ContinuationDecision,
 ) -> BeltSpawnOutcome {
   let addressing = belt_spawn_addressing(prepared: prepared)
   let instance = addressing.instance
   let node = addressing.node
-  match belt_spawn_route_for_decision(decision: belt_continuation_decision_for_instance(instance: instance, node: node)) {
+  match belt_spawn_route_for_decision(decision: decision) {
     SpawnRouteNone { step, detail } =>
       SpawnFailed {
         node_id: node.node as String,
@@ -2436,7 +2472,26 @@ fn belt_actuate_spawn_exec_modeled(
         provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
         prepared: prepared,
         request: request,
+        run: DispatchWorkerFirst,
       )
+    SpawnRouteResume { attempt_key, ordinal } =>
+      if attempt_key != addressing.attempt_key {
+        SpawnFailed {
+          node_id: node.node as String,
+          step: "resume-attempt",
+          detail: join(["the decision resumes attempt ", attempt_key, " but the prepared launch addresses attempt ", addressing.attempt_key, "; a resume continues the prior attempt's own session and never another"], ""),
+          provider: provider_wire_label,
+          launch: launch,
+        }
+      } else {
+        belt_actuate_spawn_with_origin(
+          workdir: workdir, admission_receipt: admission_receipt,
+          provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+          prepared: prepared,
+          request: request,
+          run: DispatchWorkerResumed { ordinal: ordinal },
+        )
+      }
   }
 }
 
@@ -2471,8 +2526,22 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
+      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
     } },
   )
+}
+
+// THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
+// writes and a resume appends to), so the decision and the harness read one record. An unreadable
+// stream reads as no recovery: it can lose a resume, never manufacture one, and the lineage then ends
+// exactly as it did before this slice.
+fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
+  let read = Filesystem.Read(path: dispatch_attempt_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key))
+  if read.success {
+    session_recovery_of_events(lines: split(s: read.content, delimiter: "\n") |> filter(l => trim(l) != ""))
+  } else {
+    SessionRecoveryNone
+  }
 }
 
 // THE PRIOR ATTEMPT'S CAPTURE, AT ITS OWN HEAD. The spawn decision binds the same fact the
@@ -2504,6 +2573,7 @@ fn belt_actuate_spawn_with_origin(
   probed_at: String,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
+  run: DispatchWorkerRun,
 ) -> BeltSpawnOutcome {
   let addressing = belt_spawn_addressing(prepared: prepared)
   let instance = addressing.instance
@@ -2518,6 +2588,7 @@ fn belt_actuate_spawn_with_origin(
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, attempt_key: attempt_key),
     prepared: prepared,
     resolution: resolution,
+    run: run,
   ) {
     DispatchSpawnRefused { step, detail } =>
       SpawnFailed {
@@ -2547,13 +2618,13 @@ fn belt_actuate_spawn_with_origin(
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
-      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint)
+      belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint, run: run)
     BeltPlacementHeld { held } =>
       belt_spawn_release_unless_spawned(
         held: held,
         provider_wire_label: provider_wire_label,
         launch: launch,
-        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint),
+        outcome: belt_spawn_admitted(prepared: prepared, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint, run: run),
       )
   }
   }
@@ -2577,6 +2648,7 @@ fn belt_spawn_admitted(
   placement: BeltHeldPlacement?,
   request: AttemptLaunchRequest,
   process_fingerprint: NonEmptyStr,
+  run: DispatchWorkerRun,
 ) -> BeltSpawnOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_actuate_spawn_with_origin"),
@@ -2587,80 +2659,13 @@ fn belt_spawn_admitted(
   let node = addressing.node
   let attempt_key = addressing.attempt_key
   let session_name = addressing.session_name
-  match belt_exec_steps(
-    steps: [
-      BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
-      BeltExecStep {
-        step: "attempt-state-prepare",
-        command: cmds.attempt_state_prepare,
-      },
-    ],
-    workdir: workdir,
+  match belt_spawn_stage(
+    prepared: prepared, workdir: workdir, admission_receipt: admission_receipt,
+    provider_wire_label: provider_wire_label, launch: launch, cmds: cmds, binding: binding,
+    request: request, process_fingerprint: process_fingerprint, run: run,
   ) {
-    ExecStepFailed { step, detail } =>
-      SpawnFailed {
-        node_id: node.node as String,
-        step: step,
-        detail: detail,
-        provider: provider_wire_label,
-        launch: launch,
-      }
-    ExecStepsOk =>
-      match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
-        AttemptWorktreeAbsent { path } =>
-          SpawnFailed {
-            node_id: node.node as String,
-            step: "worktree-establish",
-            detail: join(["git worktree add reported success and no worktree is present at ", path], ""),
-            provider: provider_wire_label,
-            launch: launch,
-          }
-        AttemptWorktreeUnobserved { path, cause } =>
-          SpawnFailed {
-            node_id: node.node as String,
-            step: "worktree-establish",
-            detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""),
-            provider: provider_wire_label,
-            launch: launch,
-          }
-        AttemptWorktreePresent { path: _ } =>
-      match belt_attempt_state_initialize_for_instance(
-        instance: instance,
-        node: node,
-        attempt_key: attempt_key,
-        admission_receipt: admission_receipt,
-        launch: launch,
-        binding: binding,
-        request: request,
-        process_fingerprint: process_fingerprint,
-      ) {
-        AttemptStateInitializationFailed { step, detail } =>
-          SpawnFailed {
-            node_id: node.node as String,
-            step: step,
-            detail: detail,
-            provider: provider_wire_label,
-            launch: launch,
-          }
-        AttemptStateInitialized =>
-          match belt_exec_steps(
-            steps: [
-              BeltExecStep {
-                step: "attempt-current-publish",
-                command: cmds.attempt_current_pointer,
-              },
-            ],
-            workdir: workdir,
-          ) {
-            ExecStepFailed { step, detail } =>
-              SpawnFailed {
-                node_id: node.node as String,
-                step: step,
-                detail: detail,
-                provider: provider_wire_label,
-                launch: launch,
-              }
-            ExecStepsOk =>
+    Present { value: failed } => failed
+    Absent =>
               match belt_credential_admit_before_spawn(prepared: prepared) {
                 BeltCredentialAdmitLost { detail } =>
                   SpawnFailed {
@@ -2731,8 +2736,104 @@ fn belt_spawn_admitted(
                   }
               }
               }
-          }
+  }
+}
+
+// THE STAGING A SPAWN NEEDS BEFORE ITS CONTAINER STARTS, per run. A first run branches a worktree,
+// prepares and initializes the attempt's state and publishes it as the node's current attempt. A
+// RESUME stages none of that: the worktree, the state and the pointer are the prior run's and are
+// exactly what a resume continues, so the only staging is the observation that the worktree is still
+// there. Staging a resume as a first run would write the attempt's state over the session it is
+// meant to continue. Absent is staged; Present is the failure that stops the spawn.
+fn belt_spawn_stage(
+  prepared: PreparedAttemptLaunch,
+  workdir: String,
+  admission_receipt: String,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  cmds: DispatchSpawnCommands,
+  binding: AlignmentBinding,
+  request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
+  run: DispatchWorkerRun,
+) -> BeltSpawnOutcome? {
+  let addressing = belt_spawn_addressing(prepared: prepared)
+  let instance = addressing.instance
+  let node = addressing.node
+  let attempt_key = addressing.attempt_key
+  match run {
+    DispatchWorkerResumed { ordinal: _ } =>
+      match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+        AttemptWorktreePresent { path: _ } => none
+        AttemptWorktreeAbsent { path } =>
+          Present { value: SpawnFailed {
+            node_id: node.node as String,
+            step: "resume-worktree",
+            detail: join(["the session to resume has no worktree at ", path, "; its work is not where the resume would continue it"], ""),
+            provider: provider_wire_label,
+            launch: launch,
+          } }
+        AttemptWorktreeUnobserved { path, cause } =>
+          Present { value: SpawnFailed {
+            node_id: node.node as String,
+            step: "resume-worktree",
+            detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""),
+            provider: provider_wire_label,
+            launch: launch,
+          } }
       }
+    DispatchWorkerFirst =>
+      match belt_exec_steps(
+        steps: [
+          BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
+          BeltExecStep { step: "attempt-state-prepare", command: cmds.attempt_state_prepare },
+        ],
+        workdir: workdir,
+      ) {
+        ExecStepFailed { step, detail } =>
+          Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+        ExecStepsOk =>
+          match belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+            AttemptWorktreeAbsent { path } =>
+              Present { value: SpawnFailed {
+                node_id: node.node as String,
+                step: "worktree-establish",
+                detail: join(["git worktree add reported success and no worktree is present at ", path], ""),
+                provider: provider_wire_label,
+                launch: launch,
+              } }
+            AttemptWorktreeUnobserved { path, cause } =>
+              Present { value: SpawnFailed {
+                node_id: node.node as String,
+                step: "worktree-establish",
+                detail: join(["the worktree at ", path, " could not be observed after git worktree add: ", cause], ""),
+                provider: provider_wire_label,
+                launch: launch,
+              } }
+            AttemptWorktreePresent { path: _ } =>
+              match belt_attempt_state_initialize_for_instance(
+                instance: instance,
+                node: node,
+                attempt_key: attempt_key,
+                admission_receipt: admission_receipt,
+                launch: launch,
+                binding: binding,
+                request: request,
+                process_fingerprint: process_fingerprint,
+              ) {
+                AttemptStateInitializationFailed { step, detail } =>
+                  Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                AttemptStateInitialized =>
+                  match belt_exec_steps(
+                    steps: [BeltExecStep { step: "attempt-current-publish", command: cmds.attempt_current_pointer }],
+                    workdir: workdir,
+                  ) {
+                    ExecStepFailed { step, detail } =>
+                      Present { value: SpawnFailed { node_id: node.node as String, step: step, detail: detail, provider: provider_wire_label, launch: launch } }
+                    ExecStepsOk => none
+                  }
+              }
+          }
       }
   }
 }
@@ -2841,6 +2942,10 @@ fn belt_actuate_spawn_exec(
     launch: launch,
     prepared: prepared,
     request: LaunchAutonomous,
+    decision: belt_continuation_decision_for_instance(
+      instance: prepared_attempt(prepared: prepared).instance,
+      node: prepared_attempt(prepared: prepared).node,
+    ),
   )
 }
 
@@ -3052,11 +3157,13 @@ fn belt_resolved_spawn_plan(
   session_uuid: String,
   prepared: PreparedAttemptLaunch,
   resolution: AlignmentResolution,
+  run: DispatchWorkerRun,
 ) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_launch(
     prepared: prepared,
     session_uuid: session_uuid,
     resolution: resolution,
+    run: run,
   )
 }
 
@@ -14445,7 +14552,7 @@ fn belt_exit_entry_handed_at(root: String, entry: String, enqueue: BeltObligatio
 
 fn belt_exit_entry_is_worker(entry: String) -> Bool {
   match attempt_exit_entry_decode(entry_name: entry) {
-    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptWorkerRole)
+    AttemptExitEntryDecoded { record } => attempt_role_token_is_worker(token: record.role)
     AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }

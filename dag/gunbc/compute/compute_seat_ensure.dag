@@ -23,7 +23,7 @@ import gunbc.compute.work_provider_local {
   LeaseDrop, LeaseDropped, LeaseNotDropped, compute_drop_lease_at, compute_lease_path, compute_seat_dir, compute_lease_holder_line,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
+  AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token, attempt_role_token_is_worker,
   AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptHandInEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
 }
@@ -435,7 +435,7 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
       AttemptExitStageUnreadable { reason: _ } => [] as List<String>
     }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
       AttemptExitEntryDecoded { record } =>
-        if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
+        if attempt_role_token_is_worker(token: record.role) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
       // A hand-in record (S2) is the worker announcing a candidate while it stays alive, awaiting acceptance:
       // not an exit, so it names no seat owner to discharge.
       AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<SeatOwnerKey>

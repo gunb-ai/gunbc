@@ -42,7 +42,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
-  attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_stage_listings,
+  attempt_exit_record_observe, attempt_exit_record_matching, attempt_exit_worker_record_matching, attempt_exit_stage_listings,
   AttemptWorkerRole, attempt_unit_role_token,
 }
 import extdeps.filesystem.filesystem_io {
@@ -910,8 +910,8 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
       session_worker_unit_lifecycle(
         unit: unit,
         loaded: loaded,
-        record: attempt_exit_record_matching(
-          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
+        record: attempt_exit_worker_record_matching(
+          subject: (n, a) => (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
@@ -942,7 +942,7 @@ fn attempt_worker_unit_observe_for_instance(instance: HostDashboardInstance, nod
   let loaded = attempt_unit_observation(unit: unit)
   match loaded {
     AttemptUnitAbsent => {
-      let record = attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole)
+      let record = attempt_exit_worker_record_matching(subject: (n, a) => n == node_id && a == attempt_key, listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String))
       match record {
         AttemptExitRecordNone =>
           attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: session_worker_start_standing(observation: session_placement_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)))

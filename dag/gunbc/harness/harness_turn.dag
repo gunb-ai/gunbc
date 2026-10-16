@@ -27,6 +27,12 @@ import extdeps.openrouter.openrouter {
   openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread }
+import gunbc.harness.harness_session_recovery {
+  UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
+  session_validation_resumable, session_event_recovery_needed, session_cause_text,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, session_recovery_of_events, session_conversation_from_request,
+  session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
+}
 import gunbc.harness.hosted_failure {
   HostedHttpFailure, HostedRateLimited, hosted_classify_round, hosted_http_failure_label, hosted_http_failure_wire,
 }
@@ -608,6 +614,8 @@ type HarnessTurnOutcome
   | TurnStepBudgetExhausted { steps_taken: Int }
   | TurnTransportRefused { detail: String }
   | TurnResponseUnreadable { cause: String }
+  | TurnBackendRefusedUnexplained { cause: String, resumable: Bool, steps_taken: Int }
+  | TurnResumeRefused { cause: String }
   | TurnRequestUnwritable { path: String, detail: String }
   | TurnContextWindowExhausted { input_tokens: Int, budget: Int, steps_taken: Int }
   | TurnTruncatedMidToolCall { output_tokens: Int, ceiling: Int, steps_taken: Int }
@@ -629,6 +637,8 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnStepBudgetExhausted { steps_taken: _ } => "step-budget-exhausted"
     TurnTransportRefused { detail: _ } => "transport-refused"
     TurnResponseUnreadable { cause: _ } => "response-unreadable"
+    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => "backend-refused-unexplained"
+    TurnResumeRefused { cause: _ } => "resume-refused"
     TurnRequestUnwritable { path: _, detail: _ } => "request-unwritable"
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } =>
       "context-window-exhausted"
@@ -715,6 +725,8 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
+    TurnBackendRefusedUnexplained { cause: c, resumable: _, steps_taken: _ } => c
+    TurnResumeRefused { cause: c } => c
     TurnRequestUnwritable { path: p, detail: d } =>
       join(["could not write the request body to ", p, ": ", d], "")
   }
@@ -1145,6 +1157,7 @@ type HarnessPostedRound {
   wire_log_detail: String?
   inflight_release_detail: String?
   hosted_failure: HostedHttpFailure?
+  unexplained: UnexplainedEngineRefusal?
   transport_retries: List<String>
 }
 
@@ -1192,6 +1205,7 @@ fn harness_post_round(
         wire_log_detail: none,
         inflight_release_detail: none,
         hosted_failure: none,
+        unexplained: none,
         transport_retries: [] as List<String>,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
@@ -1260,7 +1274,7 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
           let hold = HostedInflightHeld { reference: r, store: st }
           let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
           let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
-          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure, transport_retries: posted.transport_retries } }
+          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, hosted_failure: posted.hosted_failure, unexplained: posted.unexplained, transport_retries: posted.transport_retries } }
         }
       }
   }
@@ -1289,6 +1303,7 @@ fn harness_prepare_round(
       wire_log_detail: none,
       inflight_release_detail: none,
       hosted_failure: none,
+      unexplained: none,
       transport_retries: [] as List<String>,
     } }
   } else {
@@ -1297,6 +1312,17 @@ fn harness_prepare_round(
     RoundPrepared {
       wire_request_detail: if wire_request.success { none } else { Present { value: join(["request wire log ", wire_request_path, " could not be written: ", wire_request.error], "") } },
     }
+  }
+}
+
+// A FLEET ENGINE is the only route a refusal without explanation can be read on: a seat or the operator
+// endpoint answers for itself, and a hosted-quota route has its own classified failures
+// (gunbc.harness.hosted_failure) and never qualifies (operator decision 2026-10-16, condition 2).
+fn harness_route_is_fleet_engine(access: HarnessBackendAccess) -> Bool {
+  match access {
+    BackendAdmittedBySeat => true
+    BackendAdmittedByOperatorEndpoint { header_file: _ } => true
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => false
   }
 }
 
@@ -1329,6 +1355,7 @@ fn harness_send_round(
           wire_log_detail: wire_log_detail,
           inflight_release_detail: none,
           hosted_failure: Present { value: f },
+          unexplained: none,
           transport_retries: posted.retries,
         }
       Absent =>
@@ -1342,6 +1369,13 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        unexplained: harness_unexplained_refusal(
+          route_qualifies: harness_route_is_fleet_engine(access: config.backend_access),
+          success: posted.success,
+          body: posted.body,
+          headers: posted.headers,
+          request_body: Filesystem.Read(path: config.request_scratch_path as String).content,
+        ),
         transport_retries: posted.retries,
       }
     } else if !kept.success {
@@ -1352,6 +1386,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        unexplained: none,
         transport_retries: posted.retries,
       }
     } else {
@@ -1360,6 +1395,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         hosted_failure: none,
+        unexplained: none,
         transport_retries: posted.retries,
       }
     }
@@ -1662,13 +1698,32 @@ fn harness_turn_after_post(
               HarnessEventsWritten => TurnHostedFailure { failure: failed_hosted, steps_taken: steps_taken }
             }
           }
-          Absent => {
-            let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-            match harness_write_events(config: config, events: failed) {
-              HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-              HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+          Absent =>
+            match posted_round.unexplained {
+              Present { value: refusal } => {
+                // THE SESSION STOPPED AT THE STATE `messages` HOLDS: every call of the last answered
+                // response has its recorded result when this round was posted, so the conversation is
+                // validated and the stream records the refusal as a recovery the belt may resume.
+                let validation = session_messages_validation(messages: messages)
+                let cause = session_cause_text(round: steps_taken + 1, refusal: refusal)
+                let failed = concat(events_after_wire, [
+                  harness_event_turn_failed(message: c),
+                  session_event_recovery_needed(round: steps_taken + 1, refusal: refusal, validation: validation),
+                ])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten =>
+                    TurnBackendRefusedUnexplained { cause: cause, resumable: session_validation_resumable(v: validation), steps_taken: steps_taken }
+                }
+              }
+              Absent => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+                }
+              }
             }
-          }
         }
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, usage: usage_read } =>
         match usage_read {
@@ -2026,6 +2081,64 @@ fn harness_run_turn(config: HarnessTurnConfig, prompt: String, step_budget: Int)
   }
 }
 
+// ── THE RESUME (gunbc.plans.harness_session_lifecycle, slice S3) ────────────────────────────────────────
+//
+// A resume continues the SAME session: the conversation is the one the refused request carried, read
+// back from the wire log the refused round wrote before it posted, the events are the stream the first
+// run left, and the loop picks up at the refused round with the steps already taken. It is never a
+// fresh conversation and never a blind resend: the state is validated first, and a state with an
+// interrupted tool effect is refused here exactly as the belt refuses it, because the harness is the
+// last place a resume can be stopped. The bound is checked here too, so a caller that miscounts
+// cannot resume a fourth time.
+fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTurnOutcome {
+  let prior = Filesystem.Read(path: config.events_path as String)
+  if !prior.success {
+    TurnResumeRefused { cause: join(["the session's event stream ", config.events_path as String, " could not be read: ", prior.error], "") }
+  } else {
+    let lines = split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != "")
+    match session_recovery_of_events(lines: lines) {
+      SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
+      SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: round } =>
+        if made >= session_resume_bound {
+          TurnResumeRefused { cause: join(["the session has already been resumed ", to_string(value: made), " times, the bound; causes: ", join(causes, " | ")], "") }
+        } else if list_length(items: interrupted) > 0 {
+          TurnResumeRefused { cause: join(["the session stopped with tool calls that have no recorded result (", join(interrupted, ", "), "); their effects are not established, so it is not resumable"], "") }
+        } else {
+          let request = Filesystem.Read(path: harness_wire_log_path(config: config, round: round, kind: ".request.json"))
+          if !request.success {
+            TurnResumeRefused { cause: join(["the refused round's request ", harness_wire_log_path(config: config, round: round, kind: ".request.json"), " could not be read: ", request.error], "") }
+          } else {
+            let leading_system = match config.wire_shape { OpenAiChatCompletionsShape => true AnthropicMessagesShape => false }
+            match session_conversation_from_request(request_body: request.content, leading_system: leading_system) {
+              Absent => TurnResumeRefused { cause: "the refused round's request does not decode into a conversation" }
+              Present { value: conversation } => {
+                let messages = session_conversation_messages(conversation: conversation)
+                let validation = session_messages_validation(messages: messages)
+                if !session_validation_resumable(v: validation) {
+                  TurnResumeRefused { cause: join(["the refused round's conversation is not a validated state (unrecorded calls: ", join(session_validation_interrupted_ids(v: validation), ", "), ")"], "") }
+                } else {
+                  let resumed = concat(split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != ""), [session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | "))])
+                  match harness_write_events(config: config, events: resumed) {
+                    HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                    HarnessEventsWritten =>
+                      harness_turn_loop(
+                        config: config,
+                        messages: messages,
+                        steps_remaining: step_budget - (round - 1),
+                        steps_taken: round - 1,
+                        events: resumed,
+                        repairs_used: 0,
+                      )
+                  }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
 // The Bearer header file a turn's requests carry, if its backend access has one: the supplied-value seam the
 // operator-route witnesses read instead of running a turn.
 fn harness_backend_header_file(access: HarnessBackendAccess) -> NonEmptyStr? {
@@ -2192,6 +2305,8 @@ fn harness_outcome_artifact_path(outcome: HarnessTurnOutcome) -> String? {
     TurnStepBudgetExhausted { steps_taken: _ } => none
     TurnTransportRefused { detail: _ } => none
     TurnResponseUnreadable { cause: _ } => none
+    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => none
+    TurnResumeRefused { cause: _ } => none
     TurnRequestUnwritable { path: _, detail: _ } => none
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => none
     TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => none
@@ -2764,6 +2879,8 @@ fn harness_outcome_steps_taken(outcome: HarnessTurnOutcome) -> Int {
     TurnStepBudgetExhausted { steps_taken: n } => n
     TurnTransportRefused { detail: _ } => 0
     TurnResponseUnreadable { cause: _ } => 0
+    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: n } => n
+    TurnResumeRefused { cause: _ } => 0
     TurnRequestUnwritable { path: _, detail: _ } => 0
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: n } => n
     TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: n } => n

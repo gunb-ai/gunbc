@@ -6,6 +6,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
   continuation_decision,
 }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
@@ -33,6 +34,7 @@ fn pri(
     verification: verification,
     review: review,
     goal_audit: goal_audit,
+    recovery: SessionRecoveryNone,
   }
 }
 
@@ -164,6 +166,7 @@ fn running_prior() -> PriorAttemptFacts {
     verification: none,
     review: none,
     goal_audit: none,
+    recovery: SessionRecoveryNone,
   }
 }
 

@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+data an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_engine_refusal_without_explanation_ends_a_session_at_a_validated_state" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a harness worker session whose last persisted conversation answered every tool call is ended for good because the engine refused one request without saying why -- a non-2xx status, response headers present, an empty body. The worker exits 1, the capture is CaptureAbsent, the continuation decision is ContinuationEnded and every later dispatch refuses with step lineage-ended, though nothing was lost and the same conversation could continue. HARM: ten minutes of committed-state work sit on a branch no route resumes; the operator repairs by hand (DESIGN section 5, stop visibly but do not end what was recoverable).",
+
+    "OCCURRENCE, 2026-10-16, srv1 lab srv1-lab-codex-feedback-v0 at lab-dev 7acf7a3b916. Node host-conservation-shakedown-fixture-at-22-gib, attempt f288128c72d5db94, executor gunbc-harness against the operator endpoint (ninfer-serve, model qwen). After 59 provider events request 38 (38 messages, 177 KB) drew HTTP 400 with an empty body, x-request-id req_2ae5021ab9c56e6eb7fe1707af067e27; the server logged no line and was idle. The identical saved request replayed outside the session 3 minutes later drew HTTP 200 with a normal tool-call reply.",
+
+    "DISTINGUISHING FACTS: not a request that drew no response (gunbc.harness.harness_turn harness_post_drew_no_response, which is retried in place; headers came back, so the engine answered and is never retried in place). Not a refusal with an explaining body, which stays Ended, and not a hosted-quota route, which has its own classified failures. The class is specifically an unexplained refusal on a fleet-engine route at a validated state; whether the cause is transient is not knowable from the refusal. RUNG FOUND AT: mitigatable (typed exit, branch preserved) with no resume. CEILING: structurally guaranteed -- recovery-needed versus ended is decidable from the persisted conversation and the event stream, and the resume count is bounded. NEXT TRIGGER: none for the validated case once the resume lands; an interrupted tool effect remains recovery-needed and not resumable until its outcome is established, which needs an effect-outcome witness per tool. The seat route takes no header dump, so a refusal there reads as no headers and is not this class until the seat route captures headers.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.harness.harness_session_recovery", decl_name: "UnexplainedEngineRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_continuation", decl_name: "ContinuationDecision", field: WholeDeclaration },
+  ],
+}

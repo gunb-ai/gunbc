@@ -56,7 +56,7 @@ import extdeps.systemd {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
-  AttemptUnitRole, AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
+  AttemptUnitRole, AttemptWorkerRole, AttemptWorkerResumedRole, AttemptReviewerRole, AttemptAuditorRole,
   AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
   AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
 }
@@ -2492,6 +2492,7 @@ fn dispatch_worker_attempt_identity(node_id: String, attempt_key: String) -> Str
 // rejected by the fleet ssh context's safe-segment law, so every seat bind on a host needing that
 // context refused before any ssh leg (measured 2026-09-16 on srv2).
 fn gunbc_harness_spawn_argv(
+  function: String,
   gunbc_program: String,
   repo_root: String,
   worktree_path: String,
@@ -2513,7 +2514,7 @@ fn gunbc_harness_spawn_argv(
     "--source-root", join([repo_root, "/dag"], ""),
     "--source-root", join([repo_root, "/src/v2"], ""),
     "--entry", join([repo_root, "/", gunbc_harness_worker_entry], ""),
-    "--function", gunbc_harness_worker_function,
+    "--function", function,
     "--arg", join(["worktree=", worktree_path], ""),
     "--arg", join(["brief=", brief], ""),
     "--arg", join(["timeout_program=", timeout_program], ""),
@@ -2533,7 +2534,31 @@ fn gunbc_harness_spawn_argv(
 
 data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
 
+// WHICH INVOCATION OF THE ATTEMPT'S WORKER A SPAWN STARTS (gunbc.plans.harness_session_lifecycle S3):
+// the first, which begins a conversation, or the Nth resume, which continues the SAME conversation
+// from its last validated state. They are two entries of the one harness module and two exit-record
+// roles, so a resume's end is never read as the first run's.
+type DispatchWorkerRun
+  = DispatchWorkerFirst
+  | DispatchWorkerResumed { ordinal: Int }
+
 data gunbc_harness_worker_function: String = "harness_worker_cli"
+
+data gunbc_harness_worker_resume_function: String = "harness_worker_resume_cli"
+
+fn dispatch_worker_run_function(run: DispatchWorkerRun) -> String {
+  match run {
+    DispatchWorkerFirst => gunbc_harness_worker_function
+    DispatchWorkerResumed { ordinal: _ } => gunbc_harness_worker_resume_function
+  }
+}
+
+fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
+  match run {
+    DispatchWorkerFirst => AttemptWorkerRole
+    DispatchWorkerResumed { ordinal } => AttemptWorkerResumedRole { ordinal: ordinal }
+  }
+}
 
 // A LAUNCH FOR A SNAPSHOT NO TAKE WROTE HAS NO EXPRESSION HERE. Before the snapshot was a carried
 // value, a selection that took none (the instance-less fold, the vendor selectors) still produced a
@@ -2580,6 +2605,7 @@ fn dispatch_provider_inner_argv_for_launch(
   brief: String,
   alignment_chain_fingerprint: String,
   supervision_prompt: String,
+  run: DispatchWorkerRun,
 ) -> DispatchProviderInnerArgv {
   let attempt = prepared_attempt(prepared: prepared)
   let instance = attempt.instance
@@ -2659,6 +2685,7 @@ fn dispatch_provider_inner_argv_for_launch(
         HarnessWithoutSnapshot =>
           DispatchProviderInnerArgvReady {
             argv: gunbc_harness_spawn_argv(
+              function: dispatch_worker_run_function(run: run),
               gunbc_program: instance.serve_binary as String,
               repo_root: instance.repo_root as String,
               worktree_path: worktree_path,
@@ -3041,6 +3068,7 @@ fn dispatch_systemd_unit_container_plan(
   provider_inner: List<String>,
   unavailable_step: NonEmptyStr,
   unavailable_why: String,
+  worker_role: AttemptUnitRole,
 ) -> DispatchSessionContainerPlan {
   match instance.toolchain.systemd_run {
     Absent =>
@@ -3053,7 +3081,7 @@ fn dispatch_systemd_unit_container_plan(
         ], ""),
       }
     Present { value: program } =>
-      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: worker_role) {
         AttemptExitHookRefused { reason } =>
           DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
         AttemptExitHookRendered { exec_line } =>
@@ -3120,6 +3148,7 @@ fn dispatch_session_container_for_provider(
   pane_working_directory: String,
   worktree_path: String,
   provider_inner: List<String>,
+  worker_role: AttemptUnitRole,
 ) -> DispatchSessionContainerPlan {
   match provider {
     GunbcHarnessProvider =>
@@ -3133,6 +3162,7 @@ fn dispatch_session_container_for_provider(
         provider_inner: provider_inner,
         unavailable_step: "harness-transient-unit" as NonEmptyStr,
         unavailable_why: "the gunbc harness worker requires a transient unit for an enforceable memory bound",
+        worker_role: worker_role,
       )
     ClaudeCodeProvider =>
       dispatch_systemd_unit_container_plan(
@@ -3145,6 +3175,7 @@ fn dispatch_session_container_for_provider(
         provider_inner: provider_inner,
         unavailable_step: "claude-transient-unit" as NonEmptyStr,
         unavailable_why: "headless Claude Code requires a transient unit so stream-json stdout is a unit property and the session placement grant is the cgroup bound",
+        worker_role: worker_role,
       )
     CodexDispatchProvider =>
       dispatch_tmux_session_container_plan(
@@ -3423,6 +3454,40 @@ fn dispatch_spawn_commands_for_launch(
   prepared: PreparedAttemptLaunch,
   session_uuid: String,
   resolution: AlignmentResolution,
+  run: DispatchWorkerRun,
+) -> DispatchSpawnPlan {
+  let attempt = prepared_attempt(prepared: prepared)
+  let instance = attempt.instance
+  let node = attempt.node
+  let attempt_key = attempt.attempt_key
+  let provider = prepared_attempt_provider(prepared: prepared)
+  match dispatch_worker_run_admitted(run: run, provider: provider) {
+    Absent => dispatch_spawn_commands_for_admitted_run(prepared: prepared, session_uuid: session_uuid, resolution: resolution, run: run)
+    Present { value: why } => DispatchSpawnRefused { step: "resume-provider" as NonEmptyStr, detail: why }
+  }
+}
+
+// ONLY THE HARNESS HAS A SESSION TO RESUME: its conversation and wire log are the validated state a
+// resume continues. A resume asked of any other provider would start that provider's worker from the
+// brief again, which is the fresh conversation a resume is defined not to be, so it is refused.
+fn dispatch_worker_run_admitted(run: DispatchWorkerRun, provider: DispatchCliProvider) -> String? {
+  match run {
+    DispatchWorkerFirst => none
+    DispatchWorkerResumed { ordinal: _ } =>
+      match provider {
+        GunbcHarnessProvider => none
+        ClaudeCodeProvider => Present { value: "only a gunbc harness session resumes; a Claude Code worker would start over from its brief" }
+        CodexDispatchProvider => Present { value: "only a gunbc harness session resumes; a Codex worker would start over from its brief" }
+        CursorDispatchProvider => Present { value: "only a gunbc harness session resumes; a Cursor worker would start over from its brief" }
+      }
+  }
+}
+
+fn dispatch_spawn_commands_for_admitted_run(
+  prepared: PreparedAttemptLaunch,
+  session_uuid: String,
+  resolution: AlignmentResolution,
+  run: DispatchWorkerRun,
 ) -> DispatchSpawnPlan {
   let attempt = prepared_attempt(prepared: prepared)
   let instance = attempt.instance
@@ -3468,6 +3533,7 @@ fn dispatch_spawn_commands_for_launch(
     brief: brief,
     alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
     supervision_prompt: rendered_prompt,
+    run: run,
   ) {
     CursorProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
@@ -3530,6 +3596,7 @@ fn dispatch_spawn_commands_for_launch(
     ),
     worktree_path: worktree_path,
     provider_inner: provider_inner,
+    worker_role: dispatch_worker_run_role(run: run),
   ) {
     DispatchSessionContainerUnavailable { step: st, detail: d } =>
       DispatchSpawnRefused { step: st, detail: d }

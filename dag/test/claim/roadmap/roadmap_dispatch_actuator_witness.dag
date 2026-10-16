@@ -66,6 +66,7 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptWorkerRole }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_audit_unit_command,
   dispatch_attempt_audit_events_path_for_instance,
@@ -110,7 +111,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   codex_spawn_argv,
   dispatch_codex_home,
   dispatch_codex_exec_spec,
-  dispatch_spawn_commands_for_launch,
+  dispatch_spawn_commands_for_launch, DispatchWorkerFirst,
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
   dispatch_review_unit_command, dispatch_unit_exec_argv,
@@ -273,7 +274,7 @@ fn fx_snapshot_free_plan(
   let attempt = DispatchAttempt { instance: instance, node: node, attempt_key: attempt_key }
   match fx_prepared_launch(requested: attempt, launch: SnapshotFreeLaunch { attempt: attempt, executor: executor }, effort: effort, model: model) {
     Present { value: prepared } =>
-      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, resolution: resolution)
+      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, resolution: resolution, run: DispatchWorkerFirst)
     none => DispatchSpawnRefused { step: "fixture-preparation" as NonEmptyStr, detail: "the fixture launch was not prepared" }
   }
 }
@@ -558,6 +559,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     prepared: prepared,
     session_uuid: "uuid-unused-by-codex",
     resolution: fixture_ready_resolution(node_id: "codex-selected", project_ids: []),
+    run: DispatchWorkerFirst,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -1183,6 +1185,7 @@ test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
             brief: "brief",
             alignment_chain_fingerprint: "fp",
             supervision_prompt: "the rendered chain",
+            run: DispatchWorkerFirst,
           ),
         ),
         pattern: expected,
@@ -1431,6 +1434,7 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
     pane_working_directory: "/wt",
     worktree_path: "/wt",
     provider_inner: ["claude", "-p"],
+    worker_role: AttemptWorkerRole,
   ) {
     DispatchSessionContainerUnavailable { step: _, detail: _ } => false
     DispatchSessionContainerReady { container } =>
