@@ -17,7 +17,7 @@ import gunbc.design.brand_mark_assets {
 // and written by EMITTED Rust. `gunbc test //gunbc/instruments:brand-mark-assets` emits this closure,
 // builds it and runs it; nothing here is interpreted, and the byte write (Filesystem.WriteBytes) has
 // no interpreter realization. The pixels' correctness is test.claim.brand_mark_raster_witness and the
-// encoding's is test.claim.png_stored_encoding_witness (published check values and a byte-exact
+// encoding's is test.claim.png_encoding_witness (published check values and a byte-exact
 // oracle); this program establishes that the same functions, emitted, produce for EVERY file the
 // generator writes a PNG of the declared size, and that the byte route writes exactly those octets.
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
