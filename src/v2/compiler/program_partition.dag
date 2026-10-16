@@ -1,6 +1,6 @@
 module v2.compiler.program_partition
 
-import std.types { List }
+import std.types { List, Map }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
@@ -15,7 +15,8 @@ import v2.compiler.infer {
   InferredFactsEntry,
   InferredTree,
   admitted_inferred_facts_entry,
-  facts_map_from_entries,
+  facts_partial_function_of_index,
+  inferred_facts_index_enter,
   inferred_facts_subject_node
 }
 import extdeps.communication.medium { Medium }
@@ -23,10 +24,8 @@ import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.lens.application { subterm_at }
-import std.algebra { Empty, list_append, list_snoc_item, fold_list, FreeMonoid }
-import v2.std.collection {
-  Map
-}
+import std.algebra { Empty, empty_map, list_append, list_snoc_item, fold_list, FreeMonoid }
+
 import std.optional {
   Absent,
   Optional,
@@ -463,19 +462,15 @@ fn partition_closure_entry_for_node(
   }
 }
 
-fn partition_empty_inferred_facts_entries() -> List<InferredFactsEntry> {
-  []
-}
-
 fn facts_closure_entries_fold(
   ambient: InferredTree,
   segment_root: Node,
   boundary: PartitionBoundaryPolicy,
   nodes: List<Node>
-) -> Outcome<List<InferredFactsEntry>> {
+) -> Outcome<Map<Node, List<InferredFacts>>> {
   fold_list(
     xs: nodes,
-    empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
+    empty: outcome_accepted(value: empty_map()),
     cons: fn(acc, node) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -489,7 +484,7 @@ fn facts_closure_entries_fold(
             ),
             f: fn(entry) {
               outcome_accepted(
-                value: list_snoc_item(xs: entries, item: entry)
+                value: inferred_facts_index_enter(index: entries, entry: entry)
               )
             }
           )
@@ -511,7 +506,7 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<PartialFunction<No
           nodes: node_inferred_subtree_nodes(root: partition.root)
         ),
         f: fn(entries) {
-          facts_map_from_entries(entries: entries)
+          outcome_accepted(value: facts_partial_function_of_index(index: entries))
         }
       )
   }

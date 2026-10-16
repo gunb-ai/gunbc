@@ -1,20 +1,13 @@
 module v2.extdeps.languages.dag
 import std.coercion { unicode_scalar_unfold }
-import std.types { Char, List }
+import std.types { Char, List, Map }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, equivalence_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
-import v2.std.collection {
-  PointwisePower,
-  Map,
-  empty_map,
-  list_at_optional,
-  map_insert,
-  map_lookup
-}
+
 import std.optional {
   Absent,
   Optional,
@@ -75,7 +68,8 @@ import v2.std.grammar {
   derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   grammar_relation_row_to_node,
-  node_atom_identity_optional
+  node_atom_identity_optional,
+  parse_production_emitted_identity_optional
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
@@ -204,7 +198,7 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -903,7 +897,6 @@ fn emit_grammar_relation_row(
 }
 }
 
-
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
@@ -1234,10 +1227,11 @@ fn dag_grammar_qualified_type_expr() -> GrammarExpr {
 }
 
 // A generic argument is a type or a natural-number literal: `Compose<Int, MachineWidth<8>>`
-// (std.integer), the one axis DESIGN section 2 cites. v1.compiler.parse admits it because its
-// lexer gives a digit run the identifier shape, so parse_type_expr reads `8` as a leaf type named
-// "8"; the literal is lexeme-stamped here so it carries that same spelling as its atom. It is
-// admitted in the argument list only -- a bare `type T = 8` is not a type here.
+// (std.integer), the one axis DESIGN section 2 cites. The literal is lexeme-stamped here, so v2 parse
+// keeps it as an integer-literal atom carrying its spelling; the value is NOT lost at parse (held by
+// type_application_kind int_literal_generic_argument_is_a_literal_value_node_holds), and a kinded
+// parameter's body read takes it from the application's solved instance (A0-1). It is admitted in the
+// argument list only -- a bare `type T = 8` is not a type here.
 fn dag_grammar_generic_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
@@ -4408,6 +4402,12 @@ fn dag_surface_module_header_metadata_edge(e: Edge) -> Bool {
     || dag_surface_edge_is(e: e, edge: ^dag_surface_module_header_qualified_name)
 }
 
+// A where-refinement clause holds references (predicate spellings), never declarations: the symbol
+// index fill indexes nothing beneath this edge.
+fn dag_surface_where_refinement_clause_edge(e: Edge) -> Bool {
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
+}
+
 fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -7278,7 +7278,6 @@ fn dag_round_trip_authorities_ready() -> Bool {
   dag_round_trip_grammar_ready(lm: lm) &&
   dag_round_trip_trivia_fidelity_resolved()
 }
-
 
 fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
   fold_list(

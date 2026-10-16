@@ -1,6 +1,6 @@
 module v2.test.claim.name_resolve.kind_aware_binding
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   native_test_context_from_ingest,
   native_lane_file_refusal_index,
   native_module_resolve_verdict,
@@ -52,6 +52,12 @@ data kab_fn_data_source: String = "module v2.test.kab.fn_data\n\ndata n: Int = 1
 
 data kab_fn_data_user_source: String = "module v2.test.kab.fn_data_user\n\nimport v2.test.kab.fn_data { n, k }\nfn h() -> Int { n }\nfn g() -> Int { k() }\n"
 
+data kab_alias_types_source: String = "module v2.test.kab.alias_types\n\ntype FsIntList = FsIntEmpty | FsIntCons { head: Int, tail: FsIntList }\n\ntype FsIntNonEmpty {\n  head: Int\n  tail: FsIntList\n}\n\ntype FsIntAlias = FsIntNonEmpty\n"
+
+data kab_alias_return_source: String = "module v2.test.kab.alias_return\n\nimport v2.test.kab.alias_types { FsIntAlias, FsIntNonEmpty, FsIntEmpty }\nfn fse_alias_ok() -> FsIntAlias { FsIntNonEmpty { head: 1, tail: FsIntEmpty } }\n"
+
+data kab_alias_formal_source: String = "module v2.test.kab.alias_formal\n\nimport v2.test.kab.alias_types { FsIntAlias, FsIntNonEmpty }\nfn f(x: FsIntAlias) -> FsIntNonEmpty { x }\n"
+
 data kab_qual_type_source: String = "module v2.test.kab.qual_type\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Optional }\ntype Unit = | U\nfn f(x: v2.test.kab.type_opt.Optional<Unit>) -> Unit { U }\n"
 
 data kab_qual_ctor_source: String = "module v2.test.kab.qual_ctor\n\nimport v2.test.kab.type_opt { Optional }\nimport v2.test.kab.card { Card, Optional }\nfn g() -> Card { v2.test.kab.card.Optional }\n"
@@ -76,6 +82,12 @@ data kab_shadow_m_source: String = "module v2.test.kab.shadow_m\n\nimport v2.tes
 
 data kab_root_m_source: String = "module v2.test.kab.root_m\n\nimport v2.test.kab.m { R, Unit, U }\ndata m: R = R { value: U }\nfn f() -> R { m.R { value: U } }\n"
 
+data kab_refined_source: String = "module v2.test.kab.refined\n\nfn positive(n: Int) -> Bool { true }\ntype Pos = Int where positive\n"
+
+data kab_refined_user_source: String = "module v2.test.kab.refined_user\n\nimport v2.test.kab.refined { Pos }\nfn f(p: Pos) -> Bool { true }\ntype Box { p: Pos }\n"
+
+data kab_refined_as_value_source: String = "module v2.test.kab.refined_as_value\n\nimport v2.test.kab.refined { Pos }\nfn g() -> Int { Pos }\n"
+
 fn kab_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -99,6 +111,9 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_data_n_as_type_source, id: ^kab_data_n_as_type, path: "src/v2/test/fixture/kab/data_n_as_type.dag"),
     kab_read(text: kab_fn_data_source, id: ^kab_fn_data, path: "src/v2/test/fixture/kab/fn_data.dag"),
     kab_read(text: kab_fn_data_user_source, id: ^kab_fn_data_user, path: "src/v2/test/fixture/kab/fn_data_user.dag"),
+    kab_read(text: kab_alias_types_source, id: ^kab_alias_types, path: "src/v2/test/fixture/kab/alias_types.dag"),
+    kab_read(text: kab_alias_return_source, id: ^kab_alias_return, path: "src/v2/test/fixture/kab/alias_return.dag"),
+    kab_read(text: kab_alias_formal_source, id: ^kab_alias_formal, path: "src/v2/test/fixture/kab/alias_formal.dag"),
     kab_read(text: kab_qual_type_source, id: ^kab_qual_type, path: "src/v2/test/fixture/kab/qual_type.dag"),
     kab_read(text: kab_qual_ctor_source, id: ^kab_qual_ctor, path: "src/v2/test/fixture/kab/qual_ctor.dag"),
     kab_read(text: kab_rec_source, id: ^kab_rec, path: "src/v2/test/fixture/kab/rec.dag"),
@@ -110,7 +125,10 @@ fn kab_context() -> Outcome<NativeTestContext> {
     kab_read(text: kab_m_source, id: ^kab_m, path: "src/v2/test/fixture/kab/m.dag"),
     kab_read(text: kab_qual_m_r_source, id: ^kab_qual_m_r, path: "src/v2/test/fixture/kab/qual_m_r.dag"),
     kab_read(text: kab_shadow_m_source, id: ^kab_shadow_m, path: "src/v2/test/fixture/kab/shadow_m.dag"),
-    kab_read(text: kab_root_m_source, id: ^kab_root_m, path: "src/v2/test/fixture/kab/root_m.dag")
+    kab_read(text: kab_root_m_source, id: ^kab_root_m, path: "src/v2/test/fixture/kab/root_m.dag"),
+    kab_read(text: kab_refined_source, id: ^kab_refined, path: "src/v2/test/fixture/kab/refined.dag"),
+    kab_read(text: kab_refined_user_source, id: ^kab_refined_user, path: "src/v2/test/fixture/kab/refined_user.dag"),
+    kab_read(text: kab_refined_as_value_source, id: ^kab_refined_as_value, path: "src/v2/test/fixture/kab/refined_as_value.dag")
   ])
 }
 
@@ -122,6 +140,8 @@ type KabVerdicts {
   data_n_user: NativeModuleResolveVerdict
   data_n_as_type: NativeModuleResolveVerdict
   fn_data_user: NativeModuleResolveVerdict
+  alias_return: NativeModuleResolveVerdict
+  alias_formal: NativeModuleResolveVerdict
   qual_type: NativeModuleResolveVerdict
   qual_ctor: NativeModuleResolveVerdict
   rec_user: NativeModuleResolveVerdict
@@ -132,6 +152,8 @@ type KabVerdicts {
   qual_m_r: NativeModuleResolveVerdict
   shadow_m: NativeModuleResolveVerdict
   root_m: NativeModuleResolveVerdict
+  refined_user: NativeModuleResolveVerdict
+  refined_as_value: NativeModuleResolveVerdict
 }
 
 fn kab_verdicts() -> Optional<KabVerdicts> {
@@ -148,6 +170,8 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           data_n_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_user", path: ^kab_data_n_user).verdict,
           data_n_as_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.data_n_as_type", path: ^kab_data_n_as_type).verdict,
           fn_data_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.fn_data_user", path: ^kab_fn_data_user).verdict,
+          alias_return: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.alias_return", path: ^kab_alias_return).verdict,
+          alias_formal: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.alias_formal", path: ^kab_alias_formal).verdict,
           qual_type: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_type", path: ^kab_qual_type).verdict,
           qual_ctor: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_ctor", path: ^kab_qual_ctor).verdict,
           rec_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.rec_user", path: ^kab_rec_user).verdict,
@@ -157,7 +181,9 @@ fn kab_verdicts() -> Optional<KabVerdicts> {
           variant_payload: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.variant_payload", path: ^kab_variant_payload).verdict,
           qual_m_r: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.qual_m_r", path: ^kab_qual_m_r).verdict,
           shadow_m: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.shadow_m", path: ^kab_shadow_m).verdict,
-          root_m: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.root_m", path: ^kab_root_m).verdict
+          root_m: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.root_m", path: ^kab_root_m).verdict,
+          refined_user: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.refined_user", path: ^kab_refined_user).verdict,
+          refined_as_value: native_module_resolve_verdict(context: context, refusal_index: index, module: "v2.test.kab.refined_as_value", path: ^kab_refined_as_value).verdict
         })
       }
   }
@@ -248,6 +274,23 @@ test fn an_imported_fn_and_data_value_from_the_same_module_resolve() -> Bool {
   }
 }
 
+// ALIAS-TYPED FORMAL (#13832 regression): fill treated NotATypeDecl as "no members", so a fn Arrow
+// was never descended and `x` was not indexed. Body `{ x }` refused parameter_path_not_indexed;
+// return-position alias has no parameter path and stayed green.
+test fn an_alias_typed_formal_resolves_and_its_body_x_binds() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.alias_formal)
+  }
+}
+
+test fn an_alias_in_return_position_still_resolves() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.alias_return)
+  }
+}
+
 // QUALIFIED PATHS USE THE SAME ELIGIBILITY (resolve_declared_path_reading /
 // symbol_index_lexical_eligible). A dotted type Optional is not ambiguous with the imported variant.
 test fn a_qualified_type_optional_resolves_beside_a_same_spelling_variant() -> Bool {
@@ -326,5 +369,26 @@ test fn a_root_bound_value_head_keeps_its_projection_reading_on_a_construct_tag(
   match kab_verdicts() {
     Absent => false
     Present { value: vs } => kab_refuses_with(v: vs.root_m, reason: ^resolve_reason_construct_tag_not_a_constructor)
+  }
+}
+
+// AN IMPORTED REFINEMENT IS A TYPE. `type Pos = Int where positive` is stored as a Conj carrying
+// its where clause (v2.std.type_binder refinement_declaration_of_node). Kind eligibility had read
+// every non-record Conj as a value, so an imported refinement was excluded from type position and
+// refused unbound -- std.types Char inside v2.std.text, which refused String for every importer.
+// Both type positions bind: a parameter and a record field.
+test fn an_imported_refinement_binds_in_type_position() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_accepted(v: vs.refined_user)
+  }
+}
+
+// THE DUAL. Classified as a value, the same refinement used to bind in value position; as a type
+// it is excluded there and the kernel fold is unbound.
+test fn an_imported_refinement_in_value_position_is_unbound() -> Bool {
+  match kab_verdicts() {
+    Absent => false
+    Present { value: vs } => kab_refuses_with(v: vs.refined_as_value, reason: ^resolve_reason_unbound_symbol)
   }
 }

@@ -1,289 +1,39 @@
 module v2.compiler.resolve
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b, nfr_reason_landed_after_typed_census }
 import v2.std.language_model { LanguageModel }
-
 import v2.compiler.normalized_tree { normalized_tree_record_declarations, MemberDeclarationsNotRead, MemberDeclarationsRead, NormalizedTree, normalized_tree_resource_declarations }
-import v2.compiler.body_lowering_fold {
-  TypeDeclModuleModifierRows,
-  TypeDeclarationModifierChannel,
-  TypeDeclarationModifiersCaptured
-}
-import v2.std.member_declaration_kind {
-  DeclaredMember,
-  declared_members_have_duplicate,
-  MemberKindChannel,
-  MemberKindsCaptured,
-  MemberKindsUnavailable,
-  QualifiedDeclaredMember,
-  no_member_declaration_kinds
-}
-import v2.compiler.lexical_scope {
-  ArrowAuthoredSlot,
-  ArrowBodyOrNamedSlot,
-  ArrowCarriedSlot,
-  ArrowCodomainSlot,
-  ArrowDomainSlot,
-  ArrowResourceRequirementsSlot,
-  ArrowSlotScope,
-  ArrowTypeParamsSlot,
-  BindBinderSlot,
-  BindBodySlot,
-  BindValueSlot,
-  PatternBinderCandidate,
-  SlotScopeOuter,
-  SlotScopeParamsOverOuter,
-  SlotScopeParamsOverTypeParams,
-  SlotScopeTypeParams,
-  arrow_domain_binder_names,
-  arrow_domain_binders,
-  arrow_slot,
-  arrow_slot_scope,
-  bind_binder,
-  bind_carries_arm_scope_exit,
-  bind_positional_slot,
-  declaration_names_value,
-  module_root_bindings,
-  pattern_binder_candidates,
-  try_edge_declared_binding
-}
-import v2.std.declaration_marker {
-  ReachesNoTestCode,
-  ReachesTestMarkedDeclaration,
-  TestCodeIndex,
-  test_code_index_add_module,
-  test_code_index_empty,
-  test_code_reach
-}
+import v2.compiler.body_lowering_fold { TypeDeclModuleModifierRows, TypeDeclarationModifierChannel, TypeDeclarationModifiersCaptured }
+import v2.std.member_declaration_kind { DeclaredMember, declared_members_have_duplicate, MemberKindChannel, MemberKindsCaptured, MemberKindsUnavailable, QualifiedDeclaredMember, no_member_declaration_kinds }
+import v2.compiler.lexical_scope { ArrowAuthoredSlot, ArrowBodyOrNamedSlot, ArrowCarriedSlot, ArrowCodomainSlot, ArrowDomainSlot, ArrowResourceRequirementsSlot, ArrowSlotScope, ArrowTypeParamsSlot, BindBinderSlot, BindBodySlot, BindValueSlot, PatternBinderCandidate, SlotScopeOuter, SlotScopeParamsOverOuter, SlotScopeParamsOverTypeParams, SlotScopeTypeParams, arrow_domain_binder_names, arrow_domain_binders, arrow_slot, arrow_slot_scope, bind_binder, bind_carries_arm_scope_exit, bind_positional_slot, declaration_names_value, module_root_bindings, pattern_binder_candidates, try_edge_declared_binding }
+import v2.std.declaration_marker { ReachesNoTestCode, ReachesTestMarkedDeclaration, TestCodeIndex, test_code_index_add_module, test_code_index_empty, test_code_reach }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.occurrence_identity {
-  LexicalValueOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence
-}
-import v2.extdeps.languages.dag {
-  dag_kernel_string_type_spelling,
-  dag_string_literal_value_optional,
-  dag_kernel_type_binding_optional,
-  dag_kernel_type_declaration_binding_optional,
-  dag_kernel_type_foreign_declaration,
-  ForeignDeclarationBinds,
-  ForeignDeclarationRefuses,
-  dag_node_is_float_literal_atom,
-  dag_node_is_int_literal_atom,
-  dag_symbol_literal_name_optional,
-  dag_string_literal_value_symbol_optional,
-  dag_node_is_module_root_conj,
-  dag_resolve_preserve_module_metadata_subtree,
-  dag_surface_module_header_metadata_edge,
-  dag_surface_operator_canonicalization_lookup,
-  namespace_graft_spine_body_optional,
-  qualified_name_from_module_node
-}
+import std.occurrence_identity { LexicalValueOccurrence, OccurrenceCategory, TypeOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import v2.extdeps.languages.dag { dag_kernel_string_type_spelling, dag_string_literal_value_optional, dag_kernel_type_binding_optional, dag_kernel_type_declaration_binding_optional, dag_kernel_type_foreign_declaration, ForeignDeclarationBinds, ForeignDeclarationRefuses, dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_symbol_literal_name_optional, dag_string_literal_value_symbol_optional, dag_node_is_module_root_conj, dag_resolve_preserve_module_metadata_subtree, dag_surface_module_header_metadata_edge, dag_surface_operator_canonicalization_lookup, namespace_graft_spine_body_optional, qualified_name_from_module_node }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.anonymous_binder { is_anonymous_param_label }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip }
-import v2.std.collection {
-  Map,
-  PointwisePower,
-  empty_map,
-  list_at_optional,
-  map_get_checked,
-  map_insert,
-  map_lookup
-}
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, fold_list, length, list_find_first, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.witness { map_get_checked }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+import v2.std.optional_layers { occupancy_declaration_spelling, wrap_type_node_occupancy_at }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
-import v2.std.diagnostic {
-  Correction,
-  CorrectionNotModeled,
-  Diagnostic,
-  Diagnostics,
-  NonEmptyDiagnostics,
-  declaration_locus,
-  node_locus,
-  Outcome,
-  UserInputBoundary,
-  Unavailable,
-  Accepted,
-  None,
-  Some,
-  diagnostics_merge,
-  diagnostics_fatal_reason,
-  diagnostics_singleton,
-  bind_outcome,
-  rejected_with_pending,
-  ExternalContractUnknown,
-  Rejected,
-  outcome_with_diagnostics
-}
+import v2.std.diagnostic { Correction, CorrectionNotModeled, Diagnostic, Diagnostics, NonEmptyDiagnostics, declaration_locus, node_locus, Outcome, UserInputBoundary, Unavailable, Accepted, None, Some, diagnostics_merge, diagnostics_fatal_reason, diagnostics_singleton, bind_outcome, rejected_with_pending, ExternalContractUnknown, Rejected, outcome_with_diagnostics }
 import v2.compiler.primitive_authority { primitive_authority_path, primitive_authority_row_names_head }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_concat_shape_declaration_path, collection_roster_primitive_call_row_optional, fold_family_realization }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_from_dotted_string,
-  qualified_name_from_node,
-  qualified_name_init,
-  qualified_name_last_segment,
-  qualified_name_to_dotted_string,
-  qualified_name_snoc,
-  declaration_reference_node,
-  declaration_reference_path_optional,
-  parameter_reference_node,
-  qualified_name_spine_segment_nodes,
-  lexical_reference_node
-}
-import v2.std.resolution_policy {
-  ImportScoped,
-  NameResolutionPolicy,
-  NamespaceOnlyY,
-  default_name_resolution_policy
-}
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
-import v2.std.symbol_index {
-  symbol_index_entry_at,
-  LexicalAmbiguous,
-  LexicalBindingCandidate,
-  LexicalHit,
-  LexicalLookup,
-  LexicalUnbound,
-  SymbolIndex,
-  empty_symbol_index,
-  GlobalBareHit,
-  GlobalBareLookupAmbiguous,
-  GlobalBareLookupUnbound,
-  symbol_index_absolute_candidates,
-  RecordTypePayload,
-  VariantArmPayload,
-  symbol_index_declared_payload_at,
-  symbol_index_declares_resource_at,
-  symbol_index_global_unique_lookup,
-  symbol_index_declaring_path_of,
-  symbol_index_lexical_eligible,
-  symbol_index_lexical_eligible_declared_payload,
-  symbol_index_lexical_lookup,
-  symbol_index_lexical_lookup_for,
-  symbol_index_lexical_lookup_for_declared_payload,
-  symbol_index_declared_binders_at,
-  symbol_index_declared_type_params_at,
-  symbol_index_declares_primitive_contract_at,
-  symbol_index_lookup,
-  symbol_index_renaming_alias_at,
-  type_decl_member_shape,
-  type_decl_member_child_walk,
-  TypeDeclChildrenInherited,
-  TypeDeclChildrenTypeOccurrence,
-  TypeDeclChildWalk,
-  symbol_index_owning_module_of
-}
-import v2.std.node {
-  BinderTypeEdge,
-  core_edge,
-  Occupancy,
-  MapLiteralEntriesEdge,
-  labeled_core_is,
-  named_edges,
-  positional_child_count,
-  positional_edges,
-  Arrow,
-  Atom,
-  Bind,
-  Branch,
-  Occupancy,
-  Instantiation,
-  Loop,
-  Value,
-  ComputationNode,
-  Conj,
-  Disj,
-  Edge,
-  Match,
-  Authored,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  Loop,
-  fold_node,
-  LoopCarrierBinder,
-  LoopRealizedDeclaration,
-  loop_edge_role,
-  symbol_intern_lexeme,
-  symbol_lexeme,
-  arrow_domain_binds_a_name,
-  AdmitCallersEdge,
-  edge_label_of,
-  node_with_occurrence_id,
-  Instantiation,
-  symbol_eq,
-  symbol_lexeme,
-  labeled_named_is,
-  well_formed,
-  Loop,
-  LoopBoundMeasure,
-  LoopCarrierBinder,
-  LoopRealizedDeclaration,
-  loop_edge_role,
-  MatchArmPatternEdge,
-  MatchArmScopeExitEdge,
-  ArrowSignatureOrderEdge,
-  edge_is_core,
-  StructuralLabel,
-  label_sort_key,
-  labeled_named_is,
-  ConstructTagEdge,
-  ArrowBodyEdge,
-  BinderDefaultEdge,
-}
-import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
-import v2.std.node_query {
-  field_projection_edge_field_optional,
-  field_projection_optional,
-  binder_node_edge,
-  binder_node_parts,
-  declared_field_from_edge,
-  member_edge_type_node,
-  NamedChildAmbiguous,
-  NamedChildFound,
-  NamedChildMissing,
-  named_child_lookup,
-  construct_tag_reading,
-  ConstructTagAuthored,
-  ConstructTagElided,
-  NotAConstruct,
-  construct_tag_optional,
-  field_projection_node,
-  construct_tag_path_optional,
-  declared_field_named,
-  node_positional_child_targets,
-  find_named_child,
-  is_wildcard_pattern,
-  pattern_wildcard_name,
-  find_core_child,
-}
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string, qualified_name_snoc, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node, qualified_name_spine_segment_nodes, lexical_reference_node }
+import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
+import v2.std.symbol_index { symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of }
+import v2.std.node { BinderTypeEdge, core_edge, Occupancy, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge }
+import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentTypeParameterUnjudged, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names }
+import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, node_positional_child_targets, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
-import v2.std.map_introduction {
-  MapIntroductionEntryNodes,
-  MapIntroductionKeyRepeated,
-  MapIntroductionKeysDistinct,
-  MapLiteralEntriesMalformed,
-  MapLiteralEntriesNone,
-  MapLiteralEntriesPresent,
-  map_literal_entries,
-  lower_map_introduction,
-  map_introduction_duplicate_key,
-  map_introduction_expected_head_is_map
-}
-import std.types { List }
+import v2.std.map_introduction { MapIntroductionEntryNodes, MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, MapLiteralEntriesMalformed, MapLiteralEntriesNone, MapLiteralEntriesPresent, map_literal_entries, lower_map_introduction, map_introduction_duplicate_key, map_introduction_expected_head_is_map }
+import std.types { List, Map }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -313,59 +63,181 @@ type ResolvedTree {
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
   lexical_bindings: Map<OccurrenceId, LexicalBinding>
-  unavailable_providers: List<ClosureProviderRefusal>
+  // THE CLOSURE'S PUBLICATION ROSTER. Includes DeclarationAvailable rows; unavailability is
+  // read from it by ClosureProviderRefusal (unavailable_provider_for_path).
+  module_outcomes: List<ModuleOutcome>
+  // THE ROSTER GROUPED ONCE PER CLOSURE (module_outcome_index), carried from the closure to every infer read
+  // of unavailable_provider_for_path; infer does not regroup module_outcomes per lookup.
+  outcome_index: ModuleOutcomeIndex
   member_kinds: MemberKindChannel
   type_declaration_modifiers: TypeDeclarationModifierChannel
   constructing_module: Optional<Symbol>
 }
 
-// A CLOSURE ROOT WHOSE OWN RESOLVE REFUSED, AND WHY. v2.compiler.name_resolve closure_declarations_demand
-// resolves every root in the closure to fill the index inference reads; a root that refuses contributes no
-// declarations, and until this carrier that absence was SILENT -- a receiver typed by one of its records
-// refused as a bare lookup miss (infer_reason_projection_receiver_declaration_unavailable) with nothing to
-// say the provider never resolved, so the provider's real defect never ranked (DESIGN section 5, the
-// absorbing fallback's signal loss). The roster rides on the tree so every lookup miss can name its cause.
+// A LOOKUP READING: this path's provider refused, and this is the chain. Constructed from
+// ModuleOutcome; not a second publication roster.
 type ClosureProviderRefusal {
   module: QualifiedName
   refusal: NonEmptyDiagnostics
 }
 
-// THE ONE READ every closure-index miss consults: the refused provider whose module IS the
-// declaration's fill-time owning module (`v2.std.symbol_index` `symbol_index_owning_module_of`),
-// if any. A proper-prefix join would attribute v2.p.child.R to refused parent v2.p. A miss
-// with no refused owning module stays the bare miss.
-fn unavailable_provider_for_path(
-  index: SymbolIndex,
-  providers: List<ClosureProviderRefusal>,
-  path: QualifiedName
-) -> Optional<ClosureProviderRefusal> {
-  match symbol_index_owning_module_of(index: index, path: path) {
-    Present { value: owner } => unavailable_provider_for_module(providers: providers, module: owner)
-    Absent => optional_absent()
+type DeclarationOutcome
+  = DeclarationAvailable { path: QualifiedName }
+  | DeclarationRefused { path: QualifiedName, refusal: NonEmptyDiagnostics }
+
+// THE ONE PUBLICATION ROSTER. ModuleUnavailable is ingest or admission: the module's declarations
+// were never observed. ModuleObserved is the only grain at which a declaration is published, and
+// only DeclarationAvailable rows are published. Nothing provisional is ever a ModuleObserved
+// DeclarationAvailable.
+type ModuleOutcome
+  = ModuleUnavailable { module: QualifiedName, refusal: NonEmptyDiagnostics }
+  | ModuleObserved { module: QualifiedName, declarations: List<DeclarationOutcome> }
+
+fn module_outcome_module(o: ModuleOutcome) -> QualifiedName {
+  match o {
+    ModuleUnavailable { module: m, refusal: _ } => m
+    ModuleObserved { module: m, declarations: _ } => m
   }
 }
 
-fn unavailable_provider_for_module(providers: List<ClosureProviderRefusal>, module: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  fold(providers, init: optional_absent(), f: fn(acc, p) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if p.module == module { optional_present(value: p) } else { acc }
+// THE ONE AUTHORITY for "is this declaration available": a DeclarationAvailable row on some
+// ModuleObserved. Census, lookup, and infer read this; they do not re-test the module walk.
+fn declaration_available(outcomes: List<ModuleOutcome>, path: QualifiedName) -> Bool {
+  fold_list(xs: outcomes, empty: false, cons: fn(found, o) {
+    found || match o {
+      ModuleUnavailable { module: _, refusal: _ } => false
+      ModuleObserved { module: _, declarations: ds } =>
+        fold_list(xs: ds, empty: false, cons: fn(hit, d) {
+          hit || match d {
+            DeclarationAvailable { path: p } => p == path
+            DeclarationRefused { path: _, refusal: _ } => false
+          }
+        })
     }
   })
 }
 
-fn unavailable_providers_except_subject(providers: List<ClosureProviderRefusal>, subject: QualifiedName) -> List<ClosureProviderRefusal> {
-  fold_list(xs: providers, empty: [], cons: fn(acc, p) {
-    if p.module == subject {
-      acc
-    } else {
-      list_snoc_item(xs: acc, item: p)
+fn module_outcomes_provider_refusals(outcomes: List<ModuleOutcome>) -> List<ClosureProviderRefusal> {
+  fold_list(xs: outcomes, empty: [], cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } =>
+        list_snoc_item(xs: acc, item: ClosureProviderRefusal { module: m, refusal: r })
+      ModuleObserved { module: m, declarations: ds } =>
+        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
+          match d {
+            DeclarationAvailable { path: _ } => a
+            DeclarationRefused { path: _, refusal: r } =>
+              list_snoc_item(xs: a, item: ClosureProviderRefusal { module: m, refusal: r })
+          }
+        })
     }
   })
+}
+
+// THE PATH-KEYED GROUPING OF THE ROSTER. A reference lookup asks about one path or one module, so
+// the roster is grouped once per closure (module_outcome_index) and every per-name read is a map
+// lookup; scanning the list per name cost O(outcomes) per reference. unavailable_modules is keyed by
+// the ModuleUnavailable module, refused_declarations by the DeclarationRefused path; the first row
+// for a key wins, as the list scan's first hit did.
+type ModuleOutcomeIndex {
+  unavailable_modules: Map<QualifiedName, ClosureProviderRefusal>
+  refused_declarations: Map<QualifiedName, ClosureProviderRefusal>
+}
+
+fn empty_module_outcome_index() -> ModuleOutcomeIndex {
+  ModuleOutcomeIndex { unavailable_modules: empty_map(), refused_declarations: empty_map() }
+}
+
+fn module_outcome_index_insert_first(
+  m: Map<QualifiedName, ClosureProviderRefusal>,
+  key: QualifiedName,
+  value: ClosureProviderRefusal
+) -> Map<QualifiedName, ClosureProviderRefusal> {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => m
+    Absent => map_insert(m: m, key: key, value: value)
+  }
+}
+
+fn module_outcome_index(outcomes: List<ModuleOutcome>) -> ModuleOutcomeIndex {
+  fold_list(xs: outcomes, empty: empty_module_outcome_index(), cons: fn(acc, o) {
+    match o {
+      ModuleUnavailable { module: m, refusal: r } =>
+        ModuleOutcomeIndex {
+          unavailable_modules: module_outcome_index_insert_first(
+            m: acc.unavailable_modules,
+            key: m,
+            value: ClosureProviderRefusal { module: m, refusal: r }
+          ),
+          refused_declarations: acc.refused_declarations
+        }
+      ModuleObserved { module: m, declarations: ds } =>
+        fold_list(xs: ds, empty: acc, cons: fn(a, d) {
+          match d {
+            DeclarationAvailable { path: _ } => a
+            DeclarationRefused { path: p, refusal: r } =>
+              ModuleOutcomeIndex {
+                unavailable_modules: a.unavailable_modules,
+                refused_declarations: module_outcome_index_insert_first(
+                  m: a.refused_declarations,
+                  key: p,
+                  value: ClosureProviderRefusal { module: m, refusal: r }
+                )
+              }
+          }
+        })
+    }
+  })
+}
+
+// A row belonging to `except` (the subject being walked) is never read: that walk is how the row was recorded.
+fn closure_provider_unless_module(
+  hit: Optional<ClosureProviderRefusal>,
+  except: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match hit {
+    Present { value: p } => if p.module == except { optional_absent() } else { hit }
+    Absent => hit
+  }
+}
+
+fn unavailable_declaration_refusal(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.refused_declarations, key: path), except: except)
+}
+
+// THE ONE READ every closure-index miss consults: a DeclarationRefused at this exact path, else a
+// ModuleUnavailable whose module IS the declaration's fill-time owning module. A proper-prefix join
+// would attribute v2.p.child.R to refused parent v2.p. A miss with neither stays the bare miss.
+fn unavailable_provider_for_path(
+  index: SymbolIndex,
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  path: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  match unavailable_declaration_refusal(providers: providers, except: except, path: path) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      match symbol_index_owning_module_of(index: index, path: path) {
+        Present { value: owner } => unavailable_provider_for_module(providers: providers, except: except, module: owner)
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn unavailable_provider_for_module(
+  providers: ModuleOutcomeIndex,
+  except: QualifiedName,
+  module: QualifiedName
+) -> Optional<ClosureProviderRefusal> {
+  closure_provider_unless_module(hit: map_lookup(m: providers.unavailable_modules, key: module), except: except)
 }
 
 fn resolved_tree_unavailable_provider(tree: ResolvedTree, path: QualifiedName) -> Optional<ClosureProviderRefusal> {
-  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.unavailable_providers, path: path)
+  unavailable_provider_for_path(index: tree.symbol_index, providers: tree.outcome_index, except: Empty, path: path)
 }
 
 // The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
@@ -406,7 +278,8 @@ fn resolved_tree_of(
   root: Node,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ClosureProviderRefusal>,
+  module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
   lexical: List<LexicalBindingEntry>
@@ -416,7 +289,8 @@ fn resolved_tree_of(
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
     lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) }),
-    unavailable_providers: unavailable_providers,
+    module_outcomes: module_outcomes,
+    outcome_index: outcome_index,
     member_kinds: member_kinds,
     type_declaration_modifiers: type_declaration_modifiers,
     constructing_module: resolved_tree_constructing_module_of(root: root)
@@ -540,14 +414,15 @@ type Namespace {
   test_code: TestCodeIndex
   declared_in: QualifiedName
   imported_origins: Map<Symbol, QualifiedName>
-  // THE CLOSURE'S REFUSED PROVIDERS, OVERLAID FOR THIS SUBJECT WALK. Empty until
+  // THE CLOSURE'S MODULE OUTCOMES, OVERLAID FOR THIS SUBJECT WALK. Empty until
   // closure_declarations_demand has run; never the subject's own row (that walk is how
-  // the row was recorded). An imported name whose declaring module is here refuses with
-  // that chain, not as unbound (resolve_reason_declarer_refused).
-  unavailable_providers: List<ClosureProviderRefusal>
+  // the row was recorded). An imported name whose declaration is DeclarationRefused, or
+  // whose module is ModuleUnavailable, refuses with that chain, not as unbound
+  // (resolve_reason_declarer_refused).
+  module_outcomes: ModuleOutcomeIndex
 }
 
-fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<ClosureProviderRefusal>) -> Namespace {
+fn namespace_with_module_outcomes(namespace: Namespace, providers: ModuleOutcomeIndex) -> Namespace {
   Namespace {
     bindings: namespace.bindings,
     canonical_symbols: namespace.canonical_symbols,
@@ -556,7 +431,7 @@ fn namespace_with_unavailable_providers(namespace: Namespace, providers: List<Cl
     test_code: namespace.test_code,
     declared_in: namespace.declared_in,
     imported_origins: namespace.imported_origins,
-    unavailable_providers: providers
+    module_outcomes: providers
   }
 }
 
@@ -582,7 +457,7 @@ type Scope
 type FrameKind
   = ParameterFrame { arrow_path: QualifiedName }
   | LexicalFrame { binders: Map<Symbol, LexicalBinding> }
-  | TypeParameterFrame
+  | TypeParameterFrame { binders: Map<Symbol, QualifiedName> }
 
 // A LEXICAL BINDER, AS THE FRAME THAT INTRODUCES IT RECORDED IT. A `let`, a match-arm pattern binder
 // and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
@@ -673,7 +548,7 @@ fn empty_namespace() -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: Empty,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -716,7 +591,7 @@ fn admit_value_binders(names: List<Symbol>, outer: Scope) -> BinderAdmission {
       BinderDuplicateInFrame { binder: b } => BinderDuplicateInFrame { binder: b }
       BinderHidesVisibleValue { binder: b } => BinderHidesVisibleValue { binder: b }
       BindersAdmitted { locals: m } =>
-        match v2.std.collection.map_lookup(m: m, key: name) {
+        match map_lookup(m: m, key: name) {
           Present { value: _ } => BinderDuplicateInFrame { binder: name }
           Absent => admit_one_value_binder(locals: m, name: name, outer: outer)
         }
@@ -984,7 +859,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     ),
     declared_in: declared_in,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 
@@ -1172,6 +1047,9 @@ fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition)
 fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) -> DeclaringPosition {
   match declaring {
     DeclaringAt { path: path } =>
+      if symbol_index_edge_introduces_no_declarations(e: e) {
+        NotDeclaring
+      } else {
       match e.label {
         StructuralLabel { label: _ } =>
           if dag_surface_module_header_metadata_edge(e: e) || binder_node_edge(e: e) {
@@ -1186,6 +1064,7 @@ fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) ->
             DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
           }
         Positional => declaring
+      }
       }
     DeclaringInSpine { path: _, body: _ } => declaring
     NotDeclaring => declaring
@@ -1236,7 +1115,7 @@ type ScopeBinding
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
     ScopeFrame { locals: m, outer: o, kind: kind } =>
-      match v2.std.collection.map_get_checked(m, name) {
+      match map_get_checked(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             Accepted { value: BoundInFrame { canonical: v, kind: kind }, diagnostics: d_here }
@@ -1256,7 +1135,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
-      match v2.std.collection.map_get_checked(mod.bindings, name) {
+      match map_get_checked(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => Accepted { value: BoundAtRoot { canonical: v }, diagnostics: d }
           Absent => Accepted { value: ScopeUnbound, diagnostics: d }
@@ -1937,7 +1816,7 @@ fn resolve_reference_path_miss(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2016,7 +1895,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.unavailable_providers, path: path) {
+  match unavailable_provider_for_path(index: ctx.namespace.symbol_index, providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, path: path) {
     Present { value: provider } =>
       Rejected {
         diagnostics: rejected_with_pending(
@@ -2156,11 +2035,14 @@ fn resolve_kernel_candidates_all_denote(ctx: ResolveContext, class: AmbiguousLoo
 
 fn resolve_kernel_candidate_list_denotes(ctx: ResolveContext, cs: FreeMonoid<LexicalBindingCandidate>, canonical: Symbol) -> Bool {
   fold_list(xs: cs, empty: true, cons: fn(acc, c) {
-    acc && match dag_kernel_type_declaration_binding_optional(
-      path: symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path)
-    ) {
-      Present { value: k } => k == canonical
-      Absent => false
+    acc && match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: c.path) {
+      MentionDeclaringUnique { declaring: declaring } =>
+        match dag_kernel_type_declaration_binding_optional(path: declaring) {
+          Present { value: k } => k == canonical
+          Absent => false
+        }
+      MentionDeclaringUnavailable => false
+      MentionDeclaringContested { claimants: _ } => false
     }
   })
 }
@@ -2176,7 +2058,7 @@ fn resolve_kernel_type_atom_optional(n: Node, identity: Symbol) -> Optional<Node
 fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match map_lookup(m: ctx.namespace.imported_origins, key: identity) {
     Present { value: origin } =>
-      match unavailable_provider_for_module(providers: ctx.namespace.unavailable_providers, module: origin) {
+      match unavailable_provider_for_module(providers: ctx.namespace.module_outcomes, except: ctx.namespace.module_qn, module: origin) {
         Present { value: provider } =>
           Rejected {
             diagnostics: rejected_with_pending(
@@ -2231,7 +2113,7 @@ fn resolve_frame_bound_reference(
   pending: Diagnostics
 ) -> Outcome<ResolvedAtom> {
   match kind {
-    TypeParameterFrame =>
+    TypeParameterFrame { binders: _ } =>
       Accepted {
         value: ResolvedAtom { node: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id), lexical: [] },
         diagnostics: pending
@@ -2378,18 +2260,55 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
           ))
-        ScopeUnbound => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+        ScopeUnbound =>
+          match resolve_type_parameter_value_reading(ctx: ctx, identity: identity) {
+            Present { value: path } =>
+              match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+                Present { value: _ } =>
+                  Accepted {
+                    value: ResolvedAtom { node: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id), lexical: [] },
+                    diagnostics: pending
+                  }
+                Absent =>
+                  Rejected {
+                    diagnostics: rejected_with_pending(
+                      pending: pending,
+                      rejected: diagnostics_singleton(d: Diagnostic {
+                        reason: ^resolve_reason_parameter_path_not_indexed,
+                        at: node_locus(node: n),
+                        correction: Unavailable { reason: UserInputBoundary }
+                      })
+                    )
+                  }
+              }
+            Absent => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
+          }
       }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
   }
 }
 
+// WHETHER THIS MODULE MAY BIND A ROSTER SURFACE HEAD (concat, count). The one authority is
+// collection_roster_rows: surface head → the template DeclarationRef. The head binds only if an
+// import's origin composed with the imported name is that declaration's identity (origin.leaf ==
+// declaration_ref_path), or this module is the declaring module. Not a decl_name string match.
+fn collection_roster_template_visible(ctx: ResolveContext, row: DeclarationRef) -> Bool {
+  let path = declaration_ref_path(r: row)
+  match qualified_name_last_segment(qn: path) {
+    Absent => false
+    Present { value: leaf } =>
+      match map_lookup(m: ctx.namespace.imported_origins, key: leaf) {
+        Present { value: origin } => qualified_name_snoc(qn: origin, segment: leaf) == path
+        Absent => ctx.namespace.declared_in == qualified_name_init(qn: path)
+      }
+  }
+}
+
 // A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then a primitive-call
 // row of the one collection roster by SURFACE HEAD (v2.compiler.fold_lowering collection_roster_rows: concat,
-// count), then unbound. The roster is asked LAST, so any declaration that claims the name -- a local, an
-// import, an indexed declaration -- takes precedence and the row never shadows the corpus. The row's
-// declaration name (collection_concat_shape) is not a second implicit spelling of the primitive.
+// count) WHEN THE TEMPLATE IDENTITY IS VISIBLE, then unbound. A roster head that is not visible is
+// unbound — never primitive_authority (that would restore the ambient concat_contract last-tier).
 fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
     SymbolIndexAtomHit { path: path } =>
@@ -2410,7 +2329,12 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
         Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
         Absent =>
           match collection_roster_primitive_call_row_optional(head: identity) {
-            Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+            Present { value: r } =>
+              if collection_roster_template_visible(ctx: ctx, row: r.row) {
+                resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+              } else {
+                resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+              }
             Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
           }
       }
@@ -2419,9 +2343,9 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
 
 // THE LAST TIER: a free kernel primitive binds to its std.primitives contract row (v2.compiler.primitive_authority),
 // asked only after the frame, the imports, the indexed declarations, the kernel types and the collection roster
-// have all declined the name, so an ordinary declaration (a local fn, an imported corpus fn) always
-// wins. Collection-roster heads (filter/any) are the prior tier. A canonical symbol is not a
-// primitive and keeps its own answer. A name no authority declares stays the
+// have all declined the name. A collection-roster primitive-call head (concat, count) never reaches
+// this tier: an invisible roster head is unbound, so concat_contract cannot restore an ambient bind.
+// A canonical symbol is not a primitive and keeps its own answer. A name no authority declares stays the
 // typed resolve_reason_unbound_symbol refusal. The found row is JOINED on its own `name` field: a row whose declaration
 // name disagrees with its name field is the typed resolve_reason_primitive_row_name_disagrees refusal, not a spelling bind.
 fn resolve_atom_primitive_authority(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
@@ -2573,14 +2497,15 @@ fn resolved_tree_outcome(
   w: ResolveNodeWalk,
   symbol_index: SymbolIndex,
   closure_declarations: SymbolIndex,
-  unavailable_providers: List<ClosureProviderRefusal>,
+  module_outcomes: List<ModuleOutcome>,
+  outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel
 ) -> Outcome<ResolvedTree> {
   match w {
     ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
       Accepted {
-        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, unavailable_providers: unavailable_providers, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
+        value: resolved_tree_of(root: v, symbol_index: symbol_index, closure_declarations: closure_declarations, module_outcomes: module_outcomes, outcome_index: outcome_index, member_kinds: member_kinds, type_declaration_modifiers: type_declaration_modifiers, lexical: l),
         diagnostics: d
       }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
@@ -2769,7 +2694,6 @@ fn resolve_transform_children(
     )
   }))
 }
-
 
 // A MATCH ARM'S BINDERS ARE A LEXICAL FRAME, LIKE PARAMETERS AND `let`. Normalize lowers a pat
 // over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
@@ -3361,7 +3285,6 @@ fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
     MapLiteralEntriesMalformed => true
   }
 }
-
 
 fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
   let type_args = node_positional_child_targets(node: x.expected)
@@ -3976,6 +3899,8 @@ fn resolve_node_walk_entered(
       }
     TypeNode { connective: Instantiation } =>
       resolve_type_application(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
+    TypeNode { connective: Occupancy } =>
+      resolve_occupancy(ctx: ctx, walked: resolve_children_homogeneous_scope(ctx: ctx, n: n))
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
     ComputationNode { behavior: _ } =>
@@ -3997,10 +3922,14 @@ fn resolve_node_walk_entered(
 // ambiguity where the head resolved.
 fn resolve_type_application(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
   match walked {
-    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+    ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
       match resolve_type_application_refusal_optional(ctx: ctx, n: resolved) {
-        Absent => walked
-        Present { value: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+        Absent =>
+          match resolve_optional_application_contract_refusal_optional(ctx: ctx, n: resolved) {
+            Absent => ResolveWalkAccepted { value: resolve_type_application_normalized(n: resolved), diagnostics: d, lexical: l }
+            Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+          }
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
       }
     ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
   }
@@ -4102,7 +4031,7 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
       match found {
         BoundInFrame { canonical: _, kind: k } =>
           match k {
-            TypeParameterFrame => true
+            TypeParameterFrame { binders: _ } => true
             ParameterFrame { arrow_path: _ } => false
             LexicalFrame { binders: _ } => false
           }
@@ -4132,18 +4061,22 @@ fn resolve_kind_variant_paths_optional(ctx: ResolveContext, declaration: Qualifi
         required: TypeOccurrence
       ) {
         LexicalHit { node: kind_decl, path: kind_binding } =>
-          let kind_path = symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding)
-          match kind_decl.kind {
-            TypeNode { connective: Disj } =>
-              optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
-                match e.label {
-                  Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
-                  StructuralLabel { label: _ } => acc
-                  Positional => acc
-                }
-              }))
-            TypeNode { connective: _ } => optional_absent()
-            ComputationNode { behavior: _ } => optional_absent()
+          match symbol_index_declaring_path_of(index: ctx.namespace.symbol_index, target: kind_binding) {
+            MentionDeclaringUnavailable => optional_absent()
+            MentionDeclaringContested { claimants: _ } => optional_absent()
+            MentionDeclaringUnique { declaring: kind_path } =>
+              match kind_decl.kind {
+                TypeNode { connective: Disj } =>
+                  optional_present(value: fold(kind_decl.children, init: Empty, f: fn(acc, e) {
+                    match e.label {
+                      Authored { name: v } => list_snoc_item(xs: acc, item: qualified_name_snoc(qn: kind_path, segment: v))
+                      StructuralLabel { label: _ } => acc
+                      Positional => acc
+                    }
+                  }))
+                TypeNode { connective: _ } => optional_absent()
+                ComputationNode { behavior: _ } => optional_absent()
+              }
           }
         LexicalAmbiguous { candidates: _ } => optional_absent()
         LexicalUnbound => optional_absent()
@@ -4389,7 +4322,6 @@ fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
     || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
-
 // ONE EDGE'S TARGET, OBSERVED. A preserved metadata edge is accepted as its own target unchanged,
 // so the caller rebuilding Edge { label, target } reproduces the edge exactly.
 fn resolve_child_edge(
@@ -4465,7 +4397,7 @@ fn resolve_children_homogeneous_scope(
   n: Node
 ) -> ResolveNodeWalk {
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
     true => lexical_frame(fb: arrow_domain_frame_binders(n: n), outer: scope_type)
     false => scope_type
@@ -4520,7 +4452,7 @@ fn resolve_children_homogeneous_scope(
 // It is not a style rule: v2.compiler.infer recognizes a type variable by the callee Arrow's own
 // type-parameter edge (v2.std.type_binder type_param_names), and that reading is sound only because
 // no `T` inside the Arrow can mean anything but its binder.
-fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
+fn resolve_type_param_frame(n: Node, outer: Scope, declaring: DeclaringPosition) -> Scope {
   match type_param_names(n: n) {
     Empty => outer
     Cons { head: _, tail: _ } =>
@@ -4529,8 +4461,56 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
           map_insert(acc, name, name)
         }),
         outer: outer,
-        kind: TypeParameterFrame
+        kind: TypeParameterFrame { binders: type_param_value_binders(n: n, declaring: declaring) }
       }
+  }
+}
+
+// A KINDED BINDER IS ALSO READABLE AS A VALUE: ONE DECLARATION, TWO READINGS (A0-1). The binder stays
+// the single entry of this frame; a kinded one additionally records the path its value reading is
+// keyed by, <declaring path>.<name> -- the same key a value parameter of this fn has
+// (resolve_frame_bound_reference ParameterFrame), so binder identity is the declaring path plus the
+// name. A value parameter of the same spelling would be the SAME key, so it is refused
+// (resolve_type_params_slot); a body `let` cannot capture it (lexical frames, not that key).
+// "Kinded" is the existing language-level literal rule, not a per-kind roster
+// (std.machine_constraints machine_width_literal_roster_frontier). An unkinded binder, or a binder
+// with no declaring path (a lambda, an anonymous arrow), records nothing, so its value read keeps
+// refusing resolve_reason_type_parameter_in_value_position.
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head: the seed is a typed let because an
+// untyped empty_map() in the fold init is emitted with the bare FreeMonoid alias head (E0107).
+fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol, QualifiedName> {
+  match declaring {
+    DeclaringAt { path: path } =>
+      let seed: Map<Symbol, QualifiedName> = empty_map()
+      fold(kinded_type_param_names(n: n), init: seed, f: fn(acc, name) {
+        map_insert(acc, name, qualified_name_snoc(qn: path, segment: name))
+      })
+    DeclaringInSpine { path: _, body: _ } => empty_map()
+    NotDeclaring => empty_map()
+  }
+}
+
+// THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the path its frame recorded.
+fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
+  match lookup_chain(s: ctx.type_scope, name: identity) {
+    Accepted { value: binding, diagnostics: _ } => type_parameter_binding_value_reading(binding: binding)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: this and resolve_type_parameter_value_reading
+// are two single-level matches because one match nesting a variant under Accepted is emitted with every
+// arm guarded (E0004).
+fn type_parameter_binding_value_reading(binding: ScopeBinding) -> Optional<QualifiedName> {
+  match binding {
+    BoundInFrame { canonical: canonical, kind: kind } =>
+      match kind {
+        TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
+        LexicalFrame { binders: _ } => optional_absent()
+        ParameterFrame { arrow_path: _ } => optional_absent()
+      }
+    BoundAtRoot { canonical: _ } => optional_absent()
+    ScopeUnbound => optional_absent()
   }
 }
 
@@ -4605,11 +4585,10 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   resolve_arrow_node_in(
     outer_ctx: ctx,
-    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope)),
+    ctx: resolve_ctx_with_type_scope(ctx: ctx, type_scope: resolve_type_param_frame(n: n, outer: ctx.type_scope, declaring: ctx.declaring)),
     n: n
   )
 }
-
 
 // THE BODY OF AN ARROW IS WALKED UNDER ITS DECLARED RETURN, as authored: a `data x: T = e` lowers to
 // Arrow(<empty domain>, T, T, body: e) and a `fn f(..) -> T { e }` to the same shape, so this one
@@ -4692,8 +4671,31 @@ fn resolve_arrow_slot_scope(
   }
 }
 
+// A KINDED TYPE PARAMETER AND A VALUE PARAMETER OF ONE ARROW MAY NOT SHARE A SPELLING. Both are indexed at
+// <fn path>.<name> (v2.compiler.symbol_index_fill symbol_index_fill_kinded_type_params), so the two would
+// be one key holding two declarations and the later insert would overwrite the earlier. The type-parameter
+// shadow check sees only the OUTER scope, so the same-arrow collision is refused here, where both sets are
+// visible, located at the type-parameter set, and the fill never meets it.
+fn resolve_type_params_slot(ctx: ResolveContext, arrow: Node, value_params: FrameBinders, conj: Node) -> ResolveNodeWalk {
+  let collides = fold(kinded_type_param_names(n: arrow), init: false, f: fn(acc, name) {
+    if acc {
+      true
+    } else {
+      match map_lookup(m: value_params.binders, key: name) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  })
+  if collides {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: conj)))
+  } else {
+    resolve_type_params_conj(ctx: ctx, conj: conj)
+  }
+}
+
 fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
-  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
+  let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope, declaring: ctx.declaring)
   let value_params = arrow_domain_frame_binders(n: n)
   let frame_kind = match ctx.declaring {
     DeclaringAt { path: path } => ParameterFrame { arrow_path: path }
@@ -4712,7 +4714,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
     )
     match slot {
       ArrowTypeParamsSlot =>
-        child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
+        child_walk_step(w: acc, e: e, r: resolve_type_params_slot(ctx: outer_ctx, arrow: n, value_params: value_params, conj: e.target))
       ArrowCarriedSlot =>
         child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
       ArrowResourceRequirementsSlot =>
@@ -4996,7 +4998,8 @@ fn resolve_with_namespace_policy(
     ),
     symbol_index: namespace.symbol_index,
     closure_declarations: empty_symbol_index(),
-    unavailable_providers: [],
+    module_outcomes: [],
+    outcome_index: empty_module_outcome_index(),
     member_kinds: channel,
     type_declaration_modifiers: type_declaration_modifier_channel_of_tree(tree: tree)
   )
@@ -5027,3 +5030,166 @@ fn resolve_walk_with_namespace_policy(
     )))
   }
 }
+
+// AN EXPLICIT `Optional<T>` WHOSE HEAD RESOLVED BY IDENTITY TO std.optional.Optional IS THE SAME TYPE AS `T?`
+// (ruling gunbc.design_ruling optional_sugar_is_declaration_bound), so it becomes the one Occupancy node the sugar
+// lowers to, at the application's own occurrence. The head is the resolved declaration path, never the leaf name: a
+// local type named Optional resolves to its own declaration and stays an Instantiation.
+// THE DECLARATION `T?` LOWERS FROM MUST BACK THE OCCUPANCY IT LOWERS TO (ruling gunbc.design_ruling
+// optional_sugar_is_declaration_bound). Acquisition proves only that SOME declaration sits at the canonical path
+// (occupancy_declaration_spelling); the contract is read here, from the declaration the index holds there, by
+// structure: exactly one type parameter, an `Absent` arm carrying no payload, and a `Present` arm whose one field
+// `value` has that parameter as its type. An absent or incompatible declaration refuses, never lowers.
+fn resolve_optional_declaration_refusal_optional(ctx: ResolveContext, at: Node) -> Optional<Diagnostic> {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+    Absent => optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_unavailable, at: at))
+    Present { value: decl } =>
+      if optional_declaration_backs_occupancy(ctx: ctx, decl: decl) {
+        optional_absent()
+      } else {
+        optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_optional_declaration_incompatible, at: at))
+      }
+  }
+}
+
+fn resolve_occupancy(ctx: ResolveContext, walked: ResolveNodeWalk) -> ResolveNodeWalk {
+  match walked {
+    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+      match resolve_optional_declaration_refusal_optional(ctx: ctx, at: resolved) {
+        Absent => walked
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+      }
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => walked
+  }
+}
+
+// An explicit application whose head resolves to the canonical Optional is rewritten to Occupancy, so it owes the same contract.
+fn resolve_optional_application_contract_refusal_optional(ctx: ResolveContext, n: Node) -> Optional<Diagnostic> {
+  match node_positional_child_targets(node: n) {
+    Cons { head: head, tail: Cons { head: _, tail: Empty } } =>
+      match declaration_reference_path_optional(node: head) {
+        Present { value: path } =>
+          if path == occupancy_declaration_spelling() {
+            resolve_optional_declaration_refusal_optional(ctx: ctx, at: n)
+          } else {
+            optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn optional_declaration_backs_occupancy(ctx: ResolveContext, decl: Node) -> Bool {
+  match symbol_index_declared_binders_at(index: ctx.namespace.symbol_index, qualified_path: occupancy_declaration_spelling()) {
+    Present { value: binders } =>
+      match binder_conj_names(conj: binders) {
+        Cons { head: param, tail: Empty } =>
+          match type_decl_view(target: decl) {
+            PlainTypeDecl { member: m } => optional_member_backs_occupancy(member: m, param: param)
+            GenericTypeDecl { binders: _, member: m } => optional_member_backs_occupancy(member: m, param: param)
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn optional_member_backs_occupancy(member: Node, param: Symbol) -> Bool {
+  node_is_coproduct(node: member)
+    && (count(member.children) == 2)
+    && optional_arm_holds(member: member, arm: ^Absent, param: param)
+    && optional_arm_holds(member: member, arm: ^Present, param: param)
+}
+
+fn optional_arm_holds(member: Node, arm: Symbol, param: Symbol) -> Bool {
+  match optional_arm_target(member: member, arm: arm) {
+    Present { value: payload } =>
+      if symbol_eq(a: arm, b: ^Absent) {
+        optional_arm_is_nullary(payload: payload)
+      } else {
+        optional_arm_carries_the_parameter(payload: payload, param: param)
+      }
+    Absent => false
+  }
+}
+
+fn optional_arm_target(member: Node, arm: Symbol) -> Optional<Node> {
+  fold(member.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: name } => if symbol_eq(a: name, b: arm) { optional_present(value: e.target) } else { optional_absent() }
+          _ => optional_absent()
+        }
+    }
+  })
+}
+
+fn optional_arm_is_nullary(payload: Node) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } => count(payload.children) == 0
+    _ => false
+  }
+}
+
+fn optional_type_names_parameter(type_node: Node, param: Symbol) -> Bool {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_eq(a: id, b: param)
+    _ => false
+  }
+}
+
+fn optional_arm_carries_the_parameter(payload: Node, param: Symbol) -> Bool {
+  match payload.kind {
+    TypeNode { connective: Conj } =>
+      match declared_field_list(payload: payload) {
+        Cons { head: field, tail: Empty } =>
+          (count(payload.children) == 1)
+            && symbol_eq(a: field.name, b: ^value)
+            && optional_type_names_parameter(type_node: field.type_node, param: param)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn resolve_type_application_normalized(n: Node) -> Node {
+  match node_positional_child_targets(node: n) {
+    Cons { head: head, tail: Cons { head: argument, tail: Empty } } =>
+      match declaration_reference_path_optional(node: head) {
+        Present { value: path } =>
+          if path == occupancy_declaration_spelling() {
+            wrap_type_node_occupancy_at(base: argument, occurrence_id: n.occurrence_id)
+          } else {
+            n
+          }
+        Absent => n
+      }
+    _ => n
+  }
+}
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "arrow_domain_has_named_bindings" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_domain_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_arrow_resource_requirements" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_bind_binder_target" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_construct_tag_names_constructor" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_declaring_entering" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_elided_construct_walk" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_node_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_head_path_as_written" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_expected_rename_chain" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_node" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_map_key_type_is_string_literal_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_realized_declaration" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_record_field_type_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_transform_operator_child" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "arrow_domain_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "bind_frame_binders" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_loop_carrier_binder" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "resolve_where_predicate_operator" }, reason: nfr_reason_landed_after_typed_census, dissolution: nfr_dissolve_owning_fold },
+]

@@ -25,8 +25,8 @@ import v2.extdeps.languages.dag {
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import std.algebra { list_append, count_where, Empty, length }
-import v2.std.collection { list_at_optional }
+import std.algebra { list_append, count_where, Empty, length, list_at_optional }
+
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import std.optional { Absent, optional_absent, optional_present, Present }
@@ -50,6 +50,8 @@ import v2.std.verification {
   TestClaimTransportMode,
   UnifiedTestClaim
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+
 
 // VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate |
 // ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the
@@ -640,3 +642,11 @@ fn vacuity_advisory_census_matches_row_count(
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow {
+      subject: PathSubject { path: "vacuity_operand_provenance_is_live_snapshot_duplicate_partner" },
+      reason: "hand-rolled subset predicate over TestClaimOperandProvenance (param scrutinee, off-variant wildcard arm returning false), sibling in shape to the structural-equality rows above; landed with the vacuity-lens item-5 consumer-witness fix (review 47124/46886, PR #7620) and surfaced by the whole-corpus nfr receipt after per-PR affected-set selection predict-skipped the corpus-read nfr witness at landing time (the masking class); declared so the ratchet re-arms. In-code disposition (owner v2.lens.vacuity, lane: vacuity-lens item-5 consumer-witness lane) lives at vacuity_operand_provenance_live_snapshot_duplicate_partner_predicate_disposition in src/v2/lens/vacuity.dag.",
+      dissolution: unbound_dissolution(description: "DISSOLVE-ON: provenance is read from the containment-tree projection and live-snapshot-duplicate membership is construction-side (illegal states unrepresentable), or a single canonical accessor over TestClaimOperandProvenance answers both this and the independent-oracle question (operand_provenance_is_independent_oracle), replacing both hand-matched predicates at once — never two accessors surviving side by side once one canonical one exists (DESIGN §3 single authority). Same trigger as vacuity_operand_provenance_independent_oracle_predicate_dissolution_note's sibling note."),
+    },
+]

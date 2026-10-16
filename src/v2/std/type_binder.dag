@@ -1,17 +1,22 @@
 module v2.std.type_binder
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item, zip_map }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
-import v2.std.node_query { binder_node_parts, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.std.node_query { binder_node_parts, find_labeled_child, find_named_child, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag_surface_item_standing {
   DagSurfaceNonTypeDeclaration,
   DagSurfaceTypeDeclaration,
   dag_surface_item_standing
 }
 import v2.std.node {
+  production_edge_label,
+  Disj,
+  Occupancy,
   MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
@@ -59,6 +64,8 @@ import v2.std.node {
   edge_is_core,
   is_positional,
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE EDGE THAT CARRIES A DECLARATION'S TYPE PARAMETERS. One label for one concept: `fn f<T>` carries
 // its binder Conj on its Arrow under this label, and `type Box<T>` / `type R<T> { .. }` carry theirs
@@ -266,7 +273,7 @@ fn type_decl_view(target: Node) -> TypeDeclView {
     match type_decl_identity_atom_optional(n: target) {
       Present { value: id } =>
         match dag_surface_item_standing(id: id) {
-          Present { value: DagSurfaceNonTypeDeclaration } => NotATypeDecl
+          Present { value: DagSurfaceNonTypeDeclaration { index_members: _ } } => NotATypeDecl
           Present { value: DagSurfaceTypeDeclaration } => type_decl_view_by_wrapper(target: target)
           Absent => NotATypeDecl
         }
@@ -277,6 +284,30 @@ fn type_decl_view(target: Node) -> TypeDeclView {
           type_decl_view_by_wrapper(target: target)
         }
     }
+  }
+}
+
+// A REFINEMENT DECLARATION READ FROM ITS DECLARED NODE: the where-clause production edge and the
+// carrier's type expression, or Absent when the node is not a refinement. `type Pos = Int where
+// positive` is stored as `Conj { <type-expr>: Int, <where-refinement-clause>: clause }`
+// (v2.compiler.body_lowering_fold body_lower_where_refined_type_edges). The one reader of that
+// shape, homed beside type_decl_view so the declaration classifier and v2.compiler.infer read it
+// from one place: v2.std.symbol_index type_decl_member_shape classifies a refinement as a type,
+// and v2.compiler.infer refinement_declaration reaches it through the symbol index.
+type RefinementDeclaration {
+  carrier: Node
+  where_clause: Node
+}
+
+fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration> {
+  match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: clause, diagnostics: _ } =>
+      match find_named_child(root: decl, name: ^dag_surface_type_expr) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: head, diagnostics: _ } =>
+          Present { value: RefinementDeclaration { carrier: head, where_clause: clause } }
+      }
   }
 }
 
@@ -348,6 +379,55 @@ fn type_param_kind_optional(binder: Node) -> Optional<Node> {
   fold(binder.children, init: optional_absent(), f: fn(acc, e) {
     if edge_is_core(e: e, marker: BinderTypeEdge) { optional_present(value: e.target) } else { acc }
   })
+}
+
+// The kinded names of one binder set, in declared order. A named fn, not a closure body, so the
+// accumulator's element type is the declared List<Symbol> rather than inferred through a nested fold.
+fn kinded_binder_conj_names(conj: Node) -> List<Symbol> {
+  fold(binder_conj_names(conj: conj), init: Empty, f: fn(names, name) {
+    match type_binder_target_of(binders: conj, name: name) {
+      Present { value: b } =>
+        match type_param_kind_optional(binder: b) {
+          Present { value: _ } => list_snoc_item(xs: names, item: name)
+          Absent => names
+        }
+      Absent => names
+    }
+  })
+}
+
+// THE KINDED TYPE PARAMETERS A NODE DECLARES, in declaration order: the binders whose Atom carries a
+// BinderTypeEdge (type_param_kind_optional). The ONE producer of "binder n is kinded", so the value
+// key v2.compiler.resolve mints and the entry v2.compiler.symbol_index_fill indexes cannot disagree.
+fn kinded_type_param_names(n: Node) -> List<Symbol> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: Empty, f: fn(acc, t) { kinded_binder_conj_names(conj: t) })
+  } else {
+    Empty
+  }
+}
+
+// THE KIND OF ONE KINDED TYPE PARAMETER, by name: the declaration that says what its argument may be.
+// The value read of the binder has exactly this type (v2.compiler.symbol_index_fill
+// symbol_index_fill_kinded_type_params), because the argument is a Nat literal OR a named inhabitant
+// of the kind (std.machine_constraints machine_width_literal_roster_frontier) and only the kind covers both.
+fn kinded_type_param_kind_optional(n: Node, name: Symbol) -> Optional<Node> {
+  let carried = fold(n.children, init: Empty, f: fn(acc, e) {
+    if edge_is_type_params(e: e) { list_snoc_item(xs: acc, item: e.target) } else { acc }
+  })
+  if count(carried) == 1 {
+    fold(carried, init: optional_absent(), f: fn(acc, t) {
+      match type_binder_target_of(binders: t, name: name) {
+        Present { value: b } => type_param_kind_optional(binder: b)
+        Absent => optional_absent()
+      }
+    })
+  } else {
+    optional_absent()
+  }
 }
 
 // WHAT A BINDER'S ANNOTATION BOUNDS IT BY, READ FROM THE MARKER THE BINDER WAS BUILT WITH -- never guessed
@@ -806,3 +886,10 @@ fn type_binder_atom_identity_optional(n: Node) -> Optional<Symbol> {
     _ => optional_absent()
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_alias_renaming_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_atom_identity_optional" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "type_binder_instantiation_scan" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

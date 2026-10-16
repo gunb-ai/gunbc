@@ -6,15 +6,13 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
-import std.os.types { NobleNumbat2404Lts, OsPackageManager }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
+import std.os.types { OsPackageManager }
+import std.optional { Present }
 import extdeps.package_managers.apt {
   package_tailscale,
   package_tmux,
 }
-import extdeps.version.semver { SemVerVersion, semver_version_parse }
 import extdeps.tailscale.serve {
-  tailscale_scoped_removal_capability,
   tailscale_serve_unix_target,
   tailscale_serve_unix_target_path,
   TailscaleServeEndpoint,
@@ -28,13 +26,27 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_member_path,
 }
 import gunbc.fleet.fleet_intent { srv1_host, ComputeHost }
+import gunbc.live_deploy.lab_host_plan {
+  LabDeployPlan,
+  srv1_lab_deploy_plan,
+}
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  host_os_package_manager_optional,
+  host_tailscale_client,
+}
+import gunbc.live_deploy.slice_bounds {
+  user_work_slice_unit_name,
+  repository_convergence_slice_unit_name,
+  approval_broker_slice_unit_name,
+}
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
-import std.materialization_store_grant { materialization_store_durable_root_path, materialization_store_staging_root_path, DurableHostVolumeRoot }
+import std.materialization_store_grant { materialization_store_root_path, materialization_store_staging_root_path }
 import gunbc.host.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
@@ -48,6 +60,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
+  srv1_live_dashboard_instance,
   ProdRoleRealization,
   ProdRoleHolder,
   ProdRoleRealizedBy,
@@ -230,7 +243,7 @@ fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposi
 // rather than a constant in the emitter. The tailscale Serve CLI CHANGED in client 1.52, so `serve
 // <flags> off` is available on some hosts and not others, and the previous code answered the
 // question with a data row asserting it for every host at every time.\n\nsrv1 was measured at
-// 1.98.3 and its row says so, with the measurement carried as the observed string rather than as a
+// 1.102.2 (inhabitance receipt 2026-10-15) and its row says so, with the measurement carried as the observed string rather than as a
 // Bool — a verdict that has forgotten what it was computed from cannot be re-checked when the host
 // is upgraded. srv2 and srv3 are ScopedRemovalUnobserved, which is NOT a claim that they lack the
 // capability: it is the statement that nobody looked. Collapsing that to either pole is the
@@ -248,7 +261,8 @@ type DeploymentHostTarget {
   ssh_host: NonEmptyStr
   tailscale_endpoint: NetworkEndpoint
   tailnet_domain: NonEmptyStr?
-  os_package_manager: OsPackageManager
+  lab_plan: LabDeployPlan
+  os_package_manager: OsPackageManager?
   tailscale_client: TailscaleServeCapability
   host_directories: List<OwnedDirectoryTarget>
 }
@@ -427,7 +441,7 @@ data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_br
 
 data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
 
-data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker.slice"
+data gunbc_approval_broker_slice_unit_name: NonEmptyStr = approval_broker_slice_unit_name
 
 // THE REPOSITORY CONVERGENCE ONESHOT'S SLICE, ONE PER HOST. Its bounds and the reason it is one per
 // host rather than per instance live with the rows in gunbc.live_deploy.slice_bounds; the admission
@@ -436,10 +450,17 @@ data gunbc_approval_broker_slice_unit_name: NonEmptyStr = "gunbc-approval-broker
 // hierarchy prefix with a serving slice: a dash in a slice name is a parent edge, so a name like
 // gunbc-roadmap-convergence.slice would sit INSIDE gunbc-roadmap.slice and inherit the bound it
 // exists to escape. That admission checks descent, not only equality, for this reason.
-data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-convergence.slice"
+data gunbc_repository_convergence_slice_unit_name: NonEmptyStr = repository_convergence_slice_unit_name
 
 fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_repository_convergence_slice_unit_name as String], "") as NonEmptyStr
+}
+
+// USER-MANAGER SLICE FILE. --user transients look up Slice= in the user manager; a system
+// unit of the same name is a different object. /etc/systemd/user/ is the system-wide user
+// unit directory (systemd.unit(5)).
+fn gunbc_user_work_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/user/", user_work_slice_unit_name as String], "") as NonEmptyStr
 }
 
 // THE ROLE-FOLLOWING SINGLETONS A SPEC HOLDS -- the approval broker unit and front door, the fabric
@@ -732,6 +753,14 @@ fn deployment_belt_discovery_service_unit_name(names: DeploymentNames) -> NonEmp
   join([deployment_belt_unit_stem(names: names), "-belt-discovery.service"], "") as NonEmptyStr
 }
 
+fn deployment_belt_credential_recovery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
+}
+
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
 // field (see that type's header for why a name is carried rather than derived). It is one account
 // for the host rather than one per instance, and that is correct rather than a shortcut: the
@@ -840,6 +869,14 @@ fn deployment_belt_answer_path_unit_path(names: DeploymentNames) -> NonEmptyStr 
 
 fn deployment_belt_discovery_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_discovery_service_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_credential_recovery_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_credential_recovery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_credential_recovery_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
@@ -1008,10 +1045,6 @@ fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
     "/etc/systemd/system/",
     names.tree_sync_unit_name as String,
   ], "") as NonEmptyStr
-}
-
-fn ubuntu_noble_os_package_manager() -> OsPackageManager {
-  ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
 type DeploymentSpec {
@@ -1226,7 +1259,7 @@ fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> Lis
 // layout resolved through a total host-identity lookup.
 fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
   let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
-  [
+  let host = [
     OwnedDirectoryDeclared {
       member: "devboot-artifact-store" as NonEmptyStr,
       path: srv1_devboot_artifact_store_root,
@@ -1239,19 +1272,24 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
-    OwnedDirectoryDeclared {
-      member: "materialization-store" as NonEmptyStr,
-      path: materialization_store_durable_root_path as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
-    OwnedDirectoryDeclared {
-      member: "materialization-store-staging" as NonEmptyStr,
-      path: materialization_store_staging_root_path(root: DurableHostVolumeRoot) as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
   ]
+  match srv1_live_dashboard_instance().materialization_store_root {
+    Absent => host
+    Present { value: store } => concat(host, [
+      OwnedDirectoryDeclared {
+        member: "materialization-store" as NonEmptyStr,
+        path: materialization_store_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+      OwnedDirectoryDeclared {
+        member: "materialization-store-staging" as NonEmptyStr,
+        path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+    ])
+  }
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget, holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
@@ -1336,26 +1374,16 @@ fn deployment_owned_steps_retract_order(spec: DeploymentSpec) -> List<Deployment
 }
 
 fn deployment_srv1_target() -> DeploymentHostTarget {
+  let surface = srv1_software_surface()
   DeploymentHostTarget {
     host: srv1_host,
     ssh_host: operator_host_srv1 as NonEmptyStr,
     tailscale_endpoint: srv1_tailscale_endpoint,
     tailnet_domain: fleet_intent_network.tailnet_domain,
-    os_package_manager: ubuntu_noble_os_package_manager(),
-    tailscale_client: srv1_observed_tailscale_client(),
+    lab_plan: srv1_lab_deploy_plan(),
+    os_package_manager: host_os_package_manager_optional(surface: surface),
+    tailscale_client: host_tailscale_client(surface: surface),
     host_directories: deployment_srv1_host_directories(),
-  }
-}
-
-// THE OBSERVED VERSION IS THE PARSE RESULT, never a hand-built record: SemVerVersion fields
-// are confined code-point runs, so the label arrives through the parser and an unadmitted
-// label is carried as a refusal, not a fabricated version (review 77150).
-data srv1_tailscale_client_observed_version: SemVerVersion? = semver_version_parse(cps: chars(s: "1.98.3" as String))
-
-fn srv1_observed_tailscale_client() -> TailscaleServeCapability {
-  match srv1_tailscale_client_observed_version {
-    Absent => ScopedRemovalUnobserved { reason: "the observed client version label failed to parse — a defect in the observed-version row, not an observation gap" }
-    Present { value: observed } => tailscale_scoped_removal_capability(observed: observed)
   }
 }
 

@@ -1,0 +1,34 @@
+module test.claim.fn_body_clone_bound_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing floor witness for the RETURNED-ARROW DOMAIN half of
+// v1.compiler.trait_derive_emit v1_generic_param_cloned_by_returned_closure.
+// An arrow-returning fn realizes as `Rc::new(move |left| f(left.clone()))`. The seed already
+// bounded generics that occupy an arrow-typed VALUE PARAMETER (compose<A,B,C>); it did not
+// bound a generic that occupies only the RETURNED ARROW's domain. Specimen:
+// std.key_relation keyed_resource_subject_value_eq<M,..> -> fn(M, M) -> Bool, value param
+// KeyedResourceRelation<..M..>, emitted `left.clone()` on M, rustc E0599. The RED is that
+// shape. The NEGATIVE is the same carrier type with no returned closure, so M is never
+// cloned: a walk keyed on `M appears on a generic type` would add Clone there and tighten
+// every caller that instantiates M with a non-Clone type.
+
+test fn returned_arrow_domain_generic_earns_clone() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_body_clone_witness.earning\n\ntype StateRel<Relation, M, State> {\n  state_of: fn(M) -> State\n  state_eq: fn(State, State) -> Bool\n}\n\nfn value_eq<M, Relation, State>(resource: StateRel<Relation, M, State>) -> fn(M, M) -> Bool {\n  let state_of = resource.state_of\n  let state_eq = resource.state_eq\n  fn(left, right) { state_eq(state_of(left), state_of(right)) }\n}\n",
+    "src/fn_body_clone_witness_earning.rs",
+    ["fn value_eq<M: Clone, Relation, State>"],
+    ["fn value_eq<M, Relation, State>", "fn value_eq<M: Clone, Relation: Clone"]
+  )
+}
+
+test fn generic_never_cloned_stays_unbounded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module fn_body_clone_witness.bare\n\ntype StateRel<Relation, M, State> {\n  state_of: fn(M) -> State\n  state_eq: fn(State, State) -> Bool\n}\n\nfn hold_only<M, Relation, State>(resource: StateRel<Relation, M, State>) -> Int {\n  0\n}\n",
+    "src/fn_body_clone_witness_bare.rs",
+    ["fn hold_only<M, Relation, State>"],
+    ["M: Clone", "fn hold_only<M: Clone"]
+  )
+}

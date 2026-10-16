@@ -1,5 +1,6 @@
 module std.occurrence_binding_resolve
 
+import std.optional { Present, Absent }
 import std.algebra { FreeMonoid, Empty }
 import std.types { String, List, Int }
 import std.occurrence_binding {
@@ -35,6 +36,7 @@ import std.occurrence_identity {
   WrongOccurrenceRole,
   occurrence_transport_validate,
 }
+
 
 // THE one exact name-binding decision for a supplied candidate population. P1 validates transport
 // and exact reference/declaration identities, excludes category-inadmissible declarations, converts
@@ -381,3 +383,4 @@ fn resolve_reference_occurrence_binding(
       )
   }
 }
+

@@ -79,6 +79,11 @@ type SystemdUnitProperty
   | NextElapseUSecMonotonic
   | AccuracyUSec
   | TimersMonotonic
+  // When the unit's main process started and exited, in CLOCK_MONOTONIC microseconds (systemd.exec(5)
+  // / org.freedesktop.systemd1.Service ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic).
+  // Zero when the event has not happened.
+  | ExecMainStartTimestampMonotonic
+  | ExecMainExitTimestampMonotonic
   | NeedDaemonReload
   | IdProperty
   | KillModeProperty
@@ -158,6 +163,8 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
     AccuracyUSec => "AccuracyUSec" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr
+    ExecMainStartTimestampMonotonic => "ExecMainStartTimestampMonotonic" as NonEmptyStr
+    ExecMainExitTimestampMonotonic => "ExecMainExitTimestampMonotonic" as NonEmptyStr
     NeedDaemonReload => "NeedDaemonReload" as NonEmptyStr
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
@@ -186,6 +193,26 @@ data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmp
 
 // systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
 data systemd_unit_load_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
+// THE LOAD STATE AS A CLOSED VOCABULARY, beside the active state above. systemd.unit(5) and
+// org.freedesktop.systemd1(5) (Unit.LoadState): `loaded`, `not-found`, `bad-setting`, `error`,
+// `masked`. A word outside the set is not guessed into one: the parse answers nothing and the caller
+// refuses it as unread.
+type SystemdUnitLoadState
+  = UnitLoaded
+  | UnitLoadNotFound
+  | UnitLoadBadSetting
+  | UnitLoadError
+  | UnitLoadMasked
+
+fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
+  if raw == "loaded" { Present { value: UnitLoaded } }
+  else { if raw == (systemd_unit_load_state_not_found_wire as String) { Present { value: UnitLoadNotFound } }
+  else { if raw == "bad-setting" { Present { value: UnitLoadBadSetting } }
+  else { if raw == "error" { Present { value: UnitLoadError } }
+  else { if raw == (systemd_unit_load_state_masked_wire as String) { Present { value: UnitLoadMasked } }
+  else { none } } } } }
+}
 
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 

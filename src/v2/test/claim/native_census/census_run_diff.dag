@@ -3,14 +3,15 @@ module v2.test.claim.native_census.census_run_diff
 import std.algebra { Cons, Empty, length, list_append, list_find_first }
 import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
-import std.types { Bool, CommitSha, Int, List, String }
-import gunbc.guarantee_measurement { GitRevision, MeasurementRevision }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.compiler.census_run_record {
+import v2.compiler.source_root_eval {
   CensusDiffClearedAndNewlyExposed,
+  CensusDiffDuplicateObligation,
   CensusDiffIncompleteEvidence,
   CensusDiffLocationUpdate,
-  CensusDiffDuplicateObligation,
+  CensusDiffRefusalChanged,
   CensusDiffMemberAdded,
   CensusDiffMemberRemoved,
   CensusDiffNewlyObservedNotRegression,
@@ -33,13 +34,6 @@ import v2.compiler.census_run_record {
   CensusRunDiffSubjectRefused,
   CensusRunIncomplete,
   CensusRunRecord,
-  census_obligation_rows_from_infer,
-  census_obligation_rows_from_member_block,
-  census_run_diff,
-  census_run_record,
-  census_three_stage_rows
-}
-import v2.compiler.compile {
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
   NativeCensusCauseResolve,
@@ -48,7 +42,12 @@ import v2.compiler.compile {
   NativeCensusScopeBlocked,
   NativeCensusScopeClosed,
   NativeInferCensusFileRefused,
-  NativeInferCensusResolveRefused
+  NativeInferCensusResolveRefused,
+  census_obligation_rows_from_infer,
+  census_obligation_rows_from_member_block,
+  census_run_diff,
+  census_run_record,
+  census_three_stage_rows
 }
 import v2.compiler.module_acquisition {
   AcquireImportedModule,
@@ -74,12 +73,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data census_diff_subject: String = "v2.cs.subject"
 
-fn rev_a() -> MeasurementRevision {
-  GitRevision { commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha }
+fn rev_a() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-a" as NonEmptyStr)
 }
 
-fn rev_b() -> MeasurementRevision {
-  GitRevision { commit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha }
+fn rev_b() -> Fnv1a64Structural {
+  content_hash_atom(value: "census-claim-reads-b" as NonEmptyStr)
 }
 
 fn planted_chain(reason: Symbol) -> NonEmptyDiagnostics {
@@ -106,7 +105,7 @@ fn planted_refused(reason: Symbol, at: FileRefusalAt, occurrence: Optional<Occur
 fn record_of(
   population: List<String>,
   obligations: List<CensusObligationRow>,
-  revision: MeasurementRevision,
+  revision: Fnv1a64Structural,
   completion: CensusRunCompletion,
   scope: NativeCensusScope
 ) -> CensusRunRecord {
@@ -120,7 +119,7 @@ fn record_of(
   )
 }
 
-fn closed_complete(population: List<String>, obligations: List<CensusObligationRow>, revision: MeasurementRevision) -> CensusRunRecord {
+fn closed_complete(population: List<String>, obligations: List<CensusObligationRow>, revision: Fnv1a64Structural) -> CensusRunRecord {
   record_of(
     population: population,
     obligations: obligations,
@@ -193,6 +192,13 @@ fn is_incomplete(f: CensusRunDiffFinding) -> Bool {
 fn is_location_update(f: CensusRunDiffFinding) -> Bool {
   match f {
     CensusDiffLocationUpdate { before: _, after: _ } => true
+    _ => false
+  }
+}
+
+fn is_refusal_changed(f: CensusRunDiffFinding) -> Bool {
+  match f {
+    CensusDiffRefusalChanged { before: _, after: _ } => true
     _ => false
   }
 }
@@ -440,6 +446,62 @@ test fn census_diff_passed_to_refused_on_a_common_member_is_newly_refusing() -> 
   let before = closed_complete(population: ["a"], obligations: passed_module(module: "a"), revision: rev_a())
   let after = closed_complete(population: ["a"], obligations: infer_refused_rows(module: "a"), revision: rev_a())
   findings_contain(findings: findings_of(result: census_run_diff(before: before, after: after)), predicate: is_newly_refusing)
+}
+
+// A module refused at resolve before and after, for a different fatal. The comparable row holds only
+// the selected fatal, so this is a changed refusal: not cleared-and-exposed (the earlier fatal may
+// survive in a later chain) and not newly refusing (it never passed).
+test fn census_diff_same_stage_different_fatal_is_a_changed_refusal() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_declarer_refused, at: planted_at(line: 4), occurrence: occ(n: 1)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_refused(reason: ^resolve_unbound, at: planted_at(line: 12), occurrence: occ(n: 7)),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_refusal_changed)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
+    && !findings_contain(findings: findings, predicate: is_newly_refusing)
+}
+
+// TWO INDEPENDENT CHAINS THAT ONLY REORDERED: [A, B] before, [B, A] after. Both refusals are still
+// there; only which one the row selects as its fatal changed. Reporting A cleared here is the false
+// claim a same-stage cleared-and-exposed rule would make.
+fn planted_two_chains(fatal: Symbol, other: Symbol, line: Int) -> CensusObligationOutcome {
+  CensusObligationRefused {
+    reason: fatal,
+    at: planted_at(line: line),
+    evidence: CensusRefusalDiagnostics { first: planted_chain(reason: fatal), rest: [planted_chain(reason: other)] },
+    occurrence: occ(n: line)
+  }
+}
+
+test fn census_diff_reordered_chains_do_not_report_a_cleared_refusal() -> Bool {
+  let before_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_two_chains(fatal: ^resolve_declarer_refused, other: ^resolve_unbound, line: 4),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let after_rows = census_three_stage_rows(
+    module: "a",
+    front_end: CensusObligationPassed,
+    resolve: planted_two_chains(fatal: ^resolve_unbound, other: ^resolve_declarer_refused, line: 4),
+    infer: CensusObligationUnobservedBehindStage { stage: NativeCensusCauseResolve }
+  )
+  let before = closed_complete(population: ["a"], obligations: before_rows, revision: rev_a())
+  let after = closed_complete(population: ["a"], obligations: after_rows, revision: rev_a())
+  let findings = findings_of(result: census_run_diff(before: before, after: after))
+  findings_contain(findings: findings, predicate: is_refusal_changed)
+    && !findings_contain(findings: findings, predicate: is_cleared_and_exposed)
 }
 
 test fn census_diff_location_movement_is_not_churn() -> Bool {
