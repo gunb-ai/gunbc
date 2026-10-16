@@ -28,9 +28,12 @@ import product.electrical.continuity {
   DiodeDisplay,
   OverLimit,
   BuzzerAsserted,
-  OpenCircuit,
-  BothPointsRecorded,
-  SecondPointInferred,
+  BuzzerNotAsserted,
+  both_points_recorded,
+  PointRecorded,
+  PointInferred,
+  ReadAboveThreshold,
+  reachability_text,
   RedBlack,
   ForwardMillivolts,
   EvidenceRef,
@@ -41,7 +44,7 @@ import product.electrical.continuity {
   JunctionForward,
   JunctionContradicted,
   ReverseUnread,
-  ReverseReadOpen,
+  ReverseOverLimit,
   reachability,
   is_reachable,
   is_inferred,
@@ -92,6 +95,8 @@ import product.p4261_carrier_layout {
   e1_c12,
   e1_third_can,
   e1_f300,
+  e1_f300_one,
+  e1_f302_one,
   e1_d2_near,
   e1_d2_far,
   e1_d5_top,
@@ -194,7 +199,7 @@ fn supplied_said() -> EvidenceRef {
 }
 
 fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, result: ContinuityResult) -> ContinuityObservation {
-  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: BothPointsRecorded, conditions: e1_bench, result: result, evidence: supplied_said() }
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, evidence: supplied_said() }
 }
 
 fn positive_term() -> TerminalIdentity {
@@ -266,13 +271,6 @@ fn row_is(s: RowSide, away: Bool) -> Bool {
   }
 }
 
-fn is_inferred_point(o: ContinuityObservation) -> Bool {
-  match o.record {
-    BothPointsRecorded => false
-    SecondPointInferred { basis: _ } => true
-  }
-}
-
 fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing {
   ConnectorHousing {
     component: e1_j20_housing.component,
@@ -294,7 +292,7 @@ fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
 }
 
 // J20'S POLARITY IS DERIVED, AND SAYS WHAT IT RESTS ON. The fused contacts are the row away from the
-// latch, the return contacts the latch side, separated by readings open to ground on the fused side;
+// latch, the return contacts the latch side, separated by silent (above-threshold) readings to ground on the fused side;
 // the return-side readings have inferred second points, and the standing carries them. The same
 // positions recorded on the opposite sides read the other way round; a side left unrecorded refuses;
 // the K1 has no measured board.
@@ -302,7 +300,7 @@ test fn j20_polarity_is_derived_from_the_readings() -> Bool {
   let e1 = match input_polarity(layout: p4261_e1_layout) {
     PolarityEstablished { fused_side, return_side, fused: _, returns, isolation } =>
       row_is(s: fused_side, away: true) && row_is(s: return_side, away: false)
-        && any(returns, o => is_inferred_point(o: o)) && count(isolation) > 0
+        && any(returns, o => is_inferred(o: o)) && count(isolation) > 0
     PolarityContradicted { readings: _ } => false
     PolarityUnestablished { gaps: _ } => false
   }
@@ -386,7 +384,7 @@ fn is_unresolved_marking(c: InstalledComponent) -> Bool {
 }
 
 // THE CANS ARE NOT ACROSS J20, AND THE UNPROBED ONE INHERITS NOTHING. C10_P5 and C12_P5 are two
-// instances identified by their own markings, their negatives on ground and their positives read open
+// instances identified by their own markings, their negatives on ground and their positives read silent
 // to the rail, so neither is placed. The third can has no reading and no decoded marking: no rating,
 // no placement, nothing from its neighbours.
 test fn the_capacitors_do_not_bound_and_the_third_inherits_nothing() -> Bool {
@@ -541,7 +539,7 @@ test fn continuity_through_a_fuse_does_not_merge_nets() -> Bool {
 }
 
 // CONFLICTING READINGS REFUSE. A supplied beep from D2's nearer tab to ground joins the rail to ground,
-// where F300's ends and the MOSFET's tab were read open to ground: polarity is contradicted, and nothing
+// where F300's ends and the MOSFET's tab were read silent to ground: polarity is contradicted, and nothing
 // is bounded.
 test fn conflicting_readings_refuse() -> Bool {
   let l = e1_with_continuity(cs: concat(e1_measured.continuity, [read(a: e1_d2_near, b: e1_ground_ref, result: BuzzerAsserted)]))
@@ -560,7 +558,7 @@ fn diode(red: ElectricalTerminalRef, black: ElectricalTerminalRef, display: Diod
 
 // A MISSING REVERSE READING STAYS MISSING, AND CONTRADICTORY DIODE READINGS REFUSE. D2's one forward
 // reading puts its anode on the farther tab and its cathode on the nearer, the reverse unread; a
-// supplied forward reading the other way makes the junction contradicted; a supplied open reverse
+// supplied forward reading the other way makes the junction contradicted; a supplied over-limit reverse
 // reading is carried as read. D5's reading puts its anode on its top tab.
 test fn junction_readings_are_raw_and_total() -> Bool {
   let d2 = junction_between(observations: e1_measured.diode_readings, asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far)
@@ -577,7 +575,7 @@ test fn junction_readings_are_raw_and_total() -> Bool {
   }
   let reverse_read = match junction_between(observations: concat(e1_measured.diode_readings, [diode(red: e1_d2_near, black: e1_d2_far, display: OverLimit)]), asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far) {
     JunctionForward { anode: _, cathode: _, forward: _, reverse } => match reverse {
-      ReverseReadOpen { readings } => count(readings) == 1
+      ReverseOverLimit { readings } => count(readings) == 1
       _ => false
     }
     _ => false
@@ -587,6 +585,47 @@ test fn junction_readings_are_raw_and_total() -> Bool {
     _ => false
   }
   forward_unread && contradicted && reverse_read && d5
+}
+
+// A SILENT BUZZER SEPARATES WITHOUT CLAIMING AN OPEN CIRCUIT. The E1's rail and ground references are
+// separated by no-beep readings and stand ReadAboveThreshold, which keeps the two low-impedance classes
+// apart; D2's forward diode reading conducts across exactly those classes, so the silence cannot be a
+// literal open circuit, and the rendering says "above the continuity threshold", never "open".
+test fn a_silent_buzzer_separates_without_claiming_an_open_circuit() -> Bool {
+  let s = reachability(observations: e1_measured.continuity, asset: p4261_e1_b, a: e1_rail_ref, b: e1_ground_ref)
+  let separated = match s {
+    ReadAboveThreshold { readings } => count(readings) > 0 && all(readings, o => match o.result {
+      BuzzerNotAsserted => true
+      BuzzerAsserted => false
+    })
+    _ => false
+  }
+  let conducts_across = match junction_between(observations: e1_measured.diode_readings, asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far) {
+    JunctionForward { anode: _, cathode: _, forward: _, reverse: _ } => true
+    _ => false
+  }
+  let text = reachability_text(s: s)
+  separated && conducts_across && !is_reachable(s: s)
+    && text.contains("above the continuity threshold") && !text.contains("open")
+}
+
+// AN ENDPOINT IS RECORDED ONLY WHERE THE OPERATOR NAMED IT. D2's and D5's tabs were named, so their first
+// points are recorded; F300's ends (from "everything i touched") and the MOSFET's middle lead (from "the
+// very middle little small pin") are inferred from the visible population, and both kinds still carry
+// their inferred grade into what they support.
+fn first_point_recorded_for(t: ElectricalTerminalRef) -> List<Bool> {
+  map(filter(e1_measured.continuity, o => terminal_ref_equal(a: o.first, b: t)), o => match o.record.first {
+    PointRecorded => true
+    PointInferred { basis: _ } => false
+  })
+}
+
+test fn population_statements_infer_their_endpoints() -> Bool {
+  let named = concat(concat(first_point_recorded_for(t: e1_d2_near), first_point_recorded_for(t: e1_d2_far)), concat(first_point_recorded_for(t: e1_d5_top), first_point_recorded_for(t: e1_d5_bottom)))
+  let population = concat(first_point_recorded_for(t: e1_f300_one), first_point_recorded_for(t: e1_f302_one))
+  count(named) == 4 && all(named, r => r)
+    && count(population) > 0 && all(population, r => !r)
+    && all(filter(e1_measured.continuity, o => terminal_ref_equal(a: o.first, b: e1_f300_one)), o => is_inferred(o: o))
 }
 
 // ── IDENTIFICATION AND COUNTS ─────────────────────────────────────────────────────────────────
@@ -647,7 +686,7 @@ test fn the_report_is_rendered_from_the_typed_model() -> Bool {
   let e1_io = management_io_text(layout: p4261_e1_layout)
   e1.contains("at most 60 V, limited by D2's TVS reverse standoff")
     && e1.contains("equally limited by D5")
-    && e1.contains("readings whose second probe point is inferred")
+    && e1.contains("readings with a probe point inferred from the operator's words")
     && e1.contains("caliper spans fit a 3.0 mm pitch and do not fit a 4.2 mm pitch")
     && k1.contains("no input bound established")
     && k1.contains("polarity UNESTABLISHED")

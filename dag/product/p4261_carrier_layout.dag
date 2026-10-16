@@ -58,10 +58,11 @@ import product.electrical.continuity {
   ContinuityObservation,
   ContinuityResult,
   BuzzerAsserted,
-  OpenCircuit,
+  BuzzerNotAsserted,
   ProbeRecord,
-  BothPointsRecorded,
-  SecondPointInferred,
+  both_points_recorded,
+  second_point_inferred,
+  both_points_inferred,
   EvidenceGrade,
   evidence_grade,
   evidence_grade_text,
@@ -72,7 +73,7 @@ import product.electrical.continuity {
   JunctionStanding,
   junction_between,
   is_reachable,
-  is_read_open,
+  is_read_above_threshold,
   is_reachability_contradicted,
   supporting_readings,
   terminal_text,
@@ -389,12 +390,12 @@ fn polarity_gaps(to_fuse: List<ReachabilityStanding>, to_return: List<Reachabili
   concat(concat(
     if all_reachable(ss: to_fuse) { [] } else { [FusedSideNotReached] },
     if all_reachable(ss: to_return) { [] } else { [ReturnSideNotJoined] }),
-    if is_read_open(s: isolation) { [] } else { [IsolationUnread] })
+    if is_read_above_threshold(s: isolation) { [] } else { [IsolationUnread] })
 }
 
 // The polarity a fused side implies, if the readings establish it: every fused-side contact reaches the
 // fuse terminal, every return-side contact reaches the first return-side contact, and the first
-// fused-side contact is read open to the first return-side one. Any contradicted standing contradicts.
+// fused-side contact is read silent (above the continuity threshold) to the first return-side one. Any contradicted standing contradicts.
 fn polarity_from(g: ReachabilityGraph, input: InputConnector, fused: RowSide, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> InputPolarity {
   let ret = other_side(s: fused)
   let to_fuse = standings_to(g: g, ts: side_terminals(h: input.housing, side: fused), target: input.fuse_terminal)
@@ -851,7 +852,6 @@ data e1_c12_pos: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "positive"
 data e1_c12_neg: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "negative")
 
 data e1_fet_terminal_names: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "tab"]
-data e1_fet_on_rail: List<NonEmptyStr> = ["pin 4", "tab"]
 data e1_fet_off_rail: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 5", "pin 6", "pin 7"]
 
 // THE INFERENCES. "Ground" in the operator's readings is J20's latch-side row: they named that row ground
@@ -862,16 +862,28 @@ data e1_ground_basis: NonEmptyStr = "the operator's 'ground' is J20's latch-side
 data e1_rail_basis: NonEmptyStr = "the operator's 'power' / 'rail' is J20's fused row away from the latch (2026-10-15 'all 9 on top are joined to the fuse'; the annotated photograph's RAIL row); the point on it is unrecorded and position 1 stands for it"
 data e1_row_basis: NonEmptyStr = "'the entire bottom row is ground': each latch-side position beeps to the operator's ground reference, taken as the same row's position 1"
 
+// POPULATION STATEMENTS NAME NO EXACT FIRST POINT. "Everything I touched", "only the big tab and the very
+// middle pin" and "nothing seems to be connected to ground" cover visible terminals without saying which
+// were probed; each terminal the statement covers stands for a touch, inferred with that basis.
+data e1_touched_basis: NonEmptyStr = "'everything i touched had continuity to power' (F300, F302): which points were touched is unrecorded; the named parts' two visible terminals each stand for a touch"
+data e1_middle_pin_basis: NonEmptyStr = "'the very middle little small pin': the middle of the MOSFET's seven leads, which the IPB017N10N5LF pinout numbers pin 4; the number is read off the lead geometry, not off the board"
+data e1_only_basis: NonEmptyStr = "'only the BIG tab and the very middle little small pin are connected to rail power': whether each other lead was touched is unrecorded; 'only' is taken to cover every visible lead"
+data e1_nothing_basis: NonEmptyStr = "'nothing seems to be connected to ground': whether each lead and the tab were touched is unrecorded; 'nothing' is taken to cover every visible terminal"
+
+fn touched_to(a: ElectricalTerminalRef, reference: ElectricalTerminalRef, first_basis: NonEmptyStr, second_basis: NonEmptyStr, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
+  e1_read(a: a, b: reference, record: both_points_inferred(first_basis: first_basis, second_basis: second_basis), result: result, evidence: evidence)
+}
+
 fn e1_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, record: ProbeRecord, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
   ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, evidence: evidence }
 }
 
 fn to_ground(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
-  e1_read(a: a, b: e1_ground_ref, record: SecondPointInferred { basis: e1_ground_basis }, result: result, evidence: evidence)
+  e1_read(a: a, b: e1_ground_ref, record: second_point_inferred(basis: e1_ground_basis), result: result, evidence: evidence)
 }
 
 fn to_rail(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
-  e1_read(a: a, b: e1_rail_ref, record: SecondPointInferred { basis: e1_rail_basis }, result: result, evidence: evidence)
+  e1_read(a: a, b: e1_rail_ref, record: second_point_inferred(basis: e1_rail_basis), result: result, evidence: evidence)
 }
 
 data e1_fuse_ends_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-15", verbatim: "regarding the 'which end of the fuse' the 9 supply pins beep to both ends of the fuse" }
@@ -890,31 +902,35 @@ data e1_measured: MeasuredBoard = MeasuredBoard {
   asset: p4261_e1_b,
   continuity: concat(concat(concat(concat(
     // each fused-row position to both ends of F1: both points named
-    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_near, record: BothPointsRecorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),
-    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_far, record: BothPointsRecorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said))),
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_near, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_far, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said))),
     // each latch-side position to the row's ground reference
-    map(filter(j20_row_indices, i => i > 1), i => e1_read(a: e1_j20_at(side: LatchSide, index: i), b: e1_ground_ref, record: SecondPointInferred { basis: e1_row_basis }, result: BuzzerAsserted, evidence: e1_bottom_row_said))),
+    map(filter(j20_row_indices, i => i > 1), i => e1_read(a: e1_j20_at(side: LatchSide, index: i), b: e1_ground_ref, record: second_point_inferred(basis: e1_row_basis), result: BuzzerAsserted, evidence: e1_bottom_row_said))),
     [
       to_rail(a: e1_d2_near, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
       to_ground(a: e1_d2_far, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
       to_ground(a: e1_c10_neg, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
       to_ground(a: e1_c12_neg, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
-      to_rail(a: e1_c10_pos, result: OpenCircuit, evidence: e1_caps_said),
-      to_rail(a: e1_c12_pos, result: OpenCircuit, evidence: e1_caps_said),
+      to_rail(a: e1_c10_pos, result: BuzzerNotAsserted, evidence: e1_caps_said),
+      to_rail(a: e1_c12_pos, result: BuzzerNotAsserted, evidence: e1_caps_said),
       to_ground(a: e1_d5_top, result: BuzzerAsserted, evidence: e1_d5_tabs_said),
       to_rail(a: e1_d5_bottom, result: BuzzerAsserted, evidence: e1_d5_tabs_said),
-      to_rail(a: e1_f300_one, result: BuzzerAsserted, evidence: e1_fuses_said),
-      to_rail(a: e1_f300_other, result: BuzzerAsserted, evidence: e1_fuses_said),
-      to_ground(a: e1_f300_one, result: OpenCircuit, evidence: e1_fuses_said),
-      to_ground(a: e1_f300_other, result: OpenCircuit, evidence: e1_fuses_said),
-      to_rail(a: e1_f302_one, result: BuzzerAsserted, evidence: e1_fuses_said),
-      to_rail(a: e1_f302_other, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_one, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_other, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_one, reference: e1_ground_ref, first_basis: e1_touched_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_other, reference: e1_ground_ref, first_basis: e1_touched_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f302_one, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f302_other, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
     ]),
-    // the probed input-stage MOSFET: its drain (tab, pin 4) to the rail; nothing to ground
+    // the probed input-stage MOSFET: the named tab and the middle lead (pin 4) to the rail; the other
+    // leads silent to the rail, and every terminal silent to ground, inferred over the population named
     concat(concat(
-      map(e1_fet_on_rail, n => to_rail(a: fet_terminal(name: n), result: BuzzerAsserted, evidence: e1_fet_said)),
-      map(e1_fet_off_rail, n => to_rail(a: fet_terminal(name: n), result: OpenCircuit, evidence: e1_fet_said))),
-      map(e1_fet_terminal_names, n => to_ground(a: fet_terminal(name: n), result: OpenCircuit, evidence: e1_fet_said)))),
+      [
+        to_rail(a: fet_terminal(name: "tab"), result: BuzzerAsserted, evidence: e1_fet_said),
+        touched_to(a: fet_terminal(name: "pin 4"), reference: e1_rail_ref, first_basis: e1_middle_pin_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fet_said),
+      ],
+      map(e1_fet_off_rail, n => touched_to(a: fet_terminal(name: n), reference: e1_rail_ref, first_basis: e1_only_basis, second_basis: e1_rail_basis, result: BuzzerNotAsserted, evidence: e1_fet_said))),
+      map(e1_fet_terminal_names, n => touched_to(a: fet_terminal(name: n), reference: e1_ground_ref, first_basis: e1_nothing_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fet_said)))),
   diode_readings: [
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d2_far, black: e1_d2_near }, display: ForwardMillivolts { millivolts: 600 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-15", verbatim: "yeah putting the red on the ground of the diode and black on the supply reads .6" } },
     DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d5_top, black: e1_d5_bottom }, display: ForwardMillivolts { millivolts: 605 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "diode reading on D5 gives .605 / yes red was on top" } },
