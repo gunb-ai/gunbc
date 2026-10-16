@@ -24,7 +24,9 @@ import gunbc.host.bmc_control_binding {
   bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
   BmcControlEndpointMismatch, bmc_control_route_endpoint,
 }
-import gunbc.host.smpro_platform_capability { smpro_capability, SmproCapabilityAbsent }
+import gunbc.host.smpro_platform_capability {
+  smpro_capability, SmproCapability, SmproCapabilityAbsent, SmproCapabilityPresent,
+}
 import gunbc.host.host_reset_subject_roster {
   OrdinaryResetRosterHost,
   ResetRosterHostUnderDeclaredDrop,
@@ -141,13 +143,16 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
 test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
   managed_hosts() |> all(h => match bmc_control_binding(observed: h.access, secured: h.secure) {
     BmcControlBound { route: r } => match managed_host_smpro_subject(host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
-      SmproPassSubjectBound { subject: s } =>
-        (s.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
-          && (s.site.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
-          && s.site.control.socket == 0
-          && (s.host as String) == (operator_host_mtcollins1 as String)
-      SmproPassSiteRefused { cause: _ } => false
-      SmproPassEndpointMismatch { bound: _, site: _ } => false
+      Absent => false
+      Present { value: standing } => match standing {
+        SmproPassSubjectBound { subject: s } =>
+          (s.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+            && (s.site.endpoint.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+            && s.site.control.socket == 0
+            && (s.host as String) == (operator_host_mtcollins1 as String)
+        SmproPassSiteRefused { cause: _ } => false
+        SmproPassEndpointMismatch { bound: _, site: _ } => false
+      }
     }
     BmcControlAccessUnobserved { endpoint: _ } => false
     BmcControlNotSecured { cause: _ } => false
@@ -193,9 +198,12 @@ test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> 
       ))
     match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
       BmcControlBound { route: r } => match managed_host_smpro_subject(host: crossed, control: bmc_control_binding(observed: crossed.access, secured: crossed.secure)) {
-        SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
-        SmproPassSubjectBound { subject: _ } => false
-        SmproPassSiteRefused { cause: _ } => false
+        Absent => false
+        Present { value: standing } => match standing {
+          SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+          SmproPassSubjectBound { subject: _ } => false
+          SmproPassSiteRefused { cause: _ } => false
+        }
       }
       BmcControlAccessUnobserved { endpoint: _ } => false
       BmcControlNotSecured { cause: _ } => false
