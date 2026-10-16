@@ -32,7 +32,8 @@ import gunbc.host.host_effect_realize {
   dark_snapshot_readback_legs,
   approval_broker_dark_install,
 }
-import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
+import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, SliceControlUnit, slice_control_plan_for }
+import std.algebra { non_empty_to_list }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
@@ -128,12 +129,18 @@ test fn an_empty_leg_list_is_ok() -> Bool {
   step_of(s: dark_run_legs(legs: [], transport: LocalShell)) == none
 }
 
+// THE ROSTER IS A FreeSemigroup, SO THERE IS NO EMPTY-ROSTER ARM TO TEST ANY MORE -- `units: []`
+// does not type-check. This claim used to have one (`SliceControlPlanNotOwed => count(legs(units:
+// [])) == 0`), which was worse than useless: it asserted the shape of a value that cannot be built,
+// and it turned srv1 losing its slice reservation into a PASSING arm. srv1 owns both the sessions
+// slice and the broker slice, so a plan that is not Derived here means the fixture moved, and the
+// claim must FAIL rather than wave it through.
 test fn slice_control_legs_follow_the_derived_plan() -> Bool {
   match slice_control_plan_for(host: deployment_spec_srv1().target.host.identity) {
     SliceControlPlanDerived { units: us } =>
-      count(dark_slice_control_legs(units: us)) >= count(us)
+      count(dark_slice_control_legs(units: us)) > 0
         && all(dark_slice_control_legs(units: us), l => leg_step(l: l) == DarkStepSliceControl)
-    SliceControlPlanNotOwed => count(dark_slice_control_legs(units: [])) == 0
+    SliceControlPlanNotOwed => false
     SliceControlPlanRefused { cause: _ } => false
   }
 }
