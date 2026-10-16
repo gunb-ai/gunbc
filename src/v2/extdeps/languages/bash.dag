@@ -1,8 +1,8 @@
 module v2.extdeps.languages.bash
 
-import std.types { List }
+import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_flat_map, list_map, empty_map, map_insert }
 import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
@@ -36,7 +36,7 @@ import v2.std.compilers.target_model {
   target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
 }
-import v2.std.collection { Map, empty_map, map_insert }
+
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { Run }
 import std.env_binding { EnvBinding, EnvSet, EnvUnset }

@@ -1,6 +1,6 @@
 module v2.compiler.native_test_vocabulary
 
-import std.algebra { FreeMonoid, FreeSemigroup, list_snoc_item, fold_list }
+import std.algebra { FreeMonoid, FreeSemigroup, list_snoc_item, fold_list, length }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,
@@ -18,16 +18,18 @@ import v2.std.text { String }
 import std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.source_position { SourceByteColumn }
-import v2.std.collection { List }
+import std.types { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
-// The route that MINTS these values is the SourceRootEvalDriver fold in v2.compiler.compile; the
-// authority that JUDGES them is gunbc.witness.v2_native_route, whose admission the emitted native
-// compiler now evaluates over its own receipt — so v2.compiler.compile imports that authority, and
-// the authority can no longer import v2.compiler.compile without a cycle. One vocabulary, two
-// readers, one home (DESIGN section 3): re-declaring the verdict beside the authority would be the
-// nickname the authority's own header already refuses.
+// The route that MINTS these values is the SourceRootEvalDriver fold in
+// v2.compiler.source_root_eval; the authority that JUDGES them is the native-route admission,
+// which the emitted native compiler evaluates over its own receipt. The compiler library
+// (v2.compiler.compile) does not import that authority. One vocabulary, two readers, one home
+// (DESIGN section 3): re-declaring the verdict or the member row beside the authority would be
+// the nickname the authority's own header already refuses. NativeRouteMemberRow lives here so
+// dag consumers (gunbc.instrument_targets) that already import this module do not import
+// v2.workflow.*, and so the v2 route fold does not mint a second row type.
 
 type NativeTestStage
   = NativeTestStageContext
@@ -42,7 +44,7 @@ type NativeTestStage
 // operator read said WHAT refused and never WHERE, and an ambiguous reference reported one
 // symbol where the resolver had named its lookup class and its competing declarations. The
 // verdict now carries the stage's NonEmptyDiagnostics unfolded, for the reason
-// v2.compiler.compile native_module_resolve_verdict already gives at the census grain:
+// v2.compiler.source_root_eval native_module_resolve_verdict already gives at the census grain:
 // summarizing is the CONSUMER's move. The reason every roster keys on is DERIVED --
 // v2.std.diagnostic diagnostics_fatal_reason, the LAST diagnostic, because rejected_with_pending
 // prepends the advisories that rode along -- so a consumer that classifies by reason reads the same symbol
@@ -103,7 +105,7 @@ fn native_test_stage_text(stage: NativeTestStage) -> String {
 // label rename or collision decide a semantic question (the ruling recorded at
 // gunbc.instruments.body_lowering_population_probe); a wildcard arm would let a fifth stage compile
 // and silently compare false. Enumerated, adding a stage fails to typecheck here until its
-// equality is decided. Consumer: gunbc.witness.v2_native_route's live-pair enrollment.
+// equality is decided. Consumer: v2.workflow.v2_native_route's live-pair enrollment.
 fn native_test_stage_eq(a: NativeTestStage, b: NativeTestStage) -> Bool {
   match a {
     NativeTestStageContext =>
@@ -163,6 +165,44 @@ fn native_test_verdict_text(verdict: NativeTestVerdict) -> String {
   }
 }
 
+// ONE TEST IDENTITY AND ONE ROW, HOMED WITH THE VERDICT THEY CARRY. The dotted spelling is
+// DERIVED (never parsed back out of a string). One NativeRouteMemberRow declaration: the
+// instrument termination fold and the native product both read this type.
+type NativeRouteTestIdentity {
+  module: String
+  declaration: String
+}
+
+fn native_route_identity_qualified(identity: NativeRouteTestIdentity) -> String {
+  concat(concat(identity.module, "."), identity.declaration)
+}
+
+fn native_route_identity_eq(a: NativeRouteTestIdentity, b: NativeRouteTestIdentity) -> Bool {
+  a.module == b.module && a.declaration == b.declaration
+}
+
+fn native_route_identity_member(target: NativeRouteTestIdentity, xs: List<NativeRouteTestIdentity>) -> Bool {
+  any(xs: xs, predicate: fn(x) { native_route_identity_eq(a: x, b: target) })
+}
+
+fn native_route_identities_unique(xs: List<NativeRouteTestIdentity>) -> Bool {
+  !any(xs: xs, predicate: fn(x) {
+    length(xs: filter(xs: xs, predicate: fn(y) { native_route_identity_eq(a: x, b: y) })) > 1
+  })
+}
+
+type NativeRouteMemberRow {
+  identity: NativeRouteTestIdentity
+  verdict: NativeTestVerdict
+}
+
+fn native_route_member_row_text(row: NativeRouteMemberRow) -> String {
+  concat(
+    native_route_identity_qualified(identity: row.identity),
+    concat(" ", native_test_verdict_text(verdict: row.verdict))
+  )
+}
+
 
 type NativeTestObservation {
   module: QualifiedName
@@ -180,7 +220,7 @@ type NativeTestObservation {
 // row retains no occurrence id: a refused parse's ids are re-minted by the next file, and a retained
 // NodeLocus would resolve to the wrong one.
 // `module` is the module the refused file DECLARES, read from its header line
-// (v2.compiler.compile native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
+// (v2.compiler.source_root_eval native_lane_declared_module_name) and parsed once into a QualifiedName, because a refused file never produced a
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.

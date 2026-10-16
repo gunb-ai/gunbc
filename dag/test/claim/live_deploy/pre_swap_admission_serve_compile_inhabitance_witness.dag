@@ -1,0 +1,83 @@
+module test.claim.live_deploy.pre_swap_admission_serve_compile_inhabitance_witness
+
+import std.types { Bool, String, List, FilePath }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.instruments.host_prelude { witness_bin_release_path }
+import gunbc.live_deploy.spec { deployment_serve_source_roots, roadmap_serve_entry_file }
+import gunbc.live_deploy.pre_swap_admission {
+  observe_serve_entry_compile_clean,
+  ServeEntryCompileAdmitted,
+  ServeEntryCompileBlocked,
+  ServeEntryCompileUnobserved,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Inhabitance for gunbc.live_deploy.pre_swap_admission observe_serve_entry_compile_clean: the checkout's own built gunbc compiles a serve entry under deployment_serve_source_roots to the dag target, and the verdict fold reads that exit and those error lines. Runs the real binary, so it is a LocalRepoWetLane claim."
+
+fn checkout_root() -> String {
+  git.Inspect.Toplevel().path as String
+}
+
+fn checkout_gunbc() -> String {
+  witness_bin_release_path(root: checkout_root(), bin_name: "gunbc")
+}
+
+// The pairing obligation (DESIGN 3): the real producer, the real serve entry, the real roots. The
+// candidate this checkout is compiles its own serve entry clean through the route the pre-swap
+// admission takes, which is the inhabitance the hermetic verdict claims are supplied against.
+test fn the_checkouts_serve_entry_compiles_clean_through_the_gate_route() -> Bool {
+  match observe_serve_entry_compile_clean(
+    repo_root: checkout_root(),
+    bin_path: checkout_gunbc(),
+    roots: deployment_serve_source_roots,
+    entry: roadmap_serve_entry_file as String,
+  ) {
+    ServeEntryCompileAdmitted => true
+    ServeEntryCompileBlocked { blocking: _, diagnostics: _ } => false
+    ServeEntryCompileUnobserved { detail: _ } => false
+  }
+}
+
+// THE STAGED MODULE IS WRITTEN UNDER A SOURCE ROOT OF THE CHECKOUT AND REMOVED AFTERWARDS. gunbc
+// compile refuses an --entry outside the workspace root ("a fixture written elsewhere, such as /tmp,
+// cannot be keyed into the module graph -- write it under a source root and delete it afterwards"),
+// so the probe goes in dag/ beside this witness, create-only, and the compile runs from the checkout
+// under the serve route's own roots, the same call the pre-swap admission makes.
+data staged_probe_dir: String = "dag/test/claim/live_deploy"
+
+fn staged_verdict_is(source: String, file: String, want_blocked: Bool) -> Bool {
+  let relative = join([staged_probe_dir, "/", file], "")
+  let absolute = join([checkout_root(), "/", relative], "")
+  let wrote = Filesystem.WriteCreateNew(path: absolute, content: source)
+  if !wrote.success {
+    false
+  } else {
+    let verdict = observe_serve_entry_compile_clean(
+      repo_root: checkout_root(),
+      bin_path: checkout_gunbc(),
+      roots: deployment_serve_source_roots,
+      entry: relative,
+    )
+    let removed = shell.Remove.RecursiveForce(path: absolute as FilePath)
+    removed.success && match verdict {
+      ServeEntryCompileBlocked { blocking, diagnostics } => want_blocked && blocking > 0 && any(diagnostics, l => string_contains(s: l, pattern: file))
+      ServeEntryCompileAdmitted => !want_blocked
+      ServeEntryCompileUnobserved { detail: _ } => false
+    }
+  }
+}
+
+// RED by real execution: a serve entry whose body does not inhabit its declared type is blocked,
+// and the block carries the compiler's located line for that file.
+test fn a_staged_type_error_entry_is_blocked_by_real_execution() -> Bool {
+  staged_verdict_is(source: "module test.claim.live_deploy.pre_swap_serve_probe_red\nfn f() -> Int { \"x\" }\n", file: "pre_swap_serve_probe_red.dag", want_blocked: true)
+}
+
+test fn a_staged_clean_entry_is_admitted_by_real_execution() -> Bool {
+  staged_verdict_is(source: "module test.claim.live_deploy.pre_swap_serve_probe_green\nfn f() -> Int { 1 }\n", file: "pre_swap_serve_probe_green.dag", want_blocked: false)
+}

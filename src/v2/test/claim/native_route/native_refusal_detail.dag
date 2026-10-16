@@ -1,18 +1,7 @@
 module v2.test.claim.native_route.native_refusal_detail
 
-import gunbc.witness.v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
-import v2.compiler.compile {
-  NativeLaneModuleContextRowsDecided,
-  NativeLaneModuleResolution,
-  NativeLaneModuleResolveRowsDecided,
-  NativeLaneModuleResolved,
-  NativeLaneUniverseModule,
-  NativeTestContext,
-  native_lane_file_refusal_index,
-  native_lane_module_resolution,
-  native_test_context_from_ingest
-}
 import v2.compiler.native_test_vocabulary {
+  NativeRouteMemberRow, native_route_member_row_text,
   NativeTestFileRefusal,
   NativeTestPassed,
   NativeTestRefused,
@@ -25,8 +14,19 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStagePrepare,
   NativeTestVerdict
 }
+import v2.compiler.source_root_eval {
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneModuleResolved,
+  NativeLaneModuleResolution,
+  NativeLaneUniverseModule,
+  NativeTestContext,
+  native_lane_file_refusal_index,
+  native_lane_module_resolution,
+  native_test_context_from_ingest
+}
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.std.collection { Map }
+
 import v2.std.integer { Int }
 import std.algebra { Cons, Empty, count_where, fold_list, length }
 import v2.std.artifact { Artifact, SourceFile }
@@ -90,7 +90,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   referencing node, so the row must identify that node's occurrence.
 // - clean: a module that resolves, so a route that refused everything cannot green the rest.
 
-data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool, Map }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
 data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
@@ -109,6 +109,10 @@ data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport std.typ
 data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport std.types { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
 
 data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport std.types { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
+
+data ndp_badprov_source: String = "module v2.ndp.badprov\n\nimport std.types { Bool }\n\nfn bad_value(p: Bool) -> Bool { ndp_provider_absent(p) }\n"
+
+data ndp_baduser_source: String = "module v2.ndp.baduser\n\nimport std.types { Bool }\nimport v2.ndp.badprov { bad_value }\n\nfn user_value(p: Bool) -> Bool { bad_value(p) }\n"
 
 data ndp_clean_source: String = "module v2.ndp.clean\n\nimport std.types { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
 
@@ -130,6 +134,8 @@ data ndp_ingest: SourceRootIngest = [
   ndp_read(source: ndp_collision_right_source, id: ^ndp_collision_right_artifact, unit: ^ndp_collision_right_cu, path: "dag/ndp_right.dag"),
   ndp_read(source: ndp_collision_user_source, id: ^ndp_collision_user_artifact, unit: ^ndp_collision_user_cu, path: "dag/ndp_user.dag"),
   ndp_read(source: ndp_unbound_source, id: ^ndp_unbound_artifact, unit: ^ndp_unbound_cu, path: "dag/ndp_unbound.dag"),
+  ndp_read(source: ndp_badprov_source, id: ^ndp_badprov_artifact, unit: ^ndp_badprov_cu, path: "dag/ndp_badprov.dag"),
+  ndp_read(source: ndp_baduser_source, id: ^ndp_baduser_artifact, unit: ^ndp_baduser_cu, path: "dag/ndp_baduser.dag"),
   ndp_read(source: ndp_clean_source, id: ^ndp_clean_artifact, unit: ^ndp_clean_cu, path: "dag/ndp_clean.dag")
 ]
 
@@ -151,6 +157,7 @@ type NdpResolutions
       unbound: NativeLaneModuleResolution
       clean: NativeLaneModuleResolution
       ancestor: NativeLaneModuleResolution
+      provider_user: NativeLaneModuleResolution
     }
 
 fn ndp_resolutions() -> NdpResolutions {
@@ -183,6 +190,11 @@ fn ndp_resolutions() -> NdpResolutions {
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.shadow.inner.ancestor", path: ^ndp_ancestor_cu, declaration: "ancestor_value")
+        ).resolution,
+        provider_user: native_lane_module_resolution(
+          context: context,
+          refusal_index: index,
+          entry: ndp_universe_module(module: "v2.ndp.baduser", path: ^ndp_baduser_cu, declaration: "user_value")
         ).resolution
       }
     }
@@ -272,7 +284,7 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
 fn ndp_shadow_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _ } =>
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _, provider_user: _ } =>
       match ndp_prepare_row(resolution: shadow) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -283,7 +295,7 @@ fn ndp_shadow_refusal() -> Optional<NonEmptyDiagnostics> {
 fn ndp_collision_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: _, collision: collision, unbound: _, clean: _, ancestor: _ } =>
+    NdpResolutionsDecided { shadow: _, collision: collision, unbound: _, clean: _, ancestor: _, provider_user: _ } =>
       match ndp_prepare_row(resolution: collision) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -294,7 +306,7 @@ fn ndp_collision_refusal() -> Optional<NonEmptyDiagnostics> {
 fn ndp_unbound_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _, ancestor: _ } =>
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _, ancestor: _, provider_user: _ } =>
       match ndp_prepare_row(resolution: unbound) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)
@@ -361,7 +373,7 @@ test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool {
 test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds() -> Bool {
   match ndp_resolutions() {
     NdpContextRefused => false
-    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _ } =>
+    NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _, ancestor: _, provider_user: _ } =>
       match ndp_prepare_row(resolution: shadow) {
         Absent => false
         Present { value: row } => {
@@ -397,12 +409,58 @@ test fn operator_line_names_the_refused_symbol_holds() -> Bool {
   }
 }
 
+// THE MODULE'S OWN FIRST CAUSE IS THE AUTHORED SPAN, NOT A PROJECTED OCCURRENCE. The chain still
+// carries the resolver's NodeLocus (the fatal identity); the operator line must also name the
+// file, the byte range, and the unbound atom -- v2.std.provenance node_authored_span_optional
+// resolved through the ingest's position table. A renderer that kept only the occurrence ordinal
+// reds the path clause.
+test fn operator_line_names_the_authored_span_and_unbound_name_holds() -> Bool {
+  match ndp_resolutions() {
+    NdpContextRefused => false
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: unbound, clean: _, ancestor: _, provider_user: _ } =>
+      match ndp_prepare_row(resolution: unbound) {
+        Absent => false
+        Present { value: row } => {
+          let line = native_route_member_row_text(row: row)
+          string_contains(s: line, pattern: "dag/ndp_unbound.dag")
+            && string_contains(s: line, pattern: "bytes ")
+            && string_contains(s: line, pattern: "\"ndp_absent_callee\"")
+        }
+      }
+  }
+}
+
+fn ndp_provider_user_row() -> Optional<NativeRouteMemberRow> {
+  match ndp_resolutions() {
+    NdpContextRefused => optional_absent()
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: _, ancestor: _, provider_user: provider_user } =>
+      ndp_prepare_row(resolution: provider_user)
+  }
+}
+
+// AN IMPORTER'S PREPARE LINE NAMES THE PROVIDER'S FIRST CAUSE. The test module's fatal is
+// declarer_refused at the imported name; the first cause is the provider's unbound mention, in
+// the provider file, with its authored span. Without that prefix every native-seven member
+// reports only Outcome/Edge on the test module.
+test fn operator_line_names_the_refused_providers_first_cause_holds() -> Bool {
+  match ndp_provider_user_row() {
+    Absent => false
+    Present { value: row } => {
+      let line = native_route_member_row_text(row: row)
+      string_contains(s: line, pattern: "cause=resolve_reason_declarer_refused")
+        && string_contains(s: line, pattern: "dag/ndp_badprov.dag")
+        && string_contains(s: line, pattern: "\"ndp_provider_absent\"")
+        && string_contains(s: line, pattern: "bytes ")
+    }
+  }
+}
+
 // THE DENOMINATOR: a module that resolves. Without it every claim above is satisfied by a route
 // that refuses everything for any reason.
 test fn clean_module_resolves_holds() -> Bool {
   match ndp_resolutions() {
     NdpContextRefused => false
-    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean, ancestor: _ } =>
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean, ancestor: _, provider_user: _ } =>
       match clean {
         NativeLaneModuleResolved { resolved: _ } => true
         NativeLaneModuleContextRowsDecided { rows: _ } => false
@@ -450,7 +508,7 @@ test fn a_composite_anchor_renders_unchanged_holds() -> Bool {
 fn ndp_ancestor_refusal() -> Optional<NonEmptyDiagnostics> {
   match ndp_resolutions() {
     NdpContextRefused => optional_absent()
-    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: _, ancestor: ancestor } =>
+    NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: _, ancestor: ancestor, provider_user: _ } =>
       match ndp_prepare_row(resolution: ancestor) {
         Absent => optional_absent()
         Present { value: row } => ndp_prepare_refusal(row: row)

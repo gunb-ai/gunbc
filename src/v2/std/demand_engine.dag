@@ -1,8 +1,8 @@
 module v2.std.demand_engine
 
-import std.types { List }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import std.algebra { Cons, Empty, contains, fold_list, for_all, length, list_map, list_snoc_item }
+import std.types { List, Map }
+
+import std.algebra { Cons, Empty, contains, fold_list, for_all, length, list_map, list_snoc_item, empty_map, map_insert, map_lookup }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyRelation }
 import v2.std.integer { Int }
