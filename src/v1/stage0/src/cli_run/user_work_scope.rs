@@ -32,13 +32,15 @@ const SERVICE_UNIT_SUFFIX: &str = ".service";
 const SLICE_UNIT_SUFFIX: &str = ".slice";
 // SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_scope_unit_suffix`
 const SCOPE_UNIT_SUFFIX: &str = ".scope";
-// SEED MIRROR of `gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes` unit names
-// (rows already filtered by byte_size_count(memory_max) > 0 in modeled_system_slice_memory_max).
-// Wrap cannot eval the DAG; this list is seed-retained with user_work_scope.rs. A census name
-// missing here is a RED in `the_seed_trampoline_mirrors_the_declared_wrap_standing`.
-const MODELED_CAPPED_SYSTEM_SLICES: &[&str] = &[
+// SEED MIRROR of `gunbc.compute.unit_bounds recognized_system_slice`
+// (declared_system_slice_memory_maxes unit names with memory_max > 0, plus
+// `gunbc.oomd_install` `gunbc_oomd_sessions_slice`). Wrap cannot eval the DAG;
+// this list is seed-retained with user_work_scope.rs. A census name missing here
+// is a RED in `the_seed_trampoline_mirrors_the_declared_wrap_standing`.
+const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
+    "sessions.slice",
 ];
 
 pub(crate) enum UserWorkScopeStanding {
@@ -46,8 +48,15 @@ pub(crate) enum UserWorkScopeStanding {
     RunnerSlotExempt,
     CiExempt,
     UnitTestExempt,
-    ExemptSystemUnit { unit: String, slice: String },
-    UncappedSystemSlice { unit: String, slice: String },
+    ExemptSystemUnit {
+        unit: String,
+        slice: String,
+        bound: u64,
+    },
+    UncappedSystemSlice {
+        unit: String,
+        slice: String,
+    },
     UserSessionAbsent,
     UserManagerOwed,
     CgroupUnreadable,
@@ -55,10 +64,14 @@ pub(crate) enum UserWorkScopeStanding {
     UserWorkSliceAbsent,
     UserWorkSliceUncapped,
     CallerEnvelopeUnreadable,
-    ExemptBoundedContainer { bytes: u64 },
+    ExemptBoundedContainer {
+        bytes: u64,
+    },
     BoundedContainerUncapped,
     BoundedContainerUnreadable,
-    ExternallyBoundedExecutor { run_id: String },
+    ExternallyBoundedExecutor {
+        run_id: String,
+    },
 }
 
 pub fn reexec_into_user_work_slice_if_owed() {
@@ -106,8 +119,8 @@ pub(crate) fn standing_wire(s: &UserWorkScopeStanding) -> String {
         UserWorkScopeStanding::RunnerSlotExempt => "RunnerSlotExempt".to_string(),
         UserWorkScopeStanding::CiExempt => "CiExempt".to_string(),
         UserWorkScopeStanding::UnitTestExempt => "UnitTestExempt".to_string(),
-        UserWorkScopeStanding::ExemptSystemUnit { unit, slice } => {
-            format!("ExemptSystemUnit:{slice}:{unit}")
+        UserWorkScopeStanding::ExemptSystemUnit { unit, slice, bound } => {
+            format!("ExemptSystemUnit:{slice}:{unit}:{bound}")
         }
         UserWorkScopeStanding::UncappedSystemSlice { unit, slice } => {
             format!("UncappedSystemSlice:{slice}:{unit}")
@@ -370,8 +383,12 @@ fn live_modeled_slice_standing(
     slice_memory: RootMemoryRead,
 ) -> UserWorkScopeStanding {
     match slice_memory {
-        RootMemoryRead::Capped(_) => UserWorkScopeStanding::ExemptSystemUnit { unit, slice },
-        RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
+        RootMemoryRead::Capped(n) if n > 0 => UserWorkScopeStanding::ExemptSystemUnit {
+            unit,
+            slice,
+            bound: n,
+        },
+        RootMemoryRead::Capped(_) | RootMemoryRead::Unbounded | RootMemoryRead::Unreadable => {
             UserWorkScopeStanding::UncappedSystemSlice { unit, slice }
         }
     }
@@ -381,7 +398,7 @@ fn live_modeled_slice_standing(
 fn innermost_modeled_capped_slice(text: &str) -> Option<String> {
     text.split(['/', '\n'])
         .map(str::trim)
-        .filter(|seg| MODELED_CAPPED_SYSTEM_SLICES.contains(seg))
+        .filter(|seg| RECOGNIZED_SYSTEM_SLICES.contains(seg))
         .last()
         .map(str::to_string)
 }
@@ -402,8 +419,12 @@ fn namespaced_root_standing(
 ) -> UserWorkScopeStanding {
     // SEED MIRROR of `gunbc.compute.unit_bounds namespaced_root_standing`
     match root_memory {
-        RootMemoryRead::Capped(n) => UserWorkScopeStanding::ExemptBoundedContainer { bytes: n },
-        RootMemoryRead::Unbounded => UserWorkScopeStanding::BoundedContainerUncapped,
+        RootMemoryRead::Capped(n) if n > 0 => {
+            UserWorkScopeStanding::ExemptBoundedContainer { bytes: n }
+        }
+        RootMemoryRead::Capped(_) | RootMemoryRead::Unbounded => {
+            UserWorkScopeStanding::BoundedContainerUncapped
+        }
         RootMemoryRead::Unreadable => match buildbuddy_run_id {
             Some(id) if !id.is_empty() => UserWorkScopeStanding::ExternallyBoundedExecutor {
                 // DAG: ExternallyBoundedExecutor.run_id is NonEmptyStr; empty is unwritable there.
@@ -452,7 +473,7 @@ fn standing_from_supplied(
         return live_modeled_slice_standing(unit, slice, slice_memory);
     }
     if let Some((unit, slice)) = system_service_unit_from_cgroup(cg) {
-        if MODELED_CAPPED_SYSTEM_SLICES.contains(&slice.as_str()) {
+        if RECOGNIZED_SYSTEM_SLICES.contains(&slice.as_str()) {
             return live_modeled_slice_standing(unit, slice, slice_memory);
         }
         return UserWorkScopeStanding::UncappedSystemSlice { unit, slice };
@@ -506,7 +527,7 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
     let modeled = cg.and_then(innermost_modeled_capped_slice);
     let service_slice = cg.and_then(system_service_unit_from_cgroup).map(|(_, s)| s);
     let slice_for_live = modeled
-        .or_else(|| service_slice.filter(|s| MODELED_CAPPED_SYSTEM_SLICES.contains(&s.as_str())));
+        .or_else(|| service_slice.filter(|s| RECOGNIZED_SYSTEM_SLICES.contains(&s.as_str())));
     let slice_memory = match (cg, slice_for_live.as_deref()) {
         (Some(text), Some(slice)) => live_slice_memory(text, slice),
         _ => RootMemoryRead::Unreadable,
@@ -623,6 +644,51 @@ mod standing_fixture_tests {
     }
 
     #[test]
+    fn namespaced_root_unbounded_memory_max_refuses_even_with_a_buildbuddy_run_id() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Unbounded,
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "BoundedContainerUncapped");
+    }
+
+    #[test]
+    fn namespaced_root_zero_memory_max_refuses_even_with_a_buildbuddy_run_id() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Capped(0),
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "BoundedContainerUncapped");
+    }
+
+    #[test]
+    fn namespaced_root_unreadable_memory_max_with_buildbuddy_run_id_is_externally_bounded() {
+        let got = wire(
+            false,
+            Some("0::/"),
+            false,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            Some("measured-rbe-run"),
+        );
+        assert_eq!(got, "ExternallyBoundedExecutor:measured-rbe-run");
+    }
+
+    #[test]
     fn modeled_slice_with_finite_memory_max_skips() {
         let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
         let got = wire(
@@ -637,7 +703,83 @@ mod standing_fixture_tests {
         );
         assert_eq!(
             got,
-            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+            "ExemptSystemUnit:gunbc-repository-convergence.slice:gunbc-tree-sync.service:1"
+        );
+    }
+
+    #[test]
+    fn modeled_slice_with_zero_memory_max_refuses() {
+        let cg = "0::/gunbc-repository-convergence.slice/gunbc-tree-sync.service";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(0),
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_finite_local_memory_max_skips() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Capped(137438953472),
+            None,
+        );
+        assert_eq!(
+            got,
+            "ExemptSystemUnit:sessions.slice:docker-deadbeef.scope:137438953472"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_unbounded_local_memory_max_refuses() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unbounded,
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
+        );
+    }
+
+    #[test]
+    fn sessions_slice_with_unreadable_local_memory_max_refuses() {
+        let cg = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope";
+        let got = wire(
+            false,
+            Some(cg),
+            true,
+            false,
+            false,
+            RootMemoryRead::Unreadable,
+            RootMemoryRead::Unreadable,
+            None,
+        );
+        assert_eq!(
+            got,
+            "UncappedSystemSlice:sessions.slice:docker-deadbeef.scope"
         );
     }
 }
