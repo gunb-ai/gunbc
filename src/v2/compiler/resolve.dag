@@ -4671,24 +4671,12 @@ fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol
 // THE VALUE READING OF A TYPE PARAMETER, when its binder is kinded: the path its frame recorded.
 fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
   match lookup_chain(s: ctx.type_scope, name: identity) {
-    Accepted { value: binding, diagnostics: _ } => type_parameter_binding_value_reading(binding: binding)
+    Accepted { value: BoundInFrame { canonical: canonical, kind: TypeParameterFrame { binders: binders } }, diagnostics: _ } => map_lookup(m: binders, key: canonical)
+    Accepted { value: BoundInFrame { canonical: _, kind: LexicalFrame { binders: _ } }, diagnostics: _ } => optional_absent()
+    Accepted { value: BoundInFrame { canonical: _, kind: ParameterFrame { arrow_path: _ } }, diagnostics: _ } => optional_absent()
+    Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
     Rejected { diagnostics: _ } => optional_absent()
-  }
-}
-
-// EMITTER WORKAROUND, row gunbc.recurring_failure_mode.an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded: this and resolve_type_parameter_value_reading
-// are two single-level matches because one match nesting a variant under Accepted is emitted with every
-// arm guarded (E0004).
-fn type_parameter_binding_value_reading(binding: ScopeBinding) -> Optional<QualifiedName> {
-  match binding {
-    BoundInFrame { canonical: canonical, kind: kind } =>
-      match kind {
-        TypeParameterFrame { binders: binders } => map_lookup(m: binders, key: canonical)
-        LexicalFrame { binders: _ } => optional_absent()
-        ParameterFrame { arrow_path: _ } => optional_absent()
-      }
-    BoundAtRoot { canonical: _ } => optional_absent()
-    ScopeUnbound => optional_absent()
   }
 }
 
