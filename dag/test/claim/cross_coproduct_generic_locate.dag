@@ -66,10 +66,18 @@ test fn same_arm_two_applied_box_int_is_accepted() -> Bool {
 // claimed -- any unrelated blocking row in the closure satisfies it. The two exact forms the
 // module itself prescribes are used here: a count scoped to class AND subject_name, and a
 // DIFFERENTIAL between two censuses. `refusal_rows` is the scoped count, keyed on what the
-// fold actually emits: type_mismatch_error (src/v1/04_infer.dag:14153-14160) projects to
-// diagnostic_class "TypeMismatch" with subject_name = the rejected actual's
-// node_type_shape, which is why the keys below name the second actual's shape and not a
-// message substring (a census row has no message field).
+// fold actually emits: type_mismatch_error (src/v1/04_infer.dag:14455-14463) projects to
+// diagnostic_class "TypeMismatch" with subject_name = the rejected actual's `got` string,
+// which for this fold is concat(node_type_shape(actual), " (later argument)") -- measured,
+// not guessed, by printing the blocking messages for these exact fixtures on the shipped
+// seed (throwaway probe test, remote dispatch jb2430a08 at head b5bb104e3ba):
+//   P/Q pair   -> "Coproduct(Q) (later argument)"
+//   Int/Bool   -> "Primitive(Bool) (later argument)"
+//   Box<Int>/Box<Bool> -> "Node(Box<Coproduct(Bool)>) (later argument)"
+// (Bool is a COPRODUCT in this corpus, so it prints Coproduct(Bool), and the shape carries
+// the node_type_shape wrapper plus the fold's own " (later argument)" suffix -- the earlier
+// values "Q1", "Primitive(Bool)" and "Box<Bool>" were unverified guesses and are corrected
+// here. If the comparison boundary changes the message, these keys must be re-measured.)
 fn refusal_rows(source: String, wanted_class: String, wanted_subject: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } => census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
@@ -78,13 +86,13 @@ fn refusal_rows(source: String, wanted_class: String, wanted_subject: String) ->
 }
 
 test fn same_arm_two_distinct_coproduct_values_refuse() -> Bool {
-  refusal_rows(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }"), wanted_class: "TypeMismatch", wanted_subject: "Q1") > 0
+  refusal_rows(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }"), wanted_class: "TypeMismatch", wanted_subject: "Coproduct(Q) (later argument)") > 0
 }
 
 test fn same_arm_int_bool_values_refuse() -> Bool {
-  refusal_rows(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Primitive(Bool)") > 0
+  refusal_rows(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Primitive(Bool) (later argument)") > 0
 }
 
 test fn same_arm_nested_two_distinct_coproduct_values_refuse() -> Bool {
-  refusal_rows(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Box<Bool>") > 0
+  refusal_rows(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Node(Box<Coproduct(Bool)>) (later argument)") > 0
 }

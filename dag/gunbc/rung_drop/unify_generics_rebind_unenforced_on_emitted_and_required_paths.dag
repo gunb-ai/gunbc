@@ -59,6 +59,25 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 data unify_generics_rebind_unenforced_on_emitted_and_required_paths: RungDrop = RungDrop {
   identity: "unify_generics_rebind_unenforced_on_emitted_and_required_paths" as NonEmptyStr,
 
+  // RECEIPT FOR THE NEW HAND-WRITTEN RUST (ctrl review policy, review 81163 advisory: the
+  // row must name the lane that will own the tests, not just say they run on none).
+  //   (i)   src/v1/tests/src/cross_coproduct_probe_discharge_test.rs is the RE-ENROLMENT of a
+  //         deleted scaffold: it compiles, verbatim, the source of the probe file it replaces
+  //         (src/v2/test/claim/manual/constructor_tag_route_probe_red.dag, whose v1 twin
+  //         dag/test/claim/constructor_tag_route_probe_red.dag this PR deletes), and asserts
+  //         the refusal is the fold's message -- which the seedred side of the measurement
+  //         shows the controls cannot pass without the fold.
+  //   (ii)  src/v1/tests/src/cross_coproduct_generic_locate_test.rs is covered by the seed
+  //         census the fold ships with: src/v1/stage0/src/v1_tests_claim_generic_identity_census.rs,
+  //         regenerated with the fold (both are the 4-mirror regen product).
+  //   (iii) NAMED DEFERRAL for the lane: the owner is a newly authored required lane for the
+  //         v1-compiler-tests package -- the route gunbc.ci ci_v1_compiler_tests_compile_gate_note
+  //         already anticipates ("A restored lane is authored fresh against the route that
+  //         exists then"). The old rust-unit-tests lane cannot adopt them as-is, because its own
+  //         restoration trigger forbids widening `cargo test --release -p v1-compiler --lib`, and
+  //         these tests live in the separate v1-compiler-tests package. Until that lane exists,
+  //         this row's arm (B) IS the deferral record, and this row does not retire without it.
+
   subject: "v1 infer's unify_generics refusing one generic bound by two distinct types: the refusal executes today, but neither the gate that would catch a hand edit to its shipped mirror nor a required lane that would run the controls exists, so a regression to first-wins binding is silent",
 
   declared: "2026-10-16",
@@ -66,7 +85,15 @@ data unify_generics_rebind_unenforced_on_emitted_and_required_paths: RungDrop = 
   standing: Standing,
 
   declaration: TypedDeclaration {
-    previous: StructurallyGuaranteed,
+    // NO DROP HAPPENED HERE, and the row says so rather than recording a rung the class never
+    // held (review 81163 finding 2; DESIGN section 4b meta-obligation 1, "rung inflation is
+    // worse than sitting low"). On main the class sat BELOW the ladder: the deleted row this
+    // one replaces recorded that the probe's assertion RAN AND ANSWERED FALSE -- one type
+    // variable bound to two distinct coproducts was ACCEPTED, so there was no guarantee at
+    // any rung to fall from. What #14152 adds is not a rung the class held and lost: it is
+    // one executed refusal, established once, with the regression unenforced -- which is why
+    // standing is Standing and temporary is Mitigatable, the same rung it sits on now.
+    previous: Mitigatable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "two arms, both needed, and neither alone retires this row. (A) THE MIRROR GATE ON A JOB: run the already-authored `claim_executor --required-ci --required-lane build` on a required lane, so a hand edit to the shipped unify_generics mirror is caught by execution rather than by a session choosing to regenerate. (B) THE CONTROLS ON A REQUIRED LANE: the discriminating controls moved onto a lane the required aggregate actually runs. Two candidate routes, and the choice is not free -- the .dag claim rows in dag/test/claim/cross_coproduct_generic_locate.dag are the enrolled kind and the floor's own claim execution can reach them, but they must first be made discriminating: they assert a census count, and the census module warns that its row set is the whole compile's (imported closure included), so a bare blocking count is satisfied by any unrelated blocking row and is not evidence the fixture refused for the claimed reason; the exact form that same module prescribes is a count scoped on class AND subject_name. The Rust controls cannot be restored as-is into the old lane either, because that lane's own restoration trigger forbids widening `cargo test --release -p v1-compiler --lib` to the whole workspace, and my tests are in a different package (v1-compiler-tests) which needs its own newly authored lane, as ci_v1_compiler_tests_compile_gate_note already anticipates."
