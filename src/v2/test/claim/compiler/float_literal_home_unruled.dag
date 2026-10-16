@@ -4,7 +4,8 @@ import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_inf
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason, Some }
 import v2.compiler.infer { infer }
 import v2.std.node { node_subtree_nodes }
-import v2.extdeps.languages.dag { dag_node_is_float_literal_atom, dag_node_is_int_literal_atom }
+import v2.extdeps.languages.dag { dag_node_is_float_literal_atom, dag_node_is_int_literal_atom, dag_canonical_literal_from_node, DagCanonicalFloatLiteral, dag_float_literal_lexeme_optional }
+import std.optional { Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -79,5 +80,28 @@ test fn zz_probe_accepted_carries_reason() -> Bool {
         Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_reason_float_literal_home_unruled)
         Rejected { diagnostics: _ } => false
       }
+  }
+}
+
+test fn zz_probe_canonical_float() -> Bool {
+  match fmi_assemble(src: flhu_float_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+        acc || (match dag_canonical_literal_from_node(node: n) {
+          Accepted { value: DagCanonicalFloatLiteral { lexeme: _ }, diagnostics: _ } => true
+          _ => false
+        })
+      })
+  }
+}
+
+test fn zz_probe_lexeme_present() -> Bool {
+  match fmi_assemble(src: flhu_float_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+        acc || (dag_node_is_float_literal_atom(node: n) && (match dag_float_literal_lexeme_optional(node: n) { Present { value: _ } => true  _ => false }))
+      })
   }
 }
