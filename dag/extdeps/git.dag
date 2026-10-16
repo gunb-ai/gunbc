@@ -878,6 +878,35 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
   argv_command(program: git_program(), arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
 }
 
+// A STAGED TREE, PROVEN EQUAL TO A NAMED TREE OBJECT, WITHOUT HISTORY OR NETWORK. A tree delivered
+// as an archive carries its content but no object store; these four steps make one and ask git
+// itself whether the named tree is the content. `init` creates the store; `add -A -f` stages every
+// file including ones a .gitignore in the archive would hide (the archive is exactly the tracked set,
+// so nothing is ignored on purpose); `commit` writes the content's tree object; and
+// `diff-tree --quiet <tree> HEAD` exits 0 only when <tree> exists in the store AND equals HEAD's
+// tree -- an absent object exits 128 and a different one exits 1. In a fresh store the named root
+// tree exists only if this content produced it, so a pass is the content-equality fact and nothing
+// weaker. The identity is set per command (`-c user.name/-c user.email`) because a fresh guest has
+// none and the commit's metadata is not part of the tree.
+fn git_init_quiet_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "init", "-q"])
+}
+
+fn git_add_all_force_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "add", "-A", "-f"])
+}
+
+fn git_commit_snapshot_command(repository_dir: String, identity_name: String, identity_email: String, message: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: [
+    "-c", concat("user.name=", identity_name), "-c", concat("user.email=", identity_email),
+    "-C", repository_dir, "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
+  ])
+}
+
+fn git_diff_tree_equal_command(repository_dir: String, tree: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "diff-tree", "--quiet", tree, revision])
+}
+
 // THE READBACK. A checkout that reported success is not the same fact as a working tree whose HEAD
 // is the requested commit, and only the second one licenses a claim about what was built. `--verify`
 // makes git refuse an ambiguous or absent object rather than echoing the argument back.

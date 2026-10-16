@@ -1,6 +1,10 @@
 module gunbc.compute.unit_bounds
 
-import std.types { String, List, NonEmptyStr, Bool }
+import std.types { String, List, NonEmptyStr, Bool, Int }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLevel, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
+  CgroupHardMemoryLimit, CgroupHardLimitBinds, CgroupNoHardLimit, cgroup_tightest_hard_memory_limit,
+}
 import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_min }
@@ -158,12 +162,68 @@ type UserWorkScopeCgroupRead
   = CgroupText { text: String }
   | CgroupReadFailed
 
+// THE BOUND, OBSERVED RATHER THAN NAMED. The memory-envelope ruling's fact is "this process runs
+// under a finite cgroup memory.max with no swap", so this arm reads that fact on the process's
+// cgroup chain (/proc/self/cgroup's unified-hierarchy path and every ancestor below the root),
+// through the one authority for those files, extdeps.linux.cgroup_v2_memory: each level's memory.max
+// parsed by parse_cgroup_memory_limit and folded by cgroup_tightest_hard_memory_limit (any ancestor's
+// limit binds the process, the tightest wins), and each level's memory.swap.max parsed by the same
+// parser. The process is bounded when a NONZERO hard limit binds AND some level sets memory.swap.max to 0 (a
+// swap ceiling of 0 anywhere on the chain forbids swap below it). A tightest limit of 0 is not a bound:
+// it is the zero cap this fold's other arms already refuse as uncapped. No binding limit, or swap allowed
+// on every level, is unbounded; a chain that could not be read is unread; neither admits (they fall
+// through to the user-manager arms below, which refuse where no user manager exists). The readings
+// are supplied, so the fold is the only policy; the seed trampoline performs the walk and mirrors
+// this decision (the_seed_trampoline_mirrors_the_declared_wrap_standing, and its own fixture tests).
+//
+// RunnerSlotExempt could later dissolve into this arm (an Actions runner slot unit carries its own
+// MemoryMax= and MemorySwapMax=0); this cut does not widen to do it.
+type CgroupBoundObservation
+  = CgroupChainRead { levels: List<CgroupMemoryLevel>, swap_max: List<CgroupMemoryLimitValue> }
+  | CgroupChainUnread { detail: String }
+
+type CgroupBound
+  = CgroupBoundedBy { cgroup: String, memory_max: ByteSize }
+  | CgroupChainUnbounded
+  | CgroupChainNotObserved { detail: String }
+
+fn swap_forbidden_on_chain(swap_max: List<CgroupMemoryLimitValue>) -> Bool {
+  count(filter(swap_max, v => match v {
+    CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 0
+    CgroupMemoryUnlimited => false
+    CgroupMemoryLimitUnparseable { body: _ } => false
+  })) > 0
+}
+
+fn observed_cgroup_bound(observation: CgroupBoundObservation) -> CgroupBound {
+  match observation {
+    CgroupChainUnread { detail: d } => CgroupChainNotObserved { detail: d }
+    CgroupChainRead { levels: l, swap_max: w } => match cgroup_tightest_hard_memory_limit(levels: l) {
+      CgroupNoHardLimit => CgroupChainUnbounded
+      CgroupHardLimitBinds { dir: d, bytes: b } =>
+        if byte_size_count(b: b) > 0 && swap_forbidden_on_chain(swap_max: w) { CgroupBoundedBy { cgroup: d as String, memory_max: b } } else { CgroupChainUnbounded }
+    }
+  }
+}
+
+// WHY THE OBSERVED-BOUND ARM DID NOT ADMIT, named on the wrap's or the refusal's diagnostic so a
+// guest that unexpectedly lost its MemoryMax= reads as "chain unbounded, wrapped" or "refused", not
+// silence. Rendered once here; the seed trampoline prints the same two words.
+fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
+  match bound {
+    CgroupBoundedBy { cgroup: _, memory_max: _ } => "chain-bounded"
+    CgroupChainUnbounded => "chain-unbounded"
+    CgroupChainNotObserved { detail: _ } => "chain-unread"
+  }
+}
+
 type SystemServiceCgroup
   = SystemServiceNamed { unit: String, slice: String }
   | NotSystemService
 
 type UserWorkScopeStanding
   = AlreadyInSlice
+  | BoundedByObservedCgroup { cgroup: String, memory_max: ByteSize }
   | RunnerSlotExempt
   | CiExempt
   | UnitTestExempt
@@ -350,6 +410,7 @@ fn user_work_scope_standing_with_root_memory(
   unit_test: Bool,
   github_actions: Bool,
   cgroup: UserWorkScopeCgroupRead,
+  bound: CgroupBoundObservation,
   systemd_manager_present: Bool,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
@@ -366,6 +427,7 @@ fn user_work_scope_standing_with_root_memory(
       unit_test: false,
       github_actions: github_actions,
       cgroup: cgroup,
+      bound: bound,
       user_manager_reachable: user_manager_reachable,
       xdg_runtime_dir: xdg_runtime_dir,
       slice_memory: slice_memory,
@@ -377,6 +439,7 @@ fn user_work_scope_standing(
   unit_test: Bool,
   github_actions: Bool,
   cgroup: UserWorkScopeCgroupRead,
+  bound: CgroupBoundObservation,
   user_manager_reachable: Bool,
   xdg_runtime_dir: Bool,
   slice_memory: RootCgroupMemoryRead,
@@ -396,18 +459,21 @@ fn user_work_scope_standing(
         } else {
           match modeled_slice_standing_from_cgroup(text: text, slice_memory: slice_memory) {
             Present { value: s } => s
-            Absent =>
-              match system_unit_standing_from_cgroup(text: text, slice_memory: slice_memory) {
-                Present { value: s } => s
-                Absent =>
-                  if user_manager_reachable {
-                    UserManagerOwed
-                  } else if xdg_runtime_dir {
-                    UserManagerProbeFailed
-                  } else {
-                    UserSessionAbsent
-                  }
-              }
+            Absent => match observed_cgroup_bound(observation: bound) {
+              CgroupBoundedBy { cgroup: g, memory_max: m } => BoundedByObservedCgroup { cgroup: g, memory_max: m }
+              _ =>
+                match system_unit_standing_from_cgroup(text: text, slice_memory: slice_memory) {
+                  Present { value: s } => s
+                  Absent =>
+                    if user_manager_reachable {
+                      UserManagerOwed
+                    } else if xdg_runtime_dir {
+                      UserManagerProbeFailed
+                    } else {
+                      UserSessionAbsent
+                    }
+                }
+            }
           }
         }
     }
@@ -417,6 +483,7 @@ fn user_work_scope_standing(
 fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
   match s {
     AlreadyInSlice => "AlreadyInSlice"
+    BoundedByObservedCgroup { cgroup: _, memory_max: _ } => "BoundedByObservedCgroup"
     RunnerSlotExempt => "RunnerSlotExempt"
     CiExempt => "CiExempt"
     UnitTestExempt => "UnitTestExempt"
@@ -442,6 +509,7 @@ fn user_work_scope_standing_effect(s: UserWorkScopeStanding) -> UserWorkScopeSta
   match s {
     UserManagerOwed => WrapIntoUserWorkSlice
     AlreadyInSlice => SkipUserWorkScope { standing: AlreadyInSlice }
+    BoundedByObservedCgroup { cgroup: g, memory_max: m } => SkipUserWorkScope { standing: BoundedByObservedCgroup { cgroup: g, memory_max: m } }
     UnitTestExempt => SkipUserWorkScope { standing: UnitTestExempt }
     RunnerSlotExempt => SkipUserWorkScope { standing: RunnerSlotExempt }
     CiExempt => SkipUserWorkScope { standing: CiExempt }
