@@ -9,7 +9,7 @@ import std.measure {
 }
 import std.optional { Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
-import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.roadmap.roadmap_dashboard_instance {
   fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes,
   srv1_live_dashboard_instance, dashboard_path_is_under,
@@ -32,6 +32,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  ComputeUnitStopObservation, NoStopObservation, SccacheStatsAtStop,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
@@ -242,7 +243,160 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                 bytes: "compute-run-unit-cold: no observation: clock unix millis unreadable, so this run has no frame",
                 reason: "run frame unreadable",
               )
-            Present { value: frame } => {
+            Present { value: frame } => cold_two_identity_exit(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, first_frame: frame)
+          }
+      }
+  }
+}
+
+fn observe_argv(program: String, args: List<String>) -> String {
+  match compute_exec(program: program, workdir: ".", args: args) {
+    ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+    ComputeExecFailed { exit_code, stdout, stderr } =>
+      join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
+  }
+}
+
+fn lines_with_needle(text: String, needle: String) -> String {
+  join(filter(split(s: text, delimiter: "\n"), l => length(xs: split(s: l, delimiter: needle)) > 1), "\n")
+}
+
+fn ci_cache_uds_path() -> String? {
+  match ci_cache_instance(host: operator_host_srv1).endpoint {
+    SccacheServerUnixSocket { path } => Present { value: path as String }
+    SccacheServerTcpPort { port: _ } => none
+  }
+}
+
+fn observe_ci_cache_uds_stat() -> String {
+  match ci_cache_uds_path() {
+    Absent => "=== stat CI UDS ===\nCI endpoint is TCP; UDS stat not applicable\n"
+    Present { value: uds } =>
+      join([
+        "=== stat CI UDS ", uds, " ===\n",
+        observe_argv(program: stat_program().invocation as String, args: ["-c", "%U %u %a %n", uds]),
+        "\n",
+      ], "")
+  }
+}
+
+fn observe_sccache_host_probe() -> String {
+  let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
+  let user_mgr = systemctl_user_manager_probe_command()
+  let id_out = observe_argv(program: id_binary_path as String, args: [])
+  let host_out = observe_argv(program: hostname_program().invocation as String, args: [])
+  let ps_out = observe_argv(program: ps_program().invocation as String, args: ps_user_uid_pid_args_listing_args())
+  let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
+  let mgr_env = observe_argv(program: user_mgr.program.invocation as String, args: user_mgr.arguments)
+  let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
+  join([
+    "=== id ===\n", id_out, "\n",
+    "=== hostname ===\n", host_out, "\n",
+    "=== ps ", sccache_installed_binary_path, " (user,uid,pid,args) ===\n",
+    lines_with_needle(text: ps_out, needle: sccache_installed_binary_path), "\n",
+    "=== ss -ltnp ", tcp_sport, " ===\n", ss_out, "\n",
+    "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
+    lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
+    lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
+    observe_ci_cache_uds_stat(),
+    "=== ss -xlp sccache/server.sock ===\n",
+    lines_with_needle(text: ss_unix, needle: "sccache"), "\n",
+    lines_with_needle(text: ss_unix, needle: "server.sock"), "\n",
+  ], "")
+}
+
+type UnitPrintenvObservation
+  = UnitPrintenvObserved { text: String }
+  | UnitPrintenvRefused { reason: String, text: String }
+
+fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes) -> UnitPrintenvObservation {
+  match observe_run_frame() {
+    Absent => UnitPrintenvRefused { reason: "run frame unreadable", text: "" }
+    Present { value: frame } => {
+  let identity = to_string(value: frame)
+  let workspace = observe_workspace(
+    instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes),
+  )
+  if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
+    UnitPrintenvRefused { reason: "workspace unusable", text: "" }
+  } else {
+    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+    match compute_layout(instance: instance, identity_hex: identity) {
+    Absent => UnitPrintenvRefused { reason: "no materialization store declared", text: "" }
+    Present { value: layout } => {
+    let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+      && mkdir_ok(instance: instance, path: layout.work_dir)
+      && mkdir_ok(instance: instance, path: layout.checkout)
+      && mkdir_ok(instance: instance, path: layout.target_dir)
+    if !roots_ok {
+      UnitPrintenvRefused { reason: "layout directories were not created", text: "" }
+    } else {
+      match compute_run_unit(
+        instance: instance,
+        layout: layout,
+        identity_hex: identity,
+        argv: ["/usr/bin/printenv"],
+        env: concat(
+          hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
+          hermetic_toolchain_unit_setenv(homes: toolchain_homes),
+        ),
+        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+        granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
+        user_runtime_dir: runtime_dir,
+        stop_observation: NoStopObservation,
+      ) {
+        ComputeUnitRunRefused { cause: _ } => UnitPrintenvRefused { reason: "unit launch refused", text: "" }
+        ComputeUnitRunExecuted { run: unit_run } =>
+          match unit_run.exec {
+            ComputeExecOk { stdout, stderr: _ } => UnitPrintenvObserved {
+              text: join([
+                "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit declares UDS; SCCACHE_DIR unbound) ===\n",
+                lines_with_needle(text: stdout, needle: "SCCACHE"),
+                "\n",
+                lines_with_needle(text: stdout, needle: "RUSTC_WRAPPER"),
+                "\n",
+              ], ""),
+            }
+            ComputeExecFailed { exit_code, stdout, stderr } => UnitPrintenvRefused {
+              reason: "unit printenv exited non-zero",
+              text: join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], ""),
+            }
+          }
+      }
+    }
+  }
+    }
+    }
+    }
+  }
+}
+
+fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
+  let host = observe_sccache_host_probe()
+  let head = join(["compute-run-unit-sccache-probe\n", host], "")
+  match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent =>
+      no_observation(bytes: join([head, "no observation: user session bus absent\n"], ""), reason: "user session bus absent")
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent => CliWirePrintable {
+          bytes: join([head, "ToolchainHomesNotIsolated\n"], ""),
+          exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+        }
+        Present { value: homes } =>
+          match observe_unit_printenv(runtime_dir: runtime_dir, toolchain_homes: homes) {
+            UnitPrintenvObserved { text } => CliWirePrintable { bytes: join([head, text], ""), exit: ExitSuccess }
+            UnitPrintenvRefused { reason, text } => CliWirePrintable {
+              bytes: join([head, "unit printenv refused: ", reason, "\n", text], ""),
+              exit: ExitFailure { code: 1, reason: reason },
+            }
+          }
+      }
+  }
+}
+
+
+fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
       let identity = to_string(value: frame)
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
@@ -317,6 +471,7 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                     user_runtime_dir: runtime_dir,
+                    stop_observation: stop_observation,
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
@@ -347,7 +502,6 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
                             join(["exec=failed exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
                         },
                         "\n",
-                        observe_sccache_host_probe(),
                       ], "")
                       if invoked && exec_ok {
                         CliWirePrintable { bytes: bytes, exit: ExitSuccess }
@@ -374,169 +528,108 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
           }
         }
       }
-            }
-          }
-      }
-  }
 }
 
-fn observe_argv(program: String, args: List<String>) -> String {
-  match compute_exec(program: program, workdir: ".", args: args) {
-    ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
-    ComputeExecFailed { exit_code, stdout, stderr } =>
-      join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], "")
-  }
-}
+// WHAT THIS INSTRUMENT OBSERVES ABOUT REUSE. sccache hits, read from the SAME server the unit's
+// cargo used (endpoint compute_user_sccache_server_uds, set on the unit by compute_run_unit); a bare
+// `sccache --show-stats` from the launcher asks a different server. Result-store reuse and the
+// VerifiedBuildBinaries handoff are NOT observed here: each identity gets a fresh target and
+// checkout, so the only reuse this fold can see is sccache's.
+type SccacheUnitReading
+  = SccacheUnitServed { executed: Int, hits: Int, misses: Int }
+  | SccacheUnitUnobserved { reason: String }
 
-fn lines_with_needle(text: String, needle: String) -> String {
-  join(filter(split(s: text, delimiter: "\n"), l => length(xs: split(s: l, delimiter: needle)) > 1), "\n")
-}
-
-fn observe_sccache_stats_debug() -> String {
-  match compute_exec(
-    program: env_absolute_program().invocation as String,
-    workdir: ".",
-    args: env_prefixed_args(
-      bindings: [EnvSet { name: "SCCACHE_LOG", value: "debug" }],
-      command_argv: [sccache_installed_binary_path, "--show-stats"],
-    ),
-  ) {
-    ComputeExecOk { stdout, stderr } => join([stdout, "\n", stderr], "")
-    ComputeExecFailed { exit_code, stdout, stderr } =>
-      join(["exit=", to_string(value: exit_code), "\n", stdout, "\n", stderr], "")
-  }
-}
-
-fn ci_cache_uds_path() -> String? {
-  match ci_cache_instance(host: operator_host_srv1).endpoint {
-    SccacheServerUnixSocket { path } => Present { value: path as String }
-    SccacheServerTcpPort { port: _ } => none
-  }
-}
-
-fn observe_ci_cache_uds_stat() -> String {
-  match ci_cache_uds_path() {
-    Absent => "=== stat CI UDS ===\nCI endpoint is TCP; UDS stat not applicable\n"
-    Present { value: uds } =>
-      join([
-        "=== stat CI UDS ", uds, " ===\n",
-        observe_argv(program: stat_program().invocation as String, args: ["-c", "%U %u %a %n", uds]),
-        "\n",
-      ], "")
-  }
-}
-
-fn observe_sccache_host_probe() -> String {
-  let tcp_sport = join(["sport = :", to_string(value: sccache_server_default_tcp_port)], "")
-  let user_mgr = systemctl_user_manager_probe_command()
-  let id_out = observe_argv(program: id_binary_path as String, args: [])
-  let host_out = observe_argv(program: hostname_program().invocation as String, args: [])
-  let ps_out = observe_argv(program: ps_program().invocation as String, args: ps_user_uid_pid_args_listing_args())
-  let ss_out = observe_argv(program: ss_binary_path as String, args: ["-ltnp", tcp_sport])
-  let mgr_env = observe_argv(program: user_mgr.program.invocation as String, args: user_mgr.arguments)
-  let ss_unix = observe_argv(program: ss_binary_path as String, args: ["-xlp"])
-  join([
-    "=== id ===\n", id_out, "\n",
-    "=== hostname ===\n", host_out, "\n",
-    "=== ps ", sccache_installed_binary_path, " (user,uid,pid,args) ===\n",
-    lines_with_needle(text: ps_out, needle: sccache_installed_binary_path), "\n",
-    "=== ss -ltnp ", tcp_sport, " ===\n", ss_out, "\n",
-    "=== systemctl --user show-environment SCCACHE/RUSTC_WRAPPER ===\n",
-    lines_with_needle(text: mgr_env, needle: "SCCACHE"), "\n",
-    lines_with_needle(text: mgr_env, needle: "RUSTC_WRAPPER"), "\n",
-    observe_ci_cache_uds_stat(),
-    "=== ss -xlp sccache/server.sock ===\n",
-    lines_with_needle(text: ss_unix, needle: "sccache"), "\n",
-    lines_with_needle(text: ss_unix, needle: "server.sock"), "\n",
-    "=== SCCACHE_LOG=debug sccache --show-stats ===\n", observe_sccache_stats_debug(), "\n",
-  ], "")
-}
-
-type UnitPrintenvObservation
-  = UnitPrintenvObserved { text: String }
-  | UnitPrintenvRefused { reason: String, text: String }
-
-fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes) -> UnitPrintenvObservation {
-  match observe_run_frame() {
-    Absent => UnitPrintenvRefused { reason: "run frame unreadable", text: "" }
-    Present { value: frame } => {
-  let identity = to_string(value: frame)
-  let workspace = observe_workspace(
-    instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes),
-  )
-  if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
-    UnitPrintenvRefused { reason: "workspace unusable", text: "" }
-  } else {
-    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
-    match compute_layout(instance: instance, identity_hex: identity) {
-    Absent => UnitPrintenvRefused { reason: "no materialization store declared", text: "" }
-    Present { value: layout } => {
-    let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
-      && mkdir_ok(instance: instance, path: layout.work_dir)
-      && mkdir_ok(instance: instance, path: layout.checkout)
-      && mkdir_ok(instance: instance, path: layout.target_dir)
-    if !roots_ok {
-      UnitPrintenvRefused { reason: "layout directories were not created", text: "" }
-    } else {
-      match compute_run_unit(
-        instance: instance,
-        layout: layout,
-        identity_hex: identity,
-        argv: ["/usr/bin/printenv"],
-        env: concat(
-          hermetic_user_session_unit_setenv(runtime_dir: runtime_dir),
-          hermetic_toolchain_unit_setenv(homes: toolchain_homes),
-        ),
-        launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
-        granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
-        user_runtime_dir: runtime_dir,
-      ) {
-        ComputeUnitRunRefused { cause: _ } => UnitPrintenvRefused { reason: "unit launch refused", text: "" }
-        ComputeUnitRunExecuted { run: unit_run } =>
-          match unit_run.exec {
-            ComputeExecOk { stdout, stderr: _ } => UnitPrintenvObserved {
-              text: join([
-                "=== unit printenv SCCACHE/RUSTC_WRAPPER (compute_run_unit declares UDS; SCCACHE_DIR unbound) ===\n",
-                lines_with_needle(text: stdout, needle: "SCCACHE"),
-                "\n",
-                lines_with_needle(text: stdout, needle: "RUSTC_WRAPPER"),
-                "\n",
-              ], ""),
-            }
-            ComputeExecFailed { exit_code, stdout, stderr } => UnitPrintenvRefused {
-              reason: "unit printenv exited non-zero",
-              text: join(["exit=", to_string(value: exit_code), "\n", stdout, stderr], ""),
-            }
-          }
-      }
-    }
-  }
-    }
-    }
-    }
-  }
-}
-
-fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
-  let host = observe_sccache_host_probe()
-  let head = join(["compute-run-unit-sccache-probe\n", host], "")
-  match observe_hermetic_user_session_runtime() {
-    HermeticUserSessionRuntimeAbsent =>
-      no_observation(bytes: join([head, "no observation: user session bus absent\n"], ""), reason: "user session bus absent")
-    HermeticUserSessionRuntimeBound { runtime_dir } =>
-      match observe_isolated_job_toolchain_homes() {
-        Absent => CliWirePrintable {
-          bytes: join([head, "ToolchainHomesNotIsolated\n"], ""),
-          exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+fn sccache_stat_value(text: String, label: String) -> Int? {
+  fold(split(s: text, delimiter: "\n"), init: none, f: (acc, l) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if length(xs: split(s: l, delimiter: label)) > 1 {
+          parse_int(s: trim(s: join(split(s: l, delimiter: label), "")))
+        } else {
+          none
         }
-        Present { value: homes } =>
-          match observe_unit_printenv(runtime_dir: runtime_dir, toolchain_homes: homes) {
-            UnitPrintenvObserved { text } => CliWirePrintable { bytes: join([head, text], ""), exit: ExitSuccess }
-            UnitPrintenvRefused { reason, text } => CliWirePrintable {
-              bytes: join([head, "unit printenv refused: ", reason, "\n", text], ""),
-              exit: ExitFailure { code: 1, reason: reason },
-            }
+    })
+}
+
+// The unit's sccache server is auto-spawned by the client inside the unit's cgroup and is reaped
+// with it (KillMode=control-group, gunbc.compute.unit_bounds), and `sccache --show-stats` with no
+// listener prints a plausible all-zero table. So the stats are read by the unit's own ExecStop=
+// (systemd.service(5): always performed after a successful start, before the cgroup is reaped), with
+// the unit's own SCCACHE_SERVER_UDS.
+fn sccache_reading_from(text: String) -> SccacheUnitReading {
+  match sccache_stat_value(text: text, label: "Compile requests executed") {
+    Absent => SccacheUnitUnobserved { reason: "no 'Compile requests executed' line in the unit's own stats output" }
+    Present { value: executed } =>
+      match sccache_stat_value(text: text, label: "Cache hits") {
+        Absent => SccacheUnitUnobserved { reason: "no 'Cache hits' count in the unit's own stats output" }
+        Present { value: hits } =>
+          match sccache_stat_value(text: text, label: "Cache misses") {
+            Absent => SccacheUnitUnobserved { reason: "no 'Cache misses' count in the unit's own stats output" }
+            Present { value: misses } => SccacheUnitServed { executed: executed, hits: hits, misses: misses }
           }
       }
+  }
+}
+
+fn cold_run_succeeded(r: CliWireResponse) -> Bool {
+  match r {
+    CliWirePrintable { bytes: _, exit } =>
+      match exit {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+    CliWireUnprintable { cause: _ } => false
+  }
+}
+
+fn cold_run_bytes(r: CliWireResponse) -> String {
+  match r {
+    CliWirePrintable { bytes, exit: _ } => bytes
+    CliWireUnprintable { cause } => cause as String
+  }
+}
+
+fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
+  match r {
+    SccacheUnitServed { executed, hits, misses } =>
+      join([label, ": executed=", to_string(value: executed), " hits=", to_string(value: hits), " misses=", to_string(value: misses), "\n"], "")
+    SccacheUnitUnobserved { reason } => join([label, ": unobserved: ", reason, "\n"], "")
+  }
+}
+
+// Two identities back to back in ONE dispatch: same slot, uid and cache directory. Only the second
+// unit carries SccacheStatsAtStop, so its reading is that unit's own server's whole counters, not a difference.
+fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
+  let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame, stop_observation: NoStopObservation)
+  if !cold_run_succeeded(r: first) {
+    first
+  } else {
+    match observe_run_frame() {
+      Absent => no_observation(bytes: cold_run_bytes(r: first), reason: "second run frame unreadable")
+      Present { value: second_frame } => {
+        let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame, stop_observation: SccacheStatsAtStop)
+                let reading_2 = sccache_reading_from(text: cold_run_bytes(r: second))
+        let bytes = join([
+          cold_run_bytes(r: first), "\n=== second identity ===\n", cold_run_bytes(r: second), "\n",
+          sccache_reading_wire(label: "sccache in second identity's unit", r: reading_2),
+        ], "")
+        if !cold_run_succeeded(r: second) {
+          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity's run failed" } }
+        } else {
+          match reading_2 {
+            SccacheUnitUnobserved { reason } => no_observation(bytes: bytes, reason: join(["no observation: ", reason], ""))
+            SccacheUnitServed { executed, hits, misses: _ } =>
+              if executed == 0 {
+                no_observation(bytes: bytes, reason: "no observation: the second unit's own sccache stats show 0 compile requests")
+              } else if hits > 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+              } else {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity had 0 sccache hits" } }
+              }
+          }
+        }
+      }
+    }
   }
 }

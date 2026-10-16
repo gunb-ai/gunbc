@@ -2611,17 +2611,36 @@ pub(crate) fn parse_module_node_tolerant(
     rel: &str,
     content: &str,
 ) -> Option<Rc<crate::v1_std_core::Node>> {
+    parse_module_node_located(rel, content).ok()
+}
+
+/// `parse_module_node_tolerant` that keeps the parse refusal's located cause: `file:line:col:
+/// message` from the `ErrorNode` the parser already computed (DESIGN §5, §6b -- the span is
+/// in hand at the parse and must survive the seam into the closure-load diagnostic).
+pub(crate) fn parse_module_node_located(
+    rel: &str,
+    content: &str,
+) -> Result<Rc<crate::v1_std_core::Node>, String> {
     let filename = rel.to_string();
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
     let tokens = super::pool_acquire::tokens_for(&filename, content);
     let source_index = super::pool_acquire::newline_index_for(&filename, content);
     let mut source_indices = HashMap::new();
-    source_indices.insert(filename.clone(), source_index);
+    source_indices.insert(filename.clone(), source_index.clone());
     let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
-    if result.error.is_some() {
-        return None;
+    if let Some(error) = &result.error {
+        let span = crate::v1_std_core::diagnostic_to_span(error.diagnostic.clone());
+        let message = crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone());
+        let lc = crate::v1_std_core::byte_to_line_col(source_index, span.start);
+        return Err(format!(
+            "parse-failed at {rel}:{}:{}: {message}",
+            lc.line, lc.col
+        ));
     }
-    result.module.clone()
+    result
+        .module
+        .clone()
+        .ok_or_else(|| format!("parse-failed at {rel}: parser produced no module and no error"))
 }
 
 /// THE POOL-WIDE HALF OF THE REFERENCE-EDGE PRODUCER: which pool module declares each exported
@@ -2935,7 +2954,7 @@ pub(crate) enum FileReferenceEdges {
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
-    Unaccounted(&'static str),
+    Unaccounted(String),
 }
 
 /// ONE FILE'S FREE NAMES, read from its FULL parse by the one structural walk
@@ -3032,10 +3051,8 @@ pub(crate) fn parsed_file_references(
     content: &str,
     self_module: &str,
     module_names: &HashSet<String>,
-) -> Result<ParsedFileReferences, &'static str> {
-    let Some(tree) = parse_module_node_tolerant(rel, content) else {
-        return Err("parse-failed");
-    };
+) -> Result<ParsedFileReferences, String> {
+    let tree = parse_module_node_located(rel, content)?;
     let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut chains: Vec<Vec<String>> = Vec::new();
     // `collect_node_refs` recovers a lambda parameter's name from its authored span, so the
@@ -3075,10 +3092,10 @@ pub(crate) fn parsed_file_references(
     // syntax the collector must learn, and a reconciliation miss names an accounting defect in
     // the collector itself (review 55667).
     if !classify.refusals.is_empty() {
-        return Err("binder-refusal");
+        return Err("binder-refusal".to_string());
     }
     if !classify.reconciles() {
-        return Err("occurrence-accounting-mismatch");
+        return Err("occurrence-accounting-mismatch".to_string());
     }
     let positions = std::mem::take(&mut classify.bare_positions);
     let mut authored_types = std::collections::HashSet::new();
@@ -3124,12 +3141,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
     names: impl FnOnce() -> R,
 ) -> FileReferenceEdges {
     let Some(content) = content else {
-        return FileReferenceEdges::Unaccounted("unreadable");
+        return FileReferenceEdges::Unaccounted("unreadable".to_string());
     };
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
-        return FileReferenceEdges::Unaccounted("no-module-line");
+        return FileReferenceEdges::Unaccounted("no-module-line".to_string());
     };
     let refs = match parsed_file_references(rel, content, &self_module, &names.module_names) {
         Ok(refs) => refs,
@@ -3252,7 +3269,7 @@ pub fn reference_resolution_facts(
         if let Err(cause) = collect_dag_files_tolerant(root_path, &mut files) {
             unaccounted.push(ReferenceAccountingRefusal {
                 path: cause,
-                cause: "the pool root's ledger roster could not be derived",
+                cause: "the pool root's ledger roster could not be derived".to_string(),
             });
             continue;
         }
