@@ -159,6 +159,8 @@ fn object_source_serve_admission(source: String, standing: PartialCloneStanding)
   }
 }
 
+data object_source_serve_refusal_printf_format: String = "the object source `%s` cannot serve the objects this transfer needs: %s\n"
+
 fn object_source_serve_refusal_text(admission: ObjectSourceServeAdmission) -> String {
   match admission {
     ObjectSourceCanServe { source: _ } => ""

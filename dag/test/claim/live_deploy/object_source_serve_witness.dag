@@ -123,6 +123,8 @@ test fn a_can_serve_apply_decide_inspects_the_pwd_named_as_tree_src() -> Bool {
     && string_contains(s: decide, pattern: "git")
     && string_contains(s: decide, pattern: apply_tree_src_expansion_var)
     && string_contains(s: decide, pattern: "extensions.partialClone")
+    && string_contains(s: decide, pattern: "--local")
+    && string_contains(s: decide, pattern: "partialclonefilter")
     && string_contains(s: apply_object_source_pwd_serve_decide_command(), pattern: apply_tree_src_expansion_var)
 }
 
