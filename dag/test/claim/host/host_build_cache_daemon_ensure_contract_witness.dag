@@ -1,0 +1,225 @@
+module test.claim.host.host_build_cache_daemon_ensure_contract_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { list_map }
+import std.optional { Absent, Optional, Present }
+import extdeps.cache.sccache { sccache_installed_binary_path, sccache_release_0_15_0 }
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement, ServerPlacementAbsent, ci_cache_instance }
+import gunbc.build_cache.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  DaemonMisconfigured,
+  DaemonStatsOk,
+  DaemonUnresponsive,
+}
+import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheEnsureExecuted,
+  BuildCacheEnsureOp,
+  BuildCacheHostRunObserved,
+  BuildCacheHostRunOutcome,
+  BuildCacheObserve,
+  EnsureCompleted,
+  EnsureOps,
+  ObserveStatsOk,
+  Ran,
+  build_cache_daemon_ensure_observation,
+  build_cache_daemon_ensure_plan,
+  build_cache_ensure_is_needed,
+  build_cache_matched_stats_fragment,
+  build_cache_observe_observed,
+}
+import gunbc.host.verified_binary_install { AlreadyInstalled, VerifiedBinaryInstallPresence }
+import gunbc.witness.live_tree_disposition { LiveTreeDisposition, SubstrateInputsOnly }
+
+// THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.
+//
+// ENROLLED AS A KNOWN-RED QUARANTINE PROBE (gunbc.explicit_witness_admission), AND IT IS WRITTEN TO ASSERT
+// THE CORRECT BEHAVIOUR, NOT THE CURRENT ONE. That direction is deliberate and is the whole point: a witness
+// asserting the current refusal would be GREEN today, would have to be deleted when the defect is fixed, and
+// would spend the weeks in between certifying the bug as the expected result. Written the other way it is red
+// while the defect is live, greens with NO EDIT when the fix lands, and then stays in the tree as an ordinary
+// regression control. The quarantine row is what the fixing change deletes, never this claim.
+//
+// THE HOST STATE, SUPPLIED RATHER THAN MEASURED (DESIGN's witness rule: a claim supplies its own boundary
+// values, because a claim that depends on a host it cannot control cannot be reproduced by the person who has
+// to fix it). A build-cache instance whose server placement is unknown-to-absent, whose sccache binary IS
+// installed and executable, and whose `--show-stats` exits ZERO with a zeroed table -- the measured behaviour
+// of sccache 0.15.0 when no server exists at all (extdeps.cache.sccache.sccache_stats_query_does_not_spawn_note,
+// RunnerObserved srv2 2026-08-01, two private-endpoint controls).
+//
+// WHY THIS STATE IS NOT HYPOTHETICAL: it is the ordinary steady state of a host whose sccache unit is not up.
+// srv3 on 2026-07-25 was greened over a unit that had been inactive for six hours on exactly this read.
+//
+// WHAT SHOULD HAPPEN, AND WHAT THE RETIRED SCRIPT DID INSTEAD. The script's observe phase tested only the exit
+// code, saw zero, printed its `observe=ok` receipt and `exit 0`'d -- so no unit was written, no daemon-reload
+// ran, nothing was enabled or restarted, and the read-back never happened; the classifier then reported
+// "exited zero without printing its read_back=ok receipt" and the effect refused with NotConverged. The port
+// keeps that behaviour EXACTLY (ruling A: faithful port, no behaviour change in this PR), which is why this
+// claim is red now. The fix is ONE ARM: the observe phase must not end the ensure, and daemon ownership comes
+// from the endpoint survey rather than from `--show-stats` -- the same conclusion the retired receipt's own
+// server_placement paragraph already reached, and the reason `--show-stats` is documented as supplemental.
+//
+// THE FOUR CONJUNCTS, AND WHICH ONE IS RED TODAY. Three are true now and are here as the positive control:
+// they prove the observer read the captures correctly, that the ensure's operations ARE derivable (so the
+// refusal is not caused by a plan that cannot be built), and that a completed ensure plus an answering
+// read-back converges. Exactly one is false today -- whether this host needs the ensure -- and it is the one
+// the fix changes. So the claim goes red for the defect and for nothing else, and each conjunct fails for a
+// distinguishable reason if the machinery around the fix is broken.
+
+data zeroed_stats_table: String = "Compile requests                      0\nCompile requests executed                 0\nCache hits                              0\nCache misses                            0\n"
+
+data contract_fatal_fragment: String = "fatal server error"
+
+test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -> Bool {
+  let presence =
+    Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } }
+  let stats =
+    Ran {
+      observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+    }
+  let observe = build_cache_observe_observed(presence: presence, stats: Present { value: stats })
+  // (1) CONTROL, true today: the two captures are read as they should be -- binary present, and an rc-0 stats
+  // table. If this arm were wrong the rest of the claim would be measuring a different host than it names.
+  build_cache_observe_is_stats_ok(observe: observe)
+    // (2) CONTROL, true today: the ensure's operations ARE derivable for this host, in the right order. The
+    // refusal is therefore not a plan that cannot be built; it is a decision not to run a plan that can be.
+    && build_cache_contract_plan_derives_the_ensure_legs()
+    // (3) CONTROL, true today: given a completed ensure and an answering read-back the classifier converges,
+    // carrying the table the host printed as its evidence. So the tail of the pipeline works; only the front
+    // of it refuses to enter it.
+    && build_cache_contract_converges_on_an_answering_read_back()
+    // (4) THE DEFECT, false today: on this host -- binary installed, daemon down -- the ensure IS needed.
+    // Avoiding a restart of a server that is SERVING is the only good reason not to bounce; this host has
+    // nothing to drain. Every outcome other than "the daemon answered" already requires the ensure; this is
+    // the one that does not, and it is the one the fleet is made of.
+    && build_cache_ensure_is_needed(observe: observe)
+}
+
+// THE OBSERVER READ THE CAPTURES AS CLAIMED: the presence probe exited zero (which is why the stats query ran
+// at all) and the stats query exited zero. `ObserveStatsOk` is the arm the defect hangs on, so the claim first
+// proves it is holding the observation it says it is.
+fn build_cache_observe_is_stats_ok(observe: BuildCacheObserve) -> Bool {
+  match observe {
+    ObserveStatsOk { stats: s } => string_contains(s: s, pattern: "Compile requests")
+    _ => false
+  }
+}
+
+// THE OPERATIONS THE ENSURE WOULD RUN ARE ALL THERE, in the order that makes them correct: the unit bytes to
+// the staged sibling, the install into /etc/systemd/system, the manager reload so the manager can SEE the
+// unit, then enable, then restart. Asserted by COUNT AND ORDER rather than by rendering, so this control
+// cannot be satisfied by an empty plan, nor by a plan that forgot the reload between the write and the start.
+//
+// The install legs are deliberately absent here, and their absence is part of the control: this host's binary
+// is already executable, so deriving a re-download would be wrong in the other direction -- it would
+// overwrite a binary that is running.
+fn build_cache_contract_plan_derives_the_ensure_legs() -> Bool {
+  let plan =
+    build_cache_daemon_ensure_plan(
+      instance: build_cache_contract_instance(),
+      arch_token: "x86_64" as NonEmptyStr,
+      digest: sccache_release_0_15_0.digest_x86_64,
+      install: Present {
+        value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String },
+      },
+    )
+  match plan {
+    EnsureOps { ops: steps } =>
+      list_length(xs: steps) == 5
+        && build_cache_op_is_privileged(index: 0, want: "dd", steps: steps)
+        && build_cache_op_is_privileged(index: 1, want: "install", steps: steps)
+        && build_cache_op_unprivileged_argument_is(index: 2, want: "daemon-reload", steps: steps)
+        && build_cache_op_is_privileged(index: 3, want: "enable", steps: steps)
+        && build_cache_op_is_privileged(index: 4, want: "restart", steps: steps)
+    _ => false
+  }
+}
+
+// GIVEN AN ENSURE THAT COMPLETED AND A READ-BACK THAT ANSWERED, THE EFFECT CONVERGES -- and what it reports is
+// the table the HOST printed, not a marker the effect printed about itself. This is the end of the pipeline
+// the claim has to reach, proved separately so the claim's red cannot be blamed on it.
+fn build_cache_contract_converges_on_an_answering_read_back() -> Bool {
+  match build_cache_daemon_ensure_observation(
+    observe: build_cache_observe_unresponsive_for_control(),
+    ensure: Present { value: EnsureCompleted },
+    read_back: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+      },
+    },
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonStatsOk { stats_line: line, placement: _ } =>
+      string_contains(s: line, pattern: "Compile requests")
+    DaemonUnresponsive { detail: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+  }
+}
+
+// THE OBSERVATION THE TAIL CONTROL NEEDS: an outcome that reaches the ensure and the read-back instead of
+// short-circuiting. An unresponsive host is the script's own fall-through case, so the control exercises the
+// same path the fixed code will take for the defective case.
+fn build_cache_observe_unresponsive_for_control() -> BuildCacheObserve {
+  build_cache_observe_observed(
+    presence: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } },
+    stats: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 1, stdout: "", stderr: "Connection refused" },
+      },
+    },
+  )
+}
+
+// THE PRIVILEGED WRITING AND STARTING LEGS, and only those. `want` is the tool the leg ultimately runs, so
+// the assertion checks BOTH that the privilege broker wraps it and that the wrapped tool is the one named:
+// a leg that lost its elevation, or a leg that quietly became a different tool, fails here. Stated as the
+// shape the site's elevation gate accepts, so a fix that un-elevates the install to make this claim pass
+// fails it instead.
+fn build_cache_op_is_privileged(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  build_cache_op_program_is(index: index, want: "sudo", steps: steps)
+    && build_cache_op_argument_is(index: index, want: want, steps: steps)
+}
+
+// THE MANAGER CONVERSATION CARRIES NO PRIVILEGE. `systemctl daemon-reload` talks to a socket the unprivileged
+// principal may reach, so wrapping it would be privilege the effect does not need -- and the asymmetry
+// between it and enable/restart is the measured shape, not a style preference. One assertion for the program
+// and one for the operand, so an unprivileged-but-wrong tool at this index also fails.
+fn build_cache_op_unprivileged_argument_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  build_cache_op_program_is(index: index, want: "systemctl", steps: steps)
+    && !build_cache_op_program_is(index: index, want: "sudo", steps: steps)
+    && build_cache_op_argument_is(index: index, want: want, steps: steps)
+}
+
+fn build_cache_op_program_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: list_map(xs: steps, f: fn(s) { s.op.argv.program.invocation as String }), index: index) {
+    Present { value: got } => got == want
+    Absent => false
+  }
+}
+
+fn build_cache_op_argument_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: list_map(xs: steps, f: fn(s) { join(elements: s.op.argv.arguments, separator: " ") }), index: index) {
+    Present { value: got } => string_contains(s: got, pattern: want)
+    Absent => false
+  }
+}
+
+fn build_cache_contract_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv1")
+}
+
+fn build_cache_contract_placement() -> BuildCacheServerPlacement {
+  ServerPlacementAbsent
+}
+
+// THE SCAN STILL SEES WHAT IT IS CITED TO SEE, on a capture that also contains the zeroes a healthy-host table
+// is made of. Kept in this file because the fix touches the same classifier: a cited fragment must still win
+// over a well-formed-looking empty table, so the misconfigured report cannot be lost while the arms around it
+// are rearranged.
+test fn a_fragment_still_classifies_over_a_zeroed_table() -> Bool {
+  match build_cache_matched_stats_fragment(
+    capture: join(["nothing useful here\n", contract_fatal_fragment, "\n", zeroed_stats_table], ""),
+  ) {
+    Present { value: got } => got == contract_fatal_fragment
+    Absent => false
+  }
+}
