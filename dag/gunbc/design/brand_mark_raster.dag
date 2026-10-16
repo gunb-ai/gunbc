@@ -123,9 +123,13 @@ fn brand_raster_ground_contains(spec: BrandRasterSpec, s: Int, x: Int, y: Int) -
 // tested at that scale. The mark's frame coordinate is (canvas - placement) * 1200 / extent; scaled by
 // 2gN * extent it is ((2g px + 2i + 1) U - 2gN * placement) * 1200, again an integer.
 
+// Counts over one pixel's samples. `escaped` is the samples that are ink and not ground: a sample's
+// own fact, which the two totals cannot recover (one escaped sample beside ground-only samples
+// leaves ink <= ground).
 type BrandRasterCoverage {
   ground: Int
   ink: Int
+  escaped: Int
 }
 
 fn brand_raster_sample(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int, i: Int, j: Int, acc: BrandRasterCoverage) -> BrandRasterCoverage {
@@ -136,7 +140,8 @@ fn brand_raster_sample(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int,
   let fy = (cy - g2n * spec.placement.y) * brand_mark_frame
   let ink = if brand_raster_ink_contains(mark: mark, s: g2n * spec.placement.extent, x: fx, y: fy) { 1 } else { 0 }
   let ground = if brand_raster_ground_contains(spec: spec, s: g2n, x: cx, y: cy) { 1 } else { 0 }
-  BrandRasterCoverage { ground: acc.ground + ground, ink: acc.ink + ink }
+  let escaped = if ink == 1 && ground == 0 { 1 } else { 0 }
+  BrandRasterCoverage { ground: acc.ground + ground, ink: acc.ink + ink, escaped: acc.escaped + escaped }
 }
 
 fn brand_raster_range(n: Int) -> List<Int> {
@@ -148,7 +153,7 @@ fn brand_raster_range_from(i: Int, n: Int, acc: List<Int>) -> List<Int> {
 }
 
 fn brand_raster_coverage(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int) -> BrandRasterCoverage {
-  fold(brand_raster_range(n: brand_raster_grid), init: BrandRasterCoverage { ground: 0, ink: 0 }, f: (row, j) =>
+  fold(brand_raster_range(n: brand_raster_grid), init: BrandRasterCoverage { ground: 0, ink: 0, escaped: 0 }, f: (row, j) =>
     fold(brand_raster_range(n: brand_raster_grid), init: row, f: (acc, i) => brand_raster_sample(mark: mark, spec: spec, px: px, py: py, i: i, j: j, acc: acc)))
 }
 
@@ -197,14 +202,14 @@ type BrandRasterRows {
   refusal: BrandRasterRefusal?
 }
 
-// On a clear ground the ink is the whole opaque coverage. On a badge the ink must lie inside it: an
-// ink sample outside the badge would be a mark escaping its ground, which is a placement error to
-// refuse rather than a pixel to paint.
+// On a clear ground the ink is the whole opaque coverage. On a badge the ink must lie inside it: any
+// one ink sample outside the badge is a mark escaping its ground, a placement error to refuse rather
+// than a pixel to paint. It is judged per sample, never from the totals.
 fn brand_raster_pixel(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int) -> Int? {
   let c = brand_raster_coverage(mark: mark, spec: spec, px: px, py: py)
   match spec.ground {
     BrandClearGround => Present { value: brand_raster_index(a: c.ink, m: c.ink) }
-    BrandBadgeGround { paint: _, corner: _ } => if c.ink > c.ground { none } else { Present { value: brand_raster_index(a: c.ground, m: c.ink) } }
+    BrandBadgeGround { paint: _, corner: _ } => if c.escaped > 0 { none } else { Present { value: brand_raster_index(a: c.ground, m: c.ink) } }
   }
 }
 

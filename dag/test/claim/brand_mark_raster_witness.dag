@@ -117,6 +117,24 @@ fn raster_witness_refused_escape() -> Bool {
   }
 }
 
+// THE PER-SAMPLE RED (side-chat review of gunbc#14131 at 04fa70cad2). The face 30 units left of a
+// badge with corner 24, eight pixels: pixel (0, 0) has eight ground samples and four ink samples, one
+// of them outside the corner circle. Its totals say ink <= ground, so a check over totals admits it;
+// the escaped sample refuses it, at that pixel.
+fn raster_witness_refused_escape_beside_ground() -> Bool {
+  match brand_mark_raster(mark: brand_mark(kind: FaceMark), spec: BrandRasterSpec { pixels: 8, canvas: 128, ground: BrandBadgeGround { paint: raster_witness_stone, corner: 24 }, placement: BrandRasterPlacement { x: -30, y: 0, extent: 120 }, ink: raster_witness_ink, intent: PngRelativeColorimetric }) {
+    BrandRasterRefused { cause } => match cause {
+      BrandRasterMarkOutsideGround { row, column } => row == 0 && column == 0
+      _ => false
+    }
+    BrandRastered { image: _ } => false
+  }
+}
+
+test fn an_escaped_sample_refuses_though_ink_is_below_ground() -> Bool {
+  raster_witness_refused_escape_beside_ground()
+}
+
 test fn impossible_targets_refuse_with_their_cause() -> Bool {
   raster_witness_refused_size() && raster_witness_refused_extent() && raster_witness_refused_escape()
 }
