@@ -1,0 +1,2202 @@
+[
+ {
+  "variable": "T",
+  "formal": "Node(String<Product(Char<Primitive(Int)>)>)",
+  "actual": "Node(FreeMonoid<Product(Char<Primitive(Int)>)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Primitive())>)",
+  "span": "src/v2/std/diagnostic.dag:15910-15917",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Edge)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(LexRule)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Node)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Product(LexRuleDispatch<Container(FreeMonoid,Product(CompiledLexRule<Coproduct(LexRule),Primitive(Int),Product(LexFirst<Container(FreeMonoid,Product(Char<Primitive(Int)>)),Container(FreeMonoid,Coproduct(LexCharClass)),Coproduct(Bool)>)>)),Map(Product(Char<Primitive(Int)>),Container(FreeMonoid,Product(CompiledLexRule<Coproduct(LexRule),Primitive(Int),Product(LexFirst<Container(FreeMonoid,Product(Char<Primitive(Int)>)),Container(FreeMonoid,Coproduct(LexCharClass)),Coproduct(Bool)>)>))),Container(FreeMonoid,Product(CompiledLexRule<Coproduct(LexRule),Primitive(Int),Product(LexFirst<Container(FreeMonoid,Product(Char<Primitive(Int)>)),Container(FreeMonoid,Coproduct(LexCharClass)),Coproduct(Bool)>)>))>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "actual": "Node(Outcome<Node(FreeMonoid<Primitive()>)>)",
+  "span": "src/v2/std/fold_assembly.dag:5553-5560",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "actual": "Node(Outcome<Node(FreeMonoid<Node(FreeMonoid<Primitive(Node)>)>)>)",
+  "span": "src/v2/std/fold_assembly.dag:7159-7166",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "actual": "Node(Outcome<Node(FreeMonoid<Primitive(Node)>)>)",
+  "span": "src/v2/std/fold_assembly.dag:9777-9784",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Node)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(ModuleBindingSource<Primitive(Node),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Primitive(Symbol)>),Node(FreeMonoid<Primitive(Symbol)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Coproduct(StandardIntegerType)>)",
+  "span": "src/v2/std/integer.dag:17360-17367",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Primitive(Int)",
+  "actual": "UnresolvedDecl(Int<Primitive(Nat)>)",
+  "span": "src/v2/std/integer.dag:1583-1598",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Coproduct(RequirementClass))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Coproduct(DependencyDemand))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Coproduct(DependencyDemand))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DependencyDemandRow<Node(QualifiedName<Primitive(Symbol)>),Coproduct(DependencyDemand)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Product(DemandIdentity<Product(ArtifactKindId<Primitive(NonEmptyStr)>),Coproduct(IdentityComponent),Container(FreeMonoid,Product(DeclaredInput<Product(NonEmptyStr<Primitive(String)>),Coproduct(IdentityComponent)>))>),Node(DemandEntry<Primitive()>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(DependencyRelation)",
+  "actual": "Node(DependencyRelation<Product(DemandIdentity<Product(ArtifactKindId<Primitive(NonEmptyStr)>),Coproduct(IdentityComponent),Container(FreeMonoid,Product(DeclaredInput<Product(NonEmptyStr<Primitive(String)>),Coproduct(IdentityComponent)>))>)>)",
+  "span": "src/v2/std/demand_engine.dag:26616-26634",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LexicalBindingCandidate<Node(QualifiedName<Primitive(Symbol)>),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LexicalBindingCandidate<Node(QualifiedName<Primitive(Symbol)>),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LexicalBindingCandidate<Node(QualifiedName<Primitive(Symbol)>),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(ConcreteSyntaxToken)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(ConcreteSyntaxToken)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(ConcreteSyntaxToken)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Primitive(String))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(std.algebra.FreeMonoid<Product(Char<Primitive(Int)>)>)",
+  "actual": "Node(String<Product(Char<Primitive(Int)>)>)",
+  "span": "src/v2/std/text.dag:310-320",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Primitive(Symbol))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Edge)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(PassingCandidateFold)",
+  "actual": "Node(PassingCandidateFold<Primitive(Node)>)",
+  "span": "src/v2/std/compilers/target_model.dag:342545-342565",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/compilers/target_model.dag:348716-348720",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/compilers/target_model.dag:351776-351780",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/compilers/target_model.dag:369428-369432",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Map(Primitive(Symbol),UnresolvedDecl(TargetDeriveSupplementalGenericBoundRequirementSet<Primitive(TargetCapabilityKey),Primitive(TargetDeriveSupplementalGenericBoundRequirementAuthority)>))>)",
+  "actual": "Node(Outcome<Map(Primitive(Symbol),Node(TargetDeriveSupplementalGenericBoundRequirementSet<Primitive(TargetCapabilityKey),Primitive(TargetDeriveSupplementalGenericBoundRequirementAuthority)>))>)",
+  "span": "src/v2/std/compilers/target_model.dag:437012-437019",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Map(Primitive(Symbol),UnresolvedDecl(TargetDeriveSupplementalGenericBoundRequirementSet<Primitive(TargetCapabilityKey),Primitive(TargetDeriveSupplementalGenericBoundRequirementAuthority)>))>)",
+  "actual": "Node(Outcome<Map(Primitive(Symbol),UnresolvedDecl(TargetDeriveSupplementalGenericBoundRequirementSet<Primitive(TargetCapabilityKey),Primitive(TargetDeriveSupplementalGenericBoundRequirementAuthority)>))>)",
+  "span": "src/v2/std/diagnostic.dag:6513-6520",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Map(Primitive(K),Primitive(V))>)",
+  "actual": "Coproduct(Outcome)",
+  "span": "src/v2/std/diagnostic.dag:3888-3892",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/compilers/target_model.dag:496383-496387",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Edge)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Symbol))",
+  "span": "src/v2/std/compilers/target_model.dag:506469-506473",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Symbol))",
+  "span": "src/v2/std/compilers/target_model.dag:590212-590216",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Edge)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Node)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(TargetSemanticDeclDecorationLine<Primitive(Symbol)>))",
+  "span": "src/v2/std/compilers/semantic_decl_emission.dag:71706-71710",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/grammar.dag:48510-48514",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(FormalProduction<Product(FormalNonterminal<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(FormalGrammarSymbol))>))",
+  "span": "src/v2/std/grammar.dag:50894-50898",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Symbol))",
+  "span": "src/v2/std/grammar.dag:65736-65740",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Primitive(FormalLhsBuckets))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Container(FreeMonoid,Node(std.optional.Optional<Primitive(Symbol)>))>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(FormalProduction<Product(FormalNonterminal<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(FormalGrammarSymbol))>))",
+  "span": "src/v2/std/grammar.dag:75116-75120",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Symbol))",
+  "span": "src/v2/std/grammar.dag:65736-65740",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Witness)",
+  "actual": "Node(Witness<Primitive(DeriveGrammarRelationTokensProgress)>)",
+  "span": "src/v2/std/grammar.dag:86514-86521",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Primitive(Edge))",
+  "span": "src/v2/std/grammar.dag:101500-101504",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Edge<Coproduct(EdgeLabel),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Node)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Primitive(Symbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Coproduct(TokenClassEmitTransform))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FormalGrammarSymbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Edge)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(PerLanguageFactBundleEntry<Product(PerLanguageFactBundleKey<Primitive(Node),Primitive(TargetModel),Coproduct(ModelCorePrimitiveFactAxis)>),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>))>)",
+  "span": "src/v2/extdeps/languages/python.dag:16663-16670",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>))>)",
+  "span": "src/v2/extdeps/languages/python.dag:16663-16670",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>))>)",
+  "span": "src/v2/extdeps/languages/python.dag:16663-16670",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>))>)",
+  "span": "src/v2/extdeps/languages/python.dag:16663-16670",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>))>)",
+  "span": "src/v2/extdeps/languages/python.dag:16663-16670",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AlgebraInhabitanceDecl<Primitive(Node),Primitive(Node),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AlgebraInhabitanceDecl<Primitive(Node),Primitive(Node),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AlgebraInhabitanceDecl<Primitive(Node),Primitive(Node),Primitive(Node)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FormalGrammarSymbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(List)",
+  "actual": "Container(FreeMonoid,Coproduct(FormalGrammarSymbol))",
+  "span": "src/v2/std/grammar.dag:1984-1988",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(ConcreteSyntaxToken)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(PrimitiveFactBundle<Primitive(Node),Map(Primitive(Symbol),Primitive(Node))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(AlgebraInhabitanceDecl<Primitive(Node),Primitive(Node),Primitive(Node)>))",
+  "span": "src/v2/extdeps/languages/typescript.dag:71245-71249",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FormalGrammarSymbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Primitive(Node)>))",
+  "span": "src/v2/extdeps/languages/typescript.dag:115578-115582",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Primitive(Node)>))",
+  "span": "src/v2/extdeps/languages/typescript.dag:115893-115897",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Product(GrammarProduction<Primitive(Symbol),Primitive(GrammarExpr),Primitive(Node)>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Int)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(OccurrenceId<Primitive(Int)>))",
+  "span": "src/v2/compiler/parse.dag:35572-35576",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LookaheadPrefix<Container(FreeMonoid,Product(LookaheadKey<Coproduct(FirstKey),Container(FreeMonoid,Primitive(Symbol))>)),Coproduct(Bool),Container(FreeMonoid,Container(FreeMonoid,Coproduct(FirstKey)))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LookaheadPrefix<Container(FreeMonoid,Product(LookaheadKey<Coproduct(FirstKey),Container(FreeMonoid,Primitive(Symbol))>)),Coproduct(Bool),Container(FreeMonoid,Container(FreeMonoid,Coproduct(FirstKey)))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FreeMonoid)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(LookaheadPrefix<Container(FreeMonoid,Product(LookaheadKey<Coproduct(FirstKey),Container(FreeMonoid,Primitive(Symbol))>)),Coproduct(Bool),Container(FreeMonoid,Container(FreeMonoid,Coproduct(FirstKey)))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(PreparedChoicePlan))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Primitive(PreparedChoicePlan))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(PreparedExprFold)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Product(InfixOperatorRow<Primitive(Symbol),Primitive(Int),Coproduct(InfixAssociativity)>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Diagnostic<Primitive(Symbol),Coproduct(Locus),Coproduct(Correction)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Container(FreeMonoid,Primitive(Symbol)))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(ResolutionProvenance)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeRouteTestIdentity<Primitive(String),Primitive(String)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeRouteCauseTally<Primitive(Symbol),Coproduct(CauseLane),Primitive(Int)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Primitive(Symbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(PendingBinding<Node(QualifiedName<Primitive(Symbol)>),Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Coproduct(NativeRouteAttainment))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Coproduct(NativeProgressDisposition))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Coproduct(NativeCauseTransitionDisposition))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Coproduct(NativeAcceptToRefuseDisposition))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Coproduct(NativeBaselineAttainment))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(Map)",
+  "actual": "Map(Primitive(Symbol),Primitive(Symbol))",
+  "span": "src/v2/compiler/reference_site_collector.dag:12621-12624",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Node(Outcome<Product(Unit<>)>)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Symbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(ModuleBindingSource<Primitive(Node),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Primitive(Symbol)>),Node(FreeMonoid<Primitive(Symbol)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Node)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(ClosureProviderRefusal<Node(QualifiedName<Primitive(Symbol)>),Primitive(NonEmptyDiagnostics)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(QualifiedDeclaredMember<Node(QualifiedName<Primitive(Symbol)>),Primitive(Symbol),Coproduct(MemberDeclarationKind)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Coproduct(FreeMonoid))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Product(TypeDeclModuleModifierRows<Map(Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>))>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Diagnostic<Primitive(Symbol),Coproduct(Locus),Coproduct(Correction)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Diagnostic<Primitive(Symbol),Coproduct(Locus),Coproduct(Correction)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Node(QualifiedName<Primitive(Symbol)>),Primitive(NonEmptyDiagnostics))",
+  "actual": "Map(Coproduct(FreeMonoid),Primitive(NonEmptyDiagnostics))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(Symbol)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Primitive(Node))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Coproduct(DeclarationOutcome)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Optional)",
+  "actual": "Named(Node)",
+  "span": "src/v2/std/node_query.dag:40611-40615",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Product(TargetText<Container(FreeMonoid,Primitive(Doc)),Coproduct(Bool)>)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Product(TargetText<Container(FreeMonoid,Primitive(Doc)),Coproduct(Bool)>)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Product(TargetText<Container(FreeMonoid,Primitive(Doc)),Coproduct(Bool)>)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Product(TargetText<Container(FreeMonoid,Primitive(Doc)),Coproduct(Bool)>)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(Optional)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(Optional)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FreeMonoid)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(FunctionFact<Node(QualifiedName<Primitive(Symbol)>),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>)),Coproduct(Bool)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(AuthoredRowReading)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(AuthoredRowStanding)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DeletableUsesRow<Node(QualifiedName<Primitive(Symbol)>),Node(QualifiedName<Primitive(Symbol)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Node(QualifiedName<Primitive(Symbol)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(FreeMonoid)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Primitive(QualifiedName)",
+  "actual": "Node(QualifiedName<Primitive(Symbol)>)",
+  "span": "src/v2/std/qualified_name.dag:1492-1502",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusResolveRefusedBucket<Primitive(Symbol),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(DemandCensusResolveRefusedBucket<Primitive(Symbol),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>))",
+  "span": "src/v2/compiler/dependency_demand_census.dag:50466-50470",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusUnboundBucket<Coproduct(DemandCensusUnboundLocus),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Container(FreeMonoid,Product(DemandCensusUnboundBucket<Coproduct(DemandCensusUnboundLocus),Primitive(Int),Container(FreeMonoid,Node(QualifiedName<Primitive(Symbol)>))>))",
+  "span": "src/v2/compiler/dependency_demand_census.dag:54733-54737",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Coproduct(FreeMonoid),Coproduct(DependencyDemand))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusRow<Node(QualifiedName<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(AuthoredRowReading)),Container(FreeMonoid,Coproduct(AuthoredRowStanding)),Coproduct(DemandCensusVerdict),Node(Optional<Coproduct(DependencyDemand)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusRow<Node(QualifiedName<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(AuthoredRowReading)),Container(FreeMonoid,Coproduct(AuthoredRowStanding)),Coproduct(DemandCensusVerdict),Node(Optional<Coproduct(DependencyDemand)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusRow<Node(QualifiedName<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(AuthoredRowReading)),Container(FreeMonoid,Coproduct(AuthoredRowStanding)),Coproduct(DemandCensusVerdict),Node(Optional<Coproduct(DependencyDemand)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusRow<Node(QualifiedName<Primitive(Symbol)>),Container(FreeMonoid,Coproduct(AuthoredRowReading)),Container(FreeMonoid,Coproduct(AuthoredRowStanding)),Coproduct(DemandCensusVerdict),Node(Optional<Coproduct(DependencyDemand)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(SourceRootRef)>)",
+  "span": "src/v2/std/cross_tree/resolution.dag:2714-2724",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(NormalizedDagSourceAst<Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(NormalizedDagSourceAst<Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/source_authority.dag:3196-3200",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(NormalizedDagSourceAst<Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(NormalizedDagSourceAst<Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/source_authority.dag:3196-3200",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Coproduct(FreeMonoid)>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive()>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Product(AcquiredModule<Primitive(String),Product(ModuleFileRef<Coproduct(SourceRootRef),Primitive(String)>),Primitive(String),Primitive(String),Container(FreeMonoid,Product(AcquisitionRequest<Primitive(String),Coproduct(SourceRootRef),Primitive(String),Coproduct(AcquisitionKind)>)),Container(FreeMonoid,Primitive(String))>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/program_assembly.dag:2969-2973",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/program_assembly.dag:2969-2973",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(SourceRef<Primitive(String),Coproduct(SourceRootRef),Coproduct(ContentHash)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/program_assembly.dag:2969-2973",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "T",
+  "formal": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "actual": "Product(LocatedNormalizedTree<Primitive(String),Product(NormalizedTree<Primitive(Node),Product(TestMarkerChannel<Container(FreeMonoid,Product(TestMarkedDeclaration<Primitive(Symbol)>))>),Node(FreeMonoid<Product(AliasBindingRow<Primitive(Symbol),Node(QualifiedName<Primitive(Symbol)>)>)>),Node(FreeMonoid<Product(CapturedImportTarget<Node(QualifiedName<Primitive(Symbol)>),Coproduct(Locus)>)>),Node(FreeMonoid<Coproduct(DeclaredTypeKind)>),Node(FreeMonoid<Product(DeclaredTypeModifiers<Primitive(Symbol),Node(FreeMonoid<Coproduct(TypeDeclModifier)>)>)>),Coproduct(NormalizedMemberDeclarations)>)>)",
+  "span": "src/v2/compiler/program_assembly.dag:2969-2973",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_TEXT",
+  "predicted_by": "X1",
+  "why": "identical printed shapes refuse: the Absent arms of v1.compiler.types type_heads_agree"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Primitive()>)",
+  "span": "src/v2/std/diagnostic.dag:14331-14338",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(Outcome)",
+  "actual": "Node(Outcome<Primitive(String)>)",
+  "span": "src/v2/compiler/emit_produced.dag:25701-25708",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(TypeDeclModifier)>)",
+  "span": "src/v2/compiler/body_lowering_fold.dag:529232-529242",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AsSiteRow<Primitive(String),Primitive(String),Primitive(Int),Coproduct(TypeRefText),Coproduct(AsOperandRead),Coproduct(AsParentRead)>)>)",
+  "span": "src/v2/compiler/type_declaration_use_census.dag:19987-19997",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "<kernel:Map>:0-3",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Product(DeclarationVerdict<Product(TypeDeclRow<Primitive(String),Primitive(String),Coproduct(Bool),Coproduct(TypeDeclForm),Node(FreeMonoid<Coproduct(TypeDeclModifier)>),Coproduct(TypeRefText),Node(FreeMonoid<Primitive(String)>)>),Coproduct(DeclarationClass),Primitive(String)>))",
+  "span": "<kernel:Map>:0-3",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "<kernel:Map>:0-3",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "<kernel:Map>:0-3",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(TypeDeclRow<Primitive(String),Primitive(String),Coproduct(Bool),Coproduct(TypeDeclForm),Node(FreeMonoid<Coproduct(TypeDeclModifier)>),Coproduct(TypeRefText),Node(FreeMonoid<Primitive(String)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DeclarationVerdict<Product(TypeDeclRow<Primitive(String),Primitive(String),Coproduct(Bool),Coproduct(TypeDeclForm),Node(FreeMonoid<Coproduct(TypeDeclModifier)>),Coproduct(TypeRefText),Node(FreeMonoid<Primitive(String)>)>),Coproduct(DeclarationClass),Primitive(String)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(CastVerdict)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Primitive(Int))",
+  "span": "src/v2/compiler/type_declaration_use_census.dag:37167-37170",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(),Primitive())",
+  "actual": "Map(Primitive(String),Primitive(Int))",
+  "span": "src/v2/compiler/type_declaration_use_census.dag:37167-37170",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "KERNEL_EMPTY_LEAF",
+  "predicted_by": "NONE",
+  "why": "kernel template with empty leaf names; no planned change touches it (parent msg_a5591a7a)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Container(FreeMonoid,Product(NativeInferAdvisoryCount<Primitive(Symbol),Primitive(Int)>))",
+  "span": "src/v2/compiler/source_root_eval.dag:16355-16359",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "SAME_HEAD_BOTH_APPLIED",
+  "predicted_by": "NONE",
+  "why": "same carrier, different arguments: needs per-row reading (true positives live here)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(FileRefusalLink<Primitive(Symbol),Coproduct(FileRefusalAt)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(FloorDiscoveryWalkState<Container(FreeMonoid,Product(FloorDiscoveryRow<Primitive(String),Primitive(String),Primitive(String),Coproduct(LiveTreeDisposition)>)),Primitive(Int),Node(Optional<Primitive(String)>),Container(FreeMonoid,Primitive(String)),Node(Optional<Primitive(String)>)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeLaneUniverseModule<Primitive(String),Primitive(Symbol),Container(FreeMonoid,Primitive(String))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeRouteTestIdentity<Primitive(String),Primitive(String)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeRouteModuleSource<Primitive(String),Primitive(Symbol)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(Symbol),Product(NativeTestFileRefusal<Primitive(Symbol),Node(Optional<Coproduct(FreeMonoid)>),Node(FreeSemigroup<Product(FileRefusalLink<Primitive(Symbol),Coproduct(FileRefusalAt)>)>)>))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Container(FreeMonoid,Product(Unit<>))",
+  "actual": "Node(FreeMonoid<Product(NativeRouteMemberRow<Product(NativeRouteTestIdentity<Primitive(String),Primitive(String)>),Coproduct(NativeTestVerdict)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_DISJOINT",
+  "predicted_by": "NONE",
+  "why": "different carriers, no planned change removes it; per-row reading required"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(NativeLaneOccurrenceCollision<Primitive(Int),Coproduct(NodeKind),Coproduct(NodeKind)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(Unit<>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(AuthoredUsesFunction<Node(QualifiedName<Primitive(Symbol)>),Node(Optional<Primitive(Symbol)>),Container(FreeMonoid,Node(Optional<Primitive(Node)>)),Coproduct(UsesAliasBind)>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusAuthoredReading<Product(AuthoredUsesFunction<Node(QualifiedName<Primitive(Symbol)>),Node(Optional<Primitive(Symbol)>),Container(FreeMonoid,Node(Optional<Primitive(Node)>)),Coproduct(UsesAliasBind)>),Container(FreeMonoid,Coproduct(AuthoredRowReading))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Product(DemandCensusAuthoredReading<Product(AuthoredUsesFunction<Node(QualifiedName<Primitive(Symbol)>),Node(Optional<Primitive(Symbol)>),Container(FreeMonoid,Node(Optional<Primitive(Node)>)),Coproduct(UsesAliasBind)>),Container(FreeMonoid,Coproduct(AuthoredRowReading))>)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(Symbol))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Map(Primitive(K),Primitive(V))",
+  "actual": "Map(Primitive(String),Primitive(Bool))",
+  "span": "dag/std/algebra.dag:74075-74078",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "FORMAL_VS_CONCRETE",
+  "predicted_by": "FORMAL(c)",
+  "why": "the stored first binding still mentions a callee generic (binding_is_unsettled_formal_annotation)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(CensusRunDiffFinding)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(CensusRunDiffFinding)>)",
+  "span": "dag/std/algebra.dag:4733-4743",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Coproduct(CensusRunDiffFinding)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ },
+ {
+  "variable": "A",
+  "formal": "Coproduct(FreeMonoid)",
+  "actual": "Node(FreeMonoid<Primitive(String)>)",
+  "span": "dag/std/algebra.dag:5169-5179",
+  "artifact": "/tmp/ci_v2boot.log",
+  "class": "DIFF_HEAD_UNFOLD_CANDIDATE",
+  "predicted_by": "RELATION",
+  "why": "heads differ but children agree: alias/declaration unfold (generic_type_unify_unfold)"
+ }
+]

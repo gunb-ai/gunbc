@@ -1,0 +1,222 @@
+instrument: tools/rebind_census.sh
+artifacts: /tmp/ci_v2boot.log
+rows parsed: 220
+distinct (formal,actual,span): 136
+
+TOTAL PARTITION (every row exactly one class; sum must equal rows): 220/220
+  DIFF_HEAD_UNFOLD_CANDIDATE  106   predicted removed by RELATION
+  DIFF_HEAD_DISJOINT           38   predicted removed by NONE
+  FORMAL_VS_CONCRETE           32   predicted removed by FORMAL(c)
+  SAME_HEAD_BOTH_APPLIED       21   predicted removed by NONE
+  KERNEL_EMPTY_LEAF            16   predicted removed by NONE
+  SAME_TEXT                     7   predicted removed by X1
+
+PREDICTION SUMMARY (rows per predicted change):
+  RELATION    106
+  NONE         75
+  FORMAL(c)    32
+  X1            7
+
+ROWS NO PLANNED CHANGE REMOVES, by identity:
+  x9 SAME_HEAD_BOTH_APPLIED
+      F=Node(Outcome<Product(Unit<>)>)
+      L=Node(Outcome<Coproduct(FreeMonoid)>)
+      @src/v2/std/diagnostic.dag:14331-14338
+  x6 KERNEL_EMPTY_LEAF
+      F=Coproduct(FreeMonoid)
+      L=Node(FreeMonoid<Primitive()>)
+      @dag/std/algebra.dag:4733-4743
+  x5 SAME_HEAD_BOTH_APPLIED
+      F=Node(Outcome<Product(Unit<>)>)
+      L=Node(Outcome<Container(FreeMonoid,Product(PrimitiveFactBundle<Primitiv
+      @src/v2/extdeps/languages/python.dag:16663-16670
+  x3 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Primitive(String)>)
+      @dag/std/algebra.dag:5169-5179
+  x3 KERNEL_EMPTY_LEAF
+      F=Map(Primitive(),Primitive())
+      L=Map(Primitive(String),Primitive(Bool))
+      @<kernel:Map>:0-3
+  x2 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Symbol))
+      @src/v2/std/grammar.dag:65736-65740
+  x2 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Primitive(Symbol)>)
+      @dag/std/algebra.dag:5169-5179
+  x2 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(NativeRouteTestIdentity<Primitive(String),Prim
+      @dag/std/algebra.dag:5169-5179
+  x2 KERNEL_EMPTY_LEAF
+      F=Map(Primitive(),Primitive())
+      L=Map(Primitive(String),Primitive(Int))
+      @src/v2/compiler/type_declaration_use_census.dag:37167-37170
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Node(String<Product(Char<Primitive(Int)>)>)
+      L=Node(FreeMonoid<Product(Char<Primitive(Int)>)>)
+      @dag/std/algebra.dag:4733-4743
+  x1 KERNEL_EMPTY_LEAF
+      F=Node(Outcome<Coproduct(FreeMonoid)>)
+      L=Node(Outcome<Container(FreeMonoid,Primitive())>)
+      @src/v2/std/diagnostic.dag:15910-15917
+  x1 KERNEL_EMPTY_LEAF
+      F=Node(Outcome<Coproduct(FreeMonoid)>)
+      L=Node(Outcome<Node(FreeMonoid<Primitive()>)>)
+      @src/v2/std/fold_assembly.dag:5553-5560
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Node(Outcome<Coproduct(FreeMonoid)>)
+      L=Node(Outcome<Node(FreeMonoid<Node(FreeMonoid<Primitive(Node)>)>)>)
+      @src/v2/std/fold_assembly.dag:7159-7166
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Node(Outcome<Coproduct(FreeMonoid)>)
+      L=Node(Outcome<Node(FreeMonoid<Primitive(Node)>)>)
+      @src/v2/std/fold_assembly.dag:9777-9784
+  x1 KERNEL_EMPTY_LEAF
+      F=Map(Primitive(K),Primitive(V))
+      L=Map(Product(DemandIdentity<Product(ArtifactKindId<Primitive(NonEmptySt
+      @dag/std/algebra.dag:74075-74078
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Node(std.algebra.FreeMonoid<Product(Char<Primitive(Int)>)>)
+      L=Node(String<Product(Char<Primitive(Int)>)>)
+      @src/v2/std/text.dag:310-320
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/compilers/target_model.dag:348716-348720
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/compilers/target_model.dag:351776-351780
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/compilers/target_model.dag:369428-369432
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Node(Outcome<Map(Primitive(Symbol),UnresolvedDecl(TargetDeriveSuppleme
+      L=Node(Outcome<Map(Primitive(Symbol),Node(TargetDeriveSupplementalGeneri
+      @src/v2/std/compilers/target_model.dag:437012-437019
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/compilers/target_model.dag:496383-496387
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Symbol))
+      @src/v2/std/compilers/target_model.dag:506469-506473
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Symbol))
+      @src/v2/std/compilers/target_model.dag:590212-590216
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(TargetSemanticDeclDecorationLine<Primitiv
+      @src/v2/std/compilers/semantic_decl_emission.dag:71706-71710
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/grammar.dag:48510-48514
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(FormalProduction<Product(FormalNontermina
+      @src/v2/std/grammar.dag:50894-50898
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(FormalProduction<Product(FormalNontermina
+      @src/v2/std/grammar.dag:75116-75120
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Primitive(Edge))
+      @src/v2/std/grammar.dag:101500-101504
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Node(QualifiedName<Primitive(Symbol)>)
+      @src/v2/std/qualified_name.dag:1492-1502
+  x1 DIFF_HEAD_DISJOINT
+      F=Primitive(List)
+      L=Container(FreeMonoid,Coproduct(FormalGrammarSymbol))
+      @src/v2/std/grammar.dag:1984-1988
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(AlgebraInhabitanceDecl<Primitive(Node),Pr
+      @src/v2/extdeps/languages/typescript.dag:71245-71249
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Prim
+      @src/v2/extdeps/languages/typescript.dag:115578-115582
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(AlgebraLawObligation<Primitive(Node),Prim
+      @src/v2/extdeps/languages/typescript.dag:115893-115897
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(OccurrenceId<Primitive(Int)>))
+      @src/v2/compiler/parse.dag:35572-35576
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(NativeRouteCauseTally<Primitive(Symbol),Coprod
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Primitive(Map)
+      L=Map(Primitive(Symbol),Primitive(Symbol))
+      @src/v2/compiler/reference_site_collector.dag:12621-12624
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(ClosureProviderRefusal<Node(QualifiedName<Prim
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(QualifiedDeclaredMember<Node(QualifiedName<Pri
+      @dag/std/algebra.dag:5169-5179
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Map(Node(QualifiedName<Primitive(Symbol)>),Primitive(NonEmptyDiagnosti
+      L=Map(Coproduct(FreeMonoid),Primitive(NonEmptyDiagnostics))
+      @dag/std/algebra.dag:74075-74078
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Coproduct(DeclarationOutcome)>)
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(Optional)
+      L=Named(Node)
+      @src/v2/std/node_query.dag:40611-40615
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(DemandCensusResolveRefusedBucket<Primitiv
+      @src/v2/compiler/dependency_demand_census.dag:50466-50470
+  x1 DIFF_HEAD_DISJOINT
+      F=Coproduct(FreeMonoid)
+      L=Container(FreeMonoid,Product(DemandCensusUnboundBucket<Coproduct(Deman
+      @src/v2/compiler/dependency_demand_census.dag:54733-54737
+  x1 KERNEL_EMPTY_LEAF
+      F=Coproduct(Outcome)
+      L=Node(Outcome<Primitive()>)
+      @src/v2/std/diagnostic.dag:14331-14338
+  x1 KERNEL_EMPTY_LEAF
+      F=Map(Primitive(),Primitive())
+      L=Map(Primitive(String),Product(DeclarationVerdict<Product(TypeDeclRow<P
+      @<kernel:Map>:0-3
+  x1 SAME_HEAD_BOTH_APPLIED
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Container(FreeMonoid,Product(NativeInferAdvisoryCount<Primitive(Symbol
+      @src/v2/compiler/source_root_eval.dag:16355-16359
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(FloorDiscoveryWalkState<Container(FreeMonoid,P
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(NativeLaneUniverseModule<Primitive(String),Pri
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(NativeRouteModuleSource<Primitive(String),Prim
+      @dag/std/algebra.dag:5169-5179
+  x1 DIFF_HEAD_DISJOINT
+      F=Container(FreeMonoid,Product(Unit<>))
+      L=Node(FreeMonoid<Product(NativeRouteMemberRow<Product(NativeRouteTestId
+      @dag/std/algebra.dag:5169-5179
+
+wrote tools/rebind_census_run_38918165053.json
