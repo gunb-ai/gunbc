@@ -82,6 +82,13 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_unit_doc,
   convergence_placement_entry_path,
 }
+import extdeps.git.partial_clone {
+  ObjectSourceServeAdmission,
+  ObjectSourceCanServe,
+  ObjectSourceCannotServe,
+  object_source_serve_refusal_text,
+  observe_object_source_serve,
+}
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
@@ -4264,6 +4271,30 @@ fn apply_step_fragments(
   }
 }
 
+fn object_source_cannot_serve_command(source: String, cause: String) -> String {
+  concat(
+    object_source_serve_refusal_text(admission: ObjectSourceCannotServe { source: source, cause: cause }),
+    "\n",
+  )
+}
+
+fn apply_object_source_serve_fragments(object_source_serve: ObjectSourceServeAdmission) -> List<HostScriptFragment> {
+  match object_source_serve {
+    ObjectSourceCanServe { source: _ } =>
+      host_script_member_proceed(member: "object-source" as NonEmptyStr, mutate_steps: [])
+    ObjectSourceCannotServe { source: s, cause: c } =>
+      host_script_member_refused(
+        member: "object-source" as NonEmptyStr,
+        cause: object_source_serve_refusal_text(admission: object_source_serve),
+        command: concat("__GUNBC_DEPLOY_REFUSED__ ", object_source_cannot_serve_command(source: s, cause: c)),
+      )
+  }
+}
+
+fn apply_complete_object_source_serve() -> ObjectSourceServeAdmission {
+  ObjectSourceCanServe { source: "/home/ghrunner/work/gunbc/gunbc" }
+}
+
 fn apply_intent_fragments(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -4271,14 +4302,22 @@ fn apply_intent_fragments(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> List<HostScriptFragment> {
   concat(
     concat(
-      [
-        Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
-        Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
-        Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
-      ],
+      concat(
+        concat(
+          [
+            Decide { member: "frame" as NonEmptyStr, standing: HostScriptProceed, steps: deploy_apply_frame_decide_steps(spec: spec) },
+          ],
+          apply_object_source_serve_fragments(object_source_serve: object_source_serve),
+        ),
+        [
+          Mutate { member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps() },
+          Mutate { member: "preamble" as NonEmptyStr, steps: deploy_apply_preamble_steps(access: access, spec: spec) },
+        ],
+      ),
       concat(
         owned_directory_fragments(spec: spec, plan: plan),
         concat(
@@ -4305,6 +4344,7 @@ fn apply_intent_from_effects(
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> Pipeline {
   compose_host_script(fragments: apply_intent_fragments(
     spec: spec,
@@ -4313,6 +4353,7 @@ fn apply_intent_from_effects(
     plan: plan,
     cap_authorization: cap_authorization,
     oidc_now: oidc_now,
+    object_source_serve: object_source_serve,
   ))
 }
 
@@ -4649,6 +4690,7 @@ fn live_deploy_apply_script_for(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
   access: DeployAccess,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> String {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } => lab_plan_refused_emit_line(cause: c, fold_label: "apply")
@@ -4661,6 +4703,7 @@ fn live_deploy_apply_script_for(
           cap_authorization: cap_authorization,
           oidc_now: oidc_now,
           access: access,
+          object_source_serve: object_source_serve,
         )
         ScopedRemovalSupported { observed: _ } => live_deploy_apply_script_when_client_observed(
           spec: spec,
@@ -4668,6 +4711,7 @@ fn live_deploy_apply_script_for(
           cap_authorization: cap_authorization,
           oidc_now: oidc_now,
           access: access,
+          object_source_serve: object_source_serve,
         )
       }
   }
@@ -4679,6 +4723,7 @@ fn live_deploy_apply_script_when_client_observed(
   cap_authorization: CapConvergeDecision,
   oidc_now: Second?,
   access: DeployAccess,
+  object_source_serve: ObjectSourceServeAdmission,
 ) -> String {
   match membership_effects(plan: deployment_apply_plan(spec: spec)) {
     EffectsReady { effects: es } =>
@@ -4690,6 +4735,7 @@ fn live_deploy_apply_script_when_client_observed(
           plan: plan,
           cap_authorization: cap_authorization,
           oidc_now: oidc_now,
+          object_source_serve: object_source_serve,
         ),
         refused: live_deploy_apply_emit_refused_poison
       )
@@ -4737,6 +4783,7 @@ fn live_deploy_apply_script_for_wet(
     plan: plan,
     cap_authorization: cap_authorization,
     oidc_now: tracker_web_oidc_deploy_now_epoch(),
+    object_source_serve: observe_object_source_serve(source: git.Inspect.Toplevel().path as String),
   )
 }
 

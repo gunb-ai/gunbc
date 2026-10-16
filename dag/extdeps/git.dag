@@ -988,6 +988,26 @@ type SafeDirectoryGrant {
 
 data git_safe_directory_key: String = "safe.directory"
 
+// GIT'S OWN PARTIAL-CLONE CONFIGURATION KEYS, cited from git-config(1) (git-scm.com/docs/git-config).
+// `extensions.partialClone` names the promisor remote; `remote.<name>.promisor` marks that remote as
+// a promisor; `remote.<name>.partialclonefilter` is the filter-spec (`blob:none` for a clone
+// `--filter=blob:none`). The regexp forms are git config --get-regexp's patterns, not nicknames.
+data git_config_key_extensions_partial_clone: String = "extensions.partialClone"
+
+data git_config_regexp_remote_promisor: String = "remote\\..*\\.promisor"
+
+data git_config_regexp_remote_partialclonefilter: String = "remote\\..*\\.partialclonefilter"
+
+data git_rev_parse_is_shallow_true: String = "true"
+
+// Measured on srv1 packaged git 1:2.43.0-1ubuntu7.3 (2026-10-14): upload-pack prints
+// "warning: lazy fetching disabled; some objects may not be available" and then
+// "fatal: could not fetch <oid> from promisor remote" when the source is a promisor clone.
+// GIT_NO_LAZY_FETCH is set for the upload-pack child so it will not hydrate missing blobs
+// from its own promisor while packing. That is git's behaviour at this version, not a
+// caller policy.
+data git_upload_pack_lazy_fetch_disabled_version: String = "2.43.0"
+
 fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
 }

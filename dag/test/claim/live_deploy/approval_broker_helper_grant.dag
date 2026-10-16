@@ -19,6 +19,7 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pi
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   apply_intent_from_effects,
+  apply_complete_object_source_serve,
   approval_broker_helper_sudoers_readback_stage_name,
   approval_broker_helper_sudoers_line,
   approval_broker_helper_sudoers_content,
@@ -272,6 +273,7 @@ fn apply_step_texts_for(access: DeployAccess) -> List<String> {
       plan: deploy_witness_full_install_plan(spec: spec),
       cap_authorization: CapConvergeWithheld { cause: "the principal claims are not about the cap step" },
       oidc_now: claim_oidc_now(),
+      object_source_serve: apply_complete_object_source_serve(),
     ).steps,
     st => pipeline_step_text(st: st)
   )

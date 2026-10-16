@@ -3,7 +3,7 @@ import std.types { String, List }
 import std.measure { Second }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentStep }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
-import gunbc.live_deploy.emit { apply_intent_fragments, compose_host_script_mutate_steps }
+import gunbc.live_deploy.emit { apply_intent_fragments, compose_host_script_mutate_steps, apply_complete_object_source_serve }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
@@ -154,6 +154,7 @@ fn apply_emitted_steps_text_at(spec: DeploymentSpec, plan: ReleaseEffectPlan, oi
     plan: plan,
     cap_authorization: CapConvergeWithheld { cause: "apply emission projection" },
     oidc_now: oidc_now,
+    object_source_serve: apply_complete_object_source_serve(),
   )))
 }
 

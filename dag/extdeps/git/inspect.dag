@@ -463,6 +463,56 @@ service git.Inspect {
     }
   }
 
+  operation ConfigGetInRepo {
+    requires none
+    input { repository_path: FilePath, key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation ConfigGetRegexpInRepo {
+    requires none
+    input { repository_path: FilePath, pattern: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "config", "--local", "--get-regexp", "{pattern}"] }
+    exit {
+      0 => Unit
+      1 => String "No matching keys"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation IsShallowRepository {
+    requires none
+    input { repository_path: FilePath }
+    output {
+      answer: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "rev-parse", "--is-shallow-repository"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
   operation MergeTreeWriteTree {
     requires opaque
     input { left: GitRef, right: GitRef }

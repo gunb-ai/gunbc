@@ -164,6 +164,8 @@ import gunbc.live_deploy.emit {
   deploy_apply_preamble_steps,
   apply_intent_from_effects,
   apply_intent_fragments,
+  apply_complete_object_source_serve,
+  apply_object_source_serve_fragments,
   compose_host_script,
   compose_host_script_decide_steps,
   compose_host_script_mutate_steps,
@@ -258,7 +260,7 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
   observation: SurplusSlotsObserved { retired: [], still_present: [] },
 )
 
-data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
+data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now(), object_source_serve: apply_complete_object_source_serve())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
 
@@ -473,6 +475,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     plan: plan,
     cap_authorization: srv1_authorization(),
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let frags = apply_intent_fragments(
     spec: spec,
@@ -481,6 +484,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     plan: plan,
     cap_authorization: srv1_authorization(),
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let offset = compose_host_script_decide_steps(fragments: frags).length()
     + host_script_trace_steps(kind: "Mutate", member: "frame" as NonEmptyStr, steps: deploy_apply_frame_mutate_steps()).length()
@@ -1831,6 +1835,7 @@ test fn withheld_cap_report_precedes_and_keeps_binary_tree_and_unit_steps() -> B
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: cap,
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   ).steps)
   string_contains(
     s: text,
@@ -1939,6 +1944,7 @@ test fn helper_grant_precedes_the_roadmap_unit_install() -> Bool {
     plan: plan,
     cap_authorization: CapConvergeWithheld { cause: "claim order scan" },
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   ))
   let roadmap = spec.service.unit_name as String
   match fold(steps, init: LookingForHelperGrant, f: (acc, st) =>
@@ -1988,6 +1994,7 @@ test fn no_member_mutate_steps_carry_a_refused_marker() -> Bool {
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: CapConvergeWithheld { cause: "mutate-marker census" },
     oidc_now: claim_oidc_now(),
+    object_source_serve: apply_complete_object_source_serve(),
   )
   !any(fragments, f => host_script_mutate_carries_refused_marker(f: f))
 }
@@ -2017,6 +2024,7 @@ test fn a_refused_serve_unit_is_not_reloaded_enabled_or_restarted() -> Bool {
     plan: deploy_witness_full_install_plan(spec: spec),
     cap_authorization: CapConvergeWithheld { cause: "refuse-then-restart" },
     oidc_now: Absent,
+    object_source_serve: apply_complete_object_source_serve(),
   )
   let apply_mutate = pipeline_steps_text(steps: compose_host_script_mutate_steps(fragments: apply_frags))
   let retract_frags = retract_intent_fragments_for(spec: spec, access: a)

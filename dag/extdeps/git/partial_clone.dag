@@ -1,0 +1,197 @@
+module extdeps.git.partial_clone
+
+import std.types { FilePath, Int, String }
+import std.algebra { trim }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.git {
+  git_config_key_extensions_partial_clone,
+  git_config_regexp_remote_promisor,
+  git_config_regexp_remote_partialclonefilter,
+  git_rev_parse_is_shallow_true,
+  git_upload_pack_lazy_fetch_disabled_version,
+  git_repository_unusable_exit_code,
+}
+import extdeps.git.inspect {
+  ConfigReading,
+  ConfigSet,
+  ConfigUnset,
+  ConfigUnreadable,
+  config_reading,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-config"
+  }
+}
+
+data git_rev_parse_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-rev-parse"
+  }
+}
+
+data git_upload_pack_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-upload-pack"
+  }
+}
+
+// A REPOSITORY'S PARTIAL-CLONE STANDING IS GIT'S OWN CONFIGURATION AND SHALLOW FILE, not a
+// nickname this repository invents for "has the objects we want". git-config(1) names
+// extensions.partialClone, remote.<name>.promisor and remote.<name>.partialclonefilter.
+// git-rev-parse(1) `--is-shallow-repository` answers the `.git/shallow` file. upload-pack at
+// git_upload_pack_lazy_fetch_disabled_version disables lazy fetching from a promisor remote,
+// so a source that still lists those keys cannot serve pack-objects the blobs the transfer
+// needs (including thin-pack delta bases of advertised "have" commits).
+
+type ShallowRepositoryReading
+  = ShallowRepositoryYes
+  | ShallowRepositoryNo
+  | ShallowRepositoryUnreadable { exit_code: Int, stderr: String }
+
+fn shallow_repository_reading(exit_code: Int, stdout: String, stderr: String) -> ShallowRepositoryReading {
+  if exit_code == git_repository_unusable_exit_code {
+    ShallowRepositoryUnreadable { exit_code: exit_code, stderr: stderr }
+  } else {
+    if exit_code == 0 && trim(s: stdout) == git_rev_parse_is_shallow_true {
+      ShallowRepositoryYes
+    } else {
+      if exit_code == 0 {
+        ShallowRepositoryNo
+      } else {
+        ShallowRepositoryUnreadable { exit_code: exit_code, stderr: stderr }
+      }
+    }
+  }
+}
+
+type PartialCloneStanding
+  = ObjectStoreComplete
+  | PartialClonePromisor { detail: String }
+  | PartialCloneFilter { detail: String }
+  | ShallowClone
+  | PartialCloneUnreadable { detail: String }
+
+type PartialCloneReadings {
+  extensions_partial_clone: ConfigReading
+  remote_promisor: ConfigReading
+  remote_partialclonefilter: ConfigReading
+  shallow: ShallowRepositoryReading
+}
+
+fn partial_clone_standing_of(readings: PartialCloneReadings) -> PartialCloneStanding {
+  match readings.extensions_partial_clone {
+    ConfigUnreadable { exit_code: c, stderr: e } =>
+      PartialCloneUnreadable {
+        detail: join(["git config --get ", git_config_key_extensions_partial_clone, " exited ", to_string(value: c), ": ", e], ""),
+      }
+    ConfigSet { value: v } =>
+      PartialClonePromisor {
+        detail: join([git_config_key_extensions_partial_clone, "=", trim(s: v)], ""),
+      }
+    ConfigUnset =>
+      match readings.remote_promisor {
+        ConfigUnreadable { exit_code: c, stderr: e } =>
+          PartialCloneUnreadable {
+            detail: join(["git config --get-regexp ", git_config_regexp_remote_promisor, " exited ", to_string(value: c), ": ", e], ""),
+          }
+        ConfigSet { value: v } =>
+          PartialClonePromisor { detail: trim(s: v) }
+        ConfigUnset =>
+          match readings.remote_partialclonefilter {
+            ConfigUnreadable { exit_code: c, stderr: e } =>
+              PartialCloneUnreadable {
+                detail: join(["git config --get-regexp ", git_config_regexp_remote_partialclonefilter, " exited ", to_string(value: c), ": ", e], ""),
+              }
+            ConfigSet { value: v } =>
+              PartialCloneFilter { detail: trim(s: v) }
+            ConfigUnset =>
+              match readings.shallow {
+                ShallowRepositoryUnreadable { exit_code: c, stderr: e } =>
+                  PartialCloneUnreadable {
+                    detail: join(["git rev-parse --is-shallow-repository exited ", to_string(value: c), ": ", e], ""),
+                  }
+                ShallowRepositoryYes => ShallowClone
+                ShallowRepositoryNo => ObjectStoreComplete
+              }
+          }
+      }
+  }
+}
+
+type ObjectSourceServeAdmission
+  = ObjectSourceCanServe { source: String }
+  | ObjectSourceCannotServe { source: String, cause: String }
+
+fn object_source_cannot_serve_cause(standing: PartialCloneStanding) -> String {
+  match standing {
+    ObjectStoreComplete => ""
+    PartialClonePromisor { detail: d } =>
+      join([
+        "it is a promisor (partial) clone (",
+        d,
+        "); git upload-pack ",
+        git_upload_pack_lazy_fetch_disabled_version,
+        " disables lazy fetching, so pack-objects dies reading blobs the source does not hold",
+      ], "")
+    PartialCloneFilter { detail: d } =>
+      join([
+        "it has a partialclonefilter (",
+        d,
+        "); git upload-pack ",
+        git_upload_pack_lazy_fetch_disabled_version,
+        " disables lazy fetching, so pack-objects dies reading blobs the source does not hold",
+      ], "")
+    ShallowClone =>
+      "it is a shallow repository (`rev-parse --is-shallow-repository` is true); pack-objects also reads blobs of advertised have-commits outside the shallow boundary"
+    PartialCloneUnreadable { detail: d } =>
+      join(["the repository's partial-clone standing could not be read: ", d], "")
+  }
+}
+
+fn object_source_serve_admission(source: String, standing: PartialCloneStanding) -> ObjectSourceServeAdmission {
+  match standing {
+    ObjectStoreComplete => ObjectSourceCanServe { source: source }
+    PartialClonePromisor { detail: _ } =>
+      ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
+    PartialCloneFilter { detail: _ } =>
+      ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
+    ShallowClone =>
+      ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
+    PartialCloneUnreadable { detail: _ } =>
+      ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
+  }
+}
+
+fn object_source_serve_refusal_text(admission: ObjectSourceServeAdmission) -> String {
+  match admission {
+    ObjectSourceCanServe { source: _ } => ""
+    ObjectSourceCannotServe { source: s, cause: c } =>
+      join(["the object source `", s, "` cannot serve the objects this transfer needs: ", c], "")
+  }
+}
+
+fn observe_partial_clone_readings(repository_path: FilePath) -> PartialCloneReadings {
+  let ext = git.Inspect.ConfigGetInRepo(repository_path: repository_path, key: git_config_key_extensions_partial_clone)
+  let promisor = git.Inspect.ConfigGetRegexpInRepo(repository_path: repository_path, pattern: git_config_regexp_remote_promisor)
+  let filter = git.Inspect.ConfigGetRegexpInRepo(repository_path: repository_path, pattern: git_config_regexp_remote_partialclonefilter)
+  let shallow = git.Inspect.IsShallowRepository(repository_path: repository_path)
+  PartialCloneReadings {
+    extensions_partial_clone: config_reading(exit_code: ext.exit_code, stdout: ext.value, stderr: ext.stderr),
+    remote_promisor: config_reading(exit_code: promisor.exit_code, stdout: promisor.value, stderr: promisor.stderr),
+    remote_partialclonefilter: config_reading(exit_code: filter.exit_code, stdout: filter.value, stderr: filter.stderr),
+    shallow: shallow_repository_reading(exit_code: shallow.exit_code, stdout: shallow.answer, stderr: shallow.stderr),
+  }
+}
+
+fn observe_object_source_serve(source: String) -> ObjectSourceServeAdmission {
+  object_source_serve_admission(
+    source: source,
+    standing: partial_clone_standing_of(readings: observe_partial_clone_readings(repository_path: source as FilePath)),
+  )
+}
