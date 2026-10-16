@@ -42,6 +42,7 @@ import gunbc.runner.runner_width_transition {
   transition_population_agreement,
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
+  slot_width_transition_26_25,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host.host_operation_exec {
@@ -1277,17 +1278,29 @@ test fn a_surplus_outside_the_manifest_is_reported_rather_than_absorbed() -> Boo
 // PERMISSION AND OBLIGATION STAY DIFFERENT FACTS. srv1's recorded interruption authorization still
 // covers 13-50; that is what the operator permitted, not what this transition requires, and it is
 // not edited to match.
+//
+// THE HOST IS TAKEN FROM THE OPEN TRANSITIONS FOR THE SAME REASON. This row then read srv4, whose
+// committed width came to equal its prior (21), so its obligation emptied and the row failed on
+// Absent before reaching the decision, red on main while the agreeing arm went unexecuted on the
+// real path. The first open transition whose obligation is non-empty is the specimen; the supplied
+// arm is the_same_surplus_with_a_derived_obligation_is_decided, and this row stays the real-path
+// read of required_retirees_for_host. When no open transition owes a retiree there is no
+// inhabitant, and the row fails rather than passing vacuously.
 test fn a_surplus_inside_the_manifest_agrees() -> Bool {
-  match known_obligation_of(host: operator_host_srv4).first() {
+  match slot_width_transition_26_25 |> filter(t => list_length(known_obligation_of(host: t.host)) > 0) |> first() {
     Absent => false
-    Present { value: required_unit } =>
-      match transition_population_agreement(
-        host: operator_host_srv4,
-        observed_surplus: [required_unit],
-      ) {
-        TransitionPopulationAgrees => true
-        TransitionPopulationDisagrees { unexpected: _ } => false
-        TransitionPopulationUndecidable { host: _, cause: _ } => false
+    Present { value: open } =>
+      match known_obligation_of(host: open.host).first() {
+        Absent => false
+        Present { value: required_unit } =>
+          match transition_population_agreement(
+            host: open.host,
+            observed_surplus: [required_unit],
+          ) {
+            TransitionPopulationAgrees => true
+            TransitionPopulationDisagrees { unexpected: _ } => false
+            TransitionPopulationUndecidable { host: _, cause: _ } => false
+          }
       }
   }
 }
