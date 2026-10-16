@@ -77,7 +77,7 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           fci1_controls_slice_unit_text(),
           "FCI1_SLICE_UNIT\n",
           "  systemctl daemon-reload\n",
-          "  [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=MemoryMax --value) == ", to_string(byte_size_count(b: fci1_controls_slice_memory_max())), " ]] || { echo 'ControlRefused: slice cap not live' >&2; return 2; }\n",
+          "  [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=MemoryMax --value) == ", to_string(byte_size_count(b: fci1_controls_slice_memory_max())), " ]] || { echo 'ControlRefused: slice cap not live' >&2; fci1_remove_controls_slice; return 2; }\n",
           "}\n",
           "fci1_remove_controls_slice() {\n",
           "  systemctl stop ", fci1_controls_slice_unit_name as String, " 2>/dev/null || true\n",
