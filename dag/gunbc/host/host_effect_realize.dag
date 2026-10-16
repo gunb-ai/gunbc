@@ -5021,7 +5021,14 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
 // The fold's accumulator, so the pending observations travel with the state instead of being indexed
 // positionally (this language gives no safe index into a list, and a zip that silently truncates would
 // let a leg run with no observation at all).
-data LiveDeployPreambleFoldAcc = PreambleFoldAcc { state: LiveDeployPreambleLegState, pending: List<LiveDeployPreambleLegResult> }
+// `observations` counts how many times the fold actually reached for an answer — one per transport
+// call (each of which is itself a privileged call) or one per typed effect. `state`'s `consumed` counts
+// how many SUCCEEDED. The pair is what makes the safety property falsifiable: a fold that kept
+// observing after a refusal would report the same final state, and only `observations` says it did.
+data LiveDeployPreambleRun = LiveDeployPreambleRun { state: LiveDeployPreambleLegState, observations: Int }
+
+data LiveDeployPreambleFoldAcc =
+  PreambleFoldAcc { state: LiveDeployPreambleLegState, pending: List<LiveDeployPreambleLegResult>, observations: Int }
 
 // THE PURE FOLD — the same two primitives the impure fold below uses, with the observations SUPPLIED.
 // This is what the witness pins: order, the short-circuit, which step is blamed, and how many legs
@@ -5033,26 +5040,27 @@ fn live_deploy_preamble_fold(
 ) -> LiveDeployPreambleLegState {
   let walked = fold(
     legs,
-    init: PreambleFoldAcc { state: live_deploy_preamble_leg_ok, pending: results },
+    init: PreambleFoldAcc { state: live_deploy_preamble_leg_ok, pending: results, observations: 0 },
     f: (acc, leg) =>
       match acc {
-        PreambleFoldAcc { state: st, pending: pending } =>
+        PreambleFoldAcc { state: st, pending: pending, observations: obs } =>
           match live_deploy_preamble_leg_decision(state: st) {
-            Stop { reason: _ } => PreambleFoldAcc { state: st, pending: pending }
+            Stop { reason: _ } => PreambleFoldAcc { state: st, pending: pending, observations: obs }
             ContinueAndRun =>
               match pending {
                 [] =>
                   PreambleFoldAcc {
                     state: live_deploy_preamble_failed(leg: leg, detail: "no observation supplied for this leg", consumed: live_deploy_preamble_consumed(state: st)),
                     pending: [],
+                    observations: obs + 1,
                   }
                 [first, ...rest] =>
-                  PreambleFoldAcc { state: live_deploy_preamble_next_state(state: st, leg: leg, result: first), pending: rest }
+                  PreambleFoldAcc { state: live_deploy_preamble_next_state(state: st, leg: leg, result: first), pending: rest, observations: obs + 1 }
               }
           }
       },
   )
-  match walked { PreambleFoldAcc { state: st, pending: _ } => st }
+  match walked { PreambleFoldAcc { state: st, pending: _, observations: obs } => LiveDeployPreambleRun { state: st, observations: obs } }
 }
 
 // How many legs have run, for callers that must report the count without matching the whole state.
@@ -5067,16 +5075,25 @@ fn live_deploy_preamble_consumed(state: LiveDeployPreambleLegState) -> Int {
 // It is the pure fold above with its observations produced on demand, and both go through the same
 // live_deploy_preamble_leg_decision / live_deploy_preamble_next_state pair, so what the witness pins is
 // what runs.
-fn live_deploy_preamble_run_legs(legs: List<LiveDeployPreambleLeg>, access: DeployAccess) -> LiveDeployPreambleLegState {
-  fold(
+fn live_deploy_preamble_run_legs(legs: List<LiveDeployPreambleLeg>, access: DeployAccess) -> LiveDeployPreambleRun {
+  let walked = fold(
     legs,
-    init: live_deploy_preamble_leg_ok,
-    f: (st, leg) =>
-      match live_deploy_preamble_leg_decision(state: st) {
-        Stop { reason: _ } => st
-        ContinueAndRun => live_deploy_preamble_next_state(state: st, leg: leg, result: live_deploy_preamble_observe_leg(leg: leg, access: access))
+    init: PreambleFoldAcc { state: live_deploy_preamble_leg_ok, pending: [], observations: 0 },
+    f: (acc, leg) =>
+      match acc {
+        PreambleFoldAcc { state: st, pending: _, observations: obs } =>
+          match live_deploy_preamble_leg_decision(state: st) {
+            Stop { reason: _ } => PreambleFoldAcc { state: st, pending: [], observations: obs }
+            ContinueAndRun =>
+              PreambleFoldAcc {
+                state: live_deploy_preamble_next_state(state: st, leg: leg, result: live_deploy_preamble_observe_leg(leg: leg, access: access)),
+                pending: [],
+                observations: obs + 1,
+              }
+          }
       },
   )
+  match walked { PreambleFoldAcc { state: st, pending: _, observations: obs } => LiveDeployPreambleRun { state: st, observations: obs } }
 }
 
 type LiveDeployPreambleScratch = PreambleScratchPresent { path: String } | PreambleScratchAbsent { reason: String }
@@ -5187,7 +5204,8 @@ fn live_deploy_apply_preamble_on_host(access: DeployAccess, principal: NonEmptyS
   match live_deploy_preamble_acquire_scratch(access: access) {
     PreambleScratchAbsent { reason: why } => PreambleRefused { step: ScratchAcquire, reason: why, legs_consumed: 0 }
     PreambleScratchPresent { path: scratch } => {
-      let state = live_deploy_preamble_run_legs(legs: live_deploy_preamble_legs(access: access, scratch: scratch, principal: principal), access: access)
+      let run = live_deploy_preamble_run_legs(legs: live_deploy_preamble_legs(access: access, scratch: scratch, principal: principal), access: access)
+      let state = match run { LiveDeployPreambleRun { state: st, observations: _ } => st }
       let cleanup = live_deploy_preamble_cleanup_scratch(scratch: scratch, access: access)
       match state {
         PreambleLegFailed { step: s, reason: r, consumed: c } =>
