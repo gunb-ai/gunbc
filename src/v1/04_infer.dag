@@ -14428,6 +14428,185 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
     && (pname == tname || (type_expr_is_var && pname == pt.name))
 }
 
+// THE GENERIC-BINDING UNIFICATION RELATION (v1.compiler.infer, THE unifier for two type
+// nodes standing as candidate bindings of ONE type variable; review 81163/81191 line,
+// parent ruling msg_20536b59). WHY IT EXISTS AND node_type_equals IS NOT IT: unify_generics
+// bound first-wins, then REJECTED a rebind whose two shapes differed -- but a generic
+// binding needs UNIFIABILITY, not identity. Two measurements on the shipped seed binary
+// (smoking-gun probe, dispatch at b5bb104's branch, /tmp/sg.log): node_type_equals REFUSES
+// 'String' against 'FreeMonoid<Char>' -- the pair DESIGN section 4 declares identical on
+// the code-point/text axes -- and refuses a bare carrier head against its own application
+// ('Outcome' vs 'Outcome<Int>'), because no arm of the equality relates an unapplied head
+// to an applied one. Those acceptances are what 220 false refusals in the v2-bootstrap
+// lane (CI run 38918165053) are made of. WHY IT IS NOT node_type_compatible: the
+// compatibility judgment answers true when EITHER side is a type variable -- wrong for
+// rebind arbitration, where both sides are settled types and the question is whether one
+// substitution makes them equal. WHY node_type_equals STAYS UNTOUCHED (§3 blast radius):
+// it is the identity judgment for the whole corpus (declared fields, inhabitance, emission
+// decisions); loosening it there would silently widen every judgment at once. The fold
+// routes its rebind question HERE instead; identity elsewhere keeps its old answer.
+//
+// THREE ACCEPTANCES beyond equality, each named, each with its refusal twin below:
+//  (1) ALIAS UNFOLD TO FIXPOINT, both applied and unapplied spellings: peel_alias_rhs_once
+//      unfolds ONLY a childless node, so 'QualifiedName' (alias = FreeMonoid<Symbol>)
+//      against the applied expansion never reaches a comparable pair. Unfold before the
+//      shape comparison, up to four times (cycle bound; the same depth the fold's own
+//      descent tolerates).
+//  (2) THE DECLARED TEXT PAIR: String and FreeMonoid<Char> are the two representations of
+//      text (DESIGN section 4, line "v2 Text literal ... host String ... Char sequence"),
+//      so a bare String unifies with a bare FreeMonoid<Char> at either position. The pair
+//      is NAME-scoped on both sides (the carrier head after the container table), so
+//      'FreeMonoid<Int>' still refuses 'String'.
+//  (3) BARE HEAD AGAINST ITS APPLICATION: a carrier declared as an unapplied head (an
+//      Outcome node with zero children) unifies with any application of the same carrier
+//      head -- the fold's job is to bind T, and 'same_arm(a: Outcome.Ok{...}, b:
+//      Outcome<Int>)' is the corpus's own spelling. The twin refusal keeps this honest:
+//      SAME head, DIFFERENT arguments still refuse ('FreeMonoid<Int>' vs
+//      'FreeMonoid<Bool>' must stay red; smoking-gun CONTROL_FreeMonoid_Int_vs_Bool (2)
+//      refused it under the old judgment and this relation must keep refusing it).
+fn generic_types_unify(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  let left_u = generic_type_unify_unfold(n: left, text: text, depth: 0, source_indices: source_indices)
+  let right_u = generic_type_unify_unfold(n: right, text: text, depth: 0, source_indices: source_indices)
+  if node_type_equals(left: left_u, right: right_u, source_indices: source_indices, text: text) {
+    true
+  } else if generic_types_are_the_text_pair(left: left_u, right: right_u, source_indices: source_indices) {
+    true
+  } else {
+    generic_head_matches_application(left: left_u, right: right_u, source_indices: source_indices)
+      || generic_head_matches_application(left: right_u, right: left_u, source_indices: source_indices)
+  }
+}
+
+// Alias peel to fixpoint with a cycle bound: four unfolds of alias_rhs stop the walk no
+// matter how the environment is spelt; a deeper chain is a pathological environment and
+// answers with whatever it reached (unresolved spellings then refuse against each other,
+// which is where the fold's own descent would also stop).
+//
+// TWO routes, both declaration-based (DESIGN section 3: a type means what its declaration
+// says; neither route resolves by authored spelling in an ambient environment, and neither
+// answers a name lookup in a module that did not declare it):
+//  (a) v1.compiler.types peel_alias_rhs_once -- the existing authority, which unfolds an
+//      UNAPPLIED alias reference only (it returns the node unchanged once there are
+//      argument children).
+//  (b) THE APPLIED REFERENCE route, added here because route (a) cannot reach it: the
+//      corpus spells an alias reference with its arguments attached (measured shape
+//      'Node(QualifiedName<Symbol>)' against 'FreeMonoid<Symbol>', /tmp/sg.log), so the
+//      reference is never childless and route (a) always declines it. This route takes the
+//      binding for the reference's HEAD name and unfolds its declared rhs, but ONLY when
+//      the declared rhs carries no parameters of its own: an alias whose rhs is ground
+//      (an abbreviation) means exactly that type whatever it is spelled with, while a
+//      GENERIC alias ('type Pair<T> = Box<T>') would lose the actual argument if unfolded
+//      by name -- and a route that dropped arguments could ACCEPT Pair<Int> against a
+//      foreign application. Refusing to unfold is the sound side of that trade, so a
+//      generic alias keeps route (a)'s answer (no unfold) and keeps refusing.
+fn generic_type_unify_unfold(n: Node, text: TextJudgment, depth: Int, source_indices: Map<String, NewlineIndex>) -> Node {
+  if depth >= 4 { n }
+  else {
+    let peeled = generic_alias_unfold(n: n, text: text)
+    if node_type_shape(n: peeled, source_indices: source_indices) == node_type_shape(n: n, source_indices: source_indices) { n }
+    else { generic_type_unify_unfold(n: peeled, text: text, depth: depth + 1, source_indices: source_indices) }
+  }
+}
+
+// One peel, one authority: v1.compiler.types peel_alias_rhs_once, which unfolds the
+// binding the node's OWN spelling resolves to and declines once the node carries
+// arguments. No second route here: an applied alias reference is reached by the
+// head-vs-application arm below instead (measured CI shape 'Coproduct(FreeMonoid)' vs
+// 'Node(FreeMonoid<Primitive(Edge)>)' -- same carrier, one spelling unapplied), which
+// needs no environment lookup at all. A route that resolved an applied spelling through an
+// ambient name lookup would be a second meaning route (DESIGN section 3) and would let a
+// local alias shadow an imported one -- the defect review 80660 finding 1 named for
+// peel_alias_rhs_once itself. Refusing to unfold is therefore the sound side here: an
+// applied alias that no arm reaches keeps REFUSING.
+fn generic_alias_unfold(n: Node, text: TextJudgment) -> Node {
+  peel_alias_rhs_once(n: n, text: text)
+}
+
+// THE DECLARED TEXT PAIR (DESIGN section 4: host text and the code-point sequence are the
+// two representations of ONE type). Name-scoped on both sides, so no other carrier can
+// ride it: one side must be the bare kernel spelling String (no children), the other a
+// FreeMonoid (bare, or applied at character elements only -- every child's node name is
+// Char, so FreeMonoid<Int> still refuses String: the fold does not get to call an
+// Int sequence text). The pair reads either direction.
+fn generic_types_are_the_text_pair(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  generic_side_is_bare_text(left: left, right: right, source_indices: source_indices)
+    || generic_side_is_bare_text(left: right, right: left, source_indices: source_indices)
+}
+
+fn generic_side_is_bare_text(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let l_head = type_head_carrier(name: generic_type_head_of_name(name: generic_type_node_name(n: left, source_indices: source_indices)))
+  let r_name = generic_type_node_name(n: right, source_indices: source_indices)
+  let r_head = type_head_carrier(name: generic_type_head_of_name(name: r_name))
+  // The sequence side is spelled THREE ways and no other way, each named: the exact
+  // declared text spelling (an UnresolvedDecl-style name node 'FreeMonoid<Char>'), the
+  // bare carrier 'FreeMonoid', or a structured application whose every child is Char.
+  // Anything else -- FreeMonoid<Int>, FreeMonoid<List<Char>>, FreeMonoid<FreeMonoid<Char>>
+  // -- refuses: the fold does not get to call an Int sequence, or a sequence of
+  // sequences, text. The nested spellings fail the exact-name arm and the all-children
+  // -are-Char arm because their element is not the name Char.
+  let right_is_char_sequence = r_name == "FreeMonoid<Char>"
+    || (r_head == "FreeMonoid" && right.children |> count == 0 && r_name == "FreeMonoid")
+    || (r_head == "FreeMonoid"
+        && right.children |> count > 0
+        && (right.children |> filter(c => match c {
+             Present { value: cv } => generic_type_node_name(n: child_type_node(ch: cv), source_indices: source_indices) == "Char"
+             Absent => false
+           }) |> count) == (right.children |> count))
+  left.children |> count == 0
+    && l_head == "String"
+    && right_is_char_sequence
+}
+
+// Name extraction EXACTLY as node_type_equals_core reads it: the identifier span when it
+// is there, the authored spelling as fallback, then the last qualified segment. Same
+// source of truth, so this relation and the identity judgment agree on what a node is
+// CALLED before they are asked what it IS.
+fn generic_type_node_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let raw = match n.identifier_span {
+    Present { value: s } =>
+      if s == "" { authored_name_at(source_indices: source_indices, node: n) }
+      else { s }
+    Absent => authored_name_at(source_indices: source_indices, node: n)
+  }
+  qualified_last_segment(name: raw)
+}
+
+// The carrier head of an authored name: the text before the first '<', so an applied
+// spelling 'FreeMonoid<Char>' answers the carrier 'FreeMonoid'. The corpus already strips
+// arguments this way in v1.compiler.types' alias path (split, then trim each piece).
+fn generic_type_head_of_name(name: String) -> String {
+  let before_lt = match name |> split(delimiter: "<") |> first {
+    Present { value: s } => s
+    Absent => name
+  }
+  trim(value: before_lt)
+}
+
+// BARE HEAD AGAINST ITS APPLICATION: `head` must be the carrier with no arguments (zero
+// children AND empty params); `applied` must be an application whose carrier head, read
+// through the container table like every other head comparison here, is the same carrier.
+// Arguments are NOT compared in this arm -- the head-vs-application acceptance IS the arm.
+// The argument-distinctness refusal lives in node_type_equals' own recursion, which this
+// arm cannot weaken: two APPLIED nodes never enter it (neither side is childless).
+fn generic_head_matches_application(head: Node, applied: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let head_name_raw = generic_type_node_name(n: head, source_indices: source_indices)
+  // A HEAD, not a spelled application: an unapplied carrier is named by its carrier alone.
+  // Requiring no '<' in the name keeps a head spelled 'FreeMonoid<Int>' out of the head
+  // seat even if it arrives childless, so the arm cannot smuggle an application through.
+  let head_childless = head.children |> count == 0
+    && head.params |> count == 0
+    && head.connective == NoConnective
+    && !contains(head_name_raw, "<")
+  // Only CHILDREN make an application here: a params-only node is a callable type, and
+  // the head-vs-application arm is about carriers, not about callables.
+  let applied_applied = applied.children |> count > 0
+  if head_childless && applied_applied {
+    let head_name = type_head_carrier(name: generic_type_head_of_name(name: head_name_raw))
+    let applied_name = type_head_carrier(name: generic_type_head_of_name(name: generic_type_node_name(n: applied, source_indices: source_indices)))
+    head_name == applied_name
+  } else { false }
+}
+
 fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>, text: TextJudgment, module_name: String) -> UnifyGenericsAcc {
   let bind_name = type_node_label(n: formal, source_indices: source_indices)
   let f_bare = formal.children |> count == 0 && formal.connective == NoConnective
@@ -14449,7 +14628,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
           UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
         } else if generic_binding_is_self(n: actual, bind_name: bind_name, source_indices: source_indices) {
           UnifyGenericsAcc { subst: acc, diagnostics: [] }
-        } else if node_type_equals(left: bound, right: actual, source_indices: source_indices, text: text) {
+        } else if generic_types_unify(left: bound, right: actual, source_indices: source_indices, text: text) {
           UnifyGenericsAcc { subst: acc, diagnostics: [] }
         } else {
           UnifyGenericsAcc {

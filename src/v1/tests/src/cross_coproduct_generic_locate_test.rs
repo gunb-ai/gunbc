@@ -194,3 +194,79 @@ fn phantom_constructor_tag_equality_is_observed() {
         "phantom ConstructorTag<P>==ConstructorTag<Q> is observed accepted (follow-up C if this starts refusing): {blocking:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ACCEPTANCE BAR for the unification relation (v1.compiler.infer generic_types_unify),
+// parent ruling msg_20536b59: the fold must ACCEPT what node_type_equals refuses for
+// REPRESENTATION reasons, and keep refusing what it refuses for IDENTITY reasons. Each
+// accept control is paired with the nearest refusal twin, so a relation that loosened
+// past unifiability fails here rather than in the field.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn same_arm_string_and_free_monoid_char_is_accepted() {
+    // DESIGN section 4: host text and the Char sequence are ONE type on two axes. The old
+    // fold refused this pair (measured, /tmp/sg.log: 'Primitive(String)' vs
+    // 'UnresolvedDecl(FreeMonoid<Primitive(Char)>)' -- the 220-diagnostic CI failure class).
+    let msgs = blocking_messages(
+        "module locate.txt\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(s: String, c: FreeMonoid<Char>) -> Bool { same_arm(a: s, b: c) }\n",
+    );
+    assert!(
+        !has_generic_rebind(&msgs),
+        "String vs FreeMonoid<Char> are one type on two representation axes; the fold must not rebind-refuse: {msgs:?}"
+    );
+}
+
+#[test]
+fn same_arm_string_and_free_monoid_int_still_refuses() {
+    // The twin: an Int sequence is NOT text. If the text-pair arm ever matched by carrier
+    // name alone, this row is what catches it.
+    let msgs = blocking_messages(
+        "module locate.txtneg\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(s: String, c: FreeMonoid<Int>) -> Bool { same_arm(a: s, b: c) }\n",
+    );
+    assert!(
+        has_generic_rebind(&msgs),
+        "String vs FreeMonoid<Int> must still refuse -- an Int sequence is not text; got {msgs:?}"
+    );
+}
+
+#[test]
+fn same_arm_bare_head_and_its_application_is_accepted() {
+    // The CI class: 'Outcome' (unapplied head) against 'Outcome<Int>' (the same carrier,
+    // applied). node_type_equals has no arm relating head to application (measured).
+    let msgs = blocking_messages(
+        "module locate.head\ntype Outcome<T>\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(o: Outcome, oi: Outcome<Int>) -> Bool { same_arm(a: o, b: oi) }\n",
+    );
+    assert!(
+        !has_generic_rebind(&msgs),
+        "a bare carrier head must unify with an application of the same carrier: {msgs:?}"
+    );
+}
+
+#[test]
+fn same_arm_alias_and_its_applied_expansion_is_accepted() {
+    // Coproduct(FreeMonoid) vs FreeMonoid<X> class, spelled as the corpus spells it: an
+    // alias whose right-hand side is APPLIED. The equality's alias arm unfolds only an
+    // UNAPPLIED spelling, so the alias never reached a comparable pair (measured:
+    // 'Node(QualifiedName<Symbol>)' vs 'UnresolvedDecl(FreeMonoid<Symbol>)').
+    let msgs = blocking_messages(
+        "module locate.alias\ntype Symbol\ntype QualifiedName = FreeMonoid<Symbol>\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(q: QualifiedName, f: FreeMonoid<Symbol>) -> Bool { same_arm(a: q, b: f) }\n",
+    );
+    assert!(
+        !has_generic_rebind(&msgs),
+        "an alias must unify with its own applied expansion: {msgs:?}"
+    );
+}
+
+#[test]
+fn same_arm_alias_and_foreign_expansion_still_refuses() {
+    // The twin of the alias arm: QualifiedName expands to FreeMonoid<Symbol>, so it must
+    // keep refusing a DIFFERENT expansion of the same carrier.
+    let msgs = blocking_messages(
+        "module locate.aliasneg\ntype Symbol\ntype Other\ntype QualifiedName = FreeMonoid<Symbol>\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe(q: QualifiedName, f: FreeMonoid<Other>) -> Bool { same_arm(a: q, b: f) }\n",
+    );
+    assert!(
+        has_generic_rebind(&msgs),
+        "FreeMonoid<Symbol> vs FreeMonoid<Other> must still refuse after the alias unfolds: {msgs:?}"
+    );
+}
