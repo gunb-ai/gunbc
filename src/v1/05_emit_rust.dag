@@ -6976,11 +6976,8 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     }
   ))
   let non_marker_names = deduped_names |> filter(n => marker_type_names |> all(name => name != n))
-  let dbg_early = if import_module == "std.realization_measurement" {
-    [RustUseLine { target_module: mod_name, text: concat("// DBGRES early filtered=[", (filtered_names |> join(separator: ",")), "] deduped=[", (deduped_names |> join(separator: ",")), "] locals_hit=[", (filtered_names |> filter(n => local_names |> any(ln => ln == n)) |> join(separator: ",")), "]") }]
-  } else { [] }
   if deduped_names |> count == 0 {
-    dbg_early
+    []
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
     let top_level = non_marker_names |> filter(n =>
@@ -7144,10 +7141,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         && !rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: en)
         && rust_kernel_grounded_type_decl(module_name: import_module, item_text: en) == none)
       |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
-    let dbg_late = if import_module == "std.realization_measurement" {
-      [RustUseLine { target_module: mod_name, text: concat("// DBGRES late top=[", (top_level |> join(separator: ",")), "] ndt=[", (non_variant_top |> join(separator: ",")), "] direct=[", (direct_names |> join(separator: ",")), "] enums=[", (import_module_enums |> join(separator: ",")), "] type_direct=[", (type_direct_names |> join(separator: ",")), "] other_direct=[", (other_direct_names |> join(separator: ",")), "]") }]
-    } else { [] }
-    concat(main_lines, variant_lines, wildcard_enum_lines, dbg_early, dbg_late)
+    concat(main_lines, variant_lines, wildcard_enum_lines)
   }
 }
 
