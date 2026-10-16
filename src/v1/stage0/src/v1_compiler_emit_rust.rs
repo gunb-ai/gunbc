@@ -6595,6 +6595,8 @@ pub fn shared_layer_of_resolution(
         } else {
             Rc::new(SharedLayerAnswer::SharedLayerAtValue)
         }
+    } else if crate::std_types::is_kernel_type(leaf.clone()) {
+        Rc::new(SharedLayerAnswer::SharedLayerAtValue)
     } else {
         match (*resolution.clone()).clone() {
             TypeDeclResolution::TypeDeclResolved { identity, .. } => {
