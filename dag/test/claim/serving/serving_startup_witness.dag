@@ -14,7 +14,7 @@ import gunbc.serving.rented_ninfer_source {
   ninfer_serve_81c8ce09_sm120_release,
 }
 import gunbc.serving.serving_artifact_placement {
-  ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingFetchFailed, ServingFetchSucceeded,
+  ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingCopyDiffers, ServingCopyUnreadable, ServingFetchFailed, ServingFetchSucceeded,
   ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
   ServingInstalledFileRead, ServingEngineVerified, ServingEngineFileDigestDiffers, serving_engine_verdict,
 }
