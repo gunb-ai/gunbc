@@ -441,7 +441,8 @@ data e1_caps_not_across_j20: PathMembership = OnPathByAdjacency {
 
 data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   labels: [
-    "model label: revision E1, as read by the operator 2026-10-15; the full part number and serial are unread",
+    "sticker, read from an operator photograph 2026-10-16: S/N 1583323120274, Model: P4261, 694-24261-0000-201 E1, Made In USA. Its part number differs from the K1 listing's 694-24261-0000-100 K1 in the suffix as well as the revision; what -201 against -100 selects is not established",
+    "silkscreen above the sticker: 180-14261-DAAF-B00; read, not decoded",
   ],
   module_receptacles: [],
   grey_edge_connectors: "not photographed or read on this unit",
@@ -452,11 +453,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true },
   ],
   edge_high_speed_connectors: CensusPartial {
-    counted_at_least: 0,
-    obligation: "count this unit's edge receptacles, read their J-numbers and one housing's marking",
+    counted_at_least: 2,
+    obligation: "two fine-pitch shrouded edge receptacles appear in the 2026-10-16 label photograph, one silkscreened J11 and the other's designator cut off; count the rest, read their J-numbers and one housing's marking on this unit",
     family_candidate: Present { value: operator_carrier_edge_family },
   },
-  management_io_observed: [],
+  management_io_observed: [
+    "J620, a 2 x 5 pin header beside U78-U81 (2026-10-16 label photograph), one position marked with a white square, which reads as pin 1: function and pinout unread; a candidate for a debug, JTAG or UART header, unconfirmed",
+  ],
   power_components: [
     ObservedComponent {
       designators: ["F300"],
@@ -535,6 +538,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   ],
   unresolved_parts: [
     "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up",
+    "an 8-pin MSOP left of the VCI mark, read 'P617A / 01 14 / 226' at the photograph's resolution: maker and function unresolved",
   ],
 }
 
