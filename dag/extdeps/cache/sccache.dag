@@ -1,11 +1,5 @@
 module extdeps.cache.sccache
 
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import extdeps.posix.shell_command_language { posix_single_quote }
-
-import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution, unbound_dissolution }
-import std.decl_ref { decl_ref }
-
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
   NativeInternal,
@@ -14,7 +8,7 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
-import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line, sha256_digest_content_hash }
+import extdeps.crypto.hash { Digest, sha256_digest, sha256_digest_content_hash }
 import std.content_hash { ContentHash }
 import std.cache_interface {
   NativeInternalLookup,
@@ -166,22 +160,26 @@ data sccache_toolchain_capability: ToolchainCapability = ToolchainCapability {
   linked_cache_interface: Present { value: sccache_local_id },
 }
 
-// The sccache binary install — curl the release tarball, `sha256sum -c` verify, tar,
-// mv to /usr/local/bin, cited to github.com/mozilla/sccache/releases with a pinned
-// version and per-arch sha256 — is rendered as a POSIX shell provisioning sequence
-// (medium-as-string). The SccacheBinaryRelease row remains the typed authority for
-// version and digests; only the ACTUATION is shell.
-//
-// It dissolves when host_effect_apply binds a verified-download-plus-install effect
-// (FetchAndVerify then InstallBinary) without the shell leaf, at which point
-// `sccache_install_script` is deleted rather than edited. The trigger names that
-// declaration, so the obligation is answered against the tree rather than by reading
-// this paragraph.
-data sccache_install_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_install_script")
-)
+// THE RETIREMENT OBLIGATION IS DISCHARGED, NOT CARRIED. The installer this module used to expose
+// (`sccache_install_script`) is deleted from this tree, and its trigger went with the declaration --
+// a retirement obligation whose declaration no longer exists is complete, and a trigger citing an
+// absent declaration is exactly the dead vocabulary this repository removes (same disposition as
+// `configfs_op_render_dissolution_trigger` in e52f9d20e3f). The effect the trigger named is now
+// what runs: gunbc.host.verified_binary_install performs FetchAndVerify (extdeps.tools.curl
+// `curl_download_command`, then the digest observation `sha256sum_file_command` gated by
+// `verified_binary_install_admission`) and only then InstallBinary (extdeps.tools.tar
+// `tar_extract_command`, the move and mode through extdeps.tools.gnu_coreutils /
+// extdeps.tools.chmod, elevated by extdeps.sudo.elevation's non-interactive sudo, then
+// extdeps.tools.gnu_coreutils `rm_recursive_force_command` cleanup), with the binary-presence
+// precondition kept as a `test -x` OBSERVATION (extdeps.posix.test_utility). Sccache's url, digest,
+// archive member, destination, mode and privilege are PARAMETERS supplied by
+// gunbc.host.sccache_verified_install, which composes them from the `SccacheBinaryRelease` row and
+// `sccache_installed_binary_path` below -- so this module still owns sccache's values and now owns
+// no shell text. The discharge is recorded in
+// dag/test/claim/dissolution_census_mechanism_witness.dag rather than silently dropped.
 
-// Single authority for WHERE the cited release lands on a host. sccache_install_script writes it
+// Single authority for WHERE the cited release lands on a host. The verified download-plus-install
+// effect writes it (via its `dest_path` parameter, supplied by gunbc.host.sccache_verified_install);
 // and every downstream consumer (the host-standup P1b systemd unit ExecStart, the PATH-shadow
 // read-back check) reads it — so 'which sccache is the modeled one' has exactly one answer. Before
 // this row the P1b provisioning path hand-rolled `apt-get install -y sccache` and a unit with
@@ -197,34 +195,6 @@ data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 // assignments and reads from one authority.
 data sccache_cache_dir_env_var: NonEmptyStr = "SCCACHE_DIR" as NonEmptyStr
 data sccache_cache_size_env_var: NonEmptyStr = "SCCACHE_CACHE_SIZE" as NonEmptyStr
-
-// Elevate argv before shell quoting so a missing NOPASSWD grant refuses without prompting.
-fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
-  let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
-  let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")
-  join([
-    "set -e",
-    join(["curl -fsSL '", url, "' -o /tmp/sccache.tar.gz"], ""),
-    digest_shell_verify_line(digest: digest, file_path: "/tmp/sccache.tar.gz"),
-    "tar -xzf /tmp/sccache.tar.gz -C /tmp",
-    join(
-      map(
-        sudo_elevate_argv(command: ["mv", join(["/tmp/", dir, "/sccache"], ""), sccache_installed_binary_path]),
-        w => posix_single_quote(spelling: w),
-      ),
-      " ",
-    ),
-    join(
-      map(
-        sudo_elevate_argv(command: ["chmod", "+x", sccache_installed_binary_path]),
-        w => posix_single_quote(spelling: w),
-      ),
-      " ",
-    ),
-    join(["rm -rf /tmp/sccache.tar.gz '/tmp/", dir, "'"], ""),
-    "",
-  ], "\n")
-}
 
 // The release row carries per-arch digests as two named fields, so selecting one by hand is how a
 // caller pins an arch (runner_host_sccache_provision_aarch64). These two selectors make the choice

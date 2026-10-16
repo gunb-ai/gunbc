@@ -10,7 +10,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { bound_dissolution, unbound_dissolution, retires_dissolution, dissolution_is_bound }
 import extdeps.bmc.serial_console { sol_console_send_bash_emit_dissolution_trigger }
 import extdeps.storage.nbd { nbd_server_config_render_dissolution_trigger }
-import extdeps.cache.sccache { sccache_install_dissolution_trigger }
 import extdeps.container.docker_ce { docker_ce_install_dissolution_trigger }
 import extdeps.standards.rfc_8118 { project_navigable_uri_fragment_decompose_dissolve_on }
 import gunbc.dissolution_observation {
@@ -99,21 +98,42 @@ test fn a_retirement_trigger_fires_once_its_declaration_is_gone() -> Bool {
 }
 
 // THE PRODUCTION CONSUMERS. Three live retirement obligations whose condition was a
-// description string until this change and is now a trigger the fold can answer.
-// `dissolution_is_bound` was FALSE for all three before the migration, which is what
-// makes this an executing before/after rather than a restatement of the constructor.
+// description string until this change and is now a trigger the fold can answer (three at
+// that change; the assertion below carries four, two having joined the census since, and the
+// discharges are recorded after it). `dissolution_is_bound` was FALSE for all three before
+// the migration, which is what makes this an executing before/after rather than a
+// restatement of the constructor.
 //
-// FIVE OBLIGATIONS REMAIN, NOT SIX: the configfs renderer's obligation (named by
+// ONE DISCHARGE RECORDED HERE (state at that change: FIVE REMAINED, NOT SIX): the configfs renderer's obligation (named by
 // `configfs_op_render_dissolution_trigger`) was DISCHARGED by the shell-typed-invocation
 // migration -- the declaration it retired (`configfs_op_line`) was deleted by the change
 // that described the transport, and the trigger went with it, because an obligation whose
 // declaration no longer exists is complete and a trigger citing an absent declaration is
 // the dead vocabulary this repository removes. Recorded here rather than silently
 // dropped: a census row that vanishes unexplained cannot be told from one never measured.
+//
+// FOUR OBLIGATIONS REMAIN, NOT FIVE: the sccache installer's obligation (named by
+// `sccache_install_dissolution_trigger`) was DISCHARGED by W7 on the same terms. Its
+// trigger's own text set the condition -- "It dissolves when host_effect_apply binds a
+// verified-download-plus-install effect (FetchAndVerify then InstallBinary) without the
+// shell leaf, at which point `sccache_install_script` is deleted rather than edited" --
+// and that is what landed: gunbc.host.verified_binary_install is the generic effect
+// (FetchAndVerify = `curl_download_command` then the `sha256sum_file_command` digest
+// observation gated by `verified_binary_install_admission`, which returns an EMPTY plan on
+// a mismatch; InstallBinary = `tar_extract_command` then the cited move/mode/cleanup, the
+// binary-presence precondition kept as a `test -x` observation), and
+// gunbc.host.sccache_verified_install supplies sccache's url, digest, member, destination,
+// mode and privilege as PARAMETERS. `sccache_install_script` is deleted, its trigger went
+// with it, and the discharge is recorded where the trigger stood
+// (dag/extdeps/cache/sccache.dag). The trigger could not have been kept: required-ci
+// refuses CITED-DECLARATION-ABSENT, and a bound answer on a name nothing defines is the
+// dead vocabulary this repository removes. WHAT THE NEXT ROW IS: the four live triggers
+// above now include docker_ce, whose installer is the same effect shape with
+// apt-keyring bytes as the archive member -- the lane rule says it is a later consumer, so
+// it is NOT migrated here and its trigger stays live and bound.
 test fn migrated_production_retirement_conditions_are_bound() -> Bool {
   dissolution_is_bound(condition: sol_console_send_bash_emit_dissolution_trigger)
     && dissolution_is_bound(condition: nbd_server_config_render_dissolution_trigger)
-    && dissolution_is_bound(condition: sccache_install_dissolution_trigger)
     && dissolution_is_bound(condition: docker_ce_install_dissolution_trigger)
     && dissolution_is_bound(condition: project_navigable_uri_fragment_decompose_dissolve_on)
 }

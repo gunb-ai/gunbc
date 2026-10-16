@@ -14,8 +14,9 @@ import gunbc.auth.github_apps {
   gunbai_ci_declared_installation_id,
   gunbai_ci_app_pem_secret
 }
-import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
-import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.cache.sccache { sccache_release_0_15_0 }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.host.sccache_verified_install { sccache_verified_install_script }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts }
 import product.host_identity { HostIdentity }
@@ -410,12 +411,23 @@ fn runner_host_docker_provision_script() -> String {
   docker_ce_repo_install_script(repo: docker_ce_apt_repo_noble_arm64, packages: docker_ce_packages)
 }
 
+// THE SCCACHE PREREQ IS THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT, run with sccache's
+// boundary values (gunbc.host.sccache_verified_install). It used to call
+// extdeps.cache.sccache.sccache_install_script, a script body concatenated in an extdeps module;
+// that declaration is deleted with this swap, and its dissolution trigger went with it, because an
+// obligation whose declaration no longer exists is discharged (see the note recorded in
+// dag/test/claim/dissolution_census_mechanism_witness.dag). The url, digest, member path,
+// destination and mode are now PARAMETERS, and this call site supplies sccache's values.
 fn runner_host_sccache_provision_script(arch: NonEmptyStr, sha256: NonEmptyStr) -> String {
-  sccache_install_script(rel: sccache_release_0_15_0, arch: arch, digest: sha256_digest(hex: sha256))
+  sccache_verified_install_script(
+    rel: sccache_release_0_15_0,
+    arch: arch,
+    digest: sha256_digest(hex: sha256),
+  )
 }
 
 fn runner_host_sccache_provision_aarch64() -> String {
-  sccache_install_script(
+  sccache_verified_install_script(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
     digest: sccache_release_0_15_0.digest_aarch64,

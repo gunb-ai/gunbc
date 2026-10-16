@@ -248,9 +248,9 @@ import extdeps.cache.sccache {
   sccache_release_arch_token,
   sccache_release_digest,
   sccache_installed_binary_path,
-  sccache_install_script,
   sccache_misconfigured_log_fragments,
 }
+import gunbc.host.sccache_verified_install { sccache_verified_install_if_absent_script }
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
@@ -3104,9 +3104,13 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
-// The ensure arm installs sccache by calling the cited authority
-// extdeps.cache.sccache.sccache_install_script (pinned release, per-arch sha256 verified, landing
-// at sccache_installed_binary_path) — it does NOT hand-roll a package-manager install. Until
+// The ensure arm installs sccache by running the generic verified download-plus-install effect
+// (gunbc.host.verified_binary_install) with sccache's boundary values supplied by its adapter
+// gunbc.host.sccache_verified_install: pinned release url, per-arch sha256 verified BEFORE anything
+// is moved, landing at sccache_installed_binary_path — it does NOT hand-roll a package-manager
+// install. The declaration this arm used to call, extdeps.cache.sccache.sccache_install_script, is
+// deleted (its script body was a concat-built bash string; a digest mismatch aborted it via set -e,
+// which the typed admission now states instead of behaving). Until
 // 2026-07-24 this module ran `sudo -n apt-get install -y sccache` and wrote a unit with
 // ExecStart=/usr/bin/sccache, a §3 fork of the same concept: P1:runner-deploy-slot installs the
 // pinned tarball to /usr/local/bin and then P1b:build-cache-provision pointed its unit at a path
@@ -3203,9 +3207,11 @@ fn build_cache_classify_failure_body() -> String {
 // have been one byte in a file that convergence compares byte-for-byte against this same render.
 fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
   join([
-    join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""),
-    sccache_install_script(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
-    "fi",
+    sccache_verified_install_if_absent_script(
+      rel: sccache_release_0_15_0,
+      arch: arch_token,
+      digest: digest,
+    ),
     "_gunbc_stage=\"$(mktemp -d)\"",
     "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
     join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
