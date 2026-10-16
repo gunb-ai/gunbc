@@ -5806,6 +5806,50 @@ mod compiler_tests {
         );
     }
 
+    // THE DECISION BEHIND AN IMPORTED RESOURCE'S USE-LINE. emit_specific_import_use_lines drops an
+    // imported name the env resolves to a bare kernel-identity leaf (a host-realized scalar), and a
+    // resource resolves to exactly that shape, so its use-line was dropped and the `uses` parameter
+    // type named nothing (E0425 in the emitted crate). The executed consumer of the positive arm is
+    // the native-allocation-observation label (red at gunbc#13892 head 170e4410b2b, green after the
+    // repair, same inputs); this row pins the decision itself on both arms and the same-spelling case.
+    #[test]
+    fn an_imported_resource_name_is_recognised_by_kind_and_name() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        use crate::v1_std_core::ParsedModuleItemKind::{
+            ModuleItemResource, ModuleItemTypeDeclaration,
+        };
+        let resource = item_of_kind(
+            "AllocationCounter",
+            ModuleItemResource,
+            vec!["kind", "mode"],
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource.clone(),
+                "AllocationCounter".to_string(),
+                source_indices.clone(),
+            ),
+            "an imported resource declaration must keep its use-line"
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                resource,
+                "Other".to_string(),
+                source_indices.clone(),
+            ),
+            "a name the resource does not declare must not be kept by this arm"
+        );
+        let type_item = item_of_kind("AllocationCounter", ModuleItemTypeDeclaration, Vec::new());
+        assert!(
+            !crate::v1_compiler_emit_rust::resource_item_declares_name(
+                type_item,
+                "AllocationCounter".to_string(),
+                source_indices,
+            ),
+            "the same spelling declared as a type is not a resource"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
