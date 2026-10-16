@@ -330,6 +330,7 @@ type ServeRouteAction
   | ServeActionApproveDecision
   | ServeActionCreateAllocation
   | ServeActionReleaseAllocation
+  | ServeActionRetireLineage
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -340,6 +341,7 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
     ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
     ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+    ServeActionRetireLineage => "retire-lineage" as NonEmptyStr
   }
 }
 
@@ -446,6 +448,7 @@ fn human_action_authorization_decision(
         ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
+        ServeActionRetireLineage => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>

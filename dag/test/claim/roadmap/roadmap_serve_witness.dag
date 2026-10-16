@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_serve {
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
-  BeltDispatchHandler, DispatchAssetHandler,
+  BeltDispatchHandler, LineageRetireHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueCreateHandler, IssueCreatePageHandler,
@@ -1109,4 +1109,31 @@ test fn a_refused_follow_up_enqueue_keeps_the_action_status_and_names_the_refusa
     && string_contains(s: refused.body, pattern: "follow-up enqueue refused")
     && string_contains(s: refused.body, pattern: "user manager unread")
     && string_contains(s: refused.body, pattern: "the write stands")
+}
+
+// CLAIM 5 (route half), LINEAGE-RETIRE-1: POST /dispatch/<node>/retire-lineage selects its own handler
+// beside the dispatch route; an unknown node is 404; a request without a Google session is 403 at the
+// write law's authentication axis -- tailnet transport is not authentication -- before any host read.
+test fn witness_retire_lineage_route_selects_and_refuses_unauthenticated() -> Bool {
+  let unauthenticated = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/dispatch/vm-service/retire-lineage",
+    body: "attempt_key=a1&reason=abandon",
+    tailscale_identity: "briansrls@github",
+    release_revision: deploy_witness_release_revision,
+  )
+  let unknown = roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: "POST",
+    path: "/dispatch/no-such-node/retire-lineage",
+    body: "attempt_key=a1&reason=abandon",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  selects(method: POST, path: "/dispatch/some-node/retire-lineage", want: LineageRetireHandler)
+    && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+    && unauthenticated.status == 403
+    && string_contains(s: unauthenticated.body, pattern: "tailnet transport is not authentication")
+    && unknown.status == 404
 }

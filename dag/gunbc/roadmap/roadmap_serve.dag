@@ -71,6 +71,7 @@ import gunbc.auth.request_authentication {
   ServeActionAssignIssue,
   ServeActionCreateIssue,
   ServeActionCommentIssue,
+  ServeActionRetireLineage,
   RequestAccessPath,
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
@@ -188,6 +189,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  BeltLineageRetireOutcome, BeltLineageRetired, BeltLineageRetireRefused, belt_lineage_retire_for_instance,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
@@ -315,6 +317,7 @@ type RoadmapServeHandler
   | DashboardInstanceHandler
   | ProviderReadinessHandler
   | BeltDispatchHandler
+  | LineageRetireHandler
   | DispatchAssetHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
@@ -402,6 +405,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}/retire-lineage", handler: LineageRetireHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
@@ -658,6 +662,51 @@ fn serve_dispatch_handler_response_over(
           r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
         )
     }
+  }
+}
+
+// POST /dispatch/NODE_ID/retire-lineage is the OPERATOR'S RETIREMENT of an Ended lineage (ruling
+// 2026-10-16, LINEAGE-RETIRE-1): the route is one realization of the record and its admission
+// (gunbc.roadmap.roadmap_attempt_continuation lineage_retire_admission), which decide; this function
+// only authenticates, takes the principal and the clock, and renders the answer. It goes through
+// human_write_admission, the gate every human write already passes (a Google OIDC session, the CSRF
+// token, the deployment path), under its own action: /dispatch itself carries no application-layer
+// authentication on this lab, so there is no weaker gate to share. The form carries attempt_key and
+// reason; who and when are never taken from it.
+fn serve_lineage_retire_response_over(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let observed_at = human_write_observed_at(security: request.security)
+  if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "node not found") }
+  else { match human_write_admission(route_path: concat("/dispatch/", concat(node_id, "/retire-lineage")) as NonEmptyStr,
+    action: ServeActionRetireLineage, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => lineage_retire_outcome_response(outcome: belt_lineage_retire_for_instance(
+      instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId,
+      attempt_key: issue_form_field(body: request.body, name: "attempt_key"),
+      reason: issue_form_field(body: request.body, name: "reason"),
+      decided_by: authenticated_write_author_label(security: request.security) as String,
+      decided_at: observed_at,
+    ))
+  } }
+}
+
+// THE ANSWER, pure over the outcome: 200 with the record that was written, 409 for an admission or a
+// first-decision-stands conflict (the request does not match the lineage), 500 for a persist failure.
+fn lineage_retire_outcome_response(outcome: BeltLineageRetireOutcome) -> ServeHttpResponse {
+  match outcome {
+    BeltLineageRetired { record } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["lineage retired: node ", record.node_id, " attempt ", record.attempt_key, " (branch ", record.branch, " kept) by ", record.decided_by, " at ", record.decided_at, "\n"], ""))
+    BeltLineageRetireRefused { step, detail } =>
+      serve_text_response(
+        status: if step == "lineage-retire-admission" || step == "lineage-retire-conflict" { 409 } else { 500 },
+        content_type: text_plain_utf8,
+        body: join(["lineage retire refused at ", step, ": ", detail, "\n"], ""),
+      )
   }
 }
 
@@ -1468,6 +1517,7 @@ fn roadmap_serve_invoke_over(
       )
     BeltDispatchHandler =>
       serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
+    LineageRetireHandler => serve_lineage_retire_response_over(instance: instance, request: request, params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)

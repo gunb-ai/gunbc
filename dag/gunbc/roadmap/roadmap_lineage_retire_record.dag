@@ -1,0 +1,160 @@
+module gunbc.roadmap.roadmap_lineage_retire_record
+
+import std.types { String }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text }
+import gunbc.roadmap.roadmap_attempt_request_record { binding_member_string }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
+
+// THE RETIRE RECORD'S CARRIER: a create-only file beside the ENDED attempt's own state, so the
+// record is addressed by the attempt it retires and cannot be found under any other. Create-only
+// because a decision is made once: an identical repeat is an idempotent success, a different one
+// refuses and the first stands.
+data lineage_retire_schema: String = "roadmap-lineage-retire/v1"
+data lineage_retire_basename: String = "lineage-retired.json"
+
+fn lineage_retire_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", lineage_retire_basename], "")
+}
+
+fn lineage_retire_json(record: LineageRetireRecord) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: lineage_retire_schema)),
+    json_kv(key: "node_id", value: json_string(s: record.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: record.attempt_key)),
+    json_kv(key: "branch", value: json_string(s: record.branch)),
+    json_kv(key: "reason", value: json_string(s: record.reason)),
+    json_kv(key: "decided_by", value: json_string(s: record.decided_by)),
+    json_kv(key: "decided_at", value: json_string(s: record.decided_at)),
+  ]))
+}
+
+type LineageRetireDecode
+  = LineageRetireDecoded { record: LineageRetireRecord }
+  | LineageRetireUndecodable { reason: String }
+
+// THE DECODE IS STRICT: the schema must be this one and every member present and non-empty. A
+// document that is anything else is undecodable, never "no record".
+fn lineage_retire_decode(text: String) -> LineageRetireDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } => LineageRetireUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match binding_member_string(doc: doc, key: "schema") {
+        Absent => LineageRetireUndecodable { reason: "the retire record has no schema member" }
+        Present { value: schema } =>
+          if schema != lineage_retire_schema {
+            LineageRetireUndecodable { reason: join(["schema is ", schema, ", expected ", lineage_retire_schema], "") }
+          } else {
+            lineage_retire_decode_members(doc: doc)
+          }
+      }
+  }
+}
+
+fn lineage_retire_decode_members(doc: JsonValue) -> LineageRetireDecode {
+  let missing = LineageRetireUndecodable { reason: "the retire record lacks a node_id, attempt_key, branch, reason, decided_by or decided_at member, or one is empty" }
+  match lineage_retire_member(doc: doc, key: "node_id") {
+    Absent => missing
+    Present { value: n } => match lineage_retire_member(doc: doc, key: "attempt_key") {
+      Absent => missing
+      Present { value: a } => match lineage_retire_member(doc: doc, key: "branch") {
+        Absent => missing
+        Present { value: b } => match lineage_retire_member(doc: doc, key: "reason") {
+          Absent => missing
+          Present { value: r } => match lineage_retire_member(doc: doc, key: "decided_by") {
+            Absent => missing
+            Present { value: by } => match lineage_retire_member(doc: doc, key: "decided_at") {
+              Absent => missing
+              Present { value: at } => LineageRetireDecoded { record: LineageRetireRecord { node_id: n, attempt_key: a, branch: b, reason: r, decided_by: by, decided_at: at } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn lineage_retire_member(doc: JsonValue, key: String) -> String? {
+  match binding_member_string(doc: doc, key: key) {
+    Present { value: s } => if s == "" { none } else { Present { value: s } }
+    Absent => none
+  }
+}
+
+type LineageRetireRead
+  = LineageRetireFound { record: LineageRetireRecord }
+  | LineageRetireAbsent
+  | LineageRetireUnreadable { reason: String }
+
+fn lineage_retire_read_from_observation(observation: FilesystemFileObservation) -> LineageRetireRead {
+  match observation {
+    FilesystemFileAbsent(_) => LineageRetireAbsent
+    FilesystemFileRead { path: _, content } =>
+      match lineage_retire_decode(text: content) {
+        LineageRetireDecoded { record } => LineageRetireFound { record: record }
+        LineageRetireUndecodable { reason } => LineageRetireUnreadable { reason: reason }
+      }
+    FilesystemFileIndeterminate { cause } => LineageRetireUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => LineageRetireUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => LineageRetireUnreadable { reason: cause }
+  }
+}
+
+fn lineage_retire_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> LineageRetireRead {
+  lineage_retire_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: lineage_retire_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    ),
+  )
+}
+
+type LineageRetireCommit
+  = LineageRetireCommitted { record: LineageRetireRecord }
+  | LineageRetireCommitRefused { step: String, detail: String }
+
+// THE CREATE-ONLY COMMIT, pure over what the create answered and what is on disk. An occupied
+// target is read back: the SAME decision (same reason, same principal) is an idempotent success; a
+// different or unreadable one refuses and the first stands.
+fn lineage_retire_commit_of(record: LineageRetireRecord, created: FilesystemCreateNew, existing: LineageRetireRead) -> LineageRetireCommit {
+  match created {
+    FilesystemCreated { path: _ } => LineageRetireCommitted { record: record }
+    FilesystemCreateRefused { path: _, kind: _, error } => LineageRetireCommitRefused { step: "lineage-retire-persist", detail: error }
+    FilesystemCreateKindUnrecognized { path: _, observed, error } => LineageRetireCommitRefused { step: "lineage-retire-persist", detail: join([observed, ": ", error], "") }
+    FilesystemCreateTargetOccupied { path: _ } =>
+      match existing {
+        LineageRetireFound { record: recorded } =>
+          if recorded.reason == record.reason && recorded.decided_by == record.decided_by && recorded.attempt_key == record.attempt_key {
+            LineageRetireCommitted { record: recorded }
+          } else {
+            LineageRetireCommitRefused { step: "lineage-retire-conflict", detail: join(["the lineage ending at attempt ", recorded.attempt_key, " is already retired by ", recorded.decided_by, " at ", recorded.decided_at, "; the first decision stands"], "") }
+          }
+        LineageRetireAbsent => LineageRetireCommitRefused { step: "lineage-retire-persist", detail: "the record could not be created because the target was occupied, and then could not be found" }
+        LineageRetireUnreadable { reason } => LineageRetireCommitRefused { step: "lineage-retire-conflict", detail: join(["the attempt already has a retire record that cannot be read, which is not replaced: ", reason], "") }
+      }
+  }
+}
+
+fn lineage_retire_create_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, record: LineageRetireRecord) -> LineageRetireCommit {
+  let write = Filesystem.WriteCreateNew(path: lineage_retire_path_for_instance(instance: instance, node_id: node_id, attempt_key: record.attempt_key), content: lineage_retire_json(record: record))
+  let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+  lineage_retire_commit_of(
+    record: record,
+    created: created,
+    existing: match created {
+      FilesystemCreateTargetOccupied { path: _ } => lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: record.attempt_key)
+      FilesystemCreated { path: _ } => LineageRetireAbsent
+      FilesystemCreateRefused { path: _, kind: _, error: _ } => LineageRetireAbsent
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => LineageRetireAbsent
+    },
+  )
+}
