@@ -13,6 +13,8 @@ data an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head: Recurring
 
     "RUNG FOUND AT: 1, mitigatable -- the failure is caught only by building the emitted crate. CEILING: 3, structurally guaranteed: the emitter renders an inferred type by its full application (alias expanded to FreeMonoid<Symbol>) or by a placeholder, never by the bare head. NEXT TRIGGER: the seed-emitter's type rendering for an inferred generic argument; owner tidy-swift-183 (queued after #14069, per clever-crane-830). WORKAROUND (labeled): src/v2/compiler/resolve.dag type_param_value_binders types its seed with a let; delete that let when the emitter renders the alias correctly."
 
+    "STANDING (2026-10-16): HELD on main 176789b648. Receipts above are pre-merge #14084 heads and were not re-observed. Three untyped empty_map() fold-seed controls now guard it in //gunbc/instruments:native-emission-controls (alias_empty_map_seed_cross_module_indexes_each_name for an alias declared in another module, alias_empty_map_seed_indexes_each_name for the real v2.std.qualified_name QualifiedName/Symbol shape, alias_empty_map_seed_typed_control_agrees for the typed-let form); all emit and compile. The commit that fixed it was not located (git log -S on the emitter finds only the original empty-map arm, #11154, and #14084 itself). Whether the controls red on e64a435 was not measured, so they are guards, not yet proven discriminators. The resolve.dag typed-let workaround is left in place.",
+
     "RECOGNITION RULE: E0107 `missing generics for type alias` naming a std alias at a turbofish in an emitted file; the source holds an untyped empty_map()/empty collection in an init or argument position whose element type is an alias of a generic."
   ],
 

@@ -1,7 +1,10 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, Int, List, NonEmptyStr, Set, String }
+import std.types { Bool, Int, List, Map, NonEmptyStr, Set, String }
 import std.algebra { length }
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc, qualified_name_from_dotted_string }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import gunbc.instruments.native_emission_controls_alias { ControlWords, control_words_of }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import std.resource_contract { Observation, Read }
@@ -717,11 +720,52 @@ data native_emission_expected_identities: List<String> = [
   "optional_type_param_holds_absent",
   "optional_type_param_red_present_is_not_absent",
   "optional_type_param_holds_present_value",
-  "optional_type_param_red_absent_reads_no_value"
+  "optional_type_param_red_absent_reads_no_value",
+  "alias_empty_map_seed_cross_module_indexes_each_name",
+  "alias_empty_map_seed_indexes_each_name",
+  "alias_empty_map_seed_red_empty_keeps_seed",
+  "alias_empty_map_seed_typed_control_agrees"
 ]
 
+// RULE: an untyped empty-map fold seed is emitted with its inferred application, never the bare head
+// of an alias (gunbc.recurring_failure_mode an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head).
+// ControlWords (declared in native_emission_controls_alias) is the shape of v2.std.qualified_name QualifiedName = FreeMonoid<Symbol>: the map's value
+// type is an alias of a generic, and the seed carries no annotation of its own. The seed rendered
+// `v1_rt::rc_empty_map::<String, Rc<FreeMonoid>>()`, so rustc refused E0107 (missing generics for type
+// alias FreeMonoid) and this program did not compile -- the red is the label's. control_word_index_typed is
+// the positive control: the same fold over a typed let, which always compiled.
+fn control_word_index(names: List<Symbol>) -> Map<Symbol, QualifiedName> {
+  let p = qualified_name_from_dotted_string(dotted: "a.b")
+  fold(names, init: empty_map(), f: fn(acc, name) {
+    map_insert(acc, name, qualified_name_snoc(qn: p, segment: name))
+  })
+}
+
+fn control_word_index_typed(names: List<Symbol>) -> Map<Symbol, QualifiedName> {
+  let p = qualified_name_from_dotted_string(dotted: "a.b")
+  let seed: Map<Symbol, QualifiedName> = empty_map()
+  fold(names, init: seed, f: fn(acc, name) {
+    map_insert(acc, name, qualified_name_snoc(qn: p, segment: name))
+  })
+}
+
+fn control_word_index_cross_module(names: List<String>) -> Map<String, ControlWords> {
+  fold(names, init: empty_map(), f: fn(acc, name) {
+    map_insert(acc, name, control_words_of(name: name))
+  })
+}
+
+fn alias_empty_map_seed_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "alias_empty_map_seed_cross_module_indexes_each_name", held: map_keys(control_word_index_cross_module(names: ["a", "b"])) |> count == 2 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_indexes_each_name", held: map_keys(control_word_index(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_red_empty_keeps_seed", held: map_keys(control_word_index(names: [])) |> count == 0 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_typed_control_agrees", held: map_keys(control_word_index_typed(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 }
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases())
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), alias_empty_map_seed_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
