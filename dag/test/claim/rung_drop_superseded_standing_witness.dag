@@ -6,7 +6,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
-import gunbc.rung_drop.standing { dissolved_populations_empty, superseded_loss_holders_stand }
+import gunbc.rung_drop.standing { standing_rung_drops_of, dissolved_populations_empty, superseded_loss_holders_stand }
 import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
@@ -167,4 +167,22 @@ test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
     declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
   }
   (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
+}
+
+// THE LAW LIVES IN THE CONSUMER, NOT ONLY THE WITNESS. RED: standing_rung_drops_of, the accounting that
+// erases a loss, must still count a Dissolved row over a live population (fail closed) and must erase
+// one over an empty population (the sha256 shape). Mutating dissolved_is_admissible to always admit
+// makes the first conjunct fail.
+test fn w_RED_the_standing_accounting_keeps_an_invalid_dissolved_row_live() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let live = RungDrop {
+    identity: "fixture.live" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+  }
+  let empty = RungDrop {
+    identity: "fixture.empty" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+  }
+  let kept = map(standing_rung_drops_of(ds: [live, empty]), d => d.identity as String)
+  length(xs: filter(kept, i => i == "fixture.live")) == 1 && length(xs: filter(kept, i => i == "fixture.empty")) == 0
 }

@@ -11,15 +11,20 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List, Bool }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, AuthoredProse }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, dissolved_is_admissible }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
-  filter(rung_drop_roster, d => match d.standing {
+  standing_rung_drops_of(ds: rung_drop_roster)
+}
+
+// Parameterized on the roster so a witness can hand it a Dissolved row that must NOT be erased.
+fn standing_rung_drops_of(ds: List<RungDrop>) -> List<RungDrop> {
+  filter(ds, d => match d.standing {
     Standing => true
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d) == false
   })
 }
 
@@ -51,20 +56,8 @@ fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
   })) == 1
 }
 
-// A DISSOLVED ROW IS ADMITTED ONLY OVER AN EMPTY TYPED POPULATION. Dissolved removes a drop from
-// every live account, so its three prose fields cannot be the evidence that the population is gone:
-// the row's own typed population must already be empty (the population list it derives from is
-// empty). A non-empty typed population refuses, and so does a prose declaration, whose population
-// is not readable as a list; a prose row stays Standing or Superseded until it carries a typed
-// declaration.
+// EVERY ROW IS ADMISSIBLE: the roster-wide form of gunbc.rung_drop dissolved_is_admissible, which the
+// erasing consumers call per row.
 fn dissolved_populations_empty(drops: List<RungDrop>) -> Bool {
-  all(drops, d => match d.standing {
-    Standing => true
-    Retired { trigger_fired: _ } => true
-    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
-    Dissolved { ruling: _, decision_record: _, population_gone: _ } => match d.declaration {
-      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => length(xs: p) == 0
-      AuthoredProse { legacy: _, authored: _ } => false
-    }
-  })
+  all(drops, d => dissolved_is_admissible(drop: d))
 }
