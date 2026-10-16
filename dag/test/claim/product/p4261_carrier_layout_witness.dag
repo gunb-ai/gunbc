@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ConductivePolymerHybridAluminium }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
@@ -422,7 +422,7 @@ fn low_can_row() -> ElectronicComponentRow {
     ordering_code: "supplied 16 V can",
     package: "supplied",
     top_marking: "supplied",
-    specification: CapacitorSpec { capacitor: CapacitorSpecification { technology: ConductivePolymerHybridAluminium, capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
+    specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
     vendor_application_statements: [],
   }
 }

@@ -674,6 +674,8 @@ fn k1_marking(text: NonEmptyStr) -> MarkingReading {
 
 data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
 
+// "Rework" beside the PCB code is a printed marking; whether any rework was performed, and what, is
+// unknown. The labels read "0000-100" where the listing title says "000-100"; the label is the reading.
 data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   asset: p4261_k1_a,
   design: k1_design,
@@ -1157,6 +1159,50 @@ fn management_io_item_text(o: ManagementIoObservation) -> String {
       "; candidate families ", join(map(candidates, c => candidate_text(c: c)), ", "), " (part number, protocol and role unestablished)",
     ], "")
     FlatCableConnectors { count: n, evidence: _ } => join([to_string(n), " thin flat-cable connectors, function unread"], "")
+  }
+}
+
+// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
+// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
+// consumer that labels the carrier reads it here rather than restating it.
+fn is_operator_photograph(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    _ => false
+  }
+}
+
+fn is_received_label(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
+  filter(layout.markings, m => is_received_label(m: m))
+}
+
+fn carrier_label_text(layout: CarrierLayoutObservation) -> String {
+  let texts = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number, revision, serial, evidence: _ } =>
+      [join([model as String, " ", part_number as String, " rev ", revision as String, ", S/N ", serial as String], "")]
+    _ => []
+  })
+  match texts.first() {
+    Absent => "a carrier whose label is unread on the received unit"
+    Present { value: _ } => join(texts, "; ")
+  }
+}
+
+fn carrier_model_text(layout: CarrierLayoutObservation) -> String {
+  let models = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number: _, revision: _, serial: _, evidence: _ } => [model as String]
+    _ => []
+  })
+  match models.first() {
+    Absent => "unlabelled"
+    Present { value: m } => m
   }
 }
 

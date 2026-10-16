@@ -55,11 +55,7 @@ type TvsSpecification {
   breakdown_maximum: Millivolt
 }
 
-type CapacitorTechnology
-  = ConductivePolymerHybridAluminium
-
 type CapacitorSpecification {
-  technology: CapacitorTechnology
   capacitance_microfarads: Nat
   rated_voltage: Volt
 }
@@ -92,6 +88,7 @@ type MosfetSpecification {
 
 type SerialBus
   = I2cOrSmbus
+  | SpiInterface
 
 type SensorPinRole
   = SerialData { bus: SerialBus, open_drain: Bool }

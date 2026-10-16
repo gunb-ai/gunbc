@@ -365,10 +365,6 @@ test fn a_mismatched_connector_face_refuses_mating() -> Bool {
     unit: first_assembly.unit,
     carrier: CarrierUnitObservation {
       asset: p4261_k1_carrier.asset,
-      serial: p4261_k1_carrier.serial,
-      carrier_designation: p4261_k1_carrier.carrier_designation,
-      carrier_part_number: p4261_k1_carrier.carrier_part_number,
-      revision: p4261_k1_carrier.revision,
       layout: p4261_k1_carrier.layout,
       module_face: MezzanineFacePhotographed {
         connector_count: 3,

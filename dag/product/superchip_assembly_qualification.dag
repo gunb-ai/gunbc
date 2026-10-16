@@ -18,6 +18,7 @@ import product.p4261_carrier_layout {
   CarrierLayoutObservation,
   p4261_k1_layout,
   carrier_input_reading,
+  carrier_label_text,
   management_io_text,
   edge_connector_text,
 }
@@ -110,10 +111,6 @@ type SuperchipUnitObservation {
 // scoped to the assembly that booted (BenchRecord.boot).
 type CarrierUnitObservation {
   asset: PhysicalAssetIdentity
-  serial: NonEmptyStr?
-  carrier_designation: NonEmptyStr
-  carrier_part_number: NonEmptyStr
-  revision: NonEmptyStr
   layout: CarrierLayoutObservation
   module_face: MezzanineFaceObservation
   provenance: NonEmptyStr
@@ -175,21 +172,12 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
   source: "second unit bought from eBay item 298619132349; label read from the operator's photograph 2026-10-16",
 }
 
-// Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
-// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen -- a printed
-// marking; whether any rework was performed, and what, is unknown. The sticker's
-// "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
-// consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
-// J4, one toward each short edge, each flanked by mounting holes.
-// The listing's label photographs show two serials (p4261_k1_layout labels); the received unit's
-// label, read 2026-10-16, is S/N 1582023110038 694-24261-0000-100 K1 beside the same "Rework
-// 180-14261-DAAF-A01" silkscreen, so the board that arrived is the 0038 one.
+// The carrier's labels, PCB code and "Rework" silkscreen are typed readings on its layout
+// (product.p4261_carrier_layout p4261_k1_layout markings), and carrier_label reads the received unit's
+// label from there, so this row restates none of them. The module face is the two connectors
+// silkscreened J3 and J4, one toward each short edge, each flanked by mounting holes.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
   asset: p4261_k1_a,
-  serial: Present { value: "1582023110038" },
-  carrier_designation: "P4261",
-  carrier_part_number: "694-24261-0000-100",
-  revision: "K1",
   layout: p4261_k1_layout,
   module_face: MezzanineFacePhotographed {
     connector_count: 2,
@@ -590,7 +578,7 @@ fn contradicted(requirement: NonEmptyStr, reason: NonEmptyStr) -> QualificationR
 }
 
 fn carrier_label(c: CarrierUnitObservation) -> String {
-  join([c.carrier_designation as String, " ", c.carrier_part_number as String, " rev ", c.revision as String], "")
+  carrier_label_text(layout: c.layout)
 }
 
 fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {

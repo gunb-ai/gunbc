@@ -27,7 +27,9 @@ import product.electrical.connectivity {
 // open, or Unestablished. A junction is Forward with its forward readings and a reverse standing that
 // stays ReverseUnread until someone reads it, Contradicted when readings disagree, or Unestablished.
 
-type PowerState = Unpowered
+type PowerState
+  = Unpowered
+  | Energized
 
 type ModuleState
   = ModuleRemoved

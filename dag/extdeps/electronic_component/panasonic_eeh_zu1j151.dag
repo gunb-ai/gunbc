@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.panasonic { panasonic }
-import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification, ConductivePolymerHybridAluminium }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
 
 // THE MARKING SCHEME AND THE ORDERING CODE COME FROM TWO SOURCES, and each is cited for what it says.
 // Panasonic's ZUU-series datasheet (dated 01-Sep-25, read 2026-10-15) gives the top marking of its
@@ -42,7 +42,6 @@ data eeh_zu1j151: ElectronicComponentRow = ElectronicComponentRow {
   package: "SMD radial can, 10 mm diameter; 16.5 mm long for the P (standard) variant, 16.8 mm for the V (vibration-proof) variant, per the series G16 size table -- which variant is installed is unread",
   top_marking: "150 / J ZU / <lot>",
   specification: CapacitorSpec { capacitor: CapacitorSpecification {
-    technology: ConductivePolymerHybridAluminium,
     capacitance_microfarads: 150,
     rated_voltage: volt(count: 63),
   } },
