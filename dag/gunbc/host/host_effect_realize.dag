@@ -5024,13 +5024,6 @@ fn dark_run_legs(legs: List<DarkLeg>, transport: HostEffectTransport) -> DarkSta
   fold(legs, init: DarkOk, f: (st, leg) => dark_run_leg(state: st, leg: leg, transport: transport))
 }
 
-fn dark_refused_of(state: DarkState) -> DarkInstallVerdict {
-  match state {
-    DarkOk => DarkInstallConverged { broker_tree_digest: "" }
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-  }
-}
-
 fn tree_install_step_name(step: TreeInstallStep) -> String {
   match step {
     TreeStepRevision => "revision"
@@ -5319,11 +5312,11 @@ fn realize_approval_broker_dark_install_on_host(
         reason: join(["approval broker dark install refused at step ", dark_install_step_name(step: s), ": ", r], ""),
         applied: intent,
       }
-    DarkInstallConverged { broker_tree_digest: _ } =>
-      reconcile_shell_exec_observed(
-        observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
-        intent: intent,
-      )
+    DarkInstallConverged { broker_tree_digest: d } =>
+      Converged {
+        evidence: ShellEffectApplied { exit_code: 0, stdout: join(["broker_tree_digest=", d, "\n"], ""), stderr: "" },
+        applied: intent,
+      }
   }
 }
 
