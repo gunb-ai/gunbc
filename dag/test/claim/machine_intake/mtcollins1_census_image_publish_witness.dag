@@ -7,7 +7,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstall
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
 import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed, HostFileWriteNotConverged, HostFileWriteRefused }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten, seeded_image_publication_after_record }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, CasperKernel,
 }
@@ -46,8 +46,8 @@ fn reproduced() -> CensusRegression {
 
 fn census_built() -> UbuntuSeededInstallMediaBuilt? {
   match mtcollins1_census_image {
-    Mtcollins1CensusImageRefused { reason: _ } => none
-    Mtcollins1CensusImageDerived { input: i } => Present { value: ubuntu_seeded_install_media_built(input: i, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") }
+    CensusImageRefused { reason: _ } => none
+    CensusImageDerived { input: i } => Present { value: ubuntu_seeded_install_media_built(input: i, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") }
   }
 }
 

@@ -3,6 +3,8 @@ module gunbc.compute.work_provider_local
 import extdeps.tools.gnu_coreutils { coreutils_install_directories_arguments }
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
+import std.env_binding { EnvBinding }
+import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
@@ -34,7 +36,10 @@ import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point, cgroup_v2_events_path,
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
-import extdeps.cache.sccache { sccache_installed_binary_path }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path, sccache_server_uds_env_var,
+}
+import extdeps.linux.procfs { procfs_status_effective_uid }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
@@ -78,7 +83,7 @@ import std.materialization_ladder {
   materialization_ladder, ladder_verdict_is_green, ladder_verdict_prescribes, verdict_identity,
 }
 import std.realization { Materialization, Memoize, Recompute, Share }
-import std.materialization_store_grant { MaterializationStoreRoot, DurableHostVolumeRoot, materialization_store_frame, materialization_store_root_path, materialization_store_staging_root_path }
+import std.materialization_store_grant { MaterializationStoreRoot, materialization_store_frame, materialization_store_staging_root_path }
 import std.materialization_object {
   ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
@@ -108,7 +113,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -144,7 +149,16 @@ type ComputeLayout {
   attempts_dir: String
 }
 
-fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
+// THE LAYOUT EXISTS ONLY FOR AN INSTANCE THAT DECLARES A STORE, because its staging directory is
+// derived from that store. Production, which already holds the store, builds it with compute_layout_in.
+fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: compute_layout_in(instance: instance, store_root: store_root, identity_hex: identity_hex) }
+  }
+}
+
+fn compute_layout_in(instance: HostDashboardInstance, store_root: MaterializationStoreRoot, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
   ComputeLayout {
@@ -154,7 +168,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     out_dir: join([work_dir, "/out"], ""),
     leases_dir: join([root, "/leases"], ""),
     lease_path: join([root, "/leases/", identity_hex], ""),
-    staging_dir: compute_staging_dir(),
+    staging_dir: materialization_store_staging_root_path(root: store_root),
     target_dir: join([root, "/target"], ""),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
@@ -483,7 +497,48 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
   }
 }
 
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, granted: Kibibyte) -> ComputeUnitRunReading {
+// The unit's environment is the user manager plus --setenv only. An undeclared sccache endpoint
+// falls through to TCP 4226, which another uid's server can hold. The socket is keyed by USER
+// (the launching uid's runtime dir / sccache.sock), not by layout/identity, so one server serves
+// every identity of that uid. SCCACHE_DIR is unbound: HostDashboardInstance does not declare a
+// cache dir, and ci_cache_instance is the CI runner's store, not production's.
+fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
+  join([user_runtime_dir as String, "/sccache.sock"], "") as NonEmptyStr
+}
+
+fn compute_launching_user_runtime_dir() -> FilePath? {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  if !status.success {
+    none
+  } else {
+    match procfs_status_effective_uid(content: status.content) {
+      Absent => none
+      Present { value: uid } => {
+        let runtime_dir = join(["/run/user/", to_string(value: uid)], "") as FilePath
+        let listed = Filesystem.List(path: runtime_dir)
+        if listed.success {
+          Present { value: runtime_dir }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
+fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenvBinding> {
+  [
+    SystemdSetenvBinding {
+      name: sccache_server_uds_env_var,
+      value: compute_user_sccache_server_uds(user_runtime_dir: user_runtime_dir),
+    },
+  ]
+}
+
+// launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
+// inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
+// has none. One fold: production and the instrument both call this.
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -498,19 +553,28 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
-      setenv_bindings: concat([
-        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
-        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
-      ], env),
+      setenv_bindings: concat(
+        concat(
+          [
+            SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
+            SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
+          ],
+          compute_unit_sccache_setenv(user_runtime_dir: user_runtime_dir),
+        ),
+        env,
+      ),
       command_argv: argv,
     ) {
       SystemdSummaryPrintingWaitRefused { cause: why } =>
         ComputeUnitRunRefused { cause: why }
       SystemdSummaryPrintingWaitReady { wait: launcher } => {
         let r = compute_exec(
-          program: systemd_run,
+          program: env_absolute_program().invocation as String,
           workdir: layout.checkout,
-          args: systemd_summary_printing_wait_argv(w: launcher),
+          args: env_prefixed_args(
+            bindings: launcher_env,
+            command_argv: concat([systemd_run], systemd_summary_printing_wait_argv(w: launcher)),
+          ),
         )
         ComputeUnitRunExecuted { run: ComputeUnitRun {
           exec: r,
@@ -892,8 +956,11 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // and the commit's link is a link, never a copy (C1b refuses a cross-device stage). It is DERIVED from
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
-fn compute_staging_dir() -> String {
-  materialization_store_staging_root_path(root: compute_durable_store.root)
+fn compute_staging_dir(instance: HostDashboardInstance) -> String? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: materialization_store_staging_root_path(root: store_root) }
+  }
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1643,14 +1710,23 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 // them.
 
 // THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
-// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses the
-// one durable root under that layer's rows, and a witness supplies a scratch root with fixture rows.
+// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses
+// compute_store(instance), whose root IS the instance field (DurableHostVolume,
+// PersistentInstanceWorkspace or FrameJobWorkspace — never rewritten), and a witness supplies a
+// scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
   budgets: List<LocalStoreFamilyBudget>
 }
 
-data compute_durable_store: ComputeStore = ComputeStore { root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets }
+fn compute_store(instance: HostDashboardInstance) -> ComputeStore? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present {
+      value: ComputeStore { root: store_root, budgets: materialization_store_durable_family_budgets },
+    }
+  }
+}
 
 data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
 
@@ -1672,7 +1748,7 @@ type ComputeMaterialization {
 // declares), so the ladder judges against exactly the bound that will hold the bytes; a family the
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
-  match local_store_family_budget(budgets: compute_durable_store.budgets, family: family) {
+  match local_store_family_budget(budgets: materialization_store_durable_family_budgets, family: family) {
     Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
     Absent => []
   }
@@ -1988,7 +2064,7 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
 }
 
 // WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
-// it should receive has leaked policy). The production caller names compute_durable_store once, in
+// it should receive has leaked policy). The production caller names compute_store(instance) once, in
 // compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
 // is what lets its inhabitance claim execute it against a scratch root.
 fn compute_provide_leaf(
@@ -2006,7 +2082,7 @@ fn compute_provide_leaf(
     ComputeMaterializationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
-      let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
+      let layout = compute_layout_in(instance: instance, store_root: store.root, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
       let materialization = ComputeMaterialization { store: store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
@@ -2387,7 +2463,18 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), granted: granted) {
+  match compute_launching_user_runtime_dir() {
+    Absent =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure {
+          identity: identity,
+          cause: ToolchainUnobserved { detail: "launching user's /run/user/<uid> is not present, so SCCACHE_SERVER_UDS cannot be declared on the unit" },
+        },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    Present { value: user_runtime_dir } =>
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -2416,6 +2503,7 @@ fn compute_spawn_and_collect(
   }
     }
   }
+  }
 }
 
 // NOTHING WAS SPAWNED, SO NOTHING WAS SUMMARIZED: the same absence main's checkout-failure arm
@@ -2441,11 +2529,16 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolutionRefused { detail } =>
           compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
         SubjectResolved { subject } =>
-          match op {
-            BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_durable_store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+          match compute_store(instance: instance) {
+            Absent =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+            Present { value: store } =>
+              match op {
+                BuildGunbcBinaries { profile: _, bins: _ } =>
+                  compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              }
           }
       }
   }
