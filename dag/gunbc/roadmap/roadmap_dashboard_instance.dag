@@ -1391,10 +1391,11 @@ fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
 // fork as enumerating production three times.
 // THE FLEET HERMETIC COMPUTE SUBJECT (WAVE-0 B). A declared instance the compute_run_unit
 // instrument binds, not a session cwd and not srv1-live's /opt/gunbc/gunbc. host_identity is
-// ghrunner-hermetic so srv1-live keeps host lookup. Roots are ALWAYS under the invoking job
-// workspace (git toplevel): they are not a host-shared path (/tmp, /opt/gunbc). Observe-only:
+// ghrunner-hermetic so srv1-live keeps host lookup. Source (repo_root, local_origin_root) is the
+// invoking job workspace; every write root is the frame's scratch root,
+// materialization_store_frame_root(frame), never a durable host path (/opt/gunbc). Observe-only:
 // this row names a compute layout, it does not grant dispatch. Not a public_builtin: a
-// workspace-relative root is not a host lookup subject.
+// frame-scoped root is not a host lookup subject.
 //
 // TOOLCHAIN IS A PARAMETER, the same way workspace is. srv1_linux_toolchain names a developer
 // home (`/home/briansrls/.cargo/bin/cargo`); a fleet job isolates CARGO_HOME and RUSTUP_HOME
