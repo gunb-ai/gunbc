@@ -14,6 +14,7 @@ import gunbc.design_ruling {
   consumption_interrogated_separately,
   epistemic_humility_is_symmetric,
   chain_re_derivation,
+  anti_unification_is_the_fork_procedure,
   instrument_is_a_row_not_a_flag,
   authorization_pattern_is_a_selection,
   coercion_is_the_implicit_safe_subset,
@@ -334,6 +335,22 @@ fn section_6b_blocks() -> List<MarkdownBlock> {
   ]
 }
 
+fn section_6c_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "6c. Anti-unification (how a fork is consolidated)"),
+    p(text: concat("§6b works one defect down a chain; this section works the same defect across its siblings. The operation is Plotkin's anti-unification, the least general generalization (G. D. Plotkin, \"A note on inductive generalization\", Machine Intelligence 5, 1970): the most specific rule of which every observed case is an instance ", concat(ruling(r: anti_unification_is_the_fork_procedure), ". A leaf that handles one case beside leaves that handle its siblings is §3's fork, and it is consolidated later at the price of every leaf written in between."))),
+    p(text: "The procedure:"),
+    ol(items: [
+      li(text: "**Detect.** A new case seems to need new code: is it another instance of what existing leaves already do?"),
+      li(text: "**Collect** every leaf of that shape: sibling arms, sibling call sites of the same general check, sibling helpers, the same rule in v1 and v2, other stages and targets."),
+      li(text: "**Generalize** to the least general rule that covers them all, placed at the earliest unjustified boundary (§6b), so the rule is declared once on its owning carrier. Too general a rule forbids or admits what no leaf did (§4d)."),
+      li(text: "**Delete the leaves** (§3, delete-first). A generalization beside surviving leaves is a second path."),
+      li(text: "**Repeat** while the generalizations themselves form a family."),
+    ]),
+    p(text: "The vertical half is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`; the horizontal half is `gunbc.recurring_failure_mode` `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`. Its recognition rule is addressed to the author, who holds the rule and stops when the prompting instance is fixed, so the same question is asked of the reviewer, who looks around the change layer by layer to the root: `gunbc.design_argument` row `s6c.anti-unification`. A repeated pattern is rejected until the author answers either with the reason it should not be generalized (§3b, diverges with a stated reason) or with the trigger and follow-up for generalizing later (§4b, no untracked stall); the reviewer accepts or rejects that answer, and no answer is a reject."),
+  ]
+}
+
 fn section_7_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
@@ -381,6 +398,7 @@ fn design_blocks() -> List<MarkdownBlock> {
     section_5_blocks(),
     section_6_blocks(),
     section_6b_blocks(),
+    section_6c_blocks(),
     section_7_blocks(),
     failure_modes_blocks(),
     building_checks_blocks(),
