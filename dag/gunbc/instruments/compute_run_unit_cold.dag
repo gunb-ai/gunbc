@@ -18,7 +18,7 @@ import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
 import extdeps.cache.sccache {
   sccache_installed_binary_path, sccache_server_default_tcp_port,
-  SccacheServerUnixSocket, SccacheServerTcpPort, sccache_server_uds_env_var,
+  SccacheServerUnixSocket, SccacheServerTcpPort,
 }
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
@@ -32,7 +32,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
-  NoComputeDependency, compute_program, compute_user_sccache_server_uds, compute_summary_result_wire, compute_summary_peak_wire,
+  NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
 }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
@@ -458,7 +458,7 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                     instance: instance,
                     layout: layout,
                     identity_hex: identity,
-                    argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
+                    argv: concat(unit_stats_trailer_argv(), compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency)),
                     env: concat(
                       concat(
                         concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
@@ -528,9 +528,8 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
 }
 
 // WHAT THIS INSTRUMENT OBSERVES ABOUT REUSE. sccache hits, read from the SAME server the unit's
-// cargo used: the unit's endpoint is compute_user_sccache_server_uds (keyed by the launching uid's
-// runtime dir, not by identity), and a bare `sccache --show-stats` from the launcher asks a different
-// server (the baseline reading on main e7f987be7e8, runs 38846203914 and 38846213026, was 0/0/0 from
+// cargo used (endpoint compute_user_sccache_server_uds, set on the unit by compute_run_unit), and a
+// bare `sccache --show-stats` from the launcher asks a different server (the baseline reading on main e7f987be7e8, runs 38846203914 and 38846213026, was 0/0/0 from
 // the wrong server while the unit compiled 34 crates). Result-store reuse and the VerifiedBuildBinaries
 // handoff are NOT observed here: each identity gets a fresh target and checkout, so the only reuse
 // this fold can see is sccache's.
@@ -551,28 +550,26 @@ fn sccache_stat_value(text: String, label: String) -> Int? {
     })
 }
 
-fn observe_unit_sccache_stats(runtime_dir: FilePath) -> SccacheUnitReading {
-  match compute_exec(
-    program: env_absolute_program().invocation as String,
-    workdir: ".",
-    args: env_prefixed_args(
-      bindings: [EnvSet { name: sccache_server_uds_env_var as String, value: compute_user_sccache_server_uds(user_runtime_dir: runtime_dir) as String }],
-      command_argv: [sccache_installed_binary_path, "--show-stats"],
-    ),
-  ) {
-    ComputeExecFailed { exit_code, stdout: _, stderr } =>
-      SccacheUnitUnobserved { reason: join(["sccache --show-stats on the unit's server exited ", to_string(value: exit_code), ": ", stderr], "") }
-    ComputeExecOk { stdout, stderr: _ } =>
-      match sccache_stat_value(text: stdout, label: "Compile requests executed") {
-        Absent => SccacheUnitUnobserved { reason: "no 'Compile requests executed' line in the unit server's stats" }
-        Present { value: executed } =>
-          match sccache_stat_value(text: stdout, label: "Cache hits") {
-            Absent => SccacheUnitUnobserved { reason: "no 'Cache hits' count in the unit server's stats" }
-            Present { value: hits } =>
-              match sccache_stat_value(text: stdout, label: "Cache misses") {
-                Absent => SccacheUnitUnobserved { reason: "no 'Cache misses' count in the unit server's stats" }
-                Present { value: misses } => SccacheUnitServed { executed: executed, hits: hits, misses: misses }
-              }
+// The unit's sccache server is auto-spawned by the client inside the unit's cgroup and is reaped
+// with it (KillMode=control-group, gunbc.compute.unit_bounds), and `sccache --show-stats` with no
+// listener prints a plausible all-zero table. So the stats are read INSIDE the unit, after the build
+// command and before the unit ends, with the unit's own SCCACHE_SERVER_UDS (compute_unit_sccache_setenv
+// in compute_run_unit); the build's exit status is preserved. The first identity's reading is context;
+// the second identity's cache is warm only if its server read the first's persistent cache.
+fn unit_stats_trailer_argv() -> List<String> {
+  ["/bin/sh", "-c", join(["\"$@\"; rc=$?; ", sccache_installed_binary_path, " --show-stats; exit $rc"], ""), "sh"]
+}
+
+fn sccache_reading_from(text: String) -> SccacheUnitReading {
+  match sccache_stat_value(text: text, label: "Compile requests executed") {
+    Absent => SccacheUnitUnobserved { reason: "no 'Compile requests executed' line in the unit's own stats output" }
+    Present { value: executed } =>
+      match sccache_stat_value(text: text, label: "Cache hits") {
+        Absent => SccacheUnitUnobserved { reason: "no 'Cache hits' count in the unit's own stats output" }
+        Present { value: hits } =>
+          match sccache_stat_value(text: text, label: "Cache misses") {
+            Absent => SccacheUnitUnobserved { reason: "no 'Cache misses' count in the unit's own stats output" }
+            Present { value: misses } => SccacheUnitServed { executed: executed, hits: hits, misses: misses }
           }
       }
   }
@@ -604,43 +601,36 @@ fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
   }
 }
 
-// Two identities back to back in ONE dispatch: same slot, uid and sccache server. The second
-// identity's hits are the server's counters minus the first's; a counter that went backwards means
-// the server restarted between them, the difference is meaningless, and the run refuses (exit 2).
+// Two identities back to back in ONE dispatch: same slot, uid and cache directory. Each unit reads
+// its own server's stats (unit_stats_trailer_argv), so the second reading is whole, not a difference.
 fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
   let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame)
   if !cold_run_succeeded(r: first) {
     first
   } else {
-    let after_first = observe_unit_sccache_stats(runtime_dir: runtime_dir)
     match observe_run_frame() {
       Absent => no_observation(bytes: cold_run_bytes(r: first), reason: "second run frame unreadable")
       Present { value: second_frame } => {
         let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame)
-        let after_second = observe_unit_sccache_stats(runtime_dir: runtime_dir)
+        let reading_1 = sccache_reading_from(text: cold_run_bytes(r: first))
+        let reading_2 = sccache_reading_from(text: cold_run_bytes(r: second))
         let bytes = join([
           cold_run_bytes(r: first), "\n=== second identity ===\n", cold_run_bytes(r: second), "\n",
-          sccache_reading_wire(label: "sccache after first identity", r: after_first),
-          sccache_reading_wire(label: "sccache after second identity", r: after_second),
+          sccache_reading_wire(label: "sccache in first identity's unit", r: reading_1),
+          sccache_reading_wire(label: "sccache in second identity's unit", r: reading_2),
         ], "")
         if !cold_run_succeeded(r: second) {
           CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity's run failed" } }
         } else {
-          match after_first {
+          match reading_2 {
             SccacheUnitUnobserved { reason } => no_observation(bytes: bytes, reason: join(["no observation: ", reason], ""))
-            SccacheUnitServed { executed: executed_1, hits: hits_1, misses: _ } =>
-              match after_second {
-                SccacheUnitUnobserved { reason } => no_observation(bytes: bytes, reason: join(["no observation: ", reason], ""))
-                SccacheUnitServed { executed: executed_2, hits: hits_2, misses: _ } =>
-                  if executed_2 == 0 {
-                    no_observation(bytes: bytes, reason: "no observation: the unit's sccache server served 0 compile requests after exec=ok")
-                  } else if (executed_2 < executed_1) || (hits_2 < hits_1) {
-                    no_observation(bytes: bytes, reason: "no observation: the unit's sccache counters went backwards between the identities (server restarted), so the second identity's hits are not separable")
-                  } else if (hits_2 - hits_1) > 0 {
-                    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-                  } else {
-                    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity had 0 sccache hits" } }
-                  }
+            SccacheUnitServed { executed, hits, misses: _ } =>
+              if executed == 0 {
+                no_observation(bytes: bytes, reason: "no observation: the second unit's own sccache stats show 0 compile requests")
+              } else if hits > 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+              } else {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity had 0 sccache hits" } }
               }
           }
         }
