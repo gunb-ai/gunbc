@@ -2,11 +2,11 @@ module gunbc.design.brand_mark_assets
 
 import std.types { Int, List, String }
 import extdeps.color.srgb { Srgb8 }
-import extdeps.w3c.png { PngRelativeColorimetric, PngEncoded, PngRefused, png_encode }
+import extdeps.w3c.png { PngRelativeColorimetric, PngRefusal, PngEncoded, PngRefused, png_encode }
 import gunbc.design.brand_mark { BrandMarkKind, FaceMark, RobotMark, brand_mark, brand_mark_badge_stone, brand_mark_ink }
 import gunbc.design.brand_mark_raster {
   BrandRasterSpec, BrandRasterPlacement, BrandRasterGround, BrandBadgeGround, BrandRastered, BrandRasterRefused,
-  BrandRasterSizeOutOfRange, BrandRasterCanvasEmpty, BrandRasterMarkOutsideGround, brand_mark_raster,
+  BrandRasterRefusal, brand_mark_raster,
 }
 
 // THE RASTER LOGO FILES, EACH DERIVED FROM gunbc.design.brand_mark. One row per file a surface
@@ -27,9 +27,12 @@ type BrandAssetTarget {
   spec: BrandRasterSpec
 }
 
+// Which stage refused a file, with that stage's own located cause.
+type BrandAssetRefusal = BrandAssetRasterRefused { cause: BrandRasterRefusal } | BrandAssetPngRefused { cause: PngRefusal }
+
 type BrandAssetEncoding
   = BrandAssetEncoded { file: String, octets: List<Int> }
-  | BrandAssetRefused { file: String, reason: String }
+  | BrandAssetRefused { file: String, cause: BrandAssetRefusal }
 
 data brand_asset_canvas: Int = 128
 data brand_asset_badge_corner: Int = 28
@@ -79,14 +82,10 @@ fn brand_asset_targets() -> List<BrandAssetTarget> {
 
 fn brand_asset_encode(target: BrandAssetTarget) -> BrandAssetEncoding {
   match brand_mark_raster(mark: brand_mark(kind: target.kind), spec: target.spec) {
-    BrandRasterRefused { cause } => BrandAssetRefused { file: target.file, reason: match cause {
-      BrandRasterSizeOutOfRange { pixels } => join(["raster size ", to_string(pixels), " out of range"], "")
-      BrandRasterCanvasEmpty { canvas: _, extent: _ } => "raster canvas empty"
-      BrandRasterMarkOutsideGround { row, column } => join(["mark outside its ground at row ", to_string(row), " column ", to_string(column)], "")
-    } }
+    BrandRasterRefused { cause } => BrandAssetRefused { file: target.file, cause: BrandAssetRasterRefused { cause: cause } }
     BrandRastered { image } => match png_encode(image: image) {
       PngEncoded { octets } => BrandAssetEncoded { file: target.file, octets: octets }
-      PngRefused { cause: _ } => BrandAssetRefused { file: target.file, reason: "the PNG encoder refused the raster" }
+      PngRefused { cause } => BrandAssetRefused { file: target.file, cause: BrandAssetPngRefused { cause: cause } }
     }
   }
 }

@@ -7,8 +7,9 @@ import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimR
 import std.bytes { octets_bytes }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.design.brand_mark { FaceMark }
+import gunbc.design.brand_mark_raster { BrandRasterSizeOutOfRange }
 import gunbc.design.brand_mark_assets {
-  BrandAssetTarget, BrandAssetEncoding, BrandAssetEncoded, BrandAssetRefused,
+  BrandAssetTarget, BrandAssetEncoding, BrandAssetEncoded, BrandAssetRefused, BrandAssetRasterRefused, BrandAssetPngRefused,
   brand_asset_targets, brand_asset_encode, brand_asset_badge,
 }
 
@@ -60,14 +61,14 @@ fn brand_asset_target_case(target: BrandAssetTarget) -> BrandAssetCase {
       held: brand_asset_png_shaped(octets: octets, pixels: target.spec.pixels),
       observed: join([to_string(count(octets)), "_octets"], ""),
     }
-    BrandAssetRefused { file, reason } => BrandAssetCase { identity: file, held: false, observed: reason }
+    BrandAssetRefused { file, cause: _ } => BrandAssetCase { identity: file, held: false, observed: "refused" }
   }
 }
 
 fn brand_asset_encoded_octets(e: BrandAssetEncoding) -> List<Int> {
   match e {
     BrandAssetEncoded { file: _, octets } => octets
-    BrandAssetRefused { file: _, reason: _ } => []
+    BrandAssetRefused { file: _, cause: _ } => []
   }
 }
 
@@ -96,7 +97,13 @@ fn brand_asset_write_cases() -> List<BrandAssetCase> {
 // RED: a target of zero pixels refuses rather than producing a file.
 fn brand_asset_refusal_case() -> BrandAssetCase {
   match brand_asset_encode(target: brand_asset_badge(file: "zero", pixels: 0)) {
-    BrandAssetRefused { file: _, reason } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: true, observed: replace(reason, " ", "_") }
+    BrandAssetRefused { file: _, cause } => match cause {
+      BrandAssetRasterRefused { cause: r } => match r {
+        BrandRasterSizeOutOfRange { pixels } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: pixels == 0, observed: concat("raster_size_out_of_range_", to_string(pixels)) }
+        _ => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "other_raster_refusal" }
+      }
+      BrandAssetPngRefused { cause: _ } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "png_refusal" }
+    }
     BrandAssetEncoded { file: _, octets: _ } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "encoded" }
   }
 }
