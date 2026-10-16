@@ -13198,7 +13198,7 @@ fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
         use_site: use_site
       ) {
         TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipCatalogMissing
-        TargetUseSiteOwnershipUnique { row: row } => TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipUnique { row: unique_row } => TargetUseSiteOwnershipCatalogUnique { row: unique_row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid
