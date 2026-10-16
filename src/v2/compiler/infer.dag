@@ -44,7 +44,7 @@ import v2.std.coercion { coercion_cast_crossing }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.machine_constraints { machine_width_admits }
+import std.machine_width_range { machine_width_admits }
 
 
 
@@ -4500,7 +4500,7 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
 
 // A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE: Compose<A, MachineWidth<N>> with a Nat literal N and a
 // carrier A that is the kernel Int (signed) or std.nat Nat (unsigned). The meaning of the width -- which
-// integers N bits admits -- is std.machine_constraints machine_width_admits, not a table here. Anything
+// integers N bits admits -- is std.machine_width_range machine_width_admits, not a table here. Anything
 // else (a named width such as PointerWidth, a carrier that is neither) is Absent and keeps the grounding
 // and homomorphism path: a width that cannot be read is not admitted by guessing one.
 type InferMachineWidth {
