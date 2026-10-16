@@ -16,6 +16,12 @@ import gunbc.instruments.compute_wrong_capture {
   wrong_capture_top_crate_arm,
   wrong_capture_dependency_arm,
   wrong_capture_direction,
+  // The entry points, not just the arm data: what failed on the fleet was an ENTRY function's
+  // reference closure (cause=parse-failed), so resolving only the arms would leave the guard partial.
+  // One import for both purposes -- this line replaces the separate `compute_wrong_capture_exit`
+  // import #14165 added, so the module is imported exactly once.
+  compute_wrong_capture_exit,
+  compute_dependency_wrong_capture_exit,
 }
 
 import gunbc.target_binding {
@@ -147,6 +153,7 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// Importing the C1 control makes a resolve failure in it refuse this corpus; the instrument sits outside the required gate closure.
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }

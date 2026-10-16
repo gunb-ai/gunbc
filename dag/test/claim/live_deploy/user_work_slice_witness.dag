@@ -105,7 +105,7 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
     UserWorkPoolSlotsDerived { slots } =>
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 4
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
   }
@@ -1095,6 +1095,7 @@ fn fci1_control_standing(path: String, slice_memory: RootCgroupMemoryRead) -> Us
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: join(["0::/", path], "") },
+    bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: true,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
