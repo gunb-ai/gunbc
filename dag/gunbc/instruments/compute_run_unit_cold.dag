@@ -606,7 +606,7 @@ fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
 
 // Two identities back to back in ONE dispatch: same slot, uid and sccache server. The second
 // identity's hits are the server's counters minus the first's; a counter that went backwards means
-// the server restarted between them, and the second reading is then taken whole.
+// the server restarted between them, the difference is meaningless, and the run refuses (exit 2).
 fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
   let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame)
   if !cold_run_succeeded(r: first) {
@@ -634,13 +634,12 @@ fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToo
                 SccacheUnitServed { executed: executed_2, hits: hits_2, misses: _ } =>
                   if executed_2 == 0 {
                     no_observation(bytes: bytes, reason: "no observation: the unit's sccache server served 0 compile requests after exec=ok")
+                  } else if (executed_2 < executed_1) || (hits_2 < hits_1) {
+                    no_observation(bytes: bytes, reason: "no observation: the unit's sccache counters went backwards between the identities (server restarted), so the second identity's hits are not separable")
+                  } else if (hits_2 - hits_1) > 0 {
+                    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
                   } else {
-                    let second_hits = if executed_2 >= executed_1 { hits_2 - hits_1 } else { hits_2 }
-                    if second_hits == 0 {
-                      CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity had 0 sccache hits" } }
-                    } else {
-                      CliWirePrintable { bytes: bytes, exit: ExitSuccess }
-                    }
+                    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second identity had 0 sccache hits" } }
                   }
               }
           }
