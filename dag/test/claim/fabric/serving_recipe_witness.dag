@@ -490,4 +490,11 @@ test fn an_owned_cards_horizon_is_not_rounded_to_whole_hours() -> Bool {
       HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 2000000
       _ => false
     })
+    && (match serving_card_hourly(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 1000000), currency: Usd, amortization: second(count: 7000) },
+    ) {
+      HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 514286
+      _ => false
+    })
 }
