@@ -61,7 +61,7 @@ type ServingModelArtifact {
 
 // ── engine build ─────────────────────────────────────────────────────────────────────────────
 type ServingEngineBuild
-  = NinferEngine { release: NinferEngineRelease }
+  = NinferEngine { engine_release: NinferEngineRelease }
   | VllmEngine { build: NonEmptyStr }
 
 // ── card class requirements ──────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
     source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
     served_model_id: Present { value: "qwen" },
   },
-  engine: NinferEngine { release: ninfer_serve_81c8ce09_sm120_release },
+  engine: NinferEngine { engine_release: ninfer_serve_81c8ce09_sm120_release },
   host_image: Present { value: "vastai/vllm:v0.30.0-cuda-13.0" },
   published_tcp_port: 8000,
   cards: [serving_card_class_rtx_5000_48gb, serving_card_class_72gb, serving_card_class_rtx_pro_6000_96gb],
