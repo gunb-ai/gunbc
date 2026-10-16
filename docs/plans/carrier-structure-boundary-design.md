@@ -295,7 +295,7 @@ none follows from being a free monoid. Meanwhile real usage is per-type function
 > other things might change as well. But if you really want to do a list operation, you should probably be
 > doing a list operation. I don't think I have a very consistent answer on it.
 
-### 7.3 Recommended rule (for operator decision)
+### 7.3 The rule (adopted, D1, 2026-10-16)
 
 > A carrier's constructors and eliminators come from its declaration. Operations guaranteed by an external
 > structure come from a declaration-identity inhabitance witness. Concrete algorithms over one carrier are
@@ -315,10 +315,20 @@ Consequences:
   a list operation is a list operation. A component-action model is designed when a real composite consumer
   needs it.
 
+**Operator ruling on D1 (2026-10-16):** adopted. The aim is *sustainable abstractions that keep opacity
+safely*: rolling a car affects every component, and that effect is described at different layers (mechanism of
+action), but each part sees only the narrow interface it needs. The wheels do not know about the other
+components; nearly all of their behaviour is "roll forwards or backwards", so they need only to be told which way.
+A component action is therefore a declared, narrow message from the whole to the part, not the part seeing the
+whole and not the whole inheriting the part's operations.
+
 The r1 call-site classification is no longer a prerequisite for the rule. It stays useful to validate the rule
 against real code and to drive the rewrite (§12 O1).
 
 ### 7.4 Naming
+
+The operator asked that naming follow one consistent convention (D1 ruling). The convention below is part of
+the adopted rule and is checked mechanically (a lint over declaration names), not left to review.
 
 `<carrier>_<operation>` for ordinary operations; structure fields keep mathematical vocabulary
 (`Monoid.combine`, `Ring.add`, `FreeMonoid.generator`), and the witness maps them to carrier declarations.
@@ -346,10 +356,14 @@ elements. A wrapper collapses into the operation it wraps only when its extra ou
 DESIGN §3 says the folders are "browsing conventions, not a direction rule". These two gates narrow that only
 where a namespace is declared semantic.
 
-### 8.1 Import-role gate
+### 8.1 Dependency-role gate
 
 Modules carry a declared role: `Carrier`, `CarrierOperations`, `ExternalStructure`, `StructureInhabitance`,
-`Denotation`, `Conversion`, `Realization`, `ProductOrWorkflow`. A small import matrix is checked:
+`Denotation`, `Conversion`, `Realization`, `ProductOrWorkflow`. A small dependency matrix is checked.
+
+**Imports are going away** (operator, 2026-10-16). The gate is therefore stated over *resolved declaration
+references* (which declaration a name resolves to, by identity), not over `import` statements. It survives the
+retirement of imports unchanged; where this doc says "imports" it means "depends on". The matrix:
 
 - carrier declarations do not import their inhabitance or denotation modules;
 - external structures do not import carrier operations, and import only the base carriers their signatures
@@ -492,9 +506,9 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 
 | # | Question | Recommendation |
 |---|---|---|
-| D1 | Adopt the operations rule in §7.3 (ordinary per-carrier operations; structure operations via witness; no automatic lifting; declared component action)? | Yes |
-| D2 | Does the List cut go straight to its final home `std.list`, or through `std.types` first? | Straight to `std.list`. Costs: the Map-backed algorithms leave `std.list` first (`std.list.keyed`), and the generated sweep rewrites ~3,590 importers once instead of twice |
-| D3 | Adopt the relation taxonomy (§3) and the two gates (§8) as DESIGN amendments? | Yes |
+| D1 | **Adopted 2026-10-16.** Adopt the operations rule in §7.3 (ordinary per-carrier operations; structure operations via witness; no automatic lifting; declared component action)? | Yes |
+| D2 | **Adopted 2026-10-16 (straight to `std.list`).** Does the List cut go straight to its final home `std.list`, or through `std.types` first? | Straight to `std.list`. Costs: the Map-backed algorithms leave `std.list` first (`std.list.keyed`), and the generated sweep rewrites ~3,590 importers once instead of twice |
+| D3 | **Adopted in principle 2026-10-16; DESIGN amendment text needs careful separate review before landing.** Adopt the relation taxonomy (§3) and the two gates (§8) as DESIGN amendments? | Yes |
 
 **Design questions to settle in this doc:**
 
@@ -508,4 +522,14 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 | I6 | `map_keys` result | `Set<K>`; ordered list only with an ordering witness |
 | O1 | Run the call-site classification to validate D1 before the rewrite? | Yes, as validation, not as a prerequisite |
 | I7 | `Implements` vs `Inhabits`: external ADT interfaces (thin contracts in `extdeps`: operations plus behavioural laws, no carrier) are not mathematical structures, and must not be modelled as either a structure or a second carrier. Which current `extdeps` declarations are interfaces rather than structures? | Keep `Implements` distinct; classify `extdeps` declarations as part of the §5.4 disposition pass |
+| B1 | **Scope beyond math and lists (operator concern).** How far did these patterns (second carriers, structure names standing in for data, per-layer synonyms for one operation, string-keyed identity) percolate into higher-level code: business logic, product types, workflows? | Survey before sizing the roadmap; the cleanup is likely broader than `std` (see §15) |
 | S1 | `src/v2/std` duplicates (logic, nat, integer, …) de-forked in these terms | Yes |
+
+---
+
+## 15. Scope beyond std (pending survey)
+
+The operator expects this cleanup to be much broader than math and lists. Before roadmap work is sized, a
+survey classifies how the §1.1 root causes show up in higher-level code (business logic, product and
+workflow types): second carriers for a std concept, structure names used as data types, synonyms for one
+operation across layers, and spelling-keyed identity. Results land here.
