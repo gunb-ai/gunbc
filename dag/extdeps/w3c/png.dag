@@ -1,0 +1,191 @@
+module extdeps.w3c.png
+
+import std.types { Int, List }
+import std.logic { Bool }
+import std.optional { Absent, Present }
+import std.bitwise { word32_xor, word32_not, nibbles_xor, nibble_values }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_1950 { rfc_1950_stored_stream, rfc_1950_push_word32_be }
+
+// W3C Portable Network Graphics (PNG) Specification (Third Edition), Recommendation. Cited
+// sections: §5.2 (the eight-octet signature), §5.3 (chunk layout: length, type, data, CRC; the CRC
+// covers type and data, not length), §11.2.1 IHDR, §11.2.3 PLTE, §11.3.1.1 tRNS for indexed colour,
+// §11.2.4 IDAT, §11.2.5 IEND, §7.3 and §9 (filter method 0; filter type 0 "None" prefixes each
+// scanline), §10 (compression method 0 is a zlib datastream, RFC 1950), Annex D (the CRC-32: the
+// reflected polynomial 0xEDB88320, register preset to all ones, result complemented).
+//
+// ONE ENCODING, CHOSEN FOR ITS CONSUMER: 8-bit indexed colour (colour type 3) with a tRNS alpha per
+// palette entry, no interlace, every row unfiltered, the IDAT zlib stream of stored blocks. A logo
+// rasterized with anti-aliasing has a handful of distinct colours, so one octet per pixel holds it
+// exactly with per-entry transparency, and the stored stream needs no compressor. Other colour
+// types, filters and compressed IDAT are the specification's, unrealized here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/png-3/"
+  }
+}
+
+data png_signature: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10]
+
+// ═══ ANNEX D: CRC-32 ═══
+
+data png_crc_polynomial: Int = 3988292384
+
+fn png_crc_shift(c: Int) -> Int {
+  if c % 2 == 1 { word32_xor(a: png_crc_polynomial, b: c / 2) } else { c / 2 }
+}
+
+fn png_crc_entry(n: Int) -> Int {
+  png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: png_crc_shift(c: n))))))))
+}
+
+// Entry n is the register after shifting n through eight bits. Derived, never transcribed.
+data png_crc_table: List<Int> = fold(nibble_values(), init: [], f: (acc, hi) =>
+  fold(nibble_values(), init: acc, f: (row, lo) => row |> list_push(png_crc_entry(n: hi * 16 + lo))))
+
+// The Absent arm is the definition itself and is unreachable for an index below 256.
+fn png_crc_lookup(i: Int) -> Int {
+  match get(png_crc_table, i) {
+    Present { value: v } => v
+    Absent => png_crc_entry(n: i)
+  }
+}
+
+// One octet into the register: the low octet of the register meets the input, the table entry it
+// selects meets the register's remaining three octets.
+fn png_crc_step(crc: Int, octet: Int) -> Int {
+  word32_xor(a: png_crc_lookup(i: nibbles_xor(a: crc % 256, b: octet, digits: 2)), b: crc / 256)
+}
+
+// The register continued over more octets, before the final complement.
+fn png_crc_register(register: Int, octets: List<Int>) -> Int {
+  fold(octets, init: register, f: (c, o) => png_crc_step(crc: c, octet: o))
+}
+
+fn png_crc32(octets: List<Int>) -> Int {
+  word32_not(a: png_crc_register(register: 4294967295, octets: octets))
+}
+
+// ═══ §5.3: CHUNKS ═══
+
+// A chunk type is four ASCII letters, held as their octets.
+data png_chunk_ihdr: List<Int> = [73, 72, 68, 82]
+data png_chunk_plte: List<Int> = [80, 76, 84, 69]
+data png_chunk_trns: List<Int> = [116, 82, 78, 83]
+data png_chunk_idat: List<Int> = [73, 68, 65, 84]
+data png_chunk_iend: List<Int> = [73, 69, 78, 68]
+
+// Appends one chunk to `out`. The CRC runs over the type then the data without joining them.
+fn png_push_chunk(out: List<Int>, chunk_type: List<Int>, data: List<Int>) -> List<Int> {
+  let crc = word32_not(a: png_crc_register(register: png_crc_register(register: 4294967295, octets: chunk_type), octets: data))
+  rfc_1950_push_word32_be(out: concat(concat(rfc_1950_push_word32_be(out: out, v: count(data)), chunk_type), data), v: crc)
+}
+
+// ═══ THE IMAGE ═══
+
+type PngPaletteEntry {
+  color: Srgb8
+  alpha: Int
+}
+
+// Rows top to bottom; each row is `width` palette indices, left to right.
+type PngIndexedImage {
+  width: Int
+  height: Int
+  palette: List<PngPaletteEntry>
+  rows: List<List<Int>>
+}
+
+// What the encoder refuses rather than writes: a PNG decoder would reject each of these, or worse,
+// read a different picture than the one described.
+type PngRefusal =
+    PngEmptyImage
+  | PngPaletteSize { entries: Int }
+  | PngPaletteOctetOutOfRange
+  | PngRowCount { declared: Int, actual: Int }
+  | PngRowWidth { row: Int, declared: Int, actual: Int }
+  | PngIndexOutsidePalette { row: Int }
+
+type PngEncoding = PngEncoded { octets: List<Int> } | PngRefused { cause: PngRefusal }
+
+fn png_octet(v: Int) -> Bool {
+  v >= 0 && v <= 255
+}
+
+fn png_palette_admissible(entry: PngPaletteEntry) -> Bool {
+  png_octet(v: entry.color.r) && png_octet(v: entry.color.g) && png_octet(v: entry.color.b) && png_octet(v: entry.alpha)
+}
+
+type PngRowCheck {
+  row: Int
+  refusal: PngRefusal?
+}
+
+fn png_check_row(st: PngRowCheck, row: List<Int>, width: Int, entries: Int) -> PngRowCheck {
+  match st.refusal {
+    Present { value: _ } => st
+    Absent => png_check_fresh_row(st: st, row: row, width: width, entries: entries)
+  }
+}
+
+fn png_check_fresh_row(st: PngRowCheck, row: List<Int>, width: Int, entries: Int) -> PngRowCheck {
+  if count(row) != width {
+    PngRowCheck { row: st.row, refusal: Present { value: PngRowWidth { row: st.row, declared: width, actual: count(row) } } }
+  } else if count(filter(row, i => i < 0 || i >= entries)) > 0 {
+    PngRowCheck { row: st.row, refusal: Present { value: PngIndexOutsidePalette { row: st.row } } }
+  } else {
+    PngRowCheck { row: st.row + 1, refusal: Absent }
+  }
+}
+
+// The first refusal the image earns, in the order a reader meets the facts.
+fn png_first_refusal(image: PngIndexedImage) -> PngRefusal? {
+  let entries = count(image.palette)
+  if image.width <= 0 || image.height <= 0 {
+    Present { value: PngEmptyImage }
+  } else if entries == 0 || entries > 256 {
+    Present { value: PngPaletteSize { entries: entries } }
+  } else if count(filter(image.palette, e => !png_palette_admissible(entry: e))) > 0 {
+    Present { value: PngPaletteOctetOutOfRange }
+  } else if count(image.rows) != image.height {
+    Present { value: PngRowCount { declared: image.height, actual: count(image.rows) } }
+  } else {
+    fold(image.rows, init: PngRowCheck { row: 0, refusal: Absent }, f: (st, row) => png_check_row(st: st, row: row, width: image.width, entries: entries)).refusal
+  }
+}
+
+// Width and height, then bit depth 8, colour type 3, compression 0, filter 0, interlace 0.
+fn png_ihdr(image: PngIndexedImage) -> List<Int> {
+  concat(rfc_1950_push_word32_be(out: rfc_1950_push_word32_be(out: [], v: image.width), v: image.height), [8, 3, 0, 0, 0])
+}
+
+fn png_plte(palette: List<PngPaletteEntry>) -> List<Int> {
+  fold(palette, init: [], f: (out, e) => out |> list_push(e.color.r) |> list_push(e.color.g) |> list_push(e.color.b))
+}
+
+fn png_trns(palette: List<PngPaletteEntry>) -> List<Int> {
+  map(palette, e => e.alpha)
+}
+
+// §7.3: each scanline is its filter-type octet (0, None) followed by its pixels.
+fn png_scanlines(rows: List<List<Int>>) -> List<Int> {
+  fold(rows, init: [], f: (out, row) => fold(row, init: out |> list_push(0), f: (acc, i) => acc |> list_push(i)))
+}
+
+fn png_encode_admitted(image: PngIndexedImage) -> List<Int> {
+  let header = png_push_chunk(out: png_signature, chunk_type: png_chunk_ihdr, data: png_ihdr(image: image))
+  let palette = png_push_chunk(out: header, chunk_type: png_chunk_plte, data: png_plte(palette: image.palette))
+  let alpha = png_push_chunk(out: palette, chunk_type: png_chunk_trns, data: png_trns(palette: image.palette))
+  let pixels = png_push_chunk(out: alpha, chunk_type: png_chunk_idat, data: rfc_1950_stored_stream(octets: png_scanlines(rows: image.rows)))
+  png_push_chunk(out: pixels, chunk_type: png_chunk_iend, data: [])
+}
+
+fn png_encode(image: PngIndexedImage) -> PngEncoding {
+  match png_first_refusal(image: image) {
+    Present { value } => PngRefused { cause: value }
+    Absent => PngEncoded { octets: png_encode_admitted(image: image) }
+  }
+}
