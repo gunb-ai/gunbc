@@ -323,14 +323,12 @@ fn attempt_worker_slice_memory_high() -> UserWorkSliceHigh {
   user_work_slice_memory_high_of(memory_max: attempt_worker_slice_memory_max)
 }
 
-// SYSTEM SLICES THAT DECLARE MemoryMax. Exemption from the user-work wrap may skip only when the
-// enclosing slice is one of these rows with a positive max — the unit name is the row's identity,
-// not a separate list. user-work is a --user slice and is not in this census.
-// WHETHER A gunbc RUN IS A SYSTEM UNIT for wrap is
-// gunbc.compute.unit_bounds system_unit_standing_from_cgroup: a cgroup segment that
-// modeled_system_slice_memory_max admits, with a live finite memory.max. Attempt workers
-// sit in attempt_worker_slice_unit_name, so that name is a row here (ExemptSystemUnit)
-// rather than a second wrap policy.
+// SYSTEM SLICES THAT DECLARE MemoryMax on the deploy host that owns these rows. Wrap exemption
+// does not consume these magnitudes: membership is recognized_system_slice (names), and a skip
+// is only a live finite memory.max on that slice. user-work is a --user slice and is not here.
+// Attempt workers sit in attempt_worker_slice_unit_name, so that name is a row here: membership in
+// gunbc.compute.unit_bounds recognized_system_slice is read from this census rather than kept as a
+// second wrap policy, and the skip still needs the slice's live finite memory.max.
 type DeclaredSliceMemoryMax {
   unit: NonEmptyStr
   memory_max: ByteSize
