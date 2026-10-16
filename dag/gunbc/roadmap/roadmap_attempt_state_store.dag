@@ -14,6 +14,7 @@ import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.roadmap.roadmap_dispatch_destination { dispatch_spawn_origin_basename }
 import gunbc.roadmap.roadmap_verification_receipt { verification_directory_segment, exact_verification_receipt_basename, current_verification_selection_basename, CurrentVerificationSelectionObservation, SelectionUnreadable, SelectionAbsent, current_verification_selection_decode_document, ExactVerificationReceiptSource, ExactVerificationReceiptUnreadable, ExactVerificationReceiptAbsent, ExactVerificationReceiptPresent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_refused_retry { refused_retry_ledger_entry_name }
 
 // THE PER-ATTEMPT DISPATCH STATE STORE (inventory row Seeadecb2). One attempt's state is one directory
 // `<node>-a<attempt_key>` directly under the instance's dispatch attempt-state root, plus the node's
@@ -77,6 +78,7 @@ type AttemptStateMember
   | AttemptVerificationReceipt { head_sha: String, window_identity_hex: String }
   | AttemptDiffWindow { head_sha: String, window_identity_hex: String }
   | AttemptVerificationSelection { head_sha: String }
+  | AttemptVerificationRetryEntry { receipt_basename: String, ordinal: Int }
   | AttemptReviewVerdict { head_sha: String, criterion_key: String }
   | AttemptReviewRequestScratch { criterion_key: String }
   | AttemptAuditVerdict { head_sha: String }
@@ -152,6 +154,7 @@ fn attempt_state_member_directory(member: AttemptStateMember) -> AttemptStateDir
     AttemptVerificationReceipt { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptDiffWindow { head_sha: _, window_identity_hex: _ } => AttemptDirectoryVerification
     AttemptVerificationSelection { head_sha: _ } => AttemptDirectoryVerification
+    AttemptVerificationRetryEntry { receipt_basename: _, ordinal: _ } => AttemptDirectoryVerification
     AttemptReviewVerdict { head_sha: _, criterion_key: _ } => AttemptDirectoryReview
     AttemptReviewRequestScratch { criterion_key: _ } => AttemptDirectoryReview
     AttemptAuditVerdict { head_sha: _ } => AttemptDirectoryAudit
@@ -194,6 +197,7 @@ fn attempt_state_member_name(member: AttemptStateMember) -> String {
     AttemptVerificationReceipt { head_sha: h, window_identity_hex: w } => exact_verification_receipt_basename(head_sha: h, window_identity_hex: w)
     AttemptDiffWindow { head_sha: h, window_identity_hex: w } => join([h, ".", w, ".diff-window.json"], "")
     AttemptVerificationSelection { head_sha: h } => current_verification_selection_basename(head_sha: h)
+    AttemptVerificationRetryEntry { receipt_basename: b, ordinal: o } => refused_retry_ledger_entry_name(receipt_basename: b, ordinal: o)
     AttemptReviewVerdict { head_sha: h, criterion_key: c } => join([h, ".", c, ".json"], "")
     AttemptReviewRequestScratch { criterion_key: c } => join([c, ".harness-request.json"], "")
     AttemptAuditVerdict { head_sha: h } => join([h, ".json"], "")

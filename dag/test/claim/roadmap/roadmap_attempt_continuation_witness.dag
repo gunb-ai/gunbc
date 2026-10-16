@@ -20,6 +20,8 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
+
 fn pri(
   capture: SubmissionCaptureObservation,
   verification: WorkflowSegment?,
@@ -36,6 +38,7 @@ fn pri(
     review: review,
     goal_audit: goal_audit,
     recovery: SessionRecoveryNone,
+    verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -167,6 +170,7 @@ fn running_prior() -> PriorAttemptFacts {
     review: none,
     goal_audit: none,
     recovery: SessionRecoveryNone,
+    verification_retry: RefusedRetryOperatorOnly,
   }
 }
 

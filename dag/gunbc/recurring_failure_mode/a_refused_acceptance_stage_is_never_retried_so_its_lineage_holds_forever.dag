@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_refused_acceptance_stage_is_never_retried_so_its_lineage_holds_forever" as NonEmptyStr,
+
+  receipts: [
+    "a refused acceptance stage is never retried, so its lineage holds forever: a verification, review or goal audit REFUSED because its environment failed (not a verdict on the candidate) projects to WorkflowSegmentRefused, the continuation decision answers ContinuationHold with the promise that the belt retries it when the environment recovers, and nothing performs that retry. belt_segment_unsettled returns false for Refused (the 2026-10-03 manual-resume ruling), so no obligation is owed and discovery never wakes it; the dashboard had no operator route to re-run it. The lineage holds behind a cause that cleared.",
+
+    "RECEIPT, srv1 lab srv1-lab-codex-feedback-v0, found 2026-10-16: node shell-dag-cron-entry-line-builder, attempt a1c9b5bec8253061b, candidate e26c019c5d7 handed in 2026-10-12 17:55Z. Verification ran 2026-10-13 02:20-02:26Z and was refused, cause kind command-refused: gunbc-compute: the claim run ended refused_by_infrastructure, dependency <build:release:gunbc,claim_batch> ended failed (exit 101); the build log says sccache: Connection reset by peer (os error 104), a transient infrastructure failure, correctly not a verdict. No new verification record from 10-13 to 10-16 across many belt ticks and several lab deploys.",
+
+    "THE HARM: a candidate stalls silently for days behind a cause that cleared within minutes, while the Hold text says a retry is coming. A stall that presents as in-progress is worse than a visible refusal because no operator looks at it.",
+
+    "THE REPAIR (REFUSED-RETRY-1): the class of the refusal is read from one authority shared by the producer and the classifier (gunbc.roadmap.roadmap_refused_retry compute_refusal_reason), an infrastructure refusal wakes the verify obligation on the belt's existing events (exit hook, discovery) while the ledger beside the receipt holds fewer than refused_retry_bound entries, each retry writes one ledger entry carrying its cause, and past the bound the lineage reaches the typed RetryExhausted terminal (ContinuationRefused) that the operator sees and resumes with belt_verify_resume_cli. A refusal about the candidate keeps manual resume; a FAILED stage is a verdict and is never retried. Ruling gunbc.design_ruling infrastructure_refusal_is_retried_to_a_bound.",
+
+    "ATTAINABLE CEILING: structurally guaranteed for verification. The invalid state (a Hold promising a retry no obligation performs) is unreachable once the Hold text is derived from the same standing the obligation reads; it is not impossible because a refusal is recorded on a receipt the belt reads from disk. NEXT-RUNG TRIGGER: review and goal audit carry the same Refused arms and are not yet retried; they need their own refusal-cause carrier (their reports are not ValidationRefusalCause) before the same standing can be read, so they stay at mitigation (typed Hold with the refusal detail) until that carrier lands.",
+
+    "RECOGNITION RULE: a typed Hold or Unavailable whose text promises a retry, a wait or a recovery, with no obligation, event or timer anywhere in the corpus that performs it. Grep the promise, then look for its consumer.",
+  ],
+
+  evidence: [],
+}
