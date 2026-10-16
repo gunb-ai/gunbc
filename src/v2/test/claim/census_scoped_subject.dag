@@ -1,7 +1,7 @@
 module v2.test.claim.census_scoped_subject
 
 import std.types { Bool }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusSubjectModuleNamed,
   NativeCensusSubjectModuleUnavailable,
   native_census_subject_label,

@@ -36,12 +36,10 @@ import gunbc.runner.runner_unit {
 import gunbc.runner.runner_host_deploy {
   admitted_deploy_for,
   RunnerHostDeploy }
-import gunbc.host.host_converge { gunbc_runner_jobserver_default_fifo, gunbc_runner_jobserver_service }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
   CompileParallelismRealization,
-  BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
   BorrowerDeathCapacityDisposition,
   CapacityLostUntilPoolRestart,
@@ -139,11 +137,10 @@ test fn the_rendered_intent_is_the_one_that_stops_a_finished_incarnation() -> Bo
 // The ordering dependency was found ABSENT from the live srv1 unit, so this is not a directive
 // asserted for completeness: it is the one whose absence makes a runner's first cargo invocation
 // fail against a FIFO nobody is serving.
-test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool {
+test fn the_network_ordering_dependency_survives_the_redesign() -> Bool {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nAfter=fixture-other.service\n")
-    && string_contains(s: text, pattern: "\nWants=fixture-other.service\n")
-    && string_contains(s: text, pattern: "\nAfter=network-online.target\n")
+  string_contains(s: text, pattern: "\nAfter=network-online.target\n")
+    && string_contains(s: text, pattern: "\nWants=network-online.target\n")
 }
 
 // An ephemeral runner exits after every job; systemd's default start rate limiter would leave a busy
@@ -152,13 +149,13 @@ test fn the_start_rate_limiter_is_disabled_for_a_restart_per_job_unit() -> Bool 
   string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "\nStartLimitIntervalSec=0\n")
 }
 
-// Both jobserver lines are derived from one path, so they cannot name different FIFOs -- the
-// silent-misconfig boundary ctrl's own template warned about, made unwritable rather than warned
-// about again.
-test fn both_jobserver_lines_name_the_same_fifo() -> Bool {
+// RED (A2, kept enrolled per the dissolution rule): the retired host pool is advertised nowhere in the
+// rendered unit -- no MAKEFLAGS, no CTRL_JOBSERVER_FIFO, no ordering on ctrl-jobserver.service.
+test fn the_unit_advertises_no_retired_host_pool() -> Bool {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/fixture/other.fifo\n")
-    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/fixture/other.fifo\n")
+  !string_contains(s: text, pattern: "MAKEFLAGS")
+    && !string_contains(s: text, pattern: "CTRL_JOBSERVER_FIFO")
+    && !string_contains(s: text, pattern: "ctrl-jobserver")
 }
 
 // THE per-slot TASK CEILING IS NOT HERE, AND ITS ABSENCE IS THE CLAIM. gunbc.host.host_converge converges
@@ -333,15 +330,10 @@ test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> B
 
 // ── The permit realization, and whether the render actually reads its payload ───────────────────
 
-// THE LIVE-SHAPED FIXTURE CARRIES FIXTURE VALUES, NOT THE PRODUCTION CONSTANTS. An earlier draft
-// passed the fleet row itself, whose FIFO path and service name are exactly what the renderer used
-// to hardcode -- so a renderer that ignored its argument entirely would have passed every witness
-// here. Distinct values are what make the field occupancy discriminating.
+// THE ONE REALIZATION, AT A WIDTH DISTINCT FROM invocation_local_text, so a renderer that hardcoded
+// a jobs count fails one of the two.
 fn live_realization() -> CompileParallelismRealization {
-  BorrowerHeldCooperativeHostFifo {
-    fifo_path: "/fixture/other.fifo" as NonEmptyStr,
-    daemon_service: "fixture-other.service" as NonEmptyStr,
-  }
+  InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 5) }
 }
 
 fn invocation_local_text() -> String {
@@ -358,14 +350,6 @@ fn invocation_local_text() -> String {
   }
 }
 
-test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
-  match borrower_death_capacity_disposition(realization: live_realization()) {
-    CapacityLostUntilPoolRestart => true
-    CapacityPreservedByInvocationLifetime => false
-    CapacityPreservedByServerReclamation => false
-  }
-}
-
 test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool {
   match borrower_death_capacity_disposition(
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
@@ -377,7 +361,7 @@ test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool 
 }
 
 // THE MAKEFLAGS CLAUSE IS GONE UNDER THE CUTOVER ARM, not merely repointed. Handing cargo an auth
-// clause for a FIFO nobody serves is the silent-misconfig boundary extdeps.jobserver warns about:
+// clause for a FIFO nobody serves is a silent misconfiguration:
 // cargo does not refuse an unrecognised clause, it builds unbounded.
 test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
   let text = invocation_local_text()
@@ -389,69 +373,11 @@ test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
 // AND THE ORDERING DEPENDENCY LEAVES WITH IT. A unit ordering itself After a service the cutover
 // deleted is a fresh failure introduced by the fix.
 test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
-  !string_contains(s: invocation_local_text(), pattern: "fixture-other.service")
+  !string_contains(s: invocation_local_text(), pattern: "ctrl-jobserver")
 }
 
 
 // ── Complete-file equality against an independently enumerated parent shape ────────────────────
-
-// THE TRANSITION ORACLE FOR THE RESTRUCTURE, anchored at parent d61f8c9bc4d341ce0576799e97aac1bbf055ce32.
-//
-// Every earlier witness here was string_contains: contiguous fragments, then the whole [Unit]
-// section header-to-header. Each is stronger than the last and none of them is the byte claim the
-// restructure owes, because a substring says nothing about what surrounds it -- a duplicated
-// directive in [Service], an extra blank line, a dropped Install directive all leave them green.
-// The proposition this witness carries is narrower and harder: interleaving the optional After and
-// Wants pair changed NO byte of the live arm.
-//
-// The expected side enumerates the complete file itself. It does not call runner_unit_file,
-// runner_unit_jobserver_after, runner_unit_jobserver_wants or runner_unit_jobserver_environment --
-// the four places the restructure moved -- because an oracle built from the code under test agrees
-// with it by construction and would make the same mistake twice. It does reuse the untouched
-// runner_unit_app_environment and the shared serializer, which are not what changed.
-//
-// It is a TRANSITION oracle, not a claim that this unit may never intentionally change. When the
-// unit legitimately moves, this expected shape moves with it and the parent anchor above becomes the
-// previous transition rather than a permanent baseline.
-fn expected_live_unit_file(fifo_path: String, daemon_service: NonEmptyStr) -> SystemdUnitFile {
-  ServiceUnitFile {
-    unit: [
-      Description { text: "Ephemeral GitHub Actions Runner (%i)" as NonEmptyStr },
-      After { target: "network-online.target" as NonEmptyStr },
-      After { target: daemon_service },
-      Wants { target: "network-online.target" as NonEmptyStr },
-      Wants { target: daemon_service },
-      StartLimitIntervalSec { duration: "0" as NonEmptyStr },
-    ],
-    service: concat(
-      [
-        ServiceType { mode: SimpleMode },
-        ServiceUser { name: wt_srv1_deploy().runner_user },
-        WorkingDirectory { path: runner_slot_instance_directory() as NonEmptyStr },
-      ],
-      concat(
-        runner_unit_app_environment(app: wt_srv1_deploy().app),
-        [
-          runner_unit_environment(name: "RUNNER_DIR", value: runner_slot_instance_directory()),
-          runner_unit_environment(name: "RUNNER_NAME_PREFIX", value: "%i"),
-          runner_unit_quoted_environment(name: "LABELS_JSON", value: expected_labels_json()),
-          runner_unit_environment(name: "CTRL_JOBSERVER_FIFO", value: fifo_path),
-          runner_unit_environment(
-            name: "MAKEFLAGS",
-            value: join(["--jobserver-auth=fifo:", fifo_path], ""),
-          ),
-          ExecStart { command: runner_lifecycle_jit_wrapper_path as NonEmptyStr },
-          Restart { policy: "always" as NonEmptyStr },
-          RestartSec { duration: "5" as NonEmptyStr },
-          ServiceExitType { exit_type: gunbc_runner_lifecycle_intent.exit_type },
-          ServiceKillMode { mode: gunbc_runner_lifecycle_intent.kill_mode },
-          TimeoutStopSec { duration: "5min" as NonEmptyStr },
-        ],
-      ),
-    ),
-    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
-  }
-}
 
 fn expected_labels_json() -> String {
   serialize_json(v: json_array(elements: [
@@ -476,38 +402,6 @@ fn rendered_or_refused(realization: CompileParallelismRealization) -> String {
     RunnerUnitFileRefused { reason: r } => join(["REFUSED: ", r as String], "")
   }
 }
-
-fn production_realization() -> CompileParallelismRealization {
-  BorrowerHeldCooperativeHostFifo {
-    fifo_path: gunbc_runner_jobserver_default_fifo as NonEmptyStr,
-    daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
-  }
-}
-
-test fn w_the_production_live_arm_is_byte_identical_to_the_parent_shape() -> Bool {
-  rendered_or_refused(realization: production_realization())
-    == serialize_systemd_unit_file(
-      file: expected_live_unit_file(
-        fifo_path: gunbc_runner_jobserver_default_fifo,
-        daemon_service: gunbc_runner_jobserver_service as NonEmptyStr,
-      ),
-    )
-}
-
-// THE SAME EXPECTED SHAPE, EXECUTED ON DISTINCT VALUES. A renderer that ignored its argument and
-// hardcoded today's production FIFO and service would pass the witness above perfectly; the expected
-// object here places the fixture path twice and the fixture service twice, so a hardcoded or dropped
-// occurrence fails equality. One independently authored shape, two orthogonal propositions.
-test fn w_the_live_arm_renders_its_argument_rather_than_the_production_constants() -> Bool {
-  rendered_or_refused(realization: live_realization())
-    == serialize_systemd_unit_file(
-      file: expected_live_unit_file(
-        fifo_path: "/fixture/other.fifo",
-        daemon_service: "fixture-other.service" as NonEmptyStr,
-      ),
-    )
-}
-
 
 // AND THE CUTOVER ARM HAS EXACTLY ITS INTENDED COMPLETE SHAPE -- a separate expected constructor
 // rather than an expected-side match over the realization, so the oracle does not reproduce the

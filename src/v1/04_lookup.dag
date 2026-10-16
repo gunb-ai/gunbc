@@ -67,7 +67,7 @@ import v1.compiler.infer_sigs {
   DeclarationBoundFormals, KernelGroundedFormals,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
   CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
-  parent_closure_callable_candidates, decide_callable_candidates
+  parent_closure_callable_candidates, owner_module_leaf_callable_candidates, decide_callable_candidates
 }
 
 import v1.compiler.infer_service {
@@ -509,6 +509,12 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 fn func_env_declared_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> FuncSigLookup {
   if listed_import_required_bare_call_blocked(env: type_env, name: name) {
     FuncSigUnresolved
+  } else if contains(name, ".") {
+    decide_callable_candidates(candidates: owner_module_leaf_callable_candidates(
+      env: func_env,
+      owner: qualified_all_but_last(name: name),
+      leaf: qualified_last_segment(name: name)
+    ))
   } else {
     if name_resolution_policy_is_namespace_only() {
       match map_get(func_env.local, name) {

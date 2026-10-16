@@ -241,6 +241,7 @@ type WorkInfrastructureRefusal
   | ComputeCapacityLedgerUnavailable { detail: String }
   | CheckoutUnavailable { detail: String }
   | StoreUnavailable { detail: String }
+  | MaterializationStoreUndeclared { instance_id: String }
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
@@ -310,6 +311,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ComputeCapacityLedgerUnavailable { detail } => join(["the host's compute capacity ledger could not be transacted: ", detail], "")
     CheckoutUnavailable { detail } => join(["checkout unavailable: ", detail], "")
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
+    MaterializationStoreUndeclared { instance_id } => join(["instance ", instance_id, " declares no materialization store, so it has nowhere to commit or read a result; declare one before it runs compute"], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")

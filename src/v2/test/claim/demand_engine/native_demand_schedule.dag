@@ -17,7 +17,12 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
 import std.algebra { Cons, Empty, length }
 import v2.std.text { String }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
+  NativeCostPrepare,
+  NativeCostEval,
+  NativeCostUnclassified,
+  ElapsedObserved,
+  ElapsedObservationInvalid,
   NativeDemandPlan,
   NativeDemandValue,
   NativeLaneUniverseModule,
@@ -27,9 +32,6 @@ import v2.compiler.compile {
   native_demand_occurrence_census_contract,
   native_demand_plan,
   native_demand_resolve_identity,
-  NativeCostPrepare,
-  NativeCostEval,
-  NativeCostUnclassified,
   native_demand_cost_class,
   native_demand_observation_rollup,
   native_demand_observation_complete,
@@ -37,9 +39,7 @@ import v2.compiler.compile {
   NativeDemandRun,
   native_demand_eval_samples,
   NativeDemandTransition,
-  NativeDemandObservationRollup,
-  ElapsedObserved,
-  ElapsedObservationInvalid
+  NativeDemandObservationRollup
 }
 import std.content_hash { Fnv1a64Structural }
 import std.judgment_contract { identity_structural_component, DeclaredInput }

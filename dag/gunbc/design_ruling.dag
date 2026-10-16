@@ -203,6 +203,13 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data flex_market_policy_is_operator_decided: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
+  decided: "2026-10-15",
+  section: "3d",
+  provenance: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the $1.34 fleet cap, and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
@@ -230,6 +237,7 @@ fn design_rulings() -> List<DesignRuling> {
     one_physical_machine_boot_transaction,
     physical_and_guest_control_remain_distinct,
     production_is_main_only_lab_admits_integration,
+    flex_market_policy_is_operator_decided,
   ]
 }
 

@@ -517,7 +517,7 @@ data bound_arm_fixture: HostUsableRam = HostUsableRamConservativeLowerBound {
 test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
       byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv1))
   }
@@ -534,7 +534,7 @@ test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool {
       byte_size_count(b: b) == 539282522112
         && byte_size_count(b: b) < 549755813888
     HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
   }
 }
 
@@ -554,7 +554,7 @@ test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
-    HostUsableRamUnmeasured => false
+    HostUsableRamUnmeasured { reason: _ } => false
   }
 }
 
@@ -567,7 +567,7 @@ test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
     h => match gunbc_ci_host_usable_ram_for(host: h) {
       HostUsableRamMeasured { bytes: _, provenance: _ } => true
       HostUsableRamConservativeLowerBound { bytes: _, basis: _ } => false
-      HostUsableRamUnmeasured => false
+      HostUsableRamUnmeasured { reason: _ } => false
     }
   )
 }

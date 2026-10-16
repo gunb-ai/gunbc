@@ -3,11 +3,11 @@ module v2.test.lens_application.apply_lens_introspect_rejection_is_advisory
 import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileLens,
+  apply_compile_lens,
+  compile_lens_gate_rejected_diagnostic,
   CompileLensRoot,
   CompileLensEnforce,
-  CompileLensIntrospect,
-  apply_compile_lens,
-  compile_lens_gate_rejected_diagnostic
+  CompileLensIntrospect
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, outcome_rejected, invariant_port_locus }

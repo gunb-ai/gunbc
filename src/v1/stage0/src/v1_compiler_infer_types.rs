@@ -152,12 +152,26 @@ pub fn node_is_keyed_collection(
         && node_is_collection(n.clone(), source_indices.clone()))
 }
 
+pub fn collection_carrier_node(n: Rc<Node>) -> Rc<Node> {
+    if ((n.children.clone().len() as i64) == 0) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+            _ => n,
+        }
+    } else {
+        n
+    }
+}
+
 pub fn node_is_element_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (((n.children.clone().len() as i64) == 1)
-        && node_is_collection(n.clone(), source_indices.clone()))
+    {
+        let c = collection_carrier_node(n.clone());
+        (((c.children.clone().len() as i64) == 1)
+            && node_is_collection(c.clone(), source_indices.clone()))
+    }
 }
 
 pub fn node_is_set_collection(
