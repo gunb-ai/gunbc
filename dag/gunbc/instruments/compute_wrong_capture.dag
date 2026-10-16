@@ -65,17 +65,29 @@ fn wrong_capture_unit_env(runtime_dir: FilePath, homes: IsolatedJobToolchainHome
   )
 }
 
-// 0 = the marker is absent, 1 = present, 2 = the file could not be read.
+// grep -c prints the count and exits 1 on zero matches; any other failure (exit 2, unreadable file) is "unreadable".
 fn wrong_capture_marker_count(path: String, marker: String) -> String {
   match compute_exec(program: "/usr/bin/grep", workdir: ".", args: ["-a", "-c", marker, path]) {
     ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
-    ComputeExecFailed { exit_code: _, stdout, stderr: _ } => trim(s: stdout)
+    ComputeExecFailed { exit_code, stdout, stderr: _ } => if (exit_code == 1) && (trim(s: stdout) == "0") { "0" } else { "unreadable" }
   }
 }
 
 fn wrong_capture_has(path: String, marker: String) -> Bool {
   let n = wrong_capture_marker_count(path: path, marker: marker)
-  (n != "0") && (n != "")
+  (n != "0") && (n != "unreadable")
+}
+
+fn wrong_capture_unreadable(path: String) -> Bool {
+  (wrong_capture_marker_count(path: path, marker: wrong_capture_marker_a) == "unreadable")
+    || (wrong_capture_marker_count(path: path, marker: wrong_capture_marker_b) == "unreadable")
+}
+
+fn wrong_capture_mismatch(r: OutputsReturn) -> Bool {
+  match r {
+    OutputsReturned { outputs: _ } => false
+    OutputsMismatch { detail: _ } => true
+  }
 }
 
 fn wrong_capture_build(
@@ -149,7 +161,11 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     join(rows, ""),
     if any_wrong { "VERDICT: wrong capture reproduced\n" } else { "VERDICT: A captured its own bytes\n" },
   ], "")
-  if any_wrong {
+  let unobserved = wrong_capture_mismatch(r: cap_a) || wrong_capture_mismatch(r: cap_b) || any(declared, d =>
+    wrong_capture_unreadable(path: compute_staged_path(layout: layout_a, declared: d.path)) || wrong_capture_unreadable(path: compute_staged_path(layout: layout_b, declared: d.path)))
+  if unobserved {
+    CliWirePrintable { bytes: join([bytes, "no observation: a capture mismatched or a staged file was unreadable\n"], ""), exit: ExitFailure { code: 2, reason: "capture mismatch or unreadable staged file" } }
+  } else if any_wrong {
     CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "request A captured request B's bytes from the shared target_dir" } }
   } else {
     CliWirePrintable { bytes: bytes, exit: ExitSuccess }
@@ -168,7 +184,7 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
         Absent =>
           CliWirePrintable {
             bytes: "compute-wrong-capture: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty",
-            exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+            exit: ExitFailure { code: 2, reason: "ToolchainHomesNotIsolated" },
           }
         Present { value: homes } => {
           match observe_run_frame() {
@@ -194,14 +210,14 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
               Absent =>
                 CliWirePrintable {
                   bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
-                  exit: ExitFailure { code: 1, reason: "no materialization store declared" },
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
                 }
               Present { value: layout_a } =>
             match compute_layout(instance: instance, identity_hex: id_b) {
               Absent =>
                 CliWirePrintable {
                   bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
-                  exit: ExitFailure { code: 1, reason: "no materialization store declared" },
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
                 }
               Present { value: layout_b } => {
             let root = compute_root(instance: instance) as String
@@ -215,7 +231,7 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
             if !dirs_ok || (head == "") {
               CliWirePrintable {
                 bytes: "compute-wrong-capture: could not create the two layouts or read HEAD",
-                exit: ExitFailure { code: 1, reason: "layout or HEAD unavailable" },
+                exit: ExitFailure { code: 2, reason: "layout or HEAD unavailable" },
               }
             } else {
               let setup = prepare_checkout(instance: instance, layout: layout_a, head: head)
@@ -223,12 +239,12 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
               let marked_a = if setup_b != "" { setup_b } else { wrong_capture_mark_tree(instance: instance, layout: layout_a, marker: wrong_capture_marker_a) }
               let marked_b = if marked_a != "" { marked_a } else { wrong_capture_mark_tree(instance: instance, layout: layout_b, marker: wrong_capture_marker_b) }
               if marked_b != "" {
-                CliWirePrintable { bytes: join(["compute-wrong-capture: ", marked_b], ""), exit: ExitFailure { code: 1, reason: marked_b } }
+                CliWirePrintable { bytes: join(["compute-wrong-capture: ", marked_b], ""), exit: ExitFailure { code: 2, reason: marked_b } }
               } else {
                 let built_a = wrong_capture_build(instance: instance, layout: layout_a, identity: id_a, runtime_dir: runtime_dir, homes: homes)
                 let built_b = if built_a != "" { built_a } else { wrong_capture_build(instance: instance, layout: layout_b, identity: id_b, runtime_dir: runtime_dir, homes: homes) }
                 if built_b != "" {
-                  CliWirePrintable { bytes: join(["compute-wrong-capture: a build did not complete\n", built_b], ""), exit: ExitFailure { code: 1, reason: "a build did not complete" } }
+                  CliWirePrintable { bytes: join(["compute-wrong-capture: a build did not complete\n", built_b], ""), exit: ExitFailure { code: 2, reason: "a build did not complete" } }
                 } else {
                   wrong_capture_report(instance: instance, layout_a: layout_a, layout_b: layout_b, root: root)
                 }
