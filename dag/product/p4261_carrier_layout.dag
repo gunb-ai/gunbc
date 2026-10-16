@@ -2,308 +2,1074 @@ module product.p4261_carrier_layout
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { Volt, Ampere, volt, ampere, volt_count, ampere_count }
+import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_count, micrometer_count }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types {
   ElectronicComponentRow,
-  ComponentVoltageRating,
-  VoltageRatingKind,
+  TemperatureSensorSpec,
+  ConnectorSpec,
+  TvsDiodeSpec,
+  CapacitorSpec,
+  MosfetSpec,
+  SensorPinRole,
+  SerialData,
+  SerialClock,
+  AlertOutput,
+  GroundReturn,
+  SupplyInput,
+  AddressSelect,
+  VoltageWithstand,
+  VoltageWithstandKind,
+  TvsReverseStandoff,
+  CapacitorRatedVoltage,
   DrainSourceMaximum,
   FuseInterruptRating,
-  CapacitorRatedVoltage,
+  voltage_withstand,
 }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
+import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
+import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
+import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
+import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
+import product.electrical.connectivity {
+  ElectricalDesignIdentity,
+  ComponentInstanceIdentity,
+  TerminalIdentity,
+  ElectricalTerminalRef,
+  component_instance_identity,
+  component_identity_eq,
+  component_local_label,
+  terminal_ref,
+  terminal_ref_equal,
+}
+import product.electrical.continuity {
+  ReachabilityGraph,
+  reachability_graph,
+  reach,
+  BenchConditions,
+  Unpowered,
+  ModuleRemoved,
+  EvidenceRef,
+  OperatorStatement,
+  OperatorPhotograph,
+  SellerListingPhotograph,
+  ContinuityObservation,
+  ContinuityResult,
+  BuzzerAsserted,
+  BuzzerNotAsserted,
+  ProbeRecord,
+  both_points_recorded,
+  second_point_inferred,
+  both_points_inferred,
+  EvidenceGrade,
+  evidence_grade,
+  evidence_grade_text,
+  DiodeModeObservation,
+  RedBlack,
+  ForwardMillivolts,
+  ReachabilityStanding,
+  JunctionStanding,
+  junction_between,
+  is_reachable,
+  is_read_above_threshold,
+  is_reachability_contradicted,
+  supporting_readings,
+  terminal_text,
+  continuity_text,
+}
 
-// GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
-// document names this board, so everything here is the operator's observation of one unit, kept in
-// the product layer (DESIGN §3: observations are receipts downstream, never upstream facts). What
-// IS upstream -- a part's datasheet ratings once its marking is matched -- lives in
-// extdeps.electronic_component and is consumed here.
+// GH200-3 (2026-10-04). THE P4261 CARRIER AS OBSERVED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
+// document names this board, so everything here is the operator's observation of a physical unit,
+// kept in the product layer (DESIGN section 3: observations are receipts downstream, never upstream
+// facts). What IS upstream -- a part's datasheet specification once its marking is matched -- lives in
+// extdeps.electronic_component and extdeps.connector and is consumed here.
 //
-// Three photographs: the full component side; the label close-up; the left-edge close-up around the
-// connector silkscreened J20. Every marking is transcribed as read, and three standings are kept
-// apart because they license different conclusions:
+// GH200-P10 (2026-10-16, review of gunbc#14070): ONE TYPED AUTHORITY. Each carrier is an
+// ElectricalDesignIdentity bound to its physical asset; its parts are ComponentInstanceIdentity values
+// and their pads ElectricalTerminalRef values (product.electrical.connectivity). Bench readings are
+// terminal-to-terminal receipts (product.electrical.continuity), and polarity, placement across the
+// input and the voltage bound are derived from them with typed causes, explicit Unestablished and
+// Contradicted standings, and the grade of their evidence: a reading whose second probe point is
+// inferred from the operator's words is kept and typed as such, and every derivation resting on one
+// says so. Strings below are transcriptions of what was printed or said, obligations, hypotheses, or
+// renderer output; no deduction reads them.
+
+// ── IDENTIFICATION ────────────────────────────────────────────────────────────────────────────
 //
-//   IdentifiedByDatasheetMarking  the marking matches a datasheet's marking table, so the part's
-//                                 ratings are cited facts
-//   RatingPrintedOnBody           the part prints its own rating; no datasheet, but no decoding either
-//   MarkingUnresolved             the marking is read and NOT decoded; it contributes nothing, and the
-//                                 discriminator says what would decode it
+//   IdentifiedByMarking      the marking matches one maker's table, so the part's specification is cited
+//   MarkingSharedByMakers    the marking matches one code in several makers' tables and the maker is not
+//                            identified: a property counts only where every candidate supports it
+//   RatingPrintedOnBody      the part prints its own rating; no datasheet, and no decoding either
+//   ResistanceCodeRead       a resistance code, read and decoded
+//   MarkingUnresolved        the marking is read (or unread) and NOT decoded; it contributes nothing
+//   FootprintUnpopulated     a footprint with no part on it
 //
-// Which circuit a part sits on is a fourth fact, and from a photograph it is ADJACENCY, not traced
-// copper. Adjacency places a part in a region of the board; it does not say what voltage appears
-// across the part's rated terminals, which is the only relation under which a rating bounds a rail.
+// Each reading of a marking carries its own receipt, so a part never inherits another's identity by
+// sitting nearby or looking alike.
+
+type MarkingReading {
+  text: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
 
 type ComponentIdentification
-  = IdentifiedByDatasheetMarking { row: ElectronicComponentRow, marking_read: NonEmptyStr }
-  | RatingPrintedOnBody { voltage: ComponentVoltageRating?, current: Ampere?, marking_read: NonEmptyStr }
-  | ResistanceCodeRead { milliohms: Nat, marking_read: NonEmptyStr }
-  | MarkingUnresolved { marking_read: NonEmptyStr, discriminator: NonEmptyStr }
+  = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
+  | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
+  | RatingPrintedOnBody { rating: PrintedRating, marking: MarkingReading }
+  | ResistanceCodeRead { milliohms: Nat, marking: MarkingReading }
+  | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
+  | FootprintUnpopulated { evidence: EvidenceRef }
 
-type PowerPath = MainInputPath | AuxiliaryInputPath
-
-// WHAT RELATES A PART'S RATING TO A RAIL. RatingAcrossInputRail is the one relation that licenses a
-// bound: the evidence must say that the rated terminals see the input rail (a fuse in series with the
-// input, a bulk capacitor across it, a hot-swap FET's drain-source in its path) in the condition the
-// rating applies to -- a traced net, a schematic, or the vendor's reference design for the board.
-// OnPathByAdjacency places the part near a path and bounds nothing: an input-stage part and a
-// downstream converted rail can share one region of the board.
-type PathMembership
-  = RatingAcrossInputRail { evidence: NonEmptyStr }
-  | OnPathByAdjacency { basis: NonEmptyStr }
-
-type ObservedComponent {
-  designators: List<NonEmptyStr>
-  quantity: Nat
-  role: NonEmptyStr
+type InstalledComponent {
+  component: ComponentInstanceIdentity
+  terminals: List<TerminalIdentity>
   identification: ComponentIdentification
-  path: PowerPath
-  membership: PathMembership
+}
+
+fn names(ns: List<NonEmptyStr>) -> List<TerminalIdentity> {
+  map(ns, n => n as TerminalIdentity)
+}
+
+fn withstand_kind_key(k: VoltageWithstandKind) -> Nat {
+  match k {
+    TvsReverseStandoff => 0
+    CapacitorRatedVoltage => 1
+    DrainSourceMaximum => 2
+    FuseInterruptRating => 3
+  }
+}
+
+fn withstand_list(rows: List<ElectronicComponentRow>) -> List<VoltageWithstand> {
+  flat_map(rows, r => match voltage_withstand(spec: r.specification) {
+    Absent => []
+    Present { value: w } => [w]
+  })
+}
+
+fn highest_withstand(ws: List<VoltageWithstand>, w0: VoltageWithstand) -> VoltageWithstand {
+  fold(ws, init: w0, f: (acc, w) => if volt_count(v: w.maximum) > volt_count(v: acc.maximum) { w } else { acc })
+}
+
+// THE PROPERTY EVERY CANDIDATE SUPPORTS. The installed part is one of the candidates, so a voltage limit
+// holds for it only if it holds for all of them: they must agree on the kind of limit, and the limit
+// carried is the HIGHEST candidate figure -- the rail stays below the installed part's figure, which is
+// at most that. (The first revision carried the lowest, which a higher-rated installed candidate would
+// falsify.) Candidates of different kinds support no limit.
+fn agreed_withstand(rows: List<ElectronicComponentRow>, ws: List<VoltageWithstand>, w0: VoltageWithstand) -> List<VoltageWithstand> {
+  if count(ws) == count(rows) && all(ws, w => withstand_kind_key(k: w.kind) == withstand_kind_key(k: w0.kind)) { [highest_withstand(ws: ws, w0: w0)] } else { [] }
+}
+
+fn shared_withstand(rows: List<ElectronicComponentRow>) -> VoltageWithstand? {
+  let ws = withstand_list(rows: rows)
+  match ws.first() {
+    Absent => Absent
+    Present { value: w0 } => agreed_withstand(rows: rows, ws: ws, w0: w0).first()
+  }
+}
+
+fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
+  match i {
+    IdentifiedByMarking { row, marking: _ } => voltage_withstand(spec: row.specification)
+    MarkingSharedByMakers { rows, marking: _ } => shared_withstand(rows: rows)
+    RatingPrintedOnBody { rating, marking: _ } => match rating {
+      PrintedFuseRating { current: _, interrupt_voltage } => match interrupt_voltage {
+        Absent => Absent
+        Present { value: v } => Present { value: VoltageWithstand { kind: FuseInterruptRating, maximum: v } }
+      }
+    }
+    ResistanceCodeRead { milliohms: _, marking: _ } => Absent
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+// ── CONNECTOR HOUSINGS ────────────────────────────────────────────────────────────────────────
+
+// WHICH PHYSICAL ROW, against a reference anyone can find on the housing: the latch. A row swap reverses
+// polarity, so a position whose side was not recorded is never assumed.
+type RowSide
+  = LatchSide
+  | AwayFromLatch
+  | SideUnrecorded
+
+type HousingPosition {
+  terminal: TerminalIdentity
+  side: RowSide
+  index: Nat
+}
+
+// A connector's contact inventory: each position is a terminal of the connector's component instance,
+// so its count is the inventory's length and nothing else, and the sides carry their own receipt.
+type ConnectorHousing {
+  component: ComponentInstanceIdentity
+  positions: List<HousingPosition>
+  sides_evidence: EvidenceRef
+}
+
+type ConnectorPositionCensus
+  = CountedFromPhotograph { positions: Nat, evidence: EvidenceRef }
+  | MappedOnHousing { housing: ConnectorHousing }
+
+// A caliper span across a row of cavities: so many pitches plus so many cavity widths.
+type CaliperAxis
+  = AlongRow
+  | AcrossRows
+
+type CaliperSpan {
+  axis: CaliperAxis
+  measured: Micrometer
+  pitches: Nat
+  cavities: Nat
+  evidence: EvidenceRef
+}
+
+// ── BOARD MARKINGS AND SURVEYS ────────────────────────────────────────────────────────────────
+
+type BoardMarking
+  = AssemblyLabel { model: NonEmptyStr, part_number: NonEmptyStr, revision: NonEmptyStr, serial: NonEmptyStr, evidence: EvidenceRef }
+  | PcbCode { code: NonEmptyStr, printed_beside: NonEmptyStr?, evidence: EvidenceRef }
+  | RevisionSticker { revision: NonEmptyStr, serial: NonEmptyStr, evidence: EvidenceRef }
+  | FabricationMark { text: NonEmptyStr, evidence: EvidenceRef }
+
+type CavityGrid {
+  columns: Nat
+  rows: Nat
+}
+
+type BackplaneConnectorObservation {
+  seen: Nat
+  face: CavityGrid?
+  guide_pin_seen: Bool
+  power_blade_seen: Bool
+  evidence: EvidenceRef
+}
+
+type ReadOnUnit
+  = ReadOnAsset { asset: PhysicalAssetIdentity }
+  | UnitUnrecorded
+
+type ConnectorFamilyCandidate {
+  row: ElectronicComponentRow
+  marking: NonEmptyStr
+  read_on: ReadOnUnit
 }
 
 type ConnectorCensus
-  = CensusComplete { count: Nat, family: NonEmptyStr }
-  | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr }
+  = CensusComplete { count: Nat, family: ElectronicComponentRow }
+  | CensusPartial { counted_at_least: Nat, designators_read: List<NonEmptyStr>, family_candidate: ConnectorFamilyCandidate?, obligation: NonEmptyStr }
+
+// HOW MUCH OF THE BOARD THE MANAGEMENT-I/O READING COVERS. An absence ("no RJ45, no console header") is a
+// reading only of a board photographed whole; close-ups establish what they show and nothing else.
+type ManagementIoSurvey
+  = WholeBoardPhotographed
+  | PartlyPhotographed { not_covered: NonEmptyStr }
+
+// A receptacle's candidate families stay candidates until a discriminator (part number, contact count
+// read, pinout) agrees: dimensions and a marking do not establish a protocol, a generation or a role.
+type ReceptacleCandidate
+  = UsbMicroB
+  | UsbSuperSpeedMicroB
+
+type PlugFit
+  = MicroUsbPlugFits
+  | PlugFitUntried
+
+type ManagementIoObservation
+  = PinHeader { designator: NonEmptyStr?, rows: Nat, columns: Nat, pin_one_marked: Bool, evidence: EvidenceRef }
+  | EdgeReceptacle { marking: NonEmptyStr?, opening_widths: List<Micrometer>, plug_fit: PlugFit, candidates: List<ReceptacleCandidate>, evidence: EvidenceRef }
+  | FlatCableConnectors { count: Nat, evidence: EvidenceRef }
+
+type UnresolvedPart {
+  designator: NonEmptyStr?
+  marking: NonEmptyStr?
+  obligation: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// ── THE MEASURED BOARD AND ITS INPUT ──────────────────────────────────────────────────────────
+
+type MeasuredBoard {
+  asset: PhysicalAssetIdentity
+  continuity: List<ContinuityObservation>
+  diode_readings: List<DiodeModeObservation>
+}
+
+// The input under study: a mapped housing and the terminal of the fuse beside it. The fused side is the
+// side whose contacts reach that fuse terminal; nothing else about the fuse is assumed.
+type InputConnector {
+  housing: ConnectorHousing
+  fuse_terminal: ElectricalTerminalRef
+}
 
 type CarrierLayoutObservation {
-  labels: List<NonEmptyStr>
+  asset: PhysicalAssetIdentity
+  design: ElectricalDesignIdentity
+  markings: List<BoardMarking>
   module_receptacles: List<NonEmptyStr>
-  main_input_connectors: NonEmptyStr
-  auxiliary_connector: NonEmptyStr
-  auxiliary_connector_positions: Nat
+  backplane_connectors: List<BackplaneConnectorObservation>
+  j20: ConnectorPositionCensus
+  j20_calipers: List<CaliperSpan>
   edge_high_speed_connectors: ConnectorCensus
-  management_io_observed: List<NonEmptyStr>
-  power_components: List<ObservedComponent>
-  unresolved_parts: List<NonEmptyStr>
+  management_io_survey: ManagementIoSurvey
+  management_io: List<ManagementIoObservation>
+  components: List<InstalledComponent>
+  measured: MeasuredBoard?
+  input: InputConnector?
+  unresolved: List<UnresolvedPart>
 }
 
-// ── THE K1 UNIT ──────────────────────────────────────────────────────────────────────────────
+// ── POLARITY ──────────────────────────────────────────────────────────────────────────────────
 
-data k1_adjacency_main: PathMembership = OnPathByAdjacency {
-  basis: "left-edge close-up: the two MOSFETs, the fuse body at F300/F302 and the Coilcraft inductor sit together in the power stage below the top-edge input blocks, above J20; adjacency, not a traced net",
-}
+type PolarityGap
+  = SidesUnrecorded
+  | NoMeasuredBoard
+  | FusedSideNotReached
+  | ReturnSideNotJoined
+  | IsolationUnread
 
-data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
-  basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
-}
+type InputPolarity
+  = PolarityEstablished { fused_side: RowSide, return_side: RowSide, fused: List<ContinuityObservation>, returns: List<ContinuityObservation>, isolation: List<ContinuityObservation> }
+  | PolarityContradicted { readings: List<ContinuityObservation> }
+  | PolarityUnestablished { gaps: List<PolarityGap> }
 
-data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
-
-data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
-  labels: [
-    "sticker: Model: P4261, 694-24261-0000-100 K1, Made In USA. The listing photographs show TWO serials on this label, S/N 1582023110038 in one close-up and S/N 1582023110033 in another, so the listing photographed more than one unit (or one was misread); the received unit's serial is unread",
-    "silkscreen: 'Rework' above '180-14261-DAAF-A01' -- a printed marking; whether rework was performed is unknown",
-  ],
-  module_receptacles: ["J3", "J4"],
-  main_input_connectors: "two large grey pluggable terminal blocks on the top edge; position count, rating and pin assignment unread",
-  auxiliary_connector: "J20, a black shrouded two-row power-style receptacle on the left edge; rating and pin assignment unread",
-  auxiliary_connector_positions: 16,
-  edge_high_speed_connectors: CensusPartial {
-    counted_at_least: 10,
-    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
-  },
-  management_io_observed: [
-    "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
-  ],
-  power_components: [
-    ObservedComponent {
-      designators: [],
-      quantity: 2,
-      role: "N-channel MOSFET pair in the main input stage",
-      identification: IdentifiedByDatasheetMarking { row: ipb017n10n5lf, marking_read: "017N10LF, lot line HAL225" },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
-    },
-    ObservedComponent {
-      designators: ["F300", "F302"],
-      quantity: 1,
-      role: "fuse body spanning the F300/F302 pads",
-      identification: RatingPrintedOnBody {
-        voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
-        current: Present { value: ampere(count: 100) },
-        marking_read: "75V 100A (leading maker glyph not legible)",
-      },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
-    },
-    ObservedComponent {
-      designators: [],
-      quantity: 1,
-      role: "power inductor in the main input stage",
-      identification: MarkingUnresolved { marking_read: "A850 / Coilcraft / D", discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" },
-      path: MainInputPath,
-      membership: k1_adjacency_main,
-    },
-    ObservedComponent {
-      designators: ["D2"],
-      quantity: 2,
-      role: "diodes in SMA/SMB-class packages, one in the main stage and D2 beside J20",
-      identification: MarkingUnresolved { marking_read: "5P0X / ZCNSU (as read)", discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
-    },
-    ObservedComponent {
-      designators: ["F1"],
-      quantity: 1,
-      role: "fuse beside J20",
-      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "12A (leading maker glyph not legible)" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
-    },
-    ObservedComponent {
-      designators: [],
-      quantity: 1,
-      role: "current-sense resistor beside F1",
-      identification: ResistanceCodeRead { milliohms: 10, marking_read: "R010" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
-    },
-    ObservedComponent {
-      designators: [],
-      quantity: 2,
-      role: "resistors marked R150, one above the upper capacitor and one below F1",
-      identification: ResistanceCodeRead { milliohms: 150, marking_read: "R150" },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
-    },
-    ObservedComponent {
-      designators: ["C10_P5", "C12_P5"],
-      quantity: 3,
-      role: "SMD polymer/aluminium capacitors, 150 uF by their first line; the third sits below J20 by U522",
-      identification: MarkingUnresolved { marking_read: "150 / J ZU / 29AH on all three (C10_P5 is photographed upside down)", discriminator: polymer_cap_discriminator },
-      path: AuxiliaryInputPath,
-      membership: k1_adjacency_aux,
-    },
-  ],
-  unresolved_parts: [
-    "U4, the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage (inductors 1R0, 2R2, 4R7 and three '330' polymer capacitors), so it takes several rails. Consistent with an FPGA, a management SoC or a PCIe switch; a community guess of an Intel Cyclone 10 GX FPGA is labelled inference by its own author. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad",
-    "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed",
-    "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
-    "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
-    "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
-    "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
-  ],
-}
-
-// ── WHAT THE PARTS BOUND ─────────────────────────────────────────────────────────────────────
-//
-// A BOUND IS DERIVED ONLY FROM PARTS WHOSE RATING IS ESTABLISHED ACROSS THE INPUT RAIL: the lowest such
-// rating bounds the rail from above, because the rail would exceed that part's rating. Every other
-// rated part -- placed by adjacency, or on a rail whose relation to the input is unknown -- is an
-// observation that is carried and named, never folded into the bound. (GH200-5, 2026-10-04: the first
-// revision took the minimum over adjacency-placed parts and reported the fuse's 75 V as an input
-// ceiling; review showed that a lower-rated part on a downstream rail sharing the region would have
-// lowered it, so adjacency no longer participates.) A bound never says what the rail IS.
-type InputVoltageBound
-  = BoundByRatedParts { maximum: Volt, limiting: NonEmptyStr, relation: NonEmptyStr }
-  | NoEstablishedBound { observed_ratings: List<NonEmptyStr> }
-
-fn component_rating(c: ObservedComponent) -> ComponentVoltageRating? {
-  match c.identification {
-    IdentifiedByDatasheetMarking { row: r, marking_read: _ } => Present { value: r.voltage_rating }
-    RatingPrintedOnBody { voltage: v, current: _, marking_read: _ } => v
-    ResistanceCodeRead { milliohms: _, marking_read: _ } => Absent
-    MarkingUnresolved { marking_read: _, discriminator: _ } => Absent
+fn row_side_code(s: RowSide) -> Nat {
+  match s {
+    SideUnrecorded => 0
+    LatchSide => 1
+    AwayFromLatch => 2
   }
 }
 
-fn path_key(p: PowerPath) -> Nat {
-  match p {
-    MainInputPath => 0
-    AuxiliaryInputPath => 1
+fn other_side(s: RowSide) -> RowSide {
+  match s {
+    LatchSide => AwayFromLatch
+    AwayFromLatch => LatchSide
+    SideUnrecorded => SideUnrecorded
   }
 }
 
-fn path_eq(a: PowerPath, b: PowerPath) -> Bool {
-  path_key(p: a) == path_key(p: b)
+fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminalRef> {
+  map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
-type RatedComponent {
-  component: ObservedComponent
-  rating: ComponentVoltageRating
+fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
+  reachability_graph(observations: b.continuity, asset: b.asset)
 }
 
-fn rating_kind_text(k: VoltageRatingKind) -> String {
-  match k {
-    DrainSourceMaximum => "drain-source maximum"
-    FuseInterruptRating => "fuse voltage rating"
-    CapacitorRatedVoltage => "capacitor rated voltage"
+fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
+  map(ts, t => reach(g: g, a: t, b: target))
+}
+
+fn all_reachable(ss: List<ReachabilityStanding>) -> Bool {
+  count(ss) > 0 && all(ss, s => is_reachable(s: s))
+}
+
+fn readings_of(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
+  flat_map(ss, s => supporting_readings(s: s))
+}
+
+// Every standing on an established side is reachability into ONE class, whose supporting readings each
+// standing carries whole; the first carries them once, where concatenating all would repeat them per
+// contact.
+fn class_readings(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
+  match ss.first() {
+    Absent => []
+    Present { value: s } => supporting_readings(s: s)
   }
 }
 
-fn rated_text(r: RatedComponent) -> NonEmptyStr {
-  join([
-    r.component.role as String, ": ", to_string(volt_count(v: r.rating.maximum)), " V ", rating_kind_text(k: r.rating.kind),
-    match r.component.membership {
-      RatingAcrossInputRail { evidence: _ } => ""
-      OnPathByAdjacency { basis: _ } => ", placed by adjacency only",
-    },
-  ], "") as NonEmptyStr
+fn side_reaches_fuse(g: ReachabilityGraph, input: InputConnector, side: RowSide) -> Bool {
+  all_reachable(ss: standings_to(g: g, ts: side_terminals(h: input.housing, side: side), target: input.fuse_terminal))
 }
 
-fn rated_on_path(layout: CarrierLayoutObservation, path: PowerPath) -> List<RatedComponent> {
-  flat_map(filter(layout.power_components, c => path_eq(a: c.path, b: path)), c =>
-    match component_rating(c: c) {
-      Present { value: r } => [RatedComponent { component: c, rating: r }]
-      Absent => []
+fn polarity_gaps(to_fuse: List<ReachabilityStanding>, to_return: List<ReachabilityStanding>, isolation: ReachabilityStanding) -> List<PolarityGap> {
+  concat(concat(
+    if all_reachable(ss: to_fuse) { [] } else { [FusedSideNotReached] },
+    if all_reachable(ss: to_return) { [] } else { [ReturnSideNotJoined] }),
+    if is_read_above_threshold(s: isolation) { [] } else { [IsolationUnread] })
+}
+
+// The polarity a fused side implies, if the readings establish it: every fused-side contact reaches the
+// fuse terminal, every return-side contact reaches the first return-side contact, and the first
+// fused-side contact is read silent (above the continuity threshold) to the first return-side one. Any contradicted standing contradicts.
+fn polarity_from(g: ReachabilityGraph, input: InputConnector, fused: RowSide, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> InputPolarity {
+  let ret = other_side(s: fused)
+  let to_fuse = standings_to(g: g, ts: side_terminals(h: input.housing, side: fused), target: input.fuse_terminal)
+  let to_return = standings_to(g: g, ts: side_terminals(h: input.housing, side: ret), target: r0)
+  let isolation = reach(g: g, a: f0, b: r0)
+  let contradicted = filter(concat(concat(to_fuse, to_return), [isolation]), s => is_reachability_contradicted(s: s))
+  let gaps = polarity_gaps(to_fuse: to_fuse, to_return: to_return, isolation: isolation)
+  match contradicted.first() {
+    Present { value: _ } => PolarityContradicted { readings: readings_of(ss: contradicted) }
+    Absent => match gaps.first() {
+      Present { value: _ } => PolarityUnestablished { gaps: gaps }
+      Absent => PolarityEstablished { fused_side: fused, return_side: ret, fused: class_readings(ss: to_fuse), returns: class_readings(ss: to_return), isolation: supporting_readings(s: isolation) }
     }
-  )
-}
-
-fn across_input_rail(r: RatedComponent) -> Bool {
-  match r.component.membership {
-    RatingAcrossInputRail { evidence: _ } => true
-    OnPathByAdjacency { basis: _ } => false
   }
 }
 
-fn path_bound(layout: CarrierLayoutObservation, path: PowerPath) -> InputVoltageBound {
-  let rated = rated_on_path(layout: layout, path: path)
-  let bounding = filter(rated, r => across_input_rail(r: r))
-  match bounding.first() {
-    Absent => NoEstablishedBound { observed_ratings: map(rated, r => rated_text(r: r)) }
-    Present { value: first } => {
-      let lowest = fold(bounding, init: first, f: (acc, x) => if volt_count(v: x.rating.maximum) < volt_count(v: acc.rating.maximum) { x } else { acc })
-      BoundByRatedParts {
-        maximum: lowest.rating.maximum,
-        limiting: lowest.component.role,
-        relation: match lowest.component.membership {
-          RatingAcrossInputRail { evidence: e } => e
-          OnPathByAdjacency { basis: b } => b
-        },
+fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) -> InputPolarity {
+  match side_terminals(h: input.housing, side: fused).first() {
+    Absent => PolarityUnestablished { gaps: [FusedSideNotReached] }
+    Present { value: f0 } => match side_terminals(h: input.housing, side: other_side(s: fused)).first() {
+      Absent => PolarityUnestablished { gaps: [ReturnSideNotJoined] }
+      Present { value: r0 } => polarity_from(g: g, input: input, fused: fused, f0: f0, r0: r0)
+    }
+  }
+}
+
+fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
+  if any(input.housing.positions, p => row_side_code(s: p.side) == 0) {
+    PolarityUnestablished { gaps: [SidesUnrecorded] }
+  } else {
+    if side_reaches_fuse(g: g, input: input, side: LatchSide) && !side_reaches_fuse(g: g, input: input, side: AwayFromLatch) {
+      polarity_with(g: g, input: input, fused: LatchSide)
+    } else {
+      polarity_with(g: g, input: input, fused: AwayFromLatch)
+    }
+  }
+}
+
+fn input_polarity(layout: CarrierLayoutObservation) -> InputPolarity {
+  match layout.measured {
+    Absent => PolarityUnestablished { gaps: [NoMeasuredBoard] }
+    Present { value: b } => match layout.input {
+      Absent => PolarityUnestablished { gaps: [SidesUnrecorded] }
+      Present { value: input } => measured_polarity(g: board_graph(b: b), input: input)
+    }
+  }
+}
+
+fn polarity_grade(p: InputPolarity) -> EvidenceGrade {
+  match p {
+    PolarityEstablished { fused_side: _, return_side: _, fused, returns, isolation } => evidence_grade(readings: concat(concat(fused, returns), isolation))
+    PolarityContradicted { readings } => evidence_grade(readings: readings)
+    PolarityUnestablished { gaps: _ } => evidence_grade(readings: [])
+  }
+}
+
+// ── PLACEMENT ACROSS THE INPUT ────────────────────────────────────────────────────────────────
+
+type TerminalPair {
+  a: ElectricalTerminalRef
+  b: ElectricalTerminalRef
+}
+
+fn component_terminal_refs(c: InstalledComponent) -> List<ElectricalTerminalRef> {
+  map(c.terminals, t => terminal_ref(component: c.component, terminal: t))
+}
+
+fn pairs_of(ts: List<ElectricalTerminalRef>) -> List<TerminalPair> {
+  match ts.first() {
+    Absent => []
+    Present { value: a } => match filter(ts, t => !terminal_ref_equal(a: t, b: a)).first() {
+      Absent => []
+      Present { value: b } => if count(ts) == 2 { [TerminalPair { a: a, b: b }] } else { [] }
+    }
+  }
+}
+
+type AcrossGap
+  = InputPolarityNotEstablished
+  | NotTwoTerminals
+  | TerminalsNotPlaced
+
+type AcrossInputStanding
+  = AcrossInput { component: ComponentInstanceIdentity, on_fused: ElectricalTerminalRef, on_return: ElectricalTerminalRef, fused_path: List<ContinuityObservation>, return_path: List<ContinuityObservation> }
+  | AcrossInputContradicted { component: ComponentInstanceIdentity, readings: List<ContinuityObservation> }
+  | AcrossInputUnestablished { component: ComponentInstanceIdentity, gap: AcrossGap }
+
+fn placed_pair(g: ReachabilityGraph, comp: ComponentInstanceIdentity, p: TerminalPair, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> AcrossInputStanding {
+  let af = reach(g: g, a: p.a, b: f0)
+  let br = reach(g: g, a: p.b, b: r0)
+  let bf = reach(g: g, a: p.b, b: f0)
+  let ar = reach(g: g, a: p.a, b: r0)
+  let contradicted = filter([af, br, bf, ar], s => is_reachability_contradicted(s: s))
+  match contradicted.first() {
+    Present { value: _ } => AcrossInputContradicted { component: comp, readings: readings_of(ss: contradicted) }
+    Absent =>
+      if is_reachable(s: af) && is_reachable(s: br) {
+        AcrossInput { component: comp, on_fused: p.a, on_return: p.b, fused_path: supporting_readings(s: af), return_path: supporting_readings(s: br) }
+      } else {
+        if is_reachable(s: bf) && is_reachable(s: ar) {
+          AcrossInput { component: comp, on_fused: p.b, on_return: p.a, fused_path: supporting_readings(s: bf), return_path: supporting_readings(s: ar) }
+        } else {
+          AcrossInputUnestablished { component: comp, gap: TerminalsNotPlaced }
+        }
+      }
+  }
+}
+
+fn placed_under(g: ReachabilityGraph, input: InputConnector, c: InstalledComponent, fused: RowSide, ret: RowSide) -> AcrossInputStanding {
+  match side_terminals(h: input.housing, side: fused).first() {
+    Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+    Present { value: f0 } => match side_terminals(h: input.housing, side: ret).first() {
+      Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+      Present { value: r0 } => match pairs_of(ts: component_terminal_refs(c: c)).first() {
+        Absent => AcrossInputUnestablished { component: c.component, gap: NotTwoTerminals }
+        Present { value: p } => placed_pair(g: g, comp: c.component, p: p, f0: f0, r0: r0)
       }
     }
   }
 }
 
-// THE BUS-CLASS QUESTION IS AN INVESTIGATION HYPOTHESIS, NOT A DERIVATION. No rule over part ratings
-// decides a bus class: a 100 V FET is a common choice for a 48-54 V hot-swap stage and is not thereby
-// absent from lower-voltage designs, so the first revision's ">= 80 V drain-source means 48-54 V" rule
-// manufactured a class from a threshold (GH200-5, review). What remains is the hypothesis, its sources
-// stated beside it, and the reading that would decide it.
+// WHAT EVERY PLACEMENT ON ONE BOARD READS: its reachability graph and its established polarity, derived
+// once per layout rather than once per component asked about.
+type PlacementBasis
+  = PlacementOnPolarity { graph: ReachabilityGraph, input: InputConnector, fused: RowSide, ret: RowSide, readings: List<ContinuityObservation> }
+  | NoPlacementBasis
+
+fn placement_basis(layout: CarrierLayoutObservation) -> PlacementBasis {
+  match layout.measured {
+    Absent => NoPlacementBasis
+    Present { value: b } => match layout.input {
+      Absent => NoPlacementBasis
+      Present { value: input } => {
+        let g = board_graph(b: b)
+        match measured_polarity(g: g, input: input) {
+          PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
+            PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
+          PolarityContradicted { readings: _ } => NoPlacementBasis
+          PolarityUnestablished { gaps: _ } => NoPlacementBasis
+        }
+      }
+    }
+  }
+}
+
+// A two-terminal part is across the input when one terminal reaches a fused-side contact and the other a
+// return-side contact, under an established polarity. Which terminal is which is derived, not stated.
+fn placed_on(basis: PlacementBasis, c: InstalledComponent) -> AcrossInputStanding {
+  match basis {
+    PlacementOnPolarity { graph, input, fused, ret, readings: _ } => placed_under(g: graph, input: input, c: c, fused: fused, ret: ret)
+    NoPlacementBasis => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
+  }
+}
+
+fn across_input(layout: CarrierLayoutObservation, c: InstalledComponent) -> AcrossInputStanding {
+  placed_on(basis: placement_basis(layout: layout), c: c)
+}
+
+fn is_across(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => true
+    AcrossInputContradicted { component: _, readings: _ } => false
+    AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+fn is_contradicted_placement(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => false
+    AcrossInputContradicted { component: _, readings: _ } => true
+    AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+fn placement_readings(s: AcrossInputStanding) -> List<ContinuityObservation> {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path, return_path } => concat(fused_path, return_path)
+    AcrossInputContradicted { component: _, readings } => readings
+    AcrossInputUnestablished { component: _, gap: _ } => []
+  }
+}
+
+// ── THE INPUT VOLTAGE BOUND ───────────────────────────────────────────────────────────────────
+//
+// A BOUND IS DERIVED ONLY FROM A PART WHOSE LIMIT IS ESTABLISHED ACROSS THE INPUT: the rail would exceed
+// that part's limit otherwise. Every other rated part is an observed rating, carried with its placement
+// standing and never folded in. (GH200-5, 2026-10-04: adjacency once set a ceiling; a lower-rated part on
+// a downstream rail sharing the region would have lowered it, so adjacency never participates.) The
+// lowest established limit bounds the rail; parts tying it are carried beside it. The bound carries the
+// grade of the readings it rests on, polarity's included. A bound never says what the rail IS.
+
+type InputVoltageUpperBound {
+  asset: PhysicalAssetIdentity
+  input_connector: ComponentInstanceIdentity
+  limiting_component: ComponentInstanceIdentity
+  rated: VoltageWithstand
+  identification: ComponentIdentification
+  placement: AcrossInputStanding
+  grade: EvidenceGrade
+}
+
+type ObservedRating {
+  component: ComponentInstanceIdentity
+  identification: ComponentIdentification
+  rated: VoltageWithstand
+  placement: AcrossInputStanding
+}
+
+type InputBoundStanding
+  = BoundEstablished { bound: InputVoltageUpperBound, equally_limiting: List<InputVoltageUpperBound>, observed: List<ObservedRating> }
+  | BoundContradicted { contradicted: List<ObservedRating>, observed: List<ObservedRating> }
+  | BoundUnestablished { observed: List<ObservedRating> }
+
+fn observed_ratings(layout: CarrierLayoutObservation, basis: PlacementBasis) -> List<ObservedRating> {
+  flat_map(layout.components, c => match identified_withstand(i: c.identification) {
+    Absent => []
+    Present { value: w } => [ObservedRating { component: c.component, identification: c.identification, rated: w, placement: placed_on(basis: basis, c: c) }]
+  })
+}
+
+fn bound_from(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, o: ObservedRating) -> InputVoltageUpperBound {
+  InputVoltageUpperBound {
+    asset: layout.asset,
+    input_connector: input.housing.component,
+    limiting_component: o.component,
+    rated: o.rated,
+    identification: o.identification,
+    placement: o.placement,
+    grade: evidence_grade(readings: concat(placement_readings(s: o.placement), polarity_readings)),
+  }
+}
+
+fn lowest_rating(across: List<ObservedRating>, first: ObservedRating) -> ObservedRating {
+  fold(across, init: first, f: (acc, x) => if volt_count(v: x.rated.maximum) < volt_count(v: acc.rated.maximum) { x } else { acc })
+}
+
+fn established_bound(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, across: List<ObservedRating>, first: ObservedRating, observed: List<ObservedRating>) -> InputBoundStanding {
+  let lowest = lowest_rating(across: across, first: first)
+  let ties = filter(across, x => volt_count(v: x.rated.maximum) == volt_count(v: lowest.rated.maximum) && !component_identity_eq(a: x.component, b: lowest.component))
+  BoundEstablished { bound: bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: lowest), equally_limiting: map(ties, x => bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: x)), observed: observed }
+}
+
+fn input_bound(layout: CarrierLayoutObservation) -> InputBoundStanding {
+  let basis = placement_basis(layout: layout)
+  let observed = observed_ratings(layout: layout, basis: basis)
+  let contradicted = filter(observed, o => is_contradicted_placement(s: o.placement))
+  let across = filter(observed, o => is_across(s: o.placement))
+  match contradicted.first() {
+    Present { value: _ } => BoundContradicted { contradicted: contradicted, observed: observed }
+    Absent => match across.first() {
+      Absent => BoundUnestablished { observed: observed }
+      Present { value: first } => match basis {
+        NoPlacementBasis => BoundUnestablished { observed: observed }
+        PlacementOnPolarity { graph: _, input, fused: _, ret: _, readings } => established_bound(layout: layout, input: input, polarity_readings: readings, across: across, first: first, observed: observed)
+      }
+    }
+  }
+}
+
+// The junction readings across a two-terminal part on its measured board.
+fn component_junction(layout: CarrierLayoutObservation, c: InstalledComponent) -> List<JunctionStanding> {
+  match layout.measured {
+    Absent => []
+    Present { value: b } => map(pairs_of(ts: component_terminal_refs(c: c)), p => junction_between(observations: b.diode_readings, asset: b.asset, a: p.a, b: p.b))
+  }
+}
+
+// ── HYPOTHESES (prose leads, consumed by no deduction) ───────────────────────────────────────
+
 type InvestigationHypothesis {
   claim: NonEmptyStr
   sources: List<NonEmptyStr>
   decided_by: NonEmptyStr
 }
 
-data p4261_main_bus_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
-  claim: "the P4261 main input is a 48-54 V-class bus",
+data p4261_grey_path_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the grey blind-mate connectors carry the P4261's main input, and it is a 48-54 V-class bus",
   sources: [
-    "the main-stage MOSFETs are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
+    "the input-stage MOSFETs beside the grey blocks are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
     "the module part number 699-2G530-0215 reads as SKU215, which an uncited earlier NVIDIA guide revision tied to a 54 V module rail (extdeps.systems.nvidia_gh200 gh200_rail_variants): a lead about the module, not the carrier's input",
+    "counter-lead: a grey edge connector photographed face-on on the E1 (2026-10-16) shows fine contacts and no power blade",
   ],
-  decided_by: "the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
+  decided_by: "the grey blocks' contacts traced by terminal readings to the input stage, plus the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
 }
 
-fn bound_text(b: InputVoltageBound) -> String {
+data p4261_j20_main_input_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "J20 is the P4261's main input, and the input-stage MOSFETs switch it toward the module",
+  sources: [
+    "the E1's measured board puts F300 (75 V / 100 A) and the probed input-stage MOSFET's drain -- its tab and pin 4 on the IPB017N10N5LF pinout -- on J20's fused side, with none of that MOSFET's pins reaching ground: a hot-swap stage's shape, read on inferred probe points",
+    "J20's nine fused positions on a 3.0 mm-pitch housing could carry a 1 kW module's input current at 48-54 V, where its 12 A F1 could not -- so F1 is either a branch or the input is elsewhere",
+  ],
+  decided_by: "where the probed MOSFET's sources go: terminal readings from its source pins toward the module receptacles' power contacts",
+}
+
+// ── THE K1 UNIT (listing photographs; design p4261-k1-a) ────────────────────────────────────
+
+data k1_design: ElectricalDesignIdentity = "p4261-k1-a" as ElectricalDesignIdentity
+
+data k1_listing: EvidenceRef = SellerListingPhotograph { listing: "eBay item 168742238639", read_on: "2026-10-04" }
+
+data k1_label_photo: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-16", locator: "K1 label photograph sent in the session" }
+
+fn k1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
+  component_instance_identity(design: k1_design, local_identity: local)
+}
+
+fn k1_marking(text: NonEmptyStr) -> MarkingReading {
+  MarkingReading { text: text, evidence: k1_listing }
+}
+
+data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
+
+// "Rework" beside the PCB code is a printed marking; whether any rework was performed, and what, is
+// unknown. The labels read "0000-100" where the listing title says "000-100"; the label is the reading.
+data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+  asset: p4261_k1_a,
+  design: k1_design,
+  markings: [
+    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-100", revision: "K1", serial: "1582023110038", evidence: k1_listing },
+    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-100", revision: "K1", serial: "1582023110033", evidence: k1_listing },
+    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-100", revision: "K1", serial: "1582023110038", evidence: k1_label_photo },
+    PcbCode { code: "180-14261-DAAF-A01", printed_beside: Present { value: "Rework" }, evidence: k1_label_photo },
+    RevisionSticker { revision: "215-EV1", serial: "1582023110033", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "the k1 board has the ev1 sticker on it" } },
+    FabricationMark { text: "TTM 94V0 RFB1 2923", evidence: k1_listing },
+  ],
+  module_receptacles: ["J3", "J4"],
+  backplane_connectors: [
+    BackplaneConnectorObservation { seen: 2, face: Absent, guide_pin_seen: false, power_blade_seen: false, evidence: k1_listing },
+  ],
+  j20: CountedFromPhotograph { positions: 16, evidence: k1_listing },
+  j20_calipers: [],
+  edge_high_speed_connectors: CensusPartial {
+    counted_at_least: 10,
+    designators_read: [],
+    family_candidate: Present { value: operator_carrier_edge_family },
+    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
+  },
+  management_io_survey: WholeBoardPhotographed,
+  management_io: [
+    EdgeReceptacle { marking: Present { value: "Amphenol / 1502" }, opening_widths: [], plug_fit: PlugFitUntried, candidates: [UsbMicroB, UsbSuperSpeedMicroB], evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "Both of the boards have the microusb thing  its an amphenol 1502" } },
+    FlatCableConnectors { count: 2, evidence: k1_listing },
+  ],
+  components: [
+    InstalledComponent { component: k1_component(local: "input-stage MOSFET, first of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF, lot line HAL225") } },
+    InstalledComponent { component: k1_component(local: "input-stage MOSFET, second of two"), terminals: [], identification: IdentifiedByMarking { row: ipb017n10n5lf, marking: k1_marking(text: "017N10LF") } },
+    InstalledComponent { component: k1_component(local: "F300"), terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: k1_marking(text: "75V 100A (leading maker glyph not legible), the body spanning the F300/F302 pads") } },
+    InstalledComponent { component: k1_component(local: "input-stage inductor"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "A850 / Coilcraft / D") }, discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" } },
+    InstalledComponent { component: k1_component(local: "D2"), terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
+    InstalledComponent { component: k1_component(local: "input-stage diode"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "5P0X / ZCNSU (as read)") }, discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" } },
+    InstalledComponent { component: k1_component(local: "F1"), terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: k1_marking(text: "12A (leading maker glyph not legible)") } },
+    InstalledComponent { component: k1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: k1_marking(text: "R010") } },
+    InstalledComponent { component: k1_component(local: "R150 above the upper capacitor"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
+    InstalledComponent { component: k1_component(local: "R150 below F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 150, marking: k1_marking(text: "R150") } },
+    InstalledComponent { component: k1_component(local: "C10_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH (photographed upside down)") }, discriminator: polymer_cap_discriminator } },
+    InstalledComponent { component: k1_component(local: "C12_P5"), terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
+    InstalledComponent { component: k1_component(local: "capacitor below J20 by U522"), terminals: [], identification: MarkingUnresolved { marking: Present { value: k1_marking(text: "150 / J ZU / 29AH") }, discriminator: polymer_cap_discriminator } },
+  ],
+  measured: Absent,
+  input: Absent,
+  unresolved: [
+    UnresolvedPart { designator: Present { value: "U4" }, marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad", evidence: k1_listing },
+    UnresolvedPart { designator: Absent, marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed", evidence: k1_listing },
+    UnresolvedPart { designator: Absent, marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
+    UnresolvedPart { designator: Present { value: "U522" }, marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
+    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
+  ],
+}
+
+// One housing's marking, read from an operator photograph 2026-10-15; which carrier it was photographed
+// on was not recorded, so it is a candidate for each carrier's housings and a reading of neither.
+data operator_carrier_edge_family: ConnectorFamilyCandidate = ConnectorFamilyCandidate {
+  row: g97v22332hr,
+  marking: "G97V22332HR / 2248 / Amphenol",
+  read_on: UnitUnrecorded,
+}
+
+// ── THE E1 UNIT (bench readings; design p4261-e1-b) ─────────────────────────────────────────
+
+data e1_design: ElectricalDesignIdentity = "p4261-e1-b" as ElectricalDesignIdentity
+
+data e1_bench: BenchConditions = BenchConditions { power: Unpowered, module: ModuleRemoved }
+
+fn e1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
+  component_instance_identity(design: e1_design, local_identity: local)
+}
+
+fn e1_photo(taken_on: NonEmptyStr, locator: NonEmptyStr) -> EvidenceRef {
+  OperatorPhotograph { taken_on: taken_on, locator: locator }
+}
+
+data e1_j20: ComponentInstanceIdentity = e1_component(local: "J20")
+data e1_f1: ComponentInstanceIdentity = e1_component(local: "F1")
+data e1_f300: ComponentInstanceIdentity = e1_component(local: "F300")
+data e1_f302: ComponentInstanceIdentity = e1_component(local: "F302")
+data e1_d2: ComponentInstanceIdentity = e1_component(local: "D2")
+data e1_d5: ComponentInstanceIdentity = e1_component(local: "D5")
+data e1_c10: ComponentInstanceIdentity = e1_component(local: "C10_P5")
+data e1_c12: ComponentInstanceIdentity = e1_component(local: "C12_P5")
+data e1_third_can: ComponentInstanceIdentity = e1_component(local: "capacitor below J20 by U522")
+data e1_input_fet: ComponentInstanceIdentity = e1_component(local: "input-stage MOSFET probed 2026-10-16 (designator unread)")
+
+// J20'S EIGHTEEN POSITIONS. The index runs from the end the operator called pin 1 (2026-10-15, top left
+// as photographed, on the row away from the latch); the latch-side row is indexed the same way. Which
+// end is the connector maker's pin 1 is unread.
+data j20_row_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+fn j20_row_name(side: RowSide) -> String {
+  match side {
+    LatchSide => "latch-side row"
+    AwayFromLatch => "row away from the latch"
+    SideUnrecorded => "row of unrecorded side"
+  }
+}
+
+fn j20_position_terminal(side: RowSide, index: Nat) -> TerminalIdentity {
+  (join([j20_row_name(side: side), ", position ", to_string(index)], "") as NonEmptyStr) as TerminalIdentity
+}
+
+fn j20_row(side: RowSide) -> List<HousingPosition> {
+  map(j20_row_indices, i => HousingPosition { terminal: j20_position_terminal(side: side, index: i), side: side, index: i })
+}
+
+data e1_j20_housing: ConnectorHousing = ConnectorHousing {
+  component: e1_j20,
+  positions: concat(j20_row(side: LatchSide), j20_row(side: AwayFromLatch)),
+  sides_evidence: e1_photo(taken_on: "2026-10-16", locator: "J20 photograph annotated RAIL (row by F1 and D2) and GROUND (latch-side row), sent in the session"),
+}
+
+fn e1_terminal(c: ComponentInstanceIdentity, name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: c, terminal: name as TerminalIdentity)
+}
+
+fn e1_j20_at(side: RowSide, index: Nat) -> ElectricalTerminalRef {
+  terminal_ref(component: e1_j20, terminal: j20_position_terminal(side: side, index: index))
+}
+
+// The two reference contacts the operator's "power" and "ground" stand for.
+data e1_rail_ref: ElectricalTerminalRef = e1_j20_at(side: AwayFromLatch, index: 1)
+data e1_ground_ref: ElectricalTerminalRef = e1_j20_at(side: LatchSide, index: 1)
+
+data e1_f1_near: ElectricalTerminalRef = e1_terminal(c: e1_f1, name: "end nearer J20")
+data e1_f1_far: ElectricalTerminalRef = e1_terminal(c: e1_f1, name: "end farther from J20")
+data e1_f300_one: ElectricalTerminalRef = e1_terminal(c: e1_f300, name: "one end")
+data e1_f300_other: ElectricalTerminalRef = e1_terminal(c: e1_f300, name: "other end")
+data e1_f302_one: ElectricalTerminalRef = e1_terminal(c: e1_f302, name: "one pad")
+data e1_f302_other: ElectricalTerminalRef = e1_terminal(c: e1_f302, name: "other pad")
+data e1_d2_near: ElectricalTerminalRef = e1_terminal(c: e1_d2, name: "tab nearer J20")
+data e1_d2_far: ElectricalTerminalRef = e1_terminal(c: e1_d2, name: "tab farther from J20")
+data e1_d5_top: ElectricalTerminalRef = e1_terminal(c: e1_d5, name: "top tab")
+data e1_d5_bottom: ElectricalTerminalRef = e1_terminal(c: e1_d5, name: "bottom tab")
+data e1_c10_pos: ElectricalTerminalRef = e1_terminal(c: e1_c10, name: "positive")
+data e1_c10_neg: ElectricalTerminalRef = e1_terminal(c: e1_c10, name: "negative")
+data e1_c12_pos: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "positive")
+data e1_c12_neg: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "negative")
+
+data e1_fet_terminal_names: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "tab"]
+data e1_fet_off_rail: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 5", "pin 6", "pin 7"]
+
+// THE INFERENCES. "Ground" in the operator's readings is J20's latch-side row: they named that row ground
+// first (2026-10-15, "the entire bottom row is ground"), and the annotated photograph puts it on the latch
+// side. "Power" / "rail" is the row away from the latch, the nine positions read to both ends of F1. Which
+// point of each row the probe touched is unrecorded; position 1 stands for it.
+data e1_ground_basis: NonEmptyStr = "the operator's 'ground' is J20's latch-side row (2026-10-15 'the entire bottom row is ground'; the annotated photograph's GROUND row); the point on it is unrecorded and position 1 stands for it"
+data e1_rail_basis: NonEmptyStr = "the operator's 'power' / 'rail' is J20's fused row away from the latch (2026-10-15 'all 9 on top are joined to the fuse'; the annotated photograph's RAIL row); the point on it is unrecorded and position 1 stands for it"
+data e1_row_basis: NonEmptyStr = "'the entire bottom row is ground': each latch-side position beeps to the operator's ground reference, taken as the same row's position 1"
+
+// POPULATION STATEMENTS NAME NO EXACT FIRST POINT. "Everything I touched", "only the big tab and the very
+// middle pin" and "nothing seems to be connected to ground" cover visible terminals without saying which
+// were probed; each terminal the statement covers stands for a touch, inferred with that basis.
+data e1_touched_basis: NonEmptyStr = "'everything i touched had continuity to power' (F300, F302): which points were touched is unrecorded; the named parts' two visible terminals each stand for a touch"
+data e1_middle_pin_basis: NonEmptyStr = "'the very middle little small pin': the middle of the MOSFET's seven leads, which the IPB017N10N5LF pinout numbers pin 4; the number is read off the lead geometry, not off the board"
+data e1_only_basis: NonEmptyStr = "'only the BIG tab and the very middle little small pin are connected to rail power': whether each other lead was touched is unrecorded; 'only' is taken to cover every visible lead"
+data e1_nothing_basis: NonEmptyStr = "'nothing seems to be connected to ground': whether each lead and the tab were touched is unrecorded; 'nothing' is taken to cover every visible terminal"
+
+fn touched_to(a: ElectricalTerminalRef, reference: ElectricalTerminalRef, first_basis: NonEmptyStr, second_basis: NonEmptyStr, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
+  e1_read(a: a, b: reference, record: both_points_inferred(first_basis: first_basis, second_basis: second_basis), result: result, evidence: evidence)
+}
+
+fn e1_read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, record: ProbeRecord, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: record, conditions: e1_bench, result: result, evidence: evidence }
+}
+
+fn to_ground(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
+  e1_read(a: a, b: e1_ground_ref, record: second_point_inferred(basis: e1_ground_basis), result: result, evidence: evidence)
+}
+
+fn to_rail(a: ElectricalTerminalRef, result: ContinuityResult, evidence: EvidenceRef) -> ContinuityObservation {
+  e1_read(a: a, b: e1_rail_ref, record: second_point_inferred(basis: e1_rail_basis), result: result, evidence: evidence)
+}
+
+data e1_fuse_ends_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-15", verbatim: "regarding the 'which end of the fuse' the 9 supply pins beep to both ends of the fuse" }
+data e1_bottom_row_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-15", verbatim: "the entire bottom row is ground" }
+data e1_d2_tabs_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-15", verbatim: "regarding the tabs - D2 closer to J20 is connected to power, the farther tab is connected to ground (near the grounded cap terminals)" }
+data e1_caps_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-15", verbatim: "J20 supply did not seem to connect to the caps like that" }
+data e1_d5_tabs_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-16", verbatim: "the top of D5 is connected to ground, the bottom is connected to power rail and everything else" }
+data e1_fuses_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-16", verbatim: "F200 seems to be connected mostly to the rail, not ground, same with F302 - everything i touched had continuity to power / yeah F300 mb" }
+data e1_fet_said: EvidenceRef = OperatorStatement { stated_on: "2026-10-16", verbatim: "only the BIG tab and the very middle little small  pin are conneted to rail power, nothing seems to be connected to ground" }
+
+fn fet_terminal(name: NonEmptyStr) -> ElectricalTerminalRef {
+  e1_terminal(c: e1_input_fet, name: name)
+}
+
+data e1_measured: MeasuredBoard = MeasuredBoard {
+  asset: p4261_e1_b,
+  continuity: concat(concat(concat(concat(
+    // each fused-row position to both ends of F1: both points named
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_near, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said)),
+    map(j20_row_indices, i => e1_read(a: e1_j20_at(side: AwayFromLatch, index: i), b: e1_f1_far, record: both_points_recorded, result: BuzzerAsserted, evidence: e1_fuse_ends_said))),
+    // each latch-side position to the row's ground reference
+    map(filter(j20_row_indices, i => i > 1), i => e1_read(a: e1_j20_at(side: LatchSide, index: i), b: e1_ground_ref, record: second_point_inferred(basis: e1_row_basis), result: BuzzerAsserted, evidence: e1_bottom_row_said))),
+    [
+      to_rail(a: e1_d2_near, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
+      to_ground(a: e1_d2_far, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
+      to_ground(a: e1_c10_neg, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
+      to_ground(a: e1_c12_neg, result: BuzzerAsserted, evidence: e1_d2_tabs_said),
+      to_rail(a: e1_c10_pos, result: BuzzerNotAsserted, evidence: e1_caps_said),
+      to_rail(a: e1_c12_pos, result: BuzzerNotAsserted, evidence: e1_caps_said),
+      to_ground(a: e1_d5_top, result: BuzzerAsserted, evidence: e1_d5_tabs_said),
+      to_rail(a: e1_d5_bottom, result: BuzzerAsserted, evidence: e1_d5_tabs_said),
+      touched_to(a: e1_f300_one, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_other, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_one, reference: e1_ground_ref, first_basis: e1_touched_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f300_other, reference: e1_ground_ref, first_basis: e1_touched_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f302_one, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+      touched_to(a: e1_f302_other, reference: e1_rail_ref, first_basis: e1_touched_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fuses_said),
+    ]),
+    // the probed input-stage MOSFET: the named tab and the middle lead (pin 4) to the rail; the other
+    // leads silent to the rail, and every terminal silent to ground, inferred over the population named
+    concat(concat(
+      [
+        to_rail(a: fet_terminal(name: "tab"), result: BuzzerAsserted, evidence: e1_fet_said),
+        touched_to(a: fet_terminal(name: "pin 4"), reference: e1_rail_ref, first_basis: e1_middle_pin_basis, second_basis: e1_rail_basis, result: BuzzerAsserted, evidence: e1_fet_said),
+      ],
+      map(e1_fet_off_rail, n => touched_to(a: fet_terminal(name: n), reference: e1_rail_ref, first_basis: e1_only_basis, second_basis: e1_rail_basis, result: BuzzerNotAsserted, evidence: e1_fet_said))),
+      map(e1_fet_terminal_names, n => touched_to(a: fet_terminal(name: n), reference: e1_ground_ref, first_basis: e1_nothing_basis, second_basis: e1_ground_basis, result: BuzzerNotAsserted, evidence: e1_fet_said)))),
+  diode_readings: [
+    DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d2_far, black: e1_d2_near }, display: ForwardMillivolts { millivolts: 600 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-15", verbatim: "yeah putting the red on the ground of the diode and black on the supply reads .6" } },
+    DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: e1_d5_top, black: e1_d5_bottom }, display: ForwardMillivolts { millivolts: 605 }, conditions: e1_bench, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "diode reading on D5 gives .605 / yes red was on top" } },
+  ],
+}
+
+data e1_input: InputConnector = InputConnector { housing: e1_j20_housing, fuse_terminal: e1_f1_near }
+
+data e1_shared_tvs_rows: List<ElectronicComponentRow> = [tvs_5_0smdj60a, aos_tvs_5_0smdj60a]
+
+data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+  asset: p4261_e1_b,
+  design: e1_design,
+  markings: [
+    AssemblyLabel { model: "P4261", part_number: "694-24261-0000-201", revision: "E1", serial: "1583323120274", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    PcbCode { code: "180-14261-DAAF-B00", printed_beside: Absent, evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+  ],
+  module_receptacles: [],
+  backplane_connectors: [
+    BackplaneConnectorObservation { seen: 1, face: Present { value: CavityGrid { columns: 9, rows: 4 } }, guide_pin_seen: true, power_blade_seen: false, evidence: e1_photo(taken_on: "2026-10-16", locator: "grey edge connector photographed face-on, sent in the session") },
+  ],
+  j20: MappedOnHousing { housing: e1_j20_housing },
+  j20_calipers: [
+    CaliperSpan { axis: AlongRow, measured: micrometer(count: 26320), pitches: 8, cavities: 1, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "inner left wall of first pin - outer right wall of right pin: 26.32mm" } },
+    CaliperSpan { axis: AcrossRows, measured: micrometer(count: 5270), pitches: 1, cavities: 1, evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "top inner wall of 9th pin to bottom inner wall of ground 9th pin: 5.27mm" } },
+  ],
+  edge_high_speed_connectors: CensusPartial {
+    counted_at_least: 2,
+    designators_read: ["J11"],
+    family_candidate: Present { value: operator_carrier_edge_family },
+    obligation: "count the rest, read their J-numbers and one housing's marking on this unit",
+  },
+  management_io_survey: PartlyPhotographed { not_covered: "the board has been photographed only in close-ups (J20 and its parts, F300, U522, the label area, one grey connector, one edge receptacle); its other edges and the region around U4 are unphotographed" },
+  management_io: [
+    PinHeader { designator: Present { value: "J620" }, rows: 2, columns: 5, pin_one_marked: true, evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    EdgeReceptacle { marking: Present { value: "Amphenol / 1502" }, opening_widths: [micrometer(count: 7000), micrometer(count: 5000)], plug_fit: MicroUsbPlugFits, candidates: [UsbSuperSpeedMicroB], evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "one side is ~5mm and the other (micro usb) is ~7mm" } },
+  ],
+  components: [
+    InstalledComponent { component: e1_j20, terminals: map(e1_j20_housing.positions, p => p.terminal), identification: MarkingUnresolved { marking: Absent, discriminator: "read the housing's molded marking; its caliper spans are recorded in j20_calipers" } },
+    InstalledComponent { component: e1_d2, terminals: names(ns: ["tab nearer J20", "tab farther from J20"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / ZCN5U under a boxed maker logo that is not identified", evidence: e1_photo(taken_on: "2026-10-15", locator: "D2 close-up sent in the session") } } },
+    InstalledComponent { component: e1_d5, terminals: names(ns: ["top tab", "bottom tab"]), identification: MarkingSharedByMakers { rows: e1_shared_tvs_rows, marking: MarkingReading { text: "5PGK / 2CN5U", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session, D5 in frame") } } },
+    InstalledComponent { component: e1_f300, terminals: names(ns: ["one end", "other end"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 100), interrupt_voltage: Present { value: volt(count: 75) } }, marking: MarkingReading { text: "LF 75V 100A", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } } },
+    InstalledComponent { component: e1_f302, terminals: names(ns: ["one pad", "other pad"]), identification: FootprintUnpopulated { evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") } },
+    InstalledComponent { component: e1_f1, terminals: names(ns: ["end nearer J20", "end farther from J20"]), identification: RatingPrintedOnBody { rating: PrintedFuseRating { current: ampere(count: 12), interrupt_voltage: Absent }, marking: MarkingReading { text: "LF 12A", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { component: e1_component(local: "R010 shunt beside F1"), terminals: [], identification: ResistanceCodeRead { milliohms: 10, marking: MarkingReading { text: "R010", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { component: e1_c10, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { component: e1_c12, terminals: names(ns: ["positive", "negative"]), identification: IdentifiedByMarking { row: eeh_zu1j151, marking: MarkingReading { text: "150 / J ZU / 26AL", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } } },
+    InstalledComponent { component: e1_third_can, terminals: names(ns: ["positive", "negative"]), identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "partly visible '...ZU / ...AL'", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") } }, discriminator: "a full read of its top marking" } },
+    InstalledComponent { component: e1_component(local: "switch candidate between R010 and the capacitors"), terminals: [], identification: MarkingUnresolved { marking: Present { value: MarkingReading { text: "...08N10 / SWAC (partly legible, photographed upside down)", evidence: e1_photo(taken_on: "2026-10-15", locator: "switch close-up sent in the session") } }, discriminator: "a sharp close-up of the marking matched to its maker's marking table; 'N10' is how Infineon names its 100 V parts, a lead rather than an identification" } },
+    InstalledComponent { component: e1_input_fet, terminals: names(ns: e1_fet_terminal_names), identification: MarkingUnresolved { marking: Absent, discriminator: "read its designator and top marking; the K1's input-stage MOSFETs read 017N10LF (IPB017N10N5LF), a lead for this one, not its identity" } },
+    InstalledComponent { component: e1_component(local: "U522"), terminals: names(ns: ["1", "2", "3", "4", "5", "6", "7", "8"]), identification: IdentifiedByMarking { row: tmp275_dgk, marking: MarkingReading { text: "TI 31 / T275", evidence: e1_photo(taken_on: "2026-10-15", locator: "U522 close-up sent in the session") } } },
+  ],
+  measured: Present { value: e1_measured },
+  input: Present { value: e1_input },
+  unresolved: [
+    UnresolvedPart { designator: Absent, marking: Present { value: "P617A / 01 14 / 226" }, obligation: "an 8-pin MSOP left of the VCI mark, read at the photograph's resolution: maker and function unresolved", evidence: e1_photo(taken_on: "2026-10-16", locator: "E1 label photograph sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: e1_photo(taken_on: "2026-10-15", locator: "J20 close-up sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Present { value: "HA..." }, obligation: "a part below D5, partly in frame: read its marking", evidence: e1_photo(taken_on: "2026-10-16", locator: "F300 photograph sent in the session") },
+    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the large bare pads by F300 and the copper-ringed mounting holes were read as populations ('all of the big bare pads', 'J20 connects to all copper holes'); each would be a terminal once numbered on a photograph", evidence: OperatorStatement { stated_on: "2026-10-16", verbatim: "all of the big bare pads are connected the to the power rail" } },
+  ],
+}
+
+// ── RENDERING (diagnostics only) ──────────────────────────────────────────────────────────────
+
+fn component_text(c: ComponentInstanceIdentity) -> String {
+  component_local_label(c: c) as String
+}
+
+fn withstand_kind_text(k: VoltageWithstandKind) -> String {
+  match k {
+    TvsReverseStandoff => "TVS reverse standoff"
+    CapacitorRatedVoltage => "capacitor rated voltage"
+    DrainSourceMaximum => "drain-source maximum"
+    FuseInterruptRating => "fuse voltage rating"
+  }
+}
+
+fn row_side_text(s: RowSide) -> String {
+  match s {
+    LatchSide => "on the latch side"
+    AwayFromLatch => "away from the latch"
+    SideUnrecorded => "side unrecorded"
+  }
+}
+
+fn polarity_gap_text(g: PolarityGap) -> String {
+  match g {
+    SidesUnrecorded => "a contact's side is unrecorded"
+    NoMeasuredBoard => "no measured board"
+    FusedSideNotReached => "not every fused-side contact is read to the fuse"
+    ReturnSideNotJoined => "the return-side contacts are not read joined"
+    IsolationUnread => "no reading separates the two sides"
+  }
+}
+
+fn polarity_text(p: InputPolarity) -> String {
+  match p {
+    PolarityEstablished { fused_side, return_side, fused: _, returns: _, isolation: _ } => join([
+      "polarity established ", evidence_grade_text(g: polarity_grade(p: p)), ": fused contacts ", row_side_text(s: fused_side), ", return contacts ", row_side_text(s: return_side),
+    ], "")
+    PolarityContradicted { readings } => join(["polarity CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), "): re-read before any connection"], "")
+    PolarityUnestablished { gaps } => join(["polarity UNESTABLISHED (", join(map(gaps, g => polarity_gap_text(g: g)), "; "), "): re-read before any connection"], "")
+  }
+}
+
+fn across_text(s: AcrossInputStanding) -> String {
+  match s {
+    AcrossInput { component, on_fused, on_return, fused_path: _, return_path: _ } => join([
+      component_text(c: component), " across the input ('", terminal_text(t: on_fused), "' on the fused side, '", terminal_text(t: on_return), "' on the return side)",
+    ], "")
+    AcrossInputContradicted { component, readings } => join([component_text(c: component), " placement CONTRADICTED (", join(map(readings, o => continuity_text(o: o)), "; "), ")"], "")
+    AcrossInputUnestablished { component, gap } => join([component_text(c: component), " not placed across the input (",
+      match gap {
+        InputPolarityNotEstablished => "the input polarity is not established"
+        NotTwoTerminals => "not a two-terminal part"
+        TerminalsNotPlaced => "its terminals are not read to the two sides"
+      }, ")"], "")
+  }
+}
+
+fn observed_rating_text(o: ObservedRating) -> String {
+  join([component_text(c: o.component), ": ", to_string(volt_count(v: o.rated.maximum)), " V ", withstand_kind_text(k: o.rated.kind), "; ", across_text(s: o.placement)], "")
+}
+
+fn bound_text(b: InputBoundStanding) -> String {
   match b {
-    BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
-      join(["at most ", to_string(volt_count(v: m)), " V, limited by the ", l as String, " (", r as String, ")"], "")
-    NoEstablishedBound { observed_ratings: rs } =>
-      match rs.first() {
-        Absent => "no rated part read on this path, and no input bound"
-        Present { value: _ } => join(["no input bound established: no part's rating is shown to apply across the input rail; ratings observed (", join(map(rs, r => r as String), "; "), ") bound nothing"], "")
-      }
+    BoundEstablished { bound, equally_limiting, observed: _ } => join([
+      "at most ", to_string(volt_count(v: bound.rated.maximum)), " V, limited by ", component_text(c: bound.limiting_component), "'s ", withstand_kind_text(k: bound.rated.kind),
+      " (", across_text(s: bound.placement), "; ", evidence_grade_text(g: bound.grade), ")",
+      match equally_limiting.first() {
+        Absent => ""
+        Present { value: _ } => join(["; equally limited by ", join(map(equally_limiting, x => component_text(c: x.limiting_component)), ", ")], "")
+      },
+    ], "")
+    BoundContradicted { contradicted, observed: _ } => join(["bound CONTRADICTED: ", join(map(contradicted, o => observed_rating_text(o: o)), "; ")], "")
+    BoundUnestablished { observed } => match observed.first() {
+      Absent => "no rated part read, and no input bound"
+      Present { value: _ } => join(["no input bound established; observed ratings (", join(map(observed, o => observed_rating_text(o: o)), "; "), ") bound nothing"], "")
+    }
   }
 }
 
@@ -311,27 +1077,319 @@ fn hypothesis_text(h: InvestigationHypothesis) -> String {
   join(["hypothesis, not a derivation: ", h.claim as String, " (", join(map(h.sources, x => x as String), "; "), "); decided by ", h.decided_by as String], "")
 }
 
-// THE READING the bench plan consumes: what the photographs establish about the carrier's power
-// input, and what they leave open.
+fn j20_position_count(layout: CarrierLayoutObservation) -> Nat {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, evidence: _ } => n
+    MappedOnHousing { housing } => count(housing.positions)
+  }
+}
+
+fn span_fits(s: CaliperSpan, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  micrometer_count(m: s.measured) >= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_min)
+    && micrometer_count(m: s.measured) <= s.pitches * micrometer_count(m: pitch) + s.cavities * micrometer_count(m: cavity_max)
+}
+
+// Whether every caliper span is consistent with a pitch, given bounds on the cavity width.
+fn calipers_fit_pitch(spans: List<CaliperSpan>, pitch: Micrometer, cavity_min: Micrometer, cavity_max: Micrometer) -> Bool {
+  count(spans) > 0 && all(spans, s => span_fits(s: s, pitch: pitch, cavity_min: cavity_min, cavity_max: cavity_max))
+}
+
+fn fit_word(b: Bool) -> String {
+  if b { "fit" } else { "do not fit" }
+}
+
+fn caliper_text(spans: List<CaliperSpan>) -> String {
+  match spans.first() {
+    Absent => ""
+    Present { value: _ } => join([
+      "; caliper spans ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 3000), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
+      " a 3.0 mm pitch and ", fit_word(b: calipers_fit_pitch(spans: spans, pitch: micrometer(count: 4200), cavity_min: micrometer(count: 2000), cavity_max: micrometer(count: 2600))),
+      " a 4.2 mm pitch, for a cavity of 2.0 to 2.6 mm",
+    ], "")
+  }
+}
+
+fn j20_text(layout: CarrierLayoutObservation) -> String {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, evidence: _ } => join([to_string(n), " positions counted from a photograph; pin continuity unread", caliper_text(spans: layout.j20_calipers)], "")
+    MappedOnHousing { housing } => join([to_string(count(housing.positions)), " positions mapped on the housing", caliper_text(spans: layout.j20_calipers)], "")
+  }
+}
+
+// ── NARROW FINDINGS, for consumers that cite one fact ─────────────────────────────────────────
+//
+// A consumer that records "this was established" cites ONE finding, not the whole carrier report, so
+// that removing or contradicting that fact in this model reopens the consumer and nothing else. Each
+// finding's standing is derived here from the typed model; its text is this module's own rendering.
+type CarrierFinding
+  = J20ContactInventory
+  | J20Polarity
+  | ComponentAcrossInput { component: ComponentInstanceIdentity }
+  | ComponentIdentified { component: ComponentInstanceIdentity }
+  | InputUpperBound
+
+type FindingStanding
+  = FindingEstablished { text: String }
+  | FindingNotEstablished { reason: String }
+
+fn identification_text(i: ComponentIdentification) -> String? {
+  match i {
+    IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking.text as String, "'"], "") }
+    MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking.text as String, "'"], "") }
+    RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking.text as String, "'"], "") }
+    ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn installed(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> InstalledComponent? {
+  (filter(layout.components, x => component_identity_eq(a: x.component, b: c))).first()
+}
+
+fn not_a_component(c: ComponentInstanceIdentity) -> FindingStanding {
+  FindingNotEstablished { reason: join([component_text(c: c), " is not a component of this carrier's observation"], "") }
+}
+
+fn across_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match across_input(layout: layout, c: x) {
+      AcrossInput { component, on_fused, on_return, fused_path, return_path } =>
+        FindingEstablished { text: across_text(s: AcrossInput { component: component, on_fused: on_fused, on_return: on_return, fused_path: fused_path, return_path: return_path }) }
+      AcrossInputContradicted { component, readings } => FindingNotEstablished { reason: across_text(s: AcrossInputContradicted { component: component, readings: readings }) }
+      AcrossInputUnestablished { component, gap } => FindingNotEstablished { reason: across_text(s: AcrossInputUnestablished { component: component, gap: gap }) }
+    }
+  }
+}
+
+fn identified_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match identification_text(i: x.identification) {
+      Present { value: t } => FindingEstablished { text: join([component_text(c: c), " is ", t], "") }
+      Absent => FindingNotEstablished { reason: join([component_text(c: c), "'s marking is not resolved"], "") }
+    }
+  }
+}
+
+fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
+  match f {
+    J20ContactInventory => match layout.j20 {
+      MappedOnHousing { housing: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout)], "") }
+      CountedFromPhotograph { positions: _, evidence: _ } => FindingNotEstablished { reason: join(["J20 is only counted from a photograph: ", j20_text(layout: layout)], "") }
+    }
+    J20Polarity => match input_polarity(layout: layout) {
+      PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => FindingEstablished { text: join(["J20 ", polarity_text(p: input_polarity(layout: layout))], "") }
+      PolarityContradicted { readings: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+      PolarityUnestablished { gaps: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+    }
+    ComponentAcrossInput { component } => across_finding(layout: layout, c: component)
+    ComponentIdentified { component } => identified_finding(layout: layout, c: component)
+    InputUpperBound => match input_bound(layout: layout) {
+      BoundEstablished { bound: _, equally_limiting: _, observed: _ } => FindingEstablished { text: join(["J20 input ", bound_text(b: input_bound(layout: layout))], "") }
+      BoundContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+      BoundUnestablished { observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+    }
+  }
+}
+
+fn is_finding_established(s: FindingStanding) -> Bool {
+  match s {
+    FindingEstablished { text: _ } => true
+    FindingNotEstablished { reason: _ } => false
+  }
+}
+
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
-    "main input: ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", hypothesis_text(h: p4261_main_bus_hypothesis),
-    ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions): ",
-    bound_text(b: path_bound(layout: layout, path: AuxiliaryInputPath)),
-    ". The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
+    "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
+    ". ", hypothesis_text(h: p4261_j20_main_input_hypothesis), ". ", hypothesis_text(h: p4261_grey_path_hypothesis),
+    ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
 
+fn sensor_role_text(r: SensorPinRole) -> String {
+  match r {
+    SerialData { bus: _, open_drain: _ } => "serial data"
+    SerialClock { bus: _ } => "serial clock"
+    AlertOutput { open_drain: _ } => "alert output"
+    GroundReturn => "ground"
+    SupplyInput => "supply"
+    AddressSelect { bit } => join(["address bit ", to_string(bit)], "")
+  }
+}
+
+fn is_trace_target(r: SensorPinRole) -> Bool {
+  match r {
+    SerialData { bus: _, open_drain: _ } => true
+    SerialClock { bus: _ } => true
+    AlertOutput { open_drain: _ } => true
+    GroundReturn => false
+    SupplyInput => false
+    AddressSelect { bit: _ } => false
+  }
+}
+
+fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking: MarkingReading) -> List<String> {
+  match row.specification {
+    TemperatureSensorSpec { sensor } => [join([
+      component_text(c: c.component), " ('", marking.text as String, "') is ", row.ordering_code as String,
+      "; trace pins ", join(map(filter(sensor.pins, p => is_trace_target(r: p.role)), p => join([to_string(p.number), " ", p.name as String, " (", sensor_role_text(r: p.role), ")"], "")), ", "),
+    ], "")]
+    TvsDiodeSpec { tvs: _ } => []
+    CapacitorSpec { capacitor: _ } => []
+    MosfetSpec { mosfet: _ } => []
+    ConnectorSpec { connector: _ } => []
+  }
+}
+
+// A part identified as a temperature sensor renders its bus pins as trace targets, from its typed roles.
+fn sensor_trace_text(c: InstalledComponent) -> List<String> {
+  match c.identification {
+    IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
+    MarkingSharedByMakers { rows: _, marking: _ } => []
+    RatingPrintedOnBody { rating: _, marking: _ } => []
+    ResistanceCodeRead { milliohms: _, marking: _ } => []
+    MarkingUnresolved { marking: _, discriminator: _ } => []
+    FootprintUnpopulated { evidence: _ } => []
+  }
+}
+
+fn candidate_text(c: ReceptacleCandidate) -> String {
+  match c {
+    UsbMicroB => "USB Micro-B"
+    UsbSuperSpeedMicroB => "USB 3.0 SuperSpeed Micro-B"
+  }
+}
+
+fn width_text(w: Micrometer) -> String {
+  join([to_string(micrometer_count(m: w)), " um"], "")
+}
+
+fn management_io_item_text(o: ManagementIoObservation) -> String {
+  match o {
+    PinHeader { designator, rows, columns, pin_one_marked, evidence: _ } => join([
+      match designator {
+        Absent => "a"
+        Present { value: d } => d as String
+      },
+      " ", to_string(rows), " x ", to_string(columns), " pin header", if pin_one_marked { " with a pin-1 mark" } else { "" }, ", function and pinout unread",
+    ], "")
+    EdgeReceptacle { marking, opening_widths, plug_fit, candidates, evidence: _ } => join([
+      "an edge receptacle",
+      match marking {
+        Absent => ""
+        Present { value: m } => join([" marked '", m as String, "'"], "")
+      },
+      match opening_widths.first() {
+        Absent => ""
+        Present { value: _ } => join([" with openings of about ", join(map(opening_widths, w => width_text(w: w)), " and ")], "")
+      },
+      match plug_fit {
+        MicroUsbPlugFits => ", into which a micro-USB plug fits"
+        PlugFitUntried => ""
+      },
+      "; candidate families ", join(map(candidates, c => candidate_text(c: c)), ", "), " (part number, protocol and role unestablished)",
+    ], "")
+    FlatCableConnectors { count: n, evidence: _ } => join([to_string(n), " thin flat-cable connectors, function unread"], "")
+  }
+}
+
+// THE RECEIVED BOARD IS NAMED BY ITS OWN LABEL. A label in a listing photograph names what was sold,
+// possibly a sibling unit; only the operator's photograph of the board in hand names this one, so every
+// consumer that labels the carrier reads it here rather than restating it.
+fn is_operator_photograph(e: EvidenceRef) -> Bool {
+  match e {
+    OperatorPhotograph { taken_on: _, locator: _ } => true
+    _ => false
+  }
+}
+
+fn is_received_label(m: BoardMarking) -> Bool {
+  match m {
+    AssemblyLabel { model: _, part_number: _, revision: _, serial: _, evidence } => is_operator_photograph(e: evidence)
+    _ => false
+  }
+}
+
+fn received_labels(layout: CarrierLayoutObservation) -> List<BoardMarking> {
+  filter(layout.markings, m => is_received_label(m: m))
+}
+
+fn carrier_label_text(layout: CarrierLayoutObservation) -> String {
+  let texts = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number, revision, serial, evidence: _ } =>
+      [join([model as String, " ", part_number as String, " rev ", revision as String, ", S/N ", serial as String], "")]
+    _ => []
+  })
+  match texts.first() {
+    Absent => "a carrier whose label is unread on the received unit"
+    Present { value: _ } => join(texts, "; ")
+  }
+}
+
+fn carrier_model_text(layout: CarrierLayoutObservation) -> String {
+  let models = flat_map(received_labels(layout: layout), m => match m {
+    AssemblyLabel { model, part_number: _, revision: _, serial: _, evidence: _ } => [model as String]
+    _ => []
+  })
+  match models.first() {
+    Absent => "unlabelled"
+    Present { value: m } => m
+  }
+}
+
 fn management_io_text(layout: CarrierLayoutObservation) -> String {
-  match layout.management_io_observed.first() {
-    Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
-    Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+  let items = join(map(layout.management_io, o => management_io_item_text(o: o)), "; ")
+  let io = match layout.management_io_survey {
+    WholeBoardPhotographed => match layout.management_io.first() {
+      Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
+      Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", items], "")
+    }
+    PartlyPhotographed { not_covered } => match layout.management_io.first() {
+      Absent => join(["this P4261's management I/O is unsurveyed: ", not_covered as String], "")
+      Present { value: _ } => join(["this P4261 is partly photographed, so no absence of management I/O is established (", not_covered as String, "); it shows ", items], "")
+    }
+  }
+  let sensors = flat_map(layout.components, c => sensor_trace_text(c: c))
+  match sensors.first() {
+    Absent => io
+    Present { value: _ } => join([io, ". Identified management-bus parts: ", join(sensors, "; ")], "")
+  }
+}
+
+fn family_spec_text(row: ElectronicComponentRow) -> String {
+  match row.specification {
+    ConnectorSpec { connector } => join([" (", connector.series as String, ", ", to_string(connector.positions), " positions)"], "")
+    TvsDiodeSpec { tvs: _ } => ""
+    CapacitorSpec { capacitor: _ } => ""
+    MosfetSpec { mosfet: _ } => ""
+    TemperatureSensorSpec { sensor: _ } => ""
+  }
+}
+
+fn read_on_text(r: ReadOnUnit) -> String {
+  match r {
+    ReadOnAsset { asset } => asset as String
+    UnitUnrecorded => "one of the operator's two carriers, which one unrecorded"
   }
 }
 
 fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
   match layout.edge_high_speed_connectors {
-    CensusComplete { count: n, family: f } => join([to_string(n), " ", f as String, " connectors"], "")
-    CensusPartial { counted_at_least: n, obligation: o } => join(["at least ", to_string(n), " cabled high-speed connectors (", o as String, ")"], "")
+    CensusComplete { count: n, family } => join([to_string(n), " ", family.ordering_code as String, " connectors"], "")
+    CensusPartial { counted_at_least: n, designators_read, family_candidate, obligation } => join([
+      "at least ", to_string(n), " cabled high-speed connectors",
+      match designators_read.first() {
+        Absent => ""
+        Present { value: _ } => join([" (", join(map(designators_read, d => d as String), ", "), " read)"], "")
+      },
+      " (", obligation as String, ")",
+      match family_candidate {
+        Absent => ""
+        Present { value: fc } => join(["; family candidate ", fc.row.ordering_code as String, family_spec_text(row: fc.row), ", marking '", fc.marking as String, "' read on ", read_on_text(r: fc.read_on)], "")
+      },
+    ], "")
   }
 }
