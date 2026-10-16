@@ -25,8 +25,9 @@ import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site
 import gunbc.host.smpro_platform_capability {
   SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
   SmproPlatformUnestablished, smpro_platform_standing, smpro_platform_controller_host,
-  smpro_platform_is_well_formed, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
   SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
+  SmproUnestablishedCause, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import gunbc.host.bmc_control_binding {
   BmcControlStanding, bmc_control_binding,
@@ -227,9 +228,11 @@ fn receipt_matches_record(record: ManagedHostAdmission) -> Bool {
 
 fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
   (record.secure.subject.subject.unit_key as NonEmptyStr) == (record.subject.subject.unit_key as NonEmptyStr)
-    // The arms must be the arms: a Carried platform must present a read site, and a platform that does
-    // not carry the interface must not smuggle one in.
-    && smpro_platform_is_well_formed(standing: record.smpro)
+    // NO well-formedness check on the SMpro arm any more. SmproPlatformCarried holds an admitted
+    // SmproSite directly and a refused site got its own arm, so the states a validator would reject
+    // (carried-without-a-read-site, not-carried-smuggling-a-site) are not writable at all -- DESIGN §5,
+    // correctness by construction. A check that cannot fail is not a check; it is noise that reads as
+    // coverage. What remains below is the join that CAN disagree: the endpoints a machine named.
     && match access_controller_host(access: record.access) {
       Absent => false
       Present { value: access_host } =>
@@ -610,16 +613,20 @@ fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) ->
         // claiming there is no controller would be false. The family is carried through so the reader
         // can see WHICH silicon was asked about.
         SmproPlatformNotCarried { family: family } => SmproSubjectNotCarried { family: family }
-        SmproPlatformUnestablished { reason: reason } => SmproSubjectUnestablished { reason: reason }
+        SmproPlatformUnestablished { cause: cause } => SmproSubjectUnestablished { cause: cause }
       }
-    BmcControlAccessUnobserved { endpoint: _ } =>
-      SmproSubjectUnestablished { reason: "the controller's access standing is unobserved, so no control route is bound to read SMpro through" }
-    BmcControlNotSecured { cause: _ } =>
-      SmproSubjectUnestablished { reason: "the bound controller is not secured, so no control route is bound to read SMpro through" }
-    BmcControlEndpointMismatch { observed: _, secured: _ } =>
-      SmproSubjectUnestablished {
-        reason: "the observed controller and the secured account name different endpoints, so no control route is bound to read SMpro through",
-      }
+    // No bound route, so there is nothing to read the interface through -- and WHICH route fact is
+    // missing is carried as the cause, not restated as a sentence. Review 81287 F5: these three arms
+    // used to mint prose claiming "no control route is bound to read SMpro through", which a witness
+    // could only string-match, and which lost the difference between "never observed", "refused to
+    // secure" and "the two ends name different machines". The BmcControlStanding arms already name
+    // those facts precisely, so they ride through unchanged.
+    BmcControlAccessUnobserved { endpoint: e } =>
+      SmproSubjectUnestablished { cause: AccessUnobserved { endpoint: e } }
+    BmcControlNotSecured { cause: c } =>
+      SmproSubjectUnestablished { cause: ControlRouteNotSecured { cause: c } }
+    BmcControlEndpointMismatch { observed: o, secured: sec } =>
+      SmproSubjectUnestablished { cause: ControlEndpointMismatch { observed: o, secured: sec } }
   }
 }
 
