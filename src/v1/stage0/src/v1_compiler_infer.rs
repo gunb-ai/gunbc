@@ -214,13 +214,15 @@ pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, builtin_param_names, infer_builtin_call_type,
     is_empty_map_constructor, is_empty_set_constructor, resolve_builtin_call_type,
 };
+use crate::v1_compiler_infer_patterns::ConstructorRoster::{ConstructorsClosed, ConstructorsOpen};
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
-    check_match_exhaustiveness, constructor_fields, expand_scrut_type_for_variant_lookup,
-    lookup_field_in_variant, lookup_result_subject, lookup_variant_in_type, pattern_binding_type,
-    pattern_matches_constructor, pattern_subject_from_inferred, pattern_subject_from_node,
+    check_match_exhaustiveness, constructor_fields, constructor_roster_for,
+    expand_scrut_type_for_variant_lookup, lookup_field_in_variant, lookup_result_subject,
+    lookup_variant_in_type, pattern_binding_type, pattern_matches_constructor,
+    pattern_subject_from_inferred, pattern_subject_from_node,
 };
-pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
+pub use crate::v1_compiler_infer_patterns::{ConstructorRoster, NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     fn_type_param_names, generic_declaration_application, is_user_generic_use_site,
     peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, reference_with_declaration,
@@ -15180,11 +15182,36 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             });
             let result_type = unified_arm_type.clone();
             let empty_arms_diags = if ((arm_infer_results.clone().len() as i64) == 0) {
-                Rc::new(vec![inference_error(
-                    "match expression has no arms".to_string(),
-                    span.clone(),
-                    scope.module_name.clone(),
-                )])
+                match (*resolve_pattern_subject(scope.clone(), scrut_subject.clone())).clone() {
+                    PatternSubject::PatternResolved {
+                        node: resolved_scrutinee,
+                        ..
+                    } => match (*crate::v1_compiler_infer_patterns::constructor_roster_for(
+                        resolved_scrutinee.clone(),
+                        scope.type_env.clone(),
+                    ))
+                    .clone()
+                    {
+                        ConstructorRoster::ConstructorsClosed { names: _, .. } => Rc::new(vec![]),
+                        ConstructorRoster::ConstructorsOpen => Rc::new(vec![inference_error(
+                            "match expression has no arms".to_string(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                    },
+                    PatternSubject::PatternDynamic { span: _, .. } => {
+                        Rc::new(vec![inference_error(
+                            "match expression has no arms".to_string(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )])
+                    }
+                    PatternSubject::PatternLookupBlocked => Rc::new(vec![inference_error(
+                        "match expression has no arms".to_string(),
+                        span.clone(),
+                        scope.module_name.clone(),
+                    )]),
+                }
             } else {
                 Rc::new(vec![])
             };
@@ -26080,7 +26107,61 @@ pub fn local_binding_for_item(
                                         ),
                                     ))
                                 } else {
-                                    std::option::Option::None
+                                    if ((((((item.module_item_kind.clone()
+                                        == ModuleItemTypeDeclaration)
+                                        && (item.connective.clone()
+                                            == Connective::NoConnective))
+                                        && (item.body.clone() == std::option::Option::None))
+                                        && ((item.params.clone().len() as i64) == 0))
+                                        && ((item.children.clone().len() as i64) == 0))
+                                        && (item.transport.clone() == std::option::Option::None))
+                                    {
+                                        {
+                                            let type_node = Rc::new(Node {
+                                                occurrence_identity: item
+                                                    .occurrence_identity
+                                                    .clone(),
+                                                name: item.name.clone(),
+                                                span: item.span.clone(),
+                                                ident_span: item.ident_span.clone(),
+                                                children: Rc::new(vec![]),
+                                                connective: Connective::NoConnective,
+                                                params: Rc::new(vec![]),
+                                                inferred: std::option::Option::None,
+                                                return_cardinality: item
+                                                    .return_cardinality
+                                                    .clone(),
+                                                uses: Rc::new(vec![]),
+                                                body: std::option::Option::None,
+                                                transport: std::option::Option::None,
+                                                properties: item.properties.clone(),
+                                                type_annotation: std::option::Option::None,
+                                                is_self_recursive: false,
+                                                has_non_tail_self_call: false,
+                                                match_pattern: std::option::Option::None,
+                                                module_item_kind: item.module_item_kind.clone(),
+                                                declaration_marker: item
+                                                    .declaration_marker
+                                                    .clone(),
+                                                declaration: item.declaration.clone(),
+                                                expr_data: Rc::new(ExprData::NoExprData),
+                                                ident: None,
+                                            });
+                                            Some(Rc::new(TypeBinding {
+                                                name: crate::v1_std_core::authored_name_at(
+                                                    source_indices.clone(),
+                                                    item.clone(),
+                                                ),
+                                                resolved: type_node.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                                alias_rhs: std::option::Option::None,
+                                            }))
+                                        }
+                                    } else {
+                                        std::option::Option::None
+                                    }
                                 }
                             }
                         }
@@ -28872,7 +28953,69 @@ pub fn build_type_env_unresolved(
                                                 ),
                                             )
                                         } else {
-                                            acc.clone()
+                                            if ((((((item.module_item_kind.clone()
+                                                == ModuleItemTypeDeclaration)
+                                                && (item.connective.clone()
+                                                    == Connective::NoConnective))
+                                                && (item.body.clone()
+                                                    == std::option::Option::None))
+                                                && ((item.params.clone().len() as i64) == 0))
+                                                && ((item.children.clone().len() as i64) == 0))
+                                                && (item.transport.clone()
+                                                    == std::option::Option::None))
+                                            {
+                                                {
+                                                    let type_node = Rc::new(Node {
+                                                        occurrence_identity: item
+                                                            .occurrence_identity
+                                                            .clone(),
+                                                        name: item.name.clone(),
+                                                        span: item.span.clone(),
+                                                        ident_span: item.ident_span.clone(),
+                                                        children: Rc::new(vec![]),
+                                                        connective: Connective::NoConnective,
+                                                        params: Rc::new(vec![]),
+                                                        inferred: std::option::Option::None,
+                                                        return_cardinality: item
+                                                            .return_cardinality
+                                                            .clone(),
+                                                        uses: Rc::new(vec![]),
+                                                        body: std::option::Option::None,
+                                                        transport: std::option::Option::None,
+                                                        properties: Rc::new(vec![]),
+                                                        type_annotation: std::option::Option::None,
+                                                        is_self_recursive: false,
+                                                        has_non_tail_self_call: false,
+                                                        match_pattern: std::option::Option::None,
+                                                        module_item_kind: item
+                                                            .module_item_kind
+                                                            .clone(),
+                                                        declaration_marker: item
+                                                            .declaration_marker
+                                                            .clone(),
+                                                        declaration: item.declaration.clone(),
+                                                        expr_data: Rc::new(ExprData::NoExprData),
+                                                        ident: None,
+                                                    });
+                                                    v1_rt::rc_map_insert(
+                                                        acc.clone(),
+                                                        item_ident.clone(),
+                                                        Rc::new(TypeBinding {
+                                                            name: crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                item.clone(),
+                                                            ),
+                                                            resolved: type_node.clone(),
+                                                            provenance: Rc::new(
+                                                                SubValueRelation::SubValueUnknown,
+                                                            ),
+                                                            alias_rhs: std::option::Option::None,
+                                                        }),
+                                                    )
+                                                }
+                                            } else {
+                                                acc.clone()
+                                            }
                                         }
                                     }
                                 }

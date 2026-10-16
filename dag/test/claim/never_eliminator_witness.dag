@@ -96,6 +96,17 @@ test fn empty_match_on_local_never_name_must_refuse() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_local_never_name_source) >= 1
 }
 
+data empty_match_local_never_with_index_source: String = "module neverprobe.loc_idx\n\nimport std.types { Int }\nimport std.error_primitives { absurd }\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+// RED (review 81214): the std.error_primitives index row IS present in this pool (the module is
+// imported), and a local `type Never` shares the spelling. Identity, not the interned name, decides:
+// the empty match on the local type must refuse. Measured with the interned-name arm of
+// candidate_joins_never_identity still present, this source already refused, so the arm was dead;
+// the RED stays as the regression control for its removal.
+test fn empty_match_on_local_never_name_with_index_present_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_local_never_with_index_source) >= 1
+}
+
 data empty_match_never_without_index_source: String = "module neverprobe.no_index\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
 
 // RED: Never is unbound here, so there is no indexed identity. Empty match
