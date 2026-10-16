@@ -4599,20 +4599,50 @@ fn realize_live_deploy_apply_on_host(
   }
 }
 
+// RETRACT LOCUS GATE. A fail-closed narrowing placed in front of the STILL-RETAINED retract script:
+// realize_live_deploy_retract_on_host runs retained_srvn(live_deploy_retract_script_for) through
+// realize_shell_on_host, and that script is not modeled over ssh or the thin-run artifact locus, so
+// only the local locus proceeds. LocalShell passes (none); SshShell, FleetSsh and
+// EmitArtifactThenThinRun each refuse before any step runs. This does not make the teardown typed:
+// dissolving the script (and this retained_srvn row) is PB2's typed deploy preamble/retract, which
+// is the trigger that deletes the script and keeps this gate as the typed locus choice.
+fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
+  match transport {
+    LocalShell => none
+    SshShell { ssh_host: h } =>
+      Present { value: join([
+        "live_deploy retract refused over ssh host=", h,
+        ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
+        "Refusing the remote locus rather than emit a script to run remotely.",
+      ], "") }
+    FleetSsh { target: _, context: _ } =>
+      Present { value: join([
+        "live_deploy retract refused over fleet ssh: the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
+        "Refusing the remote locus rather than emit a script to run remotely.",
+      ], "") }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      Present { value: "live_deploy retract refused over EmitArtifactThenThinRun: the retract unit teardown is a LOCAL operation over the host-effect transport and the bash emitter it replaces is not modeled over the thin-run artifact locus." }
+  }
+}
+
 fn realize_live_deploy_retract_on_host(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: live_deploy_retract_script_for(spec: spec, access: access),
-      reason: "live_deploy retract (unit teardown)",
-    ),
-    transport: transport,
-    intent: intent,
-  )
+  match live_deploy_retract_candidate_locus_refusal(transport: transport) {
+    Present { value: why } => NotConverged { reason: why, applied: intent }
+    Absent =>
+    realize_shell_on_host(
+      script: retained_srvn(
+        body: live_deploy_retract_script_for(spec: spec, access: access),
+        reason: "live_deploy retract (unit teardown)",
+      ),
+      transport: transport,
+      intent: intent,
+    )
+  }
 }
 
 // THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
