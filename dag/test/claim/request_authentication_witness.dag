@@ -30,6 +30,7 @@ import gunbc.auth.session {
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
+import gunbc.principal_projection { principal_ref_eq }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
   SessionStandingInvalid,
@@ -37,6 +38,7 @@ import gunbc.auth.request_authentication {
   DeploymentAccessPolicy,
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage,
   ServeWriteAuthorizationPolicy,
+  tracker_write_authorization_policy, operator_approver_principal,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -663,4 +665,12 @@ test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
           observed_at: "2026-09-25T00:05:00Z",
         ) == Permit
   }
+}
+
+// THE PRODUCTION ROSTER IS EXACTLY THE ENROLLED OPERATOR, an identity join rather than a count, so a
+// widened roster (a second principal minted beside the operator's) goes red here.
+test fn the_production_approve_roster_is_exactly_the_enrolled_operator() -> Bool {
+  let roster = tracker_write_authorization_policy.approve_roster
+  any(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+    && all(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
 }
