@@ -1,0 +1,37 @@
+instrument: tools/rebind_census.sh
+artifacts: selfhost_fold_seed.log (reproduced locally on the remote runner, NOT CI:
+  `target/release/gunbc test //gunbc/instruments:self-host` at head 103c0bd, seed
+  src/v1/stage0/src/v1_compiler_infer.rs = seedgreen/ (UnifyGenericsAcc=36,
+  sha256 5e9c37585fe088ac...), built in the same dispatch after the mirror swap
+  because gunbc refuses cause=StaleBinary otherwise. rc=2, 220 'bound as' refusals.)
+
+rows parsed: 220
+distinct (formal,actual,span): 136
+
+TOTAL PARTITION (every row exactly one class; sum must equal rows): 220/220
+  DIFF_HEAD_UNFOLD_CANDIDATE  106   predicted removed by RELATION
+  DIFF_HEAD_DISJOINT           38   predicted removed by NONE
+  FORMAL_VS_CONCRETE           32   predicted removed by FORMAL(c)
+  SAME_HEAD_BOTH_APPLIED       21   predicted removed by NONE
+  KERNEL_EMPTY_LEAF            16   predicted removed by NONE
+  SAME_TEXT                     7   predicted removed by X1
+
+PREDICTION SUMMARY (rows per predicted change):
+  RELATION    106
+  NONE         75
+  FORMAL(c)    32
+  X1            7
+
+IDENTITY TO THE CI ARTIFACT: the partition over this locally reproduced corpus is
+byte-identical to the partition over the v2-bootstrap artifact of run 38918165053
+(tools/rebind_census_run_38918165053.txt): same 220 rows, same 136 distinct
+(formal,actual,span), same class counts. The corpus is reproducible off CI, so the
+row-by-row prediction can be checked locally as well as in CI.
+
+CONTROL (the RED the fold prevents), same dispatch, arm B: the PRE-FOLD seed
+(UnifyGenericsAcc=0, sha256 33d65c851a015068...) under the SAME .dag emits 0 rebind
+refusals and then fails to compile the emitted crate:
+  error: could not compile `v1_compiled` (bin
+  "gunbc-emitted-closure-src-v2-compiler-source-root-eval-dag") due to 4 previous errors
+So the fold is what turns 4 downstream Rust compile errors into 220 honest diagnostics;
+removing it does not make the corpus clean, it moves the failure downstream.
