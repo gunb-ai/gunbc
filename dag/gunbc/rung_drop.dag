@@ -215,9 +215,8 @@ import gunbc.guarantee_rung {
 // NonEmptyStr because no typed home exists for them yet: the ruling and decision record are
 // operator relays and dashboard message ids rather than gunbc.design_ruling symbols, and
 // `population_gone` is prose (section 4c: a String only where nothing typed exists, and never
-// evidence that the population is gone). Nothing mechanical refuses a Dissolved row whose
-// population still resolves; that check needs a declaration-resolution reader this carrier does not
-// take on, so it is review-enforced and named here rather than claimed.
+// evidence that the population is gone). Admission is mechanical: gunbc.rung_drop.standing
+// dissolved_populations_empty admits a Dissolved row only over an empty TypedDeclaration population.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }

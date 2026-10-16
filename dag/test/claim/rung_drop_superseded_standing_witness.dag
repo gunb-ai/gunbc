@@ -6,7 +6,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
-import gunbc.rung_drop.standing { superseded_loss_holders_stand }
+import gunbc.rung_drop.standing { dissolved_populations_empty, superseded_loss_holders_stand }
 import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
@@ -134,6 +134,7 @@ test fn w_RED_a_holder_named_twice_is_refused() -> Bool {
 // standing drop, and the roster carries at least one supersession, so the join is not vacuous.
 test fn the_live_roster_loss_holders_resolve_and_stand() -> Bool {
   superseded_loss_holders_stand(drops: rung_drop_roster, roster: rung_drop_roster)
+    && dissolved_populations_empty(drops: rung_drop_roster)
     && any(rung_drop_roster, d => match d.standing {
       Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
       Standing => false
@@ -150,4 +151,20 @@ test fn a_dissolved_row_renders_as_not_fired_and_needs_no_loss_holder() -> Bool 
   r.contains("DISSOLVED") && r.contains("gone") && (r.contains("TRIGGER FIRED.") == false)
     && rung_drop_standing_suffix(standing: st) == " · DISSOLVED"
     && superseded_loss_holders_stand(drops: [holder_fixture(id: "fixture.dissolved", standing: st)], roster: [holder_fixture(id: "fixture.dissolved", standing: st)])
+}
+
+// THE DISSOLVED ADMISSION LAW. RED: a Dissolved row over a non-empty typed population is refused.
+// Positive control: the same row over an empty population is admitted; the live roster is checked
+// by the_live_roster_loss_holders_resolve_and_stand.
+test fn w_RED_a_dissolved_row_over_a_live_population_is_refused() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let live = RungDrop {
+    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: ["still-live"], restoration_trigger: "t" }
+  }
+  let empty = RungDrop {
+    identity: "fixture.dissolved" as NonEmptyStr, subject: "s", declared: "2026-01-01", standing: st,
+    declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: DeletedWithoutReplacement, population: [], restoration_trigger: "t" }
+  }
+  (dissolved_populations_empty(drops: [live]) == false) && dissolved_populations_empty(drops: [empty])
 }

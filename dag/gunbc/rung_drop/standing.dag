@@ -11,7 +11,7 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List, Bool }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, AuthoredProse }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
@@ -49,4 +49,22 @@ fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
     Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   })) == 1
+}
+
+// A DISSOLVED ROW IS ADMITTED ONLY OVER AN EMPTY TYPED POPULATION. Dissolved removes a drop from
+// every live account, so its three prose fields cannot be the evidence that the population is gone:
+// the row's own typed population must already be empty (the population list it derives from is
+// empty). A non-empty typed population refuses, and so does a prose declaration, whose population
+// is not readable as a list; a prose row stays Standing or Superseded until it carries a typed
+// declaration.
+fn dissolved_populations_empty(drops: List<RungDrop>) -> Bool {
+  all(drops, d => match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => match d.declaration {
+      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => length(xs: p) == 0
+      AuthoredProse { legacy: _, authored: _ } => false
+    }
+  })
 }
