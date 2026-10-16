@@ -554,11 +554,12 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   }
 }
 
-// An uninhabited SUM: a coproduct with zero arms, or Never keyed by the indexed
-// DeclarationRef (never_type_qualified_path). Missing index => not uninhabited
-// (operator 2026-10-15: no identity→spelling fallback). A type-use is peeled via
-// lookup_type_for / inferred Resolved; join is occurrence or intern ident, never
-// authored_name_at of the use.
+// An uninhabited SUM: a coproduct with zero arms, or Never keyed by DeclarationRef.
+// The index is the usual identity. When it is not built yet, the home module still
+// knows the declaration: env.module_path is never_type_declaration.module_path, and
+// the local env binds that DeclarationRef (str_bindings keyed by its decl_name).
+// That is the local declaration node, not the scrutinee's authored spelling
+// (operator 2026-10-15). A different module's `type Never` is not this ref.
 fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
   match lookup_type_for(env: env, node: n) {
     Present { value: def } => def
@@ -570,10 +571,25 @@ fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
   }
 }
 
+fn never_home_local_declaration(env: TypeEnv) -> Optional<Node> {
+  match env.module_path == (never_type_declaration.module_path as String) {
+    true =>
+      match map_get(env.str_bindings, never_type_declaration.decl_name as String) {
+        Present { value: binding } => Present { value: binding.resolved }
+        Absent => Absent
+      }
+    false => Absent
+  }
+}
+
 fn never_identity_node(env: TypeEnv) -> Optional<Node> {
   match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
     Present { value: indexed } => Present { value: indexed }
-    Absent => Absent
+    Absent =>
+      match never_home_local_declaration(env: env) {
+        Present { value: local } => Present { value: local }
+        Absent => Absent
+      }
   }
 }
 
