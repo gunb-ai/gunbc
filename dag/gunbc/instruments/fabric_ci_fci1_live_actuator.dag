@@ -21,6 +21,7 @@ import extdeps.systemd {
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command, systemctl_stop_argv }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty,
+  NamedUnitSetting,
   Pipe,
   Quiet,
   Wait,
@@ -413,7 +414,7 @@ fn fci1_live_unit_command(ctx: Fci1LiveContext, unit: NonEmptyStr, runtime_direc
   let properties = concat(
     fci1_unit_properties(working_directory: ctx.root, bound: fci1_live_bound(bounded: ctx.bounded)),
     match runtime_directory {
-      Present { value: name } => [SystemdRunProperty { property: RuntimeDirectoryProperty, value: name as NonEmptyStr }]
+      Present { value: name } => [NamedUnitSetting { property: RuntimeDirectoryProperty, value: name as NonEmptyStr }]
       Absent => []
     },
   )
