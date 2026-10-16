@@ -1,9 +1,11 @@
 module test.claim.typed_remote_file_write_witness
 
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words, ssh_target_wire }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
 }
@@ -50,7 +52,7 @@ data witness_dotdot_escape_path: String = "/tmp/../etc/passwd"
 data witness_executor_home_substring_trap_path: String = "/home/gunbc-automation-evil/.config/systemd/user/gunbc-spark-serving.service"
 
 data witness_preflight_ssh_target: SshTarget = SshTarget {
-  endpoint: "srv-test.example" as NonEmptyStr,
+  address: socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["srv-test" as DnsLabel, "example" as DnsLabel] }, qualification: PartiallyQualified }), port: 22),
   principal: "gunbc-automation" as NonEmptyStr,
 }
 
