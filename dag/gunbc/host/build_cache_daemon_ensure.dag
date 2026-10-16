@@ -1,0 +1,423 @@
+module gunbc.host.build_cache_daemon_ensure
+
+// THE TYPED BUILD-CACHE DAEMON ENSURE (shell->dag W7, effect grain; PR-b of the W7 ruling).
+//
+// WHAT THIS MODULE REPLACES. The build-cache ensure step used to hand `retained_srvn` a five-line bash
+// body assembled by `build_cache_provision_shell_script`: `set -euo pipefail`, then observe, classify,
+// `printf ensure=starting`, the ensure, and the read-back. It is deleted in the same commit that lands
+// this file. Each phase was a shell line for exactly one reason: the phase communicated with the next
+// through the script's OWN stdout. The observe phase printed `BuildCacheProvisionReceipt: observe=ok`
+// and `exit 0`; the classify phase grepped its own `$stats_out` with `grep -Fq`; the read-back printed
+// `read_back=ok` and `exit 0`, and a classifier five hundred lines later ran `string_contains` over the
+// whole captured stdout to work out which phase had finished. Nothing about `test -x`, `--show-stats`,
+// `install -m 0644`, `daemon-reload`, `enable`, `restart` or `rm -f` needed a shell — those are argv.
+// What needed the shell was the receipt protocol, and the receipt protocol is what this file deletes:
+// each phase now produces a RECORD, and the record is what the next phase reads.
+//
+// WHY THE INTERPRETATION LIVES HERE AND THE EXECUTION DOES NOT. Every function in this module is pure,
+// including the ones that consume reads and writes: the captured exit code and bytes of a host command
+// arrive as a PARAMETER (`BuildCacheHostRunObserved`), and the operations to run are RETURNED
+// (`BuildCacheDaemonEnsurePlan`) rather than executed. That is what lets a witness supply the boundary
+// values the receipt protocol used to invent — a 127 from a missing binary, an rc-0 zeroed stats table,
+// a fragment that matched — without a host, an ssh session, or a fake sccache in a tmpdir. The fold
+// that actually runs argv lives in gunbc.host.host_effect_realize, which owns `HostEffectTransport`;
+// importing that module from here would close a cycle, so transport never appears in this file's API.
+//
+// FIDELITY, PHASE BY PHASE (the retirement is behaviour-preserving; the one known defect is PINNED, not
+// silently kept, and not silently fixed either — see the ObserveStatsOk paragraph and the quarantined
+// claim).
+//   observe: `[ -x BIN ]`, then `BIN --show-stats 2>&1`, and an absent binary yields rc 127 without
+//            running the query. Same two commands, same order, same rc meanings.
+//   classify: `for frag in <the cited row>; do printf '%s' "$stats_out" | grep -Fq "$frag" && break`.
+//            Same cited row (`sccache_misconfigured_log_fragments`), first match wins, and `grep -F`
+//            means a substring test that REFUSES to interpret a fragment as a pattern — which is why an
+//            empty stats capture matches nothing and lands in the unresponsive arm.
+//   ensure:   the PR-a if-absent install guard, then the unit staged beside its destination and
+//            `install -m 0644`'d in, `daemon-reload`, `enable`, `restart`.
+//   read-back: one more `--show-stats`; rc 0 is the daemon answering.
+//
+// THE ONE PLACE THE PORT IS DELIBERATELY STRONGER THAN THE SCRIPT. `set -e` aborted the script on the
+// first failed command; a failed operation here returns a refusal naming WHICH operation failed and
+// carrying the host's own bytes, and the staged sibling is discarded in both arms (the counterpart of
+// the script's `trap ... EXIT`, which could not survive: `mktemp -d` invented the path at run time, so
+// no fold could name the cleanup before running it — the same reason the compile-pool slice staged a
+// destination sibling).
+
+import std.types { Bool, Int, List, NonEmptyStr, Optional, String }
+import std.optional { Absent, Present }
+import extdeps.crypto.hash { Digest }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path,
+  sccache_misconfigured_log_fragments,
+  sccache_release_0_15_0,
+  sccache_stats_query_command,
+}
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.test_utility { test_executable_command }
+import extdeps.systemd.systemctl {
+  systemctl_daemon_reload_command,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+}
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_file_argv,
+  dd_overwrite_path_command,
+  rm_force_command,
+}
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement }
+import gunbc.build_cache.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  DaemonMisconfigured,
+  DaemonStatsOk,
+  DaemonUnresponsive,
+}
+import gunbc.build_cache.build_cache_unit { build_cache_unit_system_path, build_cache_unit_text }
+import gunbc.host.verified_binary_install { verified_binary_install_install_steps }
+import gunbc.host.sccache_verified_install { sccache_verified_install_params }
+
+// THE STAGE SUFFIX IS THIS ENSURE'S OWN and deliberately does not share `compile_pool_slice_stage_suffix`
+// with the compile-pool slice beside it. Same convention (a sibling of the destination, inside the same
+// privileged directory, so `install` never crosses a filesystem boundary and no partly-installed unit is
+// ever at the destination), different artifact: sharing the literal would put a build-cache claim on a
+// compile-pool fact and make one witness audit the other's subject by accident.
+data build_cache_unit_stage_suffix: String = ".gunbc-stage"
+
+data build_cache_unit_file_mode: NonEmptyStr = "0644" as NonEmptyStr
+
+// THE CAPTURE OF ONE HOST COMMAND, SUPPLIED BY THE CALLER. `stdout` and `stderr` are the bytes the host
+// produced; the script had one stream (`2>&1`), and the scan target below is their concatenation for
+// exactly that reason. A read the transport would not run is NOT representable here — the caller refuses
+// at that point rather than fabricating a zero exit and an empty capture, which is how a "successful"
+// observation used to be manufactured out of nothing.
+type BuildCacheHostRunObserved { exit_code: Int, stdout: String, stderr: String }
+
+// WHETHER A READ COULD BE TAKEN AT ALL, kept separate from what it said.
+type BuildCacheHostRunOutcome
+  = Ran { observed: BuildCacheHostRunObserved }
+  | CouldNotRun { phase: String, reason: String }
+
+// THE OBSERVE PHASE AS A RECORD, replacing `observe=absent` / `observe=ok` / `observe=misconfigured
+// fragment=` / `observe=unresponsive` receipts.
+type BuildCacheObserve
+  = ObserveAbsent
+  | ObserveStatsOk { stats: String }
+  | ObserveMisconfigured { matched_fragment: String, stats: String }
+  | ObserveUnresponsive { detail: String }
+  | ObserveReadBlocked { phase: String, reason: String }
+
+// ONE OPERATION THE ENSURE RUNS, and whether the unit file's BYTES go to it on stdin. That flag is why
+// the heredoc is gone: a heredoc's contents are data to the shell, and here the bytes are data to `dd`'s
+// stdin, so no metacharacter in a unit file can change any command's meaning.
+type BuildCacheEnsureOp { argv: ArgvCommand, unit_bytes_on_stdin: Bool }
+
+// THE ENSURE PLAN, derived before anything runs — the thing `mktemp -d` made impossible, since a fold
+// cannot name operations whose paths are invented at run time.
+type BuildCacheDaemonEnsurePlan
+  = EnsureNotNeeded
+  | EnsureOps { ops: List<BuildCacheEnsureOp> }
+  | EnsurePlanRefused { reason: String }
+
+// WHAT THE ENSURE DID, supplied by the caller after it ran the plan. `EnsureNotRun` is not a success
+// value; it means the observe phase short-circuited before the ensure, which is a fact the classifier
+// below reads.
+type BuildCacheEnsureExecuted
+  = EnsureNotRun
+  | EnsureCompleted { restart: BuildCacheHostRunObserved }
+  | EnsureFailed { op: String, observed: BuildCacheHostRunObserved }
+
+// THE TWO READS THE OBSERVE PHASE MAKES, supplied by the caller. The presence probe comes FIRST because
+// the script ran `[ -x BIN ]` first and because a missing binary must not be recorded as "the daemon
+// answered with nothing": it yields rc 127 without the query ever running.
+fn build_cache_observe_observed(
+  presence: BuildCacheHostRunOutcome,
+  stats: BuildCacheHostRunOutcome,
+) -> BuildCacheObserve {
+  match presence {
+    CouldNotRun { phase: p, reason: r } => ObserveReadBlocked { phase: p, reason: r }
+    Ran { observed: p_obs } =>
+      if p_obs.exit_code != 0 {
+        ObserveAbsent
+      } else {
+        match stats {
+          CouldNotRun { phase: p2, reason: r2 } => ObserveReadBlocked { phase: p2, reason: r2 }
+          Ran { observed: s } =>
+            if s.exit_code == 0 {
+              ObserveStatsOk { stats: s.stdout }
+            } else {
+              match build_cache_matched_stats_fragment(capture: build_cache_merged_capture(observed: s)) {
+                Present { value: frag } =>
+                  ObserveMisconfigured {
+                    matched_fragment: frag,
+                    stats: build_cache_merged_capture(observed: s),
+                  }
+                Absent => ObserveUnresponsive { detail: build_cache_merged_capture(observed: s) }
+              }
+            }
+        }
+      }
+  }
+}
+
+// `2>&1` AS A TYPED OPERATION. The script merged the two streams into `$stats_out` and both the fragment
+// scan and the receipts read that one blob. The typed route keeps them separate where they are produced
+// and joins them only at the point of use, so a reader always knows which scan is looking at what.
+fn build_cache_merged_capture(observed: BuildCacheHostRunObserved) -> String {
+  concat(observed.stdout, observed.stderr)
+}
+
+// THE FRAGMENT SCAN, THE SAME CITED ROW AND THE SAME FIRST-MATCH SEMANTICS. `grep -Fq` is a fixed-string
+// containment test, so an empty capture matches NO fragment — that is not a default, it is what
+// `grep -F` does, and it is why an unresponsive host with no output still reaches the unresponsive arm
+// rather than being declared misconfigured with an empty fragment.
+fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
+  fold(
+    sccache_misconfigured_log_fragments,
+    Absent as Optional<String>,
+    (acc: Optional<String>, frag: String) ->
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if string_contains(s: capture, pattern: frag) { Present { value: frag } } else {
+            acc
+          }
+      },
+  )
+}
+
+// WHETHER THE ENSURE HAS WORK TO DO — THE ONE PREDICATE THAT DECIDES WHETHER THE FLEET IS TOUCHED.
+//
+// A zero exit from `--show-stats` meant the daemon answered, and the script `exit 0`'d on it: restarting
+// a server that is serving drains every in-flight compile, which is the opposite of provisioning. That
+// short-circuit is preserved, and it is preserved HERE rather than in the site so that one function
+// holds the whole decision.
+//
+// AND THIS IS WHERE THE PINNED DEFECT LIVES. The script's guard was the exit code and nothing else, so
+// it also fired on the read that sccache's own measured behaviour makes useless as an ownership proof:
+// `--show-stats` returns rc 0 with a fully-formed table of ZEROES when no server exists at all
+// (extdeps.cache.sccache.sccache_stats_query_does_not_spawn_note, RunnerObserved on srv2 2026-08-01,
+// 0.15.0, two private-endpoint controls; `stats_query_spawns_server: false` in
+// sccache_server_process_facts). So on a host whose binary is installed and whose daemon is DOWN — the
+// main host this effect exists for — the script printed `observe=ok` and exited 0: no unit write, no
+// daemon-reload, no enable, no restart, and the classifier then saw "exited zero without printing its
+// read_back=ok receipt" and refused with NotConverged. The port below keeps that behaviour EXACTLY (the
+// ensure legs do not run) so the effect grain changes nothing observable; the contract that SHOULD hold
+// — binary present and daemon absent means the ensure legs run and converge — is pinned by a claim
+// enrolled as a known-red quarantine probe, written to assert the correct behaviour so the fix greens it
+// without an edit. The fix is the one-arm dissolve named by that row and by its
+// gunbc.recurring_failure_mode row: the observe phase must not end the ensure, and ownership must come
+// from the endpoint survey rather than from `--show-stats` (the same conclusion
+// gunbc/build_cache/build_cache_provision_verdict.dag already reached for the receipt, in its
+// server_placement paragraph).
+fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
+  match observe {
+    ObserveStatsOk { stats: _ } => false
+    ObserveAbsent => true
+    ObserveMisconfigured { matched_fragment: _, stats: _ } => true
+    ObserveUnresponsive { detail: _ } => true
+    ObserveReadBlocked { phase: _, reason: _ } => true
+  }
+}
+
+// THE PRESENCE PROBE, REUSED FROM ITS UPSTREAM rather than minted: `[ -x BIN ]` is
+// extdeps.posix.test_utility.test_executable_command, the same op the rest of the fleet asks "is this
+// executable file there" with. The path is the install authority's own constant, never a caller's guess.
+fn build_cache_daemon_presence_command() -> ArgvCommand {
+  test_executable_command(path: sccache_installed_binary_path as String)
+}
+
+// THE STATS QUERY, THE ONE TYPED OP THIS FILE MINTED (in its upstream, extdeps.cache.sccache, where the
+// sccache flag and the measured receipt live).
+fn build_cache_daemon_stats_command() -> ArgvCommand {
+  sccache_stats_query_command(binary: sccache_installed_binary_path)
+}
+
+fn build_cache_unit_staged_path(instance: BuildCacheInstance) -> String {
+  concat(build_cache_unit_system_path(instance: instance), build_cache_unit_stage_suffix)
+}
+
+// THE UNIT BYTES CROSS AS STDIN DATA AND ARE READ FROM THE AUTHORITY THAT OWNS THEM.
+fn build_cache_unit_bytes(instance: BuildCacheInstance) -> String {
+  build_cache_unit_text(instance: instance)
+}
+
+// THE ENSURE PLAN. Ops run in the order the script joined them, and the order is the semantics: the
+// unit must be on disk before daemon-reload can see it, and daemon-reload must see it before
+// `enable`/`restart` talk to the manager about it.
+//
+// `install` rather than `mv` for the unit, following the compile-pool slice beside it: `install` creates
+// the destination with the mode and owner in one step, so the staged sibling is never the file systemd
+// reads and there is no window in which a wrongly-owned or wrongly-moded unit sits at the destination.
+//
+// `restart`, not `start`. A server that is already running must be RESTARTED to pick up a changed unit —
+// unlike the compile-pool slice, where `restart` would kill the compilers the pool exists to hold (that
+// distinction is recorded on `systemctl_start_argv` in extdeps.systemd.systemctl). `enable` stays
+// because it is the boot-time contract: a server that only comes up when this effect happens to run is
+// not a server. `enable` and `restart` are the two cited argv rows in their upstream, elevated by the
+// builder that owns elevation, which is what the script's `systemctl enable` + `systemctl restart` pair
+// did.
+fn build_cache_daemon_ensure_plan(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+  install_needed: Bool,
+) -> BuildCacheDaemonEnsurePlan {
+  if string_contains(s: instance.intended_unit as String, pattern: "/") {
+    EnsurePlanRefused {
+      reason: "the intended unit name carries '/', which would place the unit file outside /etc/systemd/system/; systemd unit names never contain one (systemd.unit(5)), so this is a malformed name rather than a path and the ensure refuses rather than writing it",
+    }
+  } else {
+    let staged = build_cache_unit_staged_path(instance: instance)
+    let dest = build_cache_unit_system_path(instance: instance)
+    EnsureOps {
+      ops:
+        append(
+          if install_needed {
+            map(
+              verified_binary_install_install_steps(
+                p: sccache_verified_install_params(
+                  rel: sccache_release_0_15_0,
+                  arch: arch_token,
+                  digest: digest,
+                ),
+              ),
+              step => BuildCacheEnsureOp { argv: step, unit_bytes_on_stdin: false },
+            )
+          } else {
+            []
+          },
+          items: [
+            BuildCacheEnsureOp {
+              argv: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
+              unit_bytes_on_stdin: true,
+            },
+            BuildCacheEnsureOp {
+              argv: sudo_elevate_command(
+                command: coreutils_install_file_argv(
+                  mode: build_cache_unit_file_mode,
+                  source: staged,
+                  dest: dest,
+                ),
+              ),
+              unit_bytes_on_stdin: false,
+            },
+            BuildCacheEnsureOp { argv: systemctl_daemon_reload_command(), unit_bytes_on_stdin: false },
+            BuildCacheEnsureOp {
+              argv: sudo_elevate_command(command: systemctl_enable_argv(unit: instance.intended_unit)),
+              unit_bytes_on_stdin: false,
+            },
+            BuildCacheEnsureOp {
+              argv: sudo_elevate_command(command: systemctl_restart_argv(unit: instance.intended_unit)),
+              unit_bytes_on_stdin: false,
+            },
+          ],
+        ),
+    }
+  }
+}
+
+// THE STAGED SIBLING IS DISCARDED IN BOTH ARMS — the counterpart of the script's EXIT trap, elevated
+// like the write that created it, and named as an operation so a witness can see the cleanup exists
+// before it runs. `rm -f` because a cleanup that failed loudly would bury the failure it is following.
+fn build_cache_unit_stage_discard_command(instance: BuildCacheInstance) -> ArgvCommand {
+  sudo_elevate_command(
+    command: argv_words(command: rm_force_command(path: build_cache_unit_staged_path(instance: instance))),
+  )
+}
+
+// THE CLASSIFIER THE RECEIPT PROTOCOL OUGHT TO HAVE BEEN. Everything arrives as records; the outcome is
+// decided by WHICH PHASE PRODUCED WHICH RECORD — not by searching one stdout blob for markers that
+// overlap. `read_back=ok` ends with the same `=ok` the observe receipt ended with, and both were
+// searchable in the same string; that is precisely the ambiguity this function cannot have.
+//
+// THE ARM ORDER IS THE BEHAVIOUR, AND IT IS THE DEFECT'S SHAPE, KEPT ON PURPOSE:
+//   1. a read the transport refused -> refusal naming the phase (never a silent no-op).
+//   2. observe said the daemon answered (rc 0) and the ensure did not run -> DaemonUnresponsive, the
+//      same outcome the script produced through the classifier's third arm. The known-red claim asserts
+//      the opposite for exactly this input, so the fix cannot be un-noticed.
+//   3. observe found a fragment -> DaemonMisconfigured carrying THE FRAGMENT IT ACTUALLY MATCHED. The
+//      receipt protocol recorded the marker (`matched_fragment: "observe=misconfigured"`) instead of the
+//      match, so the operator saw that something matched rather than what did; that is a reporting
+//      defect inside the receipt design and the typed route fixes it by construction — the fragment is a
+//      field of the record that holds it, not something a later scan has to find.
+//   4. the ensure failed -> DaemonUnresponsive naming the operation and carrying the host's bytes.
+//   5. otherwise the read-back decides: rc 0 -> DaemonStatsOk whose `stats_line` IS the captured table
+//      (the script printed the same bytes after its receipt marker), non-zero -> DaemonUnresponsive.
+fn build_cache_daemon_ensure_observation(
+  observe: BuildCacheObserve,
+  ensure: BuildCacheEnsureExecuted,
+  read_back: BuildCacheHostRunOutcome,
+  placement: BuildCacheServerPlacement,
+) -> BuildCacheDaemonObservation {
+  match observe {
+    ObserveReadBlocked { phase: p, reason: r } =>
+      DaemonUnresponsive {
+        detail: build_cache_blocked_detail(phase: p, reason: r) as NonEmptyStr,
+      }
+    ObserveStatsOk { stats: _ } =>
+      DaemonUnresponsive {
+        detail:
+          "the build-cache observe step reported the daemon answering and ended there, so the daemon was never confirmed to answer after an ensure" as NonEmptyStr,
+      }
+    ObserveMisconfigured { matched_fragment: frag, stats: s } =>
+      DaemonMisconfigured { matched_fragment: frag, detail: s as NonEmptyStr }
+    ObserveUnresponsive { detail: d } => DaemonUnresponsive { detail: d as NonEmptyStr }
+    ObserveAbsent =>
+      match ensure {
+        EnsureFailed { op: o, observed: f } =>
+          DaemonUnresponsive { detail: build_cache_failure_detail(op: o, observed: f) as NonEmptyStr }
+        EnsureNotRun =>
+          DaemonUnresponsive {
+            detail:
+              "the build-cache binary was absent and the ensure was not run, so nothing could answer the read-back" as NonEmptyStr,
+          }
+        EnsureCompleted { restart: _ } =>
+          build_cache_read_back_observation(read_back: read_back, placement: placement)
+      }
+  }
+}
+
+fn build_cache_read_back_observation(
+  read_back: BuildCacheHostRunOutcome,
+  placement: BuildCacheServerPlacement,
+) -> BuildCacheDaemonObservation {
+  match read_back {
+    CouldNotRun { phase: p, reason: r } =>
+      DaemonUnresponsive { detail: build_cache_blocked_detail(phase: p, reason: r) as NonEmptyStr }
+    Ran { observed: o } =>
+      if o.exit_code == 0 {
+        DaemonStatsOk { stats_line: o.stdout, placement: placement }
+      } else {
+        DaemonUnresponsive {
+          detail:
+            join(
+              [
+                "the build-cache ensure exited ",
+                to_string(o.exit_code),
+                " on the post-ensure read-back, so the daemon was not confirmed to answer after the ensure: ",
+                build_cache_merged_capture(observed: o),
+              ],
+              "",
+            ) as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn build_cache_blocked_detail(phase: String, reason: String) -> String {
+  join(["the build-cache ", phase, " could not be read on the host: ", reason], "")
+}
+
+fn build_cache_failure_detail(op: String, observed: BuildCacheHostRunObserved) -> String {
+  join(
+    [
+      "the build-cache ensure failed at ",
+      op,
+      " (exit ",
+      to_string(observed.exit_code),
+      "): ",
+      build_cache_merged_capture(observed: observed),
+    ],
+    "",
+  )
+}

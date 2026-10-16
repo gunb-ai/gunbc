@@ -232,6 +232,16 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
   }
 }
 
+// THE UNIT'S DESTINATION, kept beside the unit's BODY (build_cache_unit_text) rather than in the effect
+// realizer that installs it: where the file goes and what it says are two readings of one artifact, and
+// the enable contract in this file's render points WantedBy at a location, so a second path spelling
+// elsewhere would be a second representation of the same fact. Moved out of
+// gunbc.host.host_effect_realize, where its only consumer was the bash ensure body retired by
+// gunbc.host.build_cache_daemon_ensure.
+fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
+  concat("/etc/systemd/system/", instance.intended_unit as String)
+}
+
 fn build_cache_unit_text(instance: BuildCacheInstance) -> String {
   serialize_systemd_unit_file(file: build_cache_unit_file(instance: instance))
 }
