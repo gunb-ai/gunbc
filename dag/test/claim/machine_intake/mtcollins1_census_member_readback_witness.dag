@@ -15,7 +15,7 @@ import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback,
   CasperKernel, CasperInitrd, GrubConfig, StockSide, CensusSide,
   census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
-  census_member_attempt_of,
+  census_member_attempt_of, census_member_workspace_prefix_of, census_member_readback_attempt_raw,
   CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
   member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
 }
@@ -186,7 +186,16 @@ fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: T
 
 data admitted: CensusPinGate = PinsAdmitted { stock_iso: stock_iso, census_iso: census_iso }
 
-data workspace_dir: String = "/tmp/gunbc-mtcollins1-census-member.Ab12Cd34"
+// The scratch directory mktemp creates on srv2, exactly as a real `mktemp -d` echo: the ATTEMPT'S
+// derived prefix plus the eight X's replaced with letters and digits -- never a hand-typed prefix, so
+// what the fold admits is always what the attempt owns.
+data workspace_dir: String = concat(census_member_workspace_prefix_of(attempt: census_member_readback_attempt_raw as NonEmptyStr), "Ab12Cd34")
+// A SECOND SUBJECT'S OWN attempt identity, its derived prefix, and its disjoint namespace: a safe path
+// segment (passes admission), with a prefix neither equal to nor nested under mtcollins1's.
+data census2_attempt_raw: NonEmptyStr = "census2-census-member-readback"
+data census2_workspace_dir: String = concat(census_member_workspace_prefix_of(attempt: census2_attempt_raw), "Zx8Y7W6V")
+// An attempt identity that CANNOT be a path segment: admission must refuse it before any agent or leg.
+data unsafe_attempt_raw: NonEmptyStr = "unsafe/attempt"
 
 // Supplied member readings for an acquired workspace: an identical chain, so a non-holding attempt is
 // attributable to its workspace outcome alone.
@@ -198,8 +207,10 @@ fn identical_readings(dir: NonEmptyStr) -> CensusMemberReadings {
   }
 }
 
+// The supplied-answer fold runs under mtcollins1's OWN attempt identity (the wet wrapper's row), so
+// these claims exercise the fold with the attempt identity mtcollins1's receipt names.
 fn attempt(gate: CensusPinGate, creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
-  census_member_attempt_of(kind: FleetSshTransport, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+  census_member_attempt_of(kind: FleetSshTransport, attempt: census_member_readback_attempt_raw as NonEmptyStr, gate: gate, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
 }
 
 fn says(a: CensusMemberReadbackAttempt, pattern: String) -> Bool { string_contains(s: render_census_member_attempt(attempt: a), pattern: pattern) }
@@ -318,8 +329,57 @@ test fn the_pin_gate_refuses_a_census_medium_naming_another_exporter() -> Bool {
 // THE PRODUCTION ENTRY QUALIFIES BEFORE ANY LEG IS DISPATCHED: for either changed exporter it requests
 // no workspace and reads nothing, and the attempt does not hold.
 test fn the_member_readback_refuses_another_exporter_before_any_leg() -> Bool {
-  let ae = census_member_readback(medium: census_at_other_endpoint(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id)
-  let ap = census_member_readback(medium: census_as_other_principal(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id)
+  let ae = census_member_readback(medium: census_at_other_endpoint(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_member_readback_attempt_raw as NonEmptyStr)
+  let ap = census_member_readback(medium: census_as_other_principal(), image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: census_member_readback_attempt_raw as NonEmptyStr)
   member_exporter_unsupported_naming(r: ae.readback, endpoint: "fixture-other-exporter", principal: census.export.target.principal as String) && !census_member_attempt_holds(attempt: ae)
     && member_exporter_unsupported_naming(r: ap.readback, endpoint: ssh_target_wire(target: census.export.target) as String, principal: "fixture-other-principal")
+}
+
+// CONTROL (d) -- A SECOND SUBJECT RUNS UNDER ITS OWN ATTEMPT, AND THE RECEIPT SAYS SO. The fold is
+// driven with a second subject's attempt identity and its own created directory: the receipt stores
+// WHICH attempt prepared the SSH context, the workspace outcome names THAT attempt's derived
+// namespace, and the rendered receipt names the second attempt rather than mtcollins1. A fold that
+// still baked mtcollins1's attempt in (the defect) leaves this red: the stored attempt, the admitted
+// directory, and the rendered namespace would all name mtcollins1.
+fn second_attempt(creation: HostLeg, cleanup: HostLeg) -> CensusMemberReadbackAttempt {
+  census_member_attempt_of(kind: FleetSshTransport, attempt: census2_attempt_raw, gate: admitted, creation: creation, readings: d => identical_readings(dir: d), cleanup: d => cleanup)
+}
+
+test fn a_second_subject_attempt_owns_its_receipt_and_its_namespace() -> Bool {
+  let a = second_attempt(creation: ran(code: 0, stdout: concat(census2_workspace_dir, "\n"), stderr: ""), cleanup: ran(code: 0, stdout: "", stderr: ""))
+  // The receipt names its own attempt...
+  (a.attempt as String) == (census2_attempt_raw as String)
+    // ...the admitted workspace is the directory under THAT attempt's derived prefix...
+    && match a.workspace { Removed { dir: d } => d as String == census2_workspace_dir _ => false }
+    // ...the rendered receipt names the second attempt and its namespace...
+    && says(a: a, pattern: concat("attempt=", census2_attempt_raw as String))
+    && says(a: a, pattern: concat("workspace=", concat(census2_workspace_dir, " removed")))
+    // ...and names neither mtcollins1's attempt identity nor mtcollins1's namespace.
+    && !says(a: a, pattern: census_member_readback_attempt_raw as String)
+    && !says(a: a, pattern: "/tmp/gunbc-mtcollins1-census-member")
+}
+
+// CONTROL (e) -- AN UNSAFE ATTEMPT IDENTITY REFUSES AT ATTEMPT ADMISSION, BEFORE ANY SSH-AGENT OR
+// REMOTE WORK. The producer takes the attempt as an input and admits it before touching the agent:
+// the refusal is the safe-path-segment admission itself (not the later SSH_AUTH_SOCK or credential
+// refusals, which an attempt that WAS admitted could still produce), and no workspace was ever
+// requested. The report entry refuses the same attempt the same way. If the producer still used its
+// own baked mtcollins1 row (the defect), a caller passing this attempt would watch it ignored: the
+// baked identity is safe, so the attempt would proceed past admission and this claim goes red.
+test fn an_unsafe_attempt_identity_refuses_at_admission_before_any_agent_or_remote_work() -> Bool {
+  let a = census_member_readback(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: unsafe_attempt_raw)
+  match a.readback {
+    BootChainHostUnreached { reason: r } =>
+      // The refusal is admission's own words, naming the caller's attempt (not the baked row)...
+      string_contains(s: r, pattern: "is not a safe path segment")
+        && string_contains(s: r, pattern: unsafe_attempt_raw as String)
+        // ...before any workspace: nothing was requested, nothing was created.
+        && match a.workspace { CreationNotRequested => true _ => false }
+    _ => false
+  }
+    // The attempt does not hold, and the rendered receipt says so under the caller's attempt.
+    && !census_member_attempt_holds(attempt: a)
+    && says(a: a, pattern: concat("attempt=", unsafe_attempt_raw as String))
+    // The mapped-attributes report refuses the same attempt at the same admission gate.
+    && string_contains(s: census_member_mapped_attributes(medium: census, image_stem: mtcollins1_census_image_stem, volume_id: mtcollins1_census_volume_id, attempt: unsafe_attempt_raw), pattern: "is not a safe path segment")
 }
