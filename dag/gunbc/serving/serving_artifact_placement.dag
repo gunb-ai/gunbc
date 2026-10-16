@@ -232,6 +232,7 @@ fn serving_covers(argument: String, protected: String) -> Bool {
 
 fn serving_names_protected(argument: String, protected: ServingProtectedPaths) -> Bool {
   any(xs: protected.paths, predicate: fn(p) { serving_covers(argument: argument, protected: p) })
+    || serving_covers(argument: argument, protected: protected.model_link)
 }
 
 fn serving_read_only_program(invocation: String) -> Bool {

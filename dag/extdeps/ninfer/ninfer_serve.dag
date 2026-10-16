@@ -76,7 +76,6 @@ type NinferServeLaunch {
   pending_timeout: Millisecond
   default_max_tokens: TokenCount
   kv_dtype: NinferKvDtype
-  kv_capacity_auto: Bool
   speculation: NinferSpeculation
   device_state_slots: Nat
   preserve_thinking: Bool
@@ -87,7 +86,7 @@ type NinferServeLaunch {
 // THE FLAGS, as spelled by `ninfer-serve --help` at rev 81c8ce09 (2917 bytes, sha256
 // 5717d1b1a127121a6a4c8324435cae08abdb6f5216729ebce17652442281ea7c, read read-only on the card 2026-10-15)
 // and by the card's run.sh line: <model.ninfer> positional; --host --port --model-id --max-context
-// --kv-capacity N|auto --max-concurrency --kv-dtype bf16|int8|fp8|nvfp4|k8v4 --device-state-slots
+// --kv-capacity N|auto (ONLY auto is modeled: a numeric capacity has no field, so a launch cannot ask for one and nothing is dropped) --max-concurrency --kv-dtype bf16|int8|fp8|nvfp4|k8v4 --device-state-slots
 // --spec mtp --draft-tokens N --lm-head-draft --preserve-thinking --host-context-mib N.
 //
 // THREE FIELDS ARE DELIBERATELY NOT RENDERED. max_pending_requests and pending_timeout are unread for the
@@ -128,7 +127,7 @@ fn ninfer_serve_launch_argv(launch: NinferServeLaunch, model_path: NonEmptyStr, 
     "--kv-dtype", ninfer_kv_dtype_flag_value(d: launch.kv_dtype),
     "--device-state-slots", to_string(launch.device_state_slots),
   ]
-  let kv_capacity = if launch.kv_capacity_auto { ["--kv-capacity", "auto"] } else { [] }
+  let kv_capacity = ["--kv-capacity", "auto"]
   let tail = [
     "--host-context-mib", to_string(mebibyte_count(m: launch.host_context)),
   ]

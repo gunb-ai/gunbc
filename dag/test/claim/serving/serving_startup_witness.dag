@@ -18,8 +18,9 @@ import gunbc.serving.serving_artifact_placement {
   ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
   ServingInstalledFileRead, ServingEngineVerified, ServingEngineFileDigestDiffers, serving_engine_verdict,
 }
+import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.serving.serving_launch {
-  ServingServeNotListening, ServingServeAnswering, ServingServeUnreadable, ServingServeNoop, ServingServeStart, ServingServeRefused, serving_serve_decision,
+  ServingServeNotListening, ServingServeAnswering, ServingServeUnreadable, serving_serve_decision,
   ServingPlacementCommands, ServingStartupProgram, ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_artifact_placement { ServingLinkAbsent }
@@ -107,22 +108,22 @@ test fn engine_verification_refuses_a_binary_whose_digest_differs() -> Bool {
 // CONVERGENCE: converged is a Noop, absent starts, a mismatch or an unreadable answer refuses.
 test fn a_converged_readback_is_a_noop() -> Bool {
   match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["qwen"] } }) {
-    ServingServeNoop => true
+    Noop => true
     _ => false
   }
 }
 
 test fn an_absent_readback_starts_exactly_once() -> Bool {
   match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeNotListening) {
-    ServingServeStart => true
+    Apply { plan: _ } => true
     _ => false
   }
 }
 
 test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
-  (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { ServingServeRefused { cause: _ } => true  _ => false })
-    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { ServingServeRefused { cause: _ } => true  _ => false })
-    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeUnreadable { cause: "timeout" as NonEmptyStr }) { ServingServeRefused { cause: _ } => true  _ => false })
+  (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeUnreadable { cause: "timeout" as NonEmptyStr }) { Refuse { reason: _ } => true  _ => false })
 }
 
 fn argv_has(argv: List<String>, flag: String) -> Bool {
@@ -196,4 +197,10 @@ test fn a_writing_program_onto_a_digest_path_and_a_relative_operand_are_refused(
 test fn relative_mv_and_ln_operands_are_refused() -> Bool {
   serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "sha256/d")], protected: w_protected)
     && serving_sequence_endangers(commands: [ln_symbolic_force_command(target: "/root/serve/store/sha256/d", link_name: "model.ninfer")], protected: w_protected)
+}
+
+// REVIEW 80995: the live link is protected as a source and through its parent, not only as an exact destination.
+test fn moving_the_live_link_or_removing_its_parent_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/model/model.ninfer", destination: "/tmp/x")], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/model")], protected: w_protected)
 }

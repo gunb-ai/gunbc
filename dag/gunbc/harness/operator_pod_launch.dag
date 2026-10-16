@@ -27,7 +27,6 @@ data operator_pod_ninfer_launch: NinferServeLaunch = NinferServeLaunch {
   pending_timeout: millisecond(count: 900000),
   default_max_tokens: token_count(count: 8192),
   kv_dtype: NinferKvNvfp4,
-  kv_capacity_auto: true,
   speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
   device_state_slots: 2,
   preserve_thinking: true,
