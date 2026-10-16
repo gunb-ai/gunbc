@@ -46,6 +46,8 @@ test fn locate_v2_infer_print() -> String {
     "\nphantom_eq=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T>\nfn probe() -> Bool {\n  ConstructorTag<P> {} == ConstructorTag<Q> {}\n}\n"))),
     "\nvalue_eq_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> Bool {\n  P1 { x: 1 } == Q1 { x: 1 }\n}\n"))),
     "\ndisc_eq_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> Bool {\n  discriminant(v: P1 { x: 1 }) == discriminant(v: Q1 { x: 1 })\n}\n"))),
+    "\ntag_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T> = ConstructorTag { name: String }\nfn tag_of<T>(v: T) -> ConstructorTag<T> {\n  ConstructorTag { name: discriminant(v: v) }\n}\nfn same_arm<T>(a: T, b: T) -> Bool {\n  tag_of(v: a) == tag_of(v: b)\n}\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: Q1 { x: 1 })\n}\n"))),
+    "\ntag_same=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T> = ConstructorTag { name: String }\nfn tag_of<T>(v: T) -> ConstructorTag<T> {\n  ConstructorTag { name: discriminant(v: v) }\n}\nfn same_arm<T>(a: T, b: T) -> Bool {\n  tag_of(v: a) == tag_of(v: b)\n}\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: P2 { y: 2 })\n}\n"))),
     "\n"
   ], "")
 }
