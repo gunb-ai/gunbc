@@ -30,7 +30,7 @@ module gunbc.host.boot_attempt
 // needs). No protocol-neutral on/off vocabulary to extend, so this one is minted.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import std.algebra { trim }
@@ -153,7 +153,11 @@ fn media_attach_text(record: MediaAttachRecord) -> String {
     MediaAttachAttempted { medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: s, presentation: pr } =>
       join([
         "'", n, "' (sha256: ", h, ") ",
-        if (host_power_text(state: p) as String) == "off" { "attached with the host off" } else { "attached (host was " + (host_power_text(state: p) as String) + ")" },
+        match p {
+          PowerOff => "attached with the host off"
+          PowerOn => "attached (host was on)"
+          PowerUnread { reason: rr } => join(["attached (host was unobserved: ", rr as String, ")"], "")
+        },
         "; ", (stale_power_off_text(record: s) as String),
         "; presentation: ",
         match pr {
@@ -359,6 +363,7 @@ type BootFinding
   | MediaAttachNotReady { record: MediaAttachRecord }
   | MediaAttachSessionHeld { record: MediaAttachRecord }
   | HandoffWithheldAtRecheck { handoff: HandoffMedia }
+  | HandoffRefusedByController { handoff: HandoffMedia }
   | HandoffUnconfirmed { handoff: HandoffMedia }
   | OverrideNotConsumed { consumption: BootOverrideConsumption }
   | PoweredOffWithoutTerminalMarker
@@ -448,7 +453,7 @@ fn run_record_findings(record: BootRunRecord) -> List<BootFinding> {
         match h {
           HandoffConfirmed => []
           HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: record.handoff_media }]
-          HandoffRefused { reason: _ } => [HandoffWithheldAtRecheck { handoff: record.handoff_media }]
+          HandoffRefused { reason: _ } => [HandoffRefusedByController { handoff: record.handoff_media }]
         }
     }
   let override =
@@ -497,9 +502,12 @@ fn run_record_text(record: BootRunRecord) -> String {
 data console_bound: ByteSize = byte_size(count: 16777216)
 
 // The allowance for the medium publish (the time the medium image is written to the medium before the
-// attach is read back as served). A policy bound, not a mtcollins1 measurement.
+// attach is read back as served). A policy bound, not a mtcollins1 measurement. It carries its unit in
+// its type -- the same carrier the row's `publish_allowance` field and its neighbour `console_bound`
+// use -- so a second cannot be mistaken for a millisecond or a count at any consumer. A row that runs
+// with this default adopts it; the value has one authority (review 81074).
 
-data publish_allowance_seconds: Int = 60
+data publish_allowance: Second = second(count: 60)
 
 // ============================================================================================
 // CONSOLE READING AND WRITE

@@ -23,7 +23,9 @@ import std.types { NonEmptyStr, String }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.tools.sha256sum { Sha256FileDigest }
-import gunbc.host.boot_attempt { ConsoleReading, ReferenceCaptureRead, console, console_reading }
+import gunbc.host.boot_attempt {
+  ConsoleReading, ReferenceCaptureRead, console, console_reading, publish_allowance,
+}
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,
   MegaRacConsoleReference,
@@ -48,10 +50,6 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
 // rather than knowing, so a second board keeps its own artifacts under its own prefix.
 data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
 data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
-
-// How long the bundle write may take before the attempt stops waiting on it. Measured here: the write
-// is one file over this board's storage.
-data mtcollins1_boot_publish_allowance: Second = second(count: 60)
 
 // The Redfish service root this BMC answers on, and the budget one inventory walk may spend. Both were
 // established against THIS controller: the bounds are how many pages a collection of this BMC's size
@@ -184,7 +182,7 @@ data mtcollins1_boot_row_value: MegaRacBootRow = MegaRacBootRow {
           collection_member_bound: mtcollins1_boot_collection_member_bound,
           service_root_path: mtcollins1_boot_redfish_service_root_path,
         },
-        publish_allowance: mtcollins1_boot_publish_allowance,
+        publish_allowance: publish_allowance,
         sensor_sockets: mtcollins1_census_sockets(),
         retained_artifact_prefix: mtcollins1_boot_retained_artifact_prefix,
         diagnostics_path: mtcollins1_boot_diagnostics_path,
