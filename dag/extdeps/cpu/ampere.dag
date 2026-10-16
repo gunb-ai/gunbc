@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
 import extdeps.cpu.types {
   ProcessorCoolingMount,
   SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily }
@@ -370,6 +371,44 @@ data ampere_altra_soc_family: SoCFamily = SoCFamily {
 data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
   name: "Altra Max",
   models: [altra_max_m12830_catalog],
+}
+
+// WHICH SoC FAMILIES CARRY SMpro. SMpro is the Ampere Altra-family SoC's own out-of-band register
+// interface, and the family set that carries it is a NAMED UPSTREAM SET, not an inference: the SSIF
+// patch readme "names Altra and Altra Max" (extdeps.ampere.altra_ssif_patch.altra_ssif_v6_purpose,
+// whose subject is those two processors), and the register documentation behind the SMpro sysfs ABI is
+// "Ampere's Altra Family SoC BMC Interface Specification" (extdeps.ampere.smpro_register). Listing the
+// families here is that cited set in the corpus's own SoCFamily terms.
+//
+// Membership is compared on the family NAME, which is the identity the upstream states: the readme
+// names families, not models. It is NOT inferred from the instruction-set architecture, and that
+// distinction is the whole point. Aarch64 does not imply SMpro — an AWS Graviton or an NVIDIA Grace
+// is aarch64 silicon with no SMpro — so keying the capability on the architecture would assert a
+// facility these machines do not have.
+data ampere_smpro_carrying_soc_families: List<SoCFamily> = [
+  ampere_altra_soc_family,
+  ampere_altra_max_soc_family,
+]
+
+data ampere_smpro_carrying_soc_families_citations: List<FactCitation> = [
+  FactCitation {
+    fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
+    authority: altra_ssif_patch_authority,
+  },
+]
+
+// WHETHER AN SoC FAMILY CARRIES SMpro, read off the cited family set above. True only for a family the
+// upstream names; every other family — any family the set does not name — is False, which the consumer
+// reads as a NAMED family that does not carry the facility. "We do not know the family" is a different
+// answer and is not expressible here: the caller passes a family it has, or none
+// (gunbc.host.smpro_platform_capability.smpro_facility).
+fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
+  match ampere_smpro_carrying_soc_families
+    |> filter(c => (c.name as String) == (family.name as String))
+    |> first() {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues

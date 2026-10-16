@@ -18,6 +18,7 @@ import std.types { List }
 import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObserved }
 import extdeps.board_authority { BoardAuthorityRef, board_authority_for, board_facts_authority, board_authority_ref_eq }
 import extdeps.board_soc { BoardSocEdge, BoardSocArchitectureStanding, board_soc_architecture }
+import extdeps.cpu.types { SoCFamily }
 import gunbc.board_authority_binding { board_authority_bindings }
 import extdeps.ampere.mt_collins_board { mt_collins_board_soc_edge }
 
@@ -45,6 +46,29 @@ fn host_board_architecture(access: BmcAccessObservationStanding) -> BoardSocArch
       }
     }
     BmcAccessUnobserved { endpoint: _ } => Unestablished
+  }
+}
+
+// THE SoC FAMILIES A HOST'S BOARD ADMITS, OR NOTHING WHEN NOTHING IS KNOWN. This is the fact a
+// platform-FACILITY capability keys on (gunbc.host.smpro_platform_capability.smpro_facility): a named
+// family answers about the silicon, and an absent family means NOTHING is known about it — which is a
+// different answer from a family that lacks the facility, and must never be collapsed into one.
+//
+// Same chain as host_board_architecture, and it stops one link earlier: no architecture derivation,
+// just the families the board admits.
+fn host_board_soc_families(access: BmcAccessObservationStanding) -> List<SoCFamily>? {
+  match access {
+    BmcAccessObserved { observation: obs } => {
+      let lookup = board_authority_for(observation: obs.identity.board, bindings: board_authority_bindings)
+      match board_facts_authority(lookup: lookup) {
+        Absent => none
+        Present { value: authority } => match board_soc_edges_for(authority: authority) {
+          Absent => none
+          Present { value: edge } => Present { value: edge.soc_families }
+        }
+      }
+    }
+    BmcAccessUnobserved { endpoint: _ } => none
   }
 }
 

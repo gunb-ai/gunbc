@@ -1,62 +1,132 @@
 // AMPERE SMpro ACCESS IS A PLATFORM CAPABILITY, not a controller fact and not a MegaRAC reading.
 //
 // SMpro is the Ampere SoC's own out-of-band register interface (the master-write-read path into the
-// RAS error registers). It is present on the Ampere (Aarch64) platform and ABSENT on a non-Ampere
-// (x86) machine: an x86 board has no SMpro to read, so the capability is ABSENT for it, not an
-// empty reading and not a refused one. That distinction is the point of this owner — a machine
-// whose platform does not carry SMpro is still a valid controlled machine, and the absence must be
-// readable as a platform fact rather than mistaken for a failed probe.
+// RAS error registers). It is present on Ampere Altra-family silicon and ABSENT on any other
+// machine: an x86 board has no SMpro to read, so the capability is ABSENT for it, not an empty
+// reading and not a refused one. That distinction is the point of this owner — a machine whose
+// platform does not carry SMpro is still a valid controlled machine, and the absence must be readable
+// as a platform fact rather than mistaken for a failed probe.
 //
 // The reading itself is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
 // .mtcollins1_boot_diagnostic_bundle) because the bundle's own SmproReading is consumed by more than
 // the bundle: the MegaRAC boot diagnostic bundle carries an SMpro field, and it must not mint the
 // type in its own public surface. Both the bundle and the MegaRAC module import the type from here.
 // The raw pass observation it wraps still comes from the observation module this reads through.
+//
+// NO PLAUSIBLE OUTPUT IS FABRICATED (DESIGN.md §5). An earlier version of this module keyed the
+// standing on the platform ARCHITECTURE: `Aarch64 => Present`. That fabricated an output for every
+// ARM machine that is not Ampere silicon — an AWS Graviton or an NVIDIA Grace board is aarch64 with
+// no SMpro interface at all — and it turned a machine with NO reading into
+// `Absent { platform: "the SMpro pass was not taken" }`, which asserts the platform carries SMpro and
+// the pass was merely skipped when the truth is it never carried it. A missing reading is not evidence
+// about the facility. The facility is a fact about the board's SoC FAMILY, read from the bound board's
+// SoC edge (gunbc.host.board_platform_facts) against the cited carrying set in extdeps.cpu.ampere,
+// and the architecture is not its subject.
+//
+// THE KEY IS THE TYPED SoC FAMILY — not a free string (that would be a second, untyped authority
+// beside extdeps.cpu.types.SoCFamily) and not an architecture (wrong subject, above). And
+// UNESTABLISHED IS ITS OWN ARM, NEVER COLLAPSED INTO NOT_CARRIED: "the board admits no SoC family, so
+// nothing is known about the silicon" is not "the family lacks SMpro". Collapsing those two is exactly
+// the defect the architecture key produced.
 module gunbc.host.smpro_platform_capability
 
-import std.types { NonEmptyStr }
-import extdeps.toolchain.types { Architecture }
+import std.types { Bool, List, NonEmptyStr }
 import gunbc.machine_intake.ampere_smpro_observation { SmproPassObservation }
+import extdeps.cpu.types { SoCFamily }
+import extdeps.cpu.ampere { ampere_soc_family_carries_smpro }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import gunbc.host.board_platform_facts { host_board_soc_families }
 
 // AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
 // including when none of them was answered), or the typed fact that no pass was taken and why.
-// The platform capability below stands on top of this reading.
+// The platform capability below stands on top of this reading. These three names — SmproReading,
+// SmproProbed, SmproNotTaken — are constructed by the boot diagnostic bundles and their witnesses and
+// by mtcollins1's row; they record WHETHER A PASS WAS TAKEN, which is orthogonal to whether the
+// platform could carry one, and they are kept exactly as they are.
 type SmproReading
   = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
-// THE STANDING OF THE SMpro CAPABILITY ON A MACHINE. Present when the platform carries SMpro and a
-// reading exists; Absent on a platform (such as x86) that does not carry it, with the platform
-// named so the absence is located rather than collapsed to an empty reading.
-type SmproCapabilityStanding
-  = SmproCapabilityPresent
-  | SmproCapabilityAbsent { platform: NonEmptyStr }
+// THE STANDING OF THE SMpro FACILITY ON A HOST'S PLATFORM. Three answers, and they are genuinely
+// three: the family is named and carries the facility; the family is named and does not; the family
+// is not established at all.
+type SmproFacilityStanding
+  = // The board's SoC family is one of the Ampere families the upstream cites as carrying SMpro
+    // (extdeps.cpu.ampere.ampere_smpro_carrying_soc_families, cited to
+    // extdeps.ampere.altra_ssif_patch). This is what licenses an SMpro read on the platform — it says
+    // nothing yet about whether a reading was taken; SmproReading carries that.
+    SmproFacilityCarried { family: SoCFamily }
+  // The board's SoC family is named and is NOT among the cited carrying families: a real family,
+  // negatively answered by the cited set. An x86 machine answers here — and still binds its BMC
+  // control route and remains a valid controlled machine, because this fact is not a precondition of
+  // control.
+  | SmproFacilityNotCarried { family: SoCFamily }
+  // The host's board admits no SoC family, so NOTHING is known about the silicon. Not Carried, and
+  // not Carried either: there is no family to answer about. The SMpro pass is not taken, and the
+  // reason says the family is unknown rather than claiming the platform lacks the facility.
+  | SmproFacilityUnestablished { reason: NonEmptyStr }
 
-// THE SMpro PLATFORM CAPABILITY. A machine's capability stands on two facts: the platform
-// architecture (SMpro is an Ampere/Aarch64 capability) and the reading that was taken (or the typed
-// fact that it was not). A non-Ampere platform is ABSENT regardless of any reading; on the Ampere
-// platform a taken reading is Present and a not-taken one is Absent with the reason.
-type SmproCapability sole_constructor {
-  standing: SmproCapabilityStanding
-  reading: SmproReading?
+// THE SMpro FACILITY OF A MACHINE, READ FROM ITS BOUND BOARD'S SoC FAMILY (through
+// gunbc.host.board_platform_facts, so the board authority stays the owner of the silicon) AND THE
+// UPSTREAM-CITED CARRYING SET. Never from the architecture: aarch64 does not carry SMpro by being
+// aarch64, and the answer for an aarch64 family the cited set does not name is NotCarried.
+//
+// The access observation is the input because it is what binds a host to its board identity; the
+// board, not the controller, is the hardware authority.
+fn smpro_facility(access: BmcAccessObservationStanding) -> SmproFacilityStanding {
+  match host_board_soc_families(access: access) {
+    Absent => SmproFacilityUnestablished { reason: "the host has no board row bound to it, so the platform is unknown" }
+    Present { value: fs } => smpro_facility_of_families(families: fs)
+  }
 }
 
-// THE SMpro READ: derive the platform capability standing from the machine's architecture and the
-// SMpro reading taken (or not). The architecture decides whether the platform carries the capability
-// at all; the reading decides whether it was exercised. This is the neutral read the bundle and the
-// MegaRAC module both import.
-fn smpro_capability(architecture: Architecture, reading: SmproReading?) -> SmproCapability {
-  match architecture {
-    Aarch64 => SmproCapability {
-      standing: match reading {
-        Present { value: r } => SmproCapabilityPresent
-        Absent => SmproCapabilityAbsent { platform: "the SMpro pass was not taken" as NonEmptyStr }
-      },
-      reading: reading,
+// THE SAME VERDICT OVER AN EXPLICIT FAMILY SET — one implementation, reached two ways. The
+// production path above resolves the families through the board authority; this one takes them
+// directly, so a witness can ask about a family (an aarch64 family the cited set does not name, a
+// family the set names, and no family at all) without minting a board row per question.
+fn smpro_facility_of_families(families: List<SoCFamily>) -> SmproFacilityStanding {
+  match smpro_carrying_family(families: families) {
+    Present { value: carried } => SmproFacilityCarried { family: carried }
+    Absent => match first_soc_family(families: families) {
+      Present { value: lead } => SmproFacilityNotCarried { family: lead }
+      // NO family at all: nothing is known about the silicon. Unknown, NOT a negative about some
+      // family — the collapse the architecture key produced.
+      Absent => SmproFacilityUnestablished { reason: "the bound board admits no SoC family, so the platform is unknown" }
     }
-    _ => SmproCapability {
-      standing: SmproCapabilityAbsent { platform: "SMpro is an Ampere (Aarch64) capability; this platform does not carry it" as NonEmptyStr },
-      reading: none,
-    }
+  }
+}
+
+// THE FIRST ADMITTED FAMILY THAT CARRIES SMpro, if any admitted family does. A board admitting
+// SEVERAL families answers Carried when ANY of them carries the facility: the edge bounds what may be
+// installed, and the installed silicon is observed separately (the SMpro pass itself, the CPU0
+// observation), so here we only need whether the platform CAN carry SMpro.
+fn smpro_carrying_family(families: List<SoCFamily>) -> SoCFamily? {
+  match families |> filter(f => ampere_soc_family_carries_smpro(family: f)) |> first() {
+    Present { value: carried } => Present { value: carried }
+    Absent => none
+  }
+}
+
+fn first_soc_family(families: List<SoCFamily>) -> SoCFamily? {
+  families |> first()
+}
+
+// WHETHER A STANDING LICENSES AN SMpro READ. Kept separate from the standing so a consumer that only
+// gates on it cannot pattern-match its way into treating Unestablished as NotCarried.
+fn smpro_facility_licenses_read(standing: SmproFacilityStanding) -> Bool {
+  match standing {
+    SmproFacilityCarried { family: _ } => true
+    SmproFacilityNotCarried { family: _ } => false
+    SmproFacilityUnestablished { reason: _ } => false
+  }
+}
+
+// WHETHER A READING WAS TAKEN. Independent of the facility standing above, by construction: a
+// NotTaken reading on a Carried platform is a skipped pass, and on a NotCarried platform there is no
+// pass to take.
+fn smpro_reading_taken(reading: SmproReading) -> Bool {
+  match reading {
+    SmproProbed { observation: _ } => true
+    SmproNotTaken { reason: _ } => false
   }
 }
