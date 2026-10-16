@@ -79,7 +79,8 @@ import extdeps.llm.cli {
   ProviderModelSelection,
   reasoning_effort_label,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_review_unit_command, dispatch_unit_exec_argv, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on}
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptWorkerRole }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_audit_unit_command, dispatch_attempt_unit_name, dispatch_reviewer_attempt_identity, dispatch_actuator_selection, dispatch_actuator_vendor_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_provider_inner_argv_for_launch, attempt_selection_launching, attempt_launch_provider, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, DispatchSpawnPlan, provider_kind_to_dispatch_cli, DispatchProviderInnerArgv, DispatchProviderInnerArgvReady, CursorProviderOffCustodyHost, CursorProviderCredentialUnbound, CodexProviderOffCustodyHost, CodexProviderExecutableAbsent, ClaudeProviderCredentialUnbound, dispatch_tmux_session_name, dispatch_tmux_session_prefix, dispatch_tmux_process_fingerprint_observation_dissolution_trigger, fill_dispatch_brief, filled_dispatch_brief_for_node, claude_spawn_argv, codex_spawn_argv, dispatch_codex_exec_spec, dispatch_spawn_commands_for_launch, DispatchWorkerFirst, dispatch_brief_fields_for_environment, dispatch_brief_with_centering, dispatch_review_unit_command, dispatch_unit_exec_argv, DispatchSpawnCommands, HostExecArgv, SystemdUnitContainer, TmuxSessionContainer, dispatch_session_container_for_provider, DispatchSessionContainerPlan, DispatchSessionContainerReady, DispatchSessionContainerUnavailable, DispatchSpawnReady, DispatchSpawnRefused, git_worktree_add_argv, tmux_spawn_argv, tmux_kill_session_argv, tmux_ls_argv, filter_dispatch_tmux_sessions, classify_dispatch_request_for_process_fingerprint, classify_dispatch_lease_upsert, classify_tmux_session, dispatch_tmux_session_scope_for_process_fingerprint, dispatch_live_session_row_for_scope, dispatch_live_sessions_from_entries, fixture_projection_standing_refusal_tmux_entry, classify_dispatch_request, dispatch_provider_instance_for_kind, session_lease_reuses_process_port_classifier_shape, hostile_node_id_stays_single_argv_token, DispatchPermitted, DispatchRefused, SessionAbsent, SessionNameObserved, SessionObserved, SpawnSession, dispatch_current_attempt_events_projection_argv_for_instance, gunbc_harness_review_argv, attempt_state_prepare_argvs_for_instance, dispatch_actuator_selection_for_provider_on}
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -205,7 +206,7 @@ fn fx_snapshot_free_plan(
   let attempt = DispatchAttempt { instance: instance, node: node, attempt_key: attempt_key }
   match fx_prepared_launch(requested: attempt, launch: SnapshotFreeLaunch { attempt: attempt, executor: executor }, effort: effort, model: model) {
     Present { value: prepared } =>
-      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, resolution: resolution)
+      dispatch_spawn_commands_for_launch(prepared: prepared, session_uuid: session_uuid, resolution: resolution, run: DispatchWorkerFirst)
     none => DispatchSpawnRefused { step: "fixture-preparation" as NonEmptyStr, detail: "the fixture launch was not prepared" }
   }
 }
@@ -492,6 +493,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     prepared: prepared,
     session_uuid: "uuid-unused-by-codex",
     resolution: fixture_ready_resolution(node_id: "codex-selected", project_ids: []),
+    run: DispatchWorkerFirst,
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
@@ -1214,6 +1216,7 @@ test fn witness_inner_argv_carries_pinned_model_for_codex() -> Bool {
             worktree_path: "/opt/gunbc/dispatch-worktrees/node-inner",
             brief: "brief",
             alignment_chain_fingerprint: "fp",
+            run: DispatchWorkerFirst,
           ),
         ),
         pattern: expected,
@@ -1454,6 +1457,7 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
     pane_working_directory: "/wt",
     worktree_path: "/wt",
     provider_inner: ["claude", "-p"],
+    worker_role: AttemptWorkerRole,
   ) {
     DispatchSessionContainerUnavailable { step: _, detail: _ } => false
     DispatchSessionContainerReady { container } =>

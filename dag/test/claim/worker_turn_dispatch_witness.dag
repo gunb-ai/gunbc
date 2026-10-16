@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   ClaudeProviderCredentialUnbound,
-  dispatch_provider_inner_argv_for_launch,
+  dispatch_provider_inner_argv_for_launch, DispatchWorkerFirst,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { PreparedAttemptLaunch, SnapshotFreeLaunch, CodexWithoutSnapshot, HarnessWithoutSnapshot }
@@ -47,6 +47,7 @@ fn inner_for_launch(prepared: PreparedAttemptLaunch) -> DispatchProviderInnerArg
     brief: "brief",
     alignment_chain_fingerprint: "fp",
     supervision_prompt: "the rendered chain",
+    run: DispatchWorkerFirst,
   )
 }
 

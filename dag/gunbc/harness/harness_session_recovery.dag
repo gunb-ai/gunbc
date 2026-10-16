@@ -1,0 +1,366 @@
+module gunbc.harness.harness_session_recovery
+
+import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr, list_length }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import std.content_hash { content_hash_atom }
+import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status, http_header_dump_field }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+  parse_json_document, json_object_unique_member,
+}
+
+// THE SESSION-RECOVERY VOCABULARY (gunbc.plans.harness_session_lifecycle, slice S3, requirement 7).
+// A session that a backend failure ended is not thereby over: when its last persisted state is
+// VALIDATED it is RECOVERY-NEEDED, and a resume continues the same conversation from that state.
+// This module is the one place the three facts that decision rests on are modelled, so the harness
+// that produces them and the belt that reads them cannot disagree: what the engine's refusal was,
+// whether the state it left is validated, and what the stream records about each recovery.
+//
+// THE CLASS IS NAMED BY WHAT WAS OBSERVED, NOT BY A GUESS AT ITS CAUSE (operator decision
+// 2026-10-16, condition 1). A fleet engine answered -- response headers came back, so this is not a
+// request that "drew no response" and had no effect (gunbc.harness.harness_turn
+// harness_post_drew_no_response) -- with a non-success status and nothing in the body. The refusal
+// is carried with the only identities that can be chased afterwards: the status, the engine's own
+// x-request-id and the identity of the exact bytes sent. Whether the cause was transient is exactly
+// what the 2026-10-16 receipt could not establish from the refusal itself (the identical bytes were
+// answered 200 minutes later), so the type does not say.
+type UnexplainedEngineRefusal {
+  status: HttpStatus
+  request_id: String?
+  bytes_sent: String
+}
+
+// THE RESUME BOUND IS DECLARED POLICY (operator decision 2026-10-16, condition 6): three resumes of
+// one session, each a recorded event with its cause. The fourth refusal ends the lineage with every
+// recorded cause listed, so a flapping engine is visible and bounded, never absorbed.
+fn session_request_id_text(refusal: UnexplainedEngineRefusal) -> String {
+  match refusal.request_id {
+    Present { value: id } => id
+    Absent => "absent"
+  }
+}
+
+// THE CLASSIFIER. An engine refusal without explanation is: a route that is the fleet's own engine
+// (a seat or the operator endpoint; a hosted-quota route never qualifies, operator condition 2), a
+// request that failed, response headers that came back (the engine answered), a non-2xx status among
+// them, and nothing in the body. Every other failure -- no headers, a body that explains itself, a
+// 2xx -- is not this class and stays what it was. route_qualifies is supplied by the caller from the
+// admission it holds, so this fold reads values, not configuration.
+fn harness_unexplained_refusal(
+  route_qualifies: Bool,
+  success: Bool,
+  body: String,
+  headers: HttpHeaderDump?,
+  request_body: String,
+) -> UnexplainedEngineRefusal? {
+  if !route_qualifies || success || trim(body) != "" {
+    Absent
+  } else {
+    match headers {
+      Absent => Absent
+      Present { value: dump } =>
+        match http_header_dump_status(dump: dump) {
+          Absent => Absent
+          Present { value: status } =>
+            if status >= 200 && status < 300 || request_body == "" {
+              Absent
+            } else {
+              Present { value: UnexplainedEngineRefusal {
+                status: status,
+                request_id: http_header_dump_field(dump: dump, name: "x-request-id"),
+                bytes_sent: content_hash_atom(value: request_body as NonEmptyStr).digest as String,
+              } }
+            }
+        }
+    }
+  }
+}
+
+data session_resume_bound: Int = 3
+
+// WHETHER THE STATE A SESSION STOPPED AT IS ONE A RESUME MAY CONTINUE FROM. The persisted state is
+// the conversation the last request carried. It is validated when every tool call of the last
+// assistant message in it has a recorded result and the conversation ends on something the engine
+// is to answer. A tool call with no recorded result is an interrupted effect: the tool may have run
+// and may not have, and resuming over it would either repeat a non-idempotent effect or silently
+// skip one, so the session stays recovery-needed and is NOT resumable until that effect's outcome
+// is established (requirement 7).
+type SessionValidation
+  = SessionValidated
+  | SessionInterrupted { unrecorded_call_ids: List<String> }
+  | SessionUnresumable { cause: String }
+
+fn session_member_text(v: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonString { value: s } => Present { value: s }
+        JsonNull => Absent
+        JsonBool { value: _ } => Absent
+        JsonNumber { lexeme: _ } => Absent
+        JsonArray { elements: _ } => Absent
+        JsonObject { members: _ } => Absent
+      }
+    JsonMemberAbsent => Absent
+    JsonMemberDuplicated { count: _ } => Absent
+    JsonMemberNotAnObject => Absent
+  }
+}
+
+fn session_member_elements(v: JsonValue, key: String) -> List<JsonValue> {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonArray { elements: es } => es
+        JsonNull => [] as List<JsonValue>
+        JsonBool { value: _ } => [] as List<JsonValue>
+        JsonNumber { lexeme: _ } => [] as List<JsonValue>
+        JsonString { value: _ } => [] as List<JsonValue>
+        JsonObject { members: _ } => [] as List<JsonValue>
+      }
+    JsonMemberAbsent => [] as List<JsonValue>
+    JsonMemberDuplicated { count: _ } => [] as List<JsonValue>
+    JsonMemberNotAnObject => [] as List<JsonValue>
+  }
+}
+
+fn session_message_role(m: JsonValue) -> String {
+  match session_member_text(v: m, key: "role") {
+    Present { value: r } => r
+    Absent => ""
+  }
+}
+
+// A CALL IS NAMED BY THE ID THE ENGINE ASSIGNED IT, in either of the two shapes this harness speaks:
+// the chat shape's assistant.tool_calls[].id and the messages shape's tool_use content block id. A
+// message of one shape carries nothing of the other, so reading both is one reading.
+fn session_assistant_call_ids(m: JsonValue) -> List<String> {
+  concat(
+    flat_map(session_member_elements(v: m, key: "tool_calls"), c =>
+      match session_member_text(v: c, key: "id") { Present { value: id } => [id] Absent => [] as List<String> }),
+    flat_map(session_member_elements(v: m, key: "content"), b =>
+      if session_member_text(v: b, key: "type") == Present { value: "tool_use" } {
+        match session_member_text(v: b, key: "id") { Present { value: id } => [id] Absent => [] as List<String> }
+      } else {
+        [] as List<String>
+      }),
+  )
+}
+
+// A RESULT IS NAMED BY THE CALL IT ANSWERS: the chat shape's tool message tool_call_id, the messages
+// shape's tool_result block tool_use_id.
+fn session_result_ids(m: JsonValue) -> List<String> {
+  concat(
+    if session_message_role(m: m) == "tool" {
+      match session_member_text(v: m, key: "tool_call_id") { Present { value: id } => [id] Absent => [] as List<String> }
+    } else {
+      [] as List<String>
+    },
+    flat_map(session_member_elements(v: m, key: "content"), b =>
+      if session_member_text(v: b, key: "type") == Present { value: "tool_result" } {
+        match session_member_text(v: b, key: "tool_use_id") { Present { value: id } => [id] Absent => [] as List<String> }
+      } else {
+        [] as List<String>
+      }),
+  )
+}
+
+fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
+  let indexed = enumerate(messages)
+  match indexed |> filter(p => session_message_role(m: p.second) == "assistant") |> last() {
+    Absent => SessionValidated
+    Present { value: assistant } => {
+      let after = indexed |> filter(p => p.first > assistant.first) |> map(p => p.second)
+      let recorded = flat_map(after, m => session_result_ids(m: m))
+      let unrecorded = session_assistant_call_ids(m: assistant.second)
+        |> filter(id => list_length(items: filter(recorded, r => r == id)) == 0)
+      if list_length(items: unrecorded) > 0 {
+        SessionInterrupted { unrecorded_call_ids: unrecorded }
+      } else if list_length(items: after) == 0 {
+        SessionUnresumable { cause: "the conversation ends on an assistant message, which the engine is not asked to answer" }
+      } else {
+        SessionValidated
+      }
+    }
+  }
+}
+
+fn session_validation_resumable(v: SessionValidation) -> Bool {
+  match v {
+    SessionValidated => true
+    SessionInterrupted { unrecorded_call_ids: _ } => false
+    SessionUnresumable { cause: _ } => false
+  }
+}
+
+fn session_validation_interrupted_ids(v: SessionValidation) -> List<String> {
+  match v {
+    SessionValidated => [] as List<String>
+    SessionInterrupted { unrecorded_call_ids: ids } => ids
+    SessionUnresumable { cause: _ } => [] as List<String>
+  }
+}
+
+// THE CONVERSATION A WIRE REQUEST CARRIED, as the harness holds it in memory: the request body's
+// messages, less the chat shape's leading system message (the request builder re-renders that from
+// the config, so replaying it would send it twice).
+fn session_conversation_from_request(request_body: String, leading_system: Bool) -> JsonValue? {
+  match parse_json_document(s: request_body) {
+    JsonDocumentUnreadable { gap: _ } => Absent
+    JsonDocumentParsed { value: doc } => {
+      let all = session_member_elements(v: doc, key: "messages")
+      if list_length(items: all) == 0 {
+        Absent
+      } else if leading_system {
+        match all.get(0) {
+          Present { value: head } =>
+            if session_message_role(m: head) == "system" { Present { value: json_array(elements: all.skip(n: 1)) } } else { Absent }
+          Absent => Absent
+        }
+      } else {
+        Present { value: json_array(elements: all) }
+      }
+    }
+  }
+}
+
+fn session_conversation_messages(conversation: JsonValue) -> List<JsonValue> {
+  match conversation {
+    JsonArray { elements: es } => es
+    JsonNull => [] as List<JsonValue>
+    JsonBool { value: _ } => [] as List<JsonValue>
+    JsonNumber { lexeme: _ } => [] as List<JsonValue>
+    JsonString { value: _ } => [] as List<JsonValue>
+    JsonObject { members: _ } => [] as List<JsonValue>
+  }
+}
+
+// ── THE STREAM'S RECORD OF A RECOVERY ───────────────────────────────────────────────────────────────
+//
+// Two events carry it, both in the attempt's provider event stream, which is already the authority for
+// how a session ended. turn.recovery_needed is written by the refused turn, with the cause; turn.resumed
+// is written by the resume before its first post, naming the recovery it answers. Neither is an
+// absorbing fallback: a refusal that explains itself, a refusal on a hosted route and every other
+// failure write neither, and stay ended.
+fn session_cause_text(round: Int, refusal: UnexplainedEngineRefusal) -> String {
+  join([
+    "round ", to_string(value: round), ": the engine answered ", to_string(value: refusal.status),
+    " with an empty body (x-request-id ", session_request_id_text(refusal: refusal), ", bytes sent ", refusal.bytes_sent, ")",
+  ], "")
+}
+
+fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, validation: SessionValidation) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.recovery_needed")),
+    json_kv(key: "round", value: json_int(n: round)),
+    json_kv(key: "status", value: json_int(n: refusal.status)),
+    json_kv(key: "request_id", value: json_string(s: session_request_id_text(refusal: refusal))),
+    json_kv(key: "bytes_sent", value: json_string(s: refusal.bytes_sent)),
+    json_kv(key: "cause", value: json_string(s: session_cause_text(round: round, refusal: refusal))),
+    json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
+    json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
+  ]))
+}
+
+fn session_event_resumed(ordinal: Int, round: Int, cause: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.resumed")),
+    json_kv(key: "ordinal", value: json_int(n: ordinal)),
+    json_kv(key: "round", value: json_int(n: round)),
+    json_kv(key: "cause", value: json_string(s: cause)),
+  ]))
+}
+
+// WHAT THE STREAM SAYS ABOUT A SESSION'S RECOVERY. Pending is the only recovery-needed reading: more
+// recoveries were needed than resumes made, so the last refusal has not been answered. It carries
+// every recorded cause, in order, the resumes already made, the interrupted calls of the latest
+// refusal, and the round whose request is the state to resume from.
+type SessionRecovery
+  = SessionRecoveryNone
+  | SessionRecoveryPending { causes: List<String>, resumes_made: Int, interrupted_calls: List<String>, resume_round: Int }
+
+type SessionRecoveryEvent
+  = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
+  | RecoveryEventResumed
+  | RecoveryEventOther
+
+fn session_int_member(v: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: l } => parse_int(text: serialize_json(v: JsonNumber { lexeme: l }))
+        JsonNull => Absent
+        JsonBool { value: _ } => Absent
+        JsonString { value: _ } => Absent
+        JsonArray { elements: _ } => Absent
+        JsonObject { members: _ } => Absent
+      }
+    JsonMemberAbsent => Absent
+    JsonMemberDuplicated { count: _ } => Absent
+    JsonMemberNotAnObject => Absent
+  }
+}
+
+fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
+  match parse_json_document(s: line) {
+    JsonDocumentUnreadable { gap: _ } => RecoveryEventOther
+    JsonDocumentParsed { value: doc } =>
+      match session_member_text(v: doc, key: "type") {
+        Absent => RecoveryEventOther
+        Present { value: kind } =>
+          if kind == "turn.resumed" {
+            RecoveryEventResumed
+          } else if kind == "turn.recovery_needed" {
+            match session_int_member(v: doc, key: "round") {
+              Absent => RecoveryEventOther
+              Present { value: round } =>
+                RecoveryEventNeeded {
+                  cause: match session_member_text(v: doc, key: "cause") { Present { value: c } => c Absent => "no cause recorded" },
+                  round: round,
+                  interrupted_calls: flat_map(session_member_elements(v: doc, key: "interrupted_calls"), c =>
+                    match c { JsonString { value: id } => [id] JsonNull => [] as List<String> JsonBool { value: _ } => [] as List<String> JsonNumber { lexeme: _ } => [] as List<String> JsonArray { elements: _ } => [] as List<String> JsonObject { members: _ } => [] as List<String> }),
+                }
+            }
+          } else {
+            RecoveryEventOther
+          }
+      }
+  }
+}
+
+// A LINE THE READER CANNOT PARSE IS NOT A RECOVERY: it reads as no recovery event, which leaves the
+// session ended exactly as it was before this slice. An unreadable stream can lose a resume; it
+// cannot manufacture one.
+fn session_recovery_of_events(lines: List<String>) -> SessionRecovery {
+  let events = lines |> map(l => session_recovery_event_of_line(line: l))
+  let needed = events |> flat_map(e => match e {
+    RecoveryEventNeeded { cause, round, interrupted_calls } => [RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: interrupted_calls }]
+    RecoveryEventResumed => [] as List<SessionRecoveryEvent>
+    RecoveryEventOther => [] as List<SessionRecoveryEvent>
+  })
+  let resumed = list_length(items: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false }))
+  if list_length(items: needed) <= resumed {
+    SessionRecoveryNone
+  } else {
+    match needed.last() {
+      Absent => SessionRecoveryNone
+      Present { value: latest } =>
+        match latest {
+          RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
+            SessionRecoveryPending {
+              causes: needed |> map(e => match e { RecoveryEventNeeded { cause, round: _, interrupted_calls: _ } => cause RecoveryEventResumed => "" RecoveryEventOther => "" }),
+              resumes_made: resumed,
+              interrupted_calls: interrupted_calls,
+              resume_round: round,
+            }
+          RecoveryEventResumed => SessionRecoveryNone
+          RecoveryEventOther => SessionRecoveryNone
+        }
+    }
+  }
+}
