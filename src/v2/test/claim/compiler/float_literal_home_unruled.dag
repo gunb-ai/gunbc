@@ -1,7 +1,8 @@
 module v2.test.claim.compiler.float_literal_home_unruled
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason, Some }
+import v2.compiler.infer { infer }
 import v2.std.node { node_subtree_nodes }
 import v2.extdeps.languages.dag { dag_node_is_float_literal_atom, dag_node_is_int_literal_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -67,5 +68,16 @@ test fn zz_probe_int_atom_in_assembled_tree() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) { acc || dag_node_is_int_literal_atom(node: n) })
+  }
+}
+
+test fn zz_probe_accepted_carries_reason() -> Bool {
+  match fmi_assemble(src: flhu_float_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_reason_float_literal_home_unruled)
+        Rejected { diagnostics: _ } => false
+      }
   }
 }
