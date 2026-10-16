@@ -2215,11 +2215,11 @@ jobs:
           HDR_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-auth-header'
           RESP_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-sm.json'
           DEST_FILE="$RUNNER_TEMP"'/mtcollins1-fan-boot-phase-bmc-credential'
-          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE"
+          'trap' ''\''rm'\'' '\''-f'\'' "$HDR_FILE" "$RESP_FILE" "$DEST_FILE" "$STATUS_FILE"
           ' 'EXIT'
           'printf' 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
-          ('rm' '-f' "$DEST_FILE" && 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE") || 'printf' 'GUNBC-FAN-BOOT-PHASE-CREDENTIAL-FETCH-FAILED' > "$DEST_FILE"
-          'chmod' '600' "$DEST_FILE"
+          STATUS_FILE="$DEST_FILE"'-fetch-status'
+          ('rm' '-f' "$DEST_FILE" && 'curl' '-sSf' '--connect-timeout' '10' '--max-time' '60' '-o' "$RESP_FILE" '-H' '@'"$HDR_FILE" 'https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/bmc-mtcollins1-gunbc/versions/2:access' && 'python3' '-c' 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$RESP_FILE" > "$DEST_FILE" && 'chmod' '600' "$DEST_FILE" && 'printf' 'ok' > "$STATUS_FILE") || ('rm' '-f' "$DEST_FILE" && 'printf' 'fetch-failed' > "$STATUS_FILE")
           'export' 'GUNBC_MTCOLLINS1_BMC_CREDENTIAL_FILE='"$DEST_FILE"
           ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
 
