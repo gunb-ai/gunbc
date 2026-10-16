@@ -1,0 +1,34 @@
+module extdeps.linux.unix_socket
+
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/unix.7.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.unix_socket",
+      decl_name: "linux_sockaddr_un_sun_path_bytes",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// unix(7): struct sockaddr_un { sa_family_t sun_family; char sun_path[108]; }, with "#define
+// UNIX_PATH_MAX 108". A pathname socket's name is a null-terminated string inside sun_path, so the
+// longest bindable pathname is one byte shorter.
+data linux_sockaddr_un_sun_path_bytes: ByteSize = byte_size(count: 108)
+
+fn linux_unix_socket_pathname_max_length() -> ByteSize {
+  byte_size(count: byte_size_count(b: linux_sockaddr_un_sun_path_bytes) - 1)
+}

@@ -19,13 +19,13 @@ import gunbc.compute.work_provider_local {
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
   ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
-  compute_provide_leaf, compute_layout, compute_work_identity, HostRecordWritten,
+  compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
 import std.materialization_provider { ComputeWorkRequest }
-import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
+import std.materialization_store_grant { WitnessScratchRoot, DurableHostVolume }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
 import std.cache_identity { compute_work_artifact_kind }
 import std.measure { byte_size }
@@ -622,7 +622,7 @@ fn reuse_served_without_production(root_path: String) -> Bool {
   let instance = srv1_live_dashboard_instance()
   let subject = ExactTree { tree: reuse_tree() }
   let toolchain = fixture_toolchain(rustc: "rustc fixture")
-  let work_dir = compute_layout(instance: instance, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
+  let work_dir = compute_layout_in(instance: instance, store_root: DurableHostVolume, identity_hex: compute_work_identity(subject: subject, op: work_default_build(), toolchain: toolchain)).work_dir
   let before = reuse_path_absent(path: work_dir)
   let provided = compute_provide_leaf(store: reuse_store(root_path: root_path), instance: instance, commit: "fixture-commit", subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   let after = reuse_path_absent(path: work_dir)

@@ -335,7 +335,6 @@ import v2.std.compilers.cli_surface {
   process_argv_expansion,
   ProcessArgvExpansion,
 }
-import extdeps.jobserver { jobserver_config }
 import gunbc.host.host_layout {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
@@ -425,6 +424,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -3571,7 +3571,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         success: false,
         stdout: join([
           "host_effect_apply: run_shell_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". This carrier is a shell script BODY -- a command string, not argv -- and the fleet path admits",
           " only portable remote words, so there is no shaping that preserves the script's meaning. The refusal",
           " is the carrier's shape surfacing, not a missing case: the residue dissolves when the effect reaches",
@@ -3702,7 +3702,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
           " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
           " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
@@ -3749,7 +3749,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
           " body where the fleet path admits portable words) does not apply; what remains is the",
           " transport's own authority: the fleet seam executes through its own session type and trust",
@@ -4344,7 +4344,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
       ], "")
     FleetSsh { target: t, context: _ } =>
       join([
-        "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
+        "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
@@ -5543,7 +5543,7 @@ fn build_cache_ensure_step(
 // THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
 // its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
 // pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
-// gunbc.fleet.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// gunbc.fleet.fleet_host_budget compile_pool_bytes_for (which refuses a separate pool now that the jobserver sizing is retired). Putting either on the effect
 // would mint a second answer to a question that already has one authority, so the effect names the target host
 // and the derivation happens here from that host's own facts.
 // WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
@@ -5677,19 +5677,7 @@ fn compile_pool_ensure_admission_for(
 // the host stops conserving, and they agree because there is one derivation, not because two call sites were
 // kept in step.
 fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
-  match compute_host_primary_cpu(host: node) {
-    Absent =>
-      CompilePoolUnresolved {
-        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
-      }
-    Present { value: cpu } =>
-      compile_pool_bytes_for(
-        placement: placement,
-        nproc: cpu_facts_threads(cpu: cpu),
-        host: compute_host_ram_bytes_total(host: node),
-        citation: jobserver_config,
-      )
-  }
+  compile_pool_bytes_for(placement: placement)
 }
 
 // The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
