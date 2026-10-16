@@ -36,3 +36,4 @@ type LineageRetirePanel
   = LineageRetirePanelNone
   | LineageRetirePanelOffer { attempt_key: String, branch: String }
   | LineageRetirePanelRecorded { record: LineageRetireRecord }
+  | LineageRetirePanelUnreadable { reason: String }
