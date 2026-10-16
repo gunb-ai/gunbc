@@ -263,6 +263,10 @@ fn binding_diff_standing(
         Absent =>
           if (base_status != 0) && (base_status != 2) {
             CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } }
+          } else if count(binding_lines(stdout: base_stdout)) == 0 {
+            CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base census printed no binding row (exit " + to_string(base_status) + "), so base was not observed; an empty side is no observation, never an empty diff" } }
+          } else if count(binding_lines(stdout: head_stdout)) == 0 {
+            CliWirePrintable { bytes: head_stdout + "\n", exit: ExitFailure { code: 2, reason: "head: the head census printed no binding row, so head was not observed; an empty side is no observation, never an empty diff" } }
           } else {
             let diff = binding_diff(base_stdout: base_stdout, head_stdout: head_stdout, rows: ambient_name_homes())
             let bytes = ((diff.admitted + diff.refused) |> map(d => delta_line(d: d)) |> join(separator: "\n")) + "\n"
