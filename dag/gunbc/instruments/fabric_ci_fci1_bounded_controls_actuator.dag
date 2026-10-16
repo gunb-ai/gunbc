@@ -12,6 +12,7 @@ import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, MemoryMax,
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty,
+  NamedUnitSetting,
   SystemdRunOption,
   Pipe,
   Quiet,
@@ -113,14 +114,14 @@ type Fci1UnitCommand
 
 fn fci1_unit_properties(working_directory: String, bound: Fci1UnitBound) -> List<SystemdRunProperty> {
   concat(
-    [SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr }],
+    [NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr }],
     match bound {
       Fci1UnitBounded { max, high } => [
-        SystemdRunProperty { property: SliceProperty, value: fci1_controls_slice_unit_name },
-        SystemdRunProperty { property: MemoryMax, value: fci1_bytes_text(size: max) as NonEmptyStr },
-        SystemdRunProperty { property: MemoryHigh, value: fci1_bytes_text(size: high) as NonEmptyStr },
+        NamedUnitSetting { property: SliceProperty, value: fci1_controls_slice_unit_name },
+        NamedUnitSetting { property: MemoryMax, value: fci1_bytes_text(size: max) as NonEmptyStr },
+        NamedUnitSetting { property: MemoryHigh, value: fci1_bytes_text(size: high) as NonEmptyStr },
       ]
-      Fci1UnitUnbounded => [SystemdRunProperty { property: MemoryMax, value: "infinity" as NonEmptyStr }]
+      Fci1UnitUnbounded => [NamedUnitSetting { property: MemoryMax, value: "infinity" as NonEmptyStr }]
     },
   )
 }
