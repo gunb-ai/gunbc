@@ -1,0 +1,377 @@
+module test.claim.fabric.serving_recipe_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, List, Bool, Int, String }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.rational { NonzeroNatFraction }
+import std.measure {
+  MoneyRate, MoneyPerHour, MoneyPerSecond, MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
+  second, hardware_thread_count, ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size,
+}
+import extdeps.currency.currency { Usd, Eur }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  ControlPlaneCapacity, RevocationAccepted,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, QuotedPerHour, ObservedSupply, StableRosterOrder, PlacementAffinityKey,
+  ExactGrantDuration,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound,
+  DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse, PermitNamesAnotherOffer,
+  PermitNamesAnotherRoute, PermitNamesAnotherWork, PermitNamesAnotherDemand,
+  AvailableRevocable, AvailableIndefinitely, PayAsYouGo, StartCostMeasured,
+  NoTransitionRequired, OperatingCostBorneBySupplier, NoFeasibleAlternativeUse,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
+}
+import product.fabric.serving_recipe {
+  ServingRecipeId, RecipeQwen3_8_27bNvfp4OnNinfer, RecipeFlashNextOnLabVllm,
+  ServingRecipe, serving_recipe, serving_recipe_catalog_unit, serving_recipes_interchangeable,
+  ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedBelowVram, CardRefusedWrongCard,
+  CardRefusedDriverBelowFloor, CardRefusedDriverUnread, serving_recipe_accepts_card,
+  ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
+  ServingHourlyCost, HourlyCostQuoted, HourlyCostUnamortizable, HourlyCostCurrencyMismatch,
+  serving_card_hourly,
+  ServingUnitCost, UnitCostQuoted, UnitCostThroughputUnread, serving_cost_per_million_tokens,
+  ServingStartRoute, StartFromObjectStoreOnly, StartRouteUnread,
+  ServingCacheSizing, CacheNone, CacheFractionOfHost, serving_cache_bytes,
+}
+import test.claim.fabric.provider_use_fixture {
+  fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
+}
+import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn t_caps() -> CapabilityManifestRef { "gunbc.capabilities.linux-rust-toolchain" }
+fn t_trust() -> TrustDomainRef { "gunbc.trust.internal-fleet" }
+
+fn t_reqs() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    revocation: RevocationAccepted,
+  }
+}
+
+fn t_offer(key: OfferKey, rate: MoneyPerHour) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: fixture_route(),
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 64) }, envelope: unstated_envelope() },
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-10-13T00:00:00Z",
+    quote: QuotedPerHour(rate),
+    billing_quantum: second(count: 3600),
+    evidence: ObservedSupply { observed_at: "2026-10-13T00:00:00Z", receipt: "obs-recipe" },
+  }
+}
+
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, revocable: Bool) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: offer.id,
+      availability: if revocable {
+        AvailableRevocable { delay: second(count: 0), receipt: "avail-revocable" }
+      } else {
+        AvailableIndefinitely { delay: second(count: 0), receipt: "avail-owned" }
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: NoFeasibleAlternativeUse { receipt: "opp-1" },
+    },
+    admission: fixture_admitted_for_offer(route: offer.route, offer: offer.id),
+    demand: fixture_demand_for(offer: offer.id),
+    work: fixture_work_for(offer: offer.id),
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+    OfferNotAdmittedForUse { offer: _, cause: _ } => []
+    PermitNamesAnotherOffer { offer: _, permit_names: _ } => []
+    PermitNamesAnotherRoute { offer: _ } => []
+    PermitNamesAnotherWork { permit_work: _, subject_work: _ } => []
+    PermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => []
+  }
+}
+
+fn t_no_delay() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_reqs(),
+    candidates: candidates,
+    duration: ExactGrantDuration { seconds: second(count: 90) },
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay(),
+    tie: StableRosterOrder,
+    affinity: "test.recipe" as PlacementAffinityKey,
+  )
+}
+
+fn t_selected_key(s: SupplySelection<NonEmptyStr>) -> String {
+  match s {
+    OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } =>
+      (sel.candidate.offer.id.key as String)
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
+  }
+}
+
+fn usd_hour(micro: Nat) -> MoneyPerHour {
+  MoneyPerHour { amount: money_amount_micro(count: micro), currency: Usd }
+}
+
+fn gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn card(name: String, vram_gib: Nat, driver: Nat?) -> ServingCardFacts {
+  ServingCardFacts { gpu_name: name, vram: gib(n: vram_gib), driver_major: driver }
+}
+
+fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
+  match v {
+    CardAccepted { class: _ } => true
+    CardRefusedBelowVram { required: _, observed: _ } => false
+    CardRefusedWrongCard => false
+    CardRefusedDriverBelowFloor { required: _, observed: _ } => false
+    CardRefusedDriverUnread => false
+  }
+}
+
+fn accepts(id: ServingRecipeId, c: ServingCardFacts) -> Bool {
+  verdict_is_accepted(v: serving_recipe_accepts_card(recipe: serving_recipe(id: id), card: c))
+}
+
+// ── each recipe resolves to its card classes ─────────────────────────────────────────────────
+
+test fn qwen_recipe_resolves_to_its_three_card_classes() -> Bool {
+  accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX 5000 Ada", vram_gib: 48, driver: Present { value: 580 }))
+    && accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX A6000", vram_gib: 72, driver: Present { value: 580 }))
+    && accepts(id: RecipeQwen3_8_27bNvfp4OnNinfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+}
+
+test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
+  accepts(id: RecipeFlashNextOnLabVllm, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+}
+
+// ── refusals ─────────────────────────────────────────────────────────────────────────────────
+
+test fn qwen_is_refused_on_a_card_below_its_vram() -> Bool {
+  match serving_recipe_accepts_card(
+    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    card: card(name: "RTX 4090", vram_gib: 24, driver: Present { value: 595 }),
+  ) {
+    CardRefusedBelowVram { required: r, observed: o } =>
+      byte_size_count(b: r) == byte_size_count(b: gib(n: 48)) && byte_size_count(b: o) == byte_size_count(b: gib(n: 24))
+    _ => false
+  }
+}
+
+test fn flash_next_is_refused_off_pro_6000_even_with_enough_vram() -> Bool {
+  match serving_recipe_accepts_card(
+    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    card: card(name: "RTX A6000", vram_gib: 96, driver: Present { value: 595 }),
+  ) {
+    CardRefusedWrongCard => true
+    _ => false
+  }
+}
+
+test fn a_driver_below_the_floor_is_refused_and_an_unread_driver_is_refused() -> Bool {
+  (match serving_recipe_accepts_card(
+    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 570 }),
+  ) {
+    CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 570
+    _ => false
+  })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 575 }),
+    ) {
+      CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 575
+      _ => false
+    })
+    && (match serving_recipe_accepts_card(
+      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      card: card(name: "RTX PRO 6000", vram_gib: 96, driver: none),
+    ) {
+      CardRefusedDriverUnread => true
+      _ => false
+    })
+}
+
+// ── non-fungible recipes are never substituted ───────────────────────────────────────────────
+
+test fn flash_next_is_not_interchangeable_with_the_27b_in_either_direction() -> Bool {
+  serving_recipes_interchangeable(left: RecipeQwen3_8_27bNvfp4OnNinfer, right: RecipeQwen3_8_27bNvfp4OnNinfer)
+    && serving_recipes_interchangeable(left: RecipeFlashNextOnLabVllm, right: RecipeFlashNextOnLabVllm)
+    && !serving_recipes_interchangeable(left: RecipeQwen3_8_27bNvfp4OnNinfer, right: RecipeFlashNextOnLabVllm)
+    && !serving_recipes_interchangeable(left: RecipeFlashNextOnLabVllm, right: RecipeQwen3_8_27bNvfp4OnNinfer)
+}
+
+test fn the_27b_recipe_names_the_existing_catalog_unit_and_flash_next_names_none_yet() -> Bool {
+  (match serving_recipe_catalog_unit(id: RecipeQwen3_8_27bNvfp4OnNinfer) {
+    Present { value: u } =>
+      match u {
+        Qwen3_8_27bOnNinfer => true
+        _ => false
+      }
+    Absent => false
+  })
+    && (match serving_recipe_catalog_unit(id: RecipeFlashNextOnLabVllm) {
+      Present { value: _ } => false
+      Absent => true
+    })
+}
+
+// ── disk is part of a rented card's cost ─────────────────────────────────────────────────────
+
+// 400 GiB at 375 micro-dollars per GiB-hour is 150000 micro per hour (the operator's ~0.15/h).
+fn t_disk_rate() -> ServingDiskRate {
+  ServingDiskRate { micro_per_gibibyte_hour: 375, currency: Usd }
+}
+
+fn hourly_micro(h: ServingHourlyCost) -> Int {
+  match h {
+    HourlyCostQuoted { rate: r } => money_amount_micro_count(m: r.amount) as Int
+    HourlyCostUnamortizable => -1
+    HourlyCostCurrencyMismatch => -2
+  }
+}
+
+test fn a_rented_cards_hourly_cost_is_its_dph_plus_the_recipes_disk() -> Bool {
+  hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
+  )) == 1050000
+}
+
+test fn disk_scales_with_the_recipes_disk_need() -> Bool {
+  // 27B needs 32 GiB: 32 * 375 = 12000
+  hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer),
+    supply: RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() },
+  )) == 912000
+}
+
+test fn a_disk_rate_in_another_currency_is_refused_not_added() -> Bool {
+  match serving_card_hourly(
+    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    supply: RentedCardSupply {
+      dph: usd_hour(micro: 900000),
+      disk_rate: ServingDiskRate { micro_per_gibibyte_hour: 375, currency: Eur },
+    },
+  ) {
+    HourlyCostCurrencyMismatch => true
+    _ => false
+  }
+}
+
+test fn an_owned_card_amortizes_its_capital_and_zero_hours_is_unamortizable() -> Bool {
+  // $10,000 over 10,000 hours is $1/h.
+  (hourly_micro(h: serving_card_hourly(
+    recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+    supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 10000 },
+  )) == 1000000)
+    && (hourly_micro(h: serving_card_hourly(
+      recipe: serving_recipe(id: RecipeFlashNextOnLabVllm),
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 0 },
+    )) == -1)
+}
+
+// ── owned and rented reach selection under one recipe; disk changes the ranking ──────────────
+
+fn recipe_rate(supply: ServingCardSupply) -> MoneyPerHour {
+  match serving_card_hourly(recipe: serving_recipe(id: RecipeFlashNextOnLabVllm), supply: supply) {
+    HourlyCostQuoted { rate: r } => r
+    HourlyCostUnamortizable => usd_hour(micro: 0)
+    HourlyCostCurrencyMismatch => usd_hour(micro: 0)
+  }
+}
+
+fn owned_supply() -> ServingCardSupply {
+  OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 10000 }
+}
+
+fn rented_supply() -> ServingCardSupply {
+  RentedCardSupply { dph: usd_hour(micro: 900000), disk_rate: t_disk_rate() }
+}
+
+fn candidates(owned_rate: MoneyPerHour, rented_rate: MoneyPerHour) -> List<CandidateOffer<NonEmptyStr>> {
+  concat(
+    t_bound(offer: t_offer(key: "owned-pro6000", rate: owned_rate), revocable: false),
+    t_bound(offer: t_offer(key: "rented-pro6000", rate: rented_rate), revocable: true),
+  )
+}
+
+test fn an_owned_and_a_rented_pro_6000_both_reach_select_supply_under_one_recipe() -> Bool {
+  match t_select(candidates: candidates(owned_rate: recipe_rate(supply: owned_supply()), rented_rate: recipe_rate(supply: rented_supply()))) {
+    OfferSelected { candidate: _, cost: _, basis: _, horizon: _, considered: cs, tie_policy: _ } => length(cs) == 2
+    NoAdmissibleOffer { considered: _ } => false
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => false
+  }
+}
+
+test fn disk_cost_flips_the_selection_that_dph_alone_would_make() -> Bool {
+  // dph only: rented 0.90/h undercuts owned 1.00/h. With the 0.15/h disk, rented is 1.05/h.
+  (t_selected_key(s: t_select(candidates: candidates(owned_rate: usd_hour(micro: 1000000), rented_rate: usd_hour(micro: 900000))))
+    == "rented-pro6000")
+    && (t_selected_key(s: t_select(candidates: candidates(
+      owned_rate: recipe_rate(supply: owned_supply()),
+      rented_rate: recipe_rate(supply: rented_supply()),
+    ))) == "owned-pro6000")
+}
+
+// ── cost per accepted unit, per recipe × card ────────────────────────────────────────────────
+
+test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unread_where_not() -> Bool {
+  // Flash-Next: operator reading ~900 tok/s. 1.05/h -> 1050000 * 1e6 / (900 * 3600) = 324074 micro per Mtok.
+  (match serving_cost_per_million_tokens(recipe: serving_recipe(id: RecipeFlashNextOnLabVllm), hourly: usd_hour(micro: 1050000)) {
+    UnitCostQuoted { amount: a, currency: _ } => (money_amount_micro_count(m: a) as Int) == 324074
+    UnitCostThroughputUnread => false
+  })
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe(id: RecipeQwen3_8_27bNvfp4OnNinfer), hourly: usd_hour(micro: 1050000)) {
+      UnitCostQuoted { amount: _, currency: _ } => false
+      UnitCostThroughputUnread => true
+    })
+}
+
+// ── start route and cache adapt ──────────────────────────────────────────────────────────────
+
+test fn flash_next_starts_from_the_object_store_only_with_no_hub_fallback() -> Bool {
+  match serving_recipe(id: RecipeFlashNextOnLabVllm).start {
+    StartFromObjectStoreOnly { store: _, hub_fallback: fb } => !fb
+    StartRouteUnread { read_obligation: _ } => false
+  }
+}
+
+test fn cache_sizes_follow_the_host() -> Bool {
+  // one half of the host
+  let half = CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } }
+  (byte_size_count(b: serving_cache_bytes(sizing: half, host: gib(n: 512))) == byte_size_count(b: gib(n: 256)))
+    && (byte_size_count(b: serving_cache_bytes(sizing: half, host: gib(n: 128))) == byte_size_count(b: gib(n: 64)))
+    && byte_size_count(b: serving_cache_bytes(sizing: CacheNone, host: gib(n: 512))) == 0
+}
