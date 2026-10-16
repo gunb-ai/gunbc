@@ -830,8 +830,8 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
     document: work_outcome_wire(o: outcome, subject: ExactTree { tree: reuse_tree() }, op: work_default_build()))
   let after = compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request())
   // Positive control: the same commit with BOTH outputs staged lands, so the refusal above is the missing output and nothing else.
-  let g2 = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
-  let c2 = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let g2 = Filesystem.Write(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c2 = Filesystem.Write(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let recommitted = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
