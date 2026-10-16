@@ -277,17 +277,17 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
 // is at risk: no fetch is reached and every planted byte is this claim's own.
 test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
   let stem = "eh810-fan-trap-specimen"
-  let spec_path = "target/eh810-fan-trap-specimen.sh"
+  let spec_path = "eh810-fan-trap-specimen.sh"
   let planted_paths = [
-    "target/eh810-fan-trap-specimen-auth-header",
-    "target/eh810-fan-trap-specimen-sm.json",
-    "target/eh810-fan-trap-specimen-bmc-credential",
-    "target/eh810-fan-trap-specimen-bmc-credential.fetch-status",
+    "eh810-fan-trap-specimen-auth-header",
+    "eh810-fan-trap-specimen-sm.json",
+    "eh810-fan-trap-specimen-bmc-credential",
+    "eh810-fan-trap-specimen-bmc-credential.fetch-status",
   ]
   let prelude = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
   let written = Filesystem.Write(path: spec_path, content: prelude)
   let planted = planted_paths |> all(p => Filesystem.Write(path: p, content: "planted-eh810-not-a-secret").success)
-  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='target' bash '"), spec_path), "'")])
+  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='.' bash '"), spec_path), "'")])
   let every_temp_gone = planted_paths |> all(p => !Filesystem.Read(path: p).success)
   let spec_gone = Filesystem.Delete(path: spec_path)
   written.success && planted && run.exit_code != 0 && every_temp_gone && spec_gone.success
@@ -301,7 +301,7 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
 // is the typed FanObserveBootPhaseRefused line naming that cause. A fold that silently succeeded
 // without a receipt, or wrote one and still failed the step, fails this claim.
 test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
-  let receipt_path = "target/eh810-fan-boot-phase-refusal-receipt.txt"
+  let receipt_path = "eh810-fan-boot-phase-refusal-receipt.txt"
   let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
   match admittable.first() {
     Present { value: row } =>
@@ -333,9 +333,9 @@ test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
 // own working files: the file transport creates no parent directories, and each path is deleted after
 // the read so a rerun starts from the absent arm.
 test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bool {
-  let ok_credential = "target/eh810-fan-fetch-status-claim-credential"
-  let bad_credential = "target/eh810-fan-fetch-status-claim-other"
-  let absent_credential = "target/eh810-fan-fetch-status-claim-absent"
+  let ok_credential = "eh810-fan-fetch-status-claim-credential"
+  let bad_credential = "eh810-fan-fetch-status-claim-other"
+  let absent_credential = "eh810-fan-fetch-status-claim-absent"
   let ok_path = concat(ok_credential, mtcollins1_fan_credential_fetch_status_suffix)
   let bad_path = concat(bad_credential, mtcollins1_fan_credential_fetch_status_suffix)
   let ok_write = Filesystem.Write(path: ok_path, content: "ok")
