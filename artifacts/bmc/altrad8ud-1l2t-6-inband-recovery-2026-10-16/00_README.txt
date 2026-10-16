@@ -1,4 +1,4 @@
-In-band IPMI (KCS) BMC credential recovery — bmc-altrad8ud-1l2t-6 (192.168.1.250)
+In-band IPMI (SSIF) BMC credential recovery — bmc-altrad8ud-1l2t-6 (192.168.1.250)
 Executed by session royal-seal-46 on 2026-10-16. LAN reached via jump host srv2.
 
 PROVENANCE — read before citing. Two classes of evidence here:
@@ -11,7 +11,8 @@ CAPTURED (raw bytes in this directory, checksummed in SHA256SUMS):
                           hostname ubuntu-server), /dev/ipmi0 + ipmi_ssif/ipmi_devintf/ipmi_msghandler
                           loaded, ipmitool 1.8.19, mc info (ASRock, Firmware Revision 3.22), channel 1
                           = 802.3 LAN, user list 1 => ID 1 root ADMINISTRATOR, lan print => .250.
-                          Passwordless KCS: every ipmitool call uses /dev/ipmi0 with NO -I lanplus and
+                          Passwordless in-band system interface (SSIF — ipmi_ssif loaded, ipmi_si
+                          absent): every ipmitool call uses /dev/ipmi0 with NO -I lanplus and
                           NO credential on the command line.
   04_post_reset_readback.json  step 4 terminal state. GET root/0penBmc => HTTP 403,
                           MessageId Base.1.16.0.PasswordChangeRequired (OpenBMC 3.22). This is the
@@ -24,7 +25,7 @@ OBSERVED IN SESSION, NOT BYTE-CAPTURED (do not model as captured; the terminal r
   - The factory-password refusal is an IPMI refusal ("Invalid data field in request", exit 1), NOT a
     Redfish set — there is no Redfish MessageId for it. Both the 16- and 20-byte forms were rejected.
     (This IS re-captured in 02_inband_channel.txt, taken post-reset; it reproduces identically.)
-  - PRIVILEGED WRITE 1 (temp admin password set over KCS, 20-char, then Redfish GET => HTTP 200):
+  - PRIVILEGED WRITE 1 (temp admin password set over the in-band SSIF channel, 20-char, then Redfish GET => HTTP 200):
     executed in the original run ~06:40Z; the temp password was wiped by the reset, so this step is
     NOT reproducible and was not saved as bytes. Observed exit: "Set User Password command successful
     (user 1)"; Redfish verify HTTP 200, FirmwareVersion 3.22.00.
