@@ -2066,6 +2066,8 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
     then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
       bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
+      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "cat"), receipt]), path: bv(name: "GITHUB_STEP_SUMMARY")),
+      bcmd(words: [bl(text: "echo"), bl(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
       bash_build_exit(code: "1"),
     ],
   )]

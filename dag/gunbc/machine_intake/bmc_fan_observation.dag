@@ -121,6 +121,10 @@ type FanObservationRound {
   observed_at: NonEmptyStr
   round_index: Int
   chassis: ChassisPowerObservation
+  // THE RAW ipmitool chassis status ANSWER, VERBATIM (operator addendum 2026-10-16): when a series is
+  // refused, the receipt must carry what the controller actually said, so a newly seen refusal shape can
+  // be defined afterwards from evidence rather than from the typed summary.
+  chassis_raw: String
   thermal: ThermalObservation
   fans: FanSensorObservation
 }
@@ -243,6 +247,7 @@ fn observe_fan_round(
     observed_at: clock_now_probed_at_or_unknown(),
     round_index: round_index,
     chassis: chassis_observation(success: status.success, stdout: status.stdout),
+    chassis_raw: join(["exit=", to_string(status.exit_code), " stdout=[", status.stdout, "] stderr=[", status.transport_stderr, "]"], ""),
     thermal: thermal_observation(success: temps.success, results: temp_results),
     fans: fan_observation(success: fans.success, results: fan_results),
   }
@@ -518,6 +523,6 @@ fn observe_fan_policy(
   return if fold(series, init: false, f: (acc, r) => acc || chassis_was_read(chassis: r.chassis)) {
     FanObservationTaken { rounds: series, interval: interval }
   } else {
-    FanObservationRefused { cause: "no round could read chassis status, so no sample has a power state beside it and the series establishes nothing" }
+    FanObservationRefused { cause: join(["no round could read chassis status, so no sample has a power state beside it and the series establishes nothing; raw ipmitool chassis status per round, verbatim: ", join(map(series, r => r.chassis_raw), " | ")], "") as NonEmptyStr }
   }
 }

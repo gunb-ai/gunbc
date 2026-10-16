@@ -303,6 +303,7 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
 type FanTailOutcome {
   exit_code: Int
   output: String
+  summary: String
 }
 
 // Runs the REAL outcome tail the fan step emits, against a receipt this claim plants, with a claim-private
@@ -316,22 +317,27 @@ fn fan_boot_phase_tail_outcome(stem: String, receipt: String) -> FanTailOutcome 
   let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target"])
   let _ = Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: receipt)
   let _ = Filesystem.Write(path: out_path, content: "")
-  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["env GITHUB_OUTPUT='", out_path, "' bash '", spec_path, "'"], "")])
+  let summary_path = concat(stem, "-summary")
+  let _ = Filesystem.Write(path: summary_path, content: "")
+  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["env GITHUB_OUTPUT='", out_path, "' GITHUB_STEP_SUMMARY='", summary_path, "' bash '", spec_path, "'"], "")])
   let out = Filesystem.Read(path: out_path)
+  let summary = Filesystem.Read(path: summary_path)
+  let _ = Filesystem.Delete(path: summary_path)
   let _ = Filesystem.Delete(path: spec_path)
   let _ = Filesystem.Delete(path: out_path)
   let _ = Filesystem.Delete(path: mtcollins1_fan_observation_receipt_path)
-  FanTailOutcome { exit_code: run.exit_code, output: out.content }
+  FanTailOutcome { exit_code: run.exit_code, output: out.content, summary: summary.content }
 }
 
 // CONTROL (operator ruling 2026-10-16, executed): a MODELED refusal makes the boot INELIGIBLE. The real
 // refused receipt line (the entry's own prefix) goes through the real emitted tail: the step output
 // says refused, the step exits non-zero, and the boot step's if: demands observed - so it cannot run.
 test fn a_modeled_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
-  let refused = fan_boot_phase_tail_outcome(stem: "jc547-fan-refused", receipt: concat(mtcollins1_fan_boot_phase_refused_prefix, " cause=jc547-claim-cause"))
+  let refused = fan_boot_phase_tail_outcome(stem: "jc547-fan-refused", receipt: concat(mtcollins1_fan_boot_phase_refused_prefix, " cause=jc547-claim-cause raw=[exit=1 stdout=[] stderr=[Error: Unable to establish IPMI v2 / RMCP+ session]]"))
   refused.exit_code != 0
     && string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
     && !string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+    && string_contains(s: refused.summary, pattern: "Unable to establish IPMI v2 / RMCP+ session")
     && string_contains(s: fleet_converge_mtcollins1_boot_step_if_observed, pattern: join(["steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], ""))
 }
 
