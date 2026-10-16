@@ -39,6 +39,7 @@ import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_curre
 import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
+import gunbc.host.virtual_media_boot_selection { VirtualMediaBootSelectionAdmitted }
 import gunbc.auth.managed_host_boot_federation {
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
