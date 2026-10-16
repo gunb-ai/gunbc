@@ -15575,16 +15575,29 @@ fn if_branch_type_arguments_agree(left_args: List<Node>, right_args: List<Node>,
     Present { value: l } =>
       match right_args |> first {
         Present { value: r } =>
-          node_type_compatible(
-            left: child_type_node(ch: l),
-            right: child_type_node(ch: r),
-            source_indices: scope.type_env.source_indices,
-            text: TextJudgedIn { env: scope.type_env })
+          if_branch_argument_types_agree(left: child_type_node(ch: l), right: child_type_node(ch: r), scope: scope)
             && if_branch_type_arguments_agree(left_args: left_args |> skip(1), right_args: right_args |> skip(1), scope: scope)
         Absent => false
       }
     Absent => true
   }
+}
+
+// AN ARGUMENT AGREES BY ITS WHOLE STRUCTURE, NOT ITS HEAD. node_type_compatible reads a non-container
+// application's head name and none of its arguments, so Inner<Int> and Inner<Bool> agree there; this
+// relation recurses through every applied argument so the alias admission cannot extend that. The
+// head-only reading itself is node_type_compatible's and is untouched here: `if c { a } else { b }` over
+// `a: Boxed<Int>, b: Boxed<Bool>` is admitted on main without any alias.
+fn if_branch_argument_types_agree(left: Node, right: Node, scope: InferScope) -> Bool {
+  let heads_agree = node_type_compatible(
+    left: left,
+    right: right,
+    source_indices: scope.type_env.source_indices,
+    text: TextJudgedIn { env: scope.type_env })
+    || if_branch_types_agree_through_alias_identity(left: left, right: right, scope: scope)
+  heads_agree
+    && (left.children |> count) == (right.children |> count)
+    && if_branch_type_arguments_agree(left_args: left.children, right_args: right.children, scope: scope)
 }
 
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the

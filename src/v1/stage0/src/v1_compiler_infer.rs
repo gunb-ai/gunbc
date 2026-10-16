@@ -26857,13 +26857,10 @@ pub fn if_branch_type_arguments_agree(
         match left_args.clone().first().cloned() {
             Some(l) => match right_args.clone().first().cloned() {
                 Some(r) => {
-                    (crate::v1_compiler_infer_types::node_type_compatible(
+                    (if_branch_argument_types_agree(
                         crate::v1_compiler_infer_types::child_type_node(l.clone()),
                         crate::v1_compiler_infer_types::child_type_node(r.clone()),
-                        scope.type_env.clone().source_indices.clone(),
-                        Rc::new(TextJudgment::TextJudgedIn {
-                            env: scope.type_env.clone(),
-                        }),
+                        scope.clone(),
                     ) && if_branch_type_arguments_agree(
                         Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
                         Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
@@ -26875,6 +26872,34 @@ pub fn if_branch_type_arguments_agree(
             std::option::Option::None => true,
         }
     })
+}
+
+pub fn if_branch_argument_types_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let heads_agree = (crate::v1_compiler_infer_types::node_type_compatible(
+            left.clone(),
+            right.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            Rc::new(TextJudgment::TextJudgedIn {
+                env: scope.type_env.clone(),
+            }),
+        ) || if_branch_types_agree_through_alias_identity(
+            left.clone(),
+            right.clone(),
+            scope.clone(),
+        ));
+        ((heads_agree.clone()
+            && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
+            && if_branch_type_arguments_agree(
+                left.children.clone(),
+                right.children.clone(),
+                scope.clone(),
+            ))
+    }
 }
 
 pub fn file_named_imports_of(
