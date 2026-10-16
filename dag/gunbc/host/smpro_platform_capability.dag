@@ -66,7 +66,7 @@ fn smpro_capability(architecture: Architecture, reading: SmproReading?) -> Smpro
 // never has to re-derive the standing from the fields.
 fn smpro_capability_text(capability: SmproCapability) -> String {
   match capability {
-    SmproCapabilityPresent { reading: _ } => "SMpro capability present (Aarch64)
+    SmproCapabilityPresent { reading: _ } => "SMpro capability present (Aarch64)"
     SmproCapabilityPassNotTaken { reason: r } =>
       join(["SMpro not exercised on an Aarch64 platform: ", r as String], "")
     SmproCapabilityPlatformAbsent { architecture: a } =>
