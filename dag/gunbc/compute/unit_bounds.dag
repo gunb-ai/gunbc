@@ -227,7 +227,7 @@ type UserWorkScopeStanding
   | ExemptBoundedContainer { bytes: ByteSize }
   | BoundedContainerUncapped
   | BoundedContainerUnreadable
-  | ExternallyBoundedExecutor { run_id: String }
+  | ExternallyBoundedExecutor { run_id: NonEmptyStr }
 
 type UserWorkScopeStandingEffect
   = WrapIntoUserWorkSlice
@@ -361,7 +361,7 @@ fn bounded_container_standing(root_memory: RootCgroupMemoryRead) -> UserWorkScop
 }
 
 type BuildBuddyRunIdRead
-  = BuildBuddyRunIdPresent { id: String }
+  = BuildBuddyRunIdPresent { id: NonEmptyStr }
   | BuildBuddyRunIdAbsent
 
 fn namespaced_root_standing(root_memory: RootCgroupMemoryRead, buildbuddy_run_id: BuildBuddyRunIdRead) -> UserWorkScopeStanding {
@@ -372,11 +372,7 @@ fn namespaced_root_standing(root_memory: RootCgroupMemoryRead, buildbuddy_run_id
       match buildbuddy_run_id {
         BuildBuddyRunIdAbsent => BoundedContainerUnreadable
         BuildBuddyRunIdPresent { id } =>
-          if id == "" {
-            BoundedContainerUnreadable
-          } else {
-            ExternallyBoundedExecutor { run_id: id }
-          }
+          ExternallyBoundedExecutor { run_id: id }
       }
     other => other
   }
@@ -487,7 +483,7 @@ fn user_work_scope_standing_wire(s: UserWorkScopeStanding) -> String {
       join(["ExemptBoundedContainer:", to_string(value: byte_size_count(b: bytes))], "")
     BoundedContainerUncapped => "BoundedContainerUncapped"
     BoundedContainerUnreadable => "BoundedContainerUnreadable"
-    ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id], "")
+    ExternallyBoundedExecutor { run_id } => join(["ExternallyBoundedExecutor:", run_id as String], "")
   }
 }
 

@@ -196,11 +196,14 @@ pub(crate) use test_migration::*;
 // is registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
+mod demand_acquire;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
+mod source_layout_lookup;
+pub use demand_acquire::resolve_entry_graph_demand_acquired;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -4901,7 +4904,7 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
     c.matches('{').count() as i32 - c.matches('}').count() as i32
 }
 
-type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
+pub(crate) type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
 /// The fallible core. Every filesystem condition and every corpus-authority violation
 /// returns a located `Err` instead of unwinding.
@@ -8019,7 +8022,7 @@ fn admit_pool_bare_references(index: &MultiEntryIndex) -> Result<(), String> {
         .try_for_each(|source| admit_bare_references_of_file(index, source));
     pre_entry_phase::record(
         "pool_bare_reference_admission",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         admission_started.elapsed(),
     );
     verdict
@@ -11459,7 +11462,7 @@ pub struct MultiEntryIndex {
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
     /// so index construction stays free of the governor read for callers that
     /// never touch the typed cache.
-    typed_module_cache_cap: std::cell::OnceCell<usize>,
+    typed_module_cache_cap: std::cell::OnceCell<Result<usize, String>>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -11988,8 +11991,8 @@ const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 /// SEED MIRROR of `gunbc.typed_module_cache_capacity` `typed_module_cache_entries_ceiling`.
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4000;
 
-fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
-    let cap = typed_module_cache_cap(index);
+fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) -> Result<(), String> {
+    let cap = typed_module_cache_cap(index)?;
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -12011,6 +12014,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
             "[floor-drain] typed_cache_eviction: evicted={evicted} cap={cap} total_evictions={total}"
         );
     }
+    Ok(())
 }
 
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
@@ -12113,7 +12117,7 @@ fn index_insert_typed(
         .typed_module_cache
         .borrow_mut()
         .insert(typed_key, result.clone());
-    enforce_typed_cache_entry_cap(index);
+    enforce_typed_cache_entry_cap(index)?;
     Ok(result)
 }
 
@@ -13727,7 +13731,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     });
     pre_entry_phase::record(
         "pool_census_parse",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         pool_started.elapsed(),
     );
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
@@ -13968,7 +13972,7 @@ fn closure_name_census(
         v1_compiler_infer::build_symbol_index_census_raw_nodes(nodes, pool.combined_si.clone());
     pre_entry_phase::record(
         "closure_name_census_build",
-        pre_entry_phase::PhaseScale::Tree,
+        pre_entry_phase::index_scale(),
         census_started.elapsed(),
     );
     index
@@ -14265,10 +14269,13 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                // Same-tree bare underlay for the module being typechecked
+                                // Same-tree unique-bare underlay for the module being typechecked
                                 // (bare = own tree); out-of-root modules keep the
                                 // closure-only bare universe. Qualified names come from
-                                // the closure census, not a whole-pool fill.
+                                // the closure census, not a whole-pool fill (#13925).
+                                // Demand-acquired indexes still use this over *acquired*
+                                // same-root files (not a whole-tree walk). Without it,
+                                // unique-bares such as `join` refuse on mtcollins1_boot_run.
                                 let (module_symbol_index, module_variant_base) =
                                     match source_tree_root_of(&index.source_roots, &decl_file) {
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
