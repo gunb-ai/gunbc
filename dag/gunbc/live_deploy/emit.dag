@@ -82,12 +82,18 @@ import gunbc.live_deploy.repository_convergence_placement {
   convergence_unit_doc,
   convergence_placement_entry_path,
 }
+import extdeps.git {
+  git_config_key_extensions_partial_clone,
+  git_config_regexp_remote_promisor,
+  git_config_regexp_remote_partialclonefilter,
+  git_no_lazy_fetch_environment,
+  git_no_lazy_fetch_internally_set_value,
+}
 import extdeps.git.partial_clone {
   ObjectSourceServeAdmission,
   ObjectSourceCanServe,
   ObjectSourceCannotServe,
   object_source_serve_refusal_text,
-  observe_object_source_serve,
 }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -308,6 +314,8 @@ import v2.extdeps.languages.bash_build {
   bash_build_assign,
   bash_build_command_from_lits,
   bash_build_if_from_stmts,
+  bash_build_if_else,
+  bash_build_stmt_list_from_nodes,
   bash_build_test_bracket,
   bash_build_word_cmdsubst,
   bash_build_word_lit,
@@ -1651,7 +1659,7 @@ fn apply_repository_convergence_unit_write_step(
       receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
       working_directory: "%s",
     ),
-    expansion_var: "PWD",
+    expansion_var: apply_tree_src_expansion_var,
   ))
 }
 
@@ -3366,7 +3374,7 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
-        expansion_var: "PWD",
+        expansion_var: apply_tree_src_expansion_var,
       )),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.env",
@@ -3467,7 +3475,7 @@ fn emit_artifact_upsert(kind: UpsertArtifactKind, path: NonEmptyStr, spec: Deplo
       deploy_raw(command: deploy_stage_write_expansion_command(
         stage_name: "gunbc-tree-sync.env",
         format: "GUNBC_TREE_SRC=%s\n",
-        expansion_var: "PWD",
+        expansion_var: apply_tree_src_expansion_var,
       )),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: "gunbc-tree-sync.env",
@@ -4278,10 +4286,82 @@ fn object_source_cannot_serve_command(source: String, cause: String) -> String {
   )
 }
 
+// THE TRANSFER SOURCE IS THE APPLY SCRIPT'S $PWD, written as GUNBC_TREE_SRC by
+// deploy_stage_write_expansion_command. Decide inspects that same expansion, not the
+// emitting process's git toplevel: emit-time observation and host $PWD are different
+// paths (specimen /tmp/gunbc-deploy-4242613b).
+data apply_tree_src_expansion_var: String = "PWD"
+
+fn apply_object_source_serve_deferred_to_pwd() -> ObjectSourceServeAdmission {
+  ObjectSourceCanServe { source: concat("$", apply_tree_src_expansion_var) }
+}
+
+fn git_in_apply_pwd_command(args: List<String>) -> Node {
+  bash_build_command_with_words(words: concat(
+    [
+      bash_build_word_lit(text: "git"),
+      bash_build_word_lit(text: "-C"),
+      bash_build_word_var(name: apply_tree_src_expansion_var),
+    ],
+    map(args, a => bash_build_word_lit(text: a)),
+  ))
+}
+
+fn apply_object_source_pwd_refuse_stmts(cause: String) -> List<Node> {
+  [
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "printf"),
+      bash_build_word_lit(text: "the object source `%s` cannot serve the objects this transfer needs: %s\n"),
+      bash_build_word_var(name: apply_tree_src_expansion_var),
+      bash_build_word_lit(text: cause),
+    ]),
+    bash_build_command_from_lits(lits: ["false"]),
+  ]
+}
+
+fn apply_object_source_pwd_promisor_cause() -> String {
+  join([
+    "it is a promisor (partial) clone; git-upload-pack(1) sets ",
+    git_no_lazy_fetch_environment,
+    "=",
+    git_no_lazy_fetch_internally_set_value,
+    " by default, so pack-objects dies reading blobs the source does not hold",
+  ], "")
+}
+
+fn apply_object_source_pwd_serve_decide_command() -> String {
+  shell_command_text_of_stmts(stmts: [
+    bash_build_if_else(
+      cond: git_in_apply_pwd_command(args: ["rev-parse", "--git-dir"]),
+      then_body: bash_build_stmt_list_from_nodes(stmts: [bash_build_command_from_lits(lits: [":"])]),
+      else_body: bash_build_stmt_list_from_nodes(stmts: apply_object_source_pwd_refuse_stmts(
+        cause: "the repository's partial-clone standing could not be read: git rev-parse --git-dir failed",
+      )),
+    ),
+    bash_build_if_from_stmts(
+      cond: git_in_apply_pwd_command(args: ["config", "--get", git_config_key_extensions_partial_clone]),
+      then_stmts: apply_object_source_pwd_refuse_stmts(cause: apply_object_source_pwd_promisor_cause()),
+    ),
+    bash_build_if_from_stmts(
+      cond: git_in_apply_pwd_command(args: ["config", "--get-regexp", git_config_regexp_remote_promisor]),
+      then_stmts: apply_object_source_pwd_refuse_stmts(cause: apply_object_source_pwd_promisor_cause()),
+    ),
+    bash_build_if_from_stmts(
+      cond: git_in_apply_pwd_command(args: ["config", "--get-regexp", git_config_regexp_remote_partialclonefilter]),
+      then_stmts: apply_object_source_pwd_refuse_stmts(cause: apply_object_source_pwd_promisor_cause()),
+    ),
+  ])
+}
+
 fn apply_object_source_serve_fragments(object_source_serve: ObjectSourceServeAdmission) -> List<HostScriptFragment> {
   match object_source_serve {
     ObjectSourceCanServe { source: _ } =>
-      host_script_member_proceed(member: "object-source" as NonEmptyStr, mutate_steps: [])
+      host_script_member_fragments(
+        member: "object-source" as NonEmptyStr,
+        standing: HostScriptProceed,
+        decide_steps: [deploy_raw(command: apply_object_source_pwd_serve_decide_command())],
+        mutate_steps: [],
+      )
     ObjectSourceCannotServe { source: s, cause: c } =>
       host_script_member_refused(
         member: "object-source" as NonEmptyStr,
@@ -4779,7 +4859,7 @@ fn live_deploy_apply_script_for_wet(
     plan: plan,
     cap_authorization: cap_authorization,
     oidc_now: tracker_web_oidc_deploy_now_epoch(),
-    object_source_serve: observe_object_source_serve(source: git.Inspect.Toplevel().path as String),
+    object_source_serve: apply_object_source_serve_deferred_to_pwd(),
   )
 }
 

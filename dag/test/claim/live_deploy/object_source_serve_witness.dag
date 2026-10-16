@@ -5,8 +5,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.orchestration { PipelineStep }
 import gunbc.live_deploy.emit {
   apply_object_source_serve_fragments,
+  apply_object_source_pwd_serve_decide_command,
+  apply_tree_src_expansion_var,
   host_script_mutate_projection,
   compose_host_script_standing,
+  compose_host_script_decide_steps,
   host_script_member_proceed,
   deploy_raw,
   HostScriptProceed,
@@ -111,6 +114,16 @@ test fn a_shallow_non_promisor_source_admits_the_apply_plan() -> Bool {
           string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
       }
   }
+}
+
+test fn a_can_serve_apply_decide_inspects_the_pwd_named_as_tree_src() -> Bool {
+  let frags = fragments_with_binary_mutate(serve: apply_complete_object_source_serve())
+  let decide = pipeline_steps_text(steps: compose_host_script_decide_steps(fragments: frags))
+  apply_tree_src_expansion_var == "PWD"
+    && string_contains(s: decide, pattern: "git")
+    && string_contains(s: decide, pattern: apply_tree_src_expansion_var)
+    && string_contains(s: decide, pattern: "extensions.partialClone")
+    && string_contains(s: apply_object_source_pwd_serve_decide_command(), pattern: apply_tree_src_expansion_var)
 }
 
 test fn the_refusal_text_names_the_source_path_and_the_cause() -> Bool {
