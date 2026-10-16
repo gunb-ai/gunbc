@@ -1157,8 +1157,24 @@ fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission)
       ContextResolved { resolved: Rejected { diagnostics: r }, context: context }
     Accepted { value: shared, diagnostics: d } =>
       let closure = closure_declarations_demand(shared: shared)
+      // THE CLOSURE'S NAMESPACES ARE ITS OWN KEYSPACE. closure_phase1_walk_module admits every module under
+      // imports: [], an admission that is no caller's; the provider keys a module by name alone, so
+      // merging those entries would refuse each subject's own admission (namespace provider admission
+      // conflict). The walk reads the caller's provider plus the closure index, and returns that context.
+      let walk_context = ResolutionContext {
+        lm: shared.lm,
+        roots: shared.roots,
+        symbol_index: shared.symbol_index,
+        index: shared.index,
+        active_roots: shared.active_roots,
+        policy: shared.policy,
+        namespaces: shared.namespaces,
+        namespaces_built: shared.namespaces_built,
+        closure_declarations: closure.context.closure_declarations,
+        type_declaration_modifiers: closure.context.type_declaration_modifiers
+      }
       let walked = resolve_walk_in_context(
-        context: Accepted { value: closure.context, diagnostics: d },
+        context: Accepted { value: walk_context, diagnostics: d },
         admission: admission
       )
       match walked.context {
