@@ -7,7 +7,7 @@ import std.realization_reconcile { Converged, NotConverged, Reconciliation }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.exec.command { argv_words }
 import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
-import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments, coreutils_directory_mode_operand }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, CiRunnerSudoBinary, SudoInstall }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
@@ -436,10 +436,14 @@ test fn the_privileged_write_is_what_the_deleted_script_emitted() -> Bool {
     && (count_word(words: words, wanted: "/usr/bin/sudo") == 1)
     && (!string_contains(s: w_words_of(argv: words), pattern: "bash"))
     && (!string_contains(s: w_words_of(argv: words), pattern: "; "))
-    // The flags are their own words, so no quoting is needed: assert the separation directly.
+    // The flags are their own words, so no quoting is needed: assert the separation directly. The
+    // mode OPERAND is spelled by the builder rather than as a literal here -- `install -d` takes the
+    // four-digit file_mode_octal with a further leading zero ("00755"), and pinning a hand-typed
+    // digit string would have the claim fail on my arithmetic rather than on the command.
     && (count_word(words: words, wanted: "-m") == 1)
-    && (count_word(words: words, wanted: "0755") == 1)
     && (count_word(words: words, wanted: "-d") == 1)
+    && (count_word(words: words, wanted: coreutils_directory_mode_operand(mode: w_mode())) == 1)
+    && (count_word(words: words, wanted: "/srv/gunbc/artifacts") == 1)
 }
 
 fn count_word(words: List<String>, wanted: String) -> Int {
