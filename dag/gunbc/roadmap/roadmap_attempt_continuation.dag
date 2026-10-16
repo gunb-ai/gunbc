@@ -285,6 +285,7 @@ fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reas
           ContinuationRefused { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (refused): ", r], "") }
           ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
           ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
+          ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (recovery-needed, resumable): ", r], "") }
         }
     }
   }
