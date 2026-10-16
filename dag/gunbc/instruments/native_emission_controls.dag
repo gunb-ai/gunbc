@@ -723,17 +723,16 @@ data native_emission_expected_identities: List<String> = [
   "optional_type_param_red_absent_reads_no_value",
   "alias_empty_map_seed_cross_module_indexes_each_name",
   "alias_empty_map_seed_indexes_each_name",
-  "alias_empty_map_seed_red_empty_keeps_seed",
+  "alias_empty_map_seed_empty_input_yields_empty_map",
   "alias_empty_map_seed_typed_control_agrees"
 ]
 
 // RULE: an untyped empty-map fold seed is emitted with its inferred application, never the bare head
 // of an alias (gunbc.recurring_failure_mode an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head).
-// ControlWords (declared in native_emission_controls_alias) is the shape of v2.std.qualified_name QualifiedName = FreeMonoid<Symbol>: the map's value
-// type is an alias of a generic, and the seed carries no annotation of its own. The seed rendered
-// `v1_rt::rc_empty_map::<String, Rc<FreeMonoid>>()`, so rustc refused E0107 (missing generics for type
-// alias FreeMonoid) and this program did not compile -- the red is the label's. control_word_index_typed is
-// the positive control: the same fold over a typed let, which always compiled.
+// GUARD, not a proven discriminator: the RFM row records E0107 from pre-merge #14084 heads; these programs emit
+// and compile on main and were not run against those heads, so whether they red when the defect returns is unmeasured.
+// The map's value type is an alias of a generic (QualifiedName = FreeMonoid<Symbol>) and the seed carries no annotation.
+// control_word_index_typed is the typed-let form of the same fold.
 fn control_word_index(names: List<Symbol>) -> Map<Symbol, QualifiedName> {
   let p = qualified_name_from_dotted_string(dotted: "a.b")
   fold(names, init: empty_map(), f: fn(acc, name) {
@@ -759,7 +758,7 @@ fn alias_empty_map_seed_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "alias_empty_map_seed_cross_module_indexes_each_name", held: map_keys(control_word_index_cross_module(names: ["a", "b"])) |> count == 2 },
     NativeEmissionCase { identity: "alias_empty_map_seed_indexes_each_name", held: map_keys(control_word_index(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 },
-    NativeEmissionCase { identity: "alias_empty_map_seed_red_empty_keeps_seed", held: map_keys(control_word_index(names: [])) |> count == 0 },
+    NativeEmissionCase { identity: "alias_empty_map_seed_empty_input_yields_empty_map", held: map_keys(control_word_index(names: [])) |> count == 0 },
     NativeEmissionCase { identity: "alias_empty_map_seed_typed_control_agrees", held: map_keys(control_word_index_typed(names: [symbol_intern_lexeme(lexeme: "a"), symbol_intern_lexeme(lexeme: "b")])) |> count == 2 }
   ]
 }
