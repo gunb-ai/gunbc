@@ -1,0 +1,1114 @@
+module gunbc.instruments.fabric_ci_fci1_live_actuator
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.optional { Present, Absent }
+import std.measure { finite_byte_size_count, FiniteByteSize }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  LoadState,
+  ActiveState,
+  MemoryMax,
+  MemoryHigh,
+  ControlGroup,
+  WorkingDirectoryProperty,
+  RuntimeDirectoryProperty,
+}
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command, systemctl_stop_argv }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty,
+  NamedUnitSetting,
+  Pipe,
+  Quiet,
+  Wait,
+  Collect,
+  RunUnit,
+  PropertyLong,
+  EndOfOptions,
+  SystemdRunCommandReady,
+  SystemdRunCommandRefused,
+  systemd_run_command_of,
+  systemd_run_option_words_refused_cause_detail,
+}
+import extdeps.tools.findutils { find_children_named_command }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_command, ls_one_per_line_command, pwd_command }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.tools.id { id_uid_argv }
+import extdeps.shell { shell_test_is_executable_argv }
+import gunbc.fabric.fci1_bounded_execution_context {
+  Fci1BoundedExecutionContext,
+  Fci1BoundedExecutionContextBuilt,
+  Fci1MemoryMaxNonPositive,
+  Fci1MemoryHighNonPositive,
+  Fci1MemoryHighExceedsMax,
+  fci1_bounded_execution_context,
+}
+import gunbc.instruments.fabric_ci_calibration_actuator {
+  FabricCiCalibrationContext,
+  FabricCiTransportCaptured,
+  FabricCiTransportRefused,
+  fabric_ci_calibration_argv,
+  fabric_ci_calibration_child,
+  fabric_ci_capture_transport,
+  fabric_ci_capture_clear,
+  fabric_ci_capture_read,
+  fabric_ci_transport_cause_text,
+  fabric_ci_env_required,
+  fabric_ci_calibration_evidence_entry,
+}
+import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
+  Fci1Observed,
+  Fci1UnitBound,
+  Fci1UnitBounded,
+  Fci1UnitCommand,
+  Fci1UnitCommandBuilt,
+  Fci1UnitCommandRefused,
+  fci1_run_words,
+  fci1_run_command,
+  fci1_diagnostics,
+  fci1_unit_properties,
+  fci1_bytes_text,
+  fci1_cgroup_path,
+  fci1_cgroup_value,
+}
+
+// THE FCI-1 LIVE RESERVATION INSTRUMENT, AS A TYPED ACTUATOR. It starts no Work command; it takes
+// the canonical reservation once, observes it from an independent process, releases it, and grades
+// the allocation store, the cell and the zero-work population around it. It realizes the ordered
+// Fci1Step rows below directly: argv is a list, a filesystem effect is a typed op, a process is a typed
+// command, and no shell re-reads a delimited plan.
+//
+// EVERY BOUNDARY STAYS A SEPARATE PROCESS. The evidence calibration, each assertion of the live probe
+// (gunbc.instruments.fabric_control_plane_live_probe), each value-file producer and each of the three
+// submitter units is its own `gunbc run` child (a submitter inside its own `systemd-run --wait` unit
+// in the controls slice). The only data channel out of a producer is a named value file read back by
+// this actuator; diagnostics are never data. Collapsing any of them into this process would remove
+// the boundary the live observation is about.
+//
+// Operator contract (as root on srv3, from the checkout root, after the emitted
+// fci1_install_controls_slice from tools/fabric_ci_fci1_bounded_execution_context.env and with
+// fci1_remove_controls_slice on the caller's EXIT: this process is itself a gunbc run and needs the
+// slice's standing before it can start, so it cannot be the one to install it):
+//   FCI1_GUNBC_BIN=<exact-tree gunbc> FCI1_CHECKOUT_ROOT=<checkout root> FCI1_RECEIPT_ROOT=<empty dir>
+//   FCI1_CHECKPOINT=<none | a gunbc.instruments.fabric_control_plane_live_probe checkpoint token>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/fabric_ci_fci1_live_actuator.dag --function fci1_live_instrument_run
+//
+// The outer entry only discovers and launches the driver unit; the complete instrument runs INSIDE
+// that unit (fci1_live_instrument_inner) so calibration, assertions and cleanup all inherit the same
+// finite bound. Admission is fresh manager and cgroup observation made by the inner process.
+
+data fci1_live_actuator_entry: String = "dag/gunbc/instruments/fabric_ci_fci1_live_actuator.dag"
+data fci1_probe_entry_path: String = "dag/gunbc/instruments/fabric_control_plane_live_probe.dag"
+data fci1_calibration_actuator_entry_path: String = "dag/gunbc/instruments/fabric_ci_calibration_actuator.dag"
+data fci1_projection_fixture_path: String = "dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag"
+data fci1_subject_path: String = "dag/gunbc/fabric/fabric_required_build_cell.dag"
+data fci1_canonical_root: String = "/var/lib/gunbc/fabric/allocation"
+data fci1_mutation_runtime: String = "fci1-submitter-owned-reservation"
+data fci1_mutation_root: String = "/run/fci1-submitter-owned-reservation"
+data fci1_generation_root_template: NonEmptyStr = "/run/fci1-generation-mutation.XXXXXX" as NonEmptyStr
+data fci1_runtime_parent: String = "/run"
+data fci1_injected_failure_status: Int = 86
+data fci1_driver_unit_name: NonEmptyStr = "fci1-bounded-driver.service" as NonEmptyStr
+data fci1_positive_submitter: NonEmptyStr = "fci1-positive-submitter.service" as NonEmptyStr
+data fci1_generation_submitter: NonEmptyStr = "fci1-generation-submitter.service" as NonEmptyStr
+data fci1_dependent_submitter: NonEmptyStr = "fci1-dependent-submitter.service" as NonEmptyStr
+data fci1_submitter_units: List<NonEmptyStr> = [fci1_positive_submitter, fci1_generation_submitter, fci1_dependent_submitter]
+
+fn fci1_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: 2, reason: reason }
+}
+
+fn fci1_refused_when(refusal: String?) -> ProcessExit {
+  match refusal {
+    Present { value: reason } => fci1_refused(reason: reason)
+    Absent => ExitSuccess
+  }
+}
+
+// ── THE STEP ROWS ───────────────────────────────────────────────────────────────────────────────
+
+// A value handed to a child as `--arg key=<value>`, resolved against the run when the step is applied.
+type Fci1ArgValue
+  = ArgText { value: String }
+  | ArgReceipt { name: String }
+  | ArgValueFile { name: String }
+  | ArgBound { name: String }
+  | ArgGenerationRoot
+  | ArgCheckpoint
+
+type Fci1Arg {
+  key: String
+  value: Fci1ArgValue
+}
+
+type Fci1Step
+  = StepAssert { function: String, arguments: List<Fci1Arg> }
+  | StepCapture { function: String, coordinate: String, bind: String, arguments: List<Fci1Arg> }
+  | StepCheckpoint { phase: String }
+  | StepZeroWork { phase: String }
+  | StepSubmitter { unit: NonEmptyStr, coordinate: String, bind: String, root: Fci1ArgValue, authority: String, runtime_directory: String? }
+  | StepUnitTerminal { unit: NonEmptyStr }
+  | StepGenerationRootCreate
+  | StepGenerationRootRemove
+  | StepRuntimeDirectoryAbsent
+
+fn fci1_text(key: String, value: String) -> Fci1Arg {
+  Fci1Arg { key: key, value: ArgText { value: value } }
+}
+
+fn fci1_bound(key: String, name: String) -> Fci1Arg {
+  Fci1Arg { key: key, value: ArgBound { name: name } }
+}
+
+fn fci1_receipt(key: String, name: String) -> Fci1Arg {
+  Fci1Arg { key: key, value: ArgReceipt { name: name } }
+}
+
+fn fci1_canonical(key: String) -> Fci1Arg {
+  fci1_text(key: key, value: fci1_canonical_root)
+}
+
+fn fci1_generation(key: String) -> Fci1Arg {
+  Fci1Arg { key: key, value: ArgGenerationRoot }
+}
+
+fn fci1_plain(function: String) -> Fci1Step {
+  StepAssert { function: function, arguments: [] }
+}
+
+// The ordered live instrument. Names of receipts are the roster fci1_required_receipts judges.
+fn fci1_live_steps() -> List<Fci1Step> {
+  [
+    fci1_plain(function: "fci1_invalid_before_wire_refuses"),
+    fci1_plain(function: "fci1_assert_slot_absent_admitted"),
+    fci1_plain(function: "fci1_assert_unreadable_slot_refused"),
+    fci1_plain(function: "fci1_assert_exact_absent_to_free_control"),
+    fci1_plain(function: "fci1_assert_exact_free_to_free_control"),
+    fci1_plain(function: "fci1_assert_extra_generation_refused_control"),
+    fci1_plain(function: "fci1_assert_frozen_work_key"),
+    fci1_plain(function: "fci1_assert_host_preconditions"),
+    fci1_plain(function: "fci1_assert_clean_cell_prestate"),
+    fci1_plain(function: "fci1_assert_cell_admitted"),
+    StepCapture { function: "fci1_live_cell_observation", coordinate: "cell-before", bind: "cell_before", arguments: [] },
+    StepCapture { function: "fci1_live_allocation_prestate", coordinate: "allocation-before", bind: "allocation_before", arguments: [fci1_canonical(key: "root")] },
+    StepAssert { function: "fci1_assert_allocation_available", arguments: [fci1_canonical(key: "root")] },
+    StepZeroWork { phase: "before-canonical" },
+    StepCheckpoint { phase: "before-canonical-commit" },
+    StepSubmitter { unit: fci1_positive_submitter, coordinate: "positive-before", bind: "positive_before", root: ArgText { value: fci1_canonical_root },
+      authority: "canonical-cleanup-authority", runtime_directory: none },
+    StepUnitTerminal { unit: fci1_positive_submitter },
+    StepAssert { function: "fci1_assert_lifetime_held", arguments: [fci1_canonical(key: "root"), fci1_bound(key: "before_wire", name: "positive_before")] },
+    StepCheckpoint { phase: "after-held-preserved" },
+    StepAssert { function: "fci1_live_release_with_receipt", arguments: [fci1_canonical(key: "root"), fci1_receipt(key: "path", name: "canonical-release")] },
+    StepCheckpoint { phase: "after-release-before-grading" },
+    StepAssert { function: "fci1_grade_and_write_allocation_receipt", arguments: [
+      fci1_canonical(key: "root"),
+      fci1_bound(key: "before_wire", name: "allocation_before"),
+      fci1_bound(key: "held_wire", name: "positive_before"),
+      fci1_text(key: "phase", value: "canonical"),
+      fci1_receipt(key: "path", name: "canonical-allocation"),
+    ] },
+    StepAssert { function: "fci1_grade_and_write_cell_receipt", arguments: [
+      fci1_bound(key: "before_wire", name: "cell_before"),
+      fci1_text(key: "phase", value: "after-canonical"),
+      fci1_receipt(key: "path", name: "cell-after-canonical"),
+    ] },
+    StepZeroWork { phase: "after-canonical" },
+    StepCheckpoint { phase: "canonical-restored-later" },
+    // Generation replacement is a mutation falsifier, not part of the canonical lifecycle: its run-unique
+    // disposable store uses the production reservation/CAS entries and is removed afterward.
+    StepGenerationRootCreate,
+    StepSubmitter { unit: fci1_generation_submitter, coordinate: "generation-before", bind: "generation_before", root: ArgGenerationRoot,
+      authority: "generation-cleanup-authority", runtime_directory: none },
+    StepCheckpoint { phase: "generation-held-one" },
+    StepAssert { function: "fci1_assert_replace_held", arguments: [
+      fci1_generation(key: "root"),
+      Fci1Arg { key: "cleanup_path", value: ArgValueFile { name: "generation-cleanup-authority" } },
+      Fci1Arg { key: "checkpoint", value: ArgCheckpoint },
+      fci1_receipt(key: "checkpoint_path", name: "checkpoint"),
+    ] },
+    StepCheckpoint { phase: "generation-held-two" },
+    StepAssert { function: "fci1_write_generation_changed_receipt", arguments: [
+      fci1_generation(key: "root"),
+      fci1_bound(key: "before_wire", name: "generation_before"),
+      fci1_receipt(key: "path", name: "generation-verdict"),
+    ] },
+    StepCheckpoint { phase: "generation-changed-observed" },
+    StepAssert { function: "fci1_live_release", arguments: [fci1_generation(key: "root")] },
+    StepCheckpoint { phase: "generation-free-before-removal" },
+    StepAssert { function: "fci1_write_disposable_cleanup_receipt", arguments: [
+      fci1_generation(key: "root"),
+      Fci1Arg { key: "authority_path", value: ArgValueFile { name: "generation-cleanup-authority" } },
+      fci1_receipt(key: "path", name: "generation-terminal"),
+    ] },
+    StepGenerationRootRemove,
+    StepSubmitter { unit: fci1_dependent_submitter, coordinate: "dependent-before", bind: "dependent_before", root: ArgText { value: fci1_mutation_root },
+      authority: "dependent-cleanup-authority", runtime_directory: Present { value: fci1_mutation_runtime } },
+    StepRuntimeDirectoryAbsent,
+    StepUnitTerminal { unit: fci1_dependent_submitter },
+    StepAssert { function: "fci1_write_lifetime_dependent_receipt", arguments: [
+      fci1_text(key: "root", value: fci1_mutation_root),
+      fci1_bound(key: "before_wire", name: "dependent_before"),
+      fci1_receipt(key: "path", name: "dependent-lifetime"),
+    ] },
+    StepCheckpoint { phase: "runtime-directory-terminal" },
+    StepAssert { function: "fci1_grade_and_write_cell_receipt", arguments: [
+      fci1_bound(key: "before_wire", name: "cell_before"),
+      fci1_text(key: "phase", value: "after-dependent"),
+      fci1_receipt(key: "path", name: "cell-after-dependent"),
+    ] },
+    StepZeroWork { phase: "after-dependent" },
+  ]
+}
+
+// ── THE RUN CONTEXT AND STATE ───────────────────────────────────────────────────────────────────
+
+type Fci1LiveContext {
+  gunbc_bin: String
+  root: String
+  receipt_root: String
+  value_root: String
+  checkpoint: String
+  bounded: Fci1BoundedExecutionContext
+}
+
+type Fci1Binding {
+  name: String
+  wire: String
+}
+
+type Fci1LiveState {
+  bindings: List<Fci1Binding>
+  generation_root: String?
+}
+
+type Fci1StepResult {
+  state: Fci1LiveState
+  status: ProcessExit
+}
+
+fn fci1_receipt_path(ctx: Fci1LiveContext, name: String) -> String {
+  join([ctx.receipt_root, "/", name, ".txt"], "")
+}
+
+fn fci1_value_path(ctx: Fci1LiveContext, name: String) -> String {
+  join([ctx.value_root, "/", name, ".wire"], "")
+}
+
+fn fci1_probe_context(ctx: Fci1LiveContext) -> FabricCiCalibrationContext {
+  FabricCiCalibrationContext {
+    gunbc_bin: ctx.gunbc_bin as NonEmptyStr,
+    source_root: ctx.root,
+    value_root: ctx.value_root,
+    entry: join([ctx.root, "/", fci1_probe_entry_path], ""),
+  }
+}
+
+fn fci1_lookup(state: Fci1LiveState, name: String) -> String? {
+  match first(filter(state.bindings, b => b.name == name)) {
+    Present { value: b } => Present { value: b.wire }
+    Absent => none
+  }
+}
+
+fn fci1_bind(state: Fci1LiveState, name: String, wire: String) -> Fci1LiveState {
+  Fci1LiveState { bindings: concat(state.bindings, [Fci1Binding { name: name, wire: wire }]), generation_root: state.generation_root }
+}
+
+fn fci1_with_generation_root(state: Fci1LiveState, generation_root: String?) -> Fci1LiveState {
+  Fci1LiveState { bindings: state.bindings, generation_root: generation_root }
+}
+
+type Fci1Resolved
+  = Fci1ResolvedValue { value: String }
+  | Fci1Unresolved { what: String }
+
+fn fci1_resolve(ctx: Fci1LiveContext, state: Fci1LiveState, value: Fci1ArgValue) -> Fci1Resolved {
+  match value {
+    ArgText { value: v } => Fci1ResolvedValue { value: v }
+    ArgReceipt { name } => Fci1ResolvedValue { value: fci1_receipt_path(ctx: ctx, name: name) }
+    ArgValueFile { name } => Fci1ResolvedValue { value: fci1_value_path(ctx: ctx, name: name) }
+    ArgCheckpoint => Fci1ResolvedValue { value: ctx.checkpoint }
+    ArgBound { name } =>
+      match fci1_lookup(state: state, name: name) {
+        Present { value: wire } => Fci1ResolvedValue { value: wire }
+        Absent => Fci1Unresolved { what: concat("no captured value named ", name) }
+      }
+    ArgGenerationRoot =>
+      match state.generation_root {
+        Present { value: g } => Fci1ResolvedValue { value: g }
+        Absent => Fci1Unresolved { what: "no disposable generation root exists" }
+      }
+  }
+}
+
+type Fci1ArgWords
+  = Fci1ArgWordsBuilt { words: List<String> }
+  | Fci1ArgWordsRefused { what: String }
+
+// `--arg key=value` pairs, in row order; an unresolved reference is a refusal, never an empty value.
+fn fci1_arg_words(ctx: Fci1LiveContext, state: Fci1LiveState, arguments: List<Fci1Arg>) -> Fci1ArgWords {
+  match arguments.first() {
+    Absent => Fci1ArgWordsBuilt { words: [] }
+    Present { value: argument } =>
+      match fci1_resolve(ctx: ctx, state: state, value: argument.value) {
+        Fci1Unresolved { what } => Fci1ArgWordsRefused { what: what }
+        Fci1ResolvedValue { value } =>
+          match fci1_arg_words(ctx: ctx, state: state, arguments: arguments.skip(n: 1)) {
+            Fci1ArgWordsRefused { what } => Fci1ArgWordsRefused { what: what }
+            Fci1ArgWordsBuilt { words } => Fci1ArgWordsBuilt { words: concat(["--arg", join([argument.key, "=", value], "")], words) }
+          }
+      }
+  }
+}
+
+// ── PROCESS BOUNDARIES ──────────────────────────────────────────────────────────────────────────
+
+fn fci1_child_failure(function: String, observed_code: Int, diagnostics: String) -> ProcessExit {
+  ExitFailure { code: observed_code, reason: join(["FCI1ChildRefused: ", function, " exited ", to_string(observed_code), ": ", diagnostics], "") }
+}
+
+// One probe assertion, its own `gunbc run`. The child's own exit status emerges unchanged.
+fn fci1_run_probe(ctx: Fci1LiveContext, function: String, arguments: List<String>) -> ProcessExit {
+  let observed = fabric_ci_calibration_child(context: fci1_probe_context(ctx: ctx), function: function, arguments: arguments)
+  if observed.exit_code == 0 { ExitSuccess } else {
+    fci1_child_failure(function: function, observed_code: observed.exit_code, diagnostics: observed.diagnostics)
+  }
+}
+
+fn fci1_checkpoint_reached(ctx: Fci1LiveContext, phase: String) -> ProcessExit {
+  if ctx.checkpoint != phase { ExitSuccess } else {
+    match fci1_run_probe(
+      ctx: ctx,
+      function: "fci1_checkpoint_reached",
+      arguments: ["--arg", concat("token=", ctx.checkpoint), "--arg", concat("phase=", phase), "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "checkpoint"))],
+    ) {
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+      ExitSuccess => ExitFailure {
+        code: fci1_injected_failure_status,
+        reason: join(["CheckpointReached: checkpoint=", ctx.checkpoint, " phase=", phase, " status=", to_string(fci1_injected_failure_status)], ""),
+      }
+    }
+  }
+}
+
+// ── THE SUBMITTER UNITS ─────────────────────────────────────────────────────────────────────────
+
+fn fci1_live_bound(bounded: Fci1BoundedExecutionContext) -> Fci1UnitBound {
+  Fci1UnitBounded {
+    max: bounded.memory_max,
+    high: match bounded.memory_high {
+      Present { value: h } => h
+      Absent => bounded.memory_max
+    },
+  }
+}
+
+// systemd-run --quiet --wait --pipe --collect --unit=<unit> --property=... [--property=RuntimeDirectory=<name>] -- <child>
+fn fci1_live_unit_command(ctx: Fci1LiveContext, unit: NonEmptyStr, runtime_directory: String?, child_words: List<String>) -> Fci1UnitCommand {
+  let properties = concat(
+    fci1_unit_properties(working_directory: ctx.root, bound: fci1_live_bound(bounded: ctx.bounded)),
+    match runtime_directory {
+      Present { value: name } => [NamedUnitSetting { property: RuntimeDirectoryProperty, value: name as NonEmptyStr }]
+      Absent => []
+    },
+  )
+  let options = concat([Quiet, Wait, Pipe, Collect, RunUnit { unit: unit }], concat(map(properties, p => PropertyLong { property: p }), [EndOfOptions]))
+  match systemd_run_command_of(options: options, command_argv: child_words) {
+    SystemdRunCommandReady { command } => Fci1UnitCommandBuilt { command: command }
+    SystemdRunCommandRefused { cause } => Fci1UnitCommandRefused { detail: systemd_run_option_words_refused_cause_detail(cause: cause) }
+  }
+}
+
+fn fci1_probe_child_words(ctx: Fci1LiveContext, function: String, arguments: List<String>) -> List<String> {
+  concat([
+    ctx.gunbc_bin, "run",
+    "--source-root", concat(ctx.root, "/dag"),
+    "--source-root", concat(ctx.root, "/src/v2"),
+    "--entry", join([ctx.root, "/", fci1_probe_entry_path], ""),
+    "--function", function,
+  ], arguments)
+}
+
+type Fci1SubmitterCapture
+  = Fci1SubmitterCaptured { wire: String }
+  | Fci1SubmitterRefused { status: ProcessExit }
+
+// A producer inside its own bounded unit. Its exit status is the first thing read (a nonzero status,
+// including the injected checkpoint status, emerges as the instrument's own); only then is the named
+// value file read back through the same channel the plain producers use.
+fn fci1_submitter_capture(ctx: Fci1LiveContext, state: Fci1LiveState, step: Fci1Step) -> Fci1SubmitterCapture {
+  match step {
+    StepSubmitter { unit, coordinate, bind: _, root, authority, runtime_directory } =>
+      match fci1_resolve(ctx: ctx, state: state, value: root) {
+        Fci1Unresolved { what } => Fci1SubmitterRefused { status: fci1_refused(reason: concat("InstrumentRefused: ", what)) }
+        Fci1ResolvedValue { value: root_text } =>
+          match fabric_ci_capture_clear(context: fci1_probe_context(ctx: ctx), coordinate: coordinate) {
+            Present { value: cause } => Fci1SubmitterRefused { status: exit_failure(reason: concat("InstrumentRefused: ", fabric_ci_transport_cause_text(cause: cause))) }
+            Absent => {
+              let words = fci1_probe_child_words(ctx: ctx, function: "fci1_live_reserve_and_observe_available", arguments: [
+                "--arg", concat("root=", root_text),
+                "--arg", concat("path=", fci1_value_path(ctx: ctx, name: coordinate)),
+                "--arg", concat("cleanup_path=", fci1_value_path(ctx: ctx, name: authority)),
+                "--arg", concat("checkpoint=", ctx.checkpoint),
+                "--arg", concat("checkpoint_path=", fci1_receipt_path(ctx: ctx, name: "checkpoint")),
+              ])
+              match fci1_live_unit_command(ctx: ctx, unit: unit, runtime_directory: runtime_directory, child_words: words) {
+                Fci1UnitCommandRefused { detail } => Fci1SubmitterRefused { status: fci1_refused(reason: concat("InstrumentRefused: submitter unit command refused: ", detail)) }
+                Fci1UnitCommandBuilt { command } => {
+                  let observed = fci1_run_command(command: command)
+                  if observed.exit_code != 0 {
+                    Fci1SubmitterRefused { status: fci1_child_failure(function: unit as String, observed_code: observed.exit_code, diagnostics: fci1_diagnostics(observed: observed)) }
+                  } else {
+                    match fabric_ci_capture_read(context: fci1_probe_context(ctx: ctx), coordinate: coordinate) {
+                      FabricCiTransportCaptured { wire } => Fci1SubmitterCaptured { wire: wire }
+                      FabricCiTransportRefused { cause } => Fci1SubmitterRefused { status: exit_failure(reason: concat("InstrumentRefused: ", fabric_ci_transport_cause_text(cause: cause))) }
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
+    _ => Fci1SubmitterRefused { status: fci1_refused(reason: "InstrumentRefused: not a submitter step") }
+  }
+}
+
+// The manager's terminal observation of a collected unit: the unit is gone (not-found) and inactive or failed.
+fn fci1_unit_terminal(unit: NonEmptyStr) -> String? {
+  let observed = fci1_run_command(command: systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState]))
+  let text = fci1_diagnostics(observed: observed)
+  let load = systemctl_show_property_value(text: text, key: "LoadState")
+  let active = systemctl_show_property_value(text: text, key: "ActiveState")
+  let terminal = observed.exit_code == 0 && load == Present { value: "not-found" } && (active == Present { value: "inactive" } || active == Present { value: "failed" })
+  if terminal { none } else { Present { value: join(["InstrumentRefused: transient unit terminal state unestablished: ", unit as String, ": ", text], "") } }
+}
+
+type Fci1Presence
+  = Fci1PathPresent
+  | Fci1PathAbsent
+  | Fci1PathUnobservable { cause: String }
+
+fn fci1_runtime_presence(name: String) -> Fci1Presence {
+  let listed = fci1_run_command(command: find_children_named_command(root: fci1_runtime_parent, name_glob: name))
+  if listed.exit_code != 0 { Fci1PathUnobservable { cause: listed.stderr } } else if trim(s: listed.stdout) == "" { Fci1PathAbsent } else { Fci1PathPresent }
+}
+
+// ── APPLYING ONE STEP ───────────────────────────────────────────────────────────────────────────
+
+fn fci1_result(state: Fci1LiveState, status: ProcessExit) -> Fci1StepResult {
+  Fci1StepResult { state: state, status: status }
+}
+
+fn fci1_apply_step(ctx: Fci1LiveContext, state: Fci1LiveState, step: Fci1Step) -> Fci1StepResult {
+  match step {
+    StepAssert { function, arguments } =>
+      match fci1_arg_words(ctx: ctx, state: state, arguments: arguments) {
+        Fci1ArgWordsRefused { what } => fci1_result(state: state, status: fci1_refused(reason: concat("InstrumentRefused: ", what)))
+        Fci1ArgWordsBuilt { words } => fci1_result(state: state, status: fci1_run_probe(ctx: ctx, function: function, arguments: words))
+      }
+    StepCapture { function, coordinate, bind, arguments } =>
+      match fci1_arg_words(ctx: ctx, state: state, arguments: arguments) {
+        Fci1ArgWordsRefused { what } => fci1_result(state: state, status: fci1_refused(reason: concat("InstrumentRefused: ", what)))
+        Fci1ArgWordsBuilt { words } =>
+          match fabric_ci_capture_transport(context: fci1_probe_context(ctx: ctx), producer: function, coordinate: coordinate, arguments: words) {
+            FabricCiTransportCaptured { wire } => fci1_result(state: fci1_bind(state: state, name: bind, wire: wire), status: ExitSuccess)
+            FabricCiTransportRefused { cause } => fci1_result(state: state, status: exit_failure(reason: concat("InstrumentRefused: transport capture refused: ", fabric_ci_transport_cause_text(cause: cause))))
+          }
+      }
+    StepCheckpoint { phase } => fci1_result(state: state, status: fci1_checkpoint_reached(ctx: ctx, phase: phase))
+    StepZeroWork { phase } =>
+      fci1_result(state: state, status: fci1_run_probe(
+        ctx: ctx,
+        function: "fci1_write_zero_work_receipt",
+        arguments: ["--arg", concat("phase=", phase), "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: concat("zero-work-", phase)))],
+      ))
+    StepSubmitter { unit: _, coordinate: _, bind, root: _, authority: _, runtime_directory: _ } =>
+      match fci1_submitter_capture(ctx: ctx, state: state, step: step) {
+        Fci1SubmitterCaptured { wire } => fci1_result(state: fci1_bind(state: state, name: bind, wire: wire), status: ExitSuccess)
+        Fci1SubmitterRefused { status } => fci1_result(state: state, status: status)
+      }
+    StepUnitTerminal { unit } => fci1_result(state: state, status: fci1_refused_when(refusal: fci1_unit_terminal(unit: unit)))
+    StepGenerationRootCreate => {
+      let made = fci1_run_command(command: mktemp_directory_command(template: fci1_generation_root_template))
+      if made.exit_code != 0 || trim(s: made.stdout) == "" {
+        fci1_result(state: state, status: fci1_refused(reason: concat("InstrumentRefused: disposable generation root not created: ", made.stderr)))
+      } else {
+        fci1_result(state: fci1_with_generation_root(state: state, generation_root: Present { value: trim(s: made.stdout) }), status: ExitSuccess)
+      }
+    }
+    StepGenerationRootRemove =>
+      match state.generation_root {
+        Absent => fci1_result(state: state, status: fci1_refused(reason: "InstrumentRefused: no disposable generation root to remove"))
+        Present { value: g } => {
+          let removed = fci1_run_command(command: rm_recursive_force_command(path: g))
+          if removed.exit_code != 0 {
+            fci1_result(state: state, status: fci1_refused(reason: concat("InstrumentRefused: disposable generation root not removed: ", removed.stderr)))
+          } else {
+            fci1_result(state: fci1_with_generation_root(state: state, generation_root: none), status: ExitSuccess)
+          }
+        }
+      }
+    StepRuntimeDirectoryAbsent =>
+      fci1_result(state: state, status: match fci1_runtime_presence(name: fci1_mutation_runtime) {
+        Fci1PathAbsent => ExitSuccess
+        Fci1PathPresent => exit_failure(reason: "ExpectedOutcomeNotObserved: submitter runtime directory removal")
+        Fci1PathUnobservable { cause } => fci1_refused(reason: concat("InstrumentRefused: runtime directory unobservable: ", cause))
+      })
+  }
+}
+
+// Stops at the first step that does not hold; the line does not continue past a refusal.
+fn fci1_run_steps(ctx: Fci1LiveContext, state: Fci1LiveState, steps: List<Fci1Step>) -> Fci1StepResult {
+  match steps.first() {
+    Absent => fci1_result(state: state, status: ExitSuccess)
+    Present { value: step } => {
+      let applied = fci1_apply_step(ctx: ctx, state: state, step: step)
+      match applied.status {
+        ExitSuccess => fci1_run_steps(ctx: ctx, state: applied.state, steps: steps.skip(n: 1))
+        ExitFailure { code: _, reason: _ } => applied
+      }
+    }
+  }
+}
+
+// ── THE RECEIPT ROSTER ──────────────────────────────────────────────────────────────────────────
+
+data fci1_base_receipts: List<String> = [
+  "bounded-context.txt", "checkpoint.txt", "canonical-cleanup.txt", "cell-terminal.txt", "zero-work-before-canonical.txt",
+  "zero-work-terminal.txt", "runtime-directory.txt", "unit-terminal-fci1-positive-submitter.txt",
+  "unit-terminal-fci1-generation-submitter.txt", "unit-terminal-fci1-dependent-submitter.txt",
+]
+data fci1_after_release_receipts: List<String> = ["canonical-release.txt"]
+data fci1_after_canonical_receipts: List<String> = [
+  "canonical-release.txt", "canonical-allocation.txt", "cell-after-canonical.txt", "zero-work-after-canonical.txt",
+]
+data fci1_generation_cleanup_receipts: List<String> = [
+  "canonical-release.txt", "canonical-allocation.txt", "cell-after-canonical.txt", "zero-work-after-canonical.txt", "generation-cleanup.txt",
+]
+data fci1_generation_verdict_receipts: List<String> = [
+  "canonical-release.txt", "canonical-allocation.txt", "cell-after-canonical.txt", "zero-work-after-canonical.txt", "generation-cleanup.txt",
+  "generation-verdict.txt",
+]
+data fci1_runtime_directory_receipts: List<String> = [
+  "canonical-release.txt", "canonical-allocation.txt", "cell-after-canonical.txt", "zero-work-after-canonical.txt", "generation-terminal.txt",
+  "generation-verdict.txt", "dependent-lifetime.txt",
+]
+data fci1_complete_receipts: List<String> = [
+  "canonical-release.txt", "canonical-allocation.txt", "cell-after-canonical.txt", "zero-work-after-canonical.txt", "generation-terminal.txt",
+  "generation-verdict.txt", "dependent-lifetime.txt", "cell-after-dependent.txt", "zero-work-after-dependent.txt",
+]
+
+// The receipts a run that stopped at (or completed) the selected checkpoint owes. An unrecognised token
+// owes nothing beyond the base roster and was already refused by the checkpoint assertion.
+fn fci1_required_receipts(checkpoint: String) -> List<String> {
+  concat(fci1_base_receipts, match checkpoint {
+    "before-canonical-commit" => []
+    "after-canonical-commit-before-transport" => []
+    "after-held-preserved" => []
+    "after-release-before-grading" => fci1_after_release_receipts
+    "canonical-restored-later" => fci1_after_canonical_receipts
+    "generation-held-one" => fci1_generation_cleanup_receipts
+    "generation-authority-two-before-commit" => fci1_generation_cleanup_receipts
+    "generation-held-two" => fci1_generation_cleanup_receipts
+    "generation-changed-observed" => fci1_generation_verdict_receipts
+    "generation-free-before-removal" => fci1_generation_verdict_receipts
+    "runtime-directory-terminal" => fci1_runtime_directory_receipts
+    "none" => fci1_complete_receipts
+    _ => []
+  })
+}
+
+// ── CLEANUP (always runs once the receipt root exists) ──────────────────────────────────────────
+
+fn fci1_note(failures: List<String>, refusal: String?) -> List<String> {
+  match refusal {
+    Present { value: r } => concat(failures, [r])
+    Absent => failures
+  }
+}
+
+fn fci1_exit_refusal(label: String, status: ProcessExit) -> String? {
+  match status {
+    ExitSuccess => none
+    ExitFailure { code, reason } => Present { value: join(["InstrumentRefused: ", label, " (", to_string(code), "): ", reason], "") }
+  }
+}
+
+fn fci1_write_text(path: String, content: String) -> String? {
+  let written = Filesystem.Write(path: path, content: content)
+  if written.success { none } else { Present { value: join(["InstrumentRefused: receipt write refused: ", path, ": ", written.error], "") } }
+}
+
+fn fci1_unit_receipt_name(unit: NonEmptyStr) -> String {
+  concat("unit-terminal-", substring(s: unit as String, start: 0, end: string_length(s: unit as String) - 8))
+}
+
+fn fci1_stop_units() -> List<Int> {
+  map(fci1_submitter_units, unit => fci1_run_words(words: systemctl_stop_argv(unit: unit)).exit_code)
+}
+
+fn fci1_unit_receipt(ctx: Fci1LiveContext, unit: NonEmptyStr) -> String? {
+  let observed = fci1_run_command(command: systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState]))
+  let refusal = fci1_unit_terminal(unit: unit)
+  let written = fci1_write_text(path: fci1_receipt_path(ctx: ctx, name: fci1_unit_receipt_name(unit: unit)), content: concat(fci1_diagnostics(observed: observed), "\n"))
+  match refusal {
+    Present { value: r } => Present { value: r }
+    Absent => written
+  }
+}
+
+fn fci1_runtime_receipt(ctx: Fci1LiveContext) -> String? {
+  let present = match fci1_runtime_presence(name: fci1_mutation_runtime) {
+    Fci1PathAbsent => Present { value: false }
+    Fci1PathPresent => Present { value: true }
+    Fci1PathUnobservable { cause: _ } => none
+  }
+  match present {
+    Absent => Present { value: "InstrumentRefused: dependent RuntimeDirectory unobservable after cleanup" }
+    Present { value: standing } => {
+      let written = fci1_write_text(
+        path: fci1_receipt_path(ctx: ctx, name: "runtime-directory"),
+        content: join(["RuntimeDirectoryObserved|path=", fci1_mutation_root, "|standing=", if standing { "present" } else { "absent" }, "\n"], ""),
+      )
+      if standing { Present { value: "InstrumentRefused: dependent RuntimeDirectory remains after cleanup" } } else { written }
+    }
+  }
+}
+
+fn fci1_receipt_exists(ctx: Fci1LiveContext, name: String) -> Bool {
+  let listed = fci1_run_command(command: ls_one_per_line_command(path: ctx.receipt_root))
+  listed.exit_code == 0 && count(filter(split(s: listed.stdout, delimiter: "\n"), l => l == name)) == 1
+}
+
+fn fci1_roster_sorted(names: List<String>) -> String {
+  join(sort_by(filter(names, n => n != ""), n => n), "\n")
+}
+
+fn fci1_roster_refusals(ctx: Fci1LiveContext, required: List<String>) -> List<String> {
+  let listed = fci1_run_command(command: ls_one_per_line_command(path: ctx.receipt_root))
+  if listed.exit_code != 0 {
+    ["InstrumentRefused: receipt bundle unlistable"]
+  } else {
+    let present = filter(split(s: listed.stdout, delimiter: "\n"), l => l != "" && l != "manifest.txt")
+    let missing = map(
+      filter(required, r => count(filter(present, p => p == r)) == 0),
+      r => join(["InstrumentRefused: required receipt missing: checkpoint=", ctx.checkpoint, " file=", r], ""),
+    )
+    if fci1_roster_sorted(names: present) != fci1_roster_sorted(names: required) {
+      concat(missing, ["InstrumentRefused: receipt bundle member roster mismatch"])
+    } else { missing }
+  }
+}
+
+fn fci1_trimmed_stdout(words: List<String>) -> String? {
+  let observed = fci1_run_words(words: words)
+  if observed.exit_code == 0 { Present { value: trim(s: observed.stdout) } } else { none }
+}
+
+fn fci1_manifest_lines(ctx: Fci1LiveContext, required: List<String>) -> List<String> {
+  map(required, r => match fci1_trimmed_stdout(words: ["sha256sum", join([ctx.receipt_root, "/", r], "")]) {
+    Present { value: line } => line
+    Absent => concat("unhashable ", r)
+  })
+}
+
+// Writes the manifest of the receipt bundle (provenance plus a digest of each member) and returns the
+// refusals. The identity line the caller reads is the manifest's own sha256sum.
+fn fci1_write_manifest(ctx: Fci1LiveContext, required: List<String>, original_status: Int, cleanup_failed: Bool, systemd_version: String) -> String? {
+  let head = fci1_trimmed_stdout(words: ["git", "-C", ctx.root, "rev-parse", "HEAD"])
+  let tree = fci1_trimmed_stdout(words: ["git", "-C", ctx.root, "rev-parse", "HEAD:"])
+  let provenance = fci1_trimmed_stdout(words: [ctx.gunbc_bin, "--version"])
+  let subject = fci1_trimmed_stdout(words: ["sha256sum", join([ctx.root, "/", fci1_subject_path], "")])
+  match head {
+    Absent => Present { value: "InstrumentRefused: head unreadable for the manifest" }
+    Present { value: h } =>
+      match tree {
+        Absent => Present { value: "InstrumentRefused: tree unreadable for the manifest" }
+        Present { value: t } =>
+          match provenance {
+            Absent => Present { value: "InstrumentRefused: binary provenance unreadable for the manifest" }
+            Present { value: p } =>
+              match subject {
+                Absent => Present { value: "InstrumentRefused: subject digest unreadable for the manifest" }
+                Present { value: s } =>
+                  fci1_write_text(
+                    path: join([ctx.receipt_root, "/manifest.txt"], ""),
+                    content: join(concat([
+                      join(["head=", h], ""),
+                      join(["tree=", t], ""),
+                      join(["binary_provenance=", p], ""),
+                      join(["systemd_version=", systemd_version], ""),
+                      join(["driver_unit=", fci1_driver_unit_name as String], ""),
+                      join(["checkpoint=", ctx.checkpoint], ""),
+                      join(["original_exit_status=", to_string(original_status)], ""),
+                      join(["cleanup_verdict=", if cleanup_failed { "1" } else { "0" }], ""),
+                      join(["subject=", s], ""),
+                    ], fci1_manifest_lines(ctx: ctx, required: required)), "\n"),
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn fci1_original_status(status: ProcessExit) -> Int {
+  match status {
+    ExitSuccess => 0
+    ExitFailure { code, reason: _ } => code
+  }
+}
+
+fn fci1_bound_or_empty_refusal(state: Fci1LiveState, name: String) -> String? {
+  match fci1_lookup(state: state, name: name) {
+    Present { value: w } => Present { value: w }
+    Absent => none
+  }
+}
+
+// The canonical store, the disposable generation root, the runtime directory, the three units, the cell
+// and the zero-work population are each re-observed and receipted here, whatever the body did. A
+// cleanup that does not hold turns an otherwise-accepted run into exit 1; it never hides the body's own status.
+fn fci1_cleanup(ctx: Fci1LiveContext, state: Fci1LiveState, body: ProcessExit, systemd_version: String) -> ProcessExit {
+  let stopped = fci1_stop_units()
+  let canonical = match fci1_bound_or_empty_refusal(state: state, name: "allocation_before") {
+    Absent => none
+    Present { value: before } =>
+      fci1_exit_refusal(label: "canonical cleanup receipt", status: fci1_run_probe(ctx: ctx, function: "fci1_write_canonical_cleanup_receipt", arguments: [
+        "--arg", concat("root=", fci1_canonical_root),
+        "--arg", concat("before_wire=", before),
+        "--arg", concat("authority_path=", fci1_value_path(ctx: ctx, name: "canonical-cleanup-authority")),
+        "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "canonical-cleanup")),
+      ]))
+  }
+  let generation = match state.generation_root {
+    Absent => none
+    Present { value: g } => {
+      let receipted = fci1_exit_refusal(label: "disposable cleanup receipt", status: fci1_run_probe(ctx: ctx, function: "fci1_write_disposable_cleanup_receipt", arguments: [
+        "--arg", concat("root=", g),
+        "--arg", concat("authority_path=", fci1_value_path(ctx: ctx, name: "generation-cleanup-authority")),
+        "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "generation-cleanup")),
+      ]))
+      match receipted {
+        Present { value: r } => Present { value: r }
+        Absent => {
+          let removed = fci1_run_command(command: rm_recursive_force_command(path: g))
+          if removed.exit_code == 0 { none } else { Present { value: concat("InstrumentRefused: disposable generation root not removed: ", removed.stderr) } }
+        }
+      }
+    }
+  }
+  let runtime = fci1_runtime_receipt(ctx: ctx)
+  let positive = fci1_unit_receipt(ctx: ctx, unit: fci1_positive_submitter)
+  let generation_unit = fci1_unit_receipt(ctx: ctx, unit: fci1_generation_submitter)
+  let dependent = fci1_unit_receipt(ctx: ctx, unit: fci1_dependent_submitter)
+  let cell = match fci1_bound_or_empty_refusal(state: state, name: "cell_before") {
+    Absent => none
+    Present { value: before } =>
+      fci1_exit_refusal(label: "terminal cell receipt", status: fci1_run_probe(ctx: ctx, function: "fci1_grade_and_write_cell_receipt", arguments: [
+        "--arg", concat("before_wire=", before),
+        "--arg", "phase=terminal",
+        "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "cell-terminal")),
+      ]))
+  }
+  let zero_work = fci1_exit_refusal(label: "terminal zero-work receipt", status: fci1_run_probe(ctx: ctx, function: "fci1_write_zero_work_receipt", arguments: [
+    "--arg", "phase=terminal",
+    "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "zero-work-terminal")),
+  ]))
+  let checkpoint_receipt = if fci1_receipt_exists(ctx: ctx, name: "checkpoint.txt") { none } else {
+    fci1_exit_refusal(label: "checkpoint terminal receipt", status: fci1_run_probe(ctx: ctx, function: "fci1_write_checkpoint_terminal_receipt", arguments: [
+      "--arg", concat("token=", ctx.checkpoint),
+      "--arg", concat("path=", fci1_receipt_path(ctx: ctx, name: "checkpoint")),
+    ]))
+  }
+  let required = fci1_required_receipts(checkpoint: ctx.checkpoint)
+  let failures = fci1_note(
+    failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: fci1_note(failures: [],
+      refusal: canonical), refusal: generation), refusal: runtime), refusal: positive), refusal: generation_unit), refusal: dependent), refusal: cell), refusal: zero_work),
+    refusal: checkpoint_receipt,
+  )
+  let roster = concat(failures, fci1_roster_refusals(ctx: ctx, required: required))
+  let manifest = fci1_write_manifest(ctx: ctx, required: required, original_status: fci1_original_status(status: body), cleanup_failed: count(roster) > 0, systemd_version: systemd_version)
+  let all_failures = fci1_note(failures: roster, refusal: manifest)
+  let value_root_removed = fci1_run_command(command: rm_recursive_force_command(path: ctx.value_root))
+  if count(all_failures) > 0 || value_root_removed.exit_code != 0 || count(filter(stopped, c => c < 0)) > 0 {
+    exit_failure(reason: concat("InstrumentRefused: cleanup terminal postconditions did not all hold: ", join(all_failures, "; ")))
+  } else { body }
+}
+
+// ── ADMISSION (fresh, inside the bounded driver unit) ───────────────────────────────────────────
+
+type Fci1Admission
+  = Fci1Admitted { systemd_version: String, context_receipt: String }
+  | Fci1AdmissionRefused { reason: String }
+
+fn fci1_admission_refused(reason: String) -> Fci1Admission {
+  Fci1AdmissionRefused { reason: reason }
+}
+
+fn fci1_admit(ctx: Fci1LiveContext) -> Fci1Admission {
+  let bound = fci1_live_bound(bounded: ctx.bounded)
+  let max_text = match bound { Fci1UnitBounded { max, high: _ } => fci1_bytes_text(size: max)  _ => "" }
+  let high_text = match bound { Fci1UnitBounded { max: _, high } => fci1_bytes_text(size: high)  _ => "" }
+  let shown = fci1_run_command(command: systemctl_show_properties_command(
+    unit: fci1_driver_unit_name,
+    properties: [ControlGroup, WorkingDirectoryProperty, MemoryMax, MemoryHigh],
+  ))
+  let text = fci1_diagnostics(observed: shown)
+  let driver_group = systemctl_show_property_value(text: text, key: "ControlGroup")
+  let driver_cwd = systemctl_show_property_value(text: text, key: "WorkingDirectory")
+  let driver_max = systemctl_show_property_value(text: text, key: "MemoryMax")
+  let driver_high = systemctl_show_property_value(text: text, key: "MemoryHigh")
+  let membership = Filesystem.Read(path: "/proc/self/cgroup")
+  let process_group = if membership.success { fci1_cgroup_path(cgroup_file: membership.content) } else { none }
+  let cwd = fci1_run_command(command: pwd_command())
+  let version = fci1_run_command(command: systemctl_version_command())
+  let version_line = match first(split(s: version.stdout, delimiter: "\n")) {
+    Present { value: l } => l
+    Absent => ""
+  }
+  if shown.exit_code != 0 {
+    fci1_admission_refused(reason: "InstrumentRefused: bounded driver properties unreadable")
+  } else {
+    match driver_group {
+      Absent => fci1_admission_refused(reason: "InstrumentRefused: process is not in the observed bounded driver cgroup")
+      Present { value: group } =>
+        if group == "" || process_group != Present { value: group } {
+          fci1_admission_refused(reason: "InstrumentRefused: process is not in the observed bounded driver cgroup")
+        } else if driver_cwd != Present { value: ctx.root } || trim(s: cwd.stdout) != ctx.root {
+          fci1_admission_refused(reason: "InstrumentRefused: bounded driver workspace root mismatch")
+        } else if driver_max != Present { value: max_text } || driver_high != Present { value: high_text } {
+          fci1_admission_refused(reason: "InstrumentRefused: bounded driver manager envelope mismatch")
+        } else {
+          match fci1_cgroup_value(cgroup: group, file: "memory.max") {
+            Absent => fci1_admission_refused(reason: "HostBudgetUnreadable: bounded driver has no matching finite cgroup memory.max")
+            Present { value: cg_max } =>
+              if cg_max != max_text {
+                fci1_admission_refused(reason: "HostBudgetUnreadable: bounded driver has no matching finite cgroup memory.max")
+              } else {
+                match fci1_cgroup_value(cgroup: group, file: "memory.high") {
+                  Absent => fci1_admission_refused(reason: "InstrumentRefused: bounded driver has no matching cgroup memory.high")
+                  Present { value: cg_high } =>
+                    if cg_high != high_text {
+                      fci1_admission_refused(reason: "InstrumentRefused: bounded driver has no matching cgroup memory.high")
+                    } else {
+                      Fci1Admitted {
+                        systemd_version: version_line,
+                        context_receipt: join([
+                          "unit=", fci1_driver_unit_name as String,
+                          "\nControlGroup=", group,
+                          "\nWorkingDirectory=", ctx.root,
+                          "\nMemoryMax=", max_text,
+                          "\nMemoryHigh=", high_text,
+                          "\nprocess_cgroup=", group,
+                          "\ncgroup_memory_max=", cg_max,
+                          "\ncgroup_memory_high=", cg_high,
+                          "\nsystemd_version=", version_line, "\n",
+                        ], ""),
+                      }
+                    }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+// ── THE EVIDENCE CALIBRATION (a child of its own, against this exact binary) ────────────────────
+
+// gunbc.instruments.fabric_ci_calibration_actuator fabric_ci_calibration_run reads its three
+// settings from the environment, so the child is `env` over the typed gunbc argv.
+fn fci1_calibration_env_words(ctx: Fci1LiveContext, calibration_value_root: String) -> List<String> {
+  concat(["env",
+    concat("FABRIC_CI_GUNBC_BIN=", ctx.gunbc_bin),
+    concat("FABRIC_CI_SOURCE_ROOT=", ctx.root),
+    concat("FABRIC_CI_VALUE_ROOT=", calibration_value_root),
+  ], [
+    ctx.gunbc_bin, "run",
+    "--source-root", concat(ctx.root, "/dag"),
+    "--source-root", concat(ctx.root, "/src/v2"),
+    "--entry", join([ctx.root, "/", fci1_calibration_actuator_entry_path], ""),
+    "--function", "fabric_ci_calibration_run",
+  ])
+}
+
+// The calibration rewrites the checked-in projection fixture; whatever it does the fixture is written
+// back and read back byte-exact before anything else runs.
+fn fci1_calibrate(ctx: Fci1LiveContext) -> ProcessExit {
+  let fixture = join([ctx.root, "/", fci1_projection_fixture_path], "")
+  let original = Filesystem.Read(path: fixture)
+  let made = fci1_run_command(command: mktemp_directory_command(template: "/tmp/fci1-calibration.XXXXXX" as NonEmptyStr))
+  if !original.success {
+    fci1_refused(reason: concat("InstrumentRefused: projection fixture unreadable: ", original.error))
+  } else if made.exit_code != 0 || trim(s: made.stdout) == "" {
+    fci1_refused(reason: concat("InstrumentRefused: calibration value root not created: ", made.stderr))
+  } else {
+    let calibration_root = trim(s: made.stdout)
+    let observed = fci1_run_words(words: fci1_calibration_env_words(ctx: ctx, calibration_value_root: calibration_root))
+    let restored = Filesystem.Write(path: fixture, content: original.content)
+    let readback = Filesystem.Read(path: fixture)
+    let removed = fci1_run_command(command: rm_recursive_force_command(path: calibration_root))
+    if !restored.success || !readback.success || readback.content != original.content {
+      fci1_refused(reason: "InstrumentRefused: projection fixture NOT restored byte-exact after calibration")
+    } else if observed.exit_code != 0 {
+      fci1_child_failure(function: "fabric_ci_calibration_run", observed_code: observed.exit_code, diagnostics: fci1_diagnostics(observed: observed))
+    } else if removed.exit_code != 0 {
+      fci1_refused(reason: concat("InstrumentRefused: calibration value root not removed: ", removed.stderr))
+    } else { ExitSuccess }
+  }
+}
+
+// ── THE INNER RUN (inside the bounded driver unit) ──────────────────────────────────────────────
+
+fn fci1_body(ctx: Fci1LiveContext) -> Fci1StepResult {
+  match fci1_calibrate(ctx: ctx) {
+    ExitFailure { code, reason } => fci1_result(state: Fci1LiveState { bindings: [], generation_root: none }, status: ExitFailure { code: code, reason: reason })
+    ExitSuccess => fci1_run_steps(ctx: ctx, state: Fci1LiveState { bindings: [], generation_root: none }, steps: fci1_live_steps())
+  }
+}
+
+fn fci1_after_admission(ctx: Fci1LiveContext, admission: Fci1Admission) -> ProcessExit {
+  match admission {
+    Fci1AdmissionRefused { reason } => fci1_refused(reason: reason)
+    Fci1Admitted { systemd_version, context_receipt } =>
+      match fci1_write_text(path: fci1_receipt_path(ctx: ctx, name: "bounded-context"), content: context_receipt) {
+        Present { value: reason } => fci1_cleanup(ctx: ctx, state: Fci1LiveState { bindings: [], generation_root: none }, body: fci1_refused(reason: reason), systemd_version: systemd_version)
+        Absent => {
+          let ran = fci1_body(ctx: ctx)
+          fci1_cleanup(ctx: ctx, state: ran.state, body: ran.status, systemd_version: systemd_version)
+        }
+      }
+  }
+}
+
+fn fci1_inner_with_value_root(ctx: Fci1LiveContext) -> ProcessExit {
+  // The checkpoint token is validated by the probe itself, in its own process, before anything is admitted.
+  match fci1_run_probe(ctx: ctx, function: "fci1_assert_checkpoint_token", arguments: ["--arg", concat("token=", ctx.checkpoint)]) {
+    ExitFailure { code: _, reason } => fci1_refused(reason: reason)
+    ExitSuccess => fci1_after_admission(ctx: ctx, admission: fci1_admit(ctx: ctx))
+  }
+}
+
+fn fci1_live_instrument_inner(gunbc_bin: String, root: String, receipt_root: String, checkpoint: String) -> ProcessExit {
+  let host = fci1_host_refusal(gunbc_bin: gunbc_bin, phase: "bounded inner")
+  match host {
+    Present { value: reason } => fci1_refused(reason: reason)
+    Absent =>
+      match fci1_bounded_execution_context(checkout_root: root as FilePath) {
+        Fci1MemoryMaxNonPositive { observed } => fci1_refused(reason: concat("InstrumentRefused: MemoryMax not finite-positive: ", to_string(observed)))
+        Fci1MemoryHighNonPositive { observed } => fci1_refused(reason: concat("InstrumentRefused: MemoryHigh not finite-positive: ", to_string(observed)))
+        Fci1MemoryHighExceedsMax { high: _, max: _ } => fci1_refused(reason: "InstrumentRefused: MemoryHigh exceeds MemoryMax")
+        Fci1BoundedExecutionContextBuilt { context } => {
+          let made = fci1_run_command(command: mktemp_directory_command(template: "/tmp/fci1-values.XXXXXX" as NonEmptyStr))
+          if made.exit_code != 0 || trim(s: made.stdout) == "" {
+            fci1_refused(reason: concat("InstrumentRefused: value root not created: ", made.stderr))
+          } else {
+            fci1_inner_with_value_root(ctx: Fci1LiveContext {
+              gunbc_bin: gunbc_bin,
+              root: root,
+              receipt_root: receipt_root,
+              value_root: trim(s: made.stdout),
+              checkpoint: checkpoint,
+              bounded: context,
+            })
+          }
+        }
+      }
+  }
+}
+
+// ── THE OUTER RUN (discovery only; launches the bounded driver unit) ────────────────────────────
+
+fn fci1_host_refusal(gunbc_bin: String, phase: String) -> String? {
+  let uid = fci1_run_words(words: id_uid_argv())
+  let host = fci1_run_command(command: hostname_short_read_command())
+  let executable = fci1_run_words(words: shell_test_is_executable_argv(path: gunbc_bin as FilePath))
+  if uid.exit_code != 0 || trim(s: uid.stdout) != "0" {
+    Present { value: concat("InstrumentRefused: must run as root on srv3 (", concat(phase, ")")) }
+  } else if host.exit_code != 0 || trim(s: host.stdout) != "srv3" {
+    Present { value: concat("InstrumentRefused: host is not srv3 (", concat(phase, ")")) }
+  } else if executable.exit_code != 0 {
+    Present { value: "InstrumentRefused: exact-tree gunbc absent" }
+  } else { none }
+}
+
+fn fci1_driver_child_words(gunbc_bin: String, root: String, receipt_root: String, checkpoint: String) -> List<String> {
+  [
+    gunbc_bin, "run",
+    "--source-root", concat(root, "/dag"),
+    "--source-root", concat(root, "/src/v2"),
+    "--entry", join([root, "/", fci1_live_actuator_entry], ""),
+    "--function", "fci1_live_instrument_inner",
+    "--arg", concat("gunbc_bin=", gunbc_bin),
+    "--arg", concat("root=", root),
+    "--arg", concat("receipt_root=", receipt_root),
+    "--arg", concat("checkpoint=", checkpoint),
+  ]
+}
+
+// The driver unit must be gone and inactive once the inner run returned: a positive collection, not an absence of news.
+fn fci1_driver_collected() -> String? {
+  let observed = fci1_run_command(command: systemctl_show_properties_command(unit: fci1_driver_unit_name, properties: [LoadState, ActiveState]))
+  let text = fci1_diagnostics(observed: observed)
+  if systemctl_show_property_value(text: text, key: "LoadState") == Present { value: "not-found" }
+    && systemctl_show_property_value(text: text, key: "ActiveState") == Present { value: "inactive" } {
+    none
+  } else { Present { value: concat("InstrumentRefused: bounded driver was not positively collected: ", text) } }
+}
+
+fn fci1_launch_driver(gunbc_bin: String, root: String, receipt_root: String, checkpoint: String) -> ProcessExit {
+  match fci1_bounded_execution_context(checkout_root: root as FilePath) {
+    Fci1MemoryMaxNonPositive { observed } => fci1_refused(reason: concat("InstrumentRefused: MemoryMax not finite-positive: ", to_string(observed)))
+    Fci1MemoryHighNonPositive { observed } => fci1_refused(reason: concat("InstrumentRefused: MemoryHigh not finite-positive: ", to_string(observed)))
+    Fci1MemoryHighExceedsMax { high: _, max: _ } => fci1_refused(reason: "InstrumentRefused: MemoryHigh exceeds MemoryMax")
+    Fci1BoundedExecutionContextBuilt { context } => {
+      let outer = Fci1LiveContext { gunbc_bin: gunbc_bin, root: root, receipt_root: receipt_root, value_root: "", checkpoint: checkpoint, bounded: context }
+      match fci1_live_unit_command(ctx: outer, unit: fci1_driver_unit_name, runtime_directory: none,
+        child_words: fci1_driver_child_words(gunbc_bin: gunbc_bin, root: root, receipt_root: receipt_root, checkpoint: checkpoint)) {
+        Fci1UnitCommandRefused { detail } => fci1_refused(reason: concat("InstrumentRefused: driver unit command refused: ", detail))
+        Fci1UnitCommandBuilt { command } => {
+          let observed = fci1_run_command(command: command)
+          match fci1_driver_collected() {
+            Present { value: reason } => exit_failure(reason: reason)
+            Absent =>
+              if observed.exit_code == 0 { ExitSuccess } else {
+                ExitFailure { code: observed.exit_code, reason: concat("bounded driver exited nonzero: ", fci1_diagnostics(observed: observed)) }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn fci1_live_instrument_with_env(gunbc_bin: String, root: String, receipt_root: String, checkpoint: String) -> ProcessExit {
+  match fci1_host_refusal(gunbc_bin: gunbc_bin, phase: "outer") {
+    Present { value: reason } => fci1_refused(reason: reason)
+    Absent => fci1_launch_driver(gunbc_bin: gunbc_bin, root: root, receipt_root: receipt_root, checkpoint: checkpoint)
+  }
+}
+
+fn fci1_live_instrument_run() -> ProcessExit {
+  match fabric_ci_env_required(name: "FCI1_GUNBC_BIN") {
+    Absent => fci1_refused(reason: "InstrumentRefused: FCI1_GUNBC_BIN unset")
+    Present { value: gunbc_bin } =>
+      match fabric_ci_env_required(name: "FCI1_CHECKOUT_ROOT") {
+        Absent => fci1_refused(reason: "InstrumentRefused: FCI1_CHECKOUT_ROOT unset")
+        Present { value: root } =>
+          match fabric_ci_env_required(name: "FCI1_RECEIPT_ROOT") {
+            Absent => fci1_refused(reason: "InstrumentRefused: FCI1_RECEIPT_ROOT unset")
+            Present { value: receipt_root } =>
+              match fabric_ci_env_required(name: "FCI1_CHECKPOINT") {
+                Absent => fci1_refused(reason: "InstrumentRefused: FCI1_CHECKPOINT unset (name a checkpoint token, or none)")
+                Present { value: checkpoint } => fci1_live_instrument_with_env(gunbc_bin: gunbc_bin, root: root, receipt_root: receipt_root, checkpoint: checkpoint)
+              }
+          }
+      }
+  }
+}
