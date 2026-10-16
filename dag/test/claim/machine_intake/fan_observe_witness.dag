@@ -1,7 +1,20 @@
 module test.claim.machine_intake.fan_observe_witness
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_fan_observe_ipmi_series_step_name,
+  fleet_converge_fan_policy_phase_step,
+  fleet_converge_fan_policy_phase_verdict_step,
+  fleet_converge_mtcollins1_boot_steps_around,
+  fleet_converge_mtcollins1_fan_observe_step,
+}
+import gunbc.ci.ci_spec {
+  gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
+  gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke,
+  gunbc_ci_mtcollins1_fan_observe_invoke,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
@@ -102,4 +115,110 @@ test fn a_host_that_is_not_managed_refuses() -> Bool {
     FanObserveRefused { cause: FanHostNotManaged { host: n } } => (n as String) == "mtjade1"
     _ => false
   }
+}
+
+fn fan_policy_phase_step_name(s: Step) -> String {
+  match s {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match n {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
+fn fan_policy_phase_step_run_text(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn fan_policy_phase_marker_step(marker: String) -> Step {
+  RunStep { name: none, id: none, run: marker, shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none }
+}
+
+data fan_policy_phase_supplied_fleet_key: String = "SUPPLIED-FLEET-KEY-STEP"
+data fan_policy_phase_supplied_boot: String = "SUPPLIED-BOOT-STEP"
+
+// THE PHASE NAME IS THE IPMI SERIES, BECAUSE THAT IS THE INVOKE. A Cooling Manager / PWM REST
+// label on this run would report a MegaRAC GET that never ran.
+test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
+  fan_policy_phase_step_name(s: fleet_converge_fan_policy_phase_step())
+    == fleet_converge_fan_observe_ipmi_series_step_name
+    && fan_policy_phase_step_name(s: fleet_converge_mtcollins1_fan_observe_step())
+      == fleet_converge_fan_observe_ipmi_series_step_name
+    && fan_policy_phase_step_run_text(s: fleet_converge_fan_policy_phase_step())
+      == gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+    && fan_policy_phase_step_run_text(s: fleet_converge_mtcollins1_fan_observe_step())
+      == gunbc_ci_mtcollins1_fan_observe_invoke()
+    && !string_contains(s: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(), pattern: "dissolve-on")
+}
+
+// THE PHASE IS A PRIOR JOB STEP, NOT A CHILD OF THE BOOT INVOKE. GitHub Actions runs job steps
+// sequentially, so this gunbc run exits before the boot step starts its concurrent pair.
+test fn fan_policy_phase_runs_before_the_power_cycle_and_not_inside_it() -> Bool {
+  let runs = map(
+    fleet_converge_mtcollins1_boot_steps_around(
+      fleet_key_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_fleet_key),
+      boot_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_boot),
+    ),
+    s => fan_policy_phase_step_run_text(s: s),
+  )
+  let fan = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+  filter(runs, r => r == fan_policy_phase_supplied_fleet_key || r == fan || r == fan_policy_phase_supplied_boot)
+    == [fan_policy_phase_supplied_fleet_key, fan, fan_policy_phase_supplied_boot]
+}
+
+fn fan_policy_phase_continue_on_error(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: c, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+fn fan_policy_phase_timeout_present(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: _ } => true
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// CONTROL: the boot step stays in the job after the phase even if the phase is continue-on-error
+// (nonzero or step timeout). GitHub still schedules later steps when continue-on-error is true.
+test fn fan_policy_phase_nonzero_or_timeout_leaves_boot_scheduled() -> Bool {
+  fan_policy_phase_continue_on_error(s: fleet_converge_fan_policy_phase_step())
+    && fan_policy_phase_timeout_present(s: fleet_converge_fan_policy_phase_step())
+    && !fan_policy_phase_continue_on_error(s: fleet_converge_mtcollins1_fan_observe_step())
+}
+
+// CONTROL: continue-on-error only schedules boot. The post-boot verdict has no continue-on-error,
+// so a refused observation (typed receipt) fails the job after the power cycle still ran.
+test fn fan_policy_phase_verdict_after_boot_fails_the_job_when_the_receipt_is_refused() -> Bool {
+  let runs = map(
+    fleet_converge_mtcollins1_boot_steps_around(
+      fleet_key_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_fleet_key),
+      boot_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_boot),
+    ),
+    s => fan_policy_phase_step_run_text(s: s),
+  )
+  let fan = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+  let verdict = gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke()
+  filter(runs, r => r == fan || r == fan_policy_phase_supplied_boot || r == verdict)
+    == [fan, fan_policy_phase_supplied_boot, verdict]
+    && !fan_policy_phase_continue_on_error(s: fleet_converge_fan_policy_phase_verdict_step())
+    && fan_policy_phase_timeout_present(s: fleet_converge_fan_policy_phase_verdict_step())
 }

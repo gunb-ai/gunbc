@@ -13,10 +13,13 @@ import extdeps.bmc.phosphor_fan_control {
   phosphor_fan_zone_enters_failsafe,
 }
 import extdeps.bmc.megarac_fan_policy {
-  megarac_fan_mode_protocol_floor,
+  MegaRacSpxRest,
   megarac_fan_mode_surface,
   megarac_fan_mode_surface_read_obligation,
+  megarac_fan_mode_surface_write_obligation,
+  megarac_fan_mode_transport,
   megarac_fan_policy_read_obligation,
+  megarac_fan_sdr_protocol_floor,
 }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
@@ -183,16 +186,23 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
   }
 }
 
-// THE MEGARAC CONVERGE SURFACE IS UNBOUND AND ITS PROTOCOL FLOOR IS IPMI. The second half matters as
-// much as the first: an unbound surface that answered Redfish would be taking a per-build fact from
-// a family row.
-test fn witness_megarac_fan_mode_surface_is_unbound_with_ipmi_floor() -> Bool {
+// THE MEGARAC FAN-READ SURFACE IS SP-X REST AND READSBOUND. Writes remain obligated; SDR tach
+// stays the family IPMI floor; that floor is not a nickname for the fan-control transport.
+test fn witness_megarac_fan_mode_surface_is_reads_bound_spx_rest() -> Bool {
   match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
-    Absent => false
-    Present { value: obligation } => (obligation as String) != ""
-      && match megarac_fan_mode_protocol_floor(surface: megarac_fan_mode_surface) {
-        Ipmi => true
-        _ => false
+    Present { value: _ } => false
+    Absent =>
+      match megarac_fan_mode_surface_write_obligation(surface: megarac_fan_mode_surface) {
+        Absent => false
+        Present { value: _ } =>
+          match megarac_fan_mode_transport(surface: megarac_fan_mode_surface) {
+            Present { value: MegaRacSpxRest {} } =>
+              match megarac_fan_sdr_protocol_floor() {
+                Ipmi => true
+                _ => false
+              }
+            Absent => false
+          }
       }
   }
 }
@@ -745,7 +755,7 @@ fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPo
 // rather than a witness-local pair that happened to have the same shape.
 
 // A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. This is the arm that matters most and
-// the one MegaRAC lands on today: there is no modeled way to set a duty on that family, so no
+// the one MegaRAC lands on today: the GET surface is Bound and the converge route is Unbound, so no
 // ceiling can be honoured OR refused against it, and reading that as "within ceiling" would be a
 // fabricated answer about the operator's own room. It fires before the level is even consulted.
 test fn witness_ceiling_is_unenforceable_without_a_converge_route() -> Bool {
