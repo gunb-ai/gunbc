@@ -2653,6 +2653,7 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 pub enum FileVerb {
     FileRead,
     FileWrite,
+    FileWriteBytes,
     FileWriteOwnerOnly,
     FileWriteCreateNew,
     FileWriteCreateNewWithMode,
@@ -2777,7 +2778,7 @@ pub fn bind_file_verb(
                                 FileVerb::FileLinkCreateNew
                             } else {
                                 if (v.clone() == file_transport_verb_write_bytes()) {
-                                    FileVerb::FileWrite
+                                    FileVerb::FileWriteBytes
                                 } else {
                                     FileVerb::FileWriteOwnerOnly
                                 }
@@ -9330,6 +9331,8 @@ pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> 
 pub struct FileRead;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWrite;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileWriteBytes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWriteOwnerOnly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
