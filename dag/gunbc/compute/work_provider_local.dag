@@ -22,7 +22,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import extdeps.systemd { ExecStopProperty }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
-  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -579,7 +579,7 @@ type ComputeUnitStopObservation = NoStopObservation | SccacheStatsAtStop
 fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) -> List<SystemdRunProperty> {
   match observation {
     NoStopObservation => []
-    SccacheStatsAtStop => [NamedUnitSetting { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
+    SccacheStatsAtStop => [SystemdRunProperty { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
   }
 }
 
