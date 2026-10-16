@@ -131,6 +131,9 @@ fn belt_instance_obligation_kind_of_key(key: String) -> BeltInstanceObligationKi
 // verdicts; Pending and Active are not. A failed or refused stage is NOT outstanding: it stops the
 // line for that attempt, loudly, and is resumed by the operator (2026-10-03 manual-resume ruling) --
 // re-running it automatically on every discovery would be the retry loop that ruling refuses.
+// AMENDED for INFRASTRUCTURE refusals only (gunbc.roadmap.roadmap_refused_retry refused_retry_ruling,
+// gunbc.design_ruling infrastructure_refusal_is_retried_to_a_bound): the segment stays unsettled-free here,
+// and the belt's bounded retry is woken by belt_verify_retry_standing, not by this predicate.
 fn belt_segment_unsettled(segments: List<WorkflowSegment>, kind: WorkflowSegmentKind) -> Bool {
   match workflow_segment_of_kind(segments: segments, kind: kind) {
     Absent => false

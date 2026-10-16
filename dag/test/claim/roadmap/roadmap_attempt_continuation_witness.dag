@@ -26,6 +26,8 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
+
 fn pri(
   capture: SubmissionCaptureObservation,
   verification: WorkflowSegment?,
@@ -42,6 +44,7 @@ fn pri(
     review: review,
     goal_audit: goal_audit,
     recovery: SessionRecoveryNone,
+    verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -174,6 +177,7 @@ fn running_prior() -> PriorAttemptFacts {
     review: none,
     goal_audit: none,
     recovery: SessionRecoveryNone,
+    verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -248,7 +252,7 @@ test fn retire_claim_2_record_for_another_attempt_is_refused_as_stale() -> Bool 
 
 // CLAIM 3 (control): a record over an active, held or complete lineage, or over no lineage, is refused.
 test fn retire_claim_3_record_over_a_non_ended_lineage_is_refused() -> Bool {
-  let active = PriorAttemptFacts { node_id: "n1", attempt_key: "a1", branch: "roadmap/n1/a1", worker_terminal: false, capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: SessionRecoveryNone }
+  let active = PriorAttemptFacts { node_id: "n1", attempt_key: "a1", branch: "roadmap/n1/a1", worker_terminal: false, capture: CaptureAbsent, verification: none, review: none, goal_audit: none, verification_retry: RefusedRetryOperatorOnly, recovery: SessionRecoveryNone }
   let held = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
   let green = segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "ok")
   let approved = segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")
