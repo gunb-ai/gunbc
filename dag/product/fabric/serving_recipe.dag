@@ -28,8 +28,9 @@ import gunbc.harness.harness_reasoning_wire {
 // handful of literals beside the Vast roster walk (flex_qwen_*), which fused one deployment into the
 // policy and could not carry to an owned card. A recipe says nothing about WHERE the card comes from:
 // a rented Vast card and an owned card are both ServingCardSupply, judged by the same
-// serving_recipe_accepts_card and priced by the same serving_card_hourly, so both reach
-// product.fabric.selection select_supply as ordinary SupplierOffer quotes.
+// serving_recipe_accepts_card and priced by the same serving_card_hourly. Whether both reach
+// product.fabric.selection select_supply as SupplierOffer quotes is witnessed (serving_recipe_witness)
+// but has no production caller yet: see serving_recipe_frontier, row serving_card_hourly.
 //
 // Figures this repository has not read from an upstream are TranscribedUncited (DESIGN 4d): the
 // operator's readings carry that standing and say so, and nothing here promotes them.
@@ -372,5 +373,10 @@ data serving_recipe_frontier: List<FrontierRow> = [
     ref: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
     reason: "(1) FAIL-CLOSED NARROWING of the retired flex_qwen_* screen: its 48 GB (RTX 5000) and 72 GB classes cannot be named by catalog row because extdeps.gpu.nvidia has no such rows, and a VRAM-only class would admit pre-sm120 cards the ninfer sm120 build cannot run, so the recipe admits only the catalogued RTX PRO 6000 rows until they exist. (2) throughput and cache tiers are unread; unit cost is UnitCostThroughputUnread rather than a guess.",
     dissolution: unbound_dissolution(description: "(1) extdeps.gpu.nvidia catalog rows for the RTX 5000 and the 72 GB card, added to the recipe's cards; (2) an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: serving_recipe_ref(decl_name: "serving_card_hourly" as NonEmptyStr),
+    reason: "serving_card_hourly, serving_cost_per_million_tokens, serving_cache_bytes and serving_recipes_interchangeable are called only by test.claim.fabric.serving_recipe_witness. The Vast shadow field (flex_offer_in_shadow_field) screens by recipe but does not yet price a card's disk or quote it to select_supply, and nothing yet reads cache sizes or recipe interchangeability. Disk-in-cost is therefore a witnessed model, not an executing route.",
+    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_wet_create_release_consumer_frontier), and the host-convergence provision phase reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
   ),
 ]
