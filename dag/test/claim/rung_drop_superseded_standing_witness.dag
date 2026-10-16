@@ -3,7 +3,7 @@ module test.claim.rung_drop_superseded_standing_witness
 import std.types { String, Bool, NonEmptyStr, List }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, Dissolved, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.standing { superseded_loss_holders_stand }
@@ -79,6 +79,7 @@ test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool 
         && (rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: rust_unit_tests_over_their_cap.standing) }).contains("TRIGGER FIRED.") == false)
     Standing => false
     Retired { trigger_fired: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   }
 }
 
@@ -137,5 +138,16 @@ test fn the_live_roster_loss_holders_resolve_and_stand() -> Bool {
       Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
       Standing => false
       Retired { trigger_fired: _ } => false
+      Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
     })
+}
+
+// THE DISSOLVED ARM: its rendering says the trigger did not fire and that the population is gone,
+// carries no loss holder, and joins to no roster row (nothing holds the loss).
+test fn a_dissolved_row_renders_as_not_fired_and_needs_no_loss_holder() -> Bool {
+  let st = Dissolved { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, population_gone: "gone" as NonEmptyStr }
+  let r = rendered_blocks(blocks_doc: MarkdownDocument { blocks: rung_drop_standing_blocks(standing: st) })
+  r.contains("DISSOLVED") && r.contains("gone") && (r.contains("TRIGGER FIRED.") == false)
+    && rung_drop_standing_suffix(standing: st) == " · DISSOLVED"
+    && superseded_loss_holders_stand(drops: [holder_fixture(id: "fixture.dissolved", standing: st)], roster: [holder_fixture(id: "fixture.dissolved", standing: st)])
 }

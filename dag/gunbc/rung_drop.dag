@@ -206,10 +206,23 @@ import gunbc.guarantee_rung {
 // the subject, the DECISION RECORD that admitted it, and the LOSS HOLDER -- the standing drop that
 // now carries whatever the superseded row's trigger would have restored, so the loss is not
 // dropped with the row.
+// DISSOLVED IS THE FOURTH STANDING, AND IT IS NOT AN EXIT FOR A DROP WHOSE TRIGGER IS INCONVENIENT.
+// Use it ONLY when the population the drop covered NO LONGER EXISTS IN THE TREE: every member the
+// row's population named is deleted, so nobody holds a loss and no trigger is left to restore. A
+// class that still has members stays Standing, or Superseded when its loss moved to a standing
+// drop. Like Superseded it is not a kind of Retired: the trigger did not fire. It carries no loss
+// holder because there is none; `population_gone` says what was deleted. All three fields are
+// NonEmptyStr because no typed home exists for them yet: the ruling and decision record are
+// operator relays and dashboard message ids rather than gunbc.design_ruling symbols, and
+// `population_gone` is prose (section 4c: a String only where nothing typed exists, and never
+// evidence that the population is gone). Nothing mechanical refuses a Dissolved row whose
+// population still resolves; that check needs a declaration-resolution reader this carrier does not
+// take on, so it is review-enforced and named here rather than claimed.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
   | Superseded { ruling: NonEmptyStr, decision_record: NonEmptyStr, loss_holder: NonEmptyStr }
+  | Dissolved { ruling: NonEmptyStr, decision_record: NonEmptyStr, population_gone: NonEmptyStr }
 
 // THE REASON A RUNG FELL, A CLOSED COPRODUCT BECAUSE THE REASONS ARE A SMALL NAMED SET AND NAMING
 // THEM IS WHAT LETS THE SAME CLASS BE RECOGNISED TWICE.

@@ -11,7 +11,7 @@ module gunbc.rung_drop.standing
 // instead of the arm it came from.
 
 import std.types { List, Bool }
-import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded }
+import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded, Dissolved }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
 fn standing_rung_drops() -> List<RungDrop> {
@@ -19,6 +19,7 @@ fn standing_rung_drops() -> List<RungDrop> {
     Standing => true
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   })
 }
 
@@ -36,6 +37,7 @@ fn superseded_loss_holders_stand(drops: List<RungDrop>, roster: List<RungDrop>) 
     Standing => true
     Retired { trigger_fired: _ } => true
     Superseded { ruling: _, decision_record: _, loss_holder: h } => loss_holder_stands(holder: h as String, roster: roster)
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => true
   })
 }
 
@@ -45,5 +47,6 @@ fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
     Standing => true
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
   })) == 1
 }

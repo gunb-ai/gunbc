@@ -206,6 +206,7 @@ fn drop_is_standing_citation(drop: RungDrop, cited: DeclarationRef) -> Bool {
   match drop.standing {
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+    Dissolved { ruling: _, decision_record: _, population_gone: _ } => false
     Standing => (drop.identity as String) == (cited.decl_name as String)
   }
 }
