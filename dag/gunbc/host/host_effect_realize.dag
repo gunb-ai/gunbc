@@ -6402,6 +6402,14 @@ type MicrovmControllerInstallStep
       write: ArgvCommand,
       subject: String,
     }
+  // THE TREE COPY, AS ONE LEG OF THIS PLAN. Its argv belongs to W6's vertical
+  // (approval_broker_tree_install, PR 14138, witnessed there), so this arm
+  // carries NO argv of its own -- which is exactly what makes the witness claim
+  // "this edge builds no second tree copy" checkable: the leg is in the plan and
+  // spells no words.
+  | MicrovmControllerTreeStep {
+      name: String,
+    }
 
 // THE STAGED PLAN, or the reason there is none. Planning is total: the whole
 // step list exists (in order) before any effect runs, so a witness can read
@@ -6493,6 +6501,7 @@ fn microvm_controller_step_words(step: MicrovmControllerInstallStep) -> List<Str
     MicrovmControllerVerifyStep { command: c } => argv_words(command: c)
     MicrovmControllerReceiptStep { observe: o, observe2: t, write: w } =>
       concat(argv_words(command: o), concat(argv_words(command: t), argv_words(command: w)))
+    MicrovmControllerTreeStep { name: _ } => []
   }
 }
 
@@ -6509,6 +6518,7 @@ fn microvm_controller_step_stdin(step: MicrovmControllerInstallStep) -> String {
     MicrovmControllerArgvStep { stdin_payload: p } => p
     MicrovmControllerVerifyStep { command: _, expected: _, subject: _ } => ""
     MicrovmControllerReceiptStep { observe: _, observe2: _, write: _ } => ""
+    MicrovmControllerTreeStep { name: _ } => ""
   }
 }
 
@@ -6694,6 +6704,13 @@ fn microvm_controller_install_steps(
   let grant_stage = concat(workspace_dispatch_grant_path, microvm_controller_stage_suffix)
   let grant_pending = concat(workspace_dispatch_grant_path, ".pending")
   concat(
+    [
+      // THE TREE COPY, FIRST -- where the retired intent ran it (its first leg
+      // was `cd <checkout> && find <subdirs> -type f | xargs sudo install`). One
+      // leg, run by W6's vertical; this module spells none of its words.
+      MicrovmControllerTreeStep { name: "approval-broker tree install" },
+    ],
+    concat(
     [
       // microvm_controller_vmm_install_steps. Elevation matches the retired
       // builder leg for leg: mkdir/curl/tar ran as the deploying user (their
@@ -6941,6 +6958,7 @@ fn microvm_controller_install_steps(
         ),
       ),
     ),
+    ),
   )
 }
 
@@ -7078,32 +7096,19 @@ fn microvm_controller_source_root() -> String {
   git.Inspect.Toplevel().path as String
 }
 
-fn microvm_controller_tree_install_verdict_text(verdict: ApprovalBrokerTreeInstallVerdict) -> String {
-  match verdict {
-    TreeInstallConverged { installed_digest: digest, files_installed: files } => join([
-      "tree install converged: ", to_string(files), " files installed, receipt digest ", digest,
-    ], "")
-    TreeInstallRefused { step: step, reason: why } => join([
-      microvm_controller_run_edge, " tree-copy leg refused at step '",
-      (match step {
-        TreeStepRevision => "revision"
-        TreeStepSourceObserve => "source-observe"
-        TreeStepInstallDirectory => "install-directory"
-        TreeStepInstallFile => "install-file"
-        TreeStepInstallBinary => "install-binary"
-        TreeStepReadback => "readback"
-        TreeStepDigest => "digest"
-        TreeStepReceipt => "receipt"
-      }),
-      "': ", why,
-    ], "")
-  }
-}
-
-fn microvm_controller_tree_install_succeeded(verdict: ApprovalBrokerTreeInstallVerdict) -> Bool {
-  match verdict {
-    TreeInstallConverged { installed_digest: _, files_installed: _ } => true
-    TreeInstallRefused { step: _, reason: _ } => false
+// THE W6 STEP NAME AS TEXT, so a refusal from the vertical says which of its
+// eight legs refused (TreeInstallStep is a closed sum; the mapping is here and
+// nowhere else).
+fn microvm_controller_tree_step_name(step: TreeInstallStep) -> String {
+  match step {
+    TreeStepRevision => "revision"
+    TreeStepSourceObserve => "source-observe"
+    TreeStepInstallDirectory => "install-directory"
+    TreeStepInstallFile => "install-file"
+    TreeStepInstallBinary => "install-binary"
+    TreeStepReadback => "readback"
+    TreeStepDigest => "digest"
+    TreeStepReceipt => "receipt"
   }
 }
 
@@ -7127,19 +7132,9 @@ fn realize_microvm_controller_install_on_host(
           applied: intent,
         }
       } else {
-      let tree_verdict = approval_broker_tree_install(
-        owner: microvm_controller_owner,
-        base_root: microvm_controller_root,
-        source_root: source_root,
-        revision: revision,
-        transport: transport,
-      )
-      if !microvm_controller_tree_install_succeeded(verdict: tree_verdict) {
-        NotConverged { reason: microvm_controller_tree_install_verdict_text(verdict: tree_verdict), applied: intent }
-      } else {
         let acc = fold(
           steps,
-          init: FoldOk { exit_code: 0, stdout: microvm_controller_tree_install_verdict_text(verdict: tree_verdict), stderr: "" },
+          init: FoldOk { exit_code: 0, stdout: "", stderr: "" },
           f: (a, s) =>
             match a {
               FoldFailed { reason: why } => FoldFailed { reason: why }
@@ -7171,8 +7166,30 @@ fn realize_microvm_controller_install_on_host(
                   // whole edge if it refused. Its verdict is the fold's initial
                   // evidence, so this arm passes the accumulator through -- the
                   // leg is in the plan (a witness counts it) but never re-run.
-                  MicrovmControllerTreeStep { name: _, source_root: _ } =>
-                    FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err }
+                  // THE TREE LEG, wired to W6's vertical: ONE call, in plan
+                  // position (first), over this edge's own transport. A refusal
+                  // from the vertical stops the fold exactly as a non-zero exit
+                  // would, naming which of W6's eight legs refused; its success is
+                  // this leg's evidence but NOT the edge's final evidence -- the
+                  // later legs' output wins, as the plan's order decides.
+                  MicrovmControllerTreeStep { name: name } =>
+                    match approval_broker_tree_install(
+                      owner: microvm_controller_owner,
+                      base_root: microvm_controller_root,
+                      source_root: source_root,
+                      revision: revision,
+                      transport: transport,
+                    ) {
+                      TreeInstallConverged { installed_digest: digest, files_installed: files } =>
+                        FoldOk {
+                          exit_code: 0,
+                          stdout: join([microvm_controller_run_edge, " step '", name, "': ", to_string(files), " files installed at receipt digest ", digest], ""),
+                          stderr: prior_err,
+                        }
+                      TreeInstallRefused { step: step, reason: why } => FoldFailed {
+                        reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", microvm_controller_tree_step_name(step: step), ": ", why], ""),
+                      }
+                    }
                 }
             },
         )
@@ -7183,7 +7200,6 @@ fn realize_microvm_controller_install_on_host(
             applied: intent,
           }
         }
-      }
       }
     }
   }
