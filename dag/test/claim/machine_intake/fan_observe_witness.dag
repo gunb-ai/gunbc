@@ -302,10 +302,10 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
 // without a receipt, or wrote one and still failed the step, fails this claim.
 test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
   let receipt_path = "target/eh810-fan-boot-phase-refusal-receipt.txt"
-  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
+  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
   match admittable.first() {
     Present { value: row } =>
-      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host.host as NonEmptyStr)) {
+      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host as NonEmptyStr)) {
         FanObserveAdmitted { host: h } =>
           match fan_write_boot_phase_observation(
             host: h,
