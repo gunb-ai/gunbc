@@ -7,12 +7,10 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command {
   ArgvCommand,
-  argv_command,
   operation_row_argv_command,
   OperationRowArgvCommandReady,
   OperationRowArgvCommandRefused,
 }
-import extdeps.exec.program { uncataloged_program }
 import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
