@@ -5310,6 +5310,48 @@ pub fn equality_admission_refusal_diag(
     }
 }
 
+pub fn equality_operands_never_inhabit_together(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let left_product = nominal_product_head_name(left.clone(), scope.clone());
+        let right_product = nominal_product_head_name(right.clone(), scope.clone());
+        if product_versus_coproduct_head_mismatch(left.clone(), right.clone(), scope.clone()) {
+            true
+        } else {
+            if ((left_product.clone() != "".to_string())
+                && (right_product.clone() != "".to_string()))
+            {
+                {
+                    let left_name = crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        left.clone(),
+                    );
+                    let right_name = crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        right.clone(),
+                    );
+                    !(application_type_names_compatible(
+                        left_name.clone(),
+                        right_name.clone(),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) || transparent_alias_identity_agrees(
+                        scope.type_env.clone().symbol_index.clone(),
+                        left_name.clone(),
+                        right_name.clone(),
+                    ))
+                }
+            } else {
+                false
+            }
+        }
+    }
+}
+
 pub fn equality_admission_diags(
     op: BinOp,
     left_typed: Rc<Node>,
@@ -5390,18 +5432,26 @@ pub fn equality_admission_diags(
                             )])
                         }
                     } else {
-                        match equality_operand_admission(
+                        if equality_operands_never_inhabit_together(
                             lt.clone(),
+                            rt.clone(),
                             scope.clone(),
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            0,
                         ) {
-                            Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                                equality_admission_refusal_diag(r.clone(), span.clone()),
+                            Rc::new(vec![type_mismatch_error(
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    lt.clone(),
+                                    source_indices.clone(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    rt.clone(),
+                                    source_indices.clone(),
+                                ),
+                                span.clone(),
                                 scope.module_name.clone(),
-                            )]),
-                            std::option::Option::None => match equality_operand_admission(
-                                rt.clone(),
+                            )])
+                        } else {
+                            match equality_operand_admission(
+                                lt.clone(),
                                 scope.clone(),
                                 v1_rt::rc_empty_map::<String, bool>(),
                                 0,
@@ -5410,8 +5460,19 @@ pub fn equality_admission_diags(
                                     equality_admission_refusal_diag(r.clone(), span.clone()),
                                     scope.module_name.clone(),
                                 )]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            },
+                                std::option::Option::None => match equality_operand_admission(
+                                    rt.clone(),
+                                    scope.clone(),
+                                    v1_rt::rc_empty_map::<String, bool>(),
+                                    0,
+                                ) {
+                                    Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                        equality_admission_refusal_diag(r.clone(), span.clone()),
+                                        scope.module_name.clone(),
+                                    )]),
+                                    std::option::Option::None => Rc::new(vec![]),
+                                },
+                            }
                         }
                     }
                 }
