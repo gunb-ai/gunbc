@@ -1,6 +1,6 @@
 module gunbc.host.sccache_verified_install
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }
@@ -96,7 +96,8 @@ fn sccache_verified_install_if_absent_script(
 // THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest
 // mismatch refuses and nothing gets installed" is about sccache's digest, so the test supplies
 // sccache's boundary values with the digest swapped and reads back an empty plan. Same shape for the
-// positive control: with the release row's own digest the plan is the six install steps.
+// positive control: with the release row's own digest the plan is the five install steps (extract,
+// move, mode, and the two staging removals).
 fn sccache_verified_install_admitted_plan(
   rel: SccacheBinaryRelease,
   arch: NonEmptyStr,
