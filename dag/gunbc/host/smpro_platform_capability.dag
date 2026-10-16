@@ -15,7 +15,7 @@
 module gunbc.host.smpro_platform_capability
 
 import std.types { NonEmptyStr }
-import extdeps.toolchain.types { Architecture }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.machine_intake.ampere_smpro_observation { SmproPassObservation }
 
 // AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
@@ -25,38 +25,52 @@ type SmproReading
   = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
-// THE STANDING OF THE SMpro CAPABILITY ON A MACHINE. Present when the platform carries SMpro and a
-// reading exists; Absent on a platform (such as x86) that does not carry it, with the platform
-// named so the absence is located rather than collapsed to an empty reading.
-type SmproCapabilityStanding
-  = SmproCapabilityPresent
-  | SmproCapabilityAbsent { platform: NonEmptyStr }
+// THE SMpro PLATFORM CAPABILITY: one arm per fact, so a capability cannot describe a state that
+// did not happen. The earlier shape was a record of {standing, reading: SmproReading?} and admitted
+// SmproCapabilityPresent { standing: SmproCapabilityPresent, reading: none } -- a capability that
+// claims to be present while carrying no reading, the two halves free to disagree (review 81074;
+// DESIGN §5: make the wrong fact unwritable rather than validated). It also filed the REASON a
+// capability was not exercised under the field named `platform`, so the one field carried two
+// different kinds of cause. Here: the platform is always the platform, a cause is always a cause,
+// and Present is the only arm that can hold a reading -- so Present without one is not a program.
+//
+// Absent is a platform fact, not a failure: a non-Ampere (x86) board has no SMpro to read and is
+// still a valid controlled machine. PassNotTaken is the other fact on its own: the platform DOES
+// carry SMpro and no pass was taken, with the reason located.
+type SmproCapability
+  = SmproCapabilityPresent { reading: SmproReading }
+  | SmproCapabilityPassNotTaken { reason: NonEmptyStr }
+  | SmproCapabilityPlatformAbsent { architecture: Architecture }
 
-// THE SMpro PLATFORM CAPABILITY. A machine's capability stands on two facts: the platform
-// architecture (SMpro is an Ampere/Aarch64 capability) and the reading that was taken (or the typed
-// fact that it was not). A non-Ampere platform is ABSENT regardless of any reading; on the Ampere
-// platform a taken reading is Present and a not-taken one is Absent with the reason.
-type SmproCapability sole_constructor {
-  standing: SmproCapabilityStanding
-  reading: SmproReading?
-}
-
-// THE SMpro READ: derive the platform capability standing from the machine's architecture and the
-// SMpro reading taken (or not). The architecture decides whether the platform carries the capability
-// at all; the reading decides whether it was exercised. This is the neutral read the bundle and the
-// MegaRAC module both import.
+// THE SMpro READ: derive the platform capability from the machine's architecture and the SMpro
+// reading taken (or the typed fact that it was not). The architecture decides whether the platform
+// carries the capability at all; the reading decides whether it was exercised. A non-Ampere platform
+// is ABSENT whatever the reading — a reading reported for a platform that has no SMpro is not
+// promoted into a capability, it is dropped, because the platform fact is the one that is known.
+// Only the arm whose FACT is the platform carries it: the other two arms are derived from Aarch64,
+// so restating it there would be a second copy able to disagree with how it was derived. This is the
+// neutral read the bundle and the MegaRAC module both import.
 fn smpro_capability(architecture: Architecture, reading: SmproReading?) -> SmproCapability {
   match architecture {
-    Aarch64 => SmproCapability {
-      standing: match reading {
-        Present { value: r } => SmproCapabilityPresent
-        Absent => SmproCapabilityAbsent { platform: "the SMpro pass was not taken" as NonEmptyStr }
-      },
-      reading: reading,
+    Aarch64 => match reading {
+      Present { value: r } => SmproCapabilityPresent { reading: r }
+      Absent => SmproCapabilityPassNotTaken {
+        reason: "the SMpro pass was not taken on an Aarch64 platform" as NonEmptyStr,
+      }
     }
-    _ => SmproCapability {
-      standing: SmproCapabilityAbsent { platform: "SMpro is an Ampere (Aarch64) capability; this platform does not carry it" as NonEmptyStr },
-      reading: none,
-    }
+    _ => SmproCapabilityPlatformAbsent { architecture: architecture }
+  }
+}
+
+// THE CAUSE, as text: where the capability stands and why. Total over the three arms, so a caller
+// never has to re-derive the standing from the fields.
+fn smpro_capability_text(capability: SmproCapability) -> String {
+  match capability {
+    SmproCapabilityPresent { reading: _ } => "SMpro capability present (Aarch64)
+    SmproCapabilityPassNotTaken { reason: r } =>
+      join(["SMpro not exercised on an Aarch64 platform: ", r as String], "")
+    SmproCapabilityPlatformAbsent { architecture: a } =>
+      join([architecture_diagnostic_name(arch: a) as String,
+            " carries no SMpro (an Ampere/Aarch64 capability)"], "")
   }
 }
