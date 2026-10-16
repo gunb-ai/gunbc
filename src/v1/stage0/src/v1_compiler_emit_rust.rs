@@ -67,11 +67,11 @@ pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, TypeDeclIndex, TypeSurfaceOccurrence, TypeRepr, TypeDeclResolution};
 pub use crate::v1_compiler_infer_emit_info::{type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences};
 pub use crate::v1_compiler_infer_env::{TypeEnv, TypeBinding, GlobalBareLookupState, BareOccurrenceBinding, UnitVariantPhantomLookup};
-pub use crate::v1_compiler_infer_env::{lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, ItemKind};
 pub use crate::v1_compiler_infer_items::{item_kind, item_is_effectful_callee};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
-pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal};
+pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
 pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v1_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
@@ -119,7 +119,7 @@ use crate::v1_compiler_artifact::RustModuleRenderSelection::{RenderEveryModule, 
 use crate::v1_compiler_emit::BoundOperation::{RestBound, ShellBound, LocalBound, FileBound, BindingRefused};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 use crate::v1_compiler_emit::FileResultChannel::{FileChanSuccess, FileChanByteCount, FileChanPath, FileChanError, FileChanErrorKind, FileChanContent};
-use crate::v1_compiler_emit::FileVerb::{FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList};
+use crate::v1_compiler_emit::FileVerb::{FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList};
 use crate::v1_compiler_emit::NativeEffectContract::{NativeServiceEffect, NativeResourceEffect};
 use crate::v1_compiler_emit::NativeEffectHandler::{NativeTransportHandler, NativeCapabilityToken};
 use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable};
@@ -958,6 +958,7 @@ pub fn render_rust_optional_carrier_inner(
             source_indices.clone(),
             variant_to_enum.clone(),
             env.clone(),
+            false,
         ),
         std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
             v1_rt::concat(
@@ -2124,6 +2125,7 @@ pub fn rust_type_arg_identity_spelling(
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
+    width_position: bool,
 ) -> Option<String> {
     {
         let name = type_leaf_name_for_collapse(n.clone(), source_indices.clone());
@@ -2149,30 +2151,31 @@ pub fn rust_type_arg_identity_spelling(
                     Some(name.clone())
                 }
                 UnitVariantPhantomLookup::UnitVariantPhantomAbsent => {
-                    if crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone()) {
-                        match crate::v1_std_core::expr_literal_int_optional(n.clone()) {
-                            Some(v) => {
-                                if (v.clone() < 0) {
-                                    Some(emit_width_type_arg_identity_refusal(
-                                        n.clone(),
-                                        name.clone(),
-                                    ))
-                                } else {
-                                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::gunbc_rust_emitted_edge::module_to_filename("std.machine_constraints".to_string())), "::StaticWidthIndex<".to_string()), crate::v1_compiler_emit_core_support::to_string(v.clone())), ">".to_string()))
-                                }
-                            }
-                            std::option::Option::None => Some(
-                                emit_width_type_arg_identity_refusal(n.clone(), name.clone()),
-                            ),
-                        }
+                    if (crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone())
+                        && !width_position.clone())
+                    {
+                        Some(emit_width_type_arg_identity_refusal(
+                            n.clone(),
+                            name.clone(),
+                        ))
                     } else {
-                        if is_machine_width_phantom_token(name.clone()) {
-                            Some(emit_width_type_arg_identity_refusal(
-                                n.clone(),
-                                name.clone(),
-                            ))
+                        if crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone()) {
+                            match crate::v1_std_core::expr_literal_int_optional(n.clone()) {
+    Some(v) => match crate::v1_compiler_infer_env::static_width_index_declaring_module(env.clone()) {
+    Some(declaring) => Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::gunbc_rust_emitted_edge::module_to_filename(declaring.clone())), "::".to_string()), crate::v1_compiler_infer_env::static_width_index_arm_name()), "<".to_string()), crate::v1_compiler_emit_core_support::to_string(v.clone())), ">".to_string())),
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+},
+    std::option::Option::None => Some(emit_width_type_arg_identity_refusal(n.clone(), name.clone())),
+}
                         } else {
-                            std::option::Option::None
+                            if is_machine_width_phantom_token(name.clone()) {
+                                Some(emit_width_type_arg_identity_refusal(
+                                    n.clone(),
+                                    name.clone(),
+                                ))
+                            } else {
+                                std::option::Option::None
+                            }
                         }
                     }
                 }
@@ -2273,12 +2276,14 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
+    width_position: bool,
 ) -> String {
     match rust_type_arg_identity_spelling(
         n.clone(),
         generic_param_names.clone(),
         source_indices.clone(),
         scope.type_env.clone(),
+        width_position.clone(),
     ) {
         Some(identity) => identity.clone(),
         std::option::Option::None => render_rust_alias_rhs_type(
@@ -2305,12 +2310,14 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    width_position: bool,
 ) -> String {
     match rust_type_arg_identity_spelling(
         n.clone(),
         generic_param_names.clone(),
         source_indices.clone(),
         env.clone(),
+        width_position.clone(),
     ) {
         Some(identity) => identity.clone(),
         std::option::Option::None => render_rust_decl_type(
@@ -2331,6 +2338,7 @@ pub fn render_rust_applied_type_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
+    width_position: bool,
 ) -> String {
     if rust_type_node_is_arrow(n.clone()) {
         render_rust_arrow_type_in_scope(
@@ -2347,6 +2355,7 @@ pub fn render_rust_applied_type_arg(
             generic_param_names.clone(),
             source_indices.clone(),
             env.clone(),
+            width_position.clone(),
         ) != std::option::Option::None)
         {
             rust_type_arg_identity_spelling(
@@ -2354,6 +2363,7 @@ pub fn render_rust_applied_type_arg(
                 generic_param_names.clone(),
                 source_indices.clone(),
                 env.clone(),
+                width_position.clone(),
             )
             .clone()
             .unwrap()
@@ -2477,32 +2487,11 @@ pub fn render_rust_applied_type(
                             };
                             let peel =
                                 is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                            let args = Rc::new({
-                                let mut __result = Vec::new();
-                                for arg in n.children.clone().iter().cloned() {
-                                    __result.push(if peel.clone() {
-                                        render_rust_phantom_opaque_applied_decl_arg(
-                                            arg.clone(),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            variant_to_enum.clone(),
-                                            env.clone(),
-                                        )
-                                    } else {
-                                        render_rust_applied_type_arg(
-                                            arg.clone(),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            variant_to_enum.clone(),
-                                            env.clone(),
-                                        )
-                                    });
-                                }
-                                __result
-                            })
-                            .join(&", ".to_string());
+                            let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
+                    render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
+                } else {
+                    render_rust_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
+                }); } __result }).join(&", ".to_string());
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(base.clone(), "<".to_string()),
@@ -2525,32 +2514,11 @@ pub fn render_rust_applied_type(
                             };
                             let peel =
                                 is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                            let args = Rc::new({
-                                let mut __result = Vec::new();
-                                for arg in n.children.clone().iter().cloned() {
-                                    __result.push(if peel.clone() {
-                                        render_rust_phantom_opaque_applied_decl_arg(
-                                            arg.clone(),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            variant_to_enum.clone(),
-                                            env.clone(),
-                                        )
-                                    } else {
-                                        render_rust_applied_type_arg(
-                                            arg.clone(),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            variant_to_enum.clone(),
-                                            env.clone(),
-                                        )
-                                    });
-                                }
-                                __result
-                            })
-                            .join(&", ".to_string());
+                            let args = Rc::new({ let mut __result = Vec::new(); for arg in n.children.clone().iter().cloned() { __result.push(if peel.clone() {
+                    render_rust_phantom_opaque_applied_decl_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
+                } else {
+                    render_rust_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
+                }); } __result }).join(&", ".to_string());
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(base.clone(), "<".to_string()),
@@ -2921,10 +2889,10 @@ pub fn render_rust_decl_type(
                                                                     __result.push({
                                                 let typed_arg = render_rust_decl_type_container_arg(arg.clone(), source_indices.clone(), env.clone());
 if peel.clone() {
-                                                    render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone())
+                                                    render_rust_phantom_opaque_applied_decl_arg(typed_arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), variant_to_enum.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone()))
                                                 } else {
-                                                    if (rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone()) != std::option::Option::None) {
-                                                        rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone()).clone().unwrap()
+                                                    if (rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone())) != std::option::Option::None) {
+                                                        rust_type_arg_identity_spelling(typed_arg.clone(), generic_param_names.clone(), source_indices.clone(), env.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), env.clone())).clone().unwrap()
                                                     } else {
                                                         match rust_render_checkpoint_scalar_bare(typed_arg.clone(), source_indices.clone(), shared_types.clone(), env.clone()) {
     Some(scalar) => scalar.clone(),
@@ -3425,12 +3393,14 @@ pub fn render_rust_alias_rhs_applied_arg(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
+    width_position: bool,
 ) -> String {
     match rust_type_arg_identity_spelling(
         n.clone(),
         generic_param_names.clone(),
         source_indices.clone(),
         scope.type_env.clone(),
+        width_position.clone(),
     ) {
         Some(identity) => identity.clone(),
         std::option::Option::None => render_rust_alias_rhs_type(
@@ -3690,39 +3660,10 @@ pub fn render_rust_alias_rhs_type(
                                         let mut __result = Vec::new();
                                         for arg in n.children.clone().iter().cloned() {
                                             __result.push(if peel.clone() {
-                                                render_rust_phantom_opaque_applied_type_arg(
-                                                    arg.clone(),
-                                                    generic_param_names.clone(),
-                                                    shared_types.clone(),
-                                                    source_indices.clone(),
-                                                    scope.clone(),
-                                                    imports.clone(),
-                                                    registry.clone(),
-                                                    module_name.clone(),
-                                                    export_sets.clone(),
-                                                    typed_modules.clone(),
-                                                    module_index.clone(),
-                                                    variant_to_enum.clone(),
-                                                )
-                                            } else {
-                                                render_rust_alias_rhs_applied_arg(
-                                                    alias_rhs_container_arg(
-                                                        arg.clone(),
-                                                        source_indices.clone(),
-                                                    ),
-                                                    generic_param_names.clone(),
-                                                    shared_types.clone(),
-                                                    source_indices.clone(),
-                                                    scope.clone(),
-                                                    imports.clone(),
-                                                    registry.clone(),
-                                                    module_name.clone(),
-                                                    export_sets.clone(),
-                                                    typed_modules.clone(),
-                                                    module_index.clone(),
-                                                    variant_to_enum.clone(),
-                                                )
-                                            });
+                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    } else {
+                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    });
                                         }
                                         __result
                                     });
@@ -3762,39 +3703,10 @@ pub fn render_rust_alias_rhs_type(
                                 let mut __result = Vec::new();
                                 for arg in n.children.clone().iter().cloned() {
                                     __result.push(if peel.clone() {
-                                        render_rust_phantom_opaque_applied_type_arg(
-                                            arg.clone(),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            scope.clone(),
-                                            imports.clone(),
-                                            registry.clone(),
-                                            module_name.clone(),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            module_index.clone(),
-                                            variant_to_enum.clone(),
-                                        )
-                                    } else {
-                                        render_rust_alias_rhs_applied_arg(
-                                            alias_rhs_container_arg(
-                                                arg.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                            generic_param_names.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            scope.clone(),
-                                            imports.clone(),
-                                            registry.clone(),
-                                            module_name.clone(),
-                                            export_sets.clone(),
-                                            typed_modules.clone(),
-                                            module_index.clone(),
-                                            variant_to_enum.clone(),
-                                        )
-                                    });
+                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    } else {
+                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    });
                                 }
                                 __result
                             });
@@ -6162,57 +6074,14 @@ pub fn rust_render_type_leaf_name(
     }
 }
 
-pub fn rust_phantom_zst_marker_def(vname: String) -> String {
+pub fn rust_phantom_zst_marker_def(vname: String, indexed: bool) -> String {
     {
-        let index_params = if (vname.clone() == "StaticWidthIndex".to_string()) {
+        let index_params = if indexed.clone() {
             "<const N: u128>".to_string()
         } else {
             "".to_string()
         };
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n".to_string(), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), vname.clone()), index_params.clone()), ";".to_string())
-    }
-}
-
-pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
-    {
-        let markers = Rc::new({
-            let mut __result = Vec::new();
-            for child in Rc::new({
-                let mut __result = Vec::new();
-                for child in Rc::new({
-                    let mut __result = Vec::new();
-                    for child in children.iter().cloned() {
-                        if ((child.children.clone().len() as i64) == 0) {
-                            __result.push(child);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    if is_phantom_unit_variant_type_arg(
-                        env.clone(),
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone()),
-                    ) {
-                        __result.push(child);
-                    }
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push({
-                    let vname =
-                        crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone());
-                    rust_phantom_zst_marker_def(vname.clone())
-                });
-            }
-            __result
-        })
-        .join(&"\n".to_string());
-        markers
     }
 }
 
@@ -6242,10 +6111,16 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
     }
 }
 
-pub fn collect_phantom_zst_marker_names(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PhantomZstMarker {
+    pub name: String,
+    pub indexed: bool,
+}
+
+pub fn collect_phantom_zst_markers(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<PhantomZstMarker>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
@@ -6266,52 +6141,71 @@ pub fn collect_phantom_zst_marker_names(
     })
     .iter()
     .cloned()
-    .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, item: Rc<Node>| {
-        item.children.clone().iter().cloned().fold(
-            acc,
-            |inner: Rc<Vec<String>>, child: Rc<Node>| {
-                if ((child.children.clone().len() as i64) == 0) {
-                    {
-                        let vname =
-                            crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone());
-                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
-                            && !{
-                                let mut __found = false;
-                                for n in inner.iter().cloned() {
-                                    if (n.clone() == vname.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            })
-                            && !phantom_marker_name_shadowed_by_real_type_item(
-                                items.clone(),
-                                env.source_indices.clone(),
-                                vname.clone(),
-                            ))
+    .fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<Rc<PhantomZstMarker>>>, item: Rc<Node>| {
+            item.children.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<Vec<Rc<PhantomZstMarker>>>, child: Rc<Node>| {
+                    if ((child.children.clone().len() as i64) == 0) {
                         {
-                            v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
-                        } else {
-                            inner.clone()
+                            let vname = crate::v1_compiler_infer_env::authored_name(
+                                env.clone(),
+                                child.clone(),
+                            );
+                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                                && !{
+                                    let mut __found = false;
+                                    for m in inner.iter().cloned() {
+                                        if (m.name.clone() == vname.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                })
+                                && !phantom_marker_name_shadowed_by_real_type_item(
+                                    items.clone(),
+                                    env.source_indices.clone(),
+                                    vname.clone(),
+                                ))
+                            {
+                                v1_rt::concat(
+                                    inner.clone(),
+                                    Rc::new(vec![Rc::new(PhantomZstMarker {
+                                        name: vname.clone(),
+                                        indexed:
+                                            crate::v1_compiler_infer_env::is_static_width_index_arm(
+                                                env.clone(),
+                                                item.clone(),
+                                                vname.clone(),
+                                            ),
+                                    })]),
+                                )
+                            } else {
+                                inner.clone()
+                            }
                         }
+                    } else {
+                        inner.clone()
                     }
-                } else {
-                    inner.clone()
-                }
-            },
-        )
-    })
+                },
+            )
+        },
+    )
 }
 
 pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for vname in collect_phantom_zst_marker_names(items.clone(), env.clone())
+        for m in collect_phantom_zst_markers(items.clone(), env.clone())
             .iter()
             .cloned()
         {
-            __result.push(rust_phantom_zst_marker_def(vname.clone()));
+            __result.push(rust_phantom_zst_marker_def(
+                m.name.clone(),
+                m.indexed.clone(),
+            ));
         }
         __result
     })
@@ -11234,7 +11128,17 @@ pub fn emit_module_full(
                 }
                 __result
             }),
-            collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
+            Rc::new({
+                let mut __result = Vec::new();
+                for m in
+                    collect_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone())
+                        .iter()
+                        .cloned()
+                {
+                    __result.push(m.name.clone());
+                }
+                __result
+            }),
         );
         let module_import_items = crate::v1_std_core::module_imports(m.clone());
         let this_module_name =
@@ -41520,6 +41424,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
     match verb.clone() {
         FileVerb::FileRead => file_read_match_expr(),
         FileVerb::FileWrite => file_write_expr(),
+        FileVerb::FileWriteBytes => file_write_bytes_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
@@ -41741,6 +41646,15 @@ pub fn file_write_create_new_with_mode_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_bytes_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let octets: Box<[u8]> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
