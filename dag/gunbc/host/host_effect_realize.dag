@@ -251,6 +251,25 @@ import extdeps.cache.sccache {
   sccache_misconfigured_log_fragments,
 }
 import gunbc.host.sccache_verified_install { sccache_verified_install_if_absent_script }
+
+import std.optional { Absent, Optional, Present }
+import gunbc.shell_command_text { shell_command_text_of_argv }
+import gunbc.host.build_cache_daemon_ensure {
+  build_cache_matched_stats_fragment,
+  build_cache_read_back_observation,
+  BuildCacheEnsureExecuted,
+  BuildCacheEnsureOp,
+  BuildCacheHostRunObserved,
+  BuildCacheHostRunOutcome,
+  build_cache_daemon_ensure_observation,
+  build_cache_daemon_ensure_plan,
+  build_cache_daemon_presence_command,
+  build_cache_daemon_stats_command,
+  build_cache_ensure_is_needed,
+  build_cache_observe_observed,
+  build_cache_unit_bytes,
+  build_cache_unit_stage_discard_command,
+}
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
@@ -3135,40 +3154,6 @@ fn realize_os_install_actuator_toolchain_ensure(
 // already established in gunbc.live_deploy.emit and gunbc.host.host_axis_caps — a further §3 de-fork
 // consistent with why this swap exists.
 
-fn build_cache_unit_system_path(instance: BuildCacheInstance) -> String {
-  concat("/etc/systemd/system/", instance.intended_unit as String)
-}
-
-fn build_cache_observe_stats_body() -> String {
-  join([
-    "stats_out=\"\"",
-    "stats_rc=0",
-    join(["if [ -x '", sccache_installed_binary_path, "' ]; then"], ""),
-    join(["  stats_out=\"$('", sccache_installed_binary_path, "' --show-stats 2>&1)\" || stats_rc=$?"], ""),
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=absent\"",
-    "  stats_rc=127",
-    "fi",
-    "if [ \"$stats_rc\" -eq 0 ]; then",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 0",
-    "fi",
-    "",
-  ], "\n")
-}
-
-fn build_cache_fragment_word(fragment: String) -> String {
-  join(["'", fragment, "'"], "")
-}
-
-fn build_cache_fragment_words() -> String {
-  join(
-    map(sccache_misconfigured_log_fragments, f => build_cache_fragment_word(fragment: f)),
-    " ",
-  )
-}
-
 // The misconfigured-fragment classifier is a FOLD over the cited roster
 // extdeps.cache.sccache.sccache_misconfigured_log_fragments, not one emitted branch per fragment.
 // The roster is data the loop iterates: adding a fragment upstream changes the emitted word list
@@ -3176,130 +3161,149 @@ fn build_cache_fragment_words() -> String {
 // fragment contains a single quote — build_cache_fragment_words_are_shell_safe() is the
 // construction check that keeps it so.
 
-fn build_cache_classify_failure_body() -> String {
-  join([
-    "observe_class=unresponsive",
-    "observe_fragment=\"\"",
-    join(["for frag in ", build_cache_fragment_words(), "; do"], ""),
-    "  if printf '%s' \"$stats_out\" | grep -Fq \"$frag\"; then",
-    "    observe_class=misconfigured",
-    "    observe_fragment=\"$frag\"",
-    "    break",
-    "  fi",
-    "done",
-    "if [ \"$observe_class\" = misconfigured ]; then",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=misconfigured fragment=$observe_fragment\"",
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=unresponsive\"",
-    "fi",
-    "",
-  ], "\n")
+// THE READ-BACK FAILS CLOSED, ASSERTED ON THE TYPED ROUTE. What this predicate has always pinned is that a
+// post-ensure stats query which does NOT succeed cannot be reported as a converged daemon -- the property
+// the script got from `|| { printf read_back=FAILED; exit 1; }`. It is now asserted on the records rather
+// than on script text, which is the stronger form: the three cases a text scan could not tell apart (a
+// non-zero exit, a read that never ran, and a zero exit with no evidence) are three different arms here,
+// and all three must refuse. The old text scan asserted the FAILURE WORDS existed; it could not assert the
+// OUTCOME, which is what "fails closed" actually claims.
+fn build_cache_provision_read_back_fails_closed() -> Bool {
+  let owned = ServerManagedUnitOwned { unit: "sccache-server.service" as NonEmptyStr }
+  build_cache_read_back_refuses_capture(
+    stdout_: "stats table",
+    stderr_: "connection refused",
+    owned: owned,
+  ) && build_cache_read_back_refuses_unreadable(owned: owned)
+    && build_cache_read_back_reports_answered_table(owned: owned)
 }
 
-// THE HEREDOC TERMINATOR IS CONCATENATED ONTO THE UNIT TEXT, NOT JOINED AS A SIBLING LINE.
-//
-// build_cache_unit_text ends in its own terminating newline, because extdeps.systemd.unit_file
-// serializes a unit as a complete file. The heredoc supplies a newline of its own before the
-// terminator, so joining the two as adjacent list elements would emit BOTH and deliver a unit
-// carrying a trailing blank line. Concatenating spends the render's newline as the one the
-// terminator needs, which is what keeps the delivered bytes identical to the hand renderer this
-// replaced -- measured on both the CI and session instances rather than argued. The drift would
-// have been one byte in a file that convergence compares byte-for-byte against this same render.
-fn build_cache_ensure_daemon_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  join([
-    sccache_verified_install_if_absent_script(
-      rel: sccache_release_0_15_0,
-      arch: arch_token,
-      digest: digest,
-    ),
-    "_gunbc_stage=\"$(mktemp -d)\"",
-    "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
-    join(["cat > \"$_gunbc_stage/", instance.intended_unit as String, "\" <<'__GUNBC_SCCACHE_UNIT__'"], ""),
-    concat(build_cache_unit_text(instance: instance), "__GUNBC_SCCACHE_UNIT__"),
-    join(["sudo -n install -m 0644 \"$_gunbc_stage/", instance.intended_unit as String, "\" ", build_cache_unit_system_path(instance: instance)], ""),
-    gunbc.live_deploy.operations.systemctl_daemon_reload_command(privileged: true),
-    systemctl_enable_command(unit: instance.intended_unit, privileged: true),
-    systemctl_restart_command(unit: instance.intended_unit, privileged: true),
-    "",
-  ], "\n")
-}
-
-fn build_cache_read_back_body(binary: String) -> String {
-  join([
-    join(["if stats_out=\"$('", binary, "' --show-stats 2>&1)\"; then"], ""),
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 0",
-    "else",
-    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"",
-    "  printf '%s\\n' \"$stats_out\"",
-    "  exit 1",
-    "fi",
-    "",
-  ], "\n")
-}
-
-fn build_cache_provision_script_body(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  join([
-    "set -euo pipefail",
-    build_cache_observe_stats_body(),
-    build_cache_classify_failure_body(),
-    "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"",
-    build_cache_ensure_daemon_body(instance: instance, arch_token: arch_token, digest: digest),
-    build_cache_read_back_body(binary: sccache_installed_binary_path),
-  ], "\n")
-}
-
-fn build_cache_provision_shell_script(instance: BuildCacheInstance, arch_token: NonEmptyStr, digest: Digest) -> String {
-  shell_exec_via_bash(
-    body: build_cache_provision_script_body(instance: instance, arch_token: arch_token, digest: digest),
-  )
-}
-
-data build_cache_provision_shell_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host.host_effect_realize.build_cache_provision_shell_script (relocated here, unchanged in kind, from the deleted gunbc.host_build_cache_provision_script) — concat-built systemd/sccache ensure shell run over shell_exec_via_bash transport; DISSOLVES WHEN host_effect_apply carries a typed operation that realizes EnsureBuildCacheInstance observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires this shell_exec_via_bash transport.")
-
-data build_cache_provision_shell_script_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.host.host_effect_realize",
-    decl_name: "build_cache_provision_shell_script_dissolution_trigger",
-    field: WholeDeclaration,
+// A NON-ZERO READ-BACK IS NEVER A CONVERGED DAEMON, and the host's bytes reach the reason (stderr is what
+// the operator needs, and it is preferred over stdout exactly as the retired read-back preferred it).
+fn build_cache_read_back_refuses_capture(stdout_: String, stderr_: String, owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: Ran {
+      observed: BuildCacheHostRunObserved { exit_code: 1, stdout: stdout_, stderr: stderr_ },
+    },
+    placement: owned,
+  ) {
+    DaemonUnresponsive { detail: d } => string_contains(s: d as String, pattern: stderr_)
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
   }
 }
 
-fn build_cache_provision_read_back_fails_closed() -> Bool {
-  let body = build_cache_read_back_body(binary: sccache_installed_binary_path)
-  string_contains(s: body, pattern: "read_back=FAILED")
-    && string_contains(s: body, pattern: "exit 1")
-    && !string_contains(s: body, pattern: "stats_rc")
+// A READ-BACK THAT COULD NOT RUN IS NEVER A CONVERGED DAEMON EITHER. This arm is the one the receipt
+// protocol could not express: the script's classifier saw only "no read_back=ok in the blob", and a blob
+// that was empty because the run was refused looks the same as one that was empty because the host was
+// silent. Here they are different inputs, and both refuse.
+fn build_cache_read_back_refuses_unreadable(owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: CouldNotRun { phase: "the read-back", reason: "the transport refused" },
+    placement: owned,
+  ) {
+    DaemonUnresponsive { detail: d } => string_contains(s: d as String, pattern: "the transport refused")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+  }
 }
 
+// AND A SUCCESSFUL READ-BACK REPORTS THE TABLE IT CAPTURED, rather than a marker it printed about itself:
+// the bytes the host produced are what reach placement_verdict as the evidence of a converged instance.
+fn build_cache_read_back_reports_answered_table(owned: BuildCacheServerPlacement) -> Bool {
+  match build_cache_read_back_observation(
+    read_back: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "CacheStats", stderr: "" } },
+    placement: owned,
+  ) {
+    DaemonStatsOk { stats_line: line, placement: _ } => line == "CacheStats"
+    DaemonUnresponsive { detail: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+  }
+}
+
+// THE CITED FRAGMENT ROW MUST NOT CONTAIN A FRAGMENT THAT MATCHES EVERYTHING. The retired script's version
+// of this check was shell-shaped: it asserted no fragment contained a single quote, because fragments were
+// spliced into a `for frag in ...` word list and single-quoted. That hazard went away with the shell --
+// nothing splices these into a command any more -- so keeping the old assertion would have pinned a
+// property that no longer protects anything. What the typed scan DOES depend on is the analogous invariant:
+// `string_contains(s:, pattern: "")` is true of every capture, so a single empty fragment in the cited row
+// would classify EVERY failing host as misconfigured on the empty fragment, in the loudest possible way
+// (an operator-visible `host_build_cache_provision: : ...`), and the scan could never report an
+// unresponsive host again. Empty fragments are not shell-dangerous; they are scan-dangerous, and this is
+// the check that keeps them out.
 fn build_cache_fragment_words_are_shell_safe() -> Bool {
   fold(
     sccache_misconfigured_log_fragments,
     init: true,
-    f: (acc, frag) => acc && !string_contains(s: frag, pattern: "'"),
+    f: (acc, frag) => acc && frag != "" && string_contains(s: join(["prefix", frag, "suffix"], ""), pattern: frag),
   )
 }
 
+// THE INSTALL BRANCH STILL CITES THE RELEASE AND STILL DOES NOT REACH FOR A PACKAGE MANAGER -- asserted on
+// the DERIVED OPS rather than on a script body. Same four assertions the script-era predicate made, and the
+// reason to keep all four is that the install legs are now argv built by gunbc.host.verified_binary_install
+// from a caller-supplied release row: if a future change pointed the plan at a distro package, or dropped
+// the version from the URL, or installed to the distro path, this is the production oracle that notices.
+// Rendering the argv is for the ASSERTION only -- the effect never runs a shell (see
+// gunbc.host.verified_binary_install for why a joined string is not an execution form).
 fn build_cache_install_is_cited_not_package_manager() -> Bool {
-  let body = build_cache_provision_script_body(
+  let rendered = build_cache_ensure_ops_rendered(
     instance: ci_cache_instance(host: srv1_host.identity),
     arch_token: "aarch64" as NonEmptyStr,
     digest: sccache_release_0_15_0.digest_aarch64,
+    install_needed: true,
   )
-  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/")
-    && string_contains(s: body, pattern: sccache_release_0_15_0.version as String)
-    && !string_contains(s: body, pattern: "apt-get install")
-    && !string_contains(s: body, pattern: "/usr/bin/sccache")
+  string_contains(s: rendered, pattern: "github.com/mozilla/sccache/releases/download/")
+    && string_contains(s: rendered, pattern: sccache_release_0_15_0.version as String)
+    && !string_contains(s: rendered, pattern: "apt-get install")
+    && !string_contains(s: rendered, pattern: "/usr/bin/sccache")
 }
 
+// EVERY OP THE ENSURE DERIVES, RENDERED FOR COMPARISON. Used by the production oracles only. The join
+// separator is a newline so an assertion cannot accidentally match across two words of one argv (a space
+// would let "install -m" and a following "-m" read as one phrase).
+fn build_cache_ensure_ops_rendered(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+  install_needed: Bool,
+) -> String {
+  match build_cache_daemon_ensure_plan(
+    instance: instance,
+    arch_token: arch_token,
+    digest: digest,
+    install_needed: install_needed,
+  ) {
+    EnsurePlanRefused { reason: _ } => ""
+    EnsureOps { ops: ops } =>
+      fold(
+        ops,
+        init: "",
+        f: (acc, op) =>
+          join(
+            [acc, if acc == "" { "" } else { "\n" }, shell_command_text_of_argv(argv: argv_words(command: op.argv))],
+            "",
+          )
+      )
+  }
+}
+
+// THE SCAN SEES EVERY CITED FRAGMENT, ASSERTED ON THE SCAN ITSELF. The retired version grepped the emitted
+// classify BODY for each fragment -- an assertion that a string appeared somewhere in a script, which would
+// pass even if the loop could never have selected it (a fragment in a comment, or behind an earlier branch)
+// and would fail on a legitimate refactor. This asserts the behaviour instead: for every cited fragment, a
+// capture containing it yields THAT fragment, so the row and the scan cannot drift -- adding a fragment
+// upstream makes it observable here or makes this claim go red.
 fn build_cache_classifier_covers_every_cited_fragment() -> Bool {
   fold(
     sccache_misconfigured_log_fragments,
     init: true,
     f: (acc, frag) =>
-      acc && string_contains(s: build_cache_classify_failure_body(), pattern: frag),
+      acc
+        && match build_cache_matched_stats_fragment(capture: join(["noise before ", frag, " noise after"], "")) {
+          Present { value: got } => got == frag
+          Absent => false
+        },
   )
 }
 
@@ -3728,6 +3732,127 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 // bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
 // unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
 // it contains. Same arms, same refusal posture, same exit-status derivation.
+// THE CAPTURE OF ONE HOST COMMAND, AS A RECORD THE TYPED ENSURE CLASSIFIES. ONE runner for reads and
+// writes, because run_argv_over_host_effect_transport and run_argv_stdin_over_host_effect_transport both
+// preserve stdout AND stderr on a non-zero exit for LocalShell and SshShell -- which is the property this
+// effect needs, and the reason it is NOT routed through build_cache_host_read_observed: that helper's
+// LocalShell arm yields an EMPTY stdout on a refused command, which would have emptied the
+// misconfigured-fragment scan on exactly the hosts the scan exists for (a fragment appears in the output of
+// a query that then exits non-zero). Refusing to run at all is kept distinct from a non-zero exit: there was
+// no process, so there is no exit code to report, and the transport's own text is what the operator sees.
+fn build_cache_argv_read_outcome(command: ArgvCommand, transport: HostEffectTransport) -> BuildCacheHostRunOutcome {
+  match run_argv_over_host_effect_transport(command: command, transport: transport) {
+    RunArgvTransportRefused { reason: r } => CouldNotRun { phase: "argv read", reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      Ran {
+        observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+      }
+  }
+}
+
+// THE ENSURE AS EFFECTS, WITH THE STAGED SIBLING DISCARDED IN EVERY ARM. The plan is DERIVED from the
+// observe record (so a dry witness can name every argv and the order they run in before anything runs),
+// then the ops run in order and the FIRST failure ends it -- what `set -e` did, now named. The discard runs
+// whichever arm returns: that is the counterpart of the script's `trap ... EXIT`, which cannot be entrusted
+// to the path a script happened to take, and it is an operation rather than a shell trap so a witness can
+// see the cleanup exists.
+//
+// Every arm says something true of a real sequence, and there is no "ran, and here is an invented exit
+// code": a transport that refused yields EnsureTransportBlocked with the transport's text, and a failed op
+// yields EnsureFailed with the op and its own capture.
+fn build_cache_ensure_executed(
+  instance: BuildCacheInstance,
+  arch_token: NonEmptyStr,
+  digest: Digest,
+  observe: BuildCacheObserve,
+  transport: HostEffectTransport,
+) -> BuildCacheEnsureExecuted {
+  if !build_cache_ensure_is_needed(observe: observe) {
+    EnsureSkipped
+  } else {
+    let unit_bytes = build_cache_unit_bytes(instance: instance)
+    let discard = build_cache_unit_stage_discard_command(instance: instance)
+    match build_cache_daemon_ensure_plan(
+      instance: instance,
+      arch_token: arch_token,
+      digest: digest,
+      install_needed: build_cache_observe_reports_binary_absent(observe: observe),
+    ) {
+      EnsurePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
+      EnsureOps { ops: ops } => {
+        let outcome = build_cache_run_ensure_ops(ops: ops, unit_bytes: unit_bytes, transport: transport)
+        let _ = run_argv_over_host_effect_transport(command: discard, transport: transport)
+        outcome
+      }
+    }
+  }
+}
+
+// ONE AUTHORITY FOR "THE BINARY IS NOT THERE": the presence probe the observer already ran. The script
+// asked the same question twice (its `[ -x BIN ]` test, then again inside the ensure body) and the two could
+// disagree; here the ensure's install guard is derived from the record the probe produced, so one
+// observation of the fact exists.
+fn build_cache_observe_reports_binary_absent(observe: BuildCacheObserve) -> Bool {
+  match observe {
+    ObserveAbsent => true
+    _ => false
+  }
+}
+
+// THE OPS, IN ORDER, STOPPING AT THE FIRST FAILURE, and reporting WHICH one it was. The unit write is the
+// only op whose payload crosses as stdin, which is what makes the retired heredoc's safety property
+// structural rather than a quoting discipline.
+//
+// THE DISCARD'S OWN OUTCOME IS DELIBERATELY NOT PROPAGATED. The staged sibling is a file this fold created
+// moments earlier in a directory it does not otherwise touch; if its removal fails, the operation the
+// operator needs to hear about is the one that failed first, and letting a cleanup failure overwrite that
+// report would be a worse diagnostic, not a better one. What is NOT done is the reverse: the cleanup is
+// never skipped, and never conditional on success.
+fn build_cache_run_ensure_ops(
+  ops: List<BuildCacheEnsureOp>,
+  unit_bytes: String,
+  transport: HostEffectTransport,
+) -> BuildCacheEnsureExecuted {
+  fold(
+    ops,
+    init: EnsureCompleted,
+    f: (acc, op) => match acc {
+      EnsureCompleted =>
+        if op.unit_bytes_on_stdin {
+          build_cache_op_executed(
+            op: op,
+            ran: run_argv_stdin_over_host_effect_transport(
+              command: op.argv,
+              stdin_payload: unit_bytes,
+              transport: transport,
+            ),
+          )
+        } else {
+          build_cache_op_executed(op: op, ran: run_argv_over_host_effect_transport(command: op.argv, transport: transport))
+        }
+      _ => acc
+    },
+  )
+}
+
+// ONE OP'S OUTCOME AS A RECORD. exit 0 is completion; a non-zero exit carries the op and everything the
+// host said; a transport refusal carries the op and the transport's reason, with NO exit code invented for
+// a process that never started.
+fn build_cache_op_executed(op: BuildCacheEnsureOp, ran: RunArgvTransportOutcome) -> BuildCacheEnsureExecuted {
+  match ran {
+    RunArgvTransportRefused { reason: r } => EnsureTransportBlocked { op: op, reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        EnsureCompleted
+      } else {
+        EnsureFailed {
+          op: op,
+          observed: BuildCacheHostRunObserved { exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr },
+        }
+      }
+  }
+}
+
 fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
@@ -5458,36 +5583,6 @@ fn build_cache_unlink_then_ensure(
 // an endpoint-readiness observation the ensure step can wait on, at which point the post-survey
 // runs after it rather than after systemctl returns.
 
-fn build_cache_daemon_observation_of_receipt(
-  observed: ShellExecObserved,
-  placement: BuildCacheServerPlacement,
-) -> BuildCacheDaemonObservation {
-  if string_contains(s: observed.stdout, pattern: "observe=misconfigured fragment=") {
-    DaemonMisconfigured {
-      matched_fragment: "observe=misconfigured",
-      detail: observed.stdout as NonEmptyStr,
-    }
-  } else if observed.success && string_contains(s: observed.stdout, pattern: "read_back=ok") {
-    DaemonStatsOk { stats_line: observed.stdout, placement: placement }
-  } else if observed.success == true {
-    DaemonUnresponsive {
-      detail: "the build-cache ensure exited zero without printing its read_back=ok receipt, so the daemon was never confirmed to answer after the ensure" as NonEmptyStr,
-    }
-  } else {
-    DaemonUnresponsive {
-      detail: join(
-        [
-          "the build-cache ensure exited ",
-          to_string(observed.exit_code),
-          ": ",
-          if observed.stderr == "" { observed.stdout } else { observed.stderr },
-        ],
-        "",
-      ) as NonEmptyStr,
-    }
-  }
-}
-
 fn build_cache_ensure_step(
   instance: BuildCacheInstance,
   transport: HostEffectTransport,
@@ -5495,20 +5590,52 @@ fn build_cache_ensure_step(
   token: NonEmptyStr,
   digest: Digest,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: build_cache_provision_shell_script(instance: instance, arch_token: token, digest: digest),
-      reason: "srvN build-cache provisioning (sccache daemon ensure)",
-    ),
+  let presence = build_cache_daemon_presence_command()
+  let stats = build_cache_daemon_stats_command()
+  let presence_read = build_cache_argv_read_outcome(command: presence, transport: transport)
+  // The script tested `[ -x BIN ]` and only then ran `--show-stats`; when the test failed it fell through
+  // with rc 127 and the query never ran. Skipping it here keeps that, and keeps it a SKIP rather than a
+  // fabricated empty capture: an absent read is its own arm, so "no stats read happened" can never be read
+  // as "the daemon answered with nothing".
+  let stats_read =
+    match presence_read {
+      Ran { observed: p_obs } =>
+        if p_obs.exit_code == 0 {
+          Present { value: build_cache_argv_read_outcome(command: stats, transport: transport) }
+        } else {
+          Absent as Optional<BuildCacheHostRunOutcome>
+        }
+      CouldNotRun { phase: _, reason: _ } => Absent as Optional<BuildCacheHostRunOutcome>
+    }
+  let observe = build_cache_observe_observed(presence: presence_read, stats: stats_read)
+  let ensure_executed = build_cache_ensure_executed(
+    instance: instance,
+    arch_token: token,
+    digest: digest,
+    observe: observe,
     transport: transport,
   )
+  // The read-back runs on exactly the paths the script reached it -- every observe outcome except the
+  // observe=ok early exit -- and the site asks the SAME predicate the classifier asks, so the two can
+  // never disagree about whether the phase happened.
+  let read_back =
+    if build_cache_ensure_is_needed(observe: observe) {
+      Present { value: build_cache_argv_read_outcome(command: stats, transport: transport) }
+    } else {
+      Absent as Optional<BuildCacheHostRunOutcome>
+    }
   let after = survey_build_cache_endpoint(
     instance: instance,
     reads: build_cache_endpoint_reads(instance: instance, transport: transport),
   )
   match provision_build_cache_verdict(
     catalog_id: instance.implementation,
-    observed: build_cache_daemon_observation_of_receipt(observed: observed, placement: after.placement),
+    observed: build_cache_daemon_ensure_observation(
+      observe: observe,
+      ensure: ensure_executed,
+      read_back: read_back,
+      placement: after.placement,
+    ),
   ) {
     BuildCacheProvisionRefused { cause: _, reason: why } =>
       NotConverged {
