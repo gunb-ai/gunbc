@@ -3456,7 +3456,7 @@ fn shared_layer_refuse_text(answer: SharedLayerAnswer) -> String {
 fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolution: TypeDeclResolution, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   if is_container_type(name: leaf) {
     if set_contains(shared_types, leaf) { SharedLayerAtShared } else { SharedLayerAtValue }
-  } else if is_kernel_type(name: leaf) {
+  } else if is_kernel_type(name: leaf) || rust_opaque_kernel_alias_carrier(name: leaf) != none {
     // A kernel spelling realizes as the host type (i64, String, ...), at the value layer, whichever
     // declaration the corpus also gives the same leaf (emitted Int enum-variant fields as Rc<i64>).
     SharedLayerAtValue
@@ -3464,7 +3464,7 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
     match resolution {
       TypeDeclResolved { identity: identity, decl: _ } =>
         if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
-      TypeDeclLeafAmbiguous { leaf: amb } => SharedLayerRefuse { leaf: amb, cause: "TypeDeclLeafAmbiguous" }
+      TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
       TypeDeclKernelSpellingUndecided { leaf: und } =>
         shared_layer_of_undecided_kernel_spelling(shared_types: shared_types, leaf: und, type_decl_items: type_decl_items)
       TypeDeclNotDeclared =>
@@ -3474,6 +3474,24 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
           SharedLayerRefuse { leaf: leaf, cause: "TypeDeclNotDeclared" }
         }
     }
+  }
+}
+
+// An ambiguous leaf with no declaration identity in hand is answered only where EVERY declaration of
+// the leaf gets the same layer: the answer then does not depend on which one the position meant.
+// Declarations that disagree still refuse, so the ambiguity is never resolved by guessing.
+fn shared_layer_of_ambiguous_leaf(shared_types: Set<String>, leaf: String, type_decl_items: TypeDeclIndex) -> SharedLayerAnswer {
+  let identities = match map_get(type_decl_items.identities_by_leaf, leaf) {
+    Present { value: ids } => ids
+    Absent => []
+  }
+  let shared_count = identities |> filter(id => shared_types_contains_identity(shared_types: shared_types, identity: id)) |> count
+  if shared_count == 0 {
+    SharedLayerAtValue
+  } else if shared_count == (identities |> count) {
+    SharedLayerAtShared
+  } else {
+    SharedLayerRefuse { leaf: leaf, cause: "TypeDeclLeafAmbiguous" }
   }
 }
 
