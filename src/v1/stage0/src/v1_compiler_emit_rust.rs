@@ -14263,8 +14263,52 @@ pub fn emit_specific_import_use_lines(
             }
             __result
         });
-        if ((deduped_names.clone().len() as i64) == 0) {
+        let dbg_early = if (import_module.clone() == "std.realization_measurement".to_string()) {
+            Rc::new(vec![Rc::new(RustUseLine {
+                target_module: mod_name.clone(),
+                text: v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "// DBGRES early filtered=[".to_string(),
+                                        filtered_names.clone().join(&",".to_string()),
+                                    ),
+                                    "] deduped=[".to_string(),
+                                ),
+                                deduped_names.clone().join(&",".to_string()),
+                            ),
+                            "] locals_hit=[".to_string(),
+                        ),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for n in filtered_names.iter().cloned() {
+                                if {
+                                    let mut __found = false;
+                                    for ln in local_names.iter().cloned() {
+                                        if (ln.clone() == n.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    __result.push(n);
+                                }
+                            }
+                            __result
+                        })
+                        .join(&",".to_string()),
+                    ),
+                    "]".to_string(),
+                ),
+            })])
+        } else {
             Rc::new(vec![])
+        };
+        if ((deduped_names.clone().len() as i64) == 0) {
+            dbg_early.clone()
         } else {
             {
                 let import_module_enums = import_module_enum_scope(
@@ -14914,9 +14958,66 @@ Rc::new(vec![Rc::new(RustUseLine {
                     }
                     __result
                 });
+                let dbg_late = if (import_module.clone()
+                    == "std.realization_measurement".to_string())
+                {
+                    Rc::new(vec![Rc::new(RustUseLine {
+                        target_module: mod_name.clone(),
+                        text: v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        "// DBGRES late top=["
+                                                                            .to_string(),
+                                                                        top_level
+                                                                            .clone()
+                                                                            .join(&",".to_string()),
+                                                                    ),
+                                                                    "] ndt=[".to_string(),
+                                                                ),
+                                                                non_variant_top
+                                                                    .clone()
+                                                                    .join(&",".to_string()),
+                                                            ),
+                                                            "] direct=[".to_string(),
+                                                        ),
+                                                        direct_names.clone().join(&",".to_string()),
+                                                    ),
+                                                    "] enums=[".to_string(),
+                                                ),
+                                                import_module_enums.clone().join(&",".to_string()),
+                                            ),
+                                            "] type_direct=[".to_string(),
+                                        ),
+                                        type_direct_names.clone().join(&",".to_string()),
+                                    ),
+                                    "] other_direct=[".to_string(),
+                                ),
+                                other_direct_names.clone().join(&",".to_string()),
+                            ),
+                            "]".to_string(),
+                        ),
+                    })])
+                } else {
+                    Rc::new(vec![])
+                };
                 v1_rt::concat(
-                    v1_rt::concat(main_lines.clone(), variant_lines.clone()),
-                    wildcard_enum_lines.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(main_lines.clone(), variant_lines.clone()),
+                            wildcard_enum_lines.clone(),
+                        ),
+                        dbg_early.clone(),
+                    ),
+                    dbg_late.clone(),
                 )
             }
         }
