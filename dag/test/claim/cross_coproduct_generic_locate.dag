@@ -69,5 +69,5 @@ test fn same_arm_int_bool_values_refuse() -> Bool {
 }
 
 test fn same_arm_nested_two_distinct_coproduct_values_refuse() -> Bool {
-  blocking_count(source: same_arm_source(a: "List<P1 { x: 1 }>", b: "List<Q1 { x: 1 }>")) > 0
+  blocking_count(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") > 0
 }

@@ -25,8 +25,15 @@ fn same_arm_call(a: &str, b: &str) -> String {
 }
 
 fn has_generic_rebind(msgs: &[String]) -> bool {
-    msgs.iter()
-        .any(|m| m.contains("type variable T bound as") && m.contains("later argument"))
+    // Matched on the fold's own message SHAPE, not on a variable letter: the text is
+    // `type variable <bind_name> bound as <shape> (first argument)` vs `<shape> (later
+    // argument)` (src/v1/04_infer.dag:14159). Hardcoding "T" makes every row over a
+    // differently-named generic vacuously green -- which is how the Box<Int> vs
+    // Box<Bool> row read as a failure on both seeds while the fold was in fact refusing
+    // it (measured at 2751b200: the message was present, under the name A).
+    msgs.iter().any(|m| {
+        m.contains("bound as") && m.contains("(first argument)") && m.contains("(later argument)")
+    })
 }
 
 #[test]
@@ -63,31 +70,21 @@ fn same_arm_int_bool_refuses_with_the_fold_message() {
     );
 }
 
-// The nested arm: same constructor head on both sides, differing payload VALUES, so
-// node_type_shape agrees on the head and only the argument list separates them. The
-// accept control below is the identical shape with payloads that agree; before the
-// fold, same head was sufficient for applied constructors, so the control and this
-// row could not be told apart — which is what makes this row the discriminator for
-// the nested arm rather than a second copy of the head arm.
+// The nested arm: heads agree, the ARGUMENT LISTS differ. W { v: W2 { v: 1 } } and
+// W { v: W2 { v: true } } are both of type W — the tag, not its payloads — so they
+// are genuinely the same type and must be accepted (that row is
+// same_arm_two_applied_box_int_is_accepted's shape, one level up). What separates the
+// nested arm from the head arm is a type applied to different arguments: Box<Int>
+// against Box<Bool>. Head agrees, so first-wins accepted it; the fold's recursion has
+// to compare the argument lists.
 #[test]
-fn applied_constructor_same_head_differing_payload_refuses() {
+fn applied_constructor_same_head_differing_argument_list_refuses() {
     let msgs = blocking_messages(
-        "module locate.w1\ntype W\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: W { v: 1 }, b: W { v: true }) }\n",
+        "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool { same_arm(a: x, b: y) }\n",
     );
     assert!(
         has_generic_rebind(&msgs),
-        "one T bound by two W applications with differing payloads must refuse on the argument list; got {msgs:?}"
-    );
-}
-
-#[test]
-fn applied_constructor_same_head_agreeing_payload_is_accepted() {
-    let msgs = blocking_messages(
-        "module locate.w2\ntype W\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: W { v: 1 }, b: W { v: 2 }) }\n",
-    );
-    assert!(
-        !has_generic_rebind(&msgs),
-        "one T bound by two W{v:Int} must not refuse: {msgs:?}"
+        "one A bound by Box<Int> and Box<Bool> must refuse on the argument list; got {msgs:?}"
     );
 }
 
