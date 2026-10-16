@@ -91,12 +91,16 @@ type BuildCacheEnsureOp { argv: ArgvCommand, unit_bytes_on_stdin: Bool }
 // THE ENSURE PLAN, derived before anything runs — the thing `mktemp -d` made impossible, since a fold
 // cannot name operations whose paths are invented at run time. A dry witness can therefore read every
 // argv and the order they run in.
-type BuildCacheDaemonEnsurePlan = EnsureOps { ops: List<BuildCacheEnsureOp> } | EnsurePlanRefused { reason: String }
+type BuildCacheDaemonEnsurePlan = EnsureOps { ops: List<BuildCacheEnsureOp> } | BuildCachePlanRefused { reason: String }
 
 // WHAT THE ENSURE DID, supplied by the caller after it ran the plan. Every arm says something that is true
 // of a real sequence, and no arm lets a caller report work it did not do:
 //   EnsureSkipped            the observe phase short-circuited, so no write operation was derived or run.
 //   EnsurePlanRefused        the plan itself refused (build_cache_daemon_ensure_plan); nothing ran.
+//                            Named apart from the plan type's BuildCachePlanRefused on purpose: this one records what
+//                            happened to a sequence the caller ran, that one is a decision taken before any
+//                            sequence existed. One name for both is how a refused plan and an unrun ensure
+//                            start looking like the same event.
 //   EnsureCompleted          every operation ran and each exited zero.
 //   EnsureFailed             an operation ran and exited non-zero; its capture is carried.
 //   EnsureTransportBlocked   the transport refused to run an operation at all, carrying the transport's own
@@ -206,7 +210,7 @@ fn build_cache_merged_capture(observed: BuildCacheHostRunObserved) -> String {
 fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
   fold(
     sccache_misconfigured_log_fragments,
-    init: Absent as Optional<String>,
+    init: Absent,
     f: (acc, frag) => match acc {
       Present { value: _ } => acc
       Absent => if string_contains(s: capture, pattern: frag) { Present { value: frag } } else { acc }
@@ -277,7 +281,7 @@ fn build_cache_binary_presence_of(
       Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 0) }
     ObserveUnresponsive { detail: _ } =>
       Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 0) }
-    ObserveReadBlocked { phase: _, reason: _ } => Absent as Optional<VerifiedBinaryInstallPresence>
+    ObserveReadBlocked { phase: _, reason: _ } => Absent
   }
 }
 
@@ -368,11 +372,11 @@ fn build_cache_daemon_ensure_plan(
   install: Optional<VerifiedBinaryInstallPresence>,
 ) -> BuildCacheDaemonEnsurePlan {
   if string_contains(s: instance.intended_unit as String, pattern: "/") {
-    EnsurePlanRefused {
+    BuildCachePlanRefused {
       reason: "the intended unit name carries '/', which would put the unit file outside /etc/systemd/system/; systemd unit names never contain one, so this is a malformed name rather than a path and the ensure refuses instead of writing it",
     }
   } else if !build_cache_plan_is_plannable(install: install) {
-    EnsurePlanRefused {
+    BuildCachePlanRefused {
       reason: "the build-cache ensure cannot be planned without the binary-presence observation: that one probe decides whether the install legs are derived, and planning without it would either re-download over a binary that is running or skip an install the host still needs. The probe is asked, its exit code is read, and the plan is derived from the record it produces.",
     }
   } else {

@@ -204,6 +204,14 @@ fn build_cache_contract_converges_on_an_answering_read_back() -> Bool {
       string_contains(s: line, pattern: "Compile requests")
     DaemonUnresponsive { detail: _ } => false
     DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    // THE OTHER THREE REFUSALS, each false because this control asks only whether an answering read-back
+    // converges -- and each named rather than caught by a wildcard. A `DaemonAbsent` here would in fact be
+    // the interesting one: it is the state the contract claim is about, and if this control ever reported
+    // it the observer would be misreading its own captures. Listing the variants is what makes that
+    // visible instead of quietly absorbed.
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
   }
 }
 
@@ -258,7 +266,7 @@ fn build_cache_op_takes_stdin(index: Int, steps: List<BuildCacheEnsureOp>) -> Bo
 // accumulates the first hit and keeps it, which is also what the fragment scan beside it does, so the two
 // scans in this file read the same way.
 fn build_cache_args_contain(args: List<String>, want: String) -> Bool {
-  match fold(args, init: Absent as Optional<String>, f: (acc, a) => match acc {
+  match fold(args, init: Absent, f: (acc, a) => match acc {
     Present { value: _ } => acc
     Absent => if string_contains(s: a, pattern: want) { Present { value: a } } else { acc }
   }) {

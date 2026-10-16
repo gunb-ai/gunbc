@@ -3370,7 +3370,7 @@ fn build_cache_ensure_ops_rendered(
     digest: digest,
     install: build_cache_presence_for_render(install_needed: install_needed),
   ) {
-    EnsurePlanRefused { reason: _ } => ""
+    BuildCachePlanRefused { reason: _ } => ""
     EnsureOps { ops: ops } =>
       fold(
         ops,
@@ -3874,7 +3874,7 @@ fn build_cache_ensure_executed(
       digest: digest,
       install: build_cache_binary_presence_of(observe: observe, p: install_params),
     ) {
-      EnsurePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
+      BuildCachePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
       EnsureOps { ops: ops } => {
         let outcome = build_cache_run_ensure_ops(ops: ops, unit_bytes: unit_bytes, transport: transport)
         let _ = run_argv_over_host_effect_transport(command: discard, transport: transport)

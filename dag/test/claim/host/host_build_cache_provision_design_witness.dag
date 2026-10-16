@@ -372,9 +372,9 @@ fn build_cache_first_pair() -> Optional<BuildCacheFragmentPair> {
     Present { value: a } =>
       match get(xs: sccache_misconfigured_log_fragments, index: 1) {
         Present { value: b } => Present { value: BuildCacheFragmentPair { first: a, second: b } }
-        Absent => Absent as Optional<BuildCacheFragmentPair>
+        Absent => Absent
       }
-    Absent => Absent as Optional<BuildCacheFragmentPair>
+    Absent => Absent
   }
 }
 
