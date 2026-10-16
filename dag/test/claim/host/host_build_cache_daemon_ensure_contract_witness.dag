@@ -28,7 +28,7 @@ import gunbc.host.build_cache_daemon_ensure {
   build_cache_observe_observed,
 }
 import gunbc.host.verified_binary_install { AlreadyInstalled, VerifiedBinaryInstallPresence }
-import gunbc.witness.live_tree_disposition { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.
 //
