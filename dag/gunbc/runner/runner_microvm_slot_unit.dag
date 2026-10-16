@@ -332,6 +332,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceKillMode { mode: _ } => false
         RestartSec { duration: _ } => false
         ServiceTasksMax { count: _ } => false
+        ServiceResourceControl { directive: _ } => false
         TimeoutStopSec { duration: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
