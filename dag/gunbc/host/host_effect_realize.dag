@@ -5018,7 +5018,55 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
   }
 }
 
-// The fold. Gate first, observe second — so a refusal costs no later privileged call at all.
+// The fold's accumulator, so the pending observations travel with the state instead of being indexed
+// positionally (this language gives no safe index into a list, and a zip that silently truncates would
+// let a leg run with no observation at all).
+data LiveDeployPreambleFoldAcc = PreambleFoldAcc { state: LiveDeployPreambleLegState, pending: List<LiveDeployPreambleLegResult> }
+
+// THE PURE FOLD — the same two primitives the impure fold below uses, with the observations SUPPLIED.
+// This is what the witness pins: order, the short-circuit, which step is blamed, and how many legs
+// actually ran. A missing observation is itself a refusal at that leg's step rather than a skip, so a
+// witness that forgets to supply one fails instead of quietly passing.
+fn live_deploy_preamble_fold(
+  legs: List<LiveDeployPreambleLeg>,
+  results: List<LiveDeployPreambleLegResult>,
+) -> LiveDeployPreambleLegState {
+  let walked = fold(
+    legs,
+    init: PreambleFoldAcc { state: live_deploy_preamble_leg_ok, pending: results },
+    f: (acc, leg) =>
+      match acc {
+        PreambleFoldAcc { state: st, pending: pending } =>
+          match live_deploy_preamble_leg_decision(state: st) {
+            Stop { reason: _ } => PreambleFoldAcc { state: st, pending: pending }
+            ContinueAndRun =>
+              match pending {
+                [] =>
+                  PreambleFoldAcc {
+                    state: live_deploy_preamble_failed(leg: leg, detail: "no observation supplied for this leg", consumed: live_deploy_preamble_consumed(state: st)),
+                    pending: [],
+                  }
+                [first, ...rest] =>
+                  PreambleFoldAcc { state: live_deploy_preamble_next_state(state: st, leg: leg, result: first), pending: rest }
+              }
+          }
+      },
+  )
+  match walked { PreambleFoldAcc { state: st, pending: _ } => st }
+}
+
+// How many legs have run, for callers that must report the count without matching the whole state.
+fn live_deploy_preamble_consumed(state: LiveDeployPreambleLegState) -> Int {
+  match state {
+    PreambleLegOk { consumed: n } => n
+    PreambleLegFailed { step: _, reason: _, consumed: n } => n
+  }
+}
+
+// THE IMPURE FOLD — gate first, observe second, so a refusal costs no later privileged call at all.
+// It is the pure fold above with its observations produced on demand, and both go through the same
+// live_deploy_preamble_leg_decision / live_deploy_preamble_next_state pair, so what the witness pins is
+// what runs.
 fn live_deploy_preamble_run_legs(legs: List<LiveDeployPreambleLeg>, access: DeployAccess) -> LiveDeployPreambleLegState {
   fold(
     legs,
