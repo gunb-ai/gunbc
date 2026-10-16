@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionPlacementRecord, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseRefused,
-  session_attempt_record, session_placement_schema,
+  session_attempt_record, session_placement_schema, session_unit_wire,
 }
 import gunbc.roadmap.roadmap_attempt_metering { MeteringNotYetWritten }
 import gunbc.roadmap.roadmap_result_returned { ResultNotReturned }
@@ -191,7 +191,16 @@ fn placement_record() -> SessionPlacementRecord {
 
 fn observed(grant: SessionGrantReading, returned: SessionReleaseObservation) -> SessionPlacementObservation {
   SessionPlacementObserved {
-    slot: session_attempt_record(node_id: "n1", attempt_key: "k1", granted: kibibyte(count: 8388608), now: 1000),
+    slot: session_attempt_record(
+      node_id: "n1",
+      attempt_key: "k1",
+      unit: match session_unit_wire(node_id: "n1", attempt_key: "k1") {
+        Present { value: u } => u
+        Absent => "unnameable" as NonEmptyStr
+      },
+      granted: kibibyte(count: 8388608),
+      now: 1000,
+    ),
     grant: grant,
     returned: returned,
   }

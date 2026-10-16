@@ -14,7 +14,7 @@ import gunbc.compute.work_request { work_default_build, work_declared_outputs, W
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
-  NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
+  NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path, NoStopObservation,
 }
 import gunbc.instruments.compute_run_unit_cold {
   HermeticUserSessionRuntimeAbsent, HermeticUserSessionRuntimeBound,
@@ -109,6 +109,7 @@ fn wrong_capture_build(
     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
     granted: compute_run_unit_cold_unit_grant(),
     user_runtime_dir: runtime_dir,
+    stop_observation: NoStopObservation,
   ) {
     ComputeUnitRunRefused { cause: _ } => "unit launch refused"
     ComputeUnitRunExecuted { run: unit_run } =>
