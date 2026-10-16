@@ -9,7 +9,8 @@ import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
 import std.optional { Present, Absent, optional_present }
 import extdeps.crypto.sha2 { sha256_hex }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource, WifProviderOperation }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
 import extdeps.cloud.gcp.iam {
   IamCondition, GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
@@ -1031,7 +1032,7 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
   match e {
     CreateProvider { pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c } =>
       match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr) {
-        RestAnswered { answer: _ } => ""
+        RestAnswered { answer: a } => wif_create_operation_wait(token: token, subject: WifProviderOperation { pool_id: p as String, provider_id: v as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o))
         RestRefused { refusal } => create_refusal(subject: concat("provider ", v as String), o: refusal)
       }
     AddPolicyCells { subject: _, observed_etag: _, cells: _ } => ""
@@ -1046,7 +1047,9 @@ fn first_refusal(xs: List<GcpIamEffect>, run: fn(GcpIamEffect) -> String) -> Str
   fold(xs, init: "", f: (acc, e) => if acc != "" { acc } else { run(e) })
 }
 
-// ONE TARGET: its approved creates, then -- only when something was created -- a re-read and
+// ONE TARGET: its approved creates, each followed by a wait for the create's long-running operation
+// (gunbc.auth.gcp_operation_wait: done, failed or the declared budget; a spent budget refuses and never
+// reissues the create), then -- only when something was created -- a re-read and
 // re-classification of the whole federation against its declaration (a created provider must read
 // back with the approved condition before anything is granted through it), then its approved policy
 // adds. No effect outside the approved list is issued.
