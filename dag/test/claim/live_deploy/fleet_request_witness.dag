@@ -88,6 +88,7 @@ fn candidate() -> CandidateRelease {
   CandidateRelease {
     revision: rev_a(),
     expected_surface_identity: content_hash_atom(value: "surface" as NonEmptyStr),
+    expected_dispatch_digest: content_hash_atom(value: "dispatch" as NonEmptyStr),
   }
 }
 
