@@ -66,7 +66,7 @@ test fn same_arm_two_applied_box_int_is_accepted() -> Bool {
 // claimed -- any unrelated blocking row in the closure satisfies it. The two exact forms the
 // module itself prescribes are used here: a count scoped to class AND subject_name, and a
 // DIFFERENTIAL between two censuses. `refusal_rows` is the scoped count, keyed on what the
-// fold actually emits: type_mismatch_error (src/v1/04_infer.dag:14455-14463) projects to
+// fold actually emits: type_mismatch_error (the rebind-branch expected/got construction of v1.compiler.infer unify_generics) projects to
 // diagnostic_class "TypeMismatch" with subject_name = the rejected actual's `got` string,
 // which for this fold is concat(node_type_shape(actual), " (later argument)") -- measured,
 // not guessed, by printing the blocking messages for these exact fixtures on the shipped

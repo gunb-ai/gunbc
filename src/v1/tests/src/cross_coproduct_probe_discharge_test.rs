@@ -40,7 +40,7 @@ fn compile_program_errors(source: &str) -> Vec<String> {
 fn has_generic_rebind(msgs: &[String]) -> bool {
     // Matched on the fold's own message SHAPE, not on a variable letter: the text is
     // `type variable <bind_name> bound as <shape> (first argument)` vs `<shape> (later
-    // argument)` (src/v1/04_infer.dag:14159). Hardcoding "T" makes every row over a
+    // argument)` (v1.compiler.infer unify_generics, rebind-branch expected/got construction). Hardcoding "T" makes every row over a
     // differently-named generic vacuously green -- which is how the Box<Int> vs
     // Box<Bool> row read as a failure on both seeds while the fold was in fact refusing
     // it (measured at 2751b200: the message was present, under the name A).
