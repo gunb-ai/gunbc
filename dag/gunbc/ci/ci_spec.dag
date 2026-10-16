@@ -2052,17 +2052,19 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
   ], "")
 }
 
-// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt opens with the taken
-// prefix; every other state - refused, absent, unrecognized - writes refused to the step
+// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
+// taken tag exactly (a prefix or any-line search would admit a refused receipt whose verbatim controller
+// answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
 // output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
 // under always(), so the refused receipt is still kept.
 fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   let output_line = bv(name: github_output_variable_name)
   let receipt = bl(text: mtcollins1_fan_observation_receipt_path)
-  [bif_else(
+  [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmd(words: [bl(text: "head"), bl(text: "-n"), bl(text: "1"), receipt])), right: bcmdl(lits: ["true"])))),
+  bif_else(
     cond: bash_build_and_then(
       left: btest(words: [bl(text: "-f"), receipt]),
-      right: bcmd(words: [bl(text: "grep"), bl(text: "-q"), bl(text: concat("^", fan_boot_phase_taken_prefix)), receipt]),
+      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix)]),
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [

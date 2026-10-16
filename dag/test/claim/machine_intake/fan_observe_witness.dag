@@ -310,12 +310,23 @@ type FanTailOutcome {
 // GITHUB_OUTPUT. Returns the tail's exit code and the output file's content. Fixtures are pure: every
 // path is flat or under the receipt's own target/ dir, and all are removed.
 fn fan_boot_phase_tail_outcome(stem: String, receipt: String) -> FanTailOutcome {
+  fan_boot_phase_tail_run(stem: stem, receipt: receipt, plant: true, from_yml: false)
+}
+
+// plant: false leaves NO receipt (the missing arm); from_yml: true executes the tail EXTRACTED FROM THE
+// COMMITTED fleet-converge.yml fan step (the lines between its gunbc run and its env:, dedented) instead
+// of the tail rendered from the model, so a stale projection turns the control red.
+fn fan_boot_phase_tail_run(stem: String, receipt: String, plant: Bool, from_yml: Bool) -> FanTailOutcome {
   let spec_path = concat(stem, ".sh")
   let out_path = concat(stem, "-output")
   let tail = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false)
-  let _ = Filesystem.Write(path: spec_path, content: concat("set -euo pipefail\n", tail))
-  let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target"])
-  let _ = Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: receipt)
+  let _ = if from_yml {
+    shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", join(["{ echo 'set -euo pipefail'; sed -n '/--function mtcollins1_fan_observe_boot_phase_wet/,/^        env:/p' .github/workflows/fleet-converge.yml | sed '1d;$d' | sed 's/^          //'; } > '", spec_path, "'"], "")]).success
+  } else {
+    Filesystem.Write(path: spec_path, content: concat("set -euo pipefail\n", tail)).success
+  }
+  let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target; rm -f target/mtcollins1-fan-observation.txt"])
+  let _ = if plant { Filesystem.Write(path: mtcollins1_fan_observation_receipt_path, content: receipt).success } else { true }
   let _ = Filesystem.Write(path: out_path, content: "")
   let summary_path = concat(stem, "-summary")
   let _ = Filesystem.Write(path: summary_path, content: "")
@@ -381,6 +392,36 @@ test fn a_real_writer_taken_series_leaves_the_boot_eligible_by_execution() -> Bo
   let o = fan_real_writer_tail_outcome(stem: "jc547-real-taken", series: FanObservationTaken { rounds: [], interval: second(5) })
   o.exit_code == 0
     && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}
+
+fn fan_tail_refuses(stem: String, receipt: String, plant: Bool, from_yml: Bool) -> Bool {
+  let o = fan_boot_phase_tail_run(stem: stem, receipt: receipt, plant: plant, from_yml: from_yml)
+  o.exit_code == 1
+    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
+    && !string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}
+
+fn fan_tail_admits(stem: String, from_yml: Bool) -> Bool {
+  let o = fan_boot_phase_tail_run(stem: stem, receipt: concat(fan_boot_phase_taken_prefix, "\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
+  o.exit_code == 0 && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}
+
+fn fan_tail_four_refusals(stem: String, from_yml: Bool) -> Bool {
+  fan_tail_refuses(stem: concat(stem, "-forged"), receipt: join([fan_boot_phase_refused_prefix, " cause=x raw=[exit=1 stdout=[\n", fan_boot_phase_taken_prefix, "\n] stderr=[]]"], ""), plant: true, from_yml: from_yml)
+    && fan_tail_refuses(stem: concat(stem, "-garbage"), receipt: concat(fan_boot_phase_taken_prefix, "Garbage\nFanObservation rounds=3"), plant: true, from_yml: from_yml)
+    && fan_tail_refuses(stem: concat(stem, "-missing"), receipt: "", plant: false, from_yml: from_yml)
+    && fan_tail_refuses(stem: concat(stem, "-other"), receipt: "SomethingElse rounds=3", plant: true, from_yml: from_yml)
+}
+
+// Refused first line + a verbatim controller answer carrying a forged taken line, a taken-prefixed
+// first line, a missing receipt and an unrecognized line all refuse; only the exact first line admits.
+test fn the_tail_admits_only_an_exact_first_line_by_execution() -> Bool {
+  fan_tail_four_refusals(stem: "jc547-exact", from_yml: false) && fan_tail_admits(stem: "jc547-exact-ok", from_yml: false)
+}
+
+// The same specimens against the COMMITTED yml's fan tail: a stale projection reds here.
+test fn the_committed_yml_tail_admits_only_an_exact_first_line_by_execution() -> Bool {
+  fan_tail_four_refusals(stem: "jc547-yml", from_yml: true) && fan_tail_admits(stem: "jc547-yml-ok", from_yml: true)
 }
 
 // POSITIVE CONTROL: a receipt opening with the taken prefix exits 0 and writes the observed output, so
