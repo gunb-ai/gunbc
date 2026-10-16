@@ -6734,11 +6734,8 @@ pub fn shared_layer_of_type_expr(
     generic_param_names: Rc<Vec<String>>,
 ) -> Rc<SharedLayerAnswer> {
     let spelled = rust_fn_sig_leaf_name(source_indices.clone(), type_expr.clone());
-    if (crate::std_types::is_kernel_type(spelled.clone())
-        && !crate::std_types::is_container_type(spelled.clone()))
-    {
-        return Rc::new(SharedLayerAnswer::SharedLayerAtValue);
-    }
+    let kernel_scalar = (crate::std_types::is_kernel_type(spelled.clone())
+        && !crate::std_types::is_container_type(spelled.clone()));
     {
         let judged = match rust_operand_alias_or_refinement_continue(
             type_expr.clone(),
@@ -6770,7 +6767,7 @@ pub fn shared_layer_of_type_expr(
                 }
             }
         };
-        if rust_type_node_is_arrow(judged.clone()) {
+        if kernel_scalar || rust_type_node_is_arrow(judged.clone()) {
             Rc::new(SharedLayerAnswer::SharedLayerAtValue)
         } else {
             {
