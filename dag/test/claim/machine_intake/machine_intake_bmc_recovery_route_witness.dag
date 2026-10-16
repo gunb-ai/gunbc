@@ -28,7 +28,7 @@ import gunbc.machine_intake.bmc_recovery_route {
   RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
   recovery_reset_actuation, InBandTemporaryAdministratorPassword,
   RecoveryRouteUnavailable, RecoveryFirmwarePolicyUnknown, recovery_test_route,
-  recovery_measured_refusal_policy, converge_in_band_recovery, recovery_readback_is_factory_active,
+  recovery_measured_refusal_policy, converge_in_band_recovery,
   recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback,
   recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
