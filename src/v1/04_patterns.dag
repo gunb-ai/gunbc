@@ -4,6 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan }
 import std.primitive_projection { never_type_declaration, never_type_qualified_path }
+import std.decl_ref { declaration_ref_eq }
 
 import std.syntax { LiteralValue }
 
@@ -35,7 +36,8 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name, lookup_type_for,
-  symbol_index_lookup
+  symbol_index_lookup,
+  declaration_ref_of_type_node, declaration_ref_of_declaration_node
 }
 
 import v1.compiler.infer_resolve {
@@ -552,12 +554,11 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   }
 }
 
-// An uninhabited SUM: a coproduct with zero arms, or Never keyed by DeclarationRef
-// (never_type_declaration). Identity is the indexed declaration, or — only while compiling
-// Never's home module with no index yet — the TypeEnv binding of that DeclarationRef.
-// A type-use is peeled via lookup_type_for / inferred Resolved. authored_name_at of the
-// use is never consulted (operator 2026-10-15). Missing index outside the home module
-// => not uninhabited.
+// An uninhabited SUM: a coproduct with zero arms, or Never keyed by the indexed
+// DeclarationRef (never_type_qualified_path). Missing index => not uninhabited
+// (operator 2026-10-15: no identity→spelling fallback). A type-use is peeled via
+// lookup_type_for / inferred Resolved; join is occurrence or intern ident, never
+// authored_name_at of the use.
 fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
   match lookup_type_for(env: env, node: n) {
     Present { value: def } => def
@@ -572,12 +573,7 @@ fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
 fn never_identity_node(env: TypeEnv) -> Optional<Node> {
   match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
     Present { value: indexed } => Present { value: indexed }
-    Absent =>
-      if env.module_path != (never_type_declaration.module_path as String) {
-        Absent
-      } else {
-        lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String)
-      }
+    Absent => Absent
   }
 }
 
@@ -593,29 +589,29 @@ fn candidate_joins_never_identity(n: Node, identity: Node) -> Bool {
        }
 }
 
+fn node_names_never_declaration(n: Node, env: TypeEnv) -> Bool {
+  match declaration_ref_of_type_node(rt: n, source_indices: env.source_indices, env: env) {
+    Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
+    Absent =>
+      match declaration_ref_of_declaration_node(decl: n, source_indices: env.source_indices, env: env) {
+        Present { value: d } => declaration_ref_eq(a: d, b: never_type_declaration)
+        Absent => false
+      }
+  }
+}
+
 fn node_is_never_declaration(resolved: Node, env: TypeEnv) -> Bool {
   match never_identity_node(env: env) {
     Absent => false
     Present { value: identity } =>
       let peeled = peel_never_identity_candidate(n: resolved, env: env)
       let peeled2 = peel_never_identity_candidate(n: peeled, env: env)
-      let against_identity =
-        candidate_joins_never_identity(n: resolved, identity: identity)
-          || candidate_joins_never_identity(n: peeled, identity: identity)
-          || candidate_joins_never_identity(n: peeled2, identity: identity)
-      if against_identity {
-        true
-      } else if env.module_path != (never_type_declaration.module_path as String) {
-        false
-      } else {
-        match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
-          Absent => false
-          Present { value: bound } =>
-            candidate_joins_never_identity(n: resolved, identity: bound)
-              || candidate_joins_never_identity(n: peeled, identity: bound)
-              || candidate_joins_never_identity(n: peeled2, identity: bound)
-        }
-      }
+      candidate_joins_never_identity(n: resolved, identity: identity)
+        || candidate_joins_never_identity(n: peeled, identity: identity)
+        || candidate_joins_never_identity(n: peeled2, identity: identity)
+        || node_names_never_declaration(n: resolved, env: env)
+        || node_names_never_declaration(n: peeled, env: env)
+        || node_names_never_declaration(n: peeled2, env: env)
   }
 }
 

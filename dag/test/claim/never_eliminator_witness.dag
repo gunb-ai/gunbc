@@ -88,8 +88,20 @@ test fn empty_match_on_opaque_host_type_must_refuse() -> Bool {
 
 data empty_match_local_never_name_source: String = "module neverprobe.local_never\n\ntype Never\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
 
+// RED: identity, not spelling. A local `type Never` is not the indexed
+// std.error_primitives.Never DeclarationRef. Operator 2026-10-15: missing
+// index is also not uninhabited (empty match refuses). This source is that
+// case at the spelling grain: the name Never does not admit `match (n) {}`.
 test fn empty_match_on_local_never_name_must_refuse() -> Bool {
   never_eliminator_no_arms_blocking_count(source: empty_match_local_never_name_source) >= 1
+}
+
+data empty_match_never_without_index_source: String = "module neverprobe.no_index\n\nfn f(n: Never) -> Int {\n  match (n) {\n  }\n}\n"
+
+// RED: Never is unbound here, so there is no indexed identity. Empty match
+// must refuse; absence of the index is not treated as uninhabited.
+test fn empty_match_without_never_in_index_must_refuse() -> Bool {
+  never_eliminator_no_arms_blocking_count(source: empty_match_never_without_index_source) >= 1
 }
 
 data deleted_never_producer_unbound_source: String = "module neverprobe.unb\n\nimport std.error_primitives { never }\n\nfn f() -> Int {\n  never()\n}\n"

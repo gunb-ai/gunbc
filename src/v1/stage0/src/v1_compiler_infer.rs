@@ -25638,7 +25638,61 @@ pub fn local_binding_for_item(
                                         ),
                                     ))
                                 } else {
-                                    std::option::Option::None
+                                    if ((((((item.module_item_kind.clone()
+                                        == ModuleItemTypeDeclaration)
+                                        && (item.connective.clone()
+                                            == Connective::NoConnective))
+                                        && (item.body.clone() == std::option::Option::None))
+                                        && ((item.params.clone().len() as i64) == 0))
+                                        && ((item.children.clone().len() as i64) == 0))
+                                        && (item.transport.clone() == std::option::Option::None))
+                                    {
+                                        {
+                                            let type_node = Rc::new(Node {
+                                                occurrence_identity: item
+                                                    .occurrence_identity
+                                                    .clone(),
+                                                name: item.name.clone(),
+                                                span: item.span.clone(),
+                                                ident_span: item.ident_span.clone(),
+                                                children: Rc::new(vec![]),
+                                                connective: Connective::NoConnective,
+                                                params: Rc::new(vec![]),
+                                                inferred: std::option::Option::None,
+                                                return_cardinality: item
+                                                    .return_cardinality
+                                                    .clone(),
+                                                uses: Rc::new(vec![]),
+                                                body: std::option::Option::None,
+                                                transport: std::option::Option::None,
+                                                properties: item.properties.clone(),
+                                                type_annotation: std::option::Option::None,
+                                                is_self_recursive: false,
+                                                has_non_tail_self_call: false,
+                                                match_pattern: std::option::Option::None,
+                                                module_item_kind: item.module_item_kind.clone(),
+                                                declaration_marker: item
+                                                    .declaration_marker
+                                                    .clone(),
+                                                declaration: item.declaration.clone(),
+                                                expr_data: Rc::new(ExprData::NoExprData),
+                                                ident: None,
+                                            });
+                                            Some(Rc::new(TypeBinding {
+                                                name: crate::v1_std_core::authored_name_at(
+                                                    source_indices.clone(),
+                                                    item.clone(),
+                                                ),
+                                                resolved: type_node.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                                alias_rhs: std::option::Option::None,
+                                            }))
+                                        }
+                                    } else {
+                                        std::option::Option::None
+                                    }
                                 }
                             }
                         }
@@ -28430,7 +28484,69 @@ pub fn build_type_env_unresolved(
                                                 ),
                                             )
                                         } else {
-                                            acc.clone()
+                                            if ((((((item.module_item_kind.clone()
+                                                == ModuleItemTypeDeclaration)
+                                                && (item.connective.clone()
+                                                    == Connective::NoConnective))
+                                                && (item.body.clone()
+                                                    == std::option::Option::None))
+                                                && ((item.params.clone().len() as i64) == 0))
+                                                && ((item.children.clone().len() as i64) == 0))
+                                                && (item.transport.clone()
+                                                    == std::option::Option::None))
+                                            {
+                                                {
+                                                    let type_node = Rc::new(Node {
+                                                        occurrence_identity: item
+                                                            .occurrence_identity
+                                                            .clone(),
+                                                        name: item.name.clone(),
+                                                        span: item.span.clone(),
+                                                        ident_span: item.ident_span.clone(),
+                                                        children: Rc::new(vec![]),
+                                                        connective: Connective::NoConnective,
+                                                        params: Rc::new(vec![]),
+                                                        inferred: std::option::Option::None,
+                                                        return_cardinality: item
+                                                            .return_cardinality
+                                                            .clone(),
+                                                        uses: Rc::new(vec![]),
+                                                        body: std::option::Option::None,
+                                                        transport: std::option::Option::None,
+                                                        properties: Rc::new(vec![]),
+                                                        type_annotation: std::option::Option::None,
+                                                        is_self_recursive: false,
+                                                        has_non_tail_self_call: false,
+                                                        match_pattern: std::option::Option::None,
+                                                        module_item_kind: item
+                                                            .module_item_kind
+                                                            .clone(),
+                                                        declaration_marker: item
+                                                            .declaration_marker
+                                                            .clone(),
+                                                        declaration: item.declaration.clone(),
+                                                        expr_data: Rc::new(ExprData::NoExprData),
+                                                        ident: None,
+                                                    });
+                                                    v1_rt::rc_map_insert(
+                                                        acc.clone(),
+                                                        item_ident.clone(),
+                                                        Rc::new(TypeBinding {
+                                                            name: crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                item.clone(),
+                                                            ),
+                                                            resolved: type_node.clone(),
+                                                            provenance: Rc::new(
+                                                                SubValueRelation::SubValueUnknown,
+                                                            ),
+                                                            alias_rhs: std::option::Option::None,
+                                                        }),
+                                                    )
+                                                }
+                                            } else {
+                                                acc.clone()
+                                            }
                                         }
                                     }
                                 }
