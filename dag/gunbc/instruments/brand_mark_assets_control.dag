@@ -2,6 +2,7 @@ module gunbc.instruments.brand_mark_assets_control
 
 import std.types { Int, List, String, Bool }
 import std.optional { Absent, Present }
+import std.algebra { skip }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.bytes { octets_bytes }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -49,7 +50,7 @@ fn brand_asset_png_shaped(octets: List<Int>, pixels: Int) -> Bool {
   take(octets, 8) == brand_asset_png_signature
     && brand_asset_word_at(octets: octets, i: 16) == pixels
     && brand_asset_word_at(octets: octets, i: 20) == pixels
-    && drop(octets, n - 12) == brand_asset_png_iend
+    && skip(octets, n - 12) == brand_asset_png_iend
 }
 
 fn brand_asset_target_case(target: BrandAssetTarget) -> BrandAssetCase {
