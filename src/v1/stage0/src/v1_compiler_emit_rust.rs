@@ -25561,7 +25561,22 @@ pub fn rust_empty_map_init_expr(
                     __found
                 })
             {
-                "v1_rt::rc_empty_map::<_, _>()".to_string()
+                if type_node_carries_applicationless_parametric_head(
+                    map_type.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ) {
+                    v1_rt::concat(v1_rt::concat("compile_error!(\"PROBE ".to_string(), Rc::new({ let mut __result = Vec::new(); for c in map_type.children.clone().iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("[c=".to_string(), crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())), " cch=".to_string()), crate::v1_compiler_emit_core_support::to_string((c.children.clone().len() as i64))), " e=".to_string()), crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(c.clone()))), " ech=".to_string()), crate::v1_compiler_emit_core_support::to_string((crate::v1_compiler_infer_types::child_type_node(c.clone()).children.clone().len() as i64))), " ec1=".to_string()), match crate::v1_compiler_infer_types::child_type_node(c.clone()).children.clone().first().cloned() {
+    Some(x) => crate::v1_std_core::authored_name_at(source_indices.clone(), x.clone()),
+    std::option::Option::None => "-".to_string(),
+}), " cc1=".to_string()), match c.children.clone().first().cloned() {
+    Some(x) => crate::v1_std_core::authored_name_at(source_indices.clone(), x.clone()),
+    std::option::Option::None => "-".to_string(),
+}), "]".to_string())); } __result }).join(&"".to_string())), "\")".to_string())
+                } else {
+                    "v1_rt::rc_empty_map::<_, _>()".to_string()
+                }
             } else {
                 v1_rt::concat(
                     v1_rt::concat("v1_rt::rc_empty_map::<".to_string(), kv_type_str.clone()),
