@@ -121,7 +121,6 @@ import gunbc.live_deploy.effect_leaf {
   deploy_effect_command,
   systemctl_restart_effect,
   apt_install_effect,
-  apt_install_unelevated_effect,
   dpkg_status_effect,
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
@@ -155,7 +154,6 @@ import gunbc.live_deploy.emit {
   install_d_shared_mode,
   path_parent_dir,
   live_deploy_systemd_unit_for,
-  deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
   live_deploy_apply_script_for,
@@ -383,18 +381,6 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
   }
 }
 
-test fn witness_dependency_ensure_is_idempotent() -> Bool {
-  let tailscale = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
-  )
-  let tmux = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
-  )
-  string_contains(s: tailscale, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale)))
-    && string_contains(s: tailscale, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale)))
-    && string_contains(s: tmux, pattern: deploy_effect_command(inv: dpkg_status_effect(package: package_tmux)))
-    && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
-}
 
 // THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
 // node built by gunbc.ci.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
@@ -509,9 +495,11 @@ test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
 // it. The projection carries step CONTENT, so it holds both commands and none of the glue.
 //
 // WHAT IS ASSERTED NOW IS STRICTLY MORE THAN ITS NEIGHBOUR COVERS: both the guard command and the
-// PRIVILEGED install, on the real apply path. `witness_dependency_ensure_is_idempotent` above reads
-// `deployment_ensure_dependency_script`, which renders the UNELEVATED form, so the privileged
-// commands the deploy actually emits had no other witness.
+// PRIVILEGED install, on the real apply path. The UNELEVATED (standalone-route) form had its own
+// witness while `deployment_ensure_dependency_script` existed; that builder is gone -- the route
+// runs typed argv now -- and its idempotence claim moved with it to
+// test.claim.live_deploy.ensure_dependency_witness, which pins the probe-then-install fold (and the
+// install's non-run on the probe-zero path) where the decision actually lives.
 //
 // WHAT IS GIVEN UP: that the install is GUARDED by the check rather than merely beside it. No
 // witness asserts that rendering now. It is structural in the producer -- the install is the `then_`

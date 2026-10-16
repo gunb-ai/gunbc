@@ -87,6 +87,7 @@ data primitive_symbol_intern_lexeme: PrimitiveIdentity = primitive_identity_slug
 data primitive_data_init_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "data_init_decl_facts_live")
 data primitive_bytes_octets: PrimitiveIdentity = primitive_identity_slug(name: "bytes_octets")
 data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(name: "utf8_encode_bytes")
+data primitive_octets_bytes: PrimitiveIdentity = primitive_identity_slug(name: "octets_bytes")
 data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
@@ -129,6 +130,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_data_init_decl_facts_live, module_path: "v2.std.data_index", decl_name: "data_init_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_bytes_octets, module_path: "std.bytes", decl_name: "bytes_octets", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_octets_bytes, module_path: "std.bytes", decl_name: "octets_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
