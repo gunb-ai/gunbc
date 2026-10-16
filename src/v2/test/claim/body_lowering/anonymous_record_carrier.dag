@@ -81,10 +81,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the v1 seed's way) would elaborate too, and the LOCUS test below is what reds it instead.
 data arc_provider_source: String = "module v2.test.arc_p\n\nimport std.types { Bool }\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n"
 
-// The carrier, declared where the census files' authors could not import it from: dag/std/*.dag cannot
+// THE ALIASED CARRIER, written where the census files' authors could not write it: dag/std/*.dag cannot
 // reach a std.algebra type without a cycle (std.types -> std.algebra), which is the home-table question
-// routed to Manager 3 with the std.types -> std.algebra cycle as the decisive input.
+// routed to Manager 3 with that cycle as the decisive input.
 data arc_types_source: String = "module v2.test.arc_types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n"
+
+// THE HEAD ITSELF, PLANTED. A supplied ingest is a closed tree: v2.std.list_introduction
+// list_introduction_head_path (the one head a list literal's element type is passed through) has to
+// EXIST in the ingest, so the pass-proven sibling v2.test.claim.body_lowering.anonymous_record plants
+// std.algebra the same way (ar_algebra_source, verbatim here). Nothing in this file reaches the real
+// std.algebra -- which is also why the carrier question above is a home-table question and not a fix
+// these fixtures can make for themselves.
+data arc_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
 
 // RED: the annotation `List<ArB>` is written on three declarations and the module does NOT carry `List`.
 // The three headless records sit at lines 8, 9 and 12.
@@ -119,6 +127,7 @@ fn arc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
 }
 
 data arc_ingest: SourceRootIngest = [
+  arc_read(source: arc_algebra_source, id: ^arc_algebra_read, unit: ^arc_algebra_cu, path: "src/v2/test/fixture/anonymous_record/algebra.dag"),
   arc_read(source: arc_provider_source, id: ^arc_provider_read, unit: ^arc_provider_cu, path: "src/v2/test/fixture/anonymous_record/provider.dag"),
   arc_read(source: arc_types_source, id: ^arc_types_read, unit: ^arc_types_cu, path: "src/v2/test/fixture/anonymous_record/carrier_types.dag"),
   arc_read(source: arc_red_source, id: ^arc_red_read, unit: ^arc_red_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red.dag"),
