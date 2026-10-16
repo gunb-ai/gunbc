@@ -1,6 +1,6 @@
 module gunbc.host.sccache_verified_install
 
-import std.types { List, NonEmptyStr, String }
+import std.types { NonEmptyStr, String }
 
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }

@@ -125,11 +125,28 @@ type VerifiedBinaryInstallPlan =
       source_url: NonEmptyStr,
     }
 
-data verified_binary_install_unreadable_line_refusal_reason: String =
-  "verified_binary_install: the sha256sum -c line produced no digest, so the download was never verified and nothing is installed"
+data verified_binary_install_unreadable_line_refusal_reason: String = "verified_binary_install: the sha256sum -c line produced no digest, so the download was never verified and nothing is installed"
 
-data verified_binary_install_digest_mismatch_refusal_reason: String =
-  "verified_binary_install: the sha256sum -c line reports a digest other than the expected one, so the download does not match the pinned release and nothing is installed"
+data verified_binary_install_digest_mismatch_refusal_reason: String = "verified_binary_install: the sha256sum -c line reports a digest other than the expected one, so the download does not match the pinned release and nothing is installed"
+
+// The refusal, built at the one site that knows which case it is. The reason quotes BOTH the expected
+// digest and the line actually read, because the two refusal cases have to stay distinguishable to
+// whoever receives them: a mirror that served a 404 and an attacker who swapped the archive both look
+// like "the check failed" until the reason says which digest was wanted and what the check saw.
+fn verified_binary_install_refused(
+  base: String,
+  expected: Digest,
+  observed_sha256sum_line: String,
+) -> VerifiedBinaryInstallVerdict {
+  Refused {
+    reason: join(
+      [base, " -- expected sha256 ", expected.hex as String, ", read: ", observed_sha256sum_line],
+      "",
+    ),
+    expected: expected,
+    observed_line: observed_sha256sum_line,
+  }
+}
 
 fn verified_binary_install_admission(
   expected: Digest,
@@ -137,37 +154,13 @@ fn verified_binary_install_admission(
 ) -> VerifiedBinaryInstallVerdict {
   match sha256sum_line_digest(line: observed_sha256sum_line) {
     Absent =>
-      Refused {
-        reason: join(
-          [
-            verified_binary_install_unreadable_line_refusal_reason,
-            " -- expected sha256 ",
-            expected.hex as String,
-            ", read: ",
-            observed_sha256sum_line,
-          ],
-          "",
-        ),
+      verified_binary_install_refused(
+        base: verified_binary_install_unreadable_line_refusal_reason,
         expected: expected,
-        observed_line: observed_sha256sum_line,
-      }
+        observed_sha256sum_line: observed_sha256sum_line,
+      )
     Present { value: d } =>
-      if d == expected { Verified { observed: d } }
-      else
-        Refused {
-          reason: join(
-            [
-              verified_binary_install_digest_mismatch_refusal_reason,
-              " -- expected sha256 ",
-              expected.hex as String,
-              ", read: ",
-              observed_sha256sum_line,
-            ],
-            "",
-          ),
-          expected: expected,
-          observed_line: observed_sha256sum_line,
-        }
+      if d == expected { Verified { observed: d } } else { verified_binary_install_refused(base: verified_binary_install_digest_mismatch_refusal_reason, expected: expected, observed_sha256sum_line: observed_sha256sum_line) }
   }
 }
 
