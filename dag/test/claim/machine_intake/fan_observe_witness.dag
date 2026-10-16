@@ -270,19 +270,23 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
 // The claim renders the typed prelude with the SAME builders the step projection embeds, writes it to
 // a claim-private path, and executes it with WIF_ACCESS_TOKEN deliberately unset: the script installs
 // its EXIT trap and then dies at the bearer-token header write under set -u - the exact window this
-// blocker is about. The four temp files the trap names are planted beforehand at the paths the prelude
-// itself computes (RUNNER_TEMP is pinned to target/ and the stem is this claim's own), so a sound trap
-// removes all four and an unsafe one - aborted by the unset variable before rm - leaves them. Their
-// absence is read back through the same file transport, not inferred from the exit code. Nothing real
-// is at risk: no fetch is reached and every planted byte is this claim's own.
+// blocker is about. The four temp files are planted beforehand at the paths the prelude COMPUTES -
+// derived from the same stem and the same mtcollins1_fan_credential_fetch_status_suffix constant its
+// own assignments use (RUNNER_TEMP is pinned to the claim's working directory; a hand-typed path here
+// would test nothing - the first version of this claim planted .fetch-status while the constant says
+// -fetch-status, so its pass would have been luck). A sound trap removes all four and an unsafe one,
+// aborted by the unset variable before rm, leaves them; absence is read back through the same file
+// transport, not inferred from the exit code. Nothing real is at risk: no fetch is reached and every
+// planted byte is this claim's own.
 test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
   let stem = "eh810-fan-trap-specimen"
-  let spec_path = "eh810-fan-trap-specimen.sh"
+  let spec_path = concat(stem, ".sh")
+  let credential = concat(stem, "-bmc-credential")
   let planted_paths = [
-    "eh810-fan-trap-specimen-auth-header",
-    "eh810-fan-trap-specimen-sm.json",
-    "eh810-fan-trap-specimen-bmc-credential",
-    "eh810-fan-trap-specimen-bmc-credential.fetch-status",
+    concat(stem, "-auth-header"),
+    concat(stem, "-sm.json"),
+    credential,
+    concat(credential, mtcollins1_fan_credential_fetch_status_suffix),
   ]
   let prelude = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
   let written = Filesystem.Write(path: spec_path, content: prelude)
