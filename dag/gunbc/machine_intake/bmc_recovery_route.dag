@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
 import extdeps.board_authority { BoardFruObservation, BoardFruUnreadCause }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
@@ -11,7 +11,6 @@ import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
   asrock_altrad8ud_published_factory_password_write_policy_for,
-  asrock_altrad8ud_published_factory_password_is_refused,
   asrock_altrad8ud_inband_recovery_capture,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
@@ -22,6 +21,20 @@ import extdeps.network.ipv4 { Ipv4Address, Octet }
 import gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject, UnitKey, IntakeAttemptId }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.auth.privileged_effect_census {
+  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability,
+  SiteVerdict, SiteConformance, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
+  site_verdict, privileged_effect_census, ruling_discharge_interlock_defect,
+  recovery_reset_operator_ruling,
+}
+import gunbc.auth.authorization_pattern_selection {
+  AuthorizationPatternSelection, AuthorizationPattern, PatternSelected, OperatorApprovedCapability,
+  ManualStepRequired, PatternSelectionRefused, PatternSelectionNeedsEvidence,
+  PatternSelectionNeedsPolicy, NoAdmissiblePattern, StandingDestructiveAuthorization,
+}
+import gunbc.host.managed_host_unit_hold {
+  UnitHoldAcquisition, UnitHeld, UnitHoldRefused, UnitHoldProof, AdmittedUnitHoldSubject,
+}
 
 // ── THE IN-BAND RECOVERY ACCESS ROUTE ─────────────────────────────────────────────────────────
 //
@@ -30,7 +43,7 @@ import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
 // one. gunbc.machine_intake.bmc_rotation_route rotates FROM a working credential. So a board whose
 // Administrator password is unknown has no route at all: every existing arm asks, first, for the
 // thing that is missing. This module models the one route that starts without it -- reach the
-// machine's own host OS, drive the BMC from inside the chassis over KCS, actuate a factory reset --
+// machine's own host OS, drive the BMC from inside the chassis over the in-band system interface (SSIF), actuate a factory reset --
 // and it terminates by handing the factory credential to the EXISTING bmc_secure / bmc_onboard
 // factory-login-then-rotate path.
 //
@@ -71,7 +84,7 @@ import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
 // whose firmware would have accepted the write.
 
 fn recovery_firmware_requires_reset(firmware: BmcFirmwareVersion) -> Bool {
-  asrock_altrad8ud_published_factory_password_is_refused(
+  recovery_reset_is_authorized_by_measurement(
     policy: asrock_altrad8ud_published_factory_password_write_policy_for(firmware: firmware),
   )
 }
@@ -214,18 +227,18 @@ fn rescue_host_reachable(
 
 // ── STEP 2: THE IN-BAND CHANNEL, OBSERVED ──────────────────────────────────────────────────────
 //
-// WHAT MAKES THIS ROUTE EXIST AT ALL: the KCS channel needs no credential. On the captured unit every
+// WHAT MAKES THIS ROUTE EXIST AT ALL: the SSIF system interface needs no credential. On the captured unit every
 // call was made against /dev/ipmi0 with no -I lanplus and no user name or password on the command
 // line, and it still read the Administrator account out of the controller. That is the whole reason a
 // board with an unknown password is reachable: the host-to-BMC interface inside the chassis
 // authenticates by PHYSICAL POSITION, not by a secret. So the fact is not a comment beside a
 // function -- it is a type, and it is the type the route admits on.
-type KcsAccessWithoutCredential
-  = KcsChannelPasswordless {
+type SsifAccessWithoutCredential
+  = SsifChannelPasswordless {
       ipmi_interface: NonEmptyStr
       argv_credential_words: List<String>
     }
-  | KcsChannelNotObserved { detail: NonEmptyStr }
+  | SsifChannelNotObserved { detail: NonEmptyStr }
 
 // Passwordless is a claim about what was NOT on the command line, so it is made checkable rather than
 // asserted: the interface must not be a network one, and the credential-bearing words must be empty.
@@ -234,15 +247,15 @@ type KcsAccessWithoutCredential
 // channel admits nothing. The network interfaces are refused BY NAME because `ipmitool -I lanplus`
 // over the LAN DOES need a credential, and a route that accepted it would quietly be a route that
 // assumes the very password it set out to recover.
-fn kcs_channel_is_passwordless(channel: KcsAccessWithoutCredential) -> Bool {
+fn ssif_channel_is_passwordless(channel: SsifAccessWithoutCredential) -> Bool {
   match channel {
-    KcsChannelPasswordless { ipmi_interface, argv_credential_words } =>
+    SsifChannelPasswordless { ipmi_interface, argv_credential_words } =>
       (ipmi_interface as String) != ""
         && (ipmi_interface as String) != "lanplus"
         && (ipmi_interface as String) != "lan"
         && (ipmi_interface as String) != "open"
         && list_length(items: argv_credential_words) == 0
-    KcsChannelNotObserved { detail: _ } => false
+    SsifChannelNotObserved { detail: _ } => false
   }
 }
 
@@ -264,12 +277,12 @@ fn in_band_administrator_account_reads_back(account: InBandAdministratorAccount)
 
 // The channel observation as one carrier: which unit, which rescue host read it, the device node and
 // drivers, the passwordless fact, and the Administrator account that came back.
-type InBandKcsChannelObservation {
+type InBandSsifChannelObservation {
   subject: MachineIntakeSubject
   rescue_host_address: Ipv4Address
   device_node: NonEmptyStr
   kernel_modules: List<LinuxKernelModuleName>
-  channel: KcsAccessWithoutCredential
+  channel: SsifAccessWithoutCredential
   administrator: InBandAdministratorAccount
   evidence: EvidenceRef
   observed_at: EpochMs
@@ -278,13 +291,13 @@ type InBandKcsChannelObservation {
 // The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
 // drivers that host reported. A channel observation lifted from a different machine, or from before
 // the rescue OS booted, is not a precondition of anything -- it is a story about some BMC.
-fn in_band_kcs_channel_admits(
-  observation: InBandKcsChannelObservation,
+fn in_band_ssif_channel_admits(
+  observation: InBandSsifChannelObservation,
   reachability: RescueHostReachability,
 ) -> Bool {
   match reachability {
     RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
-      kcs_channel_is_passwordless(channel: observation.channel)
+      ssif_channel_is_passwordless(channel: observation.channel)
         && in_band_administrator_account_reads_back(account: observation.administrator)
         && observation.rescue_host_address == a
         && (observation.device_node as String) == (ipmi.device_node as String)
@@ -299,7 +312,7 @@ fn in_band_kcs_channel_admits(
 // Two writes, both privileged, both registered as rows in gunbc.auth.privileged_effect_census and
 // both run through gunbc.auth.authorization_pattern_selection:
 //
-//   WRITE 1 -- the KCS Set User Password that puts a temporary credential on the Administrator
+//   WRITE 1 -- the in-band Set User Password that puts a temporary credential on the Administrator
 //     account, which is what makes the authenticated Redfish session of Write 2 possible (the
 //     in-band channel cannot READ the existing password, so a known one is written). Reversible: the
 //     next reset clears it and rotation replaces it. EXECUTED BUT NOT BYTE-CAPTURED -- see
@@ -329,12 +342,12 @@ fn reset_to_defaults_clears_unknown_credential(kind: RedfishResetToDefaultsType)
 }
 
 type RecoveryActuationKind
-  = KcsTemporaryAdministratorPassword
+  = SsifTemporaryAdministratorPassword
   | RedfishManagerResetToDefaults { reset_type: RedfishResetToDefaultsType }
 
 fn recovery_actuation_is_destructive(kind: RecoveryActuationKind) -> Bool {
   match kind {
-    KcsTemporaryAdministratorPassword => false
+    SsifTemporaryAdministratorPassword => false
     RedfishManagerResetToDefaults { reset_type: r } => reset_to_defaults_clears_unknown_credential(kind: r)
   }
 }
@@ -345,11 +358,11 @@ fn recovery_reset_actuation() -> RecoveryActuationKind {
 
 fn recovery_actuation_kinds_are_same(a: RecoveryActuationKind, b: RecoveryActuationKind) -> Bool {
   match a {
-    KcsTemporaryAdministratorPassword =>
-      match b { KcsTemporaryAdministratorPassword => true  RedfishManagerResetToDefaults { reset_type: _ } => false }
+    SsifTemporaryAdministratorPassword =>
+      match b { SsifTemporaryAdministratorPassword => true  RedfishManagerResetToDefaults { reset_type: _ } => false }
     RedfishManagerResetToDefaults { reset_type: t1 } =>
       match b {
-        KcsTemporaryAdministratorPassword => false
+        SsifTemporaryAdministratorPassword => false
         RedfishManagerResetToDefaults { reset_type: t2 } => reset_arms_are_same(t1: t1, t2: t2)
       }
   }
@@ -364,7 +377,7 @@ fn reset_arms_are_same(t1: RedfishResetToDefaultsType, t2: RedfishResetToDefault
 }
 
 // WHAT THE WRITES LOOK LIKE IN THE LEDGER. Each is a gunbc.auth.privileged_effect_census row
-// (recovery_kcs_set_user_password_effect, recovery_manager_reset_to_defaults_effect) in the standing
+// (recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect) in the standing
 // scope selection assigns; the carrier below is the outcome of running the selection over those rows.
 // It is a carrier and not a boolean because DESIGN §4d: a write is authorized, or it is refused with
 // the refusal the selection actually gave. A destructive arm that arrives without its operator
@@ -386,41 +399,192 @@ fn recovery_write_is_admissible(authorization: RecoveryWriteAuthorization) -> Bo
   }
 }
 
-// THE WRITES, AS THEY ACTUALLY HAPPENED. Both were witnessed by the operator's own terminal and
-// NEITHER request nor response was byte-captured: the temporary password was wiped by the reset
-// before it could be re-read, so it is not reproducible, and the ResetToDefaults exchange was
-// observed without saving bodies (both stated in the capture README). So the honest carrier is
-// ExecutedWithoutByteCapture, and the route's success condition does NOT rest on it -- it rests on
-// the post-reset readback below. A write record can therefore prove an ATTEMPT and nothing more.
-type RecoveryWriteRecord
-  = ExecutedWithCapturedExchange {
-      kind: RecoveryActuationKind
-      request: EvidenceRef
-      response: EvidenceRef
-      observed_at: EpochMs
-    }
-  | ExecutedWithoutByteCapture { kind: RecoveryActuationKind, observed_exit: Int, detail: NonEmptyStr }
-  | NotExecuted { kind: RecoveryActuationKind }
-
-fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
-  match record {
-    ExecutedWithCapturedExchange { kind: k, request: _, response: _, observed_at: _ } =>
-      recovery_actuation_kinds_are_same(a: k, b: kind)
-    ExecutedWithoutByteCapture { kind: k, observed_exit: _, detail: _ } => recovery_actuation_kinds_are_same(a: k, b: kind)
-    NotExecuted { kind: _ } => false
-  }
-}
-
-fn recovery_write_grounds_success(record: RecoveryWriteRecord) -> Bool {
-  match record {
-    ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
-    ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
-    NotExecuted { kind: _ } => false
-  }
-}
-
-// ── THE READBACK: THE ONLY THING THAT SAYS THE RESET HAPPENED ──────────────────────────────────
+// THE ADMISSION GATES THEMSELVES: WHICH DECLARATIONS THE CENSUS ROWS ARE FILED AGAINST.
 //
+// The two recovery write rows in gunbc.auth.privileged_effect_census carry `site` pointing at the two
+// functions below. That is the whole reason those rows exist: a census row whose decl_name names nothing is
+// a classification of a write that is not made anywhere (DESIGN §3 -- "a stale symbol is decidable from the
+// Node tree"; here it would be worse than stale, it was never there). A row must point at the code that
+// DECIDES the write, so ledger and gate cannot drift: change the gate and the row is on its face describing
+// something that no longer admits.
+fn recovery_in_band_password_write_site() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write")
+}
+
+fn recovery_manager_reset_site() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults")
+}
+
+fn recovery_census_row_at(site_ref: DeclarationRef) -> PrivilegedEffectSite? {
+  filter(privileged_effect_census, row => declaration_ref_eq(a: row.site, b: site_ref)) |> first()
+}
+
+// WHAT THE LEDGER HAS TO SAY ABOUT A RECOVERY WRITE. `site_verdict` is the census's own judgment: it asks
+// gunbc.auth.authorization_pattern_selection what pattern the effect's characteristics force, then joins
+// that against what the row claims is realized. Nothing here is a boolean the route carries with it. Two
+// questions are asked, at two strengths, because the two writes are not alike:
+//
+//   * `recovery_ledger_conforms` -- a row exists, its selection is a pattern (not a refusal, not "needs
+//     evidence", not "not decidable"), and the row's `realized` agrees with what was selected. This is the
+//     bar for the reversible temporary password; demanding operator approval there would have the census
+//     claim a destructive standing for a write the next rotation undoes.
+//   * `recovery_ledger_selects_operator_approval` -- on top of that, the selected pattern IS
+//     OperatorApprovedCapability and the row realizes an approval capability. Only the reset is held to
+//     this, and what makes it a gate rather than a redundancy is that it reads the pattern the SELECTION
+//     produced from the effect's characteristics: soften the reset's `reversibility` and selection moves to
+//     a revocable grant, so the gate closes. A gate that merely restated the row's own field would be
+//     decoration.
+fn recovery_ledger_conforms(site_ref: DeclarationRef) -> Bool {
+  match recovery_census_row_at(site_ref: site_ref) {
+    Absent => false
+    Present { value: row } =>
+      match site_verdict(row: row) {
+        SiteVerdict { site: _, selection: selection, conformance: conformance } =>
+          match selection {
+            PatternSelected { pattern: _, receipt: _ } =>
+              match conformance {
+                Conforms => true
+                Diverges => false
+                DivergesWithReason { reason: _ } => false
+                SiteNotDecidable { standing: _ } => false
+              }
+            ManualStepRequired { step: _, receipt: _ } => false
+            PatternSelectionRefused { defects: _ } => false
+            PatternSelectionNeedsEvidence { needs: _ } => false
+            PatternSelectionNeedsPolicy { survivors: _ } => false
+            NoAdmissiblePattern { causes: _, scope: _ } => false
+          }
+      }
+  }
+}
+
+fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Bool {
+  match recovery_census_row_at(site_ref: site_ref) {
+    Absent => false
+    Present { value: row } =>
+      match site_verdict(row: row) {
+        SiteVerdict { site: _, selection: selection, conformance: conformance } =>
+          match selection {
+            PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
+              match conformance {
+                Conforms => match row.realized {
+                  RealizedApprovalCapability => true
+                  _ => false
+                }
+                Diverges => false
+                DivergesWithReason { reason: _ } => false
+                SiteNotDecidable { standing: _ } => false
+              }
+            ManualStepRequired { step: _, receipt: _ } => false
+            PatternSelectionRefused { defects: _ } => false
+            PatternSelectionNeedsEvidence { needs: _ } => false
+            PatternSelectionNeedsPolicy { survivors: _ } => false
+            NoAdmissiblePattern { causes: _, scope: _ } => false
+          }
+      }
+  }
+}
+
+// THE GATE ON THE IN-BAND PASSWORD WRITE. Admits only against its own census row, whose selection the
+// selection module derives from the effect's own characteristics, and refuses unless the channel the route
+// claims really was passwordless -- `ssif_channel_is_passwordless` is re-checked on the carried channel
+// rather than trusted from the outcome. That re-check is the point: a temporary Administrator password is
+// being written into the controller's user table by a caller asserting that no credential was involved, and
+// the carrier for that assertion is the argv the channel observation carries.
+fn admit_recovery_in_band_password_write(route: RecoveryInBandRoute) -> RecoveryWriteAuthorization {
+  let kind = recovery_in_band_password_actuation()
+  if recovery_ledger_conforms(site_ref: recovery_in_band_password_write_site()) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the census verdict at this site does not select the operator-approved capability the effect's classification forces" as NonEmptyStr }
+  } else if ssif_channel_is_passwordless(channel: route.channel.admits) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the in-band channel is not admitted as passwordless, so this is not the write the census row classifies" as NonEmptyStr }
+  } else {
+    RecoveryWriteAdmitted {
+      kind: kind,
+      authorized_by: recovery_in_band_password_write_site(),
+      destructive: false,
+      operator_approval_required: false,
+    }
+  }
+}
+
+// THE GATE ON THE DESTRUCTIVE RESET -- the only place a ResetAll may be decided. Each condition is a
+// different mistake, so each has its own cause:
+//   * the ledger admits it: the census row exists and its selection is the operator-approved capability
+//     (irreversibility forces that -- a grant that could be revoked cannot stand behind what no reapply
+//     undoes), and the row's `realized` agrees rather than merely sitting beside it;
+//   * the run acts under the named recovery ruling, matched on BOTH fields so a destructive arm cannot
+//     borrow some other standing's blanket approval, and the ruling's interlock is actually rostered --
+//     `ruling_discharge_interlock_defect` refuses a pending interlock, which is the case today, so this
+//     gate is closed until the hold is rostered rather than pretending to be open;
+//   * the arm is the one that clears the user table (an arm that keeps the user table is a destructive
+//     actuation that does not solve the problem justifying it);
+//   * this firmware release was measured refusing the published password, matched as the coproduct it is;
+//   * the unit's durable hold is held, and held for THIS unit: a ResetAll returns every account, every
+//     password and the network configuration of one chassis to factory state, so it may not be actuated on
+//     a unit somebody else is driving, nor on a unit whose key merely shares a prefix with the subject.
+fn admit_recovery_manager_reset_to_defaults(
+  route: RecoveryInBandRoute,
+  under_ruling: StandingDestructiveAuthorization,
+  unit_hold: UnitHoldAcquisition?,
+) -> RecoveryWriteAuthorization {
+  let kind = recovery_reset_actuation()
+  if recovery_ledger_selects_operator_approval(site_ref: recovery_manager_reset_site()) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the reset is not admitted by the census verdict: no operator-approved capability realized at this site" as NonEmptyStr }
+  } else if match ruling_discharge_interlock_defect(site_ref: recovery_manager_reset_site(), ruling: under_ruling) {
+    Present { value: _ } => true
+    Absent => false
+  } {
+    RecoveryWriteRefused { kind: kind, cause: "the ruling's interlock is not rostered against this site, so no standing discharges the reset's irreversibility" as NonEmptyStr }
+  } else if reset_arms_are_same(t1: route.reset.reset_type, t2: ResetAll) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the arm is not ResetAll, so it keeps the user table holding the unknown password" as NonEmptyStr }
+  } else if recovery_reset_is_authorized_by_measurement(policy: route.password_write_policy) == false {
+    RecoveryWriteRefused { kind: kind, cause: "this firmware release has no measured refusal, so a reset is not warranted" as NonEmptyStr }
+  } else if recovery_hold_admits_this_unit(unit_key: route.subject.qualification.unit_key, hold: unit_hold) == false {
+    RecoveryWriteRefused { kind: kind, cause: "the unit hold is not held for this unit, so the chassis is not this run's to wipe" as NonEmptyStr }
+  } else {
+    RecoveryWriteAdmitted {
+      kind: kind,
+      authorized_by: recovery_manager_reset_site(),
+      destructive: true,
+      operator_approval_required: true,
+    }
+  }
+}
+
+// THE HOLD, AS OBSERVED. Absent means the run never took the hold, which is a refusal and not a default;
+// a refused acquisition is a refusal carrying the store's own words about who holds the unit; and the proof
+// that IS held must name the SAME unit as the recovery subject -- compared as whole strings, not as prefixes
+// or by eye. A recovery that wipes a chassis while a different run holds its maintenance hold is the failure
+// this exists to make unrepresentable. The proof itself cannot be fabricated here: UnitHoldProof is minted
+// only by the hold module's admit_callers list, so this predicate can be exercised in its refusals and the
+// admitting arm is gated by construction rather than by a flag.
+fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> Bool {
+  match hold {
+    Absent => false
+    Present { value: acquisition } =>
+      match acquisition {
+        UnitHoldRefused { reason: _ } => false
+        UnitHeld { proof: proof } =>
+          match proof.subject {
+            AdmittedUnitHoldSubject { unit: unit } => (unit as String) == (unit_key as String)
+          }
+      }
+  }
+}
+
+// AN ADMISSION IS ONLY GOOD IF THE GATE THAT OWNS THE WRITE ISSUED IT. converge checks the `authorized_by`
+// of each authorization it is handed against the declaration the census row is filed at, so an arm carrying
+// some other site -- or no site -- does not purchase a handoff. The admitted arms themselves cannot be
+// fabricated for the destructive write outside this module's own laws: its admitting arm needs a
+// UnitHoldAcquisition whose proof gunbc.host.managed_host_unit_hold mints only from its live acquires.
+fn recovery_admission_issued_by(authorization: RecoveryWriteAuthorization, gate: DeclarationRef) -> Bool {
+  match authorization {
+    RecoveryWriteAdmitted { kind: _, authorized_by: issuer, destructive: _, operator_approval_required: _ } =>
+      declaration_ref_eq(a: issuer, b: gate)
+    RecoveryWriteRefused { kind: _, cause: _ } => false
+  }
+}
+
 // "IT REFUSED" IS NOT THE SUCCESS SIGNAL. A 401 means the credential we sent is not the credential
 // the controller holds -- including the case where the reset did nothing at all. What says the reset
 // happened is HTTP 403 naming Base.1.16.0.PasswordChangeRequired: the published factory credential
@@ -467,7 +631,7 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochM
 
 // ── THE ROUTE RECORD ───────────────────────────────────────────────────────────────────────────
 //
-// CARRIED FIELDS, AND WHY. The rescue host address and the KCS device node are this route's own
+// CARRIED FIELDS, AND WHY. The rescue host address and the in-band device node are this route's own
 // facts -- nothing else in the intake records that a rescue OS sat at that address, on that node --
 // so they live here. The CONTROLLER is carried as the observed BmcAccessObservation rather than as an
 // endpoint string, so the recovery is checked against the SAME endpoint the control-route join checks;
@@ -478,7 +642,7 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochM
 type RecoveryInBandRoute {
   subject: MachineIntakeSubject
   rescue_host: RescueHostReachability
-  kcs: InBandKcsChannelObservation
+  in_band: InBandSsifChannelObservation
   controller: BmcAccessObservation
   password_write_policy: PublishedFactoryPasswordWritePolicy
   operator_approval: DeclarationRef
@@ -504,6 +668,7 @@ type InBandRecoveryOutcome
   | RecoveryChannelUnobserved { detail: NonEmptyStr }
   | RecoveryFirmwarePolicyNotMeasured { firmware: BmcFirmwareVersion }
   | RecoveryWriteUnverified { kind: RecoveryActuationKind }
+  | RecoveryWriteNotAdmitted { kind: RecoveryActuationKind, cause: NonEmptyStr }
   | RecoveryReadbackRefusedFactoryCredential { readback: RecoveryFactoryCredentialReadback }
 
 type InBandRecoveryStanding sole_constructor {
@@ -539,9 +704,9 @@ data recovery_channel_observation_step: DeclarationRef = decl_ref(
   decl_name: "recovery_channel_observation_step",
 )
 
-data recovery_kcs_password_write_step: DeclarationRef = decl_ref(
+data recovery_in_band_password_write_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_kcs_password_write_step",
+  decl_name: "recovery_in_band_password_write_step",
 )
 
 data recovery_reset_to_defaults_step: DeclarationRef = decl_ref(
@@ -568,7 +733,7 @@ fn recovery_convergence_steps() -> List<DeclarationRef> {
   [
     recovery_reachable_host_step,
     recovery_channel_observation_step,
-    recovery_kcs_password_write_step,
+    recovery_in_band_password_write_step,
     recovery_reset_to_defaults_step,
     recovery_factory_credential_readback_step,
     recovery_onboard_handoff_step,
@@ -595,15 +760,17 @@ fn recovery_handoff_requires() -> List<DeclarationRef> {
 // credential is active.
 fn converge_in_band_recovery(
   route: RecoveryInBandRoute,
-  kcs_write: RecoveryWriteRecord,
+  in_band_write: RecoveryWriteRecord,
   reset_write: RecoveryWriteRecord,
   readback: RecoveryFactoryCredentialReadback,
+  in_band_admission: RecoveryWriteAuthorization,
+  reset_admission: RecoveryWriteAuthorization,
 ) -> InBandRecoveryStanding {
   match recovery_host_refusal(reachability: route.rescue_host) {
     Present { value: c } =>
       InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
     Absent =>
-      if in_band_kcs_channel_admits(observation: route.kcs, reachability: route.rescue_host) == false {
+      if in_band_ssif_channel_admits(observation: route.in_band, reachability: route.rescue_host) == false {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
@@ -611,17 +778,61 @@ fn converge_in_band_recovery(
             detail: "the in-band channel was not read from the rescue host declared reachable, was not passwordless, or read no ADMINISTRATOR account",
           },
         }
-      } else if asrock_altrad8ud_published_factory_password_is_refused(policy: route.password_write_policy) == false {
+      } else if recovery_reset_is_authorized_by_measurement(policy: route.password_write_policy) == false {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
           outcome: RecoveryFirmwarePolicyNotMeasured { firmware: recovery_policy_firmware(policy: route.password_write_policy) },
         }
-      } else if recovery_write_was_attempted(record: kcs_write, kind: KcsTemporaryAdministratorPassword) == false {
+      } else if recovery_admission_issued_by(authorization: in_band_admission, gate: recovery_in_band_password_write_site()) == false {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
-          outcome: RecoveryWriteUnverified { kind: KcsTemporaryAdministratorPassword },
+          outcome: RecoveryWriteNotAdmitted {
+            kind: recovery_in_band_password_actuation(),
+            cause: "the password write was not admitted by the gate its census row is filed at" as NonEmptyStr,
+          },
+        }
+      } else if recovery_admission_issued_by(authorization: reset_admission, gate: recovery_manager_reset_site()) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryWriteNotAdmitted {
+            kind: recovery_reset_actuation(),
+            cause: "the reset was not admitted by the gate its census row is filed at" as NonEmptyStr,
+          },
+        }
+      } else if match in_band_admission {
+        RecoveryWriteRefused { kind: _, cause: _ } => true
+        RecoveryWriteAdmitted { kind: _, authorized_by: _, destructive: _, operator_approval_required: _ } => false
+      } {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: match in_band_admission {
+            RecoveryWriteRefused { kind: k, cause: cause } => RecoveryWriteNotAdmitted { kind: k, cause: cause }
+            RecoveryWriteAdmitted { kind: k, authorized_by: _, destructive: _, operator_approval_required: _ } =>
+              RecoveryWriteNotAdmitted { kind: k, cause: "unreachable: admitted arm" as NonEmptyStr }
+          },
+        }
+      } else if match reset_admission {
+        RecoveryWriteRefused { kind: _, cause: _ } => true
+        RecoveryWriteAdmitted { kind: _, authorized_by: _, destructive: _, operator_approval_required: _ } => false
+      } {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: match reset_admission {
+            RecoveryWriteRefused { kind: k, cause: cause } => RecoveryWriteNotAdmitted { kind: k, cause: cause }
+            RecoveryWriteAdmitted { kind: k, authorized_by: _, destructive: _, operator_approval_required: _ } =>
+              RecoveryWriteNotAdmitted { kind: k, cause: "unreachable: admitted arm" as NonEmptyStr }
+          },
+        }
+      } else if recovery_write_was_attempted(record: in_band_write, kind: SsifTemporaryAdministratorPassword) == false {
+        InBandRecoveryStanding {
+          subject: route.subject,
+          route: route,
+          outcome: RecoveryWriteUnverified { kind: SsifTemporaryAdministratorPassword },
         }
       } else if recovery_write_was_attempted(record: reset_write, kind: recovery_reset_actuation()) == false {
         InBandRecoveryStanding {
@@ -642,7 +853,7 @@ fn converge_in_band_recovery(
           outcome: RecoveryHandedToOnboarding {
             controller: route.controller,
             readback: readback,
-            writes: [kcs_write, reset_write],
+            writes: [in_band_write, reset_write],
           },
         }
       }
@@ -651,8 +862,23 @@ fn converge_in_band_recovery(
 
 fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcFirmwareVersion {
   match policy {
-    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, completion_code_text: _, capture: _ } => f
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _ } => f
     NotMeasured { firmware: f } => f
+  }
+}
+
+// THE ONE MEASUREMENT THE RESET RESTS ON, MATCHED AS THE COPRODUCT IT IS. There is deliberately no
+// boolean here: a Bool over this coproduct would collapse "this release was measured refusing" and
+// "nobody ever looked" into one bit the reader cannot interrogate, and the two demand opposite
+// actions -- one authorizes a factory reset, the other refuses the route. Matching the arm is the
+// check. Nor does this module re-check the completion code: the row is keyed by the release, so the
+// arm the catalog returns IS the measurement, and its code is asserted where the code lives
+// (extdeps.bmc.ipmi) and where the row is filed (extdeps.boards.asrock_rack). Re-asserting it here
+// would be a second copy of one fact, free to drift from the row it claims to vouch for.
+fn recovery_reset_is_authorized_by_measurement(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => true
+    NotMeasured { firmware: _ } => false
   }
 }
 
@@ -699,7 +925,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
         RescueMediumNotExecuted { medium: _ } =>
           "the only rescue provider modelled for this unit is declared and has never been executed; use the executed medium or treat the unit as physical-only" as NonEmptyStr
       }
-    RecoveryFirmwarePolicyUnknown { release: _ } =>
+    RecoveryFirmwarePolicyUnknown { firmware: _ } =>
       "this firmware release has never been measured for the published-password write policy: read it before spending a destructive reset" as NonEmptyStr
     RecoveryReadbackInconclusive { detail: _ } =>
       "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
@@ -714,6 +940,11 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     RecoveryFirmwarePolicyNotMeasured { firmware: f } => Present { value: RecoveryFirmwarePolicyUnknown { firmware: f } }
     RecoveryWriteUnverified { kind: _ } =>
       Present { value: RecoveryReadbackInconclusive { detail: "a privileged write of the reset sequence was not attempted against the arm the route names" } }
+    // A write the ledger does not admit leaves the unit locked AND the route blocked, so it is a
+    // named requirement rather than a silent stop: the reader has to be told which write was refused,
+    // because "go find a rescue USB" would be the wrong next action for it.
+    RecoveryWriteNotAdmitted { kind: _, cause: cause } =>
+      Present { value: RecoveryReadbackInconclusive { detail: cause } }
     RecoveryReadbackRefusedFactoryCredential { readback: _ } =>
       Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
   }
@@ -735,13 +966,13 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
 //   04_post_reset_readback.json -- the post-reset login with the published factory credential,
 //     answered HTTP 403 with Base.1.16.0.PasswordChangeRequired.
 //
-// NOT cited, because it was not captured: the KCS temporary-password write, and the ResetToDefaults
+// NOT cited, because it was not captured: the in-band temporary-password write, and the ResetToDefaults
 // request/response bodies. The capture README records both as in-session-observed; the temporary
 // password was wiped by the reset and cannot be reproduced. That is what
 // RecoveryWriteRecord::ExecutedWithoutByteCapture is for, and why the standing's success arm leans on
 // the readback instead.
 data recovery_inband_channel_capture: Sha256Digest = Sha256Digest {
-  hex: "ec0869623cf9cac1642080ee1711c35c7c0580bd15feee9d5cdeb02ce3b3cb51",
+  hex: "8c1750d13a6c9832b459a61b8aadab246f4e74f138d85861e2758200c07202a4",
 }
 
 data recovery_post_reset_readback_capture: Sha256Digest = Sha256Digest {
@@ -812,28 +1043,28 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant,
   )
-  let observation = InBandKcsChannelObservation {
+  let observation = InBandSsifChannelObservation {
     subject: recovery_test_subject(),
     rescue_host_address: recovery_controller_address(),
     device_node: recovery_ipmi_device_node,
     kernel_modules: recovery_ipmi_kernel_modules,
-    channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+    channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant,
   }
-  in_band_kcs_channel_admits(observation: observation, reachability: reached) == false
+  in_band_ssif_channel_admits(observation: observation, reachability: reached) == false
 }
 
 test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
-  kcs_channel_is_passwordless(
-    channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: ["-P", "0penBmc"] },
+  ssif_channel_is_passwordless(
+    channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: ["-P", "0penBmc"] },
   ) == false
-    && kcs_channel_is_passwordless(
-      channel: KcsChannelPasswordless { ipmi_interface: "lanplus", argv_credential_words: [] },
+    && ssif_channel_is_passwordless(
+      channel: SsifChannelPasswordless { ipmi_interface: "lanplus", argv_credential_words: [] },
     ) == false
-    && kcs_channel_is_passwordless(
-      channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+    && ssif_channel_is_passwordless(
+      channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
     )
 }
 
@@ -882,25 +1113,31 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
 
 test fn a_release_the_catalog_lacks_refuses_the_route_rather_than_asserting_recovery() -> Bool {
   let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(firmware: recovery_unmeasured_firmware())
-  asrock_altrad8ud_published_factory_password_is_refused(policy: unmeasured) == false
-    && asrock_altrad8ud_published_factory_password_is_refused(policy: recovery_measured_refusal_policy())
-    && recovery_firmware_requires_reset(firmware: recovery_measured_firmware())
-    && recovery_firmware_requires_reset(firmware: recovery_unmeasured_firmware()) == false
+  let measured = recovery_measured_refusal_policy()
+  // each release lands on the arm it belongs to, and only one of them warrants a reset
+  (match unmeasured { NotMeasured { firmware: _ } => true FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => false })
+  && (match measured { NotMeasured { firmware: _ } => false FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => true })
+  && recovery_firmware_requires_reset(firmware: recovery_measured_firmware())
+  && recovery_firmware_requires_reset(firmware: recovery_unmeasured_firmware()) == false
 }
 
 test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
   let route = recovery_test_route(policy: recovery_measured_refusal_policy())
   let without_readback = converge_in_band_recovery(
     route: route,
-    kcs_write: recovery_kcs_write_record(),
+    in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: ReadbackInconclusive { detail: "no body was saved" },
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
   )
   let with_readback = converge_in_band_recovery(
     route: route,
-    kcs_write: recovery_kcs_write_record(),
+    in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
   )
   recovery_standing_handed_off(standing: without_readback) == false
     && recovery_standing_handed_off(standing: with_readback)
@@ -915,9 +1152,11 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
 test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recovered() -> Bool {
   let standing = converge_in_band_recovery(
     route: recovery_test_route(policy: recovery_measured_refusal_policy()),
-    kcs_write: recovery_kcs_write_record(),
+    in_band_write: recovery_in_band_write_record(),
     reset_write: NotExecuted { kind: recovery_reset_actuation() },
     readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
   )
   match standing.outcome {
     RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
@@ -929,9 +1168,11 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
 test fn a_policy_that_was_never_measured_on_this_release_cannot_ground_a_destructive_reset() -> Bool {
   let standing = converge_in_band_recovery(
     route: recovery_test_route(policy: NotMeasured { firmware: recovery_measured_firmware() }),
-    kcs_write: recovery_kcs_write_record(),
+    in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: recovery_factory_credential_readback(),
+    in_band_admission: recovery_admitted_in_band_write(),
+    reset_admission: recovery_admitted_reset_write(),
   )
   match standing.outcome {
     RecoveryFirmwarePolicyNotMeasured { firmware: f } =>
@@ -1029,12 +1270,12 @@ fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryI
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant,
     ),
-    kcs: InBandKcsChannelObservation {
+    in_band: InBandSsifChannelObservation {
       subject: recovery_test_subject(),
       rescue_host_address: recovery_rescue_host_address(),
       device_node: recovery_ipmi_device_node,
       kernel_modules: recovery_ipmi_kernel_modules,
-      channel: KcsChannelPasswordless { ipmi_interface: "kcs", argv_credential_words: [] },
+      channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant,
@@ -1046,9 +1287,33 @@ fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryI
   }
 }
 
-fn recovery_kcs_write_record() -> RecoveryWriteRecord {
+// WHAT converge IS HANDED: THE DECISIONS THE RUN OBTAINED FROM THE TWO GATES. They are parameters rather
+// than results converge computes because the reset gate's admitting arm is NOT constructible at model time:
+// it requires a UnitHoldAcquisition whose proof the hold module mints only from its own live acquires
+// (UnitHoldProof is sole_constructor there, unit_hold_minted is admit_callers-gated). So no caller -- not
+// even this module's own laws -- can manufacture a reset that the ledger admits with the unit held. That is
+// the gate working, and the laws below assert exactly that at the refusals.
+fn recovery_admitted_in_band_write() -> RecoveryWriteAuthorization {
+  RecoveryWriteAdmitted {
+    kind: recovery_in_band_password_actuation(),
+    authorized_by: recovery_in_band_password_write_site(),
+    destructive: false,
+    operator_approval_required: false,
+  }
+}
+
+fn recovery_admitted_reset_write() -> RecoveryWriteAuthorization {
+  RecoveryWriteAdmitted {
+    kind: recovery_reset_actuation(),
+    authorized_by: recovery_manager_reset_site(),
+    destructive: true,
+    operator_approval_required: true,
+  }
+}
+
+fn recovery_in_band_write_record() -> RecoveryWriteRecord {
   ExecutedWithoutByteCapture {
-    kind: KcsTemporaryAdministratorPassword,
+    kind: SsifTemporaryAdministratorPassword,
     observed_exit: 0,
     detail: "operator-observed only; wiped by the reset before it could be re-read",
   }
