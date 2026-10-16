@@ -7,10 +7,10 @@ import std.nat { Nat, Zero }
 // undeclared shared leaf, the emitter refused it (TypeDeclNotDeclared -> compile_error!); the
 // subject is v1.compiler.emit_rust shared_layer_of_resolution.
 type NatPair {
-  first: Nat
-  second: Nat
+  left: Nat
+  right: Nat
 }
 
 fn build_nat_pair() -> NatPair {
-  NatPair { first: Zero, second: Zero }
+  NatPair { left: Zero, right: Zero }
 }
