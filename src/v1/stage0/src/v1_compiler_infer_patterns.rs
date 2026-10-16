@@ -4,6 +4,7 @@
 use self::ConstructorRoster::*;
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_primitive_projection::{never_type_declaration, never_type_qualified_path};
@@ -13,7 +14,8 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{
-    lookup_type, lookup_type_by_name, lookup_type_for, symbol_index_lookup,
+    declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
+    lookup_type_by_name, lookup_type_for, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
@@ -970,50 +972,42 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
 
 pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
-        Some(def) => def,
-        std::option::Option::None => match n.inferred.clone() {
-            Some(inf) => match inf.as_ref() {
-                Resolved { node: target } => target.clone(),
-                _ => n,
-            },
-            std::option::Option::None => n,
+        Some(def) => def.clone(),
+        std::option::Option::None => match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => n.clone(),
         },
     }
 }
 
-pub fn never_home_local_declaration(env: Rc<TypeEnv>) -> std::option::Option<Rc<Node>> {
-    if (env.module_path.clone() != never_type_declaration().module_path.clone()) {
-        std::option::Option::None
-    } else {
-        match v1_rt::map_get(
+pub fn never_home_local_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match (env.module_path.clone() == never_type_declaration().module_path.clone()) {
+        true => match v1_rt::map_get(
             &env.str_bindings.clone(),
             never_type_declaration().decl_name.clone(),
         ) {
-            Some(binding) => std::option::Option::Some(binding.resolved.clone()),
+            Some(binding) => Some(binding.resolved.clone()),
             std::option::Option::None => std::option::Option::None,
-        }
+        },
+        false => std::option::Option::None,
     }
 }
 
-pub fn never_identity_node(env: Rc<TypeEnv>) -> std::option::Option<Rc<Node>> {
+pub fn never_identity_node(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
     match crate::v1_compiler_infer_env::symbol_index_lookup(
         env.symbol_index.clone(),
         crate::std_primitive_projection::never_type_qualified_path(),
     ) {
-        Some(indexed) => std::option::Option::Some(indexed),
-        std::option::Option::None => never_home_local_declaration(env.clone()),
+        Some(indexed) => Some(indexed.clone()),
+        std::option::Option::None => match never_home_local_declaration(env.clone()) {
+            Some(local) => Some(local.clone()),
+            std::option::Option::None => std::option::Option::None,
+        },
     }
 }
 
 pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {
     (n.occurrence_identity.clone() == identity.occurrence_identity.clone())
-        || match n.ident.clone() {
-            std::option::Option::None => false,
-            Some(id) => match identity.ident.clone() {
-                std::option::Option::None => false,
-                Some(bid) => (id == bid),
-            },
-        }
 }
 
 pub fn node_names_never_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
@@ -1022,14 +1016,16 @@ pub fn node_names_never_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         env.source_indices.clone(),
         env.clone(),
     ) {
-        Some(d) => crate::std_decl_ref::declaration_ref_eq(d, never_type_declaration()),
+        Some(d) => crate::std_decl_ref::declaration_ref_eq(d.clone(), never_type_declaration()),
         std::option::Option::None => {
             match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
                 n.clone(),
                 env.source_indices.clone(),
                 env.clone(),
             ) {
-                Some(d) => crate::std_decl_ref::declaration_ref_eq(d, never_type_declaration()),
+                Some(d) => {
+                    crate::std_decl_ref::declaration_ref_eq(d.clone(), never_type_declaration())
+                }
                 std::option::Option::None => false,
             }
         }
@@ -1042,12 +1038,12 @@ pub fn node_is_never_declaration(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
         Some(identity) => {
             let peeled = peel_never_identity_candidate(resolved.clone(), env.clone());
             let peeled2 = peel_never_identity_candidate(peeled.clone(), env.clone());
-            candidate_joins_never_identity(resolved.clone(), identity.clone())
-                || candidate_joins_never_identity(peeled.clone(), identity.clone())
-                || candidate_joins_never_identity(peeled2.clone(), identity.clone())
-                || node_names_never_declaration(resolved.clone(), env.clone())
-                || node_names_never_declaration(peeled.clone(), env.clone())
-                || node_names_never_declaration(peeled2.clone(), env.clone())
+            (((((candidate_joins_never_identity(resolved.clone(), identity.clone())
+                || candidate_joins_never_identity(peeled.clone(), identity.clone()))
+                || candidate_joins_never_identity(peeled2.clone(), identity.clone()))
+                || node_names_never_declaration(resolved.clone(), env.clone()))
+                || node_names_never_declaration(peeled.clone(), env.clone()))
+                || node_names_never_declaration(peeled2.clone(), env.clone()))
         }
     }
 }
@@ -1055,12 +1051,14 @@ pub fn node_is_never_declaration(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     if (resolved.connective.clone() == Connective::Disj) {
         ((resolved.children.clone().len() as i64) == 0)
-    } else if ((resolved.connective.clone() != Connective::NoConnective)
-        || ((resolved.children.clone().len() as i64) != 0))
-    {
-        false
     } else {
-        node_is_never_declaration(resolved.clone(), env.clone())
+        if ((resolved.connective.clone() != Connective::NoConnective)
+            || ((resolved.children.clone().len() as i64) != 0))
+        {
+            false
+        } else {
+            node_is_never_declaration(resolved.clone(), env.clone())
+        }
     }
 }
 
