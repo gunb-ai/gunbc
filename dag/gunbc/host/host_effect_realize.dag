@@ -5156,8 +5156,7 @@ type LiveDeployPreambleRun = LiveDeployPreambleRun { state: LiveDeployPreambleLe
 // fold supplies results by step name instead, so neither needs a positional carrier.
 type LiveDeployPreambleFoldAcc = PreambleFoldAcc { state: LiveDeployPreambleLegState, observations: Int }
 
-data live_deploy_preamble_fold_init: LiveDeployPreambleFoldAcc =
-  PreambleFoldAcc { state: live_deploy_preamble_leg_ok, observations: 0 }
+data live_deploy_preamble_fold_init: LiveDeployPreambleFoldAcc = PreambleFoldAcc { state: live_deploy_preamble_leg_ok, observations: 0 }
 
 // THE IMPURE FOLD — gate first, observe second, so a refusal costs no later privileged call at all.
 // It is the pure fold above with its observations produced on demand, and both go through the same

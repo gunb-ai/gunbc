@@ -95,7 +95,7 @@ fn w_leg_at(step: LiveDeployPreambleStep) -> Optional<LiveDeployPreambleLeg> {
   let want = live_deploy_preamble_step_name(step: step)
   fold(
     w_legs(),
-    init: none,
+    init: Absent,
     f: (acc, leg) =>
       match acc {
         Present { value: _ } => acc
@@ -103,7 +103,7 @@ fn w_leg_at(step: LiveDeployPreambleStep) -> Optional<LiveDeployPreambleLeg> {
           if live_deploy_preamble_step_name(step: live_deploy_preamble_leg_step(leg: leg)) == want {
             Present { value: leg }
           } else {
-            none
+            Absent
           }
       },
   )
