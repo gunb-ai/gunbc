@@ -30,7 +30,6 @@ import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.network.ipv4 { Ipv4Address, Octet }
 import gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject, UnitKey, IntakeAttemptId }
 import gunbc.machine_intake.receipt { EvidenceRef }
-import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability,
   SiteVerdict, SiteConformance, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
@@ -769,8 +768,6 @@ type RecoveryInBandRoute {
   in_band: InBandChannelObservation
   controller: BmcAccessObservation
   in_band_device_identity: IpmiDeviceIdentity
-  operator_approval: DeclarationRef
-  reset_readback: DeclarationRef
 }
 
 // ── THE TERMINAL STANDING ──────────────────────────────────────────────────────────────────────
@@ -824,39 +821,42 @@ fn recovery_standing_handed_off(standing: InBandRecoveryStanding) -> Bool {
 // without a readback -- and the fold, not a prose rule, is what refuses it.
 data recovery_reachable_host_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_reachable_host_step",
+  decl_name: "recovery_host_refusal",
 )
 
 data recovery_channel_observation_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_channel_observation_step",
+  decl_name: "in_band_channel_admits",
 )
 
 data recovery_in_band_password_write_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_in_band_password_write_step",
+  decl_name: "admit_recovery_in_band_password_write",
 )
 
 data recovery_reset_to_defaults_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_reset_to_defaults_step",
+  decl_name: "admit_recovery_manager_reset_to_defaults",
 )
 
 data recovery_factory_credential_readback_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_factory_credential_readback_step",
+  decl_name: "recovery_readback_proves_reset",
 )
 
 data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_onboard_handoff_step",
+  decl_name: "recovery_standing_handed_off",
 )
 
-data recovery_operator_approval_declaration: DeclarationRef = decl_ref(
-  module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_operator_approval_declaration",
-)
-
+// WHY THE ROUTE CARRIES NO operator_approval / reset_readback FIELD. It used to, and nothing read them:
+// the reset's approval is the STANDING THE RUN ACTS UNDER, which the gate takes as its own argument
+// (`under_ruling: StandingDestructiveAuthorization`, whose DeclarationRef it inspects) and the census
+// row classifies. A copy of "which declaration approves this" sitting on the route is a second
+// representation of one fact (§2/§3) that could disagree with the ruling actually presented -- and a
+// decorative field that looks like a control is worse than no field, because a reader assumes the check
+// happens. The readback is likewise carried where it is PROVED (the standing's
+// RecoveryHandedToOnboarding.readback, whose content the gate checks) rather than named.
 fn recovery_convergence_steps() -> List<DeclarationRef> {
   [
     recovery_reachable_host_step,
@@ -1009,19 +1009,15 @@ fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcF
 // demand opposite repairs. Every consumer now matches the arms of PublishedPasswordWritePolicySighting
 // directly, which is the same question asked without discarding the answer's content.
 
-// THE HANDOFF, AS THE QUESTION IT ASKS THE EXISTING PATH. Not a credential, not a secret, not a
-// binding: the request to run factory-login-then-rotate against THIS observed controller. The
-// consumers are gunbc.tools.bmc_onboard's plan (FactoryCredentialActive -> BmcStoreAndRotate) and
-// gunbc.machine_intake.bmc_secure; neither is edited here, and nothing here can mint their standing.
-type RecoveryOnboardHandoff {
-  subject: MachineIntakeSubject
-  controller: BmcAccessObservation
-  secured: BmcSecureStanding
-}
-
-fn recovery_handoff_targets_same_controller(handoff: RecoveryOnboardHandoff, route: RecoveryInBandRoute) -> Bool {
-  handoff.controller == route.controller && handoff.subject == route.subject
-}
+// THE HANDOFF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. It used to be a fourth type carrying
+// subject + controller + a BmcSecureStanding, plus a predicate comparing it to the route, and nothing
+// constructed either: the standing's own RecoveryHandedToOnboarding { controller, readback, writes } arm
+// already IS the handoff -- sealed to its subject, naming the controller it was observed at and the readback
+// that proved it. A second container for the same facts is a second representation of them (§2), free to
+// disagree with the arm about which controller was recovered -- which is how the reflash-staleness defect
+// gets built. And a predicate over a value nobody constructs is a declaration with a hypothetical consumer
+// (§3c). The existing onboard path builds whatever it needs from the standing it is handed; this module's
+// dependency stays one-way (it -> BmcSecureStanding -> the control-route join) and it mints neither.
 
 // THE ROUTE'S REFUSAL, AS ONE CAUSE THE CONSUMER CAN BRANCH ON -- carried on the AccessDiscover arm
 // in gunbc.machine_intake.arrival_converge. RecoveryRouteUnavailable is deliberately NOT
@@ -1041,9 +1037,9 @@ type RecoveryRouteUnavailable
   | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
   | RecoveryReadbackInconclusive { detail: NonEmptyStr }
 
-fn recovery_route_is_available(standing: InBandRecoveryStanding) -> Bool {
-  recovery_standing_handed_off(standing: standing)
-}
+// (no recovery_route_is_available: it was a SECOND NAME for recovery_standing_handed_off, and a second
+// name for one question is a second representation of it, free to disagree. Every consumer calls the
+// standing's own predicate.)
 
 // The next PHYSICAL action, spelled out of the named cause. Two of these need nobody at the machine
 // and one does; the consumer tells them apart only because the cause is named rather than collapsed
@@ -1597,8 +1593,6 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
     },
     controller: recovery_test_controller_observation(),
     in_band_device_identity: reading,
-    operator_approval: recovery_operator_approval_declaration,
-    reset_readback: recovery_factory_credential_readback_step,
   }
 }
 
