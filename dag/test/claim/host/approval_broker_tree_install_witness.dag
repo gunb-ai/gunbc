@@ -10,6 +10,9 @@ import gunbc.host.host_effect_realize {
   ApprovalBrokerTreeInstallVerdict,
   TreeInstallRefused,
   TreeInstallConverged,
+  TreeInstallStep,
+  TreeStepSourceObserve,
+  TreeStepRevision,
 }
 import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -63,10 +66,10 @@ test fn directories_are_ancestors_parents_first() -> Bool {
   tree_ancestor_directories(files: source_entries()) == ["dag", "dag/gunbc"]
 }
 
-fn refused_step(v: ApprovalBrokerTreeInstallVerdict) -> String {
+fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool {
   match v {
-    TreeInstallRefused { step: s, reason: _ } => s
-    TreeInstallConverged { installed_digest: _, files_installed: _ } => "converged"
+    TreeInstallRefused { step: s, reason: _ } => s == at
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => false
   }
 }
 
@@ -74,21 +77,21 @@ fn refused_step(v: ApprovalBrokerTreeInstallVerdict) -> String {
 // argv against a root that does not exist and must refuse AT the source observation, before any
 // sudo install is attempted. Deleting the observation leg makes this claim fail.
 test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
-  refused_step(v: approval_broker_tree_install(
+  refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
     transport: LocalShell,
-  )) == "source-observe"
+  ), at: TreeStepSourceObserve)
 }
 
 test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
-  refused_step(v: approval_broker_tree_install(
+  refused_at(v: approval_broker_tree_install(
     owner: "gunbc" as NonEmptyStr,
     base_root: "/nonexistent-w6-base",
     source_root: "/nonexistent-w6-source",
     revision: RevisionNotInstalled,
     transport: LocalShell,
-  )) == "revision"
+  ), at: TreeStepRevision)
 }

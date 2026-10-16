@@ -4564,7 +4564,7 @@ fn realize_live_deploy_retract_on_host(
 }
 
 // THE APPROVAL BROKER'S RELEASE TREE, INSTALLED AS A TYPED, FAIL-FAST VERTICAL (W6). One leg of the
-// dark install, consumed by the microVM controller install and the live_deploy apply: owner, base_root,
+// dark install, declared frontier: its consumers are the microVM controller install (W5) and the live_deploy apply (PB2), each landing in its own atomic PR that calls this one function, and until they land only its witness calls it: owner, base_root,
 // source_root and revision are PARAMETERS (the owner is never inferred, the source is never the
 // process cwd), and every step is an ArgvCommand run through run_argv_over_host_effect_transport --
 // no shell, no quoting, no script body. The first failing step stops the line and names itself.
@@ -4582,16 +4582,27 @@ fn realize_live_deploy_retract_on_host(
 // nothing and reports success.
 type ApprovalBrokerTreeInstallVerdict
   = TreeInstallConverged { installed_digest: String, files_installed: Int }
-  | TreeInstallRefused { step: String, reason: String }
+  | TreeInstallRefused { step: TreeInstallStep, reason: String }
 
 type TreeFileHash {
   path: String
   hex: String
 }
 
+// The closed set of places a tree install can refuse; a caller matches on the variant, never on text.
+type TreeInstallStep
+  = TreeStepRevision
+  | TreeStepSourceObserve
+  | TreeStepInstallDirectory
+  | TreeStepInstallFile
+  | TreeStepInstallBinary
+  | TreeStepReadback
+  | TreeStepDigest
+  | TreeStepReceipt
+
 type TreeInstallStepState
   = TreeStepsOk
-  | TreeStepFailed { step: String, reason: String }
+  | TreeStepFailed { step: TreeInstallStep, reason: String }
 
 fn tree_file_hash_path(e: TreeFileHash) -> String { e.path }
 
@@ -4656,7 +4667,7 @@ type TreePrefixWalk {
   out: List<String>
 }
 
-fn tree_step_failure(step: String, outcome: RunArgvTransportOutcome) -> TreeInstallStepState {
+fn tree_step_failure(step: TreeInstallStep, outcome: RunArgvTransportOutcome) -> TreeInstallStepState {
   match outcome {
     RunArgvTransportRefused { reason: r } => TreeStepFailed { step: step, reason: r }
     RunArgvTransportObserved { observed: o } =>
@@ -4666,7 +4677,7 @@ fn tree_step_failure(step: String, outcome: RunArgvTransportOutcome) -> TreeInst
   }
 }
 
-fn tree_run_step(state: TreeInstallStepState, step: String, command: ArgvCommand, transport: HostEffectTransport) -> TreeInstallStepState {
+fn tree_run_step(state: TreeInstallStepState, step: TreeInstallStep, command: ArgvCommand, transport: HostEffectTransport) -> TreeInstallStepState {
   match state {
     TreeStepFailed { step: _, reason: _ } => state
     TreeStepsOk => tree_step_failure(step: step, outcome: run_argv_over_host_effect_transport(command: command, transport: transport))
@@ -4705,14 +4716,14 @@ fn approval_broker_tree_install(
 ) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
     RevisionNotInstalled =>
-      TreeInstallRefused { step: "revision", reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
+      TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
     RevisionBoundAtEmission { revision: r } => {
       let locus = approval_broker_release_dir(root: base_root, revision: revision)
       match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
-        TreeObservationFailed { reason: why } => TreeInstallRefused { step: "source-observe", reason: why }
+        TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
         TreeObserved { entries: source } =>
           if count(source) == 0 {
-            TreeInstallRefused { step: "source-observe", reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
+            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
           } else {
             approval_broker_tree_install_observed(
               owner: owner, base_root: base_root, source_root: source_root, locus: locus,
@@ -4725,7 +4736,7 @@ fn approval_broker_tree_install(
 }
 
 fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectTransport) -> TreeInstallStepState {
-  tree_run_step(state: state, step: "install-directory", transport: transport, command: sudo_elevate_command(
+  tree_run_step(state: state, step: TreeStepInstallDirectory, transport: transport, command: sudo_elevate_command(
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
 
@@ -4743,11 +4754,11 @@ fn approval_broker_tree_install_observed(
   let after_dirs = fold(tree_ancestor_directories(files: source), init: after_spine, f: (st, d) =>
     tree_install_directory_step(state: st, owner: owner, path: join([locus, "/", d], ""), transport: transport))
   let after_files = fold(source, init: after_dirs, f: (st, e) =>
-    tree_run_step(state: st, step: "install-file", transport: transport, command: sudo_elevate_command(
+    tree_run_step(state: st, step: TreeStepInstallFile, transport: transport, command: sudo_elevate_command(
       command: coreutils_install_file_owned_argv(
         mode: install_file_shared_mode as NonEmptyStr, owner: owner, group: owner,
         source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], "")))))
-  let after_binary = tree_run_step(state: after_files, step: "install-binary", transport: transport, command: sudo_elevate_command(
+  let after_binary = tree_run_step(state: after_files, step: TreeStepInstallBinary, transport: transport, command: sudo_elevate_command(
     command: coreutils_install_file_owned_argv(
       mode: install_executable_shared_mode, owner: owner, group: owner,
       source: join([source_root, "/target/release/", gunbc_release_bin_name], ""),
@@ -4756,10 +4767,10 @@ fn approval_broker_tree_install_observed(
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
       match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
-        TreeObservationFailed { reason: why } => TreeInstallRefused { step: "readback", reason: why }
+        TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
           if !tree_entries_agree(source: source, installed: installed) {
-            TreeInstallRefused { step: "readback", reason: join([
+            TreeInstallRefused { step: TreeStepReadback, reason: join([
               "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
               " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
           } else {
@@ -4786,10 +4797,10 @@ fn approval_broker_tree_receipt_write(
     stdin_payload: lines,
     transport: transport,
   ) {
-    RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: "digest", reason: r }
+    RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepDigest, reason: r }
     RunArgvTransportObserved { observed: o } =>
       match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
-        Absent => TreeInstallRefused { step: "digest", reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
+        Absent => TreeInstallRefused { step: TreeStepDigest, reason: join(["sha256sum of the tree lines failed: ", o.stderr], "") }
         Present { value: d } => {
           let digest = d.hex as String
           let body = join(["candidate_revision=", release_revision_execstart_text(binding: revision), "\ninstalled_digest=", digest, "\n"], "")
@@ -4800,10 +4811,10 @@ fn approval_broker_tree_receipt_write(
             stdin_payload: body,
             transport: transport,
           ) {
-            RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: "receipt", reason: r }
+            RunArgvTransportRefused { reason: r } => TreeInstallRefused { step: TreeStepReceipt, reason: r }
             RunArgvTransportObserved { observed: w } =>
               if w.success { TreeInstallConverged { installed_digest: digest, files_installed: files } }
-              else { TreeInstallRefused { step: "receipt", reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
+              else { TreeInstallRefused { step: TreeStepReceipt, reason: join(["exit ", to_string(w.exit_code), ": ", w.stderr], "") } }
           }
         }
       }
