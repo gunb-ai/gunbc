@@ -38,6 +38,8 @@ import gunbc.codex_harness_credential { codex_harness_credential_context, codex_
 import gunbc.cursor_harness_credential {
   cursor_status_reading,
   cursor_sandbox_preflight_reading,
+  cursor_sandbox_discriminating_preflight_command,
+  cursor_sandbox_outside_sentinel,
   CursorSandboxPreflightReading,
   CursorSandboxReady,
   CursorSandboxUnavailable,
@@ -53,6 +55,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorDispatchProvider,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
+import extdeps.llm.cursor_cli { cursor_cli_program_identity }
+import extdeps.exec.command { argv_words }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -252,8 +256,26 @@ test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bo
   on_124 && on_other
 }
 
-// A REJECTED KEY REFUSES FIRST: on a host whose sandbox is also unavailable, the reason names the
-// rejection, because the custody credential is the first fact the join reads.
+// AN INHERITED native CANNOT MAKE AN UNSANDBOXED PREFLIGHT READY. The one preflight invocation
+// starts its outer process with CURSOR_SANDBOX set to the sentinel, so a caller environment that
+// already holds native never reaches the command; an unsandboxed fallback then prints the sentinel
+// back, and that reads not-entered, never ready.
+test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool {
+  let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_cli_program_identity())), " ")
+  let sentinel_set_outside = argv == concat(concat("env CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " cursor-agent sandbox run printenv CURSOR_SANDBOX")
+  let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
+  let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
+    CursorSandboxNotEntered { detail } => string_contains(s: detail, pattern: "sentinel survived")
+    CursorSandboxReady => false
+    CursorSandboxUnavailable { detail: _ } => false
+    CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } => false
+  }
+  sentinel_set_outside && not_ready
+}
+
+// A REJECTED KEY'S REASON WINS: on a host whose sandbox is also unavailable, the reason names the
+// rejection. This is REASON PRECEDENCE IN THE PURE JOIN only: the live call site evaluates the
+// preflight as an argument of the join, so a rejected key does not skip running it.
 test fn a_rejected_key_refuses_before_the_sandbox_reading_is_consulted() -> Bool {
   match cursor_standing_from_readings(status: cursor_status_reading(stdout: observed_unauthenticated_status), sandbox: sandbox_unsupported_on_srv2()) {
     ProviderStandingUnobserved { reason } =>

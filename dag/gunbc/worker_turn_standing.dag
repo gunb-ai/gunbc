@@ -14,7 +14,7 @@ import extdeps.posix.sh_invocation {
   posix_sh_export_from_file_unreadable_exit,
 }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
-import extdeps.llm.cursor_cli { cursor_cli_program, cursor_api_key_env_var, cursor_sandbox_preflight_command, cursor_cli_program_identity }
+import extdeps.llm.cursor_cli { cursor_cli_program, cursor_api_key_env_var, cursor_cli_program_identity }
 import extdeps.tools.gnu_coreutils { timeout_command }
 import std.measure { Second, second }
 import gunbc.command_runner { run_shell_command_observe }
@@ -54,6 +54,7 @@ import gunbc.cursor_harness_credential {
   CursorStatusUnauthenticated,
   CursorStatusUnreadable,
   cursor_sandbox_preflight_reading,
+  cursor_sandbox_discriminating_preflight_command,
   CursorSandboxPreflightReading,
   CursorSandboxReady,
   CursorSandboxUnavailable,
@@ -141,7 +142,9 @@ fn codex_trip_installation(exit_code: Int, stderr: String) -> ProviderInstallati
 // (gunbc.cursor_harness_credential CursorSandboxPreflightReading): gunbc.cursor_harness_credential
 // cursor_worker_turn_run declares CursorSandboxEnabled so that --force is not unconfined, and a host
 // that cannot build that sandbox fails the turn before the provider -- observed on srv2, 2026-10-16
-// -- so the draw refuses here with the host's cause instead of spending an attempt to learn it. The
+// -- so the draw refuses here with the host's cause, before launch or provider contact. It runs after
+// the attempt's receipt-qualified snapshot has been taken (gunbc.roadmap.roadmap_dispatch_actuator
+// cursor_selection_observed takes it first), and the refused selection discards that snapshot. The
 // third is observed by a one-word turn (operator ruling D2, 2026-10-05), whose result shape is
 // modeled from its first live call, so until then the standing is unobserved and the draw refuses --
 // never a fabricated "available".
@@ -176,7 +179,9 @@ fn cursor_standing_with_accepted_key(sandbox: CursorSandboxPreflightReading) -> 
 }
 
 // THE PREFLIGHT, bounded. It reads no key and makes no provider call; it runs in the caller's working
-// directory, which the sandbox's default policy makes writable to a command that writes nothing.
+// directory, which the sandbox's default policy makes writable to a command that writes nothing. It
+// is evaluated as an argument of the join, so it runs whenever status ran, including when the key was
+// rejected: the join orders the REASONS, not the observations.
 data cursor_sandbox_preflight_bound: Second = second(count: 30)
 data cursor_sandbox_preflight_kill_grace: Second = second(count: 5)
 
@@ -185,7 +190,7 @@ fn cursor_sandbox_preflight_observe() -> CursorSandboxPreflightReading {
     command: timeout_command(
       duration: cursor_sandbox_preflight_bound,
       kill_after: cursor_sandbox_preflight_kill_grace,
-      command: cursor_sandbox_preflight_command(program: cursor_cli_program_identity()),
+      command: cursor_sandbox_discriminating_preflight_command(program: cursor_cli_program_identity()),
     ),
     transport: LocalExec,
   )
