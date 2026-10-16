@@ -783,10 +783,9 @@ fn acquire_closure(layout: SourceStorageLayout, bindings: List<SourceRootBinding
 // and the SAME verdict step and, where the step refuses at one member or one edge, records the
 // refusal and continues with the rest of the frontier. What a blocked member would have requested is
 // unobserved, and the result says so: CensusAcquisitionBlocked is "acquired this far; behind these,
-// unobserved", never a smaller population presented as closed (gunbc.plans.census_scoped_run).
-// CONSUMERS: executed over planted closures by v2.test.claim.census_scoped_acquisition in this change;
-// the emitted driver's census-scoped verb, run by //gunbc/instruments:v2-native-census-scoped, is a
-// declared frontier (DESIGN 3c), trigger: that verb lands (gunbc.plans.census_scoped_run section 5).
+// unobserved", never a smaller population presented as closed.
+// CONSUMERS: v2.test.claim.census_scoped_acquisition over planted closures, and the emitted driver's
+// census-scoped verb (v2.compiler.source_root_eval), run by //gunbc/instruments:v2-native-census-scoped.
 // The refusal is carried WHOLE -- its arm is its meaning (R3); this door adds no classification of
 // its own beyond whether a refusal is local to one member, local to one edge, or ends the run.
 // The refusals local to one member, and only those: a member block cannot hold an edge's or a

@@ -20,9 +20,15 @@ import std.measure { HardwareThreadCount }
 // disposition is what that realization implies for capacity under kill; a standing is what has been
 // OBSERVED to be true of the running fleet. Collapsing the first into the third is what lets a
 // desired-state row authorize a policy the hosts have not yet earned.
+// THE HOST-PERSISTENT FIFO ARM IS DELETED (A2). Its only realization was the ctrl-jobserver, retired
+// from every runner unit by A1 (#14008) and from the hosts by the converge's residue retirement; srv3
+// and srv4 were observed converged (runs 38742767425, 38746768897). A unit that still advertises the
+// FIFO is not a realization the model can render any more, so the observer reads it as unreadable
+// (not safe) rather than as a constructor nothing produces. CapacityLostUntilPoolRestart stays a
+// disposition arm: it is the outcome a borrower-held pool would have, the fold still classifies it,
+// and its RED stays enrolled.
 type CompileParallelismRealization
-  = BorrowerHeldCooperativeHostFifo { fifo_path: NonEmptyStr, daemon_service: NonEmptyStr }
-  | InvocationLocalCargo { jobs_per_slot: HardwareThreadCount }
+  = InvocationLocalCargo { jobs_per_slot: HardwareThreadCount }
 
 // THE SEMANTIC OUTCOME, WHICH IS WHAT POLICY IS ALLOWED TO SEE. Business policy that matched
 // realization variants would have to learn FIFO paths and systemd service names, and would need a
@@ -52,7 +58,6 @@ fn borrower_death_capacity_disposition(
   realization: CompileParallelismRealization,
 ) -> BorrowerDeathCapacityDisposition {
   match realization {
-    BorrowerHeldCooperativeHostFifo { fifo_path: _, daemon_service: _ } => CapacityLostUntilPoolRestart
     InvocationLocalCargo { jobs_per_slot: _ } => CapacityPreservedByInvocationLifetime
   }
 }

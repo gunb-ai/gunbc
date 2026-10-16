@@ -99,7 +99,6 @@ fn layout_namespaces() -> List<String> {
     "extdeps.gnupg",
     "extdeps.google",
     "extdeps.gpu",
-    "extdeps.gunb_ai",
     "extdeps.http",
     "extdeps.huggingface",
     "extdeps.iana",

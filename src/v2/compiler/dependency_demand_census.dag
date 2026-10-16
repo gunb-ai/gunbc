@@ -79,7 +79,7 @@ import v2.std.text { String }
 // a second binder beside resolve, and it is not admitted (DESIGN section 5). Duplicate aliases, or
 // an alias that cannot be read, leave the fn unobserved. A body that names an elided alias is
 // unobserved until resolve models the clause. The stripped tree is consumed inside the census route
-// only (v2.compiler.compile native_demand_census_report). The authored rows are never lowered onto
+// only (v2.compiler.source_root_eval native_demand_census_report). The authored rows are never lowered onto
 // the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
 //
 // THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only

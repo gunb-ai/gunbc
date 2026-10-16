@@ -681,10 +681,10 @@ test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() 
     buildbuddy_run_id: BuildBuddyRunIdPresent { id: "measured-rbe-run" },
   ) {
     ExternallyBoundedExecutor { run_id } =>
-      run_id == "measured-rbe-run"
+      (run_id as String) == "measured-rbe-run"
         && match user_work_scope_standing_effect(s: ExternallyBoundedExecutor { run_id: run_id }) {
           SkipUserWorkScope { standing: ExternallyBoundedExecutor { run_id: sid } } =>
-            sid == "measured-rbe-run"
+            (sid as String) == "measured-rbe-run"
           _ => false
         }
     _ => false
@@ -857,8 +857,8 @@ test fn a_binding_memory_max_with_swap_forbidden_bounds_the_process_whatever_its
 }
 
 test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
-  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]) == "UncappedSystemSlice:system.slice:x.service"
-    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]) == "UncappedSystemSlice:system.slice:x.service"
+  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
     && bound_standing(levels: [], swap: []) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
     && user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
          cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
