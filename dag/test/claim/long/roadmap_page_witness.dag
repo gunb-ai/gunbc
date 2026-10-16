@@ -2945,3 +2945,45 @@ test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool 
     && known == "claimed by Fixture Viewer"
     && unknown == "claimed by principal:google-oidc/accounts/sub-viewer"
 }
+
+fn retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanel, csrf: String) -> HtmlEmitResult {
+  try_serialize_html_source(node: gunbc.site.markup.el_class("div", "retire-fixture", gunbc.roadmap.roadmap_page.issue_lineage_retire_panel_nodes(node_id: "vm-service", panel: panel, command_context: IssueFormContext { operation: "", csrf: csrf })))
+}
+
+// LINEAGE-RETIRE-1, the ENDED state: the offer is a form to the retire route carrying the ended
+// attempt key and the session csrf, a required reason, and naming the kept branch.
+test fn witness_lineage_retire_offer_renders_form_to_the_route() -> Bool {
+  match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelOffer { attempt_key: "bb29307f8f9bf3f9", branch: "attempt/bb29" }, csrf: "tok-1") {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "action=\"/dispatch/vm-service/retire-lineage\"")
+        && string_contains(s: h, pattern: "name=\"attempt_key\" type=\"hidden\" value=\"bb29307f8f9bf3f9\"")
+        && string_contains(s: h, pattern: "name=\"csrf\" type=\"hidden\" value=\"tok-1\"")
+        && string_contains(s: h, pattern: "name=\"reason\"")
+        && string_contains(s: h, pattern: "attempt/bb29")
+        && !string_contains(s: h, pattern: "disabled")
+  }
+}
+
+// Signed out: the offer renders but its submit is disabled.
+test fn witness_lineage_retire_offer_is_disabled_without_a_session() -> Bool {
+  match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelOffer { attempt_key: "bb29307f8f9bf3f9", branch: "attempt/bb29" }, csrf: "") {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => string_contains(s: h, pattern: "disabled")
+  }
+}
+
+// The RECORDED state: who, when, why, kept branch, and no form. The none state renders nothing.
+test fn witness_lineage_retire_recorded_shows_the_record_and_no_form() -> Bool {
+  let record = gunbc.roadmap.roadmap_lineage_retire.LineageRetireRecord { node_id: "vm-service", attempt_key: "bb29307f8f9bf3f9", branch: "attempt/bb29", reason: "ended without hand-in", decided_by: "op@example", decided_at: "2026-10-16T17:00:00Z" }
+  match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelRecorded { record: record }, csrf: "tok-1") {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "op@example") && string_contains(s: h, pattern: "2026-10-16T17:00:00Z")
+        && string_contains(s: h, pattern: "ended without hand-in") && string_contains(s: h, pattern: "attempt/bb29")
+        && !string_contains(s: h, pattern: "<form")
+  } && match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelNone, csrf: "tok-1") {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } => !string_contains(s: h, pattern: "<form") && !string_contains(s: h, pattern: "retired")
+  }
+}

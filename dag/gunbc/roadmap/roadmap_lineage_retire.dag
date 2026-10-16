@@ -27,3 +27,12 @@ type LineageRetireRecord {
   decided_by: String
   decided_at: String
 }
+
+// WHAT THE NODE PAGE SHOWS OF A LINEAGE'S RETIREMENT: nothing, the offer to retire the ended end
+// (its attempt key and kept branch), or the record once one exists. The route
+// (POST /dispatch/{node_id}/retire-lineage) is the one realization of the offer; the page only renders
+// this value and never decides it.
+type LineageRetirePanel
+  = LineageRetirePanelNone
+  | LineageRetirePanelOffer { attempt_key: String, branch: String }
+  | LineageRetirePanelRecorded { record: LineageRetireRecord }

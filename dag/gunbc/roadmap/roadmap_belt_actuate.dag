@@ -584,7 +584,7 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcome, AcceptanceUnavailable,
   AcceptanceOutcomeRecord, acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_key, acceptance_outcome_basename,
 }
-import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord, LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded }
 import gunbc.roadmap.roadmap_lineage_retire_record {
   LineageRetireRead, LineageRetireFound, LineageRetireAbsent, LineageRetireUnreadable,
   LineageRetireCommit, LineageRetireCommitted, LineageRetireCommitRefused,
@@ -2468,10 +2468,13 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
 fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
-  continuation_decision_with_retirement(
-    prior: Present { value: belt_prior_attempt_facts(instance: instance, node_id: node.node, progress: progress) },
-    retire: belt_lineage_retire_record_of(instance: instance, node: node, progress: progress),
-  )
+  let prior = Present { value: belt_prior_attempt_facts(instance: instance, node_id: node.node, progress: progress) }
+  match lineage_retire_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
+    LineageRetireAbsent => continuation_decision_with_retirement(prior: prior, retire: none)
+    LineageRetireFound { record } => continuation_decision_with_retirement(prior: prior, retire: Present { value: record })
+    LineageRetireUnreadable { reason } =>
+      ContinuationRefused { reason: join(["the lineage's retire record is present but unreadable, so the lineage is neither retired nor trusted: ", reason], "") }
+  }
 }
 
 fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> PriorAttemptFacts {
@@ -2484,22 +2487,6 @@ fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNod
     verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
     review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
     goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-  }
-}
-
-// THE RETIRE RECORD BESIDE THE PRIOR ATTEMPT'S STATE. Absent is no decision (the lineage stays what
-// its facts say). A record that is there and cannot be read is never read as absent: it is carried as
-// a record naming no attempt, which the decision refuses as stale, so a damaged operator decision
-// stops the line instead of silently leaving the lineage Ended or spawning over it.
-fn belt_lineage_retire_record_of(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> LineageRetireRecord? {
-  match lineage_retire_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
-    LineageRetireAbsent => none
-    LineageRetireFound { record } => Present { value: record }
-    LineageRetireUnreadable { reason } =>
-      Present { value: LineageRetireRecord {
-        node_id: node.node as String, attempt_key: "unreadable", branch: progress.branch,
-        reason: reason, decided_by: "unreadable", decided_at: "unreadable",
-      } }
   }
 }
 
@@ -2529,6 +2516,28 @@ fn belt_lineage_retire_for_instance(instance: HostDashboardInstance, node_id: Ro
           }
       }
     }
+  }
+}
+
+// THE NODE PAGE'S RETIREMENT PANEL over the node's attempts (newest first): a record beside the latest
+// attempt is shown as recorded; with none, the offer exists only when the unretired decision for that
+// attempt is Ended. Every other state shows nothing. It decides nothing: the route re-admits.
+fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempts: List<WorkflowAttemptProgress>) -> LineageRetirePanel {
+  match (attempts |> filter(p => p.node_id == node_id as String)).first() {
+    Absent => LineageRetirePanelNone
+    Present { value: p } =>
+      match lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key) {
+        LineageRetireFound { record } => LineageRetirePanelRecorded { record: record }
+        LineageRetireUnreadable { reason: _ } => LineageRetirePanelNone
+        LineageRetireAbsent =>
+          match continuation_decision_with_retirement(prior: Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }, retire: none) {
+            ContinuationEnded { reason: _ } => LineageRetirePanelOffer { attempt_key: p.attempt_key, branch: p.branch }
+            ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
+            ContinuationRefused { reason: _ } => LineageRetirePanelNone
+            ContinuationHold { reason: _ } => LineageRetirePanelNone
+            ContinuationComplete { reason: _ } => LineageRetirePanelNone
+          }
+      }
   }
 }
 

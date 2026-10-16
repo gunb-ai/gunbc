@@ -35,7 +35,7 @@ import gunbc.auth.request_authentication {
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
-  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage,
   ServeWriteAuthorizationPolicy,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
@@ -628,5 +628,39 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
           }
         Permit => false
       }
+  }
+}
+
+// RETIRING A LINEAGE IS THE OPERATOR'S DECISION (LINEAGE-RETIRE-1): a signed-in Workspace human
+// outside the approve roster is refused with the action's label; a rostered principal is admitted.
+test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+        action: ServeActionRetireLineage,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessActionNotGranted { action: a } => a == "retire-lineage"
+            _ => false
+          }
+        Permit => false
+      }
+        && human_write_admission(
+          route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+          action: ServeActionRetireLineage,
+          security: session_security(session: s),
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: "2026-09-25T00:05:00Z",
+        ) == Permit
   }
 }

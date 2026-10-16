@@ -189,7 +189,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
-  BeltLineageRetireOutcome, BeltLineageRetired, BeltLineageRetireRefused, belt_lineage_retire_for_instance,
+  BeltLineageRetireOutcome, BeltLineageRetired, BeltLineageRetireRefused, belt_lineage_retire_for_instance, belt_lineage_retire_panel_for_instance,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
@@ -905,7 +905,8 @@ fn serve_issue_detail_response_over(
             current_revision_hex: served_current_revision_hex(launch: launch)),
           events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
-          profiles: serve_profiles_for_instance(instance: instance))
+          profiles: serve_profiles_for_instance(instance: instance),
+          lineage_retire: Present { value: belt_lineage_retire_panel_for_instance(instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId, attempts: attempts) })
         let response = serve_page_response_with_status(page: page, status: 200)
         response
       }
