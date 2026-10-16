@@ -1,7 +1,7 @@
 module gunbc.deployment_risk
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
@@ -49,6 +49,7 @@ data srv2_preview_codex_feedback_deployment: DeploymentId = DeploymentId { name:
 data srv2_deploy_deployment: DeploymentId = DeploymentId { name: "srv2-deploy" as NonEmptyStr }
 data srv2_lab_v1_deletion_deployment: DeploymentId = DeploymentId { name: "srv2-lab-v1-deletion" as NonEmptyStr }
 data macbook_local_deployment: DeploymentId = DeploymentId { name: "macbook-local" as NonEmptyStr }
+data fleet_compute_hermetic_deployment: DeploymentId = DeploymentId { name: "fleet-compute-hermetic" as NonEmptyStr }
 
 // ── The class ───────────────────────────────────────────────────────────────────────────────────
 // TWO POLES, because that is what the operator ruled ("prod is extreme risk, test is zero risk").

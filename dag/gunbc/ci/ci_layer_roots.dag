@@ -154,7 +154,7 @@ data non_executing_witness_module_prefixes_restoration: DissolutionCondition = u
 // the same producer the phase itself calls. No figure from that run is transcribed here.
 //
 // STILL A ROW. Widening or narrowing this list remains a cost decision, not a Rust edit.
-data required_v2_emission_entries: List<String> = ["src/v2/compiler/compile.dag"]
+data required_v2_emission_entries: List<String> = ["src/v2/compiler/source_root_eval.dag"]
 
 // ENROLMENT AUTHORITY: this phase is required in --required-ci on an operator ruling
 // relayed through the requesting session on 2026-08-23, at a measured +135s. The row
@@ -955,6 +955,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "pre_swap_admission_merge_base_inhabitance_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "pre_swap_admission_serve_compile_inhabitance_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "fabric_storage_file_store_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1084,6 +1094,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: BinWitnessWet,
     reason: excl_immutable_pin_no_ci_wet_lane_reason,
     dissolution: excl_immutable_pin_no_ci_wet_lane_dissolve},
+  WitnessExclusionRow {
+    pattern: "attempt_discharge_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "host_capacity_wet_witness.dag",
     classification: LocalRepoWetLane,

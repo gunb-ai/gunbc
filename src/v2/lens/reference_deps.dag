@@ -1,7 +1,10 @@
 module v2.lens.reference_deps
 
+import std.optional { Present, Absent }
 import v2.std.node_query { find_labeled_child }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node, dag_surface_edge_label }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
@@ -24,10 +27,10 @@ import std.disposition { SingleAuthority }
 fn reference_deps_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
-    o: v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex),
+    o: tokenize(text: source_text, file: file, rules: lm.lex),
     f: fn(token_stream) {
       bind_outcome(
-        o: v2.compiler.parse.parse_module(tokens: token_stream, grammar: lm.grammar),
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
         f: fn(artifact) {
           outcome_accepted(value: artifact.tree)
         }

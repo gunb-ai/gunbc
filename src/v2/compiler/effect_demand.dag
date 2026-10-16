@@ -1233,9 +1233,9 @@ data effect_demand_seam_runtime_registry: List<SeamRuntimeBinding> = [
 data effect_demand_seam_roster: List<SeamStanding> = [
   SeamStanding {
     declaration: "empty_map_primitive_delegate",
-    seam_module: "v2.std.collection",
+    seam_module: "std.algebra",
     projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
-    emitted_rust_identity: "v2_std_collection.rs::empty_map_primitive_delegate",
+    emitted_rust_identity: "std_algebra.rs::empty_map_primitive_delegate",
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   },
   SeamStanding {

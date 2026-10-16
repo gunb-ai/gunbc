@@ -1,0 +1,128 @@
+// WITNESS FOR THE VISUDO OPERATION (extdeps.sudo.visudo). DESIGN's witness rule: a claim supplies
+// the boundary values it claims about. The boundary values are the two sudoers files the three
+// consumers validate -- the staged drop-in checked before install, and the installed drop-in
+// checked after -- supplied below, not read from a host.
+//
+// THE INHABITANCE CLAIM ON THE REAL ROUTE: a consumer of the op reads its words and hands them to
+// the typed argv transport, whose first act is the portability wall. The claim is that on the
+// supplied boundaries the op renders an argv the wall admits, so no consumer has to special-case
+// the visudo check. Pure and hermetic: the wall is a function of the words alone.
+//
+// THE BYTE-EXACT ARGV IS THE WHOLE POINT. The op replaces a shell-text builder; a consumer that
+// swaps it must run the identical command, so the claim asserts the words as independent literals
+// against what the shell builder spelled -- which is what discriminates a re-spelled flag. The
+// consumption claim additionally pins the one call site already swapped to the op.
+//
+// THE RED: a file value with a shell metacharacter is refused by the wall and the refusal names
+// the token. A permissive wall, or an op that quoted the file into a portable word, fails it.
+
+module test.claim.extdeps.visudo_check_op_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import extdeps.exec.command { argv_words }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import extdeps.sudo.visudo {
+  visudo_check_command, visudo_policy_check_command, visudo_binary_path,
+}
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import gunbc.live_deploy.operations { installed_visudo_policy_check_command }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+
+// THE TWO BOUNDARY VALUES THE REAL CONSUMERS VALIDATE.
+data staged_dropin_path: NonEmptyStr = "/var/lib/gunbc/deploy-stages/microvm-controller/sudoers.d.gunbc-workspace-commissioning" as NonEmptyStr
+data installed_dropin_path: NonEmptyStr = "/etc/sudoers.d/gunbc-workspace-commissioning" as NonEmptyStr
+
+fn check_words(file: String) -> List<String> {
+  argv_words(command: visudo_check_command(file: file))
+}
+
+fn policy_words(file: String) -> List<String> {
+  argv_words(command: visudo_policy_check_command(file: file))
+}
+
+fn argv_admitted_by_portability_wall(argv: List<String>) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn boundary_values_render_the_exact_argv_and_the_real_route_admits_them() -> Bool {
+  let staged = staged_dropin_path as String
+  let installed = installed_dropin_path as String
+  let check_staged = check_words(file: staged)
+  let check_installed = check_words(file: installed)
+  let policy_staged = policy_words(file: staged)
+  let policy_installed = policy_words(file: installed)
+  // Syntax check: one combined -cf word. Policy check: four separate words, -c -O -P -f.
+  let check_ok = check_staged == [
+    sudo_program().invocation as String,
+    sudo_non_interactive_flag as String,
+    "/usr/sbin/visudo",
+    "-cf",
+    staged,
+  ] && check_installed == [
+    sudo_program().invocation as String,
+    sudo_non_interactive_flag as String,
+    "/usr/sbin/visudo",
+    "-cf",
+    installed,
+  ]
+  let policy_ok = policy_staged == [
+    sudo_program().invocation as String,
+    sudo_non_interactive_flag as String,
+    "/usr/sbin/visudo",
+    "-c",
+    "-O",
+    "-P",
+    "-f",
+    staged,
+  ] && policy_installed == [
+    sudo_program().invocation as String,
+    sudo_non_interactive_flag as String,
+    "/usr/sbin/visudo",
+    "-c",
+    "-O",
+    "-P",
+    "-f",
+    installed,
+  ]
+  let admitted = argv_admitted_by_portability_wall(argv: check_staged)
+    && argv_admitted_by_portability_wall(argv: check_installed)
+    && argv_admitted_by_portability_wall(argv: policy_staged)
+    && argv_admitted_by_portability_wall(argv: policy_installed)
+  check_ok && policy_ok && admitted
+}
+
+// CONSUMPTION, pinned: the one call site already switched to the op must render byte-identical to
+// the shell spelling it replaced. The left goes through the op; the right spells the old shell
+// builder's words directly. A re-spelled flag, a moved -n, or a re-pointed visudo path fails the
+// claim. This is the migration contract: the replacement is behavior-identical.
+test fn the_installed_policy_check_renders_byte_identical_to_the_replaced_shell_spelling() -> Bool {
+  let path = installed_dropin_path as String
+  installed_visudo_policy_check_command(path: path) ==
+    shell_privileged_command_text_of_argv(argv: [visudo_binary_path as String, "-c", "-O", "-P", "-f", path])
+}
+
+test fn a_non_portable_file_value_is_refused_by_the_wall() -> Bool {
+  let hostile = "/etc/sudoers.d/x && id"
+  let check_refused = match typed_argv_shell_safe_refusal_argv(argv: check_words(file: hostile)) {
+    Present { value: why } => string_contains(s: why, pattern: "&& id")
+    Absent => false
+  }
+  let policy_refused = match typed_argv_shell_safe_refusal_argv(argv: policy_words(file: hostile)) {
+    Present { value: why } => string_contains(s: why, pattern: "&& id")
+    Absent => false
+  }
+  // The wall is live, not vacuously absent: a genuinely portable argv is admitted, which makes the
+  // refusal above a real refusal.
+  let control_admitted = argv_admitted_by_portability_wall(argv: [
+    sudo_program().invocation as String,
+    sudo_non_interactive_flag as String,
+    "/usr/sbin/visudo",
+    "-cf",
+    installed_dropin_path as String,
+  ])
+  check_refused && policy_refused && control_admitted
+}

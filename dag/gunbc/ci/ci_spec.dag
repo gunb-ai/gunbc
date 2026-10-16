@@ -40,6 +40,7 @@ import gunbc.spark.credential_workflow {
 }
 import gunbc.fleet.fleet_bootstrap_principal_session { fleet_bootstrap_credential_path_env }
 import gunbc.host.host_reset_return { host_reset_return_receipt_path }
+import gunbc.host.host_memory_envelope_observe { host_memory_envelope_receipt_path }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.auth.approval_keyring_pins {
@@ -50,12 +51,8 @@ import gunbc.auth.approval_keyring_pins {
   approval_store_receipt_mac_access_url,
   approval_store_receipt_mac_key_path_env,
 }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
-  mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_sol_activation_suffix,
-  mtcollins1_boot_sol_capture_path_env,
-  mtcollins1_boot_sol_pid_path_env,
-}
+import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_activation_suffix }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import v2.std.node { Node }
@@ -165,7 +162,7 @@ import v2.std.orchestration {
   Run,
 }
 import std.env_binding { EnvSet, EnvUnset }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning, Accepted, Rejected }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -925,6 +922,11 @@ data gunbc_ci_runner_host_file_observe_target: GunbcRunStepTarget = GunbcRunStep
   function: "runner_host_file_observe_ci_wet",
 }
 
+data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_memory_envelope_observe.dag",
+  function: "host_memory_envelope_observe_ci_wet",
+}
+
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
@@ -1348,6 +1350,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_network_observe_target,
     gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
+    gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
@@ -2814,6 +2817,16 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_memory_envelope_observe_target.entry,
+    function: gunbc_ci_host_memory_envelope_observe_target.function,
+    claim_run: false,
+    receipt_rel: host_memory_envelope_receipt_path
   )
 }
 
