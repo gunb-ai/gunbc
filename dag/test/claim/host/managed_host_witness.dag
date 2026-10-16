@@ -12,6 +12,8 @@ import gunbc.host.managed_host {
   ResetNoUnitHold,
   ResetUnitHoldRequired,
   managed_host_smpro_subject,
+  managed_host_smpro_pass_licensing, SmproPassLicensing, SmproPassLicensed,
+  SmproPassNotLicensed,
   managed_hosts,
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
@@ -326,36 +328,36 @@ test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
 // controlled — the x86 machine needs no empty or refused SMpro field, it simply has no subject to pair.
 test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
   managed_hosts() |> all(h => {
-    let endpoint = match bmc_control_binding(observed: h.access, secured: h.secure) {
-      BmcControlBound { route: r } => bmc_control_route_endpoint(route: r)
-      _ => fixture_bmc_endpoint
-    }
-    // The real row: carried through the board authority, so one subject is bound.
-    let carried_binds = match managed_host_smpro_subject_under(
-      host: h, endpoint: endpoint, facility: smpro_facility(access: h.access)) {
+    // The real row: the board establishes the family as carried, the gate licenses a pass, and the
+    // production mint (the only admitted caller of the sealed subject constructor) binds exactly one.
+    let licensed_and_binds = match managed_host_smpro_pass_licensing(facility: smpro_facility(access: h.access)) {
+      SmproPassLicensed => true
+      SmproPassNotLicensed { reason: _ } => false
+    } && match managed_host_smpro_subject(
+      host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
       Present { value: _ } => true
       Absent => false
     }
-    // The same host on a family the cited set does not name: NO subject, and no pairing to fail.
-    let not_carried_binds_none = match managed_host_smpro_subject_under(
-      host: h, endpoint: endpoint,
+    // The SAME host on a family the cited set does not name: the gate refuses, so no subject could be
+    // bound. Deleting the gate -- or making it license everything, the pre-rework behaviour -- flips this.
+    let not_carried_unlicensed = match managed_host_smpro_pass_licensing(
       facility: SmproFacilityNotCarried { family: amd_7950x3d_soc_family }) {
-      Present { value: _ } => false
-      Absent => true
+      SmproPassLicensed => false
+      SmproPassNotLicensed { reason: r } => (r as String) != ""
     }
-    // ...and the same again on an unknown platform: still no subject, and still not a refusal.
-    let unknown_binds_none = match managed_host_smpro_subject_under(
-      host: h, endpoint: endpoint,
+    // ...and on an unknown platform: unlicensed for its own reason, which is not the not-carried reason.
+    let unknown_unlicensed = match managed_host_smpro_pass_licensing(
       facility: SmproFacilityUnestablished { reason: "the board admits no SoC family" }) {
-      Present { value: _ } => false
-      Absent => true
+      SmproPassLicensed => false
+      SmproPassNotLicensed { reason: r } => (r as String) == "the board admits no SoC family"
     }
-    // And the machine is still controlled: the route binds from access + secure, independent of all of it.
+    // And the machine is still fully controlled either way: the route binds from access + secure,
+    // independent of the platform fact, so an x86 unit needs no empty or refused SMpro field.
     let still_controlled = match bmc_control_binding(observed: h.access, secured: h.secure) {
       BmcControlBound { route: _ } => true
       _ => false
     }
-    carried_binds && not_carried_binds_none && unknown_binds_none && still_controlled
+    licensed_and_binds && not_carried_unlicensed && unknown_unlicensed && still_controlled
   }) && count(managed_hosts()) == 1
 }
 

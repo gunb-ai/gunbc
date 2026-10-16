@@ -595,24 +595,38 @@ fn managed_host_fixture(
 fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) -> SmproPassSubjectStanding? {
   match control {
     BmcControlBound { route: r } =>
-      managed_host_smpro_subject_under(host: host, endpoint: bmc_control_route_endpoint(route: r), facility: smpro_facility(access: host.access))
+      match managed_host_smpro_pass_licensing(facility: smpro_facility(access: host.access)) {
+        SmproPassLicensed =>
+          Present { value: smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: host.smpro) }
+        SmproPassNotLicensed { reason: _ } => none
+      }
     BmcControlAccessUnobserved { endpoint: _ } => none
     BmcControlNotSecured { cause: _ } => none
     BmcControlEndpointMismatch { observed: _, secured: _ } => none
   }
 }
 
-// THE SAME GATE OVER AN EXPLICIT FACILITY STANDING — one implementation, reached two ways. The
-// production path above reads the families through the board authority; this one takes the standing
-// directly, so a witness can show what a host whose platform does not carry the facility does (bind no
-// subject, and stay controlled) without minting a board row per question. Without this arm the gate
-// above could be deleted and no claim would go red.
-fn managed_host_smpro_subject_under(host: ManagedHost, endpoint: BmcControllerEndpoint, facility: SmproFacilityStanding) -> SmproPassSubjectStanding? {
+// WHETHER A HOST'S PLATFORM LICENCES AN SMpro PASS AT ALL, decided from the facility standing its bound
+// board establishes. A PURE DECISION, deliberately separated from the mint: smpro_pass_subject is a sealed
+// constructor whose admitted callers name managed_host_smpro_subject and one witness only, so the mint
+// stays in that one caller (widening a seal to let a test helper mint it would be the wrong fix) and this
+// is what a witness can exercise over every standing — the licensed one and the two that bind nothing.
+// Invert this fn or delete its call and w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject turns
+// red, which is the point: a gate no claim can falsify is not a gate.
+type SmproPassLicensing
+  = // The board admits an SoC family the cited carrying set names, so an SMpro pass may be paired with a
+    // site (the pairing itself is still refused by smpro_pass_subject if the site names another controller).
+    SmproPassLicensed
+  // The family does not carry the facility, or the board admits no family at all so nothing is known about
+  // the silicon. NO subject is bound — not an empty one and not a refused one — and the reason says which,
+  // because 'the family lacks it' and 'we do not know the family' are different answers.
+  | SmproPassNotLicensed { reason: NonEmptyStr }
+
+fn managed_host_smpro_pass_licensing(facility: SmproFacilityStanding) -> SmproPassLicensing {
   match facility {
-    SmproFacilityCarried { family: _ } =>
-      Present { value: smpro_pass_subject(host: host.host, endpoint: endpoint, site: host.smpro) }
-    // Not carried and unestablished mint nothing: there is no subject to pair a site with.
-    SmproFacilityNotCarried { family: _ } => none
-    SmproFacilityUnestablished { reason: _ } => none
+    SmproFacilityCarried { family: _ } => SmproPassLicensed
+    SmproFacilityNotCarried { family: _ } =>
+      SmproPassNotLicensed { reason: "the bound board's SoC family does not carry SMpro" }
+    SmproFacilityUnestablished { reason: r } => SmproPassNotLicensed { reason: r }
   }
 }

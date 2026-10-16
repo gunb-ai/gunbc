@@ -143,7 +143,6 @@ fn megarac_evidence_corroborates_release(evidence: MegaRacCapabilityEvidence, fi
       match read {
         MegaRacRunReadFirmware { read: read } => bmc_firmware_release_identity_eq(a: firmware, b: read)
         MegaRacRunRecordedNoFirmware { why: _ } => false
-        MegaRacRunRecordedDifferentFirmware { recorded: _, joined_by: _ } => false
       }
     MegaRacEvidenceCommittedFile { artifact_path: _, read_from: _ } => false
   }
