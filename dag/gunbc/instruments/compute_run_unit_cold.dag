@@ -34,10 +34,16 @@ import gunbc.compute.work_provider_local {
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   ComputeUnitStopObservation, NoStopObservation, SccacheStatsAtStop,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
+  compute_return_outputs, OutputsReturned, OutputsMismatch, compute_observe_toolchain, ToolchainObserved, ToolchainObservationRefused,
+  compute_resolve_subject, SubjectResolved, SubjectResolutionRefused, compute_store, ComputeMaterialization, ComputeMemoized,
+  compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
+  compute_provide_leaf, ProvideAttached, ProvideFresh, compute_work_identity,
 }
+import gunbc.compute.attempt_lifecycle { DirectInvocation }
+import std.materialization_provider { ComputeWorkRequest }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
-import gunbc.compute.work_request { work_default_build }
+import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.linux.procfs { procfs_status_effective_uid }
@@ -215,6 +221,55 @@ fn prepare_checkout(instance: HostDashboardInstance, layout: ComputeLayout, head
     ComputeExecOk { stdout: _, stderr: _ } => ""
     ComputeExecFailed { exit_code, stdout: _, stderr } =>
       join(["git worktree add exited ", to_string(value: exit_code), ": ", stderr], "")
+  }
+}
+
+// THE COLD ARM'S SECOND HALF, DRIVEN ON THE REAL UNIT'S OWN OUTPUTS (pairing obligation: the
+// supplied-outcome commit in test.claim.compute.attempt_lifecycle_wet_witness reuse_commit owes this
+// inhabitance). The unit compute_run_unit just ran built the tree; its declared outputs are captured
+// from THIS identity's owned target by compute_return_outputs, committed by compute_store_commit under
+// the request the real toolchain and tree name, and the production leaf must then ATTACH to that
+// record. Returns "" when all of that held, otherwise what stopped it. Deleting the commit makes the
+// leaf enter production (ProvideFresh), which this refuses.
+fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout, head: String, exec_log: String) -> String {
+  match compute_store(instance: instance) {
+    Absent => "the hermetic instance declares no compute store"
+    Present { value: store } =>
+      match compute_observe_toolchain(instance: instance) {
+        ToolchainObservationRefused { detail } => join(["toolchain unobserved: ", detail], "")
+        ToolchainObserved { toolchain } =>
+          match compute_resolve_subject(instance: instance, commit: head) {
+            SubjectResolutionRefused { detail } => join(["subject unresolved: ", detail], "")
+            SubjectResolved { subject } => {
+              let op = work_default_build()
+              let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
+              let staged = mkdir_ok(instance: instance, path: layout.staging_dir) && mkdir_ok(instance: instance, path: layout.leases_dir)
+              let log = Filesystem.Write(path: layout.log_path, content: exec_log)
+              if !(staged && log.success) { "staging or the run log could not be written" } else {
+                match compute_return_outputs(instance: instance, layout: layout, declared: work_declared_outputs(op: op)) {
+                  OutputsMismatch { detail } => join(["capture mismatched: ", detail], "")
+                  OutputsReturned { outputs } => {
+                    let outcome = WorkSucceeded { identity: identity, outputs: outputs, log_path: layout.log_path }
+                    match compute_store_commit(
+                      materialization: ComputeMaterialization { store: store, request: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }, plan: ComputeMemoized },
+                      layout: layout, op: op, outcome: outcome,
+                      document: work_outcome_wire(o: outcome, subject: subject, op: op),
+                    ) {
+                      ComputeCommitNotOwed => "the commit was not owed"
+                      ComputeCommitRefused { detail } => join(["the commit was refused: ", detail], "")
+                      ComputeCommitted =>
+                        match compute_provide_leaf(store: store, instance: instance, owner: DirectInvocation { why: "compute-run-unit-cold" }, commit: head, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency) {
+                          ProvideFresh { outcome: _, document: _, host_record: _ } => "the production leaf did not attach to the committed record"
+                          ProvideAttached { identity: attached, ending: _, document: _, host_record: _ } =>
+                            if attached == identity { "" } else { "the leaf attached to a different identity" }
+                        }
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
   }
 }
 
@@ -503,8 +558,15 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                         },
                         "\n",
                       ], "")
-                      if invoked && exec_ok {
-                        CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+                      let exec_log = match unit_run.exec {
+                        ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
+                        ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
+                      }
+                      let committed = if invoked && exec_ok { cold_commit_and_attach(instance: instance, layout: layout, head: head, exec_log: exec_log) } else { "" }
+                      if invoked && exec_ok && (committed != "") {
+                        CliWirePrintable { bytes: join([bytes, "cold arm: ", committed, "\n"], ""), exit: ExitFailure { code: 1, reason: join(["the cold arm's capture, commit or attach failed: ", committed], "") } }
+                      } else if invoked && exec_ok {
+                        CliWirePrintable { bytes: join([bytes, "cold arm: captured, committed and attached\n"], ""), exit: ExitSuccess }
                       } else {
                         CliWirePrintable {
                           bytes: bytes,
