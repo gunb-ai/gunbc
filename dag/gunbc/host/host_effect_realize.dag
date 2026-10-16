@@ -250,26 +250,6 @@ import extdeps.cache.sccache {
   sccache_installed_binary_path,
   sccache_misconfigured_log_fragments,
 }
-import gunbc.host.sccache_verified_install { sccache_verified_install_if_absent_script }
-
-import std.optional { Absent, Optional, Present }
-import gunbc.shell_command_text { shell_command_text_of_argv }
-import gunbc.host.build_cache_daemon_ensure {
-  build_cache_matched_stats_fragment,
-  build_cache_read_back_observation,
-  BuildCacheEnsureExecuted,
-  BuildCacheEnsureOp,
-  BuildCacheHostRunObserved,
-  BuildCacheHostRunOutcome,
-  build_cache_daemon_ensure_observation,
-  build_cache_daemon_ensure_plan,
-  build_cache_daemon_presence_command,
-  build_cache_daemon_stats_command,
-  build_cache_ensure_is_needed,
-  build_cache_observe_observed,
-  build_cache_unit_bytes,
-  build_cache_unit_stage_discard_command,
-}
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
@@ -3259,6 +3239,17 @@ fn build_cache_install_is_cited_not_package_manager() -> Bool {
     && !string_contains(s: rendered, pattern: "/usr/bin/sccache")
 }
 
+// THE PRESENCE RECORD FOR THE RENDERING ORACLES, which ask for the two legs directly rather than
+// reproducing a probe. Not the production route -- production derives this from the probe's own exit code
+// through build_cache_binary_presence_of, and an oracle that wants to see the install legs asks for them.
+fn build_cache_presence_for_render(install_needed: Bool) -> Optional<VerifiedBinaryInstallPresence> {
+  if install_needed {
+    Present { value: InstallNeeded { dest_path: sccache_installed_binary_path as String } }
+  } else {
+    Present { value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String } }
+  }
+}
+
 // EVERY OP THE ENSURE DERIVES, RENDERED FOR COMPARISON. Used by the production oracles only. The join
 // separator is a newline so an assertion cannot accidentally match across two words of one argv (a space
 // would let "install -m" and a following "-m" read as one phrase).
@@ -3272,7 +3263,7 @@ fn build_cache_ensure_ops_rendered(
     instance: instance,
     arch_token: arch_token,
     digest: digest,
-    install_needed: install_needed,
+    install: build_cache_presence_for_render(install_needed: install_needed),
   ) {
     EnsurePlanRefused { reason: _ } => ""
     EnsureOps { ops: ops } =>
@@ -3776,7 +3767,7 @@ fn build_cache_ensure_executed(
       instance: instance,
       arch_token: arch_token,
       digest: digest,
-      install_needed: build_cache_observe_reports_binary_absent(observe: observe),
+      install: build_cache_binary_presence_of(observe: observe, p: install_params),
     ) {
       EnsurePlanRefused { reason: r } => EnsurePlanRefused { reason: r }
       EnsureOps { ops: ops } => {
@@ -3785,17 +3776,6 @@ fn build_cache_ensure_executed(
         outcome
       }
     }
-  }
-}
-
-// ONE AUTHORITY FOR "THE BINARY IS NOT THERE": the presence probe the observer already ran. The script
-// asked the same question twice (its `[ -x BIN ]` test, then again inside the ensure body) and the two could
-// disagree; here the ensure's install guard is derived from the record the probe produced, so one
-// observation of the fact exists.
-fn build_cache_observe_reports_binary_absent(observe: BuildCacheObserve) -> Bool {
-  match observe {
-    ObserveAbsent => true
-    _ => false
   }
 }
 
@@ -5590,7 +5570,8 @@ fn build_cache_ensure_step(
   token: NonEmptyStr,
   digest: Digest,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let presence = build_cache_daemon_presence_command()
+  let install_params = build_cache_sccache_install_params(arch_token: token, digest: digest)
+  let presence = build_cache_daemon_presence_command(p: install_params)
   let stats = build_cache_daemon_stats_command()
   let presence_read = build_cache_argv_read_outcome(command: presence, transport: transport)
   // The script tested `[ -x BIN ]` and only then ran `--show-stats`; when the test failed it fell through

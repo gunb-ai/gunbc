@@ -277,18 +277,3 @@ fn verified_binary_install_shell(p: VerifiedBinaryInstallParams) -> String {
     "\n",
   )
 }
-
-// THE SHELL REALIZATION BEHIND THE PRESENCE OBSERVATION, for a consumer whose transport is a host
-// shell and which installs only when the binary is absent. The guard is the cited `test -x` render,
-// so the observation and the guard are the same words. The body keeps its refusals: `set -e` still
-// aborts on a digest mismatch, so a refused install is never a partial one.
-fn verified_binary_install_if_absent_shell(p: VerifiedBinaryInstallParams) -> String {
-  join(
-    [
-      join(["if [ ! -x '", p.dest_path, "' ]; then"], ""),
-      verified_binary_install_shell(p: p),
-      "fi",
-    ],
-    "\n",
-  )
-}

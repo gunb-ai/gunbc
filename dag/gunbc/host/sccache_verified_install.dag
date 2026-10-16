@@ -7,7 +7,6 @@ import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_pa
 import gunbc.host.verified_binary_install {
   VerifiedBinaryInstallParams,
   verified_binary_install_shell,
-  verified_binary_install_if_absent_shell,
   verified_binary_install_admitted_plan,
 }
 
@@ -82,17 +81,6 @@ fn sccache_verified_install_script(
   digest: Digest,
 ) -> String {
   verified_binary_install_shell(p: sccache_verified_install_params(rel: rel, arch: arch, digest: digest))
-}
-
-// THE IDEMPOTENT SHELL FORM, for a consumer that embeds the install inside a larger script and must
-// skip it when the binary is already in place (the build-cache provision site: it stages a systemd
-// unit and starts a daemon whether or not it had to install anything).
-fn sccache_verified_install_if_absent_script(
-  rel: SccacheBinaryRelease,
-  arch: NonEmptyStr,
-  digest: Digest,
-) -> String {
-  verified_binary_install_if_absent_shell(p: sccache_verified_install_params(rel: rel, arch: arch, digest: digest))
 }
 
 // THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest

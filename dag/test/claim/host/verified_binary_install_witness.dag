@@ -39,12 +39,13 @@ import gunbc.host.verified_binary_install {
   verified_binary_install_shell,
   verified_binary_install_verify_line,
 }
-import gunbc.host.sccache_verified_install {
-  sccache_verified_install_if_absent_script,
-  sccache_verified_install_params,
-  sccache_verified_install_script,
+import gunbc.host.sccache_verified_install { sccache_verified_install_params, sccache_verified_install_script }
+import gunbc.host.host_effect_realize { build_cache_ensure_ops_rendered }
+import gunbc.host.build_cache_daemon_ensure {
+  AlreadyInstalled,
+  InstallNeeded,
+  VerifiedBinaryInstallPresence,
 }
-import gunbc.host.host_effect_realize { build_cache_ensure_daemon_body }
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -262,8 +263,13 @@ test fn the_rendered_body_checks_before_it_moves_and_set_e_gates_everything() ->
     && line_at_exists_and_starts_with(lines: lines, index: 4, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
 }
 
-// THE PRECONDITION IS AN OBSERVATION OVER THE CITED test -x OP, with two arms a caller can act on: an
-// already-provisioned instance costs nothing.
+// THE PRECONDITION IS AN OBSERVATION, AND IT DECIDES WHETHER THE INSTALL RUNS AT ALL. The script gated the
+// install with an inline `if [ ! -x ... ]` and this claim used to assert that guard's SPELLING. What the
+// guard was ever for is the behaviour asserted now: a host whose binary is already executable must not
+// re-download over a running binary, and a host without one must get the install. Both arms are read off the
+// SAME observation the generic effect is built around, applied to the same params the install legs are built
+// from -- so the probe that gates the install and the install that writes the destination cannot drift apart
+// into disagreeing about which path they mean.
 test fn the_binary_presence_precondition_gates_the_install() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   match verified_binary_install_destination_present(p: p, test_executable_exit: 0) {
@@ -274,33 +280,50 @@ test fn the_binary_presence_precondition_gates_the_install() -> Bool {
          AlreadyInstalled { dest_path: _ } => false
          InstallNeeded { dest_path: d } => d == p.dest_path
        }
-    && starts_with(
-         s: sccache_verified_install_if_absent_script(
-           rel: sccache_release_0_15_0,
-           arch: "aarch64" as NonEmptyStr,
-           digest: sccache_release_0_15_0.digest_aarch64,
-         ),
-         prefix: "if [ ! -x ",
-       )
+    // The gate is not decorative: with the binary present, no install argv is derived at all.
+    && !string_contains(
+      s: build_cache_ensure_ops_rendered(
+        instance: ci_cache_instance(host: "srv1"),
+        arch_token: "aarch64" as NonEmptyStr,
+        digest: sccache_release_0_15_0.digest_aarch64,
+        install_needed: false,
+      ),
+      pattern: "releases/download",
+    )
+    && string_contains(
+      s: build_cache_ensure_ops_rendered(
+        instance: ci_cache_instance(host: "srv1"),
+        arch_token: "aarch64" as NonEmptyStr,
+        digest: sccache_release_0_15_0.digest_aarch64,
+        install_needed: true,
+      ),
+      pattern: "releases/download",
+    )
 }
 
-// INHABITANCE, ON THE REAL ROUTE. `build_cache_ensure_daemon_body` is the function the build-cache
-// ensure step realizes, so reading the install out of ITS output is the claim that the swap landed on
-// the route callers use rather than beside it.
+// INHABITANCE, ON THE REAL ROUTE. The build-cache ensure step realizes its install by asking
+// gunbc.host.build_cache_daemon_ensure for its operations, and those operations are built by THIS generic
+// effect from the sccache adapter's boundary values. Reading the release URL, the digest, and the check out
+// of the operations the effect DERIVES -- rather than out of a script a caller concatenates -- is the claim
+// that the swap landed on the route callers use rather than beside it: these are the argv the site executes,
+// and the site has no other way to install.
 test fn the_build_cache_ensure_step_installs_through_the_generic_effect() -> Bool {
-  let body = build_cache_ensure_daemon_body(
+  let ops = build_cache_ensure_ops_rendered(
     instance: ci_cache_instance(host: "srv1"),
     arch_token: "aarch64" as NonEmptyStr,
     digest: sccache_release_0_15_0.digest_aarch64,
+    install_needed: true,
   )
-  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
-    && string_contains(s: body, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
-    && string_contains(s: body, pattern: "| sha256sum -c -")
-    && string_contains(s: body, pattern: "if [ ! -x '/usr/local/bin/sccache' ]; then")
-    // NOT a package manager, and NOT the legacy image path: the two ways this step used to be a shell
-    // guess about how binaries arrive.
-    && !string_contains(s: body, pattern: "apt-get install")
-    && !string_contains(s: body, pattern: "/usr/bin/sccache")
+  string_contains(s: ops, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
+    && string_contains(s: ops, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
+    // the digest is CHECKED, not trusted: the read-back argv is what makes a mismatch a refusal
+    && string_contains(s: ops, pattern: "sha256sum")
+    // the unit is written and the manager is told about it, in that order, with the privilege the script had
+    && string_contains(s: ops, pattern: "systemctl")
+    && string_contains(s: ops, pattern: "/usr/local/bin/sccache")
+    // NOT a package manager: the way this step used to be a shell guess about how binaries arrive.
+    && !string_contains(s: ops, pattern: "apt-get install")
+    && !string_contains(s: ops, pattern: "/usr/bin/sccache")
 }
 
 // THE GENERICITY, PROVEN. A second product's values go through the SAME effect and produce no sudo at

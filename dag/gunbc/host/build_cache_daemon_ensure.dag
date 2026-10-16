@@ -10,7 +10,6 @@ import extdeps.cache.sccache {
   sccache_stats_query_command,
 }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.posix.test_utility { test_executable_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_command, systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_argv, dd_overwrite_path_command, rm_force_command }
@@ -23,7 +22,13 @@ import gunbc.build_cache.build_cache_provision_verdict {
 }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_system_path, build_cache_unit_text }
 import gunbc.shell_command_text { shell_command_text_of_argv }
-import gunbc.host.verified_binary_install { verified_binary_install_install_steps }
+import gunbc.host.verified_binary_install {
+  VerifiedBinaryInstallParams,
+  VerifiedBinaryInstallPresence,
+  verified_binary_install_destination_present,
+  verified_binary_install_destination_present_command,
+  verified_binary_install_install_steps,
+}
 import gunbc.host.sccache_verified_install { sccache_verified_install_params }
 
 // THE STAGE SUFFIX IS THIS ENSURE'S OWN and deliberately does not share `compile_pool_slice_stage_suffix`
@@ -237,15 +242,51 @@ fn build_cache_ensure_is_needed(observe: BuildCacheObserve) -> Bool {
     ObserveAbsent => true
     ObserveMisconfigured { matched_fragment: _, stats: _ } => true
     ObserveUnresponsive { detail: _ } => true
-    ObserveReadBlocked { phase: _, reason: _ } => true
+    ObserveReadBlocked { phase: _, reason: _ } => false
   }
 }
 
 // THE PRESENCE PROBE, REUSED FROM ITS UPSTREAM rather than minted: `[ -x BIN ]` is
 // extdeps.posix.test_utility.test_executable_command, the same op the rest of the fleet asks "is this
-// executable file there" with. The path is the install authority's own constant, never a caller's guess.
-fn build_cache_daemon_presence_command() -> ArgvCommand {
-  test_executable_command(path: sccache_installed_binary_path as String)
+// executable file there" with, reached through the generic install effect's own presence command so the
+// probe that GATES the install and the effect that PERFORMS it cannot disagree about which path they are
+// talking about. The path is the install authority's own constant, never a caller's guess.
+fn build_cache_daemon_presence_command(p: VerifiedBinaryInstallParams) -> ArgvCommand {
+  verified_binary_install_destination_present_command(p: p)
+}
+
+// THE PRESENCE RECORD, DERIVED THROUGH THE GENERIC EFFECT'S OWN CLASSIFIER. The probe's argv and the
+// reading of its exit code both come from gunbc.host.verified_binary_install, applied to ONE params record,
+// so the path the probe tests, the path the install writes, and the meaning of the probe's exit code are
+// three views of the same declaration rather than three places that must agree.
+//
+// The observe record is the evidence: `ObserveAbsent` is the observer's reading of a non-zero `test -x`, and
+// every outcome that is not absent means the probe exited zero (the stats query only ever ran after it did).
+// A BLOCKED read yields Absent -- the probe never ran, so there is nothing to classify, and the plan refuses
+// rather than guessing in either direction.
+fn build_cache_binary_presence_of(
+  observe: BuildCacheObserve,
+  p: VerifiedBinaryInstallParams,
+) -> Optional<VerifiedBinaryInstallPresence> {
+  match observe {
+    ObserveAbsent =>
+      Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 1) }
+    ObserveStatsOk { stats: _ } =>
+      Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 0) }
+    ObserveMisconfigured { matched_fragment: _, stats: _ } =>
+      Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 0) }
+    ObserveUnresponsive { detail: _ } =>
+      Present { value: verified_binary_install_destination_present(p: p, test_executable_exit: 0) }
+    ObserveReadBlocked { phase: _, reason: _ } => Absent as Optional<VerifiedBinaryInstallPresence>
+  }
+}
+
+// THE PRESENCE PROBE AND THE INSTALL LEGS ARE BUILT FROM ONE PARAMETER RECORD, so the path the probe
+// tests and the path the install writes to are the same string by construction rather than by two
+// call-sites agreeing. The release row's own digest is used: the probe is a read, and a read that
+// disagrees with the release row is a defect in the row, not something the probe should be told about.
+fn build_cache_sccache_install_params(arch_token: NonEmptyStr, digest: Digest) -> VerifiedBinaryInstallParams {
+  sccache_verified_install_params(rel: sccache_release_0_15_0, arch: arch_token, digest: digest)
 }
 
 // THE STATS QUERY — the one typed op this retirement needed, minted in its UPSTREAM
@@ -291,6 +332,31 @@ fn build_cache_unit_bytes(instance: BuildCacheInstance) -> String {
 // binary there", not two shell tests), and when it is false the install steps are not derived at all:
 // re-running the download would overwrite a binary that is running.
 //
+// THE PRESENCE OBSERVATION COMES FROM THE GENERIC EFFECT ITSELF. One authority decides "is the binary
+// already at the destination": verified_binary_install_destination_present, the same observation the
+// install effect is built around, applied to the same params the install legs are built from. The script
+// asked the question twice -- once with its own `[ -x BIN ]` and again inside the ensure -- and the two
+// could disagree, which is how an install can end up running over a live binary or being skipped when the
+// host still needs it. Absent here means the probe never ran, and the plan REFUSES rather than guessing in
+// either direction.
+fn build_cache_install_is_derivable(install: Optional<VerifiedBinaryInstallPresence>) -> Bool {
+  match install {
+    Present { value: v } =>
+      match v {
+        InstallNeeded { dest_path: _ } => true
+        AlreadyInstalled { dest_path: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn build_cache_plan_is_plannable(install: Optional<VerifiedBinaryInstallPresence>) -> Bool {
+  match install {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 // THE ONE REFUSAL THE PLAN CAN MAKE, AND WHY IT IS A REFUSAL RATHER THAN A SANITISATION: a unit name
 // containing '/' would place the unit file OUTSIDE /etc/systemd/system/, and systemd unit names never
 // contain one. Reaching this arm means a caller handed over a path-shaped name, which is a defect in the
@@ -299,18 +365,22 @@ fn build_cache_daemon_ensure_plan(
   instance: BuildCacheInstance,
   arch_token: NonEmptyStr,
   digest: Digest,
-  install_needed: Bool,
+  install: Optional<VerifiedBinaryInstallPresence>,
 ) -> BuildCacheDaemonEnsurePlan {
   if string_contains(s: instance.intended_unit as String, pattern: "/") {
     EnsurePlanRefused {
       reason: "the intended unit name carries '/', which would put the unit file outside /etc/systemd/system/; systemd unit names never contain one, so this is a malformed name rather than a path and the ensure refuses instead of writing it",
+    }
+  } else if !build_cache_plan_is_plannable(install: install) {
+    EnsurePlanRefused {
+      reason: "the build-cache ensure cannot be planned without the binary-presence observation: that one probe decides whether the install legs are derived, and planning without it would either re-download over a binary that is running or skip an install the host still needs. The probe is asked, its exit code is read, and the plan is derived from the record it produces.",
     }
   } else {
     let staged = build_cache_unit_staged_path(instance: instance)
     let dest = build_cache_unit_system_path(instance: instance)
     EnsureOps {
       ops: append(
-        if install_needed {
+        if build_cache_install_is_derivable(install: install) {
           map(
             verified_binary_install_install_steps(
               p: sccache_verified_install_params(rel: sccache_release_0_15_0, arch: arch_token, digest: digest),
