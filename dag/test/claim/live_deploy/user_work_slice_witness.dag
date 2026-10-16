@@ -507,7 +507,7 @@ test fn an_attempt_worker_under_its_declared_slice_is_wrap_exempt() -> Bool {
     Absent => false
     Present { value: max } =>
       byte_size_count(b: max) == byte_size_count(b: attempt_worker_slice_memory_max)
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
           ExemptSystemUnit { unit, slice, bound } =>
             unit == worker
               && slice == (attempt_worker_slice_unit_name as String)
