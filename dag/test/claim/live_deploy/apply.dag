@@ -7,8 +7,8 @@ import gunbc.live_deploy.apply {
 import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_artifact,
   roadmap_site_dispatch_json_body,
-  roadmap_site_dispatch_url_path,
 }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path }
 import gunbc.host.host_effect_realize {
   live_deploy_digest_readback_verdict,
   live_deploy_digest_readback_argv,

@@ -222,10 +222,8 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheIn
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.roadmap.roadmap_static_site {
-  roadmap_site_dispatch_json_artifact,
-  roadmap_site_dispatch_url_path,
-}
+import gunbc.roadmap.roadmap_static_site { roadmap_site_dispatch_json_artifact }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
 import gunbc.cli_services
