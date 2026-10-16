@@ -41,6 +41,9 @@ import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
 import gunbc.host.virtual_media_boot_selection { VirtualMediaBootSelectionAdmitted }
+import gunbc.host.smpro_platform_capability { SmproPlatformNotCarried }
+import extdeps.cpu.types { SoCFamily }
+import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
 import gunbc.auth.managed_host_boot_federation {
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
@@ -447,6 +450,49 @@ test fn w_a_dissolved_covering_drop_with_a_live_typed_population_still_covers() 
                   d.identity == mtcollins1_bmc_secure_standing_predates_reflash.identity
                 _ => false
               }
+          }
+      }
+  }
+}
+
+// ADMISSION PERMITS A PLATFORM THAT DOES NOT CARRY SMpro (the manager's HOLD ruling, seam side).
+// The x86 specimen is snappy's SUPPLIED WITNESS INPUT (his managed_host_witness owns the fixture and
+// the row-side claim); the family here wraps the SAME cited catalog row (extdeps.cpu.amd
+// .ryzen_9_7950x3d_catalog -- the corpus's real x86 silicon, DESIGN 5: the row carries the identity).
+// Minting the whole mtcollins1 record with smpro := NotCarried must ADMIT, and the projection must
+// still bind the member: standings_bound_to_record_subject now holds access==secure and compares an
+// SMpro endpoint ONLY when the platform carries a site -- requiring one is what once forced an x86
+// host to fabricate an Ampere site to be managed at all.
+test fn w_admission_permits_a_platform_that_does_not_carry_smpro() -> Bool {
+  let amd_7950x3d = SoCFamily {
+    name: "Ryzen 9 7950X3D",
+    models: [ryzen_9_7950x3d_catalog],
+  }
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        binding: r.binding,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: SmproPlatformNotCarried { family: amd_7950x3d },
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: r.covering_drop,
+      ) {
+        notcarried =>
+          match project_managed_host_admission(
+            record: notcarried,
+            current_subject: Present { value: r.binding.subject },
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => false
+            Present { value: m } => match m {
+              OrdinaryMember { host: h } => (h.host as String) == (operator_host_mtcollins1 as String)
+              MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: _ } => false
+            }
           }
       }
   }

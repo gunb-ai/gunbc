@@ -182,6 +182,8 @@ fn managed_host_admission(
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_missing_host_allocation_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_a_receipt_for_another_host_is_absent"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
+    decl_ref(module_path: "test.claim.host.managed_host_admission_witness",
+      decl_name: "w_admission_permits_a_platform_that_does_not_carry_smpro"),
   ]
 {
   ManagedHostAdmission {
