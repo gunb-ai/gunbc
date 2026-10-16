@@ -13,6 +13,7 @@ import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_
 import extdeps.systemd.systemd_run {
   SystemdRunProperty,
   SystemdRunOption,
+  Pipe,
   Quiet,
   Wait,
   Collect,
@@ -124,10 +125,11 @@ fn fci1_unit_properties(working_directory: String, bound: Fci1UnitBound) -> List
   )
 }
 
-// systemd-run --quiet --wait --collect --unit=<unit> --property=... -- <child>
+// systemd-run --quiet --wait --pipe --collect --unit=<unit> --property=... -- <child>
+// --pipe: without it a --wait unit writes to the journal and the RED rows read an empty capture.
 fn fci1_unit_command(unit: NonEmptyStr, working_directory: String, bound: Fci1UnitBound, child_words: List<String>) -> Fci1UnitCommand {
   let options = concat(
-    [Quiet, Wait, Collect, RunUnit { unit: unit }],
+    [Quiet, Wait, Pipe, Collect, RunUnit { unit: unit }],
     concat(map(fci1_unit_properties(working_directory: working_directory, bound: bound), p => PropertyLong { property: p }), [EndOfOptions]),
   )
   match systemd_run_command_of(options: options, command_argv: child_words) {
