@@ -38,7 +38,8 @@ import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
-import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
+import extdeps.tools.gnu_coreutils { mv_command }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.systemd { ExecStopProperty }
@@ -636,5 +637,105 @@ fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToo
         }
       }
     }
+  }
+}
+
+// CAUSE-CONFIRMATION CONTROL FOR C9 (no cross-identity Rust sccache reuse). Inferred cause: each
+// identity checks out at its own absolute path and sccache's Rust key includes the source/cwd
+// path. This arm holds EVERY input fixed except time: the same frame, so the same instance root,
+// identity, checkout and target path, built twice on one sccache server. Between the runs the
+// checkout is removed and the target moved aside, so run two's cargo is cold and must ask sccache
+// for every rustc invocation; nothing else is changed. Rust hits > 0 in run two (against 0/111 for
+// two distinct identities in compute-run-unit-cold) confirms the path as the cause; 0 refutes it.
+fn rust_sccache_hits(text: String) -> Int? {
+  sccache_stat_value(text: text, label: "Cache hits (Rust)")
+}
+
+fn rust_sccache_misses(text: String) -> Int? {
+  sccache_stat_value(text: text, label: "Cache misses (Rust)")
+}
+
+fn rust_reading_wire(label: String, text: String) -> String {
+  match rust_sccache_hits(text: text) {
+    Absent => join([label, ": rust hits unobserved\n"], "")
+    Present { value: hits } =>
+      match rust_sccache_misses(text: text) {
+        Absent => join([label, ": rust hits=", to_string(value: hits), " misses unobserved\n"], "")
+        Present { value: misses } => join([label, ": rust hits=", to_string(value: hits), " misses=", to_string(value: misses), "\n"], "")
+      }
+  }
+}
+
+fn same_path_reset(toolchain_homes: IsolatedJobToolchainHomes, frame: Int) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  match compute_layout(instance: instance, identity_hex: to_string(value: frame)) {
+    Absent => "no materialization store declared"
+    Present { value: layout } => {
+      let drop_checkout = git_worktree_remove_force_command(repository_dir: workspace, path: layout.checkout)
+      match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: workspace, args: drop_checkout.arguments) {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => join(["worktree remove exited ", to_string(value: exit_code), ": ", stderr], "")
+        ComputeExecOk { stdout: _, stderr: _ } => {
+          let aside = mv_command(source: layout.target_dir, destination: join([layout.target_dir, ".run1"], ""))
+          match compute_exec(program: aside.program.invocation as String, workdir: ".", args: aside.arguments) {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => join(["target move exited ", to_string(value: exit_code), ": ", stderr], "")
+            ComputeExecOk { stdout: _, stderr: _ } => ""
+          }
+        }
+      }
+    }
+  }
+}
+
+fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
+  match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent =>
+      no_observation(bytes: "compute-run-unit-cold-same-path: no observation: user session bus absent", reason: "user session bus absent")
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent =>
+          CliWirePrintable {
+            bytes: "compute-run-unit-cold-same-path: ToolchainHomesNotIsolated",
+            exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
+          }
+        Present { value: toolchain_homes } =>
+          match observe_run_frame() {
+            Absent => no_observation(bytes: "compute-run-unit-cold-same-path: no observation: run frame unreadable", reason: "run frame unreadable")
+            Present { value: frame } => {
+              let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, extra_properties: unit_stats_on_stop())
+              if !cold_run_succeeded(r: first) {
+                first
+              } else {
+                let reset = same_path_reset(toolchain_homes: toolchain_homes, frame: frame)
+                if reset != "" {
+                  CliWirePrintable { bytes: join([cold_run_bytes(r: first), "\nreset failed: ", reset], ""), exit: ExitFailure { code: 1, reason: reset } }
+                } else {
+                  let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, extra_properties: unit_stats_on_stop())
+                  let t1 = cold_run_bytes(r: first)
+                  let t2 = cold_run_bytes(r: second)
+                  let bytes = join([
+                    t1, "\n=== second build at the SAME absolute path ===\n", t2, "\n",
+                    rust_reading_wire(label: "first build (same path)", text: t1),
+                    rust_reading_wire(label: "second build (same path)", text: t2),
+                  ], "")
+                  if !cold_run_succeeded(r: second) {
+                    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "the second same-path run failed" } }
+                  } else {
+                    match rust_sccache_hits(text: t2) {
+                      Absent => no_observation(bytes: bytes, reason: "no observation: no 'Cache hits (Rust)' line in the second unit's own stats")
+                      Present { value: hits } =>
+                        if hits > 0 {
+                          CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+                        } else {
+                          CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "0 Rust sccache hits at the same absolute path: the path is not the cause" } }
+                        }
+                    }
+                  }
+                }
+              }
+            }
+          }
+      }
   }
 }

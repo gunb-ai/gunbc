@@ -52,6 +52,7 @@ fn sort_program() -> ProgramIdentity = uncataloged_program(invocation: "sort")
 data cut_program: NonEmptyStr = "cut"
 fn od_program() -> ProgramIdentity = uncataloged_program(invocation: "od")
 fn mkdir_program() -> ProgramIdentity = uncataloged_program(invocation: "mkdir")
+fn mv_program() -> ProgramIdentity = uncataloged_program(invocation: "mv")
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -95,6 +96,13 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
 // lets the NAME of the directory be the record and a repeated invocation be harmless.
 fn mkdir_create_only_command(path: String) -> ArgvCommand {
   argv_command(program: mkdir_program(), arguments: ["--", path])
+}
+
+// mv: rename a path. Within one filesystem it is rename(2), so moving a directory aside costs no
+// copy and leaves its bytes intact; it refuses when the destination directory is non-empty (coreutils
+// "mv invocation"), which is what makes a repeated move harmless rather than a merge.
+fn mv_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: mv_program(), arguments: ["--", source, destination])
 }
 
 // ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
