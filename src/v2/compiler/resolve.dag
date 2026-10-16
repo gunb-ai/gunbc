@@ -4494,7 +4494,8 @@ fn type_param_value_binders(n: Node, declaring: DeclaringPosition) -> Map<Symbol
 fn resolve_type_parameter_value_reading(ctx: ResolveContext, identity: Symbol) -> Optional<QualifiedName> {
   match lookup_chain(s: ctx.type_scope, name: identity) {
     Accepted { value: BoundInFrame { canonical: canonical, kind: TypeParameterFrame { binders: binders } }, diagnostics: _ } => map_lookup(m: binders, key: canonical)
-    Accepted { value: BoundInFrame { canonical: _, kind: _ }, diagnostics: _ } => optional_absent()
+    Accepted { value: BoundInFrame { canonical: _, kind: LexicalFrame { binders: _ } }, diagnostics: _ } => optional_absent()
+    Accepted { value: BoundInFrame { canonical: _, kind: ParameterFrame { arrow_path: _ } }, diagnostics: _ } => optional_absent()
     Accepted { value: BoundAtRoot { canonical: _ }, diagnostics: _ } => optional_absent()
     Accepted { value: ScopeUnbound, diagnostics: _ } => optional_absent()
     Rejected { diagnostics: _ } => optional_absent()

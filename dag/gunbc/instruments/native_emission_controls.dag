@@ -719,7 +719,7 @@ data native_emission_expected_identities: List<String> = [
   "optional_type_param_holds_present_value",
   "optional_type_param_red_absent_reads_no_value",
   "nested_variant_match_reads_the_innermost_payload",
-  "nested_variant_match_red_wildcard_kind_is_not_the_payload",
+  "nested_variant_match_red_other_kinds_are_not_the_payload",
   "nested_variant_match_red_sibling_variant_selects_its_own_arm",
   "nested_variant_match_red_outer_rejection_selects_its_own_arm"
 ]
@@ -728,7 +728,7 @@ data native_emission_expected_identities: List<String> = [
 // exhaustively, not with every arm guarded (gunbc.recurring_failure_mode
 // an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded). The shape is
 // v2.compiler.resolve type_parameter_binding_value_reading before it was split: Accepted over
-// BoundInFrame over a kind variant, beside a wildcard-kind arm, a unit variant and a Rejected arm.
+// BoundInFrame over a kind variant, beside its enumerated sibling kinds, a unit variant and a Rejected arm.
 // Guarded arms are invisible to rustc's exhaustiveness check, so the match used to refuse E0004 and
 // this program did not compile -- the red is the label's.
 type ControlFrameKind
@@ -748,7 +748,8 @@ type ControlLookup
 fn control_nested_reading(l: ControlLookup) -> Int {
   match l {
     ControlFound { value: ControlInFrame { canonical: _, kind: ControlTypeFrame { width: w } } } => w
-    ControlFound { value: ControlInFrame { canonical: _, kind: _ } } => 0 - 1
+    ControlFound { value: ControlInFrame { canonical: _, kind: ControlLexicalFrame { width: _ } } } => 0 - 1
+    ControlFound { value: ControlInFrame { canonical: _, kind: ControlParameterFrame { width: _ } } } => 0 - 5
     ControlFound { value: ControlAtRoot { canonical: _ } } => 0 - 2
     ControlFound { value: ControlScopeUnbound } => 0 - 3
     ControlMissing { reason: _ } => 0 - 4
@@ -758,7 +759,7 @@ fn control_nested_reading(l: ControlLookup) -> Int {
 fn nested_variant_match_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "nested_variant_match_reads_the_innermost_payload", held: control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlTypeFrame { width: 7 } } }) == 7 },
-    NativeEmissionCase { identity: "nested_variant_match_red_wildcard_kind_is_not_the_payload", held: control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlLexicalFrame { width: 7 } } }) == 0 - 1 },
+    NativeEmissionCase { identity: "nested_variant_match_red_other_kinds_are_not_the_payload", held: control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlLexicalFrame { width: 7 } } }) == 0 - 1 && control_nested_reading(l: ControlFound { value: ControlInFrame { canonical: "a", kind: ControlParameterFrame { width: 7 } } }) == 0 - 5 },
     NativeEmissionCase { identity: "nested_variant_match_red_sibling_variant_selects_its_own_arm", held: control_nested_reading(l: ControlFound { value: ControlAtRoot { canonical: "a" } }) == 0 - 2 && control_nested_reading(l: ControlFound { value: ControlScopeUnbound }) == 0 - 3 },
     NativeEmissionCase { identity: "nested_variant_match_red_outer_rejection_selects_its_own_arm", held: control_nested_reading(l: ControlMissing { reason: "r" }) == 0 - 4 }
   ]
