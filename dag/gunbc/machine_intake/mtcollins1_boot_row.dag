@@ -22,7 +22,8 @@ module gunbc.machine_intake.mtcollins1_boot_row
 import std.types { NonEmptyStr, String }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.host.boot_attempt { ConsoleReading, console }
+import extdeps.sha256 { Sha256FileDigest }
+import gunbc.host.boot_attempt { ConsoleReading, ReferenceCaptureRead, console, console_reading }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,
   MegaRacConsoleReference,
@@ -103,6 +104,37 @@ fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
 fn mtcollins1_boot_console(path: String) -> ConsoleReading {
   console(
     path: path,
+    retained_prefix: mtcollins1_boot_retained_artifact_prefix as NonEmptyStr,
+    census_sol_reference_path: mtcollins1_census_sol_artifact_path,
+    reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
+    reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
+    expected_sockets: mtcollins1_census_sockets(),
+  )
+}
+
+// The console READING this row retains, for a capture that was actually attempted. Same rule as
+// mtcollins1_boot_console: the classification (retained / not retained / over bound / unread, and
+// what the capture text says) is the neutral module's, and only mtcollins1's own receipts -- its
+// retained-artifact prefix, its census SOL reference path, its two reference scopes, its expected
+// socket population -- come from here. Another row gets its own numbers by calling the same neutral
+// function with its own receipts.
+fn mtcollins1_boot_console_reading(
+  path: String,
+  size: ByteSize,
+  capture: String,
+  read_ok: Bool,
+  read_error: String,
+  capture_digest: Sha256FileDigest,
+  reference: ReferenceCaptureRead,
+) -> ConsoleReading {
+  console_reading(
+    path: path,
+    size: size,
+    capture: capture,
+    read_ok: read_ok,
+    read_error: read_error,
+    capture_digest: capture_digest,
+    reference: reference,
     retained_prefix: mtcollins1_boot_retained_artifact_prefix as NonEmptyStr,
     census_sol_reference_path: mtcollins1_census_sol_artifact_path,
     reference_firmware_scope: mtcollins1_census_reference_firmware_scope,

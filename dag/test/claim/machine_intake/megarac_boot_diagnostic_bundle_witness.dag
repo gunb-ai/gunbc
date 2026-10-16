@@ -29,13 +29,13 @@ import extdeps.bmc.ipmi_boot_selection {
   IpmiBootCdrom, aarch64_uefi_once_boot_selection,
 }
 import gunbc.host.boot_attempt {
-  AttemptIdentityUnavailable, AttemptRunId, BootOverrideConsumption, ConsoleExceedsBound, ConsoleNotConfigured, ConsoleNotRetained, ConsoleRetained, ReferenceCaptureRead, boot_override_consumption, power_after_attempt, console_bound, console_reading, console_size_of_stat, OverrideConsumptionUnread, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt,
+  AttemptIdentityUnavailable, AttemptRunId, BootOverrideConsumption, ConsoleExceedsBound, ConsoleNotConfigured, NotRetained, ConsoleRetained, ReferenceCaptureRead, boot_override_consumption, power_after_attempt, console_bound, console_reading, console_size_of_stat, OverrideConsumptionUnread, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPowerAfterUnobserved, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacPoweredOnAfterAttempt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, override_harness, power_after_harness, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly, megarac_boot_evidence, MegaRacAccountReceipt,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacAccountReceipt, MegaRacOverride, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPowerAfterUnobserved, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacPoweredOnAfterAttempt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_evidence, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_boot_override_consumption, megarac_diagnostics_allowance, megarac_power_after_from_observation, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, override_harness, power_after_harness, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
-  mtcollins1_boot_collection_member_bound, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_account_receipt, mtcollins1_boot_row_value
+  mtcollins1_boot_account_receipt, mtcollins1_boot_collection_member_bound, mtcollins1_boot_console_reading, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_row_value,
 }
 import gunbc.host.smpro_platform_capability {
   SmproNotTaken, SmproProbed, SmproReading
@@ -556,15 +556,15 @@ test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool 
 // ── THE PRE-OS CONSOLE ───────────────────────────────────────────────────────────────────────
 
 test fn a_capture_outside_the_uploaded_glob_is_reported_not_retained() -> Bool {
-  match console_reading(path: "/tmp/sol.capture", size: byte_size(count: 1), capture: "x", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
-    ConsoleNotRetained { path: _ } => true
+  match mtcollins1_boot_console_reading(path: "/tmp/sol.capture", size: byte_size(count: 1), capture: "x", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
+    NotRetained { path: _ } => true
     _ => false
   }
 }
 
 test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
   let capture = "ERROR: Non-identical DIMM mixture NOT supported!\n"
-  match console_reading(path: "/w/artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 51), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
+  match mtcollins1_boot_console_reading(path: "/w/artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 51), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
     ConsoleRetained { path: _, size: b, lines: _, firmware: f, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } => (byte_size_count(b: b) as Int) == 51 && match f { TrainingRefusedByFirmware { statement: _, locus: _ } => true _ => false }
     _ => false
   }
@@ -573,7 +573,7 @@ test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
 // THE BOUND IS DECIDED ON stat's BYTE COUNT, not on the String: a capture whose stat size exceeds
 // the bound is reported over it even when its content is short.
 test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool {
-  match console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 16777217), capture: "", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
+  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 16777217), capture: "", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
     ConsoleExceedsBound { path: _, size: s, bound: b } => (byte_size_count(b: s) as Int) == 16777217 && (byte_size_count(b: b) as Int) == 16777216
     _ => false
   }
@@ -608,7 +608,7 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
     sensors: SensorsNotTaken { reason: "t" },
     smpro: SmproNotTaken { reason: "t" },
     inventory: inventory_not_taken(reason: "t"),
-    console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 200), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
+    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 200), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
     run: no_run(),
     screen: no_screen(),
   }
@@ -653,7 +653,7 @@ test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n[    0.08] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 2\r\n[    0.08] {2}[Hardware Error]: event severity: info\r\n[    0.08] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.08] {2}[Hardware Error]:   00000000: 000003ce 22440074 00000000 00000000  ....t.D\"........\r\n"
   let b = bundle_socket1_absent()
   let bundle = BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
-    console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 400), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference), run: no_run(), screen: no_screen() }
+    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 400), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference), run: no_run(), screen: no_screen() }
   let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle)
   any_contains(found(bundle: bundle), "the expected topology was not recorded for this attempt") && !any_contains(found(bundle: bundle), "active socket(s), 2 expected")
     && contains(text, "GHES 2 severity=info dword0=000003ce -> socket 0 PMPRO FW subtype 3")
@@ -664,11 +664,11 @@ test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
 test fn a_supplied_reference_renders_its_differences() -> Bool {
   let reference = "UEFI RC version: 1.08\r\n    Number of active sockets    : 2\r\n    Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[1]: Core voltage     : 1035\r\n"
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Socket[0]: Core voltage     : 1065\r\n"
-  match console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)) {
+  match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)) {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } => {
       let b = bundle_socket1_absent()
       let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
-        console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)), run: no_run(), screen: no_screen() })
+        console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)), run: no_run(), screen: no_screen() })
       contains(text, "3 difference(s)") && contains(text, "Socket[1] printed in the reference summary, absent from this boot's")
         && contains(text, "Inter Socket Connection 0 (reference: Width: x16 / Speed 25 GT/s) not printed by this boot")
     }
@@ -890,8 +890,8 @@ fn p5_pending() -> String {
 
 data p5_consumed: String = "Boot parameter version: 1\nBoot Flag Invalid\nBoot Device Selector : No override"
 
-fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOverrideConsumption {
-  boot_override_consumption(
+fn consumption_with(before: String, after: String, census_ended: Bool) -> MegaRacOverride {
+  megarac_boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
     selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom),
@@ -899,7 +899,7 @@ fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOv
   )
 }
 
-fn consumption(before: String, after: String) -> BootOverrideConsumption {
+fn consumption(before: String, after: String) -> MegaRacOverride {
   consumption_with(before: before, after: after, census_ended: true)
 }
 
@@ -915,30 +915,30 @@ test fn an_override_gone_without_a_census_boot_is_only_no_longer_pending() -> Bo
 }
 
 test fn an_override_still_pending_after_the_attempt_was_not_consumed() -> Bool {
-  match consumption(before: p5_consumed, after: p5_pending()) { OverrideStillPendingAfterAttempt => true _ => false }
+  match consumption(before: p5_consumed, after: p5_pending()) { MegaRacOverrideStillPendingAfterAttempt => true _ => false }
     && count(override_harness(c: consumption(before: p5_consumed, after: p5_pending()))) == 1
 }
 
 test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it() -> Bool {
-  match consumption(before: p5_pending(), after: p5_consumed) { OverridePendingBeforeAttempt => true _ => false }
+  match consumption(before: p5_pending(), after: p5_consumed) { MegaRacOverridePendingBeforeAttempt => true _ => false }
 }
 
 test fn consumption_without_a_read_is_never_minted() -> Bool {
-  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
-    OverrideConsumptionUnread { reason: _ } => true
+  match megarac_boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
+    MegaRacOverrideConsumptionUnread { reason: _ } => true
     _ => false
   }
 }
 
 test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Bool {
-  let expected = power_after_attempt(observation: ChassisPowerRead { power_on: false }, census_ended: true)
-  let unexpected = power_after_attempt(observation: ChassisPowerRead { power_on: false }, census_ended: false)
+  let expected = megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: false }, census_ended: true)
+  let unexpected = megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: false }, census_ended: false)
   (match expected { MegaRacPoweredOffAfterCensusEnd => true _ => false })
     && count(power_after_harness(p: expected)) == 0
     && (match unexpected { MegaRacPoweredOffWithoutCensusEnd => true _ => false })
     && count(power_after_harness(p: unexpected)) == 1
-    && (match power_after_attempt(observation: ChassisPowerRead { power_on: true }, census_ended: true) { MegaRacPoweredOnAfterAttempt => true _ => false })
-    && (match power_after_attempt(observation: ChassisUnreadable, census_ended: true) { MegaRacPowerAfterUnobserved { observation: _ } => true _ => false })
+    && (match megarac_power_after_from_observation(observation: ChassisPowerRead { power_on: true }, census_ended: true) { MegaRacPoweredOnAfterAttempt => true _ => false })
+    && (match megarac_power_after_from_observation(observation: ChassisUnreadable, census_ended: true) { MegaRacPowerAfterUnobserved { observation: _ } => true _ => false })
 }
 
 // ── INHABITANCE: THE POWER-ON ACCOUNT OVER THE REAL ROUTE ────────────────────────────────────────
@@ -966,7 +966,7 @@ test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool {
   let bundle = BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptRunId { run_id: "37069907299" }, outcome: b.outcome,
     sel_before: SelSnapshotRead { raw: run_37069907299_sel_before, at: "2026-10-02T22:12:06Z" }, sel_after: SelSnapshotRead { raw: run_37069907299_sel_after, at: "2026-10-02T22:21:30Z" },
     sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
-    console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 3465), capture: run_37069907299_firmware, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
+    console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 3465), capture: run_37069907299_firmware, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
     run: no_run(), screen: no_screen() }
   let a = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle)).account
   match a { Absent => false Present { value: a } => count(a.cycles) == 2

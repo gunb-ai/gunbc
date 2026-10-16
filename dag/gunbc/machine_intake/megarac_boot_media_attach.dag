@@ -11,9 +11,6 @@ import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
-import gunbc.host.boot_attempt {
-  MegaRacMediaAttachNotAttempted,
-}
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
 }
