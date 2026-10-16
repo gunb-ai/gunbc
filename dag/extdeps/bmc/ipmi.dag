@@ -479,6 +479,10 @@ data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data f
 // between "the form was wrong" and "the value is not acceptable to this firmware".
 data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }
 
+// The description lives beside the byte it describes, as its own row -- see the note below on why there
+// is exactly one home for a code's English.
+data ipmi_completion_code_request_data_length_invalid_text: NonEmptyStr = "Request data length invalid"
+
 fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool {
   a.code == b.code
 }
