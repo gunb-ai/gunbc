@@ -567,6 +567,11 @@ type OccurrenceBinding
   | BoundToTypeParameter { canonical: Symbol }
   | BoundToDeclaration { identity: ResolvedReferenceIdentity }
   | BoundAmbient { table: AmbientBindingTable, identity: ResolvedReferenceIdentity }
+  // AN ELIDED HEAD: a headless record literal `{ .. }` takes its declaration from the expected type's
+  // head (resolve_elided_construct_walk), so the head occurrence is answered by that
+  // expectation, not by a name the author wrote. Its own source is recorded so every reference carries
+  // exactly one; a re-binding of it is a re-binding of the annotation, which has its own occurrence.
+  | BoundByExpectedType { identity: ResolvedReferenceIdentity }
 
 // One answered reference: the reference's own minted occurrence and the binding that answered it. The
 // walk accumulates these beside the tree it builds (ResolveWalkAccepted.bindings). A reference with no
@@ -3458,7 +3463,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
                 tag: ResolveWalkAccepted {
                   value: declaration_reference_node(qn: path, occurrence_id: elided.occurrence_id),
                   diagnostics: None,
-                  bindings: []
+                  bindings: occurrence_binding_entries(n: elided, binding: BoundByExpectedType { identity: ResolvedToDeclaration { path: path } })
                 },
                 field: fn(e, record) { resolve_record_field_edge(ctx: ctx, e: e, record: record) }
               )

@@ -12,7 +12,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, d
 import v2.compiler.resolve {
   ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
-  BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient,
+  BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType,
   AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
 }
 
@@ -36,6 +36,7 @@ type BindingSourceClass
   | SourceTypeParameter
   | SourceDeclared
   | SourceAmbient { table: AmbientBindingTable }
+  | SourceExpectedType
 
 type OccurrenceBindingCensusRow {
   module: String
@@ -73,6 +74,7 @@ fn binding_source_label(source: BindingSourceClass) -> String {
     SourceTypeParameter => "type_parameter"
     SourceDeclared => "declared"
     SourceAmbient { table: t } => "ambient:" + ambient_binding_table_label(table: t)
+    SourceExpectedType => "expected_type"
   }
 }
 
@@ -94,6 +96,7 @@ fn occurrence_binding_source(binding: OccurrenceBinding) -> BindingSourceClass {
     BoundToTypeParameter { canonical: _ } => SourceTypeParameter
     BoundToDeclaration { identity: _ } => SourceDeclared
     BoundAmbient { table: t, identity: _ } => SourceAmbient { table: t }
+    BoundByExpectedType { identity: _ } => SourceExpectedType
   }
 }
 
@@ -104,6 +107,7 @@ fn occurrence_binding_target(binding: OccurrenceBinding) -> String {
     BoundToTypeParameter { canonical: c } => symbol_lexeme(sym: c)
     BoundToDeclaration { identity: i } => resolved_identity_target(identity: i)
     BoundAmbient { table: _, identity: i } => resolved_identity_target(identity: i)
+    BoundByExpectedType { identity: i } => resolved_identity_target(identity: i)
   }
 }
 
@@ -174,6 +178,8 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
     BoundToTypeParameter { canonical: _ } => false
     BoundToDeclaration { identity: _ } => true
     BoundAmbient { table: t, identity: _ } => ambient_table_is_module_level(table: t)
+    // An elided head follows its annotation, whose own occurrence is the row a wave can move.
+    BoundByExpectedType { identity: _ } => false
   }
 }
 
