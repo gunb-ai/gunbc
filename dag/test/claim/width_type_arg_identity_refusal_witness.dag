@@ -1,8 +1,8 @@
 module test.claim.width_type_arg_identity_refusal_witness
 
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // rust_type_arg_identity_spelling used to render a width Nat literal and a Word8–128 type-arg
 // token as `()`, collapsing every such argument to one Rust type. A literal is now the
