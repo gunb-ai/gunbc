@@ -86,7 +86,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
-  make_transport_node, local_transport_node,
+  make_transport_node, local_transport_node, is_shell_transport,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
@@ -14097,23 +14097,34 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
   }
 }
 
+// SHELL ARGV CHILDREN ARE EXPRESSIONS IN THE OPERATION'S PARAM SCOPE. Copying them
+// untyped left emit to classify by leaf name (review 80758). This is the earliest
+// unjustified boundary: transport_scope already has the params; infer_expr is the
+// stamp body expressions already receive.
 fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportResult {
   match transport {
     Absent => InferTransportResult { transport: none, diagnostics: [] }
-    Present { value: t } =>
+    Present { value: t } => {
       let prop_result = infer_property_values(props: t.properties, scope: scope)
+      let argv_results = if (is_shell_transport(t: t)) {
+        t.children |> map(c => infer_expr(texpr: c, scope: scope, expected: none))
+      } else { [] }
+      let typed_children = if (is_shell_transport(t: t)) {
+        argv_results |> map(r => r.typed)
+      } else { t.children }
       InferTransportResult {
         transport: Present { value: Node {
           occurrence_identity: OccurrenceSynthetic, name: t.name, span: t.span, ident_span: t.ident_span,
-          children: t.children, connective: t.connective,
+          children: typed_children, connective: t.connective,
           params: t.params, inferred: t.inferred, return_cardinality: t.return_cardinality,
           uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
           type_annotation: t.type_annotation, is_self_recursive: t.is_self_recursive,
           has_non_tail_self_call: t.has_non_tail_self_call, match_pattern: t.match_pattern,
           module_item_kind: t.module_item_kind, declaration_marker: t.declaration_marker, declaration: t.declaration, expr_data: t.expr_data
         } },
-        diagnostics: prop_result.diagnostics
+        diagnostics: concat(prop_result.diagnostics, argv_results |> flat_map(r => r.diagnostics))
       }
+    }
   }
 }
 
