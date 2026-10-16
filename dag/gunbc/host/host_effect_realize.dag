@@ -5284,19 +5284,40 @@ fn live_deploy_apply_preamble_on_host(access: DeployAccess, principal: NonEmptyS
       let run = live_deploy_preamble_run_legs(legs: live_deploy_preamble_legs(access: access, scratch: scratch, principal: principal), access: access)
       let state = match run { LiveDeployPreambleRun { state: st, observations: _ } => st }
       let cleanup = live_deploy_preamble_cleanup_scratch(scratch: scratch, access: access)
-      match state {
-        PreambleLegFailed { step: s, reason: r, consumed: c } =>
-          match cleanup {
-            Absent => PreambleRefused { step: s, reason: r, legs_consumed: c }
-            Present { value: cr } => PreambleRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], ""), legs_consumed: c }
-          }
-        PreambleLegOk { consumed: c } =>
-          match cleanup {
-            Present { value: cr } => PreambleRefused { step: ScratchCleanup, reason: live_deploy_preamble_refusal_text(step: ScratchCleanup, detail: cr), legs_consumed: c }
-            Absent => PreambleConverged { principal: grounded_posix_principal_name(p: access.principal) as String, dropin: gunbc_deploy_sudoers_dropin, legs_consumed: c }
-          }
-      }
+      live_deploy_preamble_verdict(
+        state: state,
+        cleanup_failure: cleanup,
+        scratch: scratch,
+        principal: grounded_posix_principal_name(p: access.principal) as String,
+      )
     }
+  }
+}
+
+// THE VERDICT, PURE — the fold's answer plus what cleanup reported, with no host in sight, so the
+// mask-precedence rules below are checkable the same way the fold is.
+fn live_deploy_preamble_verdict(
+  state: LiveDeployPreambleLegState,
+  cleanup_failure: Optional<String>,
+  scratch: String,
+  principal: String,
+) -> LiveDeployPreambleVerdict {
+  match state {
+    // A cleanup failure NEVER replaces the real refusal: the step and reason that stopped the deploy
+    // survive and the cleanup detail is appended. Losing "visudo refused" to "rm failed" would send an
+    // operator chasing a leftover directory instead of the broken sudoers file.
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      match cleanup_failure {
+        Absent => PreambleRefused { step: s, reason: r, legs_consumed: c }
+        Present { value: cr } => PreambleRefused { step: s, reason: join([r, "; scratch cleanup of ", scratch, " also failed: ", cr], ""), legs_consumed: c }
+      }
+    // But a clean fold that could not remove its scratch is NOT a success either: the trap was part of
+    // the script, and a root-readable stage left behind after a deploy is a finding, not a detail.
+    PreambleLegOk { consumed: c } =>
+      match cleanup_failure {
+        Present { value: cr } => PreambleRefused { step: ScratchCleanup, reason: live_deploy_preamble_refusal_text(step: ScratchCleanup, detail: cr), legs_consumed: c }
+        Absent => PreambleConverged { principal: principal, dropin: gunbc_deploy_sudoers_dropin, legs_consumed: c }
+      }
   }
 }
 
