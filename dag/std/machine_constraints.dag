@@ -1,7 +1,8 @@
 module std.machine_constraints
 
 import std.constructors { Phantom }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int, Bool }
+import std.power_of_two { bitwise_pow2 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // A TYPE ARGUMENT IS NOT A QUANTITY AND NOT A VALUE. What stands in MachineWidth's parameter
@@ -77,3 +78,26 @@ data machine_width_literal_roster_frontier: DissolutionCondition = unbound_disso
 )
 
 type Compose<Algebra, MachineConstraint> = Phantom
+
+// WHICH INTEGERS A MACHINE WIDTH ADMITS, AS THE WIDTH'S OWN MEANING AND NOT A CONSUMER'S TABLE.
+// `unsigned` bits N is [0, 2^N - 1]; signed bits N is [-2^(N-1), 2^(N-1) - 1]. A literal at a
+// position typed Compose<A, MachineWidth<N>> is admitted only when this holds (v2.compiler.infer
+// infer_machine_width_literal_at); it is the CHECKED reading of the operator ruling -- a width is a
+// refinement on Int, never a silent truncation or widening -- applied at the literal boundary.
+//
+// THE HOST BOUND: a source literal is a host Int (signed 64), so every host value fits width >= 64
+// when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
+// below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally. A width
+// below 1 admits nothing: there is no zero-bit integer.
+fn machine_width_admits(signed: Bool, bits: Int, value: Int) -> Bool {
+  if bits < 1 {
+    false
+  } else if bits >= 64 || (!signed && bits >= 63) {
+    signed || value >= 0
+  } else if signed {
+    let half = bitwise_pow2(n: bits - 1)
+    value >= 0 - half && value < half
+  } else {
+    value >= 0 && value < bitwise_pow2(n: bits)
+  }
+}
