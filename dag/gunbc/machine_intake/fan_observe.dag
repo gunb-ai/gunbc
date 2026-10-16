@@ -246,3 +246,50 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
     }
   }
 }
+
+// BOOT-JOB WRAPPER: same series, but every refusal is a receipt and ExitSuccess so a stuck or
+// refused observe cannot skip the power cycle. The standalone mtcollins1_fan_observe_wet stays fail-closed.
+fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr, policy: FanObservePolicy) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_boot_phase_wet"),
+  ]
+{
+  fan_write_boot_phase_observation(
+    host: host,
+    policy: policy,
+    series: observe_fan_policy(
+      bmc_host: host.observation.endpoint.host,
+      username: host.account,
+      password_file: password_file,
+      rounds: policy.rounds,
+      interval: policy.interval,
+    ),
+  )
+}
+
+fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePolicy, series: FanObservationSeries) -> ProcessExit {
+  match series {
+    FanObservationRefused { cause: cause } =>
+      fan_write_boot_phase_receipt(
+        path: policy.receipt_path,
+        content: concat("FanObserveBootPhaseRefused cause=", cause as String),
+      )
+    FanObservationTaken { rounds: rounds, interval: interval } =>
+      fan_write_boot_phase_receipt(
+        path: policy.receipt_path,
+        content: concat(
+          "FanObserveBootPhaseTaken\n",
+          render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
+        ),
+      )
+  }
+}
+
+fn fan_write_boot_phase_receipt(path: String, content: String) -> ProcessExit {
+  let written = Filesystem.Write(path: path, content: content)
+  if written.success {
+    ExitSuccess
+  } else {
+    ExitSuccess
+  }
+}

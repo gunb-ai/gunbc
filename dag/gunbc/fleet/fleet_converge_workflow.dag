@@ -129,6 +129,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
+  gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_release_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
@@ -3965,26 +3966,27 @@ fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
 
 // FAN POLICY IS A PHASE OF THIS JOB, NOT A SECOND MODE. The operator addendum (2026-10-14) forbids
 // a machine sitting on a controller default unobserved after boot. The step id is the phase
-// (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_invoke, which is
-// IPMI SDR via fan_observe / bmc_fan_observation, so the step name is that series' name — not
-// Cooling Manager / PWM REST. GET get_manager_status / get_fan_info plus PWM write / guard /
-// restore is a named follow-up. This is a GitHub Actions job step of its own: steps in one job
-// run strictly sequentially, so this interpreter exits before the boot step's concurrent pair
-// (gunbc_ci_mtcollins1_boot_watcher_background_line `gunbc run ... &` plus the boot `gunbc run`).
-// Runs 38639170770 and 38640990281 thrashed srv1 on that pair (still-owl-732). This phase does
-// not raise that pair's budget.
+// (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
+// the non-gating wrapper over the IPMI SDR series (fan_observe / bmc_fan_observation), so the
+// step name is that series' name — not Cooling Manager / PWM REST. The standalone
+// mtcollins1_fan_observe mode stays fail-closed. This wrapper writes a typed receipt on
+// admission, credential or series refusal and returns success; continue-on-error is the
+// backstop if gunbc itself exits nonzero or the step times out, so the boot step stays
+// scheduled. GET get_manager_status / get_fan_info plus PWM write / guard / restore is a named
+// follow-up. Steps in one job run strictly sequentially, so this interpreter exits before the
+// boot step's concurrent pair.
 fn fleet_converge_fan_policy_phase_step() -> Step {
   RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
     id: Present { value: "fan_policy_phase" },
-    run: gunbc_ci_mtcollins1_fan_observe_invoke(),
+    run: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(),
     shell: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
     ] },
     working_directory: none,
     if_condition: none,
-    continue_on_error: none,
+    continue_on_error: Present { value: true },
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
