@@ -4,6 +4,13 @@ import extdeps.exec.program {ProgramIdentity, uncataloged_program}
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.algebra { Cons, Empty, trim }
+import std.optional { Present, Absent }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -145,23 +152,59 @@ fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
 }
 
 // THE INSTALL-STATE PROBE AS A TYPED COMMAND, the `dpkg -s` a caller asks before installing anything.
-// ITS AUTHORITY IS THE Operation ROW `Package.Status` above, whose transport shell argv is
-// ["dpkg","-s","{package}"]; the words here are that row's, spelled once for the sealed `ArgvCommand`
-// the transport-parameterized host-effect lane takes.
-// WHY A SEALED COMMAND AND NOT THE BINDER THE SIBLING DECLARES ABOVE. The row's own argv is read by the
-// Bash emitter through v2.std.operation_argv, which yields argv TEXT. The host-effect lane runs commands
-// over an argument-vector transport with no shell in it, and that seam takes a sealed `ArgvCommand` -- a
-// program identity beside its argument tail -- so there is no form of the row a call over that seam could
-// consume directly. The sibling `dpkg_query_status_command` and the systemctl command family
-// (`systemctl_daemon_reload_command`, `systemctl_start_command`) sit the same way beside their own rows:
-// one authority for the operation, one sealed spelling for the lane that cannot read it. WHAT KEEPS THE
-// TWO FROM DRIFTING is not the comment; it is `live_deploy_dpkg_status_argv_matches_op_row`, which
-// materializes the row and compares its argv to these words token by token -- the check
-// `gunbc.systemd_run_transient.systemd_run_transient_operation_argv_matches_authority` records as the
-// answer to a duplicated argv: checked, never asserted.
-fn dpkg_status_command(package: NonEmptyStr) -> ArgvCommand {
-  argv_command(
-    program: uncataloged_program(invocation: dpkg_status_program),
-    arguments: ["-s", package as String],
-  )
+// THE ARGV IS DERIVED FROM THIS MODULE'S OWN ROW, NOT REPEATED: this binds the package against the
+// Operation Row `Package.Status` above and materializes it through shell_materialize_operation_argv,
+// the pattern `gunbc.systemd_run_transient.systemd_run_transient_operation_argv` sets for
+// systemd.SystemdRun. The row's transport-shell argv is the ONLY place these tokens are spelled. A
+// hand-written ["-s", package] beside the row would re-mint the second authority this module's own
+// tombstone above deletes, and a witness comparing the two spellings token by token -- the shape
+// `systemd_run_transient_operation_argv_matches_authority` records, which `dpkg_status_command`
+// copied -- is equality POLICING between two authors, not single authority; where a builder can
+// consume the materializer directly, the comparison witness is not needed at all.
+// WHY A SEALED COMMAND AND NOT THE MATERIALIZED TEXT AS IS. The row materializes to argv TEXT for the
+// Bash emitter; the host-effect lane runs commands over an argument-vector transport with no shell in
+// it, and that seam takes a sealed `ArgvCommand` -- a program identity beside its argument tail. So
+// the materialized words are REPARTITIONED here, never re-spelled: token[0] is CHECKED to be the
+// program identity this module's program.dag row names (an execve parameter per extdeps.exec.command),
+// and the tail passes through untouched. A MATERIALIZATION REFUSAL STAYS A REFUSAL and is reported,
+// not swallowed: the answer is a typed Refused naming the cause, so a caller that cannot tell refuses
+// before its leg runs rather than execing a plausible-looking probe (the marker-not-empty-argv
+// discipline src/v2/extdeps/languages/rust_fixtures.dag records, and DESIGN 5: refuse, never widen).
+data dpkg_status_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
+data dpkg_status_operation_service: String = "dpkg.Package"
+data dpkg_status_operation_name: String = "Status"
+data dpkg_status_input_name: String = "package"
+
+type DpkgStatusCommand
+  = DpkgStatusCommandReady { command: ArgvCommand }
+  | DpkgStatusCommandRefused { cause: String }
+
+fn dpkg_status_command(package: NonEmptyStr) -> DpkgStatusCommand {
+  match shell_materialize_operation_argv(
+    dpkg_status_operation_path,
+    dpkg_status_operation_service,
+    dpkg_status_operation_name,
+    [operation_argv_bind_text(name: dpkg_status_input_name, text: package as String)],
+  ) {
+    ArgvMaterialized { argv: materialized } =>
+      match materialized.first() {
+        Present { value: head } =>
+          if head == dpkg_status_program as String {
+            DpkgStatusCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: dpkg_status_program),
+                arguments: materialized.skip(n: 1),
+              ),
+            }
+          } else {
+            DpkgStatusCommandRefused {
+              cause: concat("the dpkg.Package Status row materialized a token in its executable position that is not ", dpkg_status_program as String),
+            }
+          }
+        Absent =>
+          DpkgStatusCommandRefused { cause: "the dpkg.Package Status row materialized an empty argv" }
+      }
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      DpkgStatusCommandRefused { cause: operation_argv_cause_label(cause: c) }
+  }
 }

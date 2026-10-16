@@ -1,9 +1,9 @@
 module gunbc.host.host_effect_realize
 
-import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
+import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
 import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map, string_concat_join }
-import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, dpkg_status_command, DpkgStatusCommandReady, DpkgStatusCommandRefused, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -128,6 +128,9 @@ import extdeps.package_managers.apt {
   package_socat,
   package_xorriso,
   apt_get_binary_path,
+  apt_get_install_command,
+  AptGetInstallCommandReady,
+  AptGetInstallCommandRefused,
 }
 import extdeps.tools { CliTool, apt_binary_path_of }
 import extdeps.tools.curl { curl_cli_tool, curl_bmcweb_session_login_command }
@@ -162,7 +165,9 @@ import gunbc.ci.ci_deploy_access {
   deploy_access_sudo_probe_effect,
   deploy_access_sudoers_install_scope,
 }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
+import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
+import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.tailscale.serve { TailscaleServeEndpoint }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
@@ -193,7 +198,6 @@ import extdeps.systemd.systemctl {
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for_wet,
   live_deploy_retract_script_for,
-  deployment_ensure_dependency_script,
   deployment_serve_route_command,
   approval_broker_dark_install_script,
   microvm_controller_install_script,
@@ -329,7 +333,7 @@ import gunbc.live_deploy.operations {
   systemctl_enable_command,
   systemctl_restart_command,
 }
-import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, rm_force_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, coreutils_install_file_owned_argv, rm_force_command, rm_recursive_force_one_file_system_command, mktemp_directory_command }
 import v2.std.compilers.cli_surface {
   cli_surface_of_literal_words,
   process_argv_expansion,
@@ -4597,19 +4601,456 @@ fn realize_microvm_controller_install_on_host(
   )
 }
 
+// THE STANDING GUARD: a dependency ensure is a dpkg -s probe whose exit status decides a package
+// install; it is NOT a script body. The package leg is the probe-then-conditional-install tree
+// the old `ensure_apt_package_step` rendered (probe `dpkg -s`; install only when the probe fails)
+// and the marker leg is a staged write plus a mode/owner/group install -- that is the
+// realisation, so this arm carries those as typed operations over the transport instead of
+// shipping concat-built bash. No RetainedShellScript row is minted here.
+//
+// WHY A TYPED ARGV ROUTE AND NOT THE OLD CONCAT BODY. The bash the old builder emitted could not
+// run on this route at all: its write leg wrote into `$_gunbc_stage`, a variable the bulk-apply
+// frame binds with `mktemp -d` and this standalone route never does -- under the frame's `set -u`
+// it was an unbound-variable abort waiting to happen. The typed shape below acquires its scratch
+// the way that frame did: a process-owned `mktemp -d` directory (mode 0700), its answer
+// validated by admitted_scratch_path. That ownership is why the write runs UNELEVATED there
+// while only the install into the control directory elevates. Elevation, the package name, the
+// marker path/mode/owner/group and the scratch prefix ride as PARAMETERS through extdeps builders
+// (probe and install are the extdeps.package_managers builders beside their Operation rows);
+// nothing policy-shaped is an argv literal here. TOTAL over dep.subject: both arms answer, no
+// silent default.
 fn realize_live_deploy_ensure_dependency_on_host(
   dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: deployment_ensure_dependency_script(dep: dep),
-      reason: "live_deploy ensure dependency",
+  match dep.subject {
+    EnsuredPackage { package: pkg } =>
+      live_deploy_ensure_package_leg(package: pkg, transport: transport, intent: intent)
+    EnsuredOwnershipMarker { marker: marker } =>
+      live_deploy_ensure_ownership_marker_leg(marker: marker, transport: transport, intent: intent)
+  }
+}
+
+// THE PROBE-THEN-INSTALL FOLD, over outcomes the legs already ran -- witness-dry by the same
+// split the compile-pool install fold documents above. Its shape is the old If/Not/ExitZero tree
+// read as data. A probe that answers installed (exit 0) CONVERGES WITH NO INSTALL RUN: that
+// non-run is the idempotence evidence, the probe's own observation, not a replay. Any non-zero
+// took the old script's install arm -- dpkg -s exits 1 for not-installed and non-zero for
+// errors, and `if ! dpkg -s` treated every non-zero alike -- so the install decides the result
+// there. A refused operation never started a process, so it is never reported with an exit
+// status and never laundered into success: the old `|| exit` after apt-get meant non-zero stops
+// the stage, and refusal is the stronger stop.
+fn live_deploy_ensure_package_fold(
+  package: NonEmptyStr,
+  probe: RunArgvTransportOutcome,
+  install: RunArgvTransportOutcome,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match probe {
+    RunArgvTransportRefused { reason: r } =>
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: live-deploy ensure-dependency refused before the dpkg -s probe for package ",
+            package as String,
+            " ran -- ",
+            r,
+            "; the install was not attempted either, and neither leg is reported as having run.",
+          ],
+          "",
+        ),
+        applied: intent,
+      }
+    RunArgvTransportObserved { observed: p } =>
+      if p.exit_code == 0 {
+        Converged { evidence: ShellEffectApplied { exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr }, applied: intent }
+      } else {
+        match install {
+          RunArgvTransportObserved { observed: i } =>
+            if i.exit_code == 0 {
+              Converged { evidence: ShellEffectApplied { exit_code: i.exit_code, stdout: i.stdout, stderr: i.stderr }, applied: intent }
+            } else {
+              NotConverged {
+                reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
+                applied: intent,
+              }
+            }
+          RunArgvTransportRefused { reason: _ } =>
+            NotConverged {
+              reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
+              applied: intent,
+            }
+        }
+      }
+  }
+}
+
+// THE PACKAGE LEG: probe, and install only when the probe does not answer installed. Both legs
+// run UNELEVATED, exactly where the old script ran them -- `ensure_apt_package_step` rendered its
+// unelevated form on this route (privileged: false from the old
+// `deployment_ensure_dependency_intent`) -- and the elevation question stays with the caller of
+// an install op rather than being decided inside an upstream's spelling of its own command.
+fn live_deploy_ensure_package_leg(
+  package: NonEmptyStr,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match dpkg_status_command(package: package) {
+    // A row that will not materialize stops the route BEFORE any process: the probe never ran and
+    // the install is not attempted, so the fold reports the pair as not-run with the materializer's
+    // cause as the reason (a refusal stays a refusal; DESIGN 5).
+    DpkgStatusCommandRefused { cause: cause } =>
+      live_deploy_ensure_package_fold(
+        package: package,
+        probe: RunArgvTransportRefused {
+          reason: concat("the dpkg -s probe command could not be built from the dpkg.Package Status row: ", cause),
+        },
+        install: live_deploy_leg_not_run_outcome(),
+        intent: intent,
+      )
+    DpkgStatusCommandReady { command: probe_command } =>
+      match run_argv_over_host_effect_transport(command: probe_command, transport: transport) {
+        RunArgvTransportRefused { reason: r } =>
+          live_deploy_ensure_package_fold(
+            package: package,
+            probe: RunArgvTransportRefused { reason: r },
+            install: live_deploy_leg_not_run_outcome(),
+            intent: intent,
+          )
+        RunArgvTransportObserved { observed: p } =>
+          if p.exit_code == 0 {
+            live_deploy_ensure_package_fold(
+              package: package,
+              probe: RunArgvTransportObserved { observed: p },
+              install: live_deploy_leg_not_run_outcome(),
+              intent: intent,
+            )
+          } else {
+            match apt_get_install_command(package: package) {
+              AptGetInstallCommandRefused { cause: cause } =>
+                live_deploy_ensure_package_fold(
+                  package: package,
+                  probe: RunArgvTransportObserved { observed: p },
+                  install: RunArgvTransportRefused {
+                    reason: concat("the install command could not be built from the apt.PackageManager Install row: ", cause),
+                  },
+                  intent: intent,
+                )
+              AptGetInstallCommandReady { command: install_command } =>
+                live_deploy_ensure_package_fold(
+                  package: package,
+                  probe: RunArgvTransportObserved { observed: p },
+                  install: run_argv_over_host_effect_transport(command: install_command, transport: transport),
+                  intent: intent,
+                )
+            }
+          }
+      }
+  }
+}
+
+// An outcome for a leg that did not run. It is a Refused, because nothing ran and Refused is the
+// only arm that does not claim an observation: a refusal never started a process and this must
+// not be able to masquerade as either. The folds only consult it on paths that report it as
+// "did not run".
+fn live_deploy_leg_not_run_outcome() -> RunArgvTransportOutcome {
+  RunArgvTransportRefused { reason: "not attempted: an earlier leg decided this route's outcome before this leg" }
+}
+
+// THE MARKER FOLD over [scratch acquisition, staged write, elevated install, discard]. Scratch
+// acquisition is special: refused OR an answer admitted_scratch_path will not validate means
+// NOTHING ran, so nothing needs discarding and the refusal line says so. A failed write or a
+// failed install has ALREADY had its discard run by the leg before this fold is called
+// (cleanup-before-report, the compile-pool install fold's discipline), so the fold only reports
+// both lines. The discard is best-effort on the success path and its outcome is reported either
+// way -- the old script's EXIT-trap `rm -rf` was equally unconditional, and a swallowed failed
+// cleanup is how a scratch directory becomes a forensic artifact.
+fn live_deploy_ensure_ownership_marker_fold(
+  marker: FabricStorageOwnershipMarkerSpec,
+  scratch: RunArgvTransportOutcome,
+  written: RunArgvTransportOutcome,
+  installed: RunArgvTransportOutcome,
+  discarded: RunArgvTransportOutcome,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match live_deploy_ensure_scratch_dir(outcome: scratch) {
+    Absent =>
+      NotConverged {
+        reason: live_deploy_ensure_scratch_refusal_line(outcome: scratch),
+        applied: intent,
+      }
+    Present { value: _ } =>
+      if !run_argv_transport_succeeded(outcome: written) {
+        NotConverged {
+          reason: join(
+            [
+              live_deploy_ensure_step_failure_line(step: "stage write", subject: marker.path as String, outcome: written),
+              live_deploy_ensure_discard_line(outcome: discarded),
+            ],
+            "",
+          ),
+          applied: intent,
+        }
+      } else if !run_argv_transport_succeeded(outcome: installed) {
+        NotConverged {
+          reason: join(
+            [
+              live_deploy_ensure_step_failure_line(step: "install", subject: marker.path as String, outcome: installed),
+              live_deploy_ensure_discard_line(outcome: discarded),
+            ],
+            "",
+          ),
+          applied: intent,
+        }
+      } else {
+        Converged {
+          evidence: ShellEffectApplied {
+            exit_code: 0,
+            stdout: join(
+              [
+                "LiveDeployEnsureDependencyReceipt: marker installed at ",
+                marker.path as String,
+                "; ",
+                live_deploy_ensure_discard_line(outcome: discarded),
+              ],
+              "",
+            ),
+            stderr: installed_stderr(installed: installed),
+          },
+          applied: intent,
+        }
+      }
+  }
+}
+
+// THE MARKER LEG. Three facts the shape has to keep. (1) The write is UNELEVATED because the
+// scratch directory is process-owned -- mode 0700 mktemp, the same reason the old script could
+// write its staged file unelevated inside the bulk-apply frame's scratch. (2) Only the install
+// into the control directory elevates, and it elevates as a SUDO INSTALL, because the ci-runner
+// sudoers vocabulary (fleet_posix_accounts.dag) is a closed coproduct with no dd arm -- an
+// elevated write would come back "command not allowed" and the route would always refuse.
+// install(1) rather than mv because owner-at-creation means the wrongly-owned intermediate state
+// has no moment in which to exist. (3) The marker bytes cross as STDIN DATA to dd (of= truncates
+// and overwrites; status=none keeps dd's statistics out of the command log; tee is refused for
+// the reason recorded at gunbc.typed_remote_file_write -- it echoes the bytes into their own
+// log). The discard rm runs unelevated for the ownership reason of (1).
+//
+// THE PLAN IS BUILT BY A PURE FUNCTION below from the admitted scratch directory, so the witness
+// can pin the route's whole argv surface -- which leg is elevated, what the install carries, what
+// crosses as stdin -- without executing anything (the compile-pool split at
+// compile_pool_slice_install_staging is the precedent for the shape).
+type LiveDeployEnsureMarkerPlan
+  = LiveDeployEnsureMarkerReady { stage_write: ArgvCommand, install: ArgvCommand, discard: ArgvCommand }
+
+fn live_deploy_ensure_ownership_marker_plan(
+  scratch_dir: String,
+  marker: FabricStorageOwnershipMarkerSpec,
+) -> LiveDeployEnsureMarkerPlan {
+  let staged = concat(scratch_dir, "/store-ownership-marker")
+  LiveDeployEnsureMarkerReady {
+    stage_write: dd_overwrite_path_command(path: staged),
+    install: sudo_elevate_command(
+      command: coreutils_install_file_owned_argv(
+        mode: live_deploy_ensure_marker_mode_text(mode: marker.mode),
+        owner: marker.owner,
+        group: marker.group,
+        source: staged,
+        dest: marker.path as String,
+      )
     ),
-    transport: transport,
-    intent: intent,
-  )
+    discard: rm_recursive_force_one_file_system_command(path: scratch_dir),
+  }
+}
+
+fn live_deploy_ensure_ownership_marker_leg(
+  marker: FabricStorageOwnershipMarkerSpec,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let acquired = run_argv_over_host_effect_transport(command: mktemp_directory_command(template: live_deploy_ensure_stage_template), transport: transport)
+  match live_deploy_ensure_scratch_dir(outcome: acquired) {
+    Absent =>
+      live_deploy_ensure_ownership_marker_fold(
+        marker: marker,
+        scratch: acquired,
+        written: live_deploy_leg_not_run_outcome(),
+        installed: live_deploy_leg_not_run_outcome(),
+        discarded: live_deploy_leg_not_run_outcome(),
+        intent: intent,
+      )
+    Present { value: scratch_dir } => {
+      let plan = live_deploy_ensure_ownership_marker_plan(scratch_dir: scratch_dir, marker: marker)
+      let written = run_argv_stdin_over_host_effect_transport(
+        command: plan.stage_write,
+        stdin_payload: marker.content as String,
+        transport: transport,
+      )
+      if !run_argv_transport_succeeded(outcome: written) {
+        let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+        live_deploy_ensure_ownership_marker_fold(
+          marker: marker,
+          scratch: acquired,
+          written: written,
+          installed: live_deploy_leg_not_run_outcome(),
+          discarded: discarded,
+          intent: intent,
+        )
+      } else {
+        let installed = run_argv_over_host_effect_transport(command: plan.install, transport: transport)
+        let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
+        live_deploy_ensure_ownership_marker_fold(
+          marker: marker,
+          scratch: acquired,
+          written: written,
+          installed: installed,
+          discarded: discarded,
+          intent: intent,
+        )
+      }
+    }
+  }
+}
+
+// THE SCRATCH PREFIX + TEMPLATE, in the convention install_media_remaster_work_prefix uses: a
+// `data` prefix and an X-tailed template, so admitted_scratch_path's prefix test has something
+// to admit and mktemp(1) has something to make unique. The prefix names the route, which is what
+// makes a stray scratch directory attributable to it.
+data live_deploy_ensure_stage_prefix: String = "/tmp/gunbc-live-deploy-ensure-"
+data live_deploy_ensure_stage_template: NonEmptyStr = "/tmp/gunbc-live-deploy-ensure-XXXXXXXXXX"
+
+// The mktemp answer is data, not authority: its stdout must be TRIMMED, must start with the
+// prefix, must not be the bare prefix, and must carry no newline, no space and no traversal
+// segment -- admitted_scratch_path is the house validator for exactly that, so this adds no new
+// wall. A refusal here means the scratch dir is not trusted, so nothing touches it.
+fn live_deploy_ensure_scratch_dir(outcome: RunArgvTransportOutcome) -> String? {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => none
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        admitted_scratch_path(prefix: live_deploy_ensure_stage_prefix, stdout: o.stdout)
+      } else {
+        none
+      }
+  }
+}
+
+// The acquisition's own failure line, worded so it never claims a run the fold has decided did
+// not happen. Reuses render_scratch_outcome's vocabulary for the observed arm so the discard/
+// acquisition phrasing matches the rest of this module's scratch language.
+fn live_deploy_ensure_scratch_refusal_line(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: r } =>
+      join(
+        [
+          "host_effect_apply: live-deploy ensure-dependency refused at scratch acquisition before any leg ran -- ",
+          r,
+          "; no marker was staged, installed, or discarded.",
+        ],
+        "",
+      )
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        join(
+          [
+            "host_effect_apply: live-deploy ensure-dependency refused at scratch acquisition -- mktemp answered 0 with a path this route will not admit (outside ",
+            live_deploy_ensure_stage_prefix,
+            ", empty, or carrying a newline, a space, or a traversal segment); no marker was staged, installed, or discarded. stdout: ",
+            o.stdout,
+          ],
+          "",
+        )
+      } else {
+        join(
+          [
+            "host_effect_apply: live-deploy ensure-dependency refused at scratch acquisition -- mktemp exited ",
+            to_string(o.exit_code),
+            ": ",
+            if o.stderr == "" { o.stdout } else { o.stderr },
+            "; no marker was staged, installed, or discarded.",
+          ],
+          "",
+        )
+      }
+  }
+}
+
+// Mirrored from compile_pool_install_step_failure_line (foot of this module) with the same
+// refusal-vs-observation split: a refusal did not start a process and must not be reported as
+// having an exit status.
+fn live_deploy_ensure_step_failure_line(step: String, subject: String, outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: r } =>
+      join(
+        [
+          "host_effect_apply: live-deploy ensure-dependency could not run its ",
+          step,
+          " for ",
+          subject,
+          " -- ",
+          r,
+        ],
+        "",
+      )
+    RunArgvTransportObserved { observed: o } =>
+      join(
+        [
+          "host_effect_apply: live-deploy ensure-dependency ran its ",
+          step,
+          " for ",
+          subject,
+          " and the operation exited ",
+          to_string(o.exit_code),
+          ": ",
+          if o.stderr == "" { o.stdout } else { o.stderr },
+        ],
+        "",
+      )
+  }
+}
+
+// Mirrored from compile_pool_install_discard_line: the cleanup is best-effort, but its own
+// outcome is reported either way, so a failed discard is visible in the reason instead of
+// silent.
+fn live_deploy_ensure_discard_line(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: r } =>
+      join(
+        [
+          "the scratch discard did not run either -- ",
+          r,
+          "; the scratch directory may survive for later reclamation.",
+        ],
+        "",
+      )
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        "the scratch directory was discarded"
+      } else {
+        join(
+          [
+            "the scratch discard exited ",
+            to_string(o.exit_code),
+            "; the scratch directory may survive for later reclamation",
+          ],
+          "",
+        )
+      }
+  }
+}
+
+// The marker's declared FileMode as the octal text install(1) takes. The mode arrives from the
+// FabricStorageOwnershipMarkerSpec as data -- it is never a literal here -- and file_mode_octal
+// is extdeps.access.posix's own spelling of the digits, so no hand-rounded "0600" can drift.
+fn live_deploy_ensure_marker_mode_text(mode: FileMode) -> NonEmptyStr {
+  file_mode_octal(mode: mode) as NonEmptyStr
+}
+
+fn installed_stderr(installed: RunArgvTransportOutcome) -> String {
+  match installed {
+    RunArgvTransportObserved { observed: o } => o.stderr
+    RunArgvTransportRefused { reason: _ } => ""
+  }
 }
 
 // One serve route written or turned off, as its own gated effect: the tailnet door cutover applies
@@ -5718,7 +6159,7 @@ fn compile_pool_slice_install_step(
         transport: transport,
       )
       if !run_argv_transport_succeeded(outcome: written) {
-        let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+        let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
         compile_pool_install_failed_step_result(
           failed_step: "stage write",
           slice_unit: slice_unit,
@@ -5727,9 +6168,9 @@ fn compile_pool_slice_install_step(
           effect_intent: effect_intent,
         )
       } else {
-        let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
+        let installed = run_argv_over_host_effect_transport(command: plan.install, transport: transport)
         if !run_argv_transport_succeeded(outcome: installed) {
-          let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+          let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
           compile_pool_install_failed_step_result(
             failed_step: "install",
             slice_unit: slice_unit,
@@ -5740,7 +6181,7 @@ fn compile_pool_slice_install_step(
         } else {
           let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
           if !run_argv_transport_succeeded(outcome: reloaded) {
-            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
             compile_pool_install_failed_step_result(
               failed_step: "daemon-reload",
               slice_unit: slice_unit,
@@ -5750,7 +6191,7 @@ fn compile_pool_slice_install_step(
             )
           } else {
             let started = run_argv_over_host_effect_transport(command: start, transport: transport)
-            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: plan.discard, transport: transport)
             match started {
               RunArgvTransportRefused { reason: _ } =>
                 compile_pool_install_failed_step_result(

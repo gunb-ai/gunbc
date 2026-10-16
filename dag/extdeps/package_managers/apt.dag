@@ -1,6 +1,13 @@
 module extdeps.package_managers.apt
 
-import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
+import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
+import std.optional { Present, Absent }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+}
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -109,29 +116,67 @@ service apt.PackageManager {
 }
 
 // THE PACKAGE INSTALL AS A TYPED COMMAND, the leg a caller runs after its probe reports the package is
-// not present. ITS AUTHORITY IS THE Operation ROW `PackageManager.Install` above, whose transport shell
-// argv is ["apt-get","install","--yes","{package}"]; the words below are that row's. NOTHING IS ADDED:
-// no `-y` alias (apt accepts both; the row says `--yes`), no env prefix (that belongs to
-// InstallExactNonRemoving, a different operation with a different argv), and no elevation -- the
-// ensure-dependency route is the unprivileged one, so it runs apt-get exactly as the row spells it, and
-// the elevation question stays with the caller rather than being decided inside an upstream's spelling
-// of its own command. The program is the word the row spells, NOT apt_get_binary_path: that constant is
-// the absolute path a sudoers rule grants, and this row is not an elevated one.
-// WHY A SEALED COMMAND AND NOT THE ROW'S OWN ARGV. The row is read by the Bash emitter through
-// v2.std.operation_argv, which yields argv TEXT. This lane runs commands over an argument-vector
-// transport with no shell in it, and that seam takes a sealed `ArgvCommand` -- a program identity beside
-// its argument tail -- so there is no form of the row that lane could consume directly. This is the
-// ArgvCommand counterpart of the shell-text builders gunbc.live_deploy.operations carries for its own
-// emit path: one operation, two carrier grammars, each module owning its own (the posture
-// extdeps.systemd.systemctl records for `systemctl_daemon_reload_command`, and the one dpkg.dag's
-// `dpkg_query_status_command` already sits in). WHAT KEEPS THE TWO FROM DRIFTING is not this comment; it
-// is `live_deploy_apt_install_argv_matches_op_row`, which materializes the row and compares its argv to
-// these words token by token -- the check
-// `gunbc.systemd_run_transient.systemd_run_transient_operation_argv_matches_authority` records as the
-// answer to a duplicated argv: checked, never asserted.
-fn apt_get_install_command(package: NonEmptyStr) -> ArgvCommand {
-  argv_command(
-    program: uncataloged_program(invocation: "apt-get"),
-    arguments: ["install", "--yes", package as String],
-  )
+// not present. THE ARGV IS DERIVED FROM THIS MODULE'S OWN ROW, NOT REPEATED: this binds the package
+// against the Operation Row `PackageManager.Install` above and materializes it through
+// shell_materialize_operation_argv, the pattern
+// `gunbc.systemd_run_transient.systemd_run_transient_operation_argv` sets for systemd.SystemdRun. The
+// row's transport-shell argv is the ONLY place these tokens are spelled, and nothing is ADDED because
+// nothing may be: no `-y` alias (the row says `--yes`), no env prefix (that belongs to
+// InstallExactNonRemoving, a different row with a different argv), no elevation -- the ensure-dependency
+// route is the unprivileged one, so the elevation question stays with the caller rather than being
+// decided inside an upstream's spelling of its own command. The program is the word the row itself
+// puts in the executable position, NOT apt_get_binary_path: that constant is the absolute path a
+// sudoers rule grants, and this row is not an elevated one.
+// WHY A SEALED COMMAND AND NOT THE MATERIALIZED TEXT AS IS. The row materializes to argv TEXT for the
+// Bash emitter; the host-effect lane runs commands over an argument-vector transport with no shell in
+// it, and that seam takes a sealed `ArgvCommand` -- a program identity beside its argument tail. So the
+// materialized words are REPARTITIONED here, never re-spelled: token[0] is CHECKED to be the word the
+// row spells in the executable position (an execve parameter per extdeps.exec.command), and the tail
+// passes through untouched -- an "apt" or "/usr/bin/apt-get" materialization is refused rather than
+// execed. A MATERIALIZATION REFUSAL STAYS A REFUSAL and is reported, not swallowed: the answer is a
+// typed Refused naming the cause, so a caller that cannot tell refuses before its leg runs rather than
+// running a plausible-looking install (DESIGN 5: refuse, never widen).
+data apt_get_install_operation_path: String = "dag/extdeps/package_managers/apt.dag"
+data apt_get_install_operation_service: String = "apt.PackageManager"
+data apt_get_install_operation_name: String = "Install"
+data apt_get_install_input_name: String = "package"
+
+type AptGetInstallCommand
+  = AptGetInstallCommandReady { command: ArgvCommand }
+  | AptGetInstallCommandRefused { cause: String }
+
+fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
+  match shell_materialize_operation_argv(
+    apt_get_install_operation_path,
+    apt_get_install_operation_service,
+    apt_get_install_operation_name,
+    [operation_argv_bind_text(name: apt_get_install_input_name, text: package as String)],
+  ) {
+    ArgvMaterialized { argv: materialized } =>
+      match materialized.first() {
+        Present { value: head } =>
+          if head == apt_get_install_program_word {
+            AptGetInstallCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: apt_get_install_program_word as NonEmptyStr),
+                arguments: materialized.skip(n: 1),
+              ),
+            }
+          } else {
+            AptGetInstallCommandRefused {
+              cause: concat("the apt.PackageManager Install row materialized a token in its executable position that is not ", apt_get_install_program_word),
+            }
+          }
+        Absent =>
+          AptGetInstallCommandRefused { cause: "the apt.PackageManager Install row materialized an empty argv" }
+      }
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      AptGetInstallCommandRefused { cause: operation_argv_cause_label(cause: c) }
+  }
 }
+
+// The word the Install row above puts in the executable position, spelled on its own line ONLY so the
+// repartition above has something to check the materializer against. The row stays the authority for
+// the argv; a drift between this word and the row fails the site's legs (the probe/install builders
+// refuse), which is a refusal at the seam rather than a silent default.
+data apt_get_install_program_word: String = "apt-get"
