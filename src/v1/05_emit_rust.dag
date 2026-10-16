@@ -3645,9 +3645,16 @@ fn shared_layer_of_leaf(shared_types: Set<String>, leaf: String, type_decl_items
 // emitted struct. Its constructors still wrap by the container template the target realizes it as,
 // so the declaration answers the shared layer when the resolved declaration is that native alias and
 // the target's template key for its leaf is active; the answer is read from the declaration, not the spelling.
+// THE ONE REMAINING SPELLING READ: set_contains(shared_types, leaf) reads the target's container-template
+// key (rust_container_templates, pascal-cased), not this type's identity; a template keyed by declaration
+// would retire it. The declaration side is identity-pinned to std.algebra, because
+// declaration_is_grounded_coproduct_native_alias answers by NAME and a user type spelled FreeMonoid must not
+// inherit the answer.
 fn declaration_realizes_as_shared_container_template(shared_types: Set<String>, identity: String, leaf: String) -> Bool {
   let segments = identity |> split(delimiter: ".")
-  declaration_is_grounded_coproduct_native_alias(module_path: segments |> take((segments |> count) - 1) |> join(separator: "."), decl_name: leaf)
+  let module_path = segments |> take((segments |> count) - 1) |> join(separator: ".")
+  module_path == "std.algebra"
+    && declaration_is_grounded_coproduct_native_alias(module_path: module_path, decl_name: leaf)
     && set_contains(shared_types, leaf)
 }
 
