@@ -18,12 +18,17 @@ import gunbc.live_deploy.slice_bounds {
   UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
+  fci1_controls_slice_unit_name, fci1_controls_slice_memory_max, fci1_controls_slice_memory_high, fci1_controls_slice_memory_swap_max,
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
   user_work_charged_in_served_allowance,
 }
+import gunbc.fabric.fci1_controls_slice { fci1_controls_slice_unit_text, fci1_controls_slice_unit_path }
+import gunbc.fabric.fci1_bounded_execution_context { fci1_bounded_execution_context, Fci1BoundedExecutionContextBuilt }
+import gunbc.fabric.fci1_bounded_execution_context_emit { expected_fci1_bounded_execution_context_env, Fci1BoundedExecutionContextEmitted }
+import std.measure { finite_byte_size_count }
 import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.compute.unit_bounds {
@@ -953,4 +958,93 @@ test fn the_composed_entry_exempts_a_modeled_slice_with_a_finite_live_cap() -> B
 test fn the_composed_entry_refuses_a_modeled_slice_with_an_unbounded_live_cap() -> Bool {
   user_work_scope_standing_wire(s: composed_modeled_slice_standing(slice_memory: RootMemoryUnbounded))
     == "UncappedSystemSlice:gunbc-repository-convergence.slice:gunbc-tree-sync.service"
+}
+
+// ── FCI-1 CONTROL SLICE (gunbc.live_deploy.slice_bounds fci1_controls_slice_unit_name) ──
+// The same step is observed in three places. Only the declared slice with a live finite memory.max
+// admits; the identical step in system.slice, in a slice that is not a declared row, or in the
+// declared slice with no live finite cap refuses UncappedSystemSlice. Standing is a function of the
+// modeled row AND the supplied memory.max reading, never of the name alone.
+data fci1_witness_control_unit: NonEmptyStr = "fci1-bounded-driver.service"
+
+fn fci1_control_standing(path: String, slice_memory: RootCgroupMemoryRead) -> UserWorkScopeStanding {
+  user_work_scope_standing_with_root_memory(
+    unit_test: false,
+    github_actions: false,
+    cgroup: CgroupText { text: join(["0::/", path], "") },
+    systemd_manager_present: true,
+    user_manager_reachable: false,
+    xdg_runtime_dir: false,
+    root_memory: RootMemoryUnreadable,
+    slice_memory: slice_memory,
+    buildbuddy_run_id: BuildBuddyRunIdAbsent,
+  )
+}
+
+fn fci1_declared_slice_path() -> String {
+  join([fci1_controls_slice_unit_name as String, "/", fci1_witness_control_unit as String], "")
+}
+
+fn fci1_declared_slice_cap() -> RootCgroupMemoryRead {
+  RootMemoryCapped { bytes: fci1_controls_slice_memory_max() }
+}
+
+test fn fci1_control_in_the_declared_capped_slice_is_exempt() -> Bool {
+  user_work_scope_standing_wire(s: fci1_control_standing(path: fci1_declared_slice_path(), slice_memory: fci1_declared_slice_cap()))
+    == join(["ExemptSystemUnit:", fci1_controls_slice_unit_name as String, ":", fci1_witness_control_unit as String], "")
+}
+
+test fn fci1_control_in_the_declared_slice_without_a_finite_cap_refuses() -> Bool {
+  user_work_scope_standing_wire(s: fci1_control_standing(path: fci1_declared_slice_path(), slice_memory: RootMemoryUnbounded))
+    == join(["UncappedSystemSlice:", fci1_controls_slice_unit_name as String, ":", fci1_witness_control_unit as String], "")
+    && user_work_scope_standing_wire(s: fci1_control_standing(path: fci1_declared_slice_path(), slice_memory: RootMemoryUnreadable))
+      == join(["UncappedSystemSlice:", fci1_controls_slice_unit_name as String, ":", fci1_witness_control_unit as String], "")
+}
+
+test fn fci1_control_in_system_slice_refuses_even_with_a_finite_reading() -> Bool {
+  user_work_scope_standing_wire(s: fci1_control_standing(path: join(["system.slice/", fci1_witness_control_unit as String], ""), slice_memory: fci1_declared_slice_cap()))
+    == join(["UncappedSystemSlice:system.slice:", fci1_witness_control_unit as String], "")
+}
+
+test fn fci1_control_in_an_undeclared_slice_of_the_same_shape_refuses() -> Bool {
+  user_work_scope_standing_wire(s: fci1_control_standing(path: join(["gunbc-fci1-other.slice/", fci1_witness_control_unit as String], ""), slice_memory: fci1_declared_slice_cap()))
+    == join(["UncappedSystemSlice:gunbc-fci1-other.slice:", fci1_witness_control_unit as String], "")
+}
+
+// JOIN row <-> envelope: the slice cap is the FCI-1 context's own memory_max/high, so a bounded child
+// unit inside it (same MemoryMax) is never wider than its slice.
+test fn fci1_control_slice_row_equals_the_fci1_envelope() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } =>
+      finite_byte_size_count(size: c.memory_max) == byte_size_count(b: fci1_controls_slice_memory_max())
+        && match c.memory_high {
+          Present { value: h } => finite_byte_size_count(size: h) == byte_size_count(b: fci1_controls_slice_memory_high())
+          Absent => false
+        }
+        && any(declared_system_slice_memory_maxes(), r => (r.unit as String) == (fci1_controls_slice_unit_name as String))
+    _ => false
+  }
+}
+
+test fn fci1_control_slice_unit_file_is_emitted_from_the_row() -> Bool {
+  let t = fci1_controls_slice_unit_text()
+  string_contains(s: t, pattern: "[Slice]")
+    && string_contains(s: t, pattern: join(["MemoryMax=", to_string(byte_size_count(b: fci1_controls_slice_memory_max()))], ""))
+    && string_contains(s: t, pattern: join(["MemoryHigh=", to_string(byte_size_count(b: fci1_controls_slice_memory_high()))], ""))
+    && string_contains(s: t, pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: fci1_controls_slice_memory_swap_max))], ""))
+    && string_contains(s: fci1_controls_slice_unit_path(), pattern: join(["/run/systemd/system/", fci1_controls_slice_unit_name as String], ""))
+}
+
+// INHABITANCE (DESIGN section 3 pairing): the real producer of the `.env` wrappers names the slice in
+// exactly the bounded wrappers, and the unbounded control wrapper stays outside it, so its refusal is
+// the wrap policy's UncappedSystemSlice rather than an absent control.
+test fn fci1_bounded_wrappers_carry_the_slice_and_the_unbounded_control_does_not() -> Bool {
+  match expected_fci1_bounded_execution_context_env() {
+    Fci1BoundedExecutionContextEmitted { content: c } => {
+      let slice_line = join(["--property=\"Slice=", fci1_controls_slice_unit_name as String, "\" \\\n"], "")
+      string_contains(s: c, pattern: slice_line)
+        && string_contains(s: c, pattern: "checkout_root\" \\\n    --property=\"MemoryMax=infinity\"")
+    }
+    _ => false
+  }
 }
