@@ -180,8 +180,9 @@ fn devboot_source_dir(work_root: String, token: String) -> String {
 }
 
 // The partition of an owned cargo target is the one concept gunbc.owned_cargo_target owns
-// (C4): <work_root>/<owner>/target. devboot is its first site; the compute provider
-// (compute_layout) and the host-seed target are the other two. This fn delegates rather
+// (C4): <work_root>/<owner>/target. devboot and the compute provider
+// (compute_layout) consume it; the host-seed targets join as they stop sharing the ambient
+// host target, a named frontier. This fn delegates rather
 // than re-deriving the join, so the shape has exactly one home.
 fn devboot_target_dir(work_root: String, token: String) -> String {
   owned_cargo_target_dir(base_root: work_root, owner: token)
