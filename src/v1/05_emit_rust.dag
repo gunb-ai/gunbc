@@ -3576,14 +3576,6 @@ fn shared_types_contains_identity(shared_types: Set<String>, identity: String) -
   identity != "" && set_contains(shared_types, identity)
 }
 
-fn shared_types_contains_type_expr(shared_types: Set<String>, type_expr: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>, generic_param_names: List<String>) -> SharedLayerAnswer {
-  shared_layer_of_type_expr(shared_types: shared_types, type_expr: type_expr, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
-}
-
-fn shared_types_contains_leaf(shared_types: Set<String>, leaf: String, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
-  shared_layer_of_leaf(shared_types: shared_types, leaf: leaf, type_decl_items: type_decl_items, generic_param_names: generic_param_names)
-}
-
 type OwnershipProofEntry {
   name: String
   proof: OwnershipProof

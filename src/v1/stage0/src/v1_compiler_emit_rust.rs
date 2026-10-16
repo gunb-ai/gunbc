@@ -6861,36 +6861,6 @@ pub fn shared_types_contains_identity(
     ((identity.clone() != "".to_string()) && v1_rt::set_contains(&shared_types, identity.clone()))
 }
 
-pub fn shared_types_contains_type_expr(
-    shared_types: Rc<BTreeSet<String>>,
-    type_expr: Rc<Node>,
-    type_decl_items: Rc<TypeDeclIndex>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    generic_param_names: Rc<Vec<String>>,
-) -> Rc<SharedLayerAnswer> {
-    shared_layer_of_type_expr(
-        shared_types.clone(),
-        type_expr.clone(),
-        type_decl_items.clone(),
-        source_indices.clone(),
-        generic_param_names.clone(),
-    )
-}
-
-pub fn shared_types_contains_leaf(
-    shared_types: Rc<BTreeSet<String>>,
-    leaf: String,
-    type_decl_items: Rc<TypeDeclIndex>,
-    generic_param_names: Rc<Vec<String>>,
-) -> Rc<SharedLayerAnswer> {
-    shared_layer_of_leaf(
-        shared_types.clone(),
-        leaf.clone(),
-        type_decl_items.clone(),
-        generic_param_names.clone(),
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProofEntry {
     pub name: String,
