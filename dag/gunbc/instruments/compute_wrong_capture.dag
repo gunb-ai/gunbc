@@ -153,6 +153,7 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     let staged_a = compute_staged_path(layout: layout_a, declared: d.path)
     wrong_capture_has(path: staged_a, marker: wrong_capture_marker_b) && !wrong_capture_has(path: staged_a, marker: wrong_capture_marker_a)
   })
+  let own_bytes = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_a, declared: d.path), marker: wrong_capture_marker_a))
   let bytes = join([
     "compute-wrong-capture compute_root=", root, "\n",
     "shared_target_dir_same_for_both=", if layout_a.target_dir == layout_b.target_dir { "true" } else { "false" }, "\n",
@@ -160,7 +161,7 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     "lease_path_a=", layout_a.lease_path, "\nlease_path_b=", layout_b.lease_path, "\n",
     "leases_disjoint=", if layout_a.lease_path != layout_b.lease_path { "true" } else { "false" }, "\n",
     join(rows, ""),
-    if any_wrong { "VERDICT: wrong capture reproduced\n" } else { "VERDICT: A captured its own bytes\n" },
+    if any_wrong { "VERDICT: wrong capture reproduced\n" } else if own_bytes { "VERDICT: A captured its own bytes\n" } else { "VERDICT: no observation\n" },
   ], "")
   let unobserved = wrong_capture_mismatch(r: cap_a) || wrong_capture_mismatch(r: cap_b) || any(declared, d =>
     wrong_capture_unreadable(path: compute_staged_path(layout: layout_a, declared: d.path)) || wrong_capture_unreadable(path: compute_staged_path(layout: layout_b, declared: d.path)))
@@ -168,6 +169,8 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
     CliWirePrintable { bytes: join([bytes, "no observation: a capture mismatched or a staged file was unreadable\n"], ""), exit: ExitFailure { code: 2, reason: "capture mismatch or unreadable staged file" } }
   } else if any_wrong {
     CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "request A captured request B's bytes from the shared target_dir" } }
+  } else if !own_bytes {
+    CliWirePrintable { bytes: join([bytes, "no observation: neither a wrong capture nor A's own marker in every staged A output\n"], ""), exit: ExitFailure { code: 2, reason: "A's own marker absent from a staged output" } }
   } else {
     CliWirePrintable { bytes: bytes, exit: ExitSuccess }
   }
