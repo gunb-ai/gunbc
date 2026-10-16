@@ -14722,6 +14722,7 @@ type RcGroupedArmPlan {
   inner_pat_str: String
   plain_bindings: List<RcPlainFieldBinding>
   plain_refutable: Bool
+  deeper_rc: Bool
 }
 
 // A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
@@ -14744,7 +14745,7 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false, deeper_rc: false }
 }
 
 fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
@@ -14825,7 +14826,7 @@ fn variant_pattern_bare_name(pattern: MatchPattern) -> String {
   }
 }
 
-fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> RcGroupedArmPlan {
+fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool) -> RcGroupedArmPlan {
   let si = scope.type_env.source_indices
   let arm_pat = arm_pattern(n: arm)
   let rc_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
@@ -14849,10 +14850,10 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           Present { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
             let inner_rc = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: si)
-            if inner_rc.needs_rc_pattern {
+            if inner_rc.needs_rc_pattern && !allow_deeper {
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
-              let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
+              let inner_pat_str = if inner_rc.needs_rc_pattern { "" } else { emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info) }
               RcGroupedArmPlan {
                 groupable: true,
                 variant: variant,
@@ -14860,7 +14861,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
                 ref_field: field_name,
                 inner_pat_str: inner_pat_str,
                 plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
-                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                deeper_rc: inner_rc.needs_rc_pattern
               }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
@@ -14877,7 +14879,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           ref_field: "",
           inner_pat_str: "_",
           plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: "", source_indices: si),
-          plain_refutable: false
+          plain_refutable: false,
+          deeper_rc: false
         }
       }
   }
@@ -14906,10 +14909,34 @@ fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<R
 
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
-  let inner_arms = members |> map(e =>
-    concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
-  ) |> join(separator: "\n")
-  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
+  let inner_arms = if members |> any(e => e.plan.deeper_rc) {
+    emit_rc_deeper_inner_arm_strs(members: members, field: plan.ref_field, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  } else {
+    members |> map(e =>
+      concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
+    )
+  }
+  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms |> join(separator: "\n"), "\n} },")
+}
+
+// A DEEPER Rc LEVEL INSIDE THE DISCRIMINATED FIELD'S PATTERN IS THE SAME PROBLEM ONE LEVEL DOWN, so
+// it is the same construction: the inner match's arms are the members re-posed with the field's own
+// pattern as their pattern and grouped again, and an arm that discriminates nothing below the outer
+// variant is the inner match's wildcard. Without it the inner arms kept the #8570 guards, which rustc
+// ignores when checking exhaustiveness, so an enumerated nested arm set was E0004 one level in
+// (gunbc.recurring_failure_mode an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded).
+fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> List<String> {
+  let si = scope.type_env.source_indices
+  let posed = members |> map(e =>
+    let inner_pattern = match variant_pattern_field_binding_named(pattern: arm_pattern(n: e.arm), field_name: field, source_indices: si) {
+      Present { value: fb } => field_binding_pattern(n: fb)
+      Absent => Wildcard
+    }
+    field_binding_with_pattern(field_binding: e.arm, pattern: inner_pattern)
+  )
+  rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
+    emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
+    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
 }
 
 // AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
@@ -14930,7 +14957,7 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
-    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type,
+    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: true,
       emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
       emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
   }
@@ -14943,10 +14970,10 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
 // exhaustiveness, so an enumerated nested arm set in a tail-recursive fold was E0004
 // (gunbc.recurring_failure_mode tail_call_match_lowering_skips_rc_arm_grouping). `emit_single`
 // receives the arm's source index so a renderer can decide which arm sees an optional's value.
-fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
+fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
   let entries = arms |> map(arm => RcGroupedArmEntry {
     arm: arm,
-    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
+    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: allow_deeper)
   })
   let folded = entries |> enumerate |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, pair) =>
     let e = pair.second
@@ -16755,7 +16782,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       } else {
-        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, allow_deeper: false,
           emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
           emit_single: (index, arm) =>
           emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
