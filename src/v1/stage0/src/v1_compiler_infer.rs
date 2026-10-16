@@ -5315,39 +5315,12 @@ pub fn equality_operands_never_inhabit_together(
     right: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    {
-        let left_product = nominal_product_head_name(left.clone(), scope.clone());
-        let right_product = nominal_product_head_name(right.clone(), scope.clone());
-        if product_versus_coproduct_head_mismatch(left.clone(), right.clone(), scope.clone()) {
-            true
-        } else {
-            if ((left_product.clone() != "".to_string())
-                && (right_product.clone() != "".to_string()))
-            {
-                {
-                    let left_name = crate::v1_std_core::authored_name_at(
-                        scope.type_env.clone().source_indices.clone(),
-                        left.clone(),
-                    );
-                    let right_name = crate::v1_std_core::authored_name_at(
-                        scope.type_env.clone().source_indices.clone(),
-                        right.clone(),
-                    );
-                    !(application_type_names_compatible(
-                        left_name.clone(),
-                        right_name.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                    ) || transparent_alias_identity_agrees(
-                        scope.type_env.clone().symbol_index.clone(),
-                        left_name.clone(),
-                        right_name.clone(),
-                    ))
-                }
-            } else {
-                false
-            }
+    if product_versus_coproduct_head_mismatch(left.clone(), right.clone(), scope.clone()) {
+        true
+    } else {
+        match nominal_product_inhabitance_refusal(left.clone(), right.clone(), scope.clone()) {
+            Some(_) => true,
+            std::option::Option::None => false,
         }
     }
 }
