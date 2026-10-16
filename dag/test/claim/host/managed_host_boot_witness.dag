@@ -238,7 +238,7 @@ test fn w_the_catalog_never_labels_an_unread_build_machine_read() -> Bool {
   // ...and the 0.45.3 row is NOT among them, so the boot that admits against it is admitting on an
   // operator attestation, which is what its record says.
   let at_0_45_3_attested = match megarac_release_capability_catalog
-    |> filter(e => bmc_firmware_release_identity_eq(a: e.firmware, b: megarac_firmware_0_45_3))
+    |> filter(e => bmc_firmware_release_identity_eq(a: e.row.firmware, b: megarac_firmware_0_45_3))
     |> first() {
     Present { value: e } => megarac_release_version_is_machine_read(entry: e) == false
       && megarac_release_entry_is_coherent(entry: e)
