@@ -3723,6 +3723,7 @@ pub fn compile_to_resolved_with_options(
                     frontend.intern_table.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
+                crate::v1_compiler_infer::gap_account_dump();
                 let typed_diags = typed.diagnostics.clone();
                 let complexity = if options.analyze_complexity.clone() {
                     run_complexity_analysis(typed.clone(), source_indices.clone())

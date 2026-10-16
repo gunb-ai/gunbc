@@ -11764,6 +11764,105 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     }
 }
 
+pub fn expr_contains_lambda(n: Rc<Node>) -> bool {
+    is_lambda_expr(n.clone()) || {
+        let mut __found = false;
+        for c in n.children.iter().cloned() {
+            if expr_contains_lambda(c) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+thread_local! {
+    static GAP_DEPTH: std::cell::Cell<u32> = std::cell::Cell::new(0);
+    static GAP_TOP_R1: std::cell::Cell<u64> = std::cell::Cell::new(0);
+    static GAP_TOP_R2: std::cell::Cell<u64> = std::cell::Cell::new(0);
+    static GAP_NEST_R1: std::cell::Cell<u64> = std::cell::Cell::new(0);
+    static GAP_NEST_R2: std::cell::Cell<u64> = std::cell::Cell::new(0);
+}
+
+fn gap_account_enabled() -> bool {
+    std::env::var("GUNBC_GAP_ACCOUNT").is_ok()
+}
+
+pub fn gap_account_enter_pass() {
+    if !gap_account_enabled() {
+        return;
+    }
+    GAP_DEPTH.with(|d| {
+        let n = d.get() + 1;
+        d.set(n);
+        if n == 1 {
+            GAP_TOP_R1.with(|c| c.set(c.get() + 1));
+        } else {
+            GAP_NEST_R1.with(|c| c.set(c.get() + 1));
+        }
+    });
+}
+
+pub fn gap_account_exit_pass() {
+    if !gap_account_enabled() {
+        return;
+    }
+    GAP_DEPTH.with(|d| {
+        let n = d.get();
+        if n > 0 {
+            d.set(n - 1);
+        }
+    });
+}
+
+pub fn gap_account_recheck() {
+    if !gap_account_enabled() {
+        return;
+    }
+    GAP_DEPTH.with(|d| {
+        if d.get() <= 1 {
+            GAP_TOP_R2.with(|c| c.set(c.get() + 1));
+        } else {
+            GAP_NEST_R2.with(|c| c.set(c.get() + 1));
+        }
+    });
+}
+
+pub fn gap_account_dump() {
+    if !gap_account_enabled() {
+        return;
+    }
+    eprintln!(
+        "[generic-arg-pass-excl] top_r1_n={} top_r2_n={} nest_r1_n={} nest_r2_n={}",
+        GAP_TOP_R1.with(|c| c.get()),
+        GAP_TOP_R2.with(|c| c.get()),
+        GAP_NEST_R1.with(|c| c.get()),
+        GAP_NEST_R2.with(|c| c.get()),
+    );
+}
+
+pub fn call_needs_generic_rebinding_pass(
+    call_args: Rc<Vec<Rc<Node>>>,
+    generic_names: Rc<Vec<String>>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+) -> bool {
+    if (generic_names.len() as i64) == 0 {
+        false
+    } else if v1_rt::map_is_empty(&subst) {
+        false
+    } else {
+        let mut __found = false;
+        for a in call_args.iter().cloned() {
+            if expr_contains_lambda(crate::v1_std_core::arg_value(a)) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -11798,6 +11897,7 @@ pub struct ArgumentFirstReading {
     pub plan: Rc<CallArgumentPlan>,
     pub result: Rc<ArgInferResult>,
     pub missing_context_generics: Rc<Vec<String>>,
+    pub still_missing_after: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12088,14 +12188,32 @@ pub fn missing_context_generics(
     })
 }
 
-pub fn argument_needs_generic_recheck(
+pub fn still_missing_context_generics(
     missing_context_generics: Rc<Vec<String>>,
     subst: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for g in missing_context_generics.iter().cloned() {
+            if match v1_rt::map_get(&subst, g.clone()) {
+                Some(_) => false,
+                std::option::Option::None => true,
+            } {
+                __result.push(g);
+            }
+        }
+        __result
+    })
+}
+
+pub fn argument_needs_generic_recheck(
+    still_missing_after: Rc<Vec<String>>,
+    subst_final: Rc<HashMap<String, Rc<Node>>>,
 ) -> bool {
     {
         let mut __found = false;
-        for g in missing_context_generics.iter().cloned() {
-            if match v1_rt::map_get(&subst, g.clone()) {
+        for g in still_missing_after.iter().cloned() {
+            if match v1_rt::map_get(&subst_final, g.clone()) {
                 Some(_) => true,
                 std::option::Option::None => false,
             } {
@@ -12105,6 +12223,231 @@ pub fn argument_needs_generic_recheck(
         }
         __found
     }
+}
+
+pub fn empty_shadowed_names() -> Rc<HashMap<String, bool>> {
+    v1_rt::rc_empty_map::<String, bool>()
+}
+
+pub fn typed_expr_is_stale(
+    n: Rc<Node>,
+    scope: Rc<InferScope>,
+    shadowed: Rc<HashMap<String, bool>>,
+) -> bool {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => {
+            let name = crate::v1_std_core::expr_var_name_at(
+                n.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            if v1_rt::map_has(&shadowed, name.clone()) {
+                false
+            } else {
+                match v1_rt::map_get(&scope.locals, name.clone()) {
+                    std::option::Option::None => false,
+                    Some(binding) => match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            !crate::v1_compiler_infer_types::node_type_equals(
+                                rt.clone(),
+                                binding.resolved.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                                Rc::new(TextJudgment::TextNotAsked {
+                                    reason: TextNotAskedReason::TextNotAskedForCallableComponentResidue,
+                                }),
+                            )
+                        }
+                        _ => true,
+                    },
+                }
+            }
+        }
+        ExprData::ExprLambda => {
+            let names = crate::v1_std_core::lambda_param_names_at(
+                n.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            let inner_shadowed = names.iter().cloned().fold(shadowed.clone(), |acc, name| {
+                v1_rt::rc_map_insert(acc, name, true)
+            });
+            typed_expr_is_stale(
+                crate::v1_std_core::lambda_body(n.clone()),
+                scope.clone(),
+                inner_shadowed,
+            )
+        }
+        _ => {
+            let mut __found = false;
+            for c in n.children.iter().cloned() {
+                if typed_expr_is_stale(c, scope.clone(), shadowed.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn recheck_expr(
+    source: Rc<Node>,
+    prior: Rc<Node>,
+    scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
+    shadowed: Rc<HashMap<String, bool>>,
+) -> Rc<InferResult> {
+    match (*source.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            if typed_expr_is_stale(prior.clone(), scope.clone(), shadowed.clone()) {
+                infer_expr(source.clone(), scope.clone(), expected.clone())
+            } else {
+                Rc::new(InferResult {
+                    typed: prior.clone(),
+                    diagnostics: Rc::new(vec![]),
+                })
+            }
+        }
+        ExprData::ExprLambda => {
+            if typed_expr_is_stale(prior.clone(), scope.clone(), shadowed.clone()) {
+                infer_expr(source.clone(), scope.clone(), expected.clone())
+            } else {
+                Rc::new(InferResult {
+                    typed: prior.clone(),
+                    diagnostics: Rc::new(vec![]),
+                })
+            }
+        }
+        ExprData::ExprBlock => {
+            if (source.children.len() as i64) != (prior.children.len() as i64) {
+                infer_expr(source.clone(), scope.clone(), expected.clone())
+            } else {
+                let parts = Rc::new({
+                    let mut __result = Vec::new();
+                    for pair in source
+                        .children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>()
+                    {
+                        let prior_stmt = {
+                            let skipped =
+                                v1_rt::list_skip(&prior.children, pair.0.clone());
+                            skipped.into_iter().next()
+                        };
+                        __result.push(match prior_stmt {
+                            std::option::Option::None => infer_expr(
+                                pair.1.clone(),
+                                scope.clone(),
+                                std::option::Option::None,
+                            ),
+                            Some(prior_stmt) => {
+                                let stmt_expected = if pair.0.clone()
+                                    == ((source.children.len() as i64) - 1)
+                                {
+                                    expected.clone()
+                                } else {
+                                    std::option::Option::None
+                                };
+                                recheck_expr(
+                                    pair.1.clone(),
+                                    prior_stmt.clone(),
+                                    scope.clone(),
+                                    stmt_expected,
+                                    shadowed.clone(),
+                                )
+                            }
+                        });
+                    }
+                    __result
+                });
+                let last_inferred = match parts.last() {
+                    Some(last) => last.typed.inferred.clone(),
+                    std::option::Option::None => std::option::Option::None,
+                };
+                let typed_children = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in parts.iter().cloned() {
+                        __result.push(p.typed.clone());
+                    }
+                    __result
+                });
+                let mut diags = Vec::new();
+                for p in parts.iter().cloned() {
+                    for d in p.diagnostics.iter().cloned() {
+                        diags.push(d);
+                    }
+                }
+                Rc::new(InferResult {
+                    typed: crate::v1_std_core::make_expr_node(
+                        source.occurrence_identity.clone(),
+                        Rc::new(ExprData::ExprBlock),
+                        typed_children,
+                        last_inferred,
+                        source.span.clone(),
+                    ),
+                    diagnostics: Rc::new(diags),
+                })
+            }
+        }
+        _ => {
+            if typed_expr_is_stale(prior.clone(), scope.clone(), shadowed.clone()) {
+                infer_expr(source.clone(), scope.clone(), expected.clone())
+            } else {
+                Rc::new(InferResult {
+                    typed: prior.clone(),
+                    diagnostics: Rc::new(vec![]),
+                })
+            }
+        }
+    }
+}
+
+pub fn infer_planned_lambda_recheck(
+    plan: Rc<CallArgumentPlan>,
+    expected_context: Rc<CallArgumentExpectedContext>,
+    first: Rc<ArgumentFirstReading>,
+    scope: Rc<InferScope>,
+) -> Rc<ArgInferResult> {
+    let source = crate::v1_std_core::arg_value(plan.argument.clone());
+    let prior = crate::v1_std_core::arg_value(first.result.clone().typed_arg.clone());
+    let shadowed = empty_shadowed_names();
+    let ar_inferred = recheck_expr(
+        source.clone(),
+        prior.clone(),
+        scope.clone(),
+        expected_context.expected.clone(),
+        shadowed,
+    );
+    let ar = if expected_context.formal_is_code_point_sequence.clone() {
+        Rc::new(InferResult {
+            typed: host_text_unfolded_at_code_point_boundary(
+                ar_inferred.typed.clone(),
+                expected_context.code_point_formal.clone(),
+                scope.clone(),
+            ),
+            diagnostics: ar_inferred.diagnostics.clone(),
+        })
+    } else {
+        ar_inferred.clone()
+    };
+    Rc::new(ArgInferResult {
+        typed_arg: crate::v1_std_core::make_arg_node(
+            plan.argument.clone().occurrence_identity.clone(),
+            crate::v1_std_core::arg_name_at(
+                plan.argument.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+            ar.typed.clone(),
+            plan.argument.clone().span.clone(),
+            plan.argument.clone().span.clone(),
+        ),
+        diagnostics: v1_rt::concat(
+            first.result.clone().diagnostics.clone(),
+            ar.diagnostics.clone(),
+        ),
+    })
 }
 
 pub fn call_argument_expected_context(
@@ -12351,6 +12694,7 @@ pub fn infer_call_arguments_generic_pass(
     scope: Rc<InferScope>,
 ) -> Rc<ArgGenericFoldState> {
     {
+        gap_account_enter_pass();
         let plans = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -12416,77 +12760,104 @@ pub fn infer_call_arguments_generic_pass(
                             missing_context_generics: expected_context
                                 .missing_context_generics
                                 .clone(),
+                            still_missing_after: still_missing_context_generics(
+                                expected_context.missing_context_generics.clone(),
+                                next_subst.clone(),
+                            ),
                         })]),
                     ),
                 })
             },
         );
-        Rc::new(
-            discovered
-                .readings
-                .clone()
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(ArgGenericFoldState {
-                results: Rc::new({
-                    let mut __result = Vec::new();
-                    for r in discovered.readings.clone().iter().cloned() {
-                        __result.push(r.result.clone());
-                    }
-                    __result
-                }),
-                subst: discovered.subst.clone(),
+        let first_state = Rc::new(ArgGenericFoldState {
+            results: Rc::new({
+                let mut __result = Vec::new();
+                for r in discovered.readings.clone().iter().cloned() {
+                    __result.push(r.result.clone());
+                }
+                __result
             }),
-            |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<ArgumentFirstReading>)| {
-                if argument_needs_generic_recheck(
-                    pair.1.clone().missing_context_generics.clone(),
-                    st.subst.clone(),
-                ) {
-                    {
-                        let expected_context = call_argument_expected_context(
-                            pair.1.clone().plan.clone(),
-                            st.subst.clone(),
-                            generic_names.clone(),
-                            scope.clone(),
-                        );
-                        let result = infer_planned_call_argument(
-                            pair.1.clone().plan.clone(),
-                            expected_context.clone(),
-                            scope.clone(),
-                        );
-                        Rc::new(ArgGenericFoldState {
-                            results: replace_arg_infer_result(
-                                st.results.clone(),
-                                pair.0.clone(),
-                                result.clone(),
-                            ),
-                            subst: extend_call_substitution(
+            subst: discovered.subst.clone(),
+        });
+        let out = if !call_needs_generic_rebinding_pass(
+            call_args.clone(),
+            generic_names.clone(),
+            discovered.subst.clone(),
+        ) {
+            first_state
+        } else {
+            Rc::new(
+                discovered
+                    .readings
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            .fold(
+                first_state,
+                |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<ArgumentFirstReading>)| {
+                    if argument_needs_generic_recheck(
+                        pair.1.clone().still_missing_after.clone(),
+                        st.subst.clone(),
+                    ) {
+                        {
+                            gap_account_recheck();
+                            let expected_context = call_argument_expected_context(
                                 pair.1.clone().plan.clone(),
-                                call_argument_generic_evidence(
+                                st.subst.clone(),
+                                generic_names.clone(),
+                                scope.clone(),
+                            );
+                            let result = if is_lambda_expr(crate::v1_std_core::arg_value(
+                                pair.1.clone().plan.clone().argument.clone(),
+                            )) {
+                                infer_planned_lambda_recheck(
                                     pair.1.clone().plan.clone(),
-                                    crate::v1_std_core::arg_value(result.typed_arg.clone()),
-                                    GenericArgumentPhase::RecheckWithSettledBindings,
+                                    expected_context.clone(),
+                                    pair.1.clone(),
+                                    scope.clone(),
+                                )
+                            } else {
+                                infer_planned_call_argument(
+                                    pair.1.clone().plan.clone(),
+                                    expected_context.clone(),
+                                    scope.clone(),
+                                )
+                            };
+                            Rc::new(ArgGenericFoldState {
+                                results: replace_arg_infer_result(
+                                    st.results.clone(),
+                                    pair.0.clone(),
+                                    result.clone(),
+                                ),
+                                subst: extend_call_substitution(
+                                    pair.1.clone().plan.clone(),
+                                    call_argument_generic_evidence(
+                                        pair.1.clone().plan.clone(),
+                                        crate::v1_std_core::arg_value(result.typed_arg.clone()),
+                                        GenericArgumentPhase::RecheckWithSettledBindings,
+                                        generic_names.clone(),
+                                        scope.clone(),
+                                    ),
                                     generic_names.clone(),
+                                    st.subst.clone(),
                                     scope.clone(),
                                 ),
-                                generic_names.clone(),
-                                st.subst.clone(),
-                                scope.clone(),
-                            ),
-                        })
+                            })
+                        }
+                    } else {
+                        st.clone()
                     }
-                } else {
-                    st.clone()
-                }
-            },
-        )
+                },
+            )
+        };
+        gap_account_exit_pass();
+        out
     }
 }
 

@@ -7812,16 +7812,32 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+fn expr_contains_lambda(n: Node) -> Bool {
+  is_lambda_expr(e: n) || (n.children |> any(c => expr_contains_lambda(n: c)))
+}
+
+// Second pass of a call is admitted only when the old trigger would have run one:
+// the callee has generics, discovery produced a nonempty substitution, and some
+// argument contains a lambda. Per-argument recheck is then a subset of that pass.
+fn call_needs_generic_rebinding_pass(call_args: List<Node>, generic_names: List<String>, subst: Map<String, Node>) -> Bool {
+  if generic_names |> count == 0 {
+    false
+  } else if map_is_empty(subst) {
+    false
+  } else {
+    call_args |> any(a => expr_contains_lambda(n: arg_value(n: a)))
+  }
+}
+
 // A lambda argument's parameter types are read OUT of the call substitution, which
 // only arguments to its LEFT have had a chance to extend. A generic bound to its RIGHT
 // is missing from its expected context on the discovery pass. Recheck demand is exactly
-// those arguments whose expected-type derivation mentioned a generic that was unbound
-// then and is bound now. Formal selection is retained in the plan; replay does not
-// re-decide the parameter. DiscoverBindings is the only phase that solves lambda
-// evidence; RecheckWithSettledBindings still lets ordinary and record-literal arguments
-// extend the substitution (preserved until an executing specimen shows that is unused).
-// The open unsolved case remains gunbc.recurring_failure_mode
-// unbound_generic_reaches_conformance_unjudged.
+// those missing names that are STILL missing after this argument's own evidence and are
+// bound in the settled substitution — a later argument bound them. A name this argument
+// itself solved (the lambda's return generic R) is not demand: rechecking it re-enters
+// the body and re-runs inner discover+recheck. Formal selection is retained in the plan.
+// DiscoverBindings is the only phase that solves lambda evidence. The open unsolved case
+// remains gunbc.recurring_failure_mode unbound_generic_reaches_conformance_unjudged.
 
 type GenericArgumentPhase
   = DiscoverBindings
@@ -7849,6 +7865,7 @@ type ArgumentFirstReading {
   plan: CallArgumentPlan
   result: ArgInferResult
   missing_context_generics: List<String>
+  still_missing_after: List<String>
 }
 
 type GenericArgDiscoverState {
@@ -8018,11 +8035,100 @@ fn missing_context_generics(expected: Node, generic_names: List<String>, subst: 
   )
 }
 
-fn argument_needs_generic_recheck(missing_context_generics: List<String>, subst: Map<String, Node>) -> Bool {
-  missing_context_generics |> any(g => match map_get(subst, g) {
+fn still_missing_context_generics(missing_context_generics: List<String>, subst: Map<String, Node>) -> List<String> {
+  missing_context_generics |> filter(g => match map_get(subst, g) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn argument_needs_generic_recheck(still_missing_after: List<String>, subst_final: Map<String, Node>) -> Bool {
+  still_missing_after |> any(g => match map_get(subst_final, g) {
     Present { value: _ } => true
     Absent => false
   })
+}
+
+fn empty_shadowed_names() -> Map<String, Bool> {
+  empty_map()
+}
+
+fn typed_expr_is_stale(n: Node, scope: InferScope, shadowed: Map<String, Bool>) -> Bool {
+  match n.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: n, source_indices: scope.type_env.source_indices)
+      if map_has(shadowed, name) { false }
+      else {
+        match map_get(scope.locals, name) {
+          Absent => false
+          Present { value: binding } =>
+            match n.inferred {
+              Present { value: Resolved { node: rt } } =>
+                !node_type_equals(left: rt, right: binding.resolved, source_indices: scope.type_env.source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
+              _ => true
+            }
+        }
+      }
+    ExprLambda =>
+      let names = lambda_param_names_at(texpr: n, source_indices: scope.type_env.source_indices)
+      let inner_shadowed = fold(names, init: shadowed, f: (acc, name) => map_insert(acc, name, true))
+      typed_expr_is_stale(n: lambda_body(texpr: n), scope: scope, shadowed: inner_shadowed)
+    _ => n.children |> any(c => typed_expr_is_stale(n: c, scope: scope, shadowed: shadowed))
+  }
+}
+
+fn recheck_expr(source: Node, prior: Node, scope: InferScope, expected: Node?, shadowed: Map<String, Bool>) -> InferResult {
+  match source.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
+        infer_expr(texpr: source, scope: scope, expected: expected)
+      } else {
+        InferResult { typed: prior, diagnostics: [] }
+      }
+    ExprLambda =>
+      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
+        infer_expr(texpr: source, scope: scope, expected: expected)
+      } else {
+        InferResult { typed: prior, diagnostics: [] }
+      }
+    ExprBlock =>
+      if (source.children |> count) != (prior.children |> count) {
+        infer_expr(texpr: source, scope: scope, expected: expected)
+      } else {
+        let parts = source.children |> enumerate |> map(pair =>
+          match prior.children |> skip(pair.first) |> first {
+            Absent => infer_expr(texpr: pair.second, scope: scope, expected: none)
+            Present { value: prior_stmt } =>
+              let stmt_expected = if pair.first == ((source.children |> count) - 1) { expected } else { none }
+              recheck_expr(source: pair.second, prior: prior_stmt, scope: scope, expected: stmt_expected, shadowed: shadowed)
+          }
+        )
+        InferResult {
+          typed: make_expr_node(occurrence_identity: source.occurrence_identity, expr_data: ExprBlock, children: parts |> map(p => p.typed), inferred: match parts |> last {
+            Present { value: last } => last.typed.inferred
+            Absent => none
+          }, span: source.span),
+          diagnostics: flat_map(parts, p => p.diagnostics)
+        }
+      }
+    _ =>
+      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
+        infer_expr(texpr: source, scope: scope, expected: expected)
+      } else {
+        InferResult { typed: prior, diagnostics: [] }
+      }
+  }
+}
+
+fn infer_planned_lambda_recheck(plan: CallArgumentPlan, expected_context: CallArgumentExpectedContext, first: ArgumentFirstReading, scope: InferScope) -> ArgInferResult {
+  let source = arg_value(n: plan.argument)
+  let prior = arg_value(n: first.result.typed_arg)
+  let shadowed = empty_shadowed_names()
+  let ar_inferred = recheck_expr(source: source, prior: prior, scope: scope, expected: expected_context.expected, shadowed: shadowed)
+  let ar = if expected_context.formal_is_code_point_sequence {
+    InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: expected_context.code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
+  } else { ar_inferred }
+  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: plan.argument.occurrence_identity, name: arg_name_at(n: plan.argument, source_indices: scope.type_env.source_indices), value: ar.typed, span: plan.argument.span, name_span: plan.argument.span), diagnostics: concat(first.result.diagnostics, ar.diagnostics) }
 }
 
 fn call_argument_expected_context(plan: CallArgumentPlan, subst: Map<String, Node>, generic_names: List<String>, scope: InferScope) -> CallArgumentExpectedContext {
@@ -8106,24 +8212,38 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
     let next_subst = extend_call_substitution(plan: plan, evidence: call_argument_generic_evidence(plan: plan, typed_arg: arg_value(n: result.typed_arg), phase: DiscoverBindings, generic_names: generic_names, scope: scope), generic_names: generic_names, subst: st.subst, scope: scope)
     GenericArgDiscoverState {
       subst: next_subst,
-      readings: concat(st.readings, [ArgumentFirstReading { plan: plan, result: result, missing_context_generics: expected_context.missing_context_generics }])
+      readings: concat(st.readings, [ArgumentFirstReading {
+        plan: plan,
+        result: result,
+        missing_context_generics: expected_context.missing_context_generics,
+        still_missing_after: still_missing_context_generics(missing_context_generics: expected_context.missing_context_generics, subst: next_subst)
+      }])
     }
   )
-  fold(discovered.readings |> enumerate, init: ArgGenericFoldState {
+  let first_state = ArgGenericFoldState {
     results: discovered.readings |> map(r => r.result),
     subst: discovered.subst
-  }, f: (st, pair) =>
-    if argument_needs_generic_recheck(missing_context_generics: pair.second.missing_context_generics, subst: st.subst) {
-      let expected_context = call_argument_expected_context(plan: pair.second.plan, subst: st.subst, generic_names: generic_names, scope: scope)
-      let result = infer_planned_call_argument(plan: pair.second.plan, expected_context: expected_context, scope: scope)
-      ArgGenericFoldState {
-        results: replace_arg_infer_result(results: st.results, index: pair.first, replacement: result),
-        subst: extend_call_substitution(plan: pair.second.plan, evidence: call_argument_generic_evidence(plan: pair.second.plan, typed_arg: arg_value(n: result.typed_arg), phase: RecheckWithSettledBindings, generic_names: generic_names, scope: scope), generic_names: generic_names, subst: st.subst, scope: scope)
+  }
+  if !call_needs_generic_rebinding_pass(call_args: call_args, generic_names: generic_names, subst: discovered.subst) {
+    first_state
+  } else {
+    fold(discovered.readings |> enumerate, init: first_state, f: (st, pair) =>
+      if argument_needs_generic_recheck(still_missing_after: pair.second.still_missing_after, subst_final: st.subst) {
+        let expected_context = call_argument_expected_context(plan: pair.second.plan, subst: st.subst, generic_names: generic_names, scope: scope)
+        let result = if is_lambda_expr(e: arg_value(n: pair.second.plan.argument)) {
+          infer_planned_lambda_recheck(plan: pair.second.plan, expected_context: expected_context, first: pair.second, scope: scope)
+        } else {
+          infer_planned_call_argument(plan: pair.second.plan, expected_context: expected_context, scope: scope)
+        }
+        ArgGenericFoldState {
+          results: replace_arg_infer_result(results: st.results, index: pair.first, replacement: result),
+          subst: extend_call_substitution(plan: pair.second.plan, evidence: call_argument_generic_evidence(plan: pair.second.plan, typed_arg: arg_value(n: result.typed_arg), phase: RecheckWithSettledBindings, generic_names: generic_names, scope: scope), generic_names: generic_names, subst: st.subst, scope: scope)
+        }
+      } else {
+        st
       }
-    } else {
-      st
-    }
-  )
+    )
+  }
 }
 
 fn seed_override_map() -> Map<String, Node> {

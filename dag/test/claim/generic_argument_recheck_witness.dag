@@ -5,10 +5,11 @@ import gunbc.compile_census_probe { blocking_class_count_for, total_blocking_cou
 
 // Discriminating specimens for sparse generic-argument recheck
 // (v1.compiler.infer infer_call_arguments_generic_pass, argument_needs_generic_recheck).
-// A compiler that never rechecks the right-bound lambda fails the Int identity call;
-// one that still replays every nested left-bound lambda still accepts these, so the
-// nested chain is an acceptance control plus the architecture's recheck predicate
-// (argument_needs_generic_recheck): a left-bound lambda's missing-context set is empty.
+// A compiler that never rechecks the right-bound lambda fails the Int identity call.
+// Recheck demand is a name still missing after this argument that a later argument bound;
+// a left-bound lambda's return generic is solved by the lambda itself and is not demand.
+// Nested left-bound chain: acceptance control. Right-bound inner generic: if reuse of the
+// first-round inner call were wrong, the Bool return would not refuse.
 
 data left_bound_lambda_source: String = "module test.claim.gar_left_bound\nimport std.types { Int }\nfn gar_bind<T, R>(o: T, f: fn(T) -> R) -> R { f(o) }\nfn probe() -> Int { gar_bind(o: 1, f: fn(v) { v }) }\n"
 
@@ -21,6 +22,8 @@ data later_literal_context_source: String = "module test.claim.gar_later_literal
 data later_record_context_source: String = "module test.claim.gar_later_record\nimport std.types { Int }\ntype GarBox<T> { v: T }\nfn gar_box_pair<T>(x: GarBox<T>, y: T) -> T { y }\nfn probe() -> Int { gar_box_pair(x: GarBox { v: 1 }, y: 2) }\n"
 
 data lambda_return_mismatch_source: String = "module test.claim.gar_mismatch\nimport std.types { Bool, Int }\nfn gar_ap<T, R>(f: fn(T) -> R, x: T, r: R) -> R { r }\nfn probe() -> Bool { gar_ap(f: fn(v) { v }, x: 1, r: true) }\n"
+
+data inner_generic_bound_by_outer_source: String = "module test.claim.gar_inner_outer\nimport std.types { Bool, Int }\nfn gar_id<T>(x: T) -> T { x }\nfn gar_app<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }\nfn probe() -> Bool { gar_app(f: fn(v) { gar_id(x: v) }, x: 1) }\n"
 
 test fn a_lambda_after_the_argument_that_binds_its_parameter_is_accepted() -> Bool {
   total_blocking_count_for(source: left_bound_lambda_source) == 0
@@ -44,4 +47,8 @@ test fn an_earlier_record_literal_whose_generic_is_bound_later_is_accepted() -> 
 
 test fn a_lambda_return_that_disagrees_with_the_substituted_callable_refuses() -> Bool {
   blocking_class_count_for(source: lambda_return_mismatch_source, wanted_class: "TypeMismatch") >= 1
+}
+
+test fn an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred() -> Bool {
+  blocking_class_count_for(source: inner_generic_bound_by_outer_source, wanted_class: "TypeMismatch") >= 1
 }
