@@ -189,7 +189,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
+  TypeEnv, TypeBinding, node_with_children, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -467,9 +467,9 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: key_child } =>
-        let key_node = child_type_node(ch: key_child)
+        let key_node = rust_type_argument_node(ch: key_child, emit_info: emit_info)
         let val_node = match n.children |> skip(1) |> first {
-          Present { value: val_child } => if rust_type_node_is_arrow(n: val_child) { val_child } else { child_type_node(ch: val_child) }
+          Present { value: val_child } => if rust_type_node_is_arrow(n: val_child) { val_child } else { rust_type_argument_node(ch: val_child, emit_info: emit_info) }
           Absent => type_variable_node(id: "map_value")
         }
         let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -491,7 +491,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
-        let elem_node = if rust_type_node_is_arrow(n: elem_child) { elem_child } else { child_type_node(ch: elem_child) }
+        let elem_node = if rust_type_node_is_arrow(n: elem_child) { elem_child } else { rust_type_argument_node(ch: elem_child, emit_info: emit_info) }
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(name: tn, inner: inner_str, target: Rust)
@@ -12040,7 +12040,7 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
 fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+      let rendered = render_rust_type(n: rust_type_argument_node(ch: value_child, emit_info: emit_info), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
@@ -12049,7 +12049,7 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, sour
 fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+      render_rust_type(n: rust_type_argument_node(ch: key_child, emit_info: emit_info), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => ""
   }
   let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -12096,36 +12096,25 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
-// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
-// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
-// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
-// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
-// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
-// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
-fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  n.children |> any(c =>
-    let t = child_type_node(ch: c)
-    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-}
-
-// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
-// alone, with or without the shared wrap, whatever children the projected node still carries.
-fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
-    false
-  } else {
-    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
-    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-    rendered == head || rendered == concat("Rc<", head, ">")
-  }
-}
-
-fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
-  match lookup_type_for(env: env, node: n) {
-    Present { value: binding } => (binding.params |> count) > 0
-    Absent => false
+// A TYPE ARGUMENT IS READ FROM THE REFERENCE'S APPLICATION, NOT FROM ITS EXPANSION. child_type_node
+// returns the structural expansion of a reference (resolved_type's contract), and an alias to a
+// parametric declaration expands to the declaration's own structure: for `Map<Symbol, QualifiedName>`
+// (QualifiedName = FreeMonoid<Symbol>) the argument reference carries children [Symbol] (the
+// application) while its expansion is FreeMonoid with the declaration's two variant children, so
+// rendering the expansion named the head with no arguments (`Rc<FreeMonoid>`, rustc E0107, #14084).
+// The fact asked is arity: the declaration takes n parameters, the expansion does not carry n
+// children and the reference does, so the application is the reference's children.
+// Other child_type_node consumers that render a type argument through the expansion are named in
+// gunbc.recurring_failure_mode an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head.
+fn rust_type_argument_node(ch: Node, emit_info: EmitGraphInfo) -> Node {
+  let t = child_type_node(ch: ch)
+  match lookup_type_for(env: emit_info.fn_type_env, node: t) {
+    Present { value: binding } =>
+      let arity = binding.params |> count
+      if arity > 0 && (t.children |> count) != arity && (ch.children |> count) == arity {
+        node_with_children(n: t, children: ch.children)
+      } else { t }
+    Absent => t
   }
 }
 
@@ -12135,12 +12124,8 @@ fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_in
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
-    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
-    if type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info) {
-      concat("compile_error!(\"PROBE ", map_type.children |> map(c => concat("[c=", authored_name_at(source_indices: source_indices, node: c), " cch=", to_string(value: c.children |> count), " e=", authored_name_at(source_indices: source_indices, node: child_type_node(ch: c)), " ech=", to_string(value: child_type_node(ch: c).children |> count), " ec1=", match child_type_node(ch: c).children |> first { Present { value: x } => authored_name_at(source_indices: source_indices, node: x)  Absent => "-" }, " cc1=", match c.children |> first { Present { value: x } => authored_name_at(source_indices: source_indices, node: x)  Absent => "-" }, "]")) |> join(separator: ""), "\")")
-    } else {
-    "v1_rt::rc_empty_map::<_, _>()" }
+    "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
   }
@@ -13822,8 +13807,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
