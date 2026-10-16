@@ -7,12 +7,13 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.megarac { megarac_firmware_0_45_3 }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionAdmitted,
   VirtualMediaBootSelectionRefused,
   VirtualMediaUnestablished,
 }
-import gunbc.host.host_capability_row { host_access_repoint_firmware }
+import gunbc.host.host_capability_row { host_access_repoint_firmware, host_capability_row, HostCapabilityRowKnown }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
@@ -210,6 +211,27 @@ test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit
       _ => false
     }
     at_0_32 && refused_uncatalogued
+  }) && count(managed_hosts()) == 1
+}
+
+// (d) RED, the real reflash: the unit moved 0.32 -> 0.45.3 on 2026-10-02. Observed at 0.45.3, the
+// lookup resolves THAT build's catalog row -- a different row from 0.32's (the resolved rows carry the
+// 0.45.3 release identity) -- and the boot selection still admits, so the boot does not refuse as
+// uncatalogued once the observation records 0.45.3. No per-unit row was edited; the same generic
+// derivation followed the reported build.
+test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits() -> Bool {
+  managed_hosts() |> all(h => {
+    let at_0_45_3 = managed_host_fixture(host: "fixture-at-0-45-3", access: host_access_repoint_firmware(access: h.access, firmware: megarac_firmware_0_45_3), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let admitted = match boot_selection(host: at_0_45_3) {
+      VirtualMediaBootSelectionRefused { cause: _ } => false
+      VirtualMediaBootSelectionAdmitted { selection: _ } => true
+    }
+    // the resolved row is the 0.45.3 build's own row, not 0.32's
+    let resolves_the_new_row = match host_capability_row(access: at_0_45_3.access) {
+      HostCapabilityRowKnown { row: row } => row.firmware.raw_version == "0.45.3"
+      _ => false
+    }
+    admitted && resolves_the_new_row
   }) && count(managed_hosts()) == 1
 }
 
