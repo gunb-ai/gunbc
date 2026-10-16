@@ -6,6 +6,7 @@ import gunbc.host.host_effect_realize {
   tree_entries_agree,
   tree_hash_lines,
   tree_ancestor_directories,
+  tree_binary_agrees,
   approval_broker_tree_install,
   ApprovalBrokerTreeInstallVerdict,
   TreeInstallRefused,
@@ -94,4 +95,9 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
     revision: RevisionNotInstalled,
     transport: LocalShell,
   ), at: TreeStepRevision)
+}
+
+// A binary that cannot be hashed on either side is a disagreement (the real LocalShell sha256sum fails).
+test fn a_binary_with_no_readable_hash_does_not_agree() -> Bool {
+  !tree_binary_agrees(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell)
 }

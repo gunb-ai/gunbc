@@ -4617,8 +4617,9 @@ fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
 }
 
 // `<hex>  <path>` lines of sha256sum, the path rebased from the absolute `root` onto `sub`/<relative>.
-// A line that is not shaped `<64 hex>  <root>/<relative>` is DROPPED here and surfaces as a
-// readback count/entry mismatch, never as a fabricated entry.
+// A line that is not shaped `<64 hex>  <root>/<relative>` is DROPPED here; the caller
+// (observe_tree_hashes) counts the non-empty lines against the parsed entries and refuses on any
+// difference, so a dropped line is never a silently smaller tree.
 fn tree_file_hashes_of_stdout(stdout: String, root: String, sub: String) -> List<TreeFileHash> {
   let marker = join([root, "/"], "")
   flat_map(split(s: stdout, delimiter: "\n"), line =>
@@ -4642,9 +4643,16 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
 // Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
 fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
   let all = flat_map(files, f => tree_path_prefixes(path: f.path))
-  fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: [], f: (acc, p) =>
-    if count(acc) > 0 && acc |> any(q => q == p) { acc } else { list_snoc_item(xs: acc, item: p) }
+  // sorted, so duplicates are adjacent: compare with the last kept entry only
+  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+    if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
+  walked.out
+}
+
+type TreeDedupWalk {
+  last: String
+  out: List<String>
 }
 
 fn tree_path_prefixes(path: String) -> List<String> {
@@ -4701,7 +4709,13 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectTr
           RunArgvTransportRefused { reason: r } => TreeObservationFailed { reason: r }
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeObservationFailed { reason: join(["find exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
-            else { TreeObserved { entries: concat(es, tree_file_hashes_of_stdout(stdout: o.stdout, root: join([root, "/", sub], ""), sub: sub)) } }
+            else {
+              let parsed = tree_file_hashes_of_stdout(stdout: o.stdout, root: join([root, "/", sub], ""), sub: sub)
+              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 { [l] } else { [] }))
+              if lines != count(parsed) {
+                TreeObservationFailed { reason: join(["find|sha256sum under ", root, "/", sub, " printed ", to_string(lines), " lines but ", to_string(count(parsed)), " parsed as <hex>  <path under root>; a path with a newline or an unexpected line shape is refused, not dropped"], "") }
+              } else { TreeObserved { entries: concat(es, parsed) } }
+            }
         }
     }
   )
@@ -4740,6 +4754,24 @@ fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, 
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
 
+// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both hashes are
+// observed through the transport and must be equal; an unreadable hash is a disagreement.
+fn tree_binary_hex(path: String, transport: HostEffectTransport) -> String {
+  match run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport) {
+    RunArgvTransportRefused { reason: _ } => ""
+    RunArgvTransportObserved { observed: o } =>
+      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
+        Absent => ""
+        Present { value: d } => d.hex as String
+      }
+  }
+}
+
+fn tree_binary_agrees(source_path: String, installed_path: String, transport: HostEffectTransport) -> Bool {
+  let a = tree_binary_hex(path: source_path, transport: transport)
+  string_length(s: a) > 0 && a == tree_binary_hex(path: installed_path, transport: transport)
+}
+
 fn approval_broker_tree_install_observed(
   owner: NonEmptyStr,
   base_root: String,
@@ -4769,7 +4801,9 @@ fn approval_broker_tree_install_observed(
       match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
-          if !tree_entries_agree(source: source, installed: installed) {
+          if !tree_binary_agrees(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport) {
+            TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (or could not be hashed); no receipt was written"], "") }
+          } else if !tree_entries_agree(source: source, installed: installed) {
             TreeInstallRefused { step: TreeStepReadback, reason: join([
               "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
               " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
