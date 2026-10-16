@@ -42,7 +42,6 @@ import gunbc.runner.runner_claim_set_receipt {
   UnitRuntimeReading, UnitRuntimeMeasured, UnitRuntimeUnread, read_unit_runtime, read_results_drive,
   ClaimSetReceiptOutcome, ClaimSetReceipted, ClaimSetUnreceipted, ClaimSetNotReceipted, claim_set_receipt,
 }
-import gunbc.runner.runner_claim_set_results { ClaimSetResultsAdmitted, admit_claim_set_results }
 import gunbc.runner.runner_revision_job_spec {
   RevisionJobSpec, RevisionJobSpecDecode, RevisionJobSpecDecoded, RevisionJobSpecRefused, RevisionJobSpecRefusal,
   decode_revision_job_spec,
@@ -236,8 +235,10 @@ fn revision_job_launch_and_settle(
           vcpus: vcpus, ground: observe_attempt_ground(attempt: attempt),
           jailer_binary: bins.jailer, firecracker_binary: bins.firecracker,
         )
-        let results_out = concat(work_dir, "/results-out.bin")
-        let runtime_out = concat(work_dir, "/runtime.txt")
+        // NAMED BY THE ATTEMPT: the await step writes these create-only, so a write that fails leaves no
+        // file and the settle reads refuse; a file another attempt left behind is never at this name.
+        let results_out = join([work_dir, "/", attempt.attempt_id.value as String, "-results-out.bin"], "")
+        let runtime_out = join([work_dir, "/", attempt.attempt_id.value as String, "-runtime.txt"], "")
         let identity = AttemptIdentity {
           attempt: attempt, allocation_generation: snapshot.generation, invocation_id: invocation_id,
           workload: ClaimSetWorkload { grant: (grant.id.key as String) as NonEmptyStr, tree: git_object_id_wire_hex(oid: revision.tree) },
@@ -257,12 +258,8 @@ fn revision_job_launch_and_settle(
             completed_at: now,
           ) {
             ClaimSetUnreceipted { cause: c } => RevisionJobUnreceipted { cause: c }
-            ClaimSetReceipted { receipt: r, outputs: _ } => {
+            ClaimSetReceipted { receipt: r, outputs: _, results: results } => {
               let settlement = settle_cell_grant(root: root, work: work.id, offer: microvm_job_offer(slot: slot, job: job).id, receipt: r, readiness: readiness)
-              let results = match admit_claim_set_results(decode: read_results_drive(path: results_out, staged_bytes: revision_job_results_bytes), claims: spec.claims, revision: revision) {
-                ClaimSetResultsAdmitted { results: rs, outputs: _ } => rs
-                _ => []
-              }
               RevisionJobPublishedOutcome {
                 publication: publish_revision_job_receipt(store_root: store_root, staging_path: concat(work_dir, "/receipt.json"),
                   d: RevisionJobReceiptDocument { spec: spec, inputs: staged.digests, receipt: r, results: results }),

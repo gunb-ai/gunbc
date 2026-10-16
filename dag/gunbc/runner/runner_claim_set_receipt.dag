@@ -23,7 +23,7 @@ import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import gunbc.fabric.fabric_cell_grant { CellGrantSettlement, settle_cell_grant }
 import gunbc.runner.runner_claim_set_results {
   ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
-  ClaimSetResultsAdmitted, decode_claim_set_results, admit_claim_set_results,
+  ClaimSetResultsAdmitted, ClaimSetResult, decode_claim_set_results, admit_claim_set_results,
 }
 
 // THE REVISION JOB'S RECEIPT, BUILT ONLY FROM WHAT THE HOST READ.
@@ -55,7 +55,7 @@ type ClaimSetNotReceipted
   | RuntimeNotMeasured { detail: String }
 
 type ClaimSetReceiptOutcome
-  = ClaimSetReceipted { receipt: Receipt<NonEmptyStr>, outputs: ContentHash }
+  = ClaimSetReceipted { receipt: Receipt<NonEmptyStr>, outputs: ContentHash, results: List<ClaimSetResult> }
   | ClaimSetUnreceipted { cause: ClaimSetNotReceipted }
 
 // THE RUNTIME, FROM TWO MONOTONIC MICROSECOND STAMPS. Both must be present, decimal and nonzero
@@ -144,7 +144,7 @@ fn claim_set_receipt(
   completed_at: Timestamp,
 ) -> ClaimSetReceiptOutcome {
   match admit_claim_set_results(decode: decode, claims: claims, revision: revision) {
-    ClaimSetResultsAdmitted { results: _, outputs: o } => match runtime {
+    ClaimSetResultsAdmitted { results: rs, outputs: o } => match runtime {
       UnitRuntimeUnread { detail: d } => ClaimSetUnreceipted { cause: RuntimeNotMeasured { detail: d } }
       UnitRuntimeMeasured { billable: b } => ClaimSetReceipted {
         receipt: Receipt {
@@ -154,6 +154,7 @@ fn claim_set_receipt(
           payload: ExecutionReceipt { step_id: "claim-set", outputs: o, billable: b, completed_at: completed_at },
         },
         outputs: o,
+        results: rs,
       }
     }
     refused => ClaimSetUnreceipted { cause: ResultsNotAdmitted { admission: refused } }
@@ -189,7 +190,7 @@ fn claim_set_receipt_and_settle(
     completed_at: completed_at,
   ) {
     ClaimSetUnreceipted { cause: c } => ClaimSetJobUnreceipted { cause: c }
-    ClaimSetReceipted { receipt: r, outputs: _ } => ClaimSetJobSettled {
+    ClaimSetReceipted { receipt: r, outputs: _, results: _ } => ClaimSetJobSettled {
       receipt: r,
       settlement: settle_cell_grant(root: root, work: work, offer: offer, receipt: r, readiness: readiness),
     }
