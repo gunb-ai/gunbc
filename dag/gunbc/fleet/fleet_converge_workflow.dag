@@ -133,6 +133,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
+  gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_release_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
@@ -4062,14 +4063,13 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 // FAN POLICY IS A PHASE OF THIS JOB, NOT A SECOND MODE. The operator addendum (2026-10-14) forbids
 // a machine sitting on a controller default unobserved after boot. The step id is the phase
 // (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
-// the non-gating wrapper over the IPMI SDR series (fan_observe / bmc_fan_observation), so the
-// step name is that series' name — not Cooling Manager / PWM REST. The standalone
-// mtcollins1_fan_observe mode stays fail-closed. This wrapper writes a typed receipt on
-// admission, credential or series refusal and returns success; continue-on-error is the
-// backstop if gunbc itself exits nonzero or the step times out, so the boot step stays
-// scheduled. GET get_manager_status / get_fan_info plus PWM write / guard / restore is a named
-// follow-up. Steps in one job run strictly sequentially, so this interpreter exits before the
-// boot step's concurrent pair.
+// the IPMI SDR series (fan_observe / bmc_fan_observation), so the step name is that series' name
+// — not Cooling Manager / PWM REST. The standalone mtcollins1_fan_observe mode stays fail-closed.
+// Refusal writes a typed receipt then ExitFailure; continue-on-error keeps the boot step
+// scheduled. After boot and the receipt upload, fan_policy_phase_verdict reads that receipt
+// with no continue-on-error, so a refused observation fails the job. GET get_manager_status /
+// get_fan_info plus PWM write / guard / restore is a named follow-up. Steps in one job run
+// strictly sequentially, so this interpreter exits before the boot step's concurrent pair.
 fn fleet_converge_fan_policy_phase_step() -> Step {
   RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
@@ -4104,6 +4104,20 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
   }
 }
 
+fn fleet_converge_fan_policy_phase_verdict_step() -> Step {
+  RunStep {
+    name: Present { value: "Read fan-policy-phase observation receipt after the power cycle" },
+    id: Present { value: "fan_policy_phase_verdict" },
+    run: gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
   concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
     fleet_converge_mtcollins1_boot_pair_build_step(),
@@ -4115,6 +4129,7 @@ fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: 
     boot_step,
     fleet_converge_fan_policy_phase_receipt_upload_step(),
     fleet_converge_mtcollins1_boot_receipt_upload_step(),
+    fleet_converge_fan_policy_phase_verdict_step(),
     ci_fleet_key_agent_cleanup_step(),
   ])
 }

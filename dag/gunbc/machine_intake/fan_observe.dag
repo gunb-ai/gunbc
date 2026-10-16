@@ -3,7 +3,7 @@ module gunbc.machine_intake.fan_observe
 import std.types { Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.measure { ObservationRoundCount, Second, percent, second_count }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -247,8 +247,8 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
   }
 }
 
-// BOOT-JOB WRAPPER: observation refusal is a typed receipt and ExitSuccess. A failed receipt write
-// is ExitFailure, same as fan_write_observation. Job continue-on-error keeps the power cycle scheduled.
+// BOOT-JOB WRAPPER: write the typed receipt, then fail the process on observation refusal. Job
+// continue-on-error keeps the power cycle scheduled; a later verdict step reads the receipt.
 fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr, policy: FanObservePolicy) -> ProcessExit
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_boot_phase_wet"),
@@ -270,10 +270,15 @@ fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr,
 fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePolicy, series: FanObservationSeries) -> ProcessExit {
   match series {
     FanObservationRefused { cause: cause } =>
-      fan_write_boot_phase_receipt(
+      match fan_write_boot_phase_receipt(
         path: policy.receipt_path,
         content: concat("FanObserveBootPhaseRefused cause=", cause as String),
-      )
+      ) {
+        ExitSuccess =>
+          exit_failure(reason: concat("FanObserveBootPhaseRefused cause=", cause as String))
+        ExitFailure { code: code, reason: written_reason } =>
+          ExitFailure { code: code, reason: written_reason }
+      }
     FanObservationTaken { rounds: rounds, interval: interval } =>
       fan_write_boot_phase_receipt(
         path: policy.receipt_path,

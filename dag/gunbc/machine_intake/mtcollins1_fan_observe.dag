@@ -1,10 +1,10 @@
 module gunbc.machine_intake.mtcollins1_fan_observe
 
 import extdeps.shell
-import std.algebra { trim }
+import std.algebra { string_contains, trim }
 import std.types { NonEmptyStr, String }
 import std.measure { ObservationRoundCount, Second, observation_round_count, second }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host.managed_host { managed_host_binding_for }
@@ -109,27 +109,57 @@ fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
   }
 }
 
-// BOOT WRAPPER. Observation refusal is a typed receipt and ExitSuccess; a failed receipt write
-// is ExitFailure. The job step's continue-on-error is what keeps the power cycle scheduled.
+fn mtcollins1_fan_observe_boot_phase_fail_after_receipt(written: ProcessExit, reason: String) -> ProcessExit {
+  match written {
+    ExitSuccess => exit_failure(reason: reason)
+    ExitFailure { code: code, reason: written_reason } =>
+      ExitFailure { code: code, reason: written_reason }
+  }
+}
+
+// BOOT WRAPPER. Observation refusal is a typed receipt then ExitFailure. The job step's
+// continue-on-error keeps the power cycle scheduled; the verdict step after boot reads the receipt.
 fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
 {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
     FanObserveRefused { cause: c } =>
-      mtcollins1_fan_observe_boot_phase_receipt(
-        content: concat("FanObserveBootPhaseRefused admission=", fan_observe_refusal_text(cause: c) as String),
+      mtcollins1_fan_observe_boot_phase_fail_after_receipt(
+        written: mtcollins1_fan_observe_boot_phase_receipt(
+          content: concat("FanObserveBootPhaseRefused admission=", fan_observe_refusal_text(cause: c) as String),
+        ),
+        reason: concat("FanObserveBootPhaseRefused admission=", fan_observe_refusal_text(cause: c) as String),
       )
     FanObserveAdmitted { host: admitted } =>
       match mtcollins1_fan_credential_path() {
         FanCredentialPathUnset =>
-          mtcollins1_fan_observe_boot_phase_receipt(
-            content: join(["FanObserveBootPhaseRefused credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
+          mtcollins1_fan_observe_boot_phase_fail_after_receipt(
+            written: mtcollins1_fan_observe_boot_phase_receipt(
+              content: join(["FanObserveBootPhaseRefused credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
+            ),
+            reason: join(["FanObserveBootPhaseRefused credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
           )
         FanCredentialPathEmpty =>
-          mtcollins1_fan_observe_boot_phase_receipt(
-            content: join(["FanObserveBootPhaseRefused credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
+          mtcollins1_fan_observe_boot_phase_fail_after_receipt(
+            written: mtcollins1_fan_observe_boot_phase_receipt(
+              content: join(["FanObserveBootPhaseRefused credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
+            ),
+            reason: join(["FanObserveBootPhaseRefused credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
           )
         FanCredentialPathReady { path: password_file } =>
           fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
       }
+  }
+}
+
+// POST-BOOT READ OF THE SAME RECEIPT. continue-on-error on the observe step is only so boot still
+// runs; this step has no continue-on-error, so a refused observation fails the job after the cycle.
+fn mtcollins1_fan_observe_boot_phase_verdict_wet() -> ProcessExit {
+  let read = Filesystem.Read(path: mtcollins1_fan_observation_receipt_path)
+  if !read.success {
+    exit_failure(reason: concat("mtcollins1 fan observation boot phase: no receipt after the power cycle: ", read.error))
+  } else if string_contains(s: read.content, pattern: "FanObserveBootPhaseTaken") {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 fan observation boot phase: observation refused after boot: ", read.content))
   }
 }
