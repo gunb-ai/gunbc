@@ -291,9 +291,9 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
 // recovery route hands off to. It mints no credential in our store: the password sits transiently on
 // the BMC and is never taken into a secret store here, so it is not a credential-minting effect and
 // owes no witness discharge.
-fn recovery_kcs_set_user_password_effect() -> PrivilegedEffect {
+fn recovery_in_band_set_user_password_effect() -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: "from the rescue host OS, over the passwordless in-band KCS channel (/dev/ipmi0, no -I lanplus, no credential on the command line), write one temporary password to the BMC's ADMINISTRATOR account, so an authenticated in-band session can be opened against a controller whose existing password is unknown" as NonEmptyStr,
+    subject: "from the rescue host OS, over the passwordless in-band host interface (/dev/ipmi0, ipmi_ssif, no -I option and no credential on the command line), write one temporary password to the BMC's ADMINISTRATOR account, so an authenticated in-band session can be opened against a controller whose existing password is unknown" as NonEmptyStr,
     frequency: DeviceOnce,
     reversibility: ReversibleByReapply,
     surface: ApiSurface,
@@ -521,10 +521,27 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data recovery_reset_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetToDefaultsType=ResetAll) over the in-band channel, one unit at a time, under a per-effect operator approval filed against this ruling; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
   effect_subject: "in-band recovery reset: Redfish Manager.ResetToDefaults ResetAll on one arrival unit's BMC controller" as NonEmptyStr,
-  interlock: InterlockPending { obligation: "the unit hold the recovery run must take before the reset is actuated (gunbc.host.managed_host_unit_hold UnitHoldProof); rostered against the reset site when the wet realization of the recovery route lands, and refused until then" as NonEmptyStr },
+  interlock: InterlockedBy { hold: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire") },
 }
 
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    hold: privileged_effect_interlock_hold(interlock: recovery_reset_operator_ruling.interlock),
+    refusal: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    premise: "the recovery run takes the unit's one durable exclusive hold before the reset is actuated and refuses with the store's own words naming whoever else holds it; the gate additionally refuses unless the proof names the SAME unit as the recovery subject, so a ResetAll cannot be actuated on a chassis another run is driving" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "converge_in_band_recovery"),
+        acquires_at: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+        operations: ["Redfish Manager.ResetToDefaults ResetAll" as NonEmptyStr, "in-band Set User Password on the recovery account" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+          site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
+        ],
+      },
+    ],
+  },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     hold: privileged_effect_interlock_hold(interlock: runner_lifecycle_operator_ruling.interlock),
@@ -1144,8 +1161,8 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   // states the ruling the run acts under; the recovery route refuses its handoff without the post-reset
   // readback (its own domain law), so the row cannot realize a pattern the effect rules out.
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_kcs_password_write"),
-    effect: recovery_kcs_set_user_password_effect(),
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_in_band_password_write"),
+    effect: recovery_in_band_set_user_password_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
