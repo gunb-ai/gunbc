@@ -14,7 +14,18 @@ import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
+  gunbc_ci_mtcollins1_probe_credential_statements,
+  gunbc_ci_mtcollins1_probe_rendered,
+  gunbc_ci_auth_header_format,
 }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_command_with_words,
+  bash_build_assign, bash_build_with_redir_to_file,
+}
+import std.process { ExitSuccess, ExitFailure }
+import std.measure { observation_round_count, second }
+import extdeps.shell
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
@@ -25,8 +36,8 @@ import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
-  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
-  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
+  FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
+  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -225,6 +236,95 @@ test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Boo
     && !string_contains(s: kvm, pattern: "fetch-failed")
 }
 
+// CONTROL (review round, blocker 1): the cleanup trap must never meet an unset variable. set -u is
+// on from the first line, so an EXIT trap naming $STATUS_FILE while it is still unset aborts the trap
+// BEFORE its rm runs - and the window between trap-install and the bearer-token header write is
+// exactly where token-bearing temp files exist. The emitted typed script must therefore read, in
+// this order: STATUS_FILE assignment, trap, stale-status rm, header write. Order is asserted on
+// CONTIGUOUS pairs rendered by the very builders the prelude uses (the real rm list, the real header
+// format), and the reverse of the first pair must be absent - a script that moved the assignment
+// after the trap fails this claim. The strict lane stays free of STATUS_FILE entirely.
+test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
+  let boot = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+  let kvm = gunbc_ci_mtcollins1_kvm_observer_observe_invoke()
+  let status_assign = bash_build_assign(name: "STATUS_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "DEST_FILE"), bash_build_word_lit(text: mtcollins1_fan_credential_fetch_status_suffix)]))
+  let trap_stmt = bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "trap"),
+    bash_build_word_lit(text: gunbc_ci_mtcollins1_probe_rendered(stmts: [bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"),
+      bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"),
+      bash_build_word_var(name: "DEST_FILE"), bash_build_word_var(name: "STATUS_FILE"),
+    ])], set_e: false)),
+    bash_build_word_lit(text: "EXIT"),
+  ])
+  let rm_status = bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "STATUS_FILE")])
+  let header_write = bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE"))
+  string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [status_assign, trap_stmt], set_e: false))
+    && !string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [trap_stmt, status_assign], set_e: false))
+    && string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [trap_stmt, rm_status], set_e: false))
+    && string_contains(s: boot, pattern: gunbc_ci_mtcollins1_probe_rendered(stmts: [rm_status, header_write], set_e: false))
+    && !string_contains(s: kvm, pattern: "STATUS_FILE")
+}
+
+// CONTROL (review round, blocker 1, executed): run the emitted prelude's EARLY FAILURE for real.
+// The claim renders the typed prelude with the SAME builders the step projection embeds, writes it to
+// a claim-private path, and executes it with WIF_ACCESS_TOKEN deliberately unset: the script installs
+// its EXIT trap and then dies at the bearer-token header write under set -u - the exact window this
+// blocker is about. The four temp files the trap names are planted beforehand at the paths the prelude
+// itself computes (RUNNER_TEMP is pinned to target/ and the stem is this claim's own), so a sound trap
+// removes all four and an unsafe one - aborted by the unset variable before rm - leaves them. Their
+// absence is read back through the same file transport, not inferred from the exit code. Nothing real
+// is at risk: no fetch is reached and every planted byte is this claim's own.
+test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
+  let stem = "eh810-fan-trap-specimen"
+  let spec_path = "target/eh810-fan-trap-specimen.sh"
+  let planted_paths = [
+    "target/eh810-fan-trap-specimen-auth-header",
+    "target/eh810-fan-trap-specimen-sm.json",
+    "target/eh810-fan-trap-specimen-bmc-credential",
+    "target/eh810-fan-trap-specimen-bmc-credential.fetch-status",
+  ]
+  let prelude = gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false)
+  let written = Filesystem.Write(path: spec_path, content: prelude)
+  let planted = planted_paths |> all(p => Filesystem.Write(path: p, content: "planted-eh810-not-a-secret").success)
+  let run = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", concat(concat(concat("env -u WIF_ACCESS_TOKEN RUNNER_TEMP='target' bash '"), spec_path), "'")])
+  let every_temp_gone = planted_paths |> all(p => !Filesystem.Read(path: p).success)
+  let spec_gone = Filesystem.Delete(path: spec_path)
+  written.success && planted && run.exit_code != 0 && every_temp_gone && spec_gone.success
+}
+
+// CONTROL (review round, blocker 2): the boot's eligibility is decided by the MODELED refusal path,
+// executed end to end, not by the absence of a flag. Supply a refused series (a fabricated cause - the
+// only thing fabricated here is the cause string; the transport, the fold, the receipt write and the
+// exit code are all real) to the boot-phase fold, and the outcome must be: ExitSuccess - which is what
+// keeps the boot step scheduled - and a receipt whose exact content is the typed
+// FanObserveBootPhaseRefused line naming that cause. A fold that silently succeeded without a receipt,
+// or wrote one and still failed the step, fails this claim.
+test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
+  let receipt_path = "target/eh810-fan-boot-phase-refusal-receipt.txt"
+  match managed_hosts().first() {
+    Present { value: row } =>
+      match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: managed_host_fixture(host: row.host, access: row.access, capability_row: row.capability_row, secure: row.secure, unit_hold: row.unit_hold, smpro: row.smpro)) }) {
+        FanObserveAdmitted { host: h } =>
+          match fan_write_boot_phase_observation(
+            host: h,
+            policy: FanObservePolicy { rounds: observation_round_count(3), interval: second(5), transition_window: second(30), receipt_path: receipt_path },
+            series: FanObservationRefused { cause: "eh810-claim-fabricated-cause" as NonEmptyStr },
+          ) {
+            ExitSuccess =>
+              let receipt = Filesystem.Read(path: receipt_path)
+              let cleaned = Filesystem.Delete(path: receipt_path)
+              receipt.success && receipt.content == "FanObserveBootPhaseRefused cause=eh810-claim-fabricated-cause" && cleaned.success
+            ExitFailure { code: _, reason: _ } =>
+              let _ = Filesystem.Delete(path: receipt_path)
+              false
+          }
+        FanObserveRefused { cause: _ } => false
+      }
+    Absent => false
+  }
+}
+
 // CONTROL (review 81090): the three status arms fold by REAL EXECUTION - a file saying ok, a file
 // saying anything else, and no file at all land in FetchOk / FetchRefused / FetchStatusUnobserved.
 // Executed, not described: the fold is what decides whether the boot sees a refusal, so its truth is
@@ -232,9 +332,9 @@ test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Boo
 // own working files: the file transport creates no parent directories, and each path is deleted after
 // the read so a rerun starts from the absent arm.
 test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bool {
-  let ok_credential = "eh810-fan-fetch-status-claim-credential"
-  let bad_credential = "eh810-fan-fetch-status-claim-other"
-  let absent_credential = "eh810-fan-fetch-status-claim-absent"
+  let ok_credential = "target/eh810-fan-fetch-status-claim-credential"
+  let bad_credential = "target/eh810-fan-fetch-status-claim-other"
+  let absent_credential = "target/eh810-fan-fetch-status-claim-absent"
   let ok_path = concat(ok_credential, mtcollins1_fan_credential_fetch_status_suffix)
   let bad_path = concat(bad_credential, mtcollins1_fan_credential_fetch_status_suffix)
   let ok_write = Filesystem.Write(path: ok_path, content: "ok")

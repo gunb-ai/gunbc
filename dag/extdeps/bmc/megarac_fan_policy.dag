@@ -63,7 +63,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // state at all, (b) what enters and leaves it, and (c) the duty it holds. Until one of those is
 // read, the answer to 'why does Mt. Collins not sit at failsafe' may not be sourced from this
 // module - it comes from the observation producer in the observing layer.
-data megarac_fan_policy_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "AMI MegaRAC fan/thermal control documentation for the build under test: whether a failsafe state exists, what enters and leaves it, and the duty held in it. The REST fan-mode surface is a separate executed bind and does not discharge this obligation." }
+data megarac_fan_policy_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "AMI MegaRAC fan/thermal control documentation for the build under test: whether a failsafe state exists, what enters and leaves it, and the duty held in it. The REST fan-mode surface is a separate cited-but-not-executed bind (MegaRacFanModeSurfaceReadsCited) and does not discharge this obligation." }
 
 fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
   cited_figure_read_obligation(standing: megarac_fan_policy_standing)

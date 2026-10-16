@@ -2007,20 +2007,36 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
     bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
     bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
+  ]
+  // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
+  // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
+  // aborts the trap BEFORE rm runs - and the window between the trap and the header write is exactly
+  // where a bearer-token temp file exists. So every name the trap reads is assigned first, the status
+  // included, and any status file a previous attempt left behind is removed at the start of this
+  // attempt, so a stale "ok"/"fetch-failed" can never answer for a fetch that has not run yet. The
+  // strict (KVM) lane names no STATUS_FILE anywhere - trap included.
+  let typed_head = concat(head, [
+    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
+    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
+    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "STATUS_FILE")]),
+    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
+  ])
+  let strict_head = concat(head, [
     bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
     bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-  ]
-  // The STATUS_FILE assignment exists only in the typed lane, before the fetch that writes it.
-  let middle = if typed_fetch_failure {
-    [bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])), fetch_pair]
-  } else {
-    [fetch_pair, chmod]
-  }
+  ])
+  // The status assignment now lives in the typed head, before the trap; past the head the typed lane
+  // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
+  let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
   let tail = [
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
     gunbc_ci_mtcollins1_probe_root_statement(),
   ]
-  concat(concat(head, middle), tail)
+  if typed_fetch_failure {
+    concat(concat(typed_head, middle), tail)
+  } else {
+    concat(concat(strict_head, middle), tail)
+  }
 }
 
 fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {

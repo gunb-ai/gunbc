@@ -247,8 +247,9 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
   }
 }
 
-// BOOT-JOB WRAPPER: write the typed receipt and return success on observation refusal (non-gating);
-// only an unwritable receipt fails, and job continue-on-error backstops that.
+// BOOT-JOB WRAPPER: write the typed receipt and return success on observation refusal (non-gating,
+// and non-gating because the entry decides it in a receipt - no job-level continue-on-error absorbs
+// anything: an unwritable receipt fails the step, review 81077).
 fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr, policy: FanObservePolicy) -> ProcessExit
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_boot_phase_wet"),
