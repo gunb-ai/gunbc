@@ -28,7 +28,7 @@ import v2.extdeps.languages.bash_build {
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { observation_round_count, second }
 import extdeps.shell
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRefused, FanObservationTaken, FanObservationSeries }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
@@ -37,10 +37,10 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, Bmc
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_refused_prefix, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
-  fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
+  fan_boot_phase_refused_prefix, fan_boot_phase_taken_prefix, fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -333,7 +333,7 @@ fn fan_boot_phase_tail_outcome(stem: String, receipt: String) -> FanTailOutcome 
 // refused receipt line (the entry's own prefix) goes through the real emitted tail: the step output
 // says refused, the step exits non-zero, and the boot step's if: demands observed - so it cannot run.
 test fn a_modeled_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
-  let refused = fan_boot_phase_tail_outcome(stem: "jc547-fan-refused", receipt: concat(mtcollins1_fan_boot_phase_refused_prefix, " cause=jc547-claim-cause raw=[exit=1 stdout=[] stderr=[Error: Unable to establish IPMI v2 / RMCP+ session]]"))
+  let refused = fan_boot_phase_tail_outcome(stem: "jc547-fan-refused", receipt: concat(fan_boot_phase_refused_prefix, " cause=jc547-claim-cause raw=[exit=1 stdout=[] stderr=[Error: Unable to establish IPMI v2 / RMCP+ session]]"))
   refused.exit_code != 0
     && string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
     && !string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
@@ -341,13 +341,55 @@ test fn a_modeled_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
     && string_contains(s: fleet_converge_mtcollins1_boot_step_if_observed, pattern: join(["steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], ""))
 }
 
-// POSITIVE CONTROL: an observed reading (a receipt not opening with the refusal prefix) exits 0 and
-// writes the observed output, so the boot's if: is satisfiable.
+// THE ROUTE (review 81253): the receipt bytes come from the REAL writer fan_write_boot_phase_observation,
+// reached through the real admission route, then go through the real emitted tail. A writer/reader prefix
+// drift, or a writer that stops writing the receipt, turns the paired claims below red. The writer and
+// the tail share one receipt path, so the writer's file is read back and replanted byte-identical.
+fn fan_real_writer_tail_outcome(stem: String, series: FanObservationSeries) -> FanTailOutcome {
+  let _ = shell.Exec.RunArgv(program: "bash" as NonEmptyStr, arguments: ["-c", "mkdir -p target"])
+  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
+  match admittable.first() {
+    Present { value: row } =>
+      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host as NonEmptyStr)) {
+        FanObserveAdmitted { host: h } =>
+          match fan_write_boot_phase_observation(
+            host: h,
+            policy: FanObservePolicy { rounds: observation_round_count(3), interval: second(5), transition_window: second(30), receipt_path: mtcollins1_fan_observation_receipt_path },
+            series: series,
+          ) {
+            ExitSuccess =>
+              let written = Filesystem.Read(path: mtcollins1_fan_observation_receipt_path)
+              let _ = Filesystem.Delete(path: mtcollins1_fan_observation_receipt_path)
+              fan_boot_phase_tail_outcome(stem: stem, receipt: written.content)
+            ExitFailure { code: _, reason: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "writer failed" }
+          }
+        FanObserveRefused { cause: _ } => FanTailOutcome { exit_code: 99, output: "", summary: "not admitted" }
+      }
+    Absent => FanTailOutcome { exit_code: 99, output: "", summary: "no admittable host" }
+  }
+}
+
+test fn a_real_writer_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
+  let o = fan_real_writer_tail_outcome(stem: "jc547-real-refused", series: FanObservationRefused { cause: "jc547-real-cause raw=[Unable to establish IPMI v2 / RMCP+ session]" as NonEmptyStr })
+  o.exit_code == 1
+    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
+    && !string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+    && string_contains(s: o.summary, pattern: "Unable to establish IPMI v2 / RMCP+ session")
+}
+
+test fn a_real_writer_taken_series_leaves_the_boot_eligible_by_execution() -> Bool {
+  let o = fan_real_writer_tail_outcome(stem: "jc547-real-taken", series: FanObservationTaken { rounds: [], interval: second(5) })
+  o.exit_code == 0
+    && string_contains(s: o.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+}
+
+// POSITIVE CONTROL: a receipt opening with the taken prefix exits 0 and writes the observed output, so
+// the boot's if: is satisfiable; an unrecognized line is NOT observed (fail-closed).
 test fn an_observed_reading_leaves_the_boot_eligible_by_execution() -> Bool {
-  let observed = fan_boot_phase_tail_outcome(stem: "jc547-fan-observed", receipt: "FanObservation rounds=3")
+  let observed = fan_boot_phase_tail_outcome(stem: "jc547-fan-observed", receipt: concat(fan_boot_phase_taken_prefix, "\nFanObservation rounds=3"))
   observed.exit_code == 0
     && string_contains(s: observed.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-    && true
+    && fan_boot_phase_tail_outcome(stem: "jc547-fan-unrecognized", receipt: "SomethingElse rounds=3").exit_code != 0
 }
 
 // CONTROL (review 81090): the three status arms fold by REAL EXECUTION - a file saying ok, a file
