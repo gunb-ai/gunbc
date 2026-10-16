@@ -54,7 +54,7 @@ import gunbc.host.host_effect {
   host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv, coreutils_install_file_owned_argv }
-import extdeps.crypto.hash { sha256sum_program, sha256sum_line_digest }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command }
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_releases_dir, approval_broker_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
@@ -4639,7 +4639,21 @@ fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
 fn tree_path_prefixes(path: String) -> List<String> {
   let parts = split(s: path, delimiter: "/")
   let n = count(parts)
-  list_map(xs: range(start: 1, end: n), f: k => join(take(xs: parts, n: k), "/"))
+  let walked = fold(parts, init: TreePrefixWalk { current: "", seen: 0, out: [] }, f: (w, part) => {
+    let next = if w.seen == 0 { part } else { join([w.current, "/", part], "") }
+    TreePrefixWalk {
+      current: next,
+      seen: w.seen + 1,
+      out: if w.seen + 1 < n { list_snoc_item(xs: w.out, item: next) } else { w.out },
+    }
+  })
+  walked.out
+}
+
+type TreePrefixWalk {
+  current: String
+  seen: Int
+  out: List<String>
 }
 
 fn tree_step_failure(step: String, outcome: RunArgvTransportOutcome) -> TreeInstallStepState {
@@ -4693,7 +4707,7 @@ fn approval_broker_tree_install(
     RevisionNotInstalled =>
       TreeInstallRefused { step: "revision", reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
     RevisionBoundAtEmission { revision: r } => {
-      let release = approval_broker_release_dir(root: base_root, revision: revision)
+      let locus = approval_broker_release_dir(root: base_root, revision: revision)
       match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: "source-observe", reason: why }
         TreeObserved { entries: source } =>
@@ -4701,7 +4715,7 @@ fn approval_broker_tree_install(
             TreeInstallRefused { step: "source-observe", reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
           } else {
             approval_broker_tree_install_observed(
-              owner: owner, base_root: base_root, source_root: source_root, release: release,
+              owner: owner, base_root: base_root, source_root: source_root, locus: locus,
               revision: revision, source: sort_tree_file_hashes(entries: source), transport: transport,
             )
           }
@@ -4710,45 +4724,47 @@ fn approval_broker_tree_install(
   }
 }
 
+fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, path: String, transport: HostEffectTransport) -> TreeInstallStepState {
+  tree_run_step(state: state, step: "install-directory", transport: transport, command: sudo_elevate_command(
+    command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
+}
+
 fn approval_broker_tree_install_observed(
   owner: NonEmptyStr,
   base_root: String,
   source_root: String,
-  release: String,
+  locus: String,
   revision: ReleaseRevisionBinding,
   source: List<TreeFileHash>,
   transport: HostEffectTransport,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  let elevated_dir = (step: String, path: String, st: TreeInstallStepState) =>
-    tree_run_step(state: st, step: step, transport: transport, command: sudo_elevate_command(
-      command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
-  let spine = [base_root, approval_broker_releases_dir(root: base_root), release]
-  let after_spine = fold(spine, init: TreeStepsOk, f: (st, d) => elevated_dir("install-directory", d, st))
+  let spine = [base_root, approval_broker_releases_dir(root: base_root), locus]
+  let after_spine = fold(spine, init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, owner: owner, path: d, transport: transport))
   let after_dirs = fold(tree_ancestor_directories(files: source), init: after_spine, f: (st, d) =>
-    elevated_dir("install-directory", join([release, "/", d], ""), st))
+    tree_install_directory_step(state: st, owner: owner, path: join([locus, "/", d], ""), transport: transport))
   let after_files = fold(source, init: after_dirs, f: (st, e) =>
     tree_run_step(state: st, step: "install-file", transport: transport, command: sudo_elevate_command(
       command: coreutils_install_file_owned_argv(
         mode: install_file_shared_mode as NonEmptyStr, owner: owner, group: owner,
-        source: join([source_root, "/", e.path], ""), dest: join([release, "/", e.path], "")))))
+        source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], "")))))
   let after_binary = tree_run_step(state: after_files, step: "install-binary", transport: transport, command: sudo_elevate_command(
     command: coreutils_install_file_owned_argv(
       mode: install_executable_shared_mode, owner: owner, group: owner,
       source: join([source_root, "/target/release/", gunbc_release_bin_name], ""),
-      dest: join([release, "/", gunbc_release_bin_name], ""))))
+      dest: join([locus, "/", gunbc_release_bin_name], ""))))
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
-      match observe_tree_hashes(root: release, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: "readback", reason: why }
         TreeObserved { entries: installed } =>
           if !tree_entries_agree(source: source, installed: installed) {
             TreeInstallRefused { step: "readback", reason: join([
-              "the installed tree under ", release, " does not match source_root: installed ", to_string(count(installed)),
+              "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
               " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
           } else {
             approval_broker_tree_receipt_write(
-              owner: owner, release: release, revision: revision, lines: tree_hash_lines(entries: installed),
+              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
               files: count(installed), transport: transport)
           }
       }
@@ -4759,14 +4775,14 @@ fn approval_broker_tree_install_observed(
 // candidate_revision/installed_digest through install(1) from stdin as the locus owner.
 fn approval_broker_tree_receipt_write(
   owner: NonEmptyStr,
-  release: String,
+  locus: String,
   revision: ReleaseRevisionBinding,
   lines: String,
   files: Int,
   transport: HostEffectTransport,
 ) -> ApprovalBrokerTreeInstallVerdict {
   match run_argv_stdin_over_host_effect_transport(
-    command: argv_command(program: sha256sum_program(), arguments: []),
+    command: sha256sum_file_command(path: "/dev/stdin"),
     stdin_payload: lines,
     transport: transport,
   ) {
@@ -4780,7 +4796,7 @@ fn approval_broker_tree_receipt_write(
           match run_argv_stdin_over_host_effect_transport(
             command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
               mode: install_file_shared_mode as NonEmptyStr, owner: owner, group: owner,
-              source: "/dev/stdin", dest: join([release, "/", release_locus_tree_receipt_name], ""))),
+              source: "/dev/stdin", dest: join([locus, "/", release_locus_tree_receipt_name], ""))),
             stdin_payload: body,
             transport: transport,
           ) {
