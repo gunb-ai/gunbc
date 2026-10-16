@@ -126,8 +126,26 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
     && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 204 })
     && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 199 }) == false
     && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 }) == false
-    && (ipmi_completion_code_invalid_data_field_text as String) == "Invalid data field in request"
-    && (ipmi_completion_code_invalid_data_field.code as Int) != (ipmi_completion_code_request_data_length_invalid.code as Int)
+}
+
+// AN ORACLE WITH SOMETHING TO FAIL AGAINST (review 81238 #2). The assertion this replaces compared
+// ipmi_completion_code_invalid_data_field_text to the literal "Invalid data field in request" -- a data row
+// against a copy of itself, which stays green when the row and the test are edited together and therefore
+// detects nothing. Deleting it rather than re-wording it: that text is the IPMI specification's DESCRIPTION
+// of the code and has no referent inside this repository to check against, and it is not identity (the
+// review that made the code typed established that).
+//
+// What CAN be checked against something independent is the NUMBER, because the spec publishes it in hex and
+// hex digits are a DERIVATION rather than a copy: 0xCC is 12*16+12 and 0xC7 is 12*16+7, with C=12 and 7=7
+// coming from the notation and not from the constant under test. A row edited to any other byte -- 203, or
+// 199 for both -- fails here. That is precisely the substitution that would spend a destructive ResetAll on
+// a unit whose firmware would have accepted the write.
+test fn the_two_completion_codes_are_the_numbers_the_specification_publishes() -> Bool {
+  (ipmi_completion_code_invalid_data_field.code as Int) == 12 * 16 + 12
+    && (ipmi_completion_code_request_data_length_invalid.code as Int) == 12 * 16 + 7
+    // distinct bytes, and not merely by decree: each equals its own derived hex value
+    && (ipmi_completion_code_invalid_data_field.code as Int)
+      != (ipmi_completion_code_request_data_length_invalid.code as Int)
 }
 
 // THE ROW'S OWN CODE, AS A DECISION AND NOT A SHAPE. A refusal arm that points at 0xC7 is a different

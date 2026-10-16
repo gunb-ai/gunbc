@@ -7,11 +7,9 @@ import extdeps.board_authority { BoardFruObservation, BoardFruUnreadCause }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareVersion, bmc_firmware_release_identity_eq }
 import extdeps.bmc.ipmi {
-  IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
-  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_request_data_length_invalid_text,
-  IpmiCommandInterface, IpmiCommandInterfaceParse, IpmiCommandInterfaceParsed,
-  IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
-  ipmi_command_interface_is_in_band_host_transport, LanPlusTransport, DummyTestInterface,
+  IpmiCommandInterfaceParsed, IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
+  InBandHostTransportChannel, NotInBandHostTransport, InBandHostTransport,
+  OpenIpmiDriver, BmcKernelDriver, LanPlusTransport, LanTransport,
   IpmiDeviceIdentity,
 }
 import extdeps.boards.asrock_rack {
@@ -24,7 +22,10 @@ import extdeps.boards.asrock_rack {
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 import extdeps.bmc.ipmi_channel { IpmiUserId, IpmiChannelNumber }
-import extdeps.bmc.redfish { RedfishPasswordChangeVerdict, redfish_message_id_is_password_change_required }
+import extdeps.bmc.redfish {
+  RedfishResetToDefaultsType, ResetAll, ResetNetwork, ResetRestore,
+  RedfishPasswordChangeVerdict, redfish_message_id_is_password_change_required,
+}
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.network.ipv4 { Ipv4Address, Octet }
 import gunbc.machine_intake.subject { MachineIntakeSubject, QualificationSubject, UnitKey, IntakeAttemptId }
@@ -235,29 +236,26 @@ fn rescue_host_reachable(
 // function -- it is a type, and it is the type the route admits on.
 type InBandAccessWithoutCredential
   = InBandChannelPasswordless {
-      interface: IpmiCommandInterface
+      transport: InBandHostTransport
       argv_credential_words: List<String>
     }
   | InBandChannelNotObserved { detail: NonEmptyStr }
 
-// PASSWORDLESS IS A CLAIM ABOUT WHAT WAS *NOT* ON THE COMMAND LINE, so it is made checkable rather than
-// asserted: the transport must be one of the arms that reaches the controller from inside its own chassis
-// (extdeps.bmc.ipmi's closed sum, refused at the parse if the captured name did not map to one), and the
-// credential-bearing words must be empty. An empty list is not nothing -- it is the recorded fact that the
-// argv was read and carried no -I, no -U, no -P. A caller who passed a credential has to fill the list, and
-// then this is false and the channel admits nothing.
+// WHAT IS LEFT TO CHECK, once the transport is a type rather than a tag. In-band-ness is no longer a
+// question this function asks: the field's TYPE is extdeps.bmc.ipmi's InBandHostTransport, and the parse
+// that produces it is the only place the in-band line is drawn -- so this arm cannot be built holding
+// "lanplus", a misspelling, or a transport nobody declared. Review 81235 found the previous shape (one
+// undivided 12-arm interface plus a Bool answering "is this in-band?") put that decision outside the data,
+// where a consumer that forgot to ask failed open, with a destructive ResetAll downstream.
 //
-// The transport is a SUM, not a string, and there is no deny-list here. An earlier revision compared the
-// interface against ""/lanplus/lan/open, which failed open (a typo, a casing change, a trailing space, or a
-// transport nobody listed all counted as in-band) AND refused the wrong thing: `open` is ipmitool's OpenIPMI
-// driver over /dev/ipmi0 -- exactly the in-band, passwordless interface the captured unit used. The
-// classification now lives in one place, ipmi_command_interface_is_in_band_host_transport, and a transport
-// that authenticates by a secret can never be admitted however it is spelled (§5).
+// So the only remaining claim is the one no type can carry: that no credential appeared on the command
+// line. That is made checkable rather than asserted -- the argv words must be empty, and an empty list is
+// not nothing, it is the recorded fact that the argv was read and carried no -U, no -P, no password. A
+// caller who passed a credential has to fill the list, and then this is false and the channel admits
+// nothing.
 fn in_band_channel_is_passwordless(channel: InBandAccessWithoutCredential) -> Bool {
   match channel {
-    InBandChannelPasswordless { interface: interface, argv_credential_words: words } =>
-      ipmi_command_interface_is_in_band_host_transport(interface: interface)
-        && list_length(items: words) == 0
+    InBandChannelPasswordless { transport: _, argv_credential_words: words } => list_length(items: words) == 0
     InBandChannelNotObserved { detail: _ } => false
   }
 }
@@ -268,21 +266,12 @@ fn in_band_channel_is_passwordless(channel: InBandAccessWithoutCredential) -> Bo
 // is the kernel MODULE for the SMBus/IPMI-SSIF bus beneath that driver, not a name `ipmitool -I` accepts;
 // naming the interface "ssif" would have been a transport that does not exist, and it would now be refused
 // at the parse rather than modeled.
-// The out-of-band transport, built by the same route through the parse, for the law that requires it to be
-// refused. It IS an arm of the sum -- ipmitool does have it -- it simply is not an in-band host path.
-fn lan_plus_recovery_interface() -> IpmiCommandInterface {
-  match ipmi_command_interface_from_wire(wire: "lanplus") {
-    IpmiCommandInterfaceParsed { wire: _, interface: interface } => interface
-    IpmiCommandInterfaceUnrecognized { wire: _ } => DummyTestInterface
-  }
-}
-
-fn in_band_recovery_interface() -> IpmiCommandInterface {
-  match ipmi_command_interface_from_wire(wire: "open") {
-    IpmiCommandInterfaceParsed { wire: _, interface: interface } => interface
-    IpmiCommandInterfaceUnrecognized { wire: _ } => DummyTestInterface
-  }
-}
+// WHY NO FIXTURE EVER HOLDS A TRANSPORT IT DID NOT RUN THROUGH THE PARSE. There is no way to obtain a
+// lanplus "channel" at all -- the field's type is InBandHostTransport and the out-of-band arms are a
+// different sum -- so the most a reader can be shown about "lanplus" is which side the parse put it on and
+// why. The law that needs it calls the parse directly (see
+// the_transport_sums_place_every_wire_name_on_exactly_one_side); naming an arm in a fixture instead would
+// have the fixture asserting the very classification the parse exists to make.
 
 // The account read back BEFORE anything is touched, so the reset is known to be aimed at a controller
 // that has an Administrator account to lose. What `ipmitool user list 1` printed on the captured unit
@@ -352,7 +341,9 @@ fn in_band_channel_admits(
 // (PublishedFactoryPasswordWritePolicy), and because even where it were allowed it would be a
 // credential write standing in for the reset the unit needs -- the board is arriving from a prior
 // life, and gunbc.machine_intake.prior_life_boundary is the module that prices leaving one.
-type RedfishResetToDefaultsType = ResetAll | ResetNetwork | ResetRestore
+// RedfishResetToDefaultsType (ResetAll | ResetNetwork | ResetRestore) and the ResetAll arm are imported
+// from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's judgement is
+// WHICH arm clears the user table, not what the enum contains.
 
 // ResetRestore keeps the user table, which is precisely the table holding the unknown password;
 // ResetNetwork likewise. Only ResetAll can produce a credential we hold. Spelled as a judgement on
@@ -1204,7 +1195,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     rescue_host_address: recovery_controller_address(),
     device_node: recovery_ipmi_device_node,
     kernel_modules: recovery_ipmi_kernel_modules,
-    channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
+    channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant,
@@ -1219,49 +1210,69 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
 
 test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
   in_band_channel_is_passwordless(
-    channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: ["-P", "0penBmc"] },
+    channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: ["-P", "0penBmc"] },
   ) == false
+    // the second way this used to be tested -- building a channel holding "lanplus" and asking whether it
+    // read as passwordless -- is now IMPOSSIBLE to write, which is the point: the field's type is
+    // InBandHostTransport and the out-of-band arms are a different sum. The refusal is asserted where it
+    // can still be expressed, at the parse (see
+    // the_transport_sums_place_every_wire_name_on_exactly_one_side).
     && in_band_channel_is_passwordless(
-      channel: InBandChannelPasswordless { interface: lan_plus_recovery_interface(), argv_credential_words: [] },
-    ) == false
-    && in_band_channel_is_passwordless(
-      channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
+      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
     )
 }
 
-// THE SUM IS CLOSED, AND IT REFUSES IN BOTH DIRECTIONS. The reviewer's ask, stated as a law: the
-// interface the captured unit actually used -- `open`, the OpenIPMI driver over /dev/ipmi0 -- is ADMITTED
-// (the earlier deny-list refused it, which would have blocked the only route that exists for this board),
-// and a name that does not map to an arm is REFUSED rather than assumed in-band. Casing and a trailing
-// space are not interfaces ipmitool would load -- its dispatch is strcmp against ipmi_intf_table -- so a
-// capture that appears to name them was read wrong, and that refusal is worth having rather than
-// silently inventing a transport in front of a destructive reset.
-test fn the_interface_sum_admits_the_captured_transport_and_refuses_anything_unlisted() -> Bool {
-  // admitted: the in-band arms, including the one this capture used
+// THE TRANSPORT IS CLOSED IN BOTH DIRECTIONS, AND THE SIDE IS DECIDED ONCE, BY THE PARSE. Review
+// 81235's ask, stated as an executable law. Three things have to hold together, because each one is a
+// different way the old shape could fail:
+//   - the transport the captured unit really used (`open`, the OpenIPMI driver over /dev/ipmi0) comes
+//     back on the IN-BAND side. The earlier deny-list refused it, which would have blocked the only
+//     route that exists for this board;
+//   - a transport that authenticates by a secret comes back on the OTHER side, with a reason, so a
+//     reader learns why without looking it up -- and it cannot be coaxed into the in-band arm, because
+//     the arms are different types;
+//   - a name that is not an interface at all (a kernel module's name, a casing change, a trailing
+//     space, the empty string) is refused AT THE PARSE. ipmitool dispatches by strcmp against
+//     ipmi_intf_table, so none of those are transports it would load, and inventing one in front of a
+//     destructive reset is the failure this exists to prevent.
+test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
   (match ipmi_command_interface_from_wire(wire: "open") {
-    IpmiCommandInterfaceParsed { wire: w, interface: i } => w == "open" && ipmi_command_interface_is_in_band_host_transport(interface: i)
+    IpmiCommandInterfaceParsed { wire: w, transport: InBandHostTransportChannel { transport: t } } =>
+      w == "open" && t == OpenIpmiDriver
+    IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: _, why_not_in_band: _ } } => false
     IpmiCommandInterfaceUnrecognized { wire: _ } => false
   })
-    && ipmi_command_interface_is_in_band_host_transport(interface: BmcKernelDriver)
-    && ipmi_command_interface_is_in_band_host_transport(interface: UsbTransport)
-    // refused: out-of-band transports that authenticate by a secret, and the arms that are not a host path
-    && ipmi_command_interface_is_in_band_host_transport(interface: LanTransport) == false
-    && ipmi_command_interface_is_in_band_host_transport(interface: lan_plus_recovery_interface()) == false
-    && ipmi_command_interface_is_in_band_host_transport(interface: DbusLocalService) == false
-    && ipmi_command_interface_is_in_band_host_transport(interface: SerialTerminal) == false
-    && ipmi_command_interface_is_in_band_host_transport(interface: DummyTestInterface) == false
-    // refused at the PARSE: a transport nobody named, in any spelling
-    && match ipmi_command_interface_from_wire(wire: "ssif") { IpmiCommandInterfaceUnrecognized { wire: w } => w == "ssif" IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
-    && match ipmi_command_interface_from_wire(wire: "LANPLUS") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
-    && match ipmi_command_interface_from_wire(wire: "lanplus ") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
-    && match ipmi_command_interface_from_wire(wire: "") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
-    // and an unparseable name can never be handed to the channel predicate as if it were in-band: the
-    // carrier has no arm for it, so the refusal above is the only way the observation can land
+    // out-of-band: the parse answers with the other sum AND says why, so the refusal is not a bare no
+    && (match ipmi_command_interface_from_wire(wire: "lanplus") {
+      IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: t, why_not_in_band: why } } =>
+        t == LanPlusTransport && string_length(why) > 0
+      _ => false
+    })
+    // in-band arms the parse can produce, obtained through the parse rather than asserted
+    && (match ipmi_command_interface_from_wire(wire: "bmc") {
+      IpmiCommandInterfaceParsed { wire: _, transport: InBandHostTransportChannel { transport: t } } => t == BmcKernelDriver
+      _ => false
+    })
+    && (match ipmi_command_interface_from_wire(wire: "lan") {
+      IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: t, why_not_in_band: _ } } => t == LanTransport
+      _ => false
+    })
+    // refused at the PARSE: names that are not interfaces, in any spelling
+    && match ipmi_command_interface_from_wire(wire: "ssif") { IpmiCommandInterfaceUnrecognized { wire: w } => w == "ssif" _ => false }
+    && match ipmi_command_interface_from_wire(wire: "LANPLUS") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
+    && match ipmi_command_interface_from_wire(wire: "lanplus ") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
+    && match ipmi_command_interface_from_wire(wire: "") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
+    // THE CONSEQUENCE THAT MAKES THIS MORE THAN A RENAME: a channel observation cannot be built holding
+    // an out-of-band transport, so there is no value to hand the passwordless check that would make it
+    // admit a write over a transport requiring a secret. The only way an unobserved channel lands is the
+    // arm that says so.
     && in_band_channel_is_passwordless(
-      channel: InBandChannelNotObserved { detail: "ipmitool reported an interface this model has no arm for" },
+      channel: InBandChannelNotObserved { detail: "ipmitool reported a transport this model has no in-band arm for" },
+    ) == false
+    && in_band_channel_is_passwordless(
+      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: ["-P", "0penBmc"] },
     ) == false
 }
-
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
   reset_to_defaults_clears_unknown_credential(kind: ResetAll)
     && reset_to_defaults_clears_unknown_credential(kind: ResetNetwork) == false
@@ -1579,7 +1590,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       rescue_host_address: recovery_rescue_host_address(),
       device_node: recovery_ipmi_device_node,
       kernel_modules: recovery_ipmi_kernel_modules,
-      channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
+      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant,
