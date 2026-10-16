@@ -208,6 +208,8 @@ data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   decided: "2026-10-16",
   section: "3",
   provenance: "Operator, to session swift-badger-498, on where the brand logo PNG writer's byte write lives: 'could we somehow put it in rust emission? like i'd rather hardcode a rust script in emit_Rust or something than put it in the interpreter - and then can you try to constrain that to be as small as possible?' and 'yeah please try this out, and make sure the hacky bits are minimal as possible'. An exact exception to the v1 purpose test (gunbc.v1.v1_maintenance_standing v1_seed_standing), not an admission: it serves the logo work, not self-hosting, and PublicSurfaceGrowth and NewLanguageBehavior fire. Scope: the Filesystem.WriteBytes file transport verb write_bytes on the Rust target only (v1.compiler.emit FileWriteBytes, v1.compiler.emit_rust file_write_bytes_expr); the interpreter refuses it. Consumer gunbc.design.brand_mark_assets_cli; control gunbc test //gunbc/instruments:brand-mark-assets. The std.bytes octets_bytes host seam in the same change is a defect repair, not covered here: emitted programs calling it panicked on an unsupported cast. Settles no boundary of either refused class.",
+}
+
 data flex_market_policy_is_operator_decided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
   decided: "2026-10-15",
