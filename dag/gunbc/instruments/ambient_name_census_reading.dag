@@ -161,6 +161,8 @@ fn ambient_name_census_standing(
         Absent =>
           if unindexed_status != 2 {
             CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "unindexed control: a module with no reference index must leave the run with no observation (status 2), got " + to_string(unindexed_status) } }
+          } else if count(module_lines(stdout: tree_stdout)) == 0 {
+            CliWirePrintable { bytes: tree_stdout + "\n", exit: ExitFailure { code: 2, reason: "whole tree: the run observed no module at all (status " + to_string(tree_status) + "); an empty census is no observation, never a held one" } }
           } else if count(unreached) != 0 {
             CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "whole tree: " + to_string(count(unreached)) + " module(s) the census did not reach (binding_unreached rows above); the summary is a reading of the modules it observed" } }
           } else if count(unreadable_modules(stdout: tree_stdout)) != 0 {
