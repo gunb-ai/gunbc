@@ -85,6 +85,7 @@ fn witness_candidate_release() -> CandidateRelease {
   CandidateRelease {
     revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
+    expected_dispatch_digest: witness_expected_surface_identity(),
   }
 }
 
