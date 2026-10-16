@@ -44,7 +44,9 @@ import gunbc.machine_intake.kernel_module_decompression_observation { kernel_mod
 import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake.pre_os_bringup_verdict { SelWindowEvent, BootRestart }
 import extdeps.bmc.ipmi_sel { SystemRestart }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  SelSnapshotNotTaken, SelSnapshotRead,
+}
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }

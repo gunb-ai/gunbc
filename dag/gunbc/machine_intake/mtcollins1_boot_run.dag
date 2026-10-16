@@ -2533,7 +2533,7 @@ fn mtcollins1_boot_actuate(
         outcome: match observed.outcome {
           ExitSuccess =>
             if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
-          other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
+          other => outcome_attributing_media_loss(row: mtcollins1_boot_row_value, outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
         },
         screen: screen_record,
         timing: boot_phase_timing_of(
@@ -2664,7 +2664,7 @@ fn mtcollins1_boot_actuate_held(
 }
 
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
-// writes the diagnostic bundle (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) and the
+// writes the diagnostic bundle (gunbc.machine_intake.megarac_boot_diagnostic_bundle) and the
 // receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
 // was read -- including the unit held -- still uploads a bundle
@@ -2865,8 +2865,8 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     concat("exit=", exit_word),
     bundle_write_receipt_line(row: mtcollins1_boot_row_value, w: write),
     kvm_observer_receipt_line(rec: attempt.screen),
-    concat("account=", join(mtcollins1_power_on_account_notes(a: findings.account), "; ")),
-    concat("coverage=", join(map(filter(findings.account.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")),
+    concat("account=", join(findings.account.notes, "; ")),
+    concat("coverage=", match findings.account.account { Present { value: a } => join(map(filter(a.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")  Absent => "no account read on this row" }),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)

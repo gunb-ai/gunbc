@@ -14,8 +14,8 @@ module gunbc.machine_intake.mtcollins1_boot_row
 // numbers: how many IPMI reads an attempt makes, how many Redfish pages the census walks, which sockets
 // the sensor table must cover, and where evidence is retained were all read off THIS board.
 //
-// THE RETIRED ROOT. This module is the surviving half of
-// gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle after its host-generic parts moved out: the
+// THE RETIRED ROOT. Cut 4d-ii deleted the old mtcollins1 boot-diagnostic-bundle root; this module is
+// the receipts that survived it, after the host-generic procedure moved out to the adapter. The
 // receipts stay, the procedure goes. Nothing here reads a BMC or renders a bundle -- it says only what
 // mtcollins1 is, and hands the adapter the answer to "which machine am I booting".
 

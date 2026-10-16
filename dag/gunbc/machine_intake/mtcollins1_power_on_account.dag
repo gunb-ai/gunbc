@@ -63,8 +63,8 @@ import gunbc.machine_intake.kernel_module_decompression_observation {
 // THREE STANDINGS THAT NEVER STAND IN FOR ONE ANOTHER. What the HOST did (cycles, milestones, socket
 // progress, the ending, degradations, errors); what we OBSERVED (one coverage standing per carrier);
 // and whether our WORKFLOW worked (media, handoff, override, bundle write -- the bundle's typed
-// HarnessFinding, composed beside this account in gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle,
-// which owns those records). A coverage gap or a workflow defect never chooses the host ending: an
+// HarnessFinding, composed beside this account by the MegaRAC adapter
+// gunbc.machine_intake.megarac_boot_diagnostic_bundle, which owns those records). A coverage gap or a workflow defect never chooses the host ending: an
 // empty SOL beside a census END marker is ReachedCensus plus an SOL gap.
 //
 // STAGES COME FROM SMpro ONLY (rulings R2, Q1). An extdeps.ampere.scp_diagnostic AmpereBootStage is
