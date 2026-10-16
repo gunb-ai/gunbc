@@ -33,7 +33,8 @@ import gunbc.machine_intake.mtcollins1_access_observation {
 import gunbc.machine_intake.mtcollins1_memory_census_observation {
   mtcollins1_slots, mtcollins1_census_sol_artifact_path,
 }
-import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site, smpro_site_probe_bound }
+import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake.ampere_smpro_observation { smpro_site_probe_bound }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnEvidence, mtcollins1_power_on_account, mtcollins1_power_on_account_text,

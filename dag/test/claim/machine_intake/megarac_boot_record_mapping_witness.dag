@@ -348,13 +348,18 @@ fn every_read() -> List<HarnessFinding> {
   [MegaRacEveryReadFailed { failed: [BmcChannelRead { channel: "ipmi", ok: false, detail: "timeout" }] }]
 }
 
+// One failed channel in the raw finding becomes a count and the channel's own name, both derived
+// from what the transport reported rather than restated.
 test fn an_all_channels_failed_finding_counts_and_names_the_channels() -> Bool {
-  match megarac_harness_findings_neutral(raw: every_read()) {
-    [EveryReadFailed { count: c, channels: ch }] => c == 1 && count(ch) == 1
+  let mapped = megarac_harness_findings_neutral(raw: every_read())
+  count(mapped) == 1 && any(mapped, f => match f {
+    EveryReadFailed { count: c, channels: ch } => c == 1 && count(ch) == 1 && any(ch, n => n == "ipmi")
     _ => false
-  }
+  })
 }
 
+// A finding anchors on the CLASSIFIED record: the neutral finding carries the neutral media attach,
+// never the raw one, so a consumer of findings needs no MegaRAC vocabulary.
 test fn a_media_not_ready_finding_anchors_on_the_classified_record() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacMediaAttachNotReady {
     record: MegaRacMediaAttachAttempted {
@@ -362,13 +367,14 @@ test fn a_media_not_ready_finding_anchors_on_the_classified_record() -> Bool {
       stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "already off" }, result: refused_result(),
     },
   }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [MediaAttachNotReady { record: r }] => match r {
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    MediaAttachNotReady { record: r } => match r {
       MediaAttachAttempted { medium_image_name: n, presentation: p, _ } => n == "m" && p != Presented
       MediaAttachNotAttempted { reason: _ } => false
     }
     _ => false
-  }
+  })
 }
 
 test fn a_session_held_finding_anchors_on_the_classified_record() -> Bool {
@@ -378,64 +384,75 @@ test fn a_session_held_finding_anchors_on_the_classified_record() -> Bool {
       stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "already off" }, result: held_result(),
     },
   }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [MediaAttachSessionHeld { record: _ }] => true
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    MediaAttachSessionHeld { record: _ } => true
     _ => false
-  }
+  })
 }
 
 test fn a_withheld_handoff_finding_anchors_on_the_classified_handoff() -> Bool {
-  let raw: List<HarnessFinding> = [MegaRacHandoffWithheld { handoff: MegaRacHandoffWithheldAtRecheck { before: presented_result() } }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [HandoffWithheldAtRecheck { handoff: _ }] => true
+  let raw: List<HarnessFinding> = [MegaRacHandoffWithheld {
+    handoff: MegaRacHandoffWithheldAtRecheck { before: presented_result() },
+  }]
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    HandoffWithheldAtRecheck { handoff: _ } => true
     _ => false
-  }
+  })
 }
 
 test fn an_unconfirmed_handoff_finding_anchors_on_the_classified_handoff() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacHandoffUnconfirmed {
     handoff: MegaRacHandoffAttempted {
-      before: presented_result(), handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" }, after: presented_result(),
+      before: presented_result(),
+      handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" },
+      after: presented_result(),
     },
   }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [HandoffUnconfirmed { handoff: _ }] => true
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    HandoffUnconfirmed { handoff: _ } => true
     _ => false
-  }
+  })
 }
 
 test fn an_unconsumed_override_finding_anchors_on_the_classified_consumption() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacOverrideNotConsumed { consumption: MegaRacOverrideStillPendingAfterAttempt }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [OverrideNotConsumed { consumption: c }] => c == OverrideStillPendingAfterAttempt
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    OverrideNotConsumed { consumption: c } => c == OverrideStillPendingAfterAttempt
     _ => false
-  }
+  })
 }
 
 test fn a_presentation_after_handoff_finding_classifies_the_look() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacPresentationAfterHandoff { look: presented_result() }]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [PresentationAfterHandoff { presentation: p }] => p == Presented
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    PresentationAfterHandoff { presentation: p } => p == Presented
     _ => false
-  }
+  })
 }
 
 // The raw marker names the census; the neutral marker says only that no terminal was seen. Which
 // terminal the consumer meant is the consumer's to decide.
 test fn the_census_end_marker_becomes_a_terminal_marker_absence() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacPoweredOffWithoutCensusEndMarker]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [PoweredOffWithoutTerminalMarker] => true
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    PoweredOffWithoutTerminalMarker => true
     _ => false
-  }
+  })
 }
 
 test fn a_credential_may_remain_finding_survives_the_mapping() -> Bool {
   let raw: List<HarnessFinding> = [MegaRacCredentialMayRemain]
-  match megarac_harness_findings_neutral(raw: raw) {
-    [CredentialMayRemain] => true
+  let mapped = megarac_harness_findings_neutral(raw: raw)
+  count(mapped) == 1 && any(mapped, f => match f {
+    CredentialMayRemain => true
     _ => false
-  }
+  })
 }
 
 // No finding is invented by the mapping: an empty raw list classifies to an empty neutral list.
