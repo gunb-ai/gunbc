@@ -186,9 +186,11 @@ test fn witness_neither_family_asserts_a_failsafe_duty() -> Bool {
   }
 }
 
-// THE MEGARAC FAN-READ SURFACE IS SP-X REST AND READSBOUND. Writes remain obligated; SDR tach
+// THE MEGARAC FAN-READ SURFACE IS SP-X REST AND READSCITED - cited by the served UI bundle and
+// operator session probes, executed by NO repository code. Reads remain cited, not bound: a
+// cited path is not an executed GET (DESIGN §4b, rung honesty). Writes remain obligated; SDR tach
 // stays the family IPMI floor; that floor is not a nickname for the fan-control transport.
-test fn witness_megarac_fan_mode_surface_is_reads_bound_spx_rest() -> Bool {
+test fn witness_megarac_fan_mode_surface_is_reads_cited_spx_rest() -> Bool {
   match megarac_fan_mode_surface_read_obligation(surface: megarac_fan_mode_surface) {
     Present { value: _ } => false
     Absent =>
