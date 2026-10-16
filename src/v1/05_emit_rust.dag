@@ -3540,7 +3540,7 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   let spelled = rust_fn_sig_leaf_name(source_indices: source_indices, n: type_expr)
   // The alias hop below must not carry a kernel spelling past itself: `type Int = AbelianGroup<..>`
   // is declared in std.integer, and judging the hop's right-hand side wrapped every Int field in Rc.
-  let kernel_scalar = is_kernel_type(name: spelled) && !is_container_type(name: spelled)
+  let kernel_scalar = (is_kernel_type(name: spelled) && !is_container_type(name: spelled)) || rust_opaque_kernel_alias_carrier(name: spelled) != none
   let judged = match rust_operand_alias_or_refinement_continue(rt: type_expr, scope: emit_alias_hop_scope(source_indices: source_indices), fuel: 1) {
     Present { value: next } => next
     Absent =>
