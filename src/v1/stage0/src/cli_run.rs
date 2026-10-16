@@ -3826,6 +3826,19 @@ fn fixture_imported_corpus_sources(
                     );
                     queue.push(file_content);
                 }
+            } else if let Some(rest) = module_path.strip_prefix("fixture.closure.rustc_") {
+                let rel_path = format!("fixtures/fixture_closure_rustc/{rest}.dag");
+                let abs_path = ws.join(&rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path,
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
             }
         }
     }
