@@ -150,6 +150,13 @@ type ConnectorCensus
   = CensusComplete { count: Nat, family: NonEmptyStr }
   | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr, family_candidate: ConnectorFamilyCandidate? }
 
+// HOW MUCH OF THE BOARD THE MANAGEMENT-I/O READING COVERS. An absence ("no RJ45, no console header")
+// is a reading only of a board photographed whole; close-ups of parts of a board establish what they
+// show and nothing about what lies outside them.
+type ManagementIoSurvey
+  = WholeBoardPhotographed
+  | PartlyPhotographed { not_covered: NonEmptyStr }
+
 type CarrierLayoutObservation {
   labels: List<NonEmptyStr>
   module_receptacles: List<NonEmptyStr>
@@ -158,6 +165,7 @@ type CarrierLayoutObservation {
   j20_positions: Nat
   j20_rows: List<PinRowContinuity>
   edge_high_speed_connectors: ConnectorCensus
+  management_io_survey: ManagementIoSurvey
   management_io_observed: List<NonEmptyStr>
   power_components: List<ObservedComponent>
   identified_signal_parts: List<IdentifiedSignalPart>
@@ -304,6 +312,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
     family_candidate: Present { value: operator_carrier_edge_family },
   },
+  management_io_survey: WholeBoardPhotographed,
   management_io_observed: [
     "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
   ],
@@ -457,6 +466,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     obligation: "two fine-pitch shrouded edge receptacles appear in the 2026-10-16 label photograph, one silkscreened J11 and the other's designator cut off; count the rest, read their J-numbers and one housing's marking on this unit",
     family_candidate: Present { value: operator_carrier_edge_family },
   },
+  management_io_survey: PartlyPhotographed { not_covered: "the board has been photographed only in close-ups (J20, its fuse and capacitors, D2, U522, the sticker area); its other edges and the region around U4 are unphotographed" },
   management_io_observed: [
     "J620, a 2 x 5 pin header beside U78-U81 (2026-10-16 label photograph), one position marked with a white square, which reads as pin 1: function and pinout unread; a candidate for a debug, JTAG or UART header, unconfirmed",
   ],
@@ -713,9 +723,15 @@ fn signal_part_text(p: IdentifiedSignalPart) -> String {
 }
 
 fn management_io_text(layout: CarrierLayoutObservation) -> String {
-  let io = match layout.management_io_observed.first() {
-    Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
-    Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+  let io = match layout.management_io_survey {
+    WholeBoardPhotographed => match layout.management_io_observed.first() {
+      Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
+      Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+    }
+    PartlyPhotographed { not_covered } => match layout.management_io_observed.first() {
+      Absent => join(["this P4261's management I/O is unsurveyed: ", not_covered as String], "")
+      Present { value: _ } => join(["this P4261 is partly photographed, so no absence of management I/O is established (", not_covered as String, "); it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+    }
   }
   match layout.identified_signal_parts.first() {
     Absent => io

@@ -8,6 +8,8 @@ import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage, FuseInterruptRating }
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
+  ManagementIoSurvey,
+  WholeBoardPhotographed,
   ObservedComponent,
   PathMembership,
   IdentifiedByDatasheetMarking,
@@ -117,6 +119,7 @@ fn with_components(base: CarrierLayoutObservation, cs: List<ObservedComponent>) 
     j20_positions: base.j20_positions,
     j20_rows: base.j20_rows,
     edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey,
     management_io_observed: base.management_io_observed,
     power_components: cs,
     identified_signal_parts: base.identified_signal_parts,
@@ -252,6 +255,38 @@ test fn j20_reads_as_a_fused_power_input_and_stays_on_its_path() -> Bool {
 test fn the_tmp275_is_a_trace_target() -> Bool {
   let t = management_io_text(layout: p4261_e1_layout)
   t.contains("U522 ('TI 31 / T275') is TMP275AIDGKR") && t.contains("1 SDA, 2 SCL, 3 ALERT")
+}
+
+fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    labels: base.labels,
+    module_receptacles: base.module_receptacles,
+    grey_edge_connectors: base.grey_edge_connectors,
+    j20_connector: base.j20_connector,
+    j20_positions: base.j20_positions,
+    j20_rows: base.j20_rows,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: survey,
+    management_io_observed: base.management_io_observed,
+    power_components: base.power_components,
+    identified_signal_parts: base.identified_signal_parts,
+    unresolved_parts: base.unresolved_parts,
+  }
+}
+
+// A close-up establishes what it shows and no absence. The E1 has been photographed only in close-ups,
+// so its text names J620 and claims no missing RJ45 or console; the K1 listing photographed the whole
+// board, so its absence reading stands. The same E1 rows, re-declared as photographed whole, would
+// claim the absence -- the survey extent, not the rows, decides it.
+test fn a_close_up_establishes_no_absence() -> Bool {
+  let e1 = management_io_text(layout: p4261_e1_layout)
+  let k1 = management_io_text(layout: p4261_k1_layout)
+  let e1_as_whole = management_io_text(layout: with_survey(base: p4261_e1_layout, survey: WholeBoardPhotographed))
+  !e1.contains("shows no RJ45")
+    && e1.contains("no absence of management I/O is established")
+    && e1.contains("J620")
+    && k1.contains("shows no RJ45")
+    && e1_as_whole.contains("shows no RJ45")
 }
 
 fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {
