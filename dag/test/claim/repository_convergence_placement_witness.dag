@@ -13,6 +13,7 @@ import extdeps.git.partial_clone {
   ObjectSourceServeAdmission,
   ObjectSourceCanServe,
   ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
   ObjectStoreComplete,
   PartialClonePromisor,
   object_source_serve_admission,
@@ -230,6 +231,7 @@ test fn a_promisor_object_source_refuses_naming_the_source_and_the_cause() -> Bo
   )
   match serve {
     ObjectSourceCanServe { source: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
     ObjectSourceCannotServe { source: s, cause: c } =>
       s == fixture_object_source
         && string_contains(s: c, pattern: "promisor")
@@ -251,6 +253,7 @@ test fn a_promisor_object_source_refuses_naming_the_source_and_the_cause() -> Bo
 test fn a_complete_object_source_admits() -> Bool {
   match object_source_serve_admission(source: fixture_object_source, standing: ObjectStoreComplete) {
     ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
     ObjectSourceCanServe { source: s } =>
       s == fixture_object_source
         && !operands_refused(candidate: fixture_candidate, object_source: fixture_object_source)

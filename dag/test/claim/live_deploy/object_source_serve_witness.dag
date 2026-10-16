@@ -5,6 +5,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.orchestration { PipelineStep }
 import gunbc.live_deploy.emit {
   apply_object_source_serve_fragments,
+  apply_object_source_serve_deferred_to_pwd,
   apply_object_source_pwd_serve_decide_command,
   apply_tree_src_expansion_var,
   host_script_mutate_projection,
@@ -23,6 +24,7 @@ import extdeps.git.partial_clone {
   ObjectSourceServeAdmission,
   ObjectSourceCanServe,
   ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
   ObjectStoreComplete,
   PartialClonePromisor,
   ShallowClone,
@@ -87,6 +89,7 @@ test fn a_complete_object_source_admits_and_keeps_binary_mutate() -> Bool {
   )
   match serve {
     ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
     ObjectSourceCanServe { source: _ } =>
       match host_script_mutate_projection(
         fragments: fragments_with_binary_mutate(serve: apply_complete_object_source_serve()),
@@ -105,9 +108,25 @@ test fn a_shallow_non_promisor_source_admits_the_apply_plan() -> Bool {
   )
   match serve {
     ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd => false
     ObjectSourceCanServe { source: _ } =>
       match host_script_mutate_projection(
         fragments: fragments_with_binary_mutate(serve: serve),
+      ) {
+        MutateRefused { member: _, cause: _ } => false
+        MutateStepsAdmitted { steps: s } =>
+          string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
+      }
+  }
+}
+
+test fn the_wet_apply_defers_standing_to_pwd_instead_of_fabricating_canserve() -> Bool {
+  match apply_object_source_serve_deferred_to_pwd() {
+    ObjectSourceCanServe { source: _ } => false
+    ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceServeDecideAtApplyPwd =>
+      match host_script_mutate_projection(
+        fragments: fragments_with_binary_mutate(serve: apply_object_source_serve_deferred_to_pwd()),
       ) {
         MutateRefused { member: _, cause: _ } => false
         MutateStepsAdmitted { steps: s } =>

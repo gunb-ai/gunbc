@@ -79,6 +79,7 @@ import extdeps.git.partial_clone {
   ObjectSourceServeAdmission,
   ObjectSourceCanServe,
   ObjectSourceCannotServe,
+  ObjectSourceServeDecideAtApplyPwd,
   object_source_serve_refusal_text,
   observe_object_source_serve,
 }
@@ -227,6 +228,10 @@ fn convergence_operands_for(
     ObjectSourceCannotServe { source: _, cause: _ } =>
       ConvergenceOperandsRefused {
         reason: object_source_serve_refusal_text(admission: object_source_serve),
+      }
+    ObjectSourceServeDecideAtApplyPwd =>
+      ConvergenceOperandsRefused {
+        reason: "object-source serve standing was deferred to apply $PWD; convergence needs observe_object_source_serve on the path GUNBC_TREE_SRC names",
       }
     ObjectSourceCanServe { source: admitted_source } =>
       if admitted_source != object_source {
