@@ -1,6 +1,6 @@
 module std.materialization_store_grant
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, Int }
 import std.access { AccessDecision }
 import std.effect_grant {
   Verb, Read, Write,
@@ -13,27 +13,26 @@ import std.effect_grant {
 import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_tmp_scratch_store_root }
+import gunbc.persistent_instance_roots { PersistentInstanceScope, persistent_instance_scope_root }
 
-// THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH.
+// THE STORE ROOT IS A COPRODUCT SO DURABILITY IS CONSTRUCTED, NOT INFERRED FROM A PATH. Every arm
+// carries exactly the operand its path is derived from, and nothing rides beside it: no caller hands
+// a store a directory.
 //
 // DurableHostVolume is fieldless: the live host volume is one declared path
-// (`materialization_store_host_volume_path`). DurableAcrossRuns, no unconstrained path operand.
+// (`materialization_store_host_volume_path`). DurableAcrossRuns.
 //
-// Two fieldless workspace arms share the leaf `materialization-store` under the instance root
-// and differ only in LIFETIME:
-//   PersistentInstanceWorkspace — DurableAcrossRuns. The GRANT is the closed pair of declared
-//     persistent scopes (`materialization_store_persistent_macbook_scope`,
-//     `materialization_store_persistent_srv2_scope`); `scope_root` is only the admission
-//     target. A PersistentInstanceWorkspace asked to write `/tmp/...` is Deny, not Permit.
-//   FrameJobWorkspace — EphemeralToFrame. Constructors that take the root as a parameter
-//     (isolated_dashboard_instance, fleet_compute_hermetic_dashboard_instance_at) pick this arm;
-//     the grant is that frame's store, so any scope_root is the frame, not DurableAcrossRuns.
-// Same leaf is not a nickname: durability is the modeled consequence.
+// PersistentInstanceWorkspace { scope } — DurableAcrossRuns. The scope is a closed enum of the
+// declared persistent instances (gunbc.persistent_instance_roots); the store is the leaf
+// `materialization-store` under that scope's root, and the grant is that path.
 //
-// WitnessScratchRoot is the only arm that takes a path; it admits only /tmp/gunbc_* scratch.
+// FrameJobWorkspace { frame } — EphemeralToFrame. The store is
+// `/tmp/gunbc_compute_<frame>/materialization-store`: it lives under the frame-owned scratch grant
+// (std.artifact_store_scratch_grant) by construction, so it cannot alias a durable store, and it is
+// job-scoped because /tmp/gunbc_* is. A constructor whose root is a parameter it does not own may
+// not choose this arm by picking a path.
 //
-// scope_root is a path-resolution operand at realization, not a store identity. It is
-// HostDashboardInstance.instance_root. DurableHostVolume ignores it.
+// WitnessScratchRoot { root } admits only /tmp/gunbc_* scratch, checked at admission.
 //
 // DECLARED FRONTIER: this module grants the guest-side PATH. Attaching a gunbc-owned host volume
 // as a Firecracker drive is the runner lane's act. Until that attachment lands, a DurableHostVolume
@@ -44,8 +43,8 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 
 type MaterializationStoreRoot
   = DurableHostVolume
-  | PersistentInstanceWorkspace
-  | FrameJobWorkspace
+  | PersistentInstanceWorkspace { scope: PersistentInstanceScope }
+  | FrameJobWorkspace { frame: Int }
   | WitnessScratchRoot { root: String }
 
 type MaterializationStoreDurability
@@ -61,48 +60,33 @@ data materialization_store_host_volume_path: String = "/var/lib/gunbc/materializ
 
 data materialization_store_workspace_leaf: String = "materialization-store"
 
-// THE PERSISTENT SCOPES ARE THE GRANT, not a comment on constructors. Roadmap instance_root rows
-// for macbook_local and srv2_deploy are these strings; a third persistent host is a new row here
-// before it can Permit.
-data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
-data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
+data materialization_store_frame_root_prefix: String = "/tmp/gunbc_compute_"
 
-fn materialization_store_persistent_scope_store_path(scope: String) -> String {
-  join([scope, "/", materialization_store_workspace_leaf], "")
+// The frame's own root, which a hermetic instance also takes as its instance_root.
+fn materialization_store_frame_root(frame: Int) -> String {
+  join([materialization_store_frame_root_prefix, to_string(value: frame)], "")
 }
 
-fn materialization_store_persistent_workspace_envelope() -> Envelope {
-  Envelope {
-    frame: materialization_store_frame,
-    grants: concat(
-      materialization_store_grants(
-        root_position: absolute_path_position(path: materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_macbook_scope)),
-      ),
-      materialization_store_grants(
-        root_position: absolute_path_position(path: materialization_store_persistent_scope_store_path(scope: materialization_store_persistent_srv2_scope)),
-      ),
-    )
-  }
-}
-
-fn materialization_store_root_path(root: MaterializationStoreRoot, scope_root: String) -> String {
+fn materialization_store_root_path(root: MaterializationStoreRoot) -> String {
   match root {
     DurableHostVolume => materialization_store_host_volume_path
-    PersistentInstanceWorkspace => join([scope_root, "/", materialization_store_workspace_leaf], "")
-    FrameJobWorkspace => join([scope_root, "/", materialization_store_workspace_leaf], "")
+    PersistentInstanceWorkspace { scope } =>
+      join([persistent_instance_scope_root(scope: scope), "/", materialization_store_workspace_leaf], "")
+    FrameJobWorkspace { frame } =>
+      join([materialization_store_frame_root(frame: frame), "/", materialization_store_workspace_leaf], "")
     WitnessScratchRoot { root: r } => r
   }
 }
 
-fn materialization_store_staging_root_path(root: MaterializationStoreRoot, scope_root: String) -> String {
-  join([materialization_store_root_path(root: root, scope_root: scope_root), "-staging"], "")
+fn materialization_store_staging_root_path(root: MaterializationStoreRoot) -> String {
+  join([materialization_store_root_path(root: root), "-staging"], "")
 }
 
 fn materialization_store_durability(root: MaterializationStoreRoot) -> MaterializationStoreDurability {
   match root {
     DurableHostVolume => DurableAcrossRuns
-    PersistentInstanceWorkspace => DurableAcrossRuns
-    FrameJobWorkspace => EphemeralToFrame
+    PersistentInstanceWorkspace { scope: _ } => DurableAcrossRuns
+    FrameJobWorkspace { frame: _ } => EphemeralToFrame
     WitnessScratchRoot { root: _ } => EphemeralToFrame
   }
 }
@@ -114,10 +98,17 @@ fn materialization_store_durability_name(d: MaterializationStoreDurability) -> S
   }
 }
 
-fn materialization_store_host_volume_envelope(path: String) -> Envelope {
+fn materialization_store_path_envelope(path: String) -> Envelope {
   Envelope {
     frame: materialization_store_frame,
     grants: materialization_store_grants(root_position: absolute_path_position(path: path))
+  }
+}
+
+fn materialization_store_scratch_envelope() -> Envelope {
+  Envelope {
+    frame: materialization_store_frame,
+    grants: materialization_store_grants(root_position: artifact_store_scratch_root)
   }
 }
 
@@ -128,29 +119,24 @@ fn materialization_store_grants(root_position: NamespacePosition) -> List<Grant>
   ]
 }
 
-fn materialization_store_envelope(root: MaterializationStoreRoot, scope_root: String) -> Envelope {
+fn materialization_store_envelope(root: MaterializationStoreRoot) -> Envelope {
   match root {
-    DurableHostVolume => materialization_store_host_volume_envelope(path: materialization_store_host_volume_path)
-    PersistentInstanceWorkspace => materialization_store_persistent_workspace_envelope()
-    FrameJobWorkspace => materialization_store_host_volume_envelope(
-      path: materialization_store_root_path(root: root, scope_root: scope_root)
-    )
+    DurableHostVolume => materialization_store_path_envelope(path: materialization_store_host_volume_path)
+    PersistentInstanceWorkspace { scope: _ } => materialization_store_path_envelope(path: materialization_store_root_path(root: root))
+    FrameJobWorkspace { frame: _ } => materialization_store_scratch_envelope()
     WitnessScratchRoot { root: r } =>
       if is_gunbc_tmp_scratch_store_root(store_root: r) {
-        Envelope {
-          frame: materialization_store_frame,
-          grants: materialization_store_grants(root_position: artifact_store_scratch_root)
-        }
+        materialization_store_scratch_envelope()
       } else {
         Envelope { frame: materialization_store_frame, grants: [] }
       }
   }
 }
 
-fn materialization_store_admissible(root: MaterializationStoreRoot, scope_root: String, verb: Verb) -> AccessDecision {
+fn materialization_store_admissible(root: MaterializationStoreRoot, verb: Verb) -> AccessDecision {
   admit_effect(
-    env: materialization_store_envelope(root: root, scope_root: scope_root),
+    env: materialization_store_envelope(root: root),
     verb: verb,
-    target: absolute_path_position(path: materialization_store_root_path(root: root, scope_root: scope_root))
+    target: absolute_path_position(path: materialization_store_root_path(root: root))
   )
 }

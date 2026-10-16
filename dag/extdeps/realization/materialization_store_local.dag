@@ -383,13 +383,12 @@ type LocalStoreUnavailableCause
 // from the marker it was verified against and from nothing a caller passed.
 type LocalStoreBinding sole_constructor {
   root: MaterializationStoreRoot
-  scope_root: String
   store: OpenedMaterializationStore
   budgets: List<LocalStoreFamilyBudget>
 }
 
 fn local_store_binding_path(b: LocalStoreBinding) -> String {
-  materialization_store_root_path(root: b.root, scope_root: b.scope_root)
+  materialization_store_root_path(root: b.root)
 }
 
 // A VERIFIED BUT NOT YET WRITABLE STORE. The marker decision yields only this; no public operation takes
@@ -429,13 +428,13 @@ type LocalStorePreOpening
 // that the offered catalog encodes to exactly the same canonical field (an identity comparison: the
 // encoding is injective over catalogs that name each family once, and the offered one is refused
 // otherwise). Hermetic controls call this directly; what they get is a pre-open, which writes nothing.
-fn local_store_open_decide(root: MaterializationStoreRoot, scope_root: String, marker_read: FilesystemExactRead, budgets: List<LocalStoreFamilyBudget>) -> LocalStorePreOpening
+fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead, budgets: List<LocalStoreFamilyBudget>) -> LocalStorePreOpening
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
     decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "a_store_opens_only_on_its_own_marker"),
   ]
 {
-  let root_path = materialization_store_root_path(root: root, scope_root: scope_root)
+  let root_path = materialization_store_root_path(root: root)
   let marker_path = store_path(root_path: root_path, name: materialization_store_marker_name)
   match marker_read {
     FilesystemExactPathAbsent { path: _ } =>
@@ -459,7 +458,6 @@ fn local_store_open_decide(root: MaterializationStoreRoot, scope_root: String, m
                 pre: LocalStorePreOpen {
                   binding: LocalStoreBinding {
                     root: root,
-                    scope_root: scope_root,
                     store: OpenedMaterializationStore {
                       provider: materialization_store_local_id,
                       instance: content_hash_of_value(value: c as NonEmptyStr)
@@ -517,9 +515,9 @@ fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew
   filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
 }
 
-fn local_store_open(root: MaterializationStoreRoot, scope_root: String, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreOpening {
-  let root_path = materialization_store_root_path(root: root, scope_root: scope_root)
-  match materialization_store_admissible(root: root, scope_root: scope_root, verb: Read) {
+fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreOpening {
+  let root_path = materialization_store_root_path(root: root)
+  match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
       LocalStoreUnavailable {
         root_path: root_path,
@@ -528,7 +526,6 @@ fn local_store_open(root: MaterializationStoreRoot, scope_root: String, budgets:
     Permit =>
       match local_store_open_decide(
         root: root,
-        scope_root: scope_root,
         marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name)),
         budgets: budgets
       ) {
@@ -545,9 +542,9 @@ type LocalStoreInitialization
 // Initialization publishes the marker create-new and then OPENS the store it created, so the
 // returned opening is the same observation every later open makes -- a marker written by a
 // concurrent initializer with a different label opens as THAT store, never as ours.
-fn local_store_initialize(root: MaterializationStoreRoot, scope_root: String, instance_label: NonEmptyStr, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreInitialization {
-  let root_path = materialization_store_root_path(root: root, scope_root: scope_root)
-  match materialization_store_admissible(root: root, scope_root: scope_root, verb: Write) {
+fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreInitialization {
+  let root_path = materialization_store_root_path(root: root)
+  match materialization_store_admissible(root: root, verb: Write) {
     Deny { refusal: _ } =>
       LocalStoreInitializationRefused {
         root_path: root_path,
@@ -563,8 +560,8 @@ fn local_store_initialize(root: MaterializationStoreRoot, scope_root: String, in
       )) {
         StoreObjectPublishRefused { fault: f } =>
           LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
-        StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root, scope_root: scope_root, budgets: budgets) }
-        StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root, scope_root: scope_root, budgets: budgets) }
+        StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
+        StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
       }
       }
   }
@@ -1860,7 +1857,7 @@ fn local_store_record_lookup(binding: LocalStoreBinding, addressed: AddressedReq
   let root = binding.root
   let store = binding.store
   let root_path = local_store_binding_path(b: binding)
-  match materialization_store_admissible(root: root, scope_root: binding.scope_root, verb: Read) {
+  match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
       StoreLookupRefused {
         key: request_key(req: addressed.request),
@@ -2386,7 +2383,7 @@ fn local_store_commit_under(
             match store_commit_prepare_addressed(addressed: addressed, payloads: payloads, blobs: blobs) {
               StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
               StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
-                match materialization_store_admissible(root: root, scope_root: held.binding.scope_root, verb: Write) {
+                match materialization_store_admissible(root: root, verb: Write) {
                   Deny { refusal: _ } =>
                     local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } })
                   Permit => local_store_commit_held(held: held, addressed: addressed, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
