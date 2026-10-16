@@ -4581,10 +4581,9 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
         ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
       ], "")
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: _, context: _ } =>
       join([
-        "live_deploy retract refused over fleet ssh endpoint=", t.endpoint as String,
-        ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
+        "live_deploy retract refused over fleet ssh: the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
       ], "")
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
