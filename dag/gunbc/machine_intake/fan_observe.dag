@@ -247,8 +247,8 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
   }
 }
 
-// BOOT-JOB WRAPPER: same series, but every refusal is a receipt and ExitSuccess so a stuck or
-// refused observe cannot skip the power cycle. The standalone mtcollins1_fan_observe_wet stays fail-closed.
+// BOOT-JOB WRAPPER: observation refusal is a typed receipt and ExitSuccess. A failed receipt write
+// is ExitFailure, same as fan_write_observation. Job continue-on-error keeps the power cycle scheduled.
 fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr, policy: FanObservePolicy) -> ProcessExit
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_fan_observe", decl_name: "mtcollins1_fan_observe_boot_phase_wet"),
@@ -290,6 +290,6 @@ fn fan_write_boot_phase_receipt(path: String, content: String) -> ProcessExit {
   if written.success {
     ExitSuccess
   } else {
-    ExitSuccess
+    exit_failure(reason: concat("fan observation boot phase: receipt could not be written: ", written.error))
   }
 }
