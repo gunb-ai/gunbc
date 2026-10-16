@@ -37,16 +37,18 @@ import gunbc.host.bmc_control_binding { BmcControlStanding, bmc_control_binding 
 // subject is not a field: secure.subject is the one
 // home of it, and a second copy could disagree with the standing it was derived beside.
 //
-// access and capability_row are the pair gunbc.machine_intake.oob_boot_handoff
-// oob_boot_handoff_admission consumes today. DECLARED FRONTIER: they become one
-// gunbc.machine_intake.access BoundBmcAccessContextStanding, whose context carries the capability row
-// through the profile it bound, and the trigger is the first production producer of that standing.
-// No such producer exists yet (bind_bmc_access_context has no production caller and there is no
-// profile catalog), so a bound context cannot be executed for any host and is not hand-built here.
+// access is the fact gunbc.machine_intake.oob_boot_handoff oob_boot_handoff_admission consumes: the
+// controller's reported firmware release resolves its capability row through the release catalog
+// (gunbc.host.host_capability_row), so no per-unit row is carried here. A per-unit row would be the
+// reflash-staleness defect: a unit that moved 0.32 -> 0.45.3 would keep a row describing the old
+// build. DECLARED FRONTIER: access becomes one gunbc.machine_intake.access
+// BoundBmcAccessContextStanding, whose context binds through the profile it bound, and the trigger is
+// the first production producer of that standing. No such producer exists yet
+// (bind_bmc_access_context has no production caller and there is no profile catalog), so a bound
+// context cannot be executed for any host and is not hand-built here.
 type ManagedHost sole_constructor {
   host: HostIdentity
   access: BmcAccessObservationStanding
-  capability_row: BmcFirmwareReleaseCapabilityRow
   secure: BmcSecureStanding
   unit_hold: ResetUnitHold
   smpro: SmproSiteStanding
@@ -291,7 +293,6 @@ fn row_from_admission(record: ManagedHostAdmission, hold: ResetUnitHold) -> Mana
   ManagedHost {
     host: record.host,
     access: record.access,
-    capability_row: record.capability_row,
     secure: record.secure,
     unit_hold: hold,
     smpro: record.smpro,
@@ -566,7 +567,6 @@ fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControll
 fn managed_host_fixture(
   host: HostIdentity,
   access: BmcAccessObservationStanding,
-  capability_row: BmcFirmwareReleaseCapabilityRow,
   secure: BmcSecureStanding,
   unit_hold: ResetUnitHold,
   smpro: SmproSiteStanding,
@@ -597,7 +597,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.machine_intake.fan_observe_witness", decl_name: "a_row_whose_family_is_unobserved_refuses_naming_the_missing_observation"),
   ]
 {
-  ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold, smpro: smpro }
+  ManagedHost { host: host, access: access, secure: secure, unit_hold: unit_hold, smpro: smpro }
 }
 
 // THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller the binding read,

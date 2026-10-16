@@ -106,7 +106,7 @@ test fn w_a_boot_of_an_unbound_host_is_refused() -> Bool {
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     }
     match admit_boot_subject(host: crossed, medium: mtcollins1_boot_medium, execution_revision: revision) {
       BootSubjectRefused { host: _, cause: BootSubjectHostUnbound { standing: ManagedHostEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
@@ -127,7 +127,7 @@ test fn w_a_bound_host_with_no_boot_selection_is_refused() -> Bool {
     // has not yet read is uncatalogued, so the row does not resolve and the selection refuses with
     // its cause named -- no media-less per-unit datum is needed.
     let uncatalogued = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
-    let unselected = managed_host_fixture(host: "fixture-uncatalogued-build", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let unselected = managed_host_fixture(host: "fixture-uncatalogued-build", access: host_access_repoint_firmware(access: h.access, firmware: uncatalogued), secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match admit_boot_subject(host: unselected, medium: mtcollins1_boot_medium, execution_revision: revision) {
       BootSubjectRefused { host: x, cause: BootSubjectNoSelection { cause: _ } } => (x as String) == "fixture-uncatalogued-build"
       _ => false
@@ -179,7 +179,7 @@ test fn w_the_reset_and_boot_arms_each_decide_their_own_selection() -> Bool {
 // needed; the code path is the same fn.
 test fn w_a_second_machine_with_the_same_profile_gets_the_same_selection() -> Bool {
   managed_hosts() |> all(h => {
-    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let second = managed_host_fixture(host: "fixture-second-machine", access: h.access, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match boot_selection(host: second) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
       VirtualMediaBootSelectionAdmitted { selection: second_sel } => match boot_selection(host: h) {
@@ -205,7 +205,7 @@ test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit
     }
     // The same unit observed at a build the catalog has not read refuses, with no per-unit edit.
     let new_build = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.9.9")
-    let reflashed = managed_host_fixture(host: "fixture-reflash-build", access: host_access_repoint_firmware(access: h.access, firmware: new_build), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let reflashed = managed_host_fixture(host: "fixture-reflash-build", access: host_access_repoint_firmware(access: h.access, firmware: new_build), secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let refused_uncatalogued = match boot_selection(host: reflashed) {
       VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished } => true
       _ => false
@@ -221,7 +221,7 @@ test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit
 // derivation followed the reported build.
 test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits() -> Bool {
   managed_hosts() |> all(h => {
-    let at_0_45_3 = managed_host_fixture(host: "fixture-at-0-45-3", access: host_access_repoint_firmware(access: h.access, firmware: megarac_firmware_0_45_3), capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let at_0_45_3 = managed_host_fixture(host: "fixture-at-0-45-3", access: host_access_repoint_firmware(access: h.access, firmware: megarac_firmware_0_45_3), secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let admitted = match boot_selection(host: at_0_45_3) {
       VirtualMediaBootSelectionRefused { cause: _ } => false
       VirtualMediaBootSelectionAdmitted { selection: _ } => true
@@ -258,7 +258,7 @@ test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> B
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     }
     let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
     real && red
