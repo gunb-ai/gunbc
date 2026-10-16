@@ -88,7 +88,7 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "fci1_remove_controls_slice() {\n",
           "  local s=0\n",
           "  systemctl stop ", fci1_controls_slice_unit_name as String, " 2>/dev/null || [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=LoadState --value) == not-found ]] || { echo 'ControlRefused: slice stop failed' >&2; s=1; }\n",
-          "  rm -f ", fci1_controls_slice_unit_path(), " || s=1\n",
+          "  rm -f ", fci1_controls_slice_unit_path(), " || { echo 'ControlRefused: slice unit removal failed' >&2; s=1; }\n",
           "  systemctl daemon-reload || { echo 'ControlRefused: daemon-reload after slice removal failed' >&2; s=1; }\n",
           "  [[ ! -e ", fci1_controls_slice_unit_path(), " ]] || { echo 'ControlRefused: slice unit file still present' >&2; s=1; }\n",
           "  return $s\n",
