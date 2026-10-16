@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.ipmi {
   IpmiCompletionCode, IpmiCompletionCodeByte, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
-  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_is_invalid_data_field,
+  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq,
 }
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
@@ -108,22 +108,28 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
   // numeric code alone, so a row pointing at the length complaint is a different fact, not a refusal
   // with a stale label. (The deleted predicate let the text vouch for the code; the text now lives with
   // the code in extdeps.bmc.ipmi as the spec's description of it and is not carried on the row at all.)
-  policy_refusal_completion_code(
-    policy: FirmwareRefusesPublishedPassword {
-      firmware: firmware,
-      completion_code: ipmi_completion_code_request_data_length_invalid,
-      capture: asrock_altrad8ud_inband_recovery_capture,
-    },
-  ) |> match {
-    Present { value: c } => ipmi_completion_code_is_invalid_data_field(code: c) == false
-    Absent => false
-  }
+  refuses_that_code(policy: FirmwareRefusesPublishedPassword {
+    firmware: firmware,
+    completion_code: ipmi_completion_code_request_data_length_invalid,
+    capture: asrock_altrad8ud_inband_recovery_capture,
+  }) == false
     // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint
-    && ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte })
-    && ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }) == false
-    && ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode { code: 203 as IpmiCompletionCodeByte }) == false
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte })
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }) == false
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 as IpmiCompletionCodeByte }) == false
     && (ipmi_completion_code_invalid_data_field_text as String) == "Invalid data field in request"
     && (ipmi_completion_code_invalid_data_field.code as Int) != (ipmi_completion_code_request_data_length_invalid.code as Int)
+}
+
+// THE ROW'S OWN CODE, AS A DECISION AND NOT A SHAPE. A refusal arm that points at 0xC7 is a different
+// fact, not "the refusal with a stale label": the identity is the typed byte alone (the deleted
+// predicate had let the English vouch for the code). Compared with ipmi_completion_code_eq against the
+// constant, which keeps the byte being demanded in plain sight.
+fn refuses_that_code(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
+  match policy_refusal_completion_code(policy: policy) {
+    Present { value: c } => ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
+    Absent => false
+  }
 }
 
 test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable_string() -> Bool {
@@ -133,7 +139,7 @@ test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable
         && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
         && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
         && f.version.patch == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.patch
-        && ipmi_completion_code_is_invalid_data_field(code: c)
+        && ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
         && capture == asrock_altrad8ud_inband_recovery_capture
     NotMeasured { firmware: _ } => false
   }

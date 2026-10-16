@@ -22,7 +22,7 @@ import extdeps.bmc.types {
   FanPidIndependentEntries,
 }
 import extdeps.bmc.capability { BmcCapability, BmcFirmwareCapabilityRow, BmcFirmwareVersion, HistoricalEvidenceSnapshot }
-import extdeps.bmc.ipmi { IpmiCompletionCode, ipmi_completion_code_eq, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text }
+import extdeps.bmc.ipmi { IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.firmware.types {
   FirmwarePrerequisiteObservation,
@@ -1201,8 +1201,8 @@ data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<Publ
 fn asrock_altrad8ud_published_factory_password_write_policy_for(
   firmware: BmcFirmwareVersion,
 ) -> PublishedFactoryPasswordWritePolicy {
-  match asrock_altrad8ud_published_factory_password_write_policy_catalog
-    |> first(p => policy_names_firmware(policy: p, firmware: firmware)) {
+  match filter(asrock_altrad8ud_published_factory_password_write_policy_catalog, p =>
+    policy_names_firmware(policy: p, firmware: firmware)) |> first() {
     Present { value: p } => p
     Absent => NotMeasured { firmware: firmware }
   }

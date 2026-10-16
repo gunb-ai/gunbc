@@ -1187,6 +1187,7 @@ test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dr
           apply: Present { value: apply },
           capability: none,
         ),
+        locked: none,
       ) {
         ArrivalRunFolded { verdict: v } =>
           match v {
