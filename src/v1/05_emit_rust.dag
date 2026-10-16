@@ -1596,7 +1596,7 @@ fn render_rust_applied_type_dbginner(n: Node, generic_param_names: List<String>,
   } else {
 
     match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: env) {
-      Present { value: scalar } => scalar
+      Present { value: scalar } => render_rust_shared_type_if_needed(type_name: base_name, rendered: scalar, shared_types: shared_types, type_decl_items: type_decl_items)
       Absent =>
     match closed_alias_peel_verdict(env: env, n: n) {
       ClosedAliasPeelZeroParam => {
