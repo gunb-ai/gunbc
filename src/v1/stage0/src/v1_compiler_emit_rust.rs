@@ -13833,10 +13833,7 @@ pub fn imported_name_is_resource_declaration(
         Some(tm) => {
             let mut __found = false;
             for item in tm.items.clone().iter().cloned() {
-                if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource)
-                    && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                        == name.clone()))
-                {
+                if resource_item_declares_name(item.clone(), name.clone(), source_indices.clone()) {
                     __found = true;
                     break;
                 }
@@ -13844,6 +13841,16 @@ pub fn imported_name_is_resource_declaration(
             __found
         }
     }
+}
+
+pub fn resource_item_declares_name(
+    item: Rc<Node>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource)
+        && (crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
+            == name.clone()))
 }
 
 pub fn import_name_resolves_to_host_realized_kernel_scalar(
