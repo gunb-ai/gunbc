@@ -19,7 +19,12 @@ import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
 import gunbc.fabric.fabric_witness_run {
   ExactGitSource, FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused, VerifiedGitCommitTree,
 }
-import gunbc.fabric.fabric_cell_grant { CellGrantDecided, CellGrantNotSelected, CellGranted, CellGrant, CellGrantSettlement }
+import gunbc.fabric.fabric_cell_grant {
+  CellGrantDecided, CellGrantNotSelected, CellGranted, CellGrant, CellGrantSettlement, CellGrantReceiptAdmitted, CellGrantReceiptAlreadyAdmitted,
+  CellGrantReceiptForeign, CellGrantReceiptAgainstAnotherGeneration, CellGrantReceiptLeaseNotThisCell, CellGrantReceiptGenerationInvalid,
+  CellGrantSanitationUnproven, CellGrantSanitationForAnotherCell, CellGrantReleasedUnderAnotherReceipt, CellGrantNeverCommitted,
+  CellGrantSettlementLost, CellGrantSettlementStoreUnavailable,
+}
 import gunbc.fabric.fabric_required_build_cell { RequiredBuildCellObservation, RequiredBuildCellObserved, observe_granted_cell_wet }
 import gunbc.runner.runner_slot_allocation { revision_job_slots }
 import gunbc.runner.runner_microvm_shakedown { MicroVmCellJob, microvm_job_demand, microvm_job_offer, microvm_job_attempt }
@@ -40,7 +45,7 @@ import gunbc.runner.runner_attempt_launch { AttemptLaunchPlan, LaunchAuthorized,
 import gunbc.runner.runner_claim_set_work { claim_set_run_work }
 import gunbc.runner.runner_claim_set_receipt {
   UnitRuntimeReading, UnitRuntimeMeasured, UnitRuntimeUnread, read_unit_runtime, read_results_drive,
-  ClaimSetReceiptOutcome, ClaimSetReceipted, ClaimSetUnreceipted, ClaimSetNotReceipted, claim_set_receipt,
+  ClaimSetNotReceipted, ClaimSetJobEnd, ClaimSetJobSettled, ClaimSetJobUnreceipted, claim_set_receipt_and_settle,
 }
 import gunbc.runner.runner_revision_job_spec {
   RevisionJobSpec, RevisionJobSpecDecode, RevisionJobSpecDecoded, RevisionJobSpecRefused, RevisionJobSpecRefusal,
@@ -52,7 +57,6 @@ import gunbc.runner.runner_revision_job_receipt {
   RevisionJobReceiptDocument, RevisionJobPublication, RevisionJobPublished, RevisionJobAlreadyPublished, RevisionJobPublicationRefused,
   publish_revision_job_receipt,
 }
-import gunbc.fabric.fabric_cell_grant { settle_cell_grant }
 
 // ONE REVISION JOB, FROM ITS SPEC TO ITS PUBLISHED RECEIPT. This replaces the hand-run qualification
 // scripts: the submitter writes a spec (gunbc.runner.runner_revision_job_spec), and this entry runs it
@@ -248,23 +252,24 @@ fn revision_job_launch_and_settle(
           await_workload: (id, launch) => revision_job_await(identity: id, launch: launch, firecracker_binary: bins.firecracker, results_out: results_out, runtime_out: runtime_out))
         match readiness_of(outcome: outcome) {
           Absent => RevisionJobGuestNotRun { detail: "the controller did not run the attempt to a settled teardown" }
-          Present { value: readiness } => match claim_set_receipt(
+          Present { value: readiness } => match claim_set_receipt_and_settle(
+            root: root,
+            work: work.id,
+            offer: microvm_job_offer(slot: slot, job: job).id,
             attempt: attempt_id,
             lease: grant.context.lease,
-            decode: read_results_drive(path: results_out, staged_bytes: revision_job_results_bytes),
             claims: spec.claims,
             revision: revision,
+            decode: read_results_drive(path: results_out, staged_bytes: revision_job_results_bytes),
             runtime: runtime_reading_of(path: runtime_out),
+            readiness: readiness,
             completed_at: now,
           ) {
-            ClaimSetUnreceipted { cause: c } => RevisionJobUnreceipted { cause: c }
-            ClaimSetReceipted { receipt: r, outputs: _, results: results } => {
-              let settlement = settle_cell_grant(root: root, work: work.id, offer: microvm_job_offer(slot: slot, job: job).id, receipt: r, readiness: readiness)
-              RevisionJobPublishedOutcome {
-                publication: publish_revision_job_receipt(store_root: store_root, staging_path: concat(work_dir, "/receipt.json"),
-                  d: RevisionJobReceiptDocument { spec: spec, inputs: staged.digests, receipt: r, results: results }),
-                settlement: settlement,
-              }
+            ClaimSetJobUnreceipted { cause: c } => RevisionJobUnreceipted { cause: c }
+            ClaimSetJobSettled { receipt: r, results: results, settlement: settlement } => RevisionJobPublishedOutcome {
+              publication: publish_revision_job_receipt(store_root: store_root, staging_path: concat(work_dir, "/receipt.json"),
+                d: RevisionJobReceiptDocument { spec: spec, inputs: staged.digests, receipt: r, results: results }),
+              settlement: settlement,
             }
           }
         }
@@ -301,11 +306,46 @@ fn revision_job_outcome_text(o: RevisionJobOutcome) -> String {
     RevisionJobNetworkSubjectRefused => "the slot's network subject was refused"
     RevisionJobGuestNotRun { detail: d } => concat("guest not run: ", d)
     RevisionJobUnreceipted { cause: _ } => "the attempt is unreceipted"
-    RevisionJobPublishedOutcome { publication: p, settlement: _ } => match p {
+    RevisionJobPublishedOutcome { publication: p, settlement: s } => join([match p {
       RevisionJobPublished { address: a, index_entry: _ } => concat("published ", a as String)
       RevisionJobAlreadyPublished { address: a } => concat("already published ", a as String)
       RevisionJobPublicationRefused { step: st, detail: d } => join(["publication refused at ", st as String, ": ", d], "")
-    }
+    }, "; ", revision_job_settlement_text(s: s)], "")
+  }
+}
+
+fn revision_job_publication_holds(p: RevisionJobPublication) -> Bool {
+  match p {
+    RevisionJobPublished { address: _, index_entry: _ } => true
+    RevisionJobAlreadyPublished { address: _ } => true
+    RevisionJobPublicationRefused { step: _, detail: _ } => false
+  }
+}
+
+// THE JOB SUCCEEDS ONLY OVER A RELEASED CELL: a receipt the settlement did not admit leaves the cell
+// held or quarantined, and that is this job's failure even when its receipt published.
+fn revision_job_cell_released(s: CellGrantSettlement) -> Bool {
+  match s {
+    CellGrantReceiptAdmitted { slot_key: _, released_at: _, released_by: _ } => true
+    CellGrantReceiptAlreadyAdmitted { slot_key: _, released_at: _ } => true
+    _ => false
+  }
+}
+
+fn revision_job_settlement_text(s: CellGrantSettlement) -> String {
+  match s {
+    CellGrantReceiptAdmitted { slot_key: k, released_at: _, released_by: _ } => concat("cell released: ", k as String)
+    CellGrantReceiptAlreadyAdmitted { slot_key: k, released_at: _ } => concat("cell already released: ", k as String)
+    CellGrantReceiptForeign { slot_key: k, holder: _, generation: _ } => concat("settlement refused, receipt foreign to ", k as String)
+    CellGrantReceiptAgainstAnotherGeneration { slot_key: k, receipt_generation: _, observed: _ } => concat("settlement refused, receipt against another generation of ", k as String)
+    CellGrantReceiptLeaseNotThisCell { slot_key: k } => concat("settlement refused, lease is not this cell: ", k as String)
+    CellGrantReceiptGenerationInvalid { slot_key: k, generation: g } => join(["settlement refused, invalid generation ", to_string(g), " for ", k as String], "")
+    CellGrantSanitationUnproven { cell: c, unproven: u } => join(["cell quarantined, sanitation unproven for ", c as String, " (", to_string(count(u)), " facts)"], "")
+    CellGrantSanitationForAnotherCell { slot_key: k, sanitized: _ } => concat("settlement refused, sanitation for another cell: ", k as String)
+    CellGrantReleasedUnderAnotherReceipt { slot_key: k, generation: _, released_by: _ } => concat("settlement refused, released under another receipt: ", k as String)
+    CellGrantNeverCommitted { slot_key: k } => concat("settlement refused, grant never committed: ", k as String)
+    CellGrantSettlementLost { slot_key: k } => concat("settlement lost: ", k as String)
+    CellGrantSettlementStoreUnavailable { slot_key: k, detail: d } => join(["settlement store unavailable for ", k as String, ": ", d as String], "")
   }
 }
 
@@ -335,8 +375,9 @@ fn revision_job_main() -> ProcessExit {
           let outcome = revision_job_run(spec_text: spec.content, slot_instance: slot, release_dir: release_dir, image_dir: image_dir,
             cache_dir: cache_dir, work_dir: work_dir, store_root: store_root, invocation_id: invocation as NonEmptyStr, vcpus: hardware_thread_count(count: vcpus), now: now)
           match outcome {
-            RevisionJobPublishedOutcome { publication: RevisionJobPublished { address: _, index_entry: _ }, settlement: _ } => ExitSuccess
-            RevisionJobPublishedOutcome { publication: RevisionJobAlreadyPublished { address: _ }, settlement: _ } => ExitSuccess
+            RevisionJobPublishedOutcome { publication: p, settlement: st } =>
+              if revision_job_publication_holds(p: p) && revision_job_cell_released(s: st) { ExitSuccess }
+              else { exit_failure(reason: concat("revision_job: ", revision_job_outcome_text(o: outcome))) }
             other => exit_failure(reason: concat("revision_job: ", revision_job_outcome_text(o: other)))
           }
         }
