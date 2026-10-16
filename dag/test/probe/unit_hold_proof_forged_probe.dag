@@ -1,7 +1,8 @@
+module test.probe.unit_hold_proof_forged_probe
+
 import gunbc.host.boot_attempt {
   MediaAttachNotAttempted,
 }
-module test.probe.unit_hold_proof_forged_probe
 
 // THIS MODULE MUST NOT RESOLVE. Each function is one way to reach a Mt. Collins BMC write without
 // holding the unit, and each must refuse at compile time
