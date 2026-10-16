@@ -1,0 +1,174 @@
+module product.electrical.continuity
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import product.electrical.connectivity {
+  ElectricalTerminalRef,
+  ElectricalNet,
+  NetIdentity,
+  terminal_ref_equal,
+  net_identity_eq,
+  net_local_label,
+  component_local_label,
+}
+
+// WHAT A MULTIMETER ESTABLISHES ABOUT A BUILT BOARD'S CONNECTIVITY, unpowered. product.electrical
+// .connectivity is the one authority for "which terminals are the same node"; a design states its nets
+// there as intent. A board nobody has a schematic for has no intent to read, only probes: this module
+// turns raw bench readings into ElectricalNet values in that same vocabulary, so a measured net and a
+// designed one are compared by the same identities rather than by a second, string-keyed node model.
+//
+// A reading is kept raw. JoinedByContinuity says every listed terminal beeped to the others (a reading
+// of one terminal against several is the same statement); OpenByContinuity says two terminals did not
+// beep. Nets are DERIVED: joined readings that share a terminal merge, transitively, and a net is
+// named only by an anchor -- a terminal a person chose to name a net after. A set no anchor reaches is
+// still carried, unnamed, because a joined set nobody named is a fact, not an absence.
+//
+// A CONTINUITY NET IS NOT A COPPER NET. A beeper conducts through anything below its threshold: an
+// intact fuse, a closed switch, a milliohm shunt, a jumper. So two copper nets joined by an intact fuse
+// read as one continuity net, and which side of the fuse a terminal is on is not decidable from
+// continuity alone. A consumer that needs the copper topology needs a further reading, never this one
+// read harder.
+//
+// THE DERIVATION REFUSES rather than choosing. A pair read open that the joined readings put in one
+// net is a contradiction among the readings themselves; two anchors naming one net with different
+// identities would make one net two; an anchor no reading reaches names nothing. Each is a typed,
+// located refusal, so a mis-transcribed reading stops the line instead of quietly merging two rails.
+
+type ContinuityReading
+  = JoinedByContinuity { terminals: List<ElectricalTerminalRef> }
+  | OpenByContinuity { a: ElectricalTerminalRef, b: ElectricalTerminalRef }
+
+type NetAnchor {
+  net: NetIdentity
+  anchor: ElectricalTerminalRef
+}
+
+type MeasuredNetlist {
+  nets: List<ElectricalNet>
+  unnamed: List<List<ElectricalTerminalRef>>
+}
+
+type ContinuityRefusal
+  = OpenPairJoined { a: ElectricalTerminalRef, b: ElectricalTerminalRef }
+  | TwoNamesOnOneNet { first: NetIdentity, second: NetIdentity }
+  | AnchorUnreached { net: NetIdentity }
+
+type NetlistDerivation
+  = NetlistDerived { netlist: MeasuredNetlist }
+  | NetlistRefused { cause: ContinuityRefusal }
+
+fn terminal_in(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  any(ts, m => terminal_ref_equal(a: m, b: t))
+}
+
+fn add_distinct(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef> {
+  if terminal_in(ts: ts, t: t) { ts } else { concat(ts, [t]) }
+}
+
+fn sets_meet(a: List<ElectricalTerminalRef>, b: List<ElectricalTerminalRef>) -> Bool {
+  any(a, t => terminal_in(ts: b, t: t))
+}
+
+// One joined reading merged into the sets so far: every set it touches, and the reading itself, become
+// one set; the sets it does not touch are kept as they are.
+fn merge_joined(sets: List<List<ElectricalTerminalRef>>, group: List<ElectricalTerminalRef>) -> List<List<ElectricalTerminalRef>> {
+  let touching = filter(sets, s => sets_meet(a: s, b: group))
+  let apart = filter(sets, s => !sets_meet(a: s, b: group))
+  let merged = fold(concat(flat_map(touching, s => s), group), init: [], f: (acc, t) => add_distinct(ts: acc, t: t))
+  concat(apart, [merged])
+}
+
+fn joined_sets(readings: List<ContinuityReading>) -> List<List<ElectricalTerminalRef>> {
+  fold(readings, init: [], f: (acc, r) => match r {
+    JoinedByContinuity { terminals } => merge_joined(sets: acc, group: terminals)
+    OpenByContinuity { a: _, b: _ } => acc
+  })
+}
+
+fn set_of(sets: List<List<ElectricalTerminalRef>>, t: ElectricalTerminalRef) -> List<ElectricalTerminalRef>? {
+  filter(sets, s => terminal_in(ts: s, t: t)).first()
+}
+
+fn first_open_pair_joined(readings: List<ContinuityReading>, sets: List<List<ElectricalTerminalRef>>) -> ContinuityRefusal? {
+  flat_map(readings, r => match r {
+    JoinedByContinuity { terminals: _ } => []
+    OpenByContinuity { a, b } => match set_of(sets: sets, t: a) {
+      Absent => []
+      Present { value: s } => if terminal_in(ts: s, t: b) { [OpenPairJoined { a: a, b: b }] } else { [] }
+    }
+  }).first()
+}
+
+fn first_unreached_anchor(anchors: List<NetAnchor>, sets: List<List<ElectricalTerminalRef>>) -> ContinuityRefusal? {
+  flat_map(anchors, x => match set_of(sets: sets, t: x.anchor) {
+    Absent => [AnchorUnreached { net: x.net }]
+    Present { value: _ } => []
+  }).first()
+}
+
+fn anchors_in(anchors: List<NetAnchor>, s: List<ElectricalTerminalRef>) -> List<NetAnchor> {
+  filter(anchors, x => terminal_in(ts: s, t: x.anchor))
+}
+
+fn doubly_named_in(anchors: List<NetAnchor>, s: List<ElectricalTerminalRef>) -> List<ContinuityRefusal> {
+  match anchors_in(anchors: anchors, s: s).first() {
+    Absent => []
+    Present { value: first } => map(filter(anchors_in(anchors: anchors, s: s), x => !net_identity_eq(a: x.net, b: first.net)), x => TwoNamesOnOneNet { first: first.net, second: x.net })
+  }
+}
+
+fn first_doubly_named(anchors: List<NetAnchor>, sets: List<List<ElectricalTerminalRef>>) -> ContinuityRefusal? {
+  flat_map(sets, s => doubly_named_in(anchors: anchors, s: s)).first()
+}
+
+fn named_net(anchors: List<NetAnchor>, s: List<ElectricalTerminalRef>) -> List<ElectricalNet> {
+  match anchors_in(anchors: anchors, s: s).first() {
+    Absent => []
+    Present { value: x } => [ElectricalNet { identity: x.net, members: s }]
+  }
+}
+
+fn derive_measured_netlist(readings: List<ContinuityReading>, anchors: List<NetAnchor>) -> NetlistDerivation {
+  let sets = joined_sets(readings: readings)
+  match first_open_pair_joined(readings: readings, sets: sets) {
+    Present { value: cause } => NetlistRefused { cause: cause }
+    Absent => match first_unreached_anchor(anchors: anchors, sets: sets) {
+      Present { value: cause } => NetlistRefused { cause: cause }
+      Absent => match first_doubly_named(anchors: anchors, sets: sets) {
+        Present { value: cause } => NetlistRefused { cause: cause }
+        Absent => NetlistDerived { netlist: MeasuredNetlist {
+          nets: flat_map(sets, s => named_net(anchors: anchors, s: s)),
+          unnamed: filter(sets, s => count(anchors_in(anchors: anchors, s: s)) == 0),
+        } }
+      }
+    }
+  }
+}
+
+// The named net a terminal is on, if a joined reading reached it and an anchor named its set.
+fn measured_net_of(netlist: MeasuredNetlist, t: ElectricalTerminalRef) -> NetIdentity? {
+  match filter(netlist.nets, n => terminal_in(ts: n.members, t: t)).first() {
+    Absent => Absent
+    Present { value: n } => Present { value: n.identity }
+  }
+}
+
+fn on_measured_net(netlist: MeasuredNetlist, t: ElectricalTerminalRef, net: NetIdentity) -> Bool {
+  match measured_net_of(netlist: netlist, t: t) {
+    Absent => false
+    Present { value: n } => net_identity_eq(a: n, b: net)
+  }
+}
+
+fn terminal_text(t: ElectricalTerminalRef) -> String {
+  join([component_local_label(c: t.component) as String, " ", t.terminal as String], "")
+}
+
+fn continuity_refusal_text(c: ContinuityRefusal) -> String {
+  match c {
+    OpenPairJoined { a, b } => join(["'", terminal_text(t: a), "' and '", terminal_text(t: b), "' were read open, but the joined readings put them on one net"], "")
+    TwoNamesOnOneNet { first, second } => join(["anchors name one net both '", net_local_label(n: first) as String, "' and '", net_local_label(n: second) as String, "'"], "")
+    AnchorUnreached { net } => join(["the anchor of net '", net_local_label(n: net) as String, "' is reached by no joined reading"], "")
+  }
+}

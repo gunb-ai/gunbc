@@ -6,6 +6,21 @@ import std.measure { volt, volt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
 import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage, FuseInterruptRating }
+import product.electrical.connectivity { ElectricalTerminalRef, NetIdentity, net_identity_eq }
+import product.electrical.continuity {
+  MeasuredNetlist,
+  on_measured_net,
+  ContinuityReading,
+  JoinedByContinuity,
+  OpenByContinuity,
+  NetAnchor,
+  NetlistDerivation,
+  NetlistDerived,
+  NetlistRefused,
+  OpenPairJoined,
+  TwoNamesOnOneNet,
+  AnchorUnreached,
+}
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
   ManagementIoSurvey,
@@ -23,31 +38,50 @@ import product.p4261_carrier_layout {
   RatingAcrossInputRail,
   BoundByRatedParts,
   NoEstablishedBound,
-  PinRowContinuity,
-  ToGround,
-  ToFuse,
   RowSide,
   LatchSide,
   AwayFromLatch,
   SideUnrecorded,
+  HousingPosition,
+  ConnectorHousing,
+  ConnectorPositionCensus,
+  CountedFromPhotograph,
+  MappedOnHousing,
   PolarityReading,
   PolarityRecorded,
   PolarityUnrecorded,
-  polarity_reading,
   MeasuredCircuit,
-  CircuitNode,
+  JunctionOrientation,
   CathodeOn,
   OrientationUnread,
   p4261_k1_layout,
   p4261_e1_layout,
   p4261_grey_path_hypothesis,
-  e1_j20_input_circuit,
+  e1_measured_circuit,
+  e1_j20_housing,
   e1_adjacency_j20,
+  e1_d2_near,
+  e1_d2_far,
+  e1_d5_upper,
+  e1_d5_lower,
+  e1_c10_pos,
+  e1_f1_near,
+  e1_f1_far,
+  e1_f300_one_end,
+  e1_f300_other_end,
+  e1_j20_latch_1,
+  e1_j20_away_1,
+  e1_ground,
+  e1_j20_supply,
+  e1_capacitor_rail,
+  circuit_netlist,
+  housing_side_terminals,
+  housing_polarity,
   membership_by_circuit,
-  orientation_between,
-  readings_between,
-  j20_supply_node,
-  board_ground_node,
+  part_orientation,
+  readings_across,
+  polarity_reading,
+  j20_position_count,
   path_bound,
   carrier_input_reading,
   management_io_text,
@@ -75,12 +109,16 @@ test fn a_reading_on_the_e1_does_not_describe_the_k1() -> Bool {
     NoEstablishedBound { observed_ratings: rs } => count(rs) == 0
     BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
   }
+  let k1_unmeasured = match p4261_k1_layout.circuit {
+    Absent => true
+    Present { value: _ } => false
+  }
   k1_j20
-    && count(p4261_k1_layout.j20_rows) == 0
-    && p4261_k1_layout.j20_positions == 16
+    && k1_unmeasured
+    && j20_position_count(layout: p4261_k1_layout) == 16
     && count(p4261_k1_layout.identified_signal_parts) == 0
-    && physical_asset_identity_eq(a: e1_j20_input_circuit.asset, b: p4261_e1_b)
-    && !physical_asset_identity_eq(a: e1_j20_input_circuit.asset, b: p4261_k1_a)
+    && physical_asset_identity_eq(a: e1_measured_circuit.asset, b: p4261_e1_b)
+    && !physical_asset_identity_eq(a: e1_measured_circuit.asset, b: p4261_k1_a)
 }
 
 // ── THE E1 UNIT: the measured circuit and what it deduces ────────────────────────────────────
@@ -111,8 +149,8 @@ test fn d2_bounds_j20_and_the_capacitors_do_not() -> Bool {
     BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
       volt_count(v: m) == 60
         && (l as String).contains("TVS")
-        && (r as String).contains("'D2 tab nearer J20' on node 'J20 supply'")
-        && (r as String).contains("red on 'ground', black on 'J20 supply': 600 mV; the reverse direction was not read; cathode on 'J20 supply'")
+        && (r as String).contains("'D2 tab nearer J20' on net 'J20 supply', 'D2 tab farther from J20' on net 'ground'")
+        && (r as String).contains("red on 'D2 tab farther from J20', black on 'D2 tab nearer J20': 600 mV; the reverse direction was not read; cathode on net 'J20 supply'")
         && all(filter(p4261_e1_layout.power_components, c => is_capacitor_row(c: c)), c => is_adjacent(m: c.membership))
     NoEstablishedBound { observed_ratings: _ } => false
   }
@@ -124,8 +162,8 @@ fn with_components(base: CarrierLayoutObservation, cs: List<ObservedComponent>) 
     module_receptacles: base.module_receptacles,
     grey_edge_connectors: base.grey_edge_connectors,
     j20_connector: base.j20_connector,
-    j20_positions: base.j20_positions,
-    j20_rows: base.j20_rows,
+    j20: base.j20,
+    circuit: base.circuit,
     edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey,
     management_io_observed: base.management_io_observed,
@@ -158,53 +196,118 @@ test fn the_capacitors_placed_across_the_rail_would_bound_it() -> Bool {
   count(caps) == 1 && bounded
 }
 
-fn moved_d2_circuit() -> MeasuredCircuit {
+fn circuit_with(readings: List<ContinuityReading>, anchors: List<NetAnchor>) -> MeasuredCircuit {
   MeasuredCircuit {
-    asset: e1_j20_input_circuit.asset,
-    read_on: e1_j20_input_circuit.read_on,
-    conditions: "supplied: D2's near tab read on the capacitor rail instead",
-    nodes: [
-      CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)"] },
-      CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "D2 tab farther from J20"] },
-      CircuitNode { name: "capacitor rail", terminals: ["C10_P5 positive", "D2 tab nearer J20"] },
-    ],
-    diode_readings: [],
+    asset: e1_measured_circuit.asset,
+    read_on: e1_measured_circuit.read_on,
+    conditions: "supplied",
+    readings: readings,
+    anchors: anchors,
+    input_supply: e1_measured_circuit.input_supply,
+    ground: e1_measured_circuit.ground,
+    diode_readings: e1_measured_circuit.diode_readings,
   }
 }
 
-// THE DEDUCTION DISCRIMINATES. The same D2 with its near tab on the capacitor rail instead of J20's
-// supply is not across J20, so it falls back to adjacency and bounds nothing.
-test fn d2_off_the_supply_node_is_not_across_j20() -> Bool {
-  is_adjacent(m: membership_by_circuit(c: moved_d2_circuit(), positives: ["D2 tab nearer J20"], returns: ["D2 tab farther from J20"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_adjacency_j20))
+// THE DEDUCTION DISCRIMINATES. The same D2 with its near tab read joined to the capacitor rail instead
+// of J20's supply is not across J20, so it falls back to adjacency and bounds nothing.
+test fn d2_off_the_supply_net_is_not_across_j20() -> Bool {
+  let moved = circuit_with(
+    readings: [
+      JoinedByContinuity { terminals: [e1_j20_away_1] },
+      JoinedByContinuity { terminals: [e1_j20_latch_1, e1_d2_far] },
+      JoinedByContinuity { terminals: [e1_c10_pos, e1_d2_near] },
+    ],
+    anchors: e1_measured_circuit.anchors,
+  )
+  is_adjacent(m: membership_by_circuit(c: moved, positives: [e1_d2_near], returns: [e1_d2_far], otherwise: e1_adjacency_j20))
 }
 
-// A terminal belongs to at most one node: two nodes claiming one terminal would be joined, and the
-// circuit would be stating two nets where continuity found one.
-test fn measured_nodes_share_no_terminal() -> Bool {
-  let all_terminals = flat_map(e1_j20_input_circuit.nodes, n => n.terminals)
-  all(all_terminals, t => count(filter(all_terminals, u => u == t)) == 1)
+fn on_net(nl: MeasuredNetlist, t: ElectricalTerminalRef, net: NetIdentity) -> Bool {
+  on_measured_net(netlist: nl, t: t, net: net)
 }
 
-// THE RAW READING UNDERLIES THE ORIENTATION. One forward reading with red on ground and black on J20
-// supply puts the cathode on the supply; the reverse direction is unread, not open. The capacitor
-// rail's two readings have no recorded probe placement, so they establish no orientation at all.
-test fn orientation_is_derived_from_raw_readings_only() -> Bool {
-  let d2 = match orientation_between(c: e1_j20_input_circuit, a: board_ground_node, b: j20_supply_node) {
-    CathodeOn { cathode_node: k, anode_node: a } => k == j20_supply_node && a == board_ground_node
+// 0 when the circuit derives; otherwise which refusal it is.
+fn refusal_key(d: NetlistDerivation) -> Nat {
+  match d {
+    NetlistDerived { netlist: _ } => 0
+    NetlistRefused { cause } => match cause {
+      OpenPairJoined { a: _, b: _ } => 1
+      TwoNamesOnOneNet { first: _, second: _ } => 2
+      AnchorUnreached { net: _ } => 3
+    }
+  }
+}
+
+fn is_derived(d: NetlistDerivation) -> Bool {
+  match d {
+    NetlistDerived { netlist: _ } => true
+    NetlistRefused { cause: _ } => false
+  }
+}
+
+// THE E1'S READINGS DERIVE THREE NAMED NETS AND NOTHING UNNAMED, and every J20 position, F1 end and D2
+// tab lands where the readings put it: J20's two rows on two different nets, F1's ends together.
+test fn the_e1_readings_derive_three_named_nets() -> Bool {
+  match circuit_netlist(c: e1_measured_circuit) {
+    NetlistRefused { cause: _ } => false
+    NetlistDerived { netlist: nl } =>
+      count(nl.nets) == 3 && count(nl.unnamed) == 0
+        && all(nl.nets, n => any([e1_ground, e1_j20_supply, e1_capacitor_rail], x => net_identity_eq(a: x, b: n.identity)))
+  }
+}
+
+// A CONTRADICTORY READING STOPS THE LINE. A supplied reading joining J20's supply to the capacitor rail
+// contradicts the recorded open reading between them; a reading joining J20's two rows puts the ground
+// and supply anchors on one net; an anchor no reading reaches names nothing. Each refuses with its own
+// cause, and a refused circuit places no part across the input -- D2 falls back to adjacency.
+test fn contradictory_readings_refuse() -> Bool {
+  let open_joined = circuit_with(readings: concat(e1_measured_circuit.readings, [JoinedByContinuity { terminals: [e1_j20_away_1, e1_c10_pos] }]), anchors: e1_measured_circuit.anchors)
+  let rows_joined = circuit_with(readings: concat(e1_measured_circuit.readings, [JoinedByContinuity { terminals: [e1_j20_away_1, e1_j20_latch_1] }]), anchors: e1_measured_circuit.anchors)
+  let unreached = circuit_with(readings: [JoinedByContinuity { terminals: [e1_j20_latch_1, e1_d2_far] }], anchors: e1_measured_circuit.anchors)
+  refusal_key(d: circuit_netlist(c: open_joined)) == 1
+    && refusal_key(d: circuit_netlist(c: rows_joined)) == 2
+    && refusal_key(d: circuit_netlist(c: unreached)) == 3
+    && is_derived(d: circuit_netlist(c: e1_measured_circuit))
+    && is_adjacent(m: membership_by_circuit(c: open_joined, positives: [e1_d2_near], returns: [e1_d2_far], otherwise: e1_adjacency_j20))
+}
+
+fn cathode_on_supply(o: JunctionOrientation) -> Bool {
+  match o {
+    CathodeOn { cathode_net: k, anode_net: a } => net_identity_eq(a: k, b: e1_j20_supply) && net_identity_eq(a: a, b: e1_ground)
     OrientationUnread => false
   }
-  let caps = match orientation_between(c: e1_j20_input_circuit, a: "capacitor rail", b: j20_supply_node) {
-    CathodeOn { cathode_node: _, anode_node: _ } => false
+}
+
+// THE RAW READING UNDERLIES THE ORIENTATION. D2's forward reading, red on its farther tab and black on
+// its nearer, and D5's, red on its upper tab and black on its lower, each put the cathode on J20's supply
+// net; the reverse directions are unread, not open. The capacitor rail's two readings have no recorded
+// probe placement, so they establish no orientation at all.
+test fn orientation_is_derived_from_raw_readings_only() -> Bool {
+  let d2 = cathode_on_supply(o: part_orientation(c: e1_measured_circuit, terminals: [e1_d2_near, e1_d2_far]))
+  let d5 = cathode_on_supply(o: part_orientation(c: e1_measured_circuit, terminals: [e1_d5_upper, e1_d5_lower]))
+  let caps = match part_orientation(c: e1_measured_circuit, terminals: [e1_c10_pos, e1_j20_away_1]) {
+    CathodeOn { cathode_net: _, anode_net: _ } => false
     OrientationUnread => true
   }
-  d2 && caps && count(readings_between(c: e1_j20_input_circuit, a: board_ground_node, b: j20_supply_node)) == 1
+  d2 && d5 && caps && count(readings_across(c: e1_measured_circuit, terminals: [e1_d2_near, e1_d2_far])) == 1
+}
+
+// D5 IS A SECOND CLAMP ACROSS THE SAME RAIL: its tabs read on J20's supply and on ground, so it is placed
+// across the input by the circuit alone, with its own oriented reading as evidence.
+test fn d5_is_a_second_clamp_across_j20s_supply() -> Bool {
+  let d5 = filter(p4261_e1_layout.power_components, c => any(c.designators, d => d == "D5"))
+  count(d5) == 1 && all(d5, c => match c.membership {
+    RatingAcrossInputRail { evidence: e } => (e as String).contains("'D5 lower tab") && (e as String).contains("red on 'D5 upper tab") && (e as String).contains("605 mV") && (e as String).contains("cathode on net 'J20 supply'")
+    OnPathByAdjacency { basis: _ } => false
+  })
 }
 
 // 5PGK IDENTIFIES AN ELECTRICAL CLASS, NOT A MAKER. D2 carries both makers' rows for the code, with
 // distinct vendors and one 60 V standoff, and the bound it yields is that standoff.
 test fn d2_is_identified_by_class_not_maker() -> Bool {
-  let parts = filter(p4261_e1_layout.power_components, c => any(c.designators, d => d == "D2"))
-  count(parts) == 1 && all(parts, c => match c.identification {
+  let parts = filter(p4261_e1_layout.power_components, c => any(c.designators, d => d == "D2" || d == "D5"))
+  count(parts) == 2 && all(parts, c => match c.identification {
     MarkingSharedByMakers { rows: rs, marking_read: _ } =>
       count(rs) == 2
         && all(rs, r => volt_count(v: r.voltage_rating.maximum) == 60)
@@ -230,33 +333,41 @@ test fn the_third_can_inherits_nothing() -> Bool {
   })
 }
 
-fn is_ground_row(r: PinRowContinuity) -> Bool {
-  match r.tied_to {
-    ToGround => true
-    ToFuse { designator: _ } => false
-  }
-}
-
-fn is_f1_row(r: PinRowContinuity) -> Bool {
-  match r.tied_to {
-    ToGround => false
-    ToFuse { designator: d } => d == "F1"
-  }
-}
-
-// J20 IS A POWER INPUT BY CONTINUITY: 18 positions, nine to ground and nine joined to F1. Its bound does
-// not leak onto the grey-block path, which on this unit has no rated part placed and no bound.
+// J20 IS A POWER INPUT BY CONTINUITY: 18 positions, the nine on the latch side on ground and the nine
+// away from it on J20's supply, with both ends of F1 on that supply net. Its bound does not leak onto
+// the grey-block path, which on this unit has no rated part placed and no bound.
 test fn j20_reads_as_a_fused_power_input_and_stays_on_its_path() -> Bool {
-  let rows = p4261_e1_layout.j20_rows
   let grey = match path_bound(layout: p4261_e1_layout, path: GreyBlindMatePath) {
     NoEstablishedBound { observed_ratings: _ } => true
     BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
   }
-  p4261_e1_layout.j20_positions == 18
-    && count(filter(rows, x => is_ground_row(r: x) && x.pins == 9)) == 1
-    && count(filter(rows, x => is_f1_row(r: x) && x.pins == 9 && x.tied_together)) == 1
-    && fold(rows, init: 0, f: (acc, x) => acc + x.pins) == p4261_e1_layout.j20_positions
+  let placed = match circuit_netlist(c: e1_measured_circuit) {
+    NetlistRefused { cause: _ } => false
+    NetlistDerived { netlist: nl } =>
+      all(housing_side_terminals(h: e1_j20_housing, side: LatchSide), x => on_net(nl: nl, t: x, net: e1_ground))
+        && all(housing_side_terminals(h: e1_j20_housing, side: AwayFromLatch), x => on_net(nl: nl, t: x, net: e1_j20_supply))
+        && on_net(nl: nl, t: e1_f1_near, net: e1_j20_supply) && on_net(nl: nl, t: e1_f1_far, net: e1_j20_supply)
+  }
+  j20_position_count(layout: p4261_e1_layout) == 18
+    && count(housing_side_terminals(h: e1_j20_housing, side: LatchSide)) == 9
+    && placed
     && grey
+}
+
+// F300 IS ON J20'S SUPPLY, AND ITS RATING BOUNDS NOTHING. Both its ends read on J20's supply net, so it
+// is on J20's path; a fuse has no return terminal, so its 75 V interrupt rating is carried as observed,
+// never placed across the rail -- the J20 bound stays D2's 60 V.
+test fn f300_is_on_j20s_supply_and_bounds_nothing() -> Bool {
+  let on_supply = match circuit_netlist(c: e1_measured_circuit) {
+    NetlistRefused { cause: _ } => false
+    NetlistDerived { netlist: nl } => on_net(nl: nl, t: e1_f300_one_end, net: e1_j20_supply) && on_net(nl: nl, t: e1_f300_other_end, net: e1_j20_supply)
+  }
+  let f300 = filter(p4261_e1_layout.power_components, c => any(c.designators, d => d == "F300"))
+  let observed_only = match path_bound(layout: p4261_e1_layout, path: J20InputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 60
+    NoEstablishedBound { observed_ratings: _ } => false
+  }
+  on_supply && count(f300) == 1 && all(f300, c => is_adjacent(m: c.membership)) && observed_only
 }
 
 // U522 is identified as a management-bus part, and the management text names the pins to trace.
@@ -271,8 +382,8 @@ fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> Ca
     module_receptacles: base.module_receptacles,
     grey_edge_connectors: base.grey_edge_connectors,
     j20_connector: base.j20_connector,
-    j20_positions: base.j20_positions,
-    j20_rows: base.j20_rows,
+    j20: base.j20,
+    circuit: base.circuit,
     edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: survey,
     management_io_observed: base.management_io_observed,
@@ -321,23 +432,31 @@ fn is_unrecorded(p: PolarityReading) -> Bool {
   }
 }
 
-fn j20_rows_with(ground: RowSide, supply: RowSide) -> List<PinRowContinuity> {
-  [
-    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true, side: ground },
-    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true, side: supply },
-  ]
+fn housing_with_sides(latch_row_side: RowSide, away_row_side: RowSide) -> ConnectorHousing {
+  ConnectorHousing {
+    component: e1_j20_housing.component,
+    positions: map(e1_j20_housing.positions, p => HousingPosition {
+      terminal: p.terminal,
+      side: match p.side {
+        LatchSide => latch_row_side
+        AwayFromLatch => away_row_side
+        SideUnrecorded => SideUnrecorded
+      },
+      index: p.index,
+    }),
+  }
 }
 
-// J20'S POLARITY IS READ AGAINST THE LATCH, AND ONLY A CONSISTENT READING COUNTS. The E1's rows put the
-// fused supply away from the latch and ground on it; the same rows swapped read the other way round;
-// a row with no recorded side, or both rows on one side, refuses rather than guessing.
+// J20'S POLARITY IS DERIVED FROM THE NETS AGAINST THE LATCH, AND ONLY A CONSISTENT READING COUNTS. The
+// E1's housing puts the supply-net row away from the latch; the same positions recorded on the opposite
+// sides read the other way round; a housing with a side unrecorded, or both rows recorded on one side,
+// refuses rather than guessing; the K1, counted from a photograph, has none.
 test fn j20_polarity_is_read_against_the_latch() -> Bool {
-  supply_side_is_away(p: polarity_reading(rows: p4261_e1_layout.j20_rows))
-    && supply_side_is_latch(p: polarity_reading(rows: j20_rows_with(ground: AwayFromLatch, supply: LatchSide)))
-    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: LatchSide, supply: SideUnrecorded)))
-    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: SideUnrecorded, supply: AwayFromLatch)))
-    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: LatchSide, supply: LatchSide)))
-    && is_unrecorded(p: polarity_reading(rows: p4261_k1_layout.j20_rows))
+  supply_side_is_away(p: polarity_reading(layout: p4261_e1_layout))
+    && supply_side_is_latch(p: housing_polarity(h: housing_with_sides(latch_row_side: AwayFromLatch, away_row_side: LatchSide), c: e1_measured_circuit))
+    && is_unrecorded(p: housing_polarity(h: housing_with_sides(latch_row_side: LatchSide, away_row_side: SideUnrecorded), c: e1_measured_circuit))
+    && is_unrecorded(p: housing_polarity(h: housing_with_sides(latch_row_side: LatchSide, away_row_side: LatchSide), c: e1_measured_circuit))
+    && is_unrecorded(p: polarity_reading(layout: p4261_k1_layout))
 }
 
 fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {

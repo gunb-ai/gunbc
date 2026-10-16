@@ -22,6 +22,34 @@ import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
 import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
 import extdeps.connector.amphenol_g97v22332hr { g97v22332hr }
+import product.electrical.connectivity {
+  ElectricalDesignIdentity,
+  ComponentInstanceIdentity,
+  TerminalIdentity,
+  NetIdentity,
+  ElectricalTerminalRef,
+  component_instance_identity,
+  net_identity,
+  terminal_ref,
+  terminal_ref_equal,
+  net_identity_eq,
+  net_local_label,
+}
+import product.electrical.continuity {
+  ContinuityReading,
+  JoinedByContinuity,
+  OpenByContinuity,
+  NetAnchor,
+  MeasuredNetlist,
+  NetlistDerivation,
+  NetlistDerived,
+  NetlistRefused,
+  derive_measured_netlist,
+  measured_net_of,
+  on_measured_net,
+  terminal_text,
+  continuity_refusal_text,
+}
 
 // GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
 // document names this board, so everything here is the operator's observation of a unit, kept in
@@ -84,73 +112,74 @@ type IdentifiedSignalPart {
   row: SignalComponentRow
 }
 
-// J20'S PINS BY CONTINUITY, unpowered. Each row of pins is read against ground and against the fuse
-// beside the connector; tied_together says every pin in the row beeps to every other.
-type ContinuityTarget
-  = ToGround
-  | ToFuse { designator: NonEmptyStr }
-
 // WHICH PHYSICAL ROW, against a reference on the housing anyone can find: the latch. A row swap reverses
-// polarity, so a row whose side was not recorded is never assumed.
+// polarity, so a position whose side was not recorded is never assumed.
 type RowSide
   = LatchSide
   | AwayFromLatch
   | SideUnrecorded
 
-type PinRowContinuity {
-  pins: Nat
-  tied_to: ContinuityTarget
-  tied_together: Bool
+// A CONNECTOR'S POSITIONS AS TERMINALS. Each position is a terminal of the connector's component
+// instance, so what continuity found on it is a net membership in product.electrical.connectivity's
+// vocabulary, and where it sits on the housing is a physical fact beside it. Polarity is then derived
+// -- which side's positions are on the supply net and which on ground -- rather than stated.
+type HousingPosition {
+  terminal: TerminalIdentity
   side: RowSide
+  index: Nat
 }
 
-// Polarity is recorded only when every ground row and every supply row has a recorded side, the ground
-// rows share one side, the supply rows share one side, and the two sides differ.
+type ConnectorHousing {
+  component: ComponentInstanceIdentity
+  positions: List<HousingPosition>
+}
+
+type ConnectorPositionCensus
+  = CountedFromPhotograph { positions: Nat, source: NonEmptyStr }
+  | MappedOnHousing { housing: ConnectorHousing }
+
+// Polarity is recorded only when the circuit derives, every position has a recorded side, one side's
+// positions all lie on the circuit's supply net and the other side's all on its ground net.
 type PolarityReading
   = PolarityRecorded { supply_side: RowSide, ground_side: RowSide }
   | PolarityUnrecorded { reason: NonEmptyStr }
 
-// THE MEASURED CIRCUIT: the part of one board's netlist a multimeter has established, unpowered. A node
-// is a set of terminals continuity found joined to each other. A diode-mode reading is kept RAW -- which
-// node the red probe touched, which the black, and what the meter displayed -- and orientation is
-// derived from it: in diode mode the red probe is positive, so a forward reading with red on X and
-// black on Y puts an anode on X and a cathode on Y. A direction nobody read is absent, not open. A
-// terminal no reading reached is absent, never assumed. The circuit binds to the physical asset it was
-// read on, so it cannot describe another carrier.
-type CircuitNode {
-  name: NonEmptyStr
-  terminals: List<NonEmptyStr>
-}
-
-type ProbePoint
-  = OnNode { node: NonEmptyStr }
-  | ProbePlacementUnrecorded
-
+// THE MEASURED CIRCUIT: the part of one board's connectivity a multimeter has established, unpowered,
+// as raw continuity readings over component terminals (product.electrical.continuity), the anchors
+// that name the nets they derive, and raw diode-mode readings. A diode reading names the terminals the
+// probes touched -- red and black when recorded, the pair alone when not -- and orientation is derived:
+// in diode mode the red probe is positive, so a forward reading with red on X and black on Y puts an
+// anode on X's net and a cathode on Y's. Where a probe's exact terminal on a net is unrecorded, a
+// terminal of that net stands for it; the net's terminals are joined, so the choice carries no
+// information and is never read as one. input_supply and ground are the two nets the circuit was read
+// to establish. The circuit binds to the physical asset it was read on, so it cannot describe another
+// carrier.
 type MeterDisplay
   = ForwardMillivolts { millivolts: Nat }
   | OverLimit
 
-type DiodeModeReading {
-  red_on: ProbePoint
-  black_on: ProbePoint
-  display: MeterDisplay
-}
+type ProbePlacement
+  = RedBlack { red: ElectricalTerminalRef, black: ElectricalTerminalRef }
+  | PlacementUnrecorded { between: List<ElectricalTerminalRef> }
 
-type NodePairReadings {
-  nodes: List<NonEmptyStr>
-  readings: List<DiodeModeReading>
+type DiodeModeReading {
+  probes: ProbePlacement
+  display: MeterDisplay
 }
 
 type MeasuredCircuit {
   asset: PhysicalAssetIdentity
   read_on: NonEmptyStr
   conditions: NonEmptyStr
-  nodes: List<CircuitNode>
-  diode_readings: List<NodePairReadings>
+  readings: List<ContinuityReading>
+  anchors: List<NetAnchor>
+  input_supply: NetIdentity
+  ground: NetIdentity
+  diode_readings: List<DiodeModeReading>
 }
 
 type JunctionOrientation
-  = CathodeOn { cathode_node: NonEmptyStr, anode_node: NonEmptyStr }
+  = CathodeOn { cathode_net: NetIdentity, anode_net: NetIdentity }
   | OrientationUnread
 
 // A connector family read off one housing, and which unit it was read on.
@@ -176,8 +205,8 @@ type CarrierLayoutObservation {
   module_receptacles: List<NonEmptyStr>
   grey_edge_connectors: NonEmptyStr
   j20_connector: NonEmptyStr
-  j20_positions: Nat
-  j20_rows: List<PinRowContinuity>
+  j20: ConnectorPositionCensus
+  circuit: MeasuredCircuit?
   edge_high_speed_connectors: ConnectorCensus
   management_io_survey: ManagementIoSurvey
   management_io_observed: List<NonEmptyStr>
@@ -197,36 +226,37 @@ data operator_carrier_edge_family: ConnectorFamilyCandidate = ConnectorFamilyCan
 
 // ── THE MEASURED CIRCUIT AND ITS DEDUCTIONS ──────────────────────────────────────────────────
 
-fn node_of(c: MeasuredCircuit, terminal: NonEmptyStr) -> NonEmptyStr? {
-  match filter(c.nodes, n => any(n.terminals, t => t == terminal)).first() {
-    Absent => Absent
-    Present { value: n } => Present { value: n.name }
+fn circuit_netlist(c: MeasuredCircuit) -> NetlistDerivation {
+  derive_measured_netlist(readings: c.readings, anchors: c.anchors)
+}
+
+fn terminal_among(ts: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  any(ts, m => terminal_ref_equal(a: m, b: t))
+}
+
+fn probe_terminals(p: ProbePlacement) -> List<ElectricalTerminalRef> {
+  match p {
+    RedBlack { red, black } => [red, black]
+    PlacementUnrecorded { between } => between
   }
 }
 
-fn on_node(c: MeasuredCircuit, terminal: NonEmptyStr, node: NonEmptyStr) -> Bool {
-  match node_of(c: c, terminal: terminal) {
-    Absent => false
-    Present { value: n } => n == node
-  }
+// The diode readings taken across a part: those whose every probe point is one of the part's terminals.
+fn readings_across(c: MeasuredCircuit, terminals: List<ElectricalTerminalRef>) -> List<DiodeModeReading> {
+  filter(c.diode_readings, r => all(probe_terminals(p: r.probes), t => terminal_among(ts: terminals, t: t)))
 }
 
-fn pair_joins(p: NodePairReadings, a: NonEmptyStr, b: NonEmptyStr) -> Bool {
-  any(p.nodes, n => n == a) && any(p.nodes, n => n == b)
-}
-
-fn readings_between(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> List<DiodeModeReading> {
-  flat_map(filter(c.diode_readings, p => pair_joins(p: p, a: a, b: b)), p => p.readings)
-}
-
-fn reading_orientation(r: DiodeModeReading) -> JunctionOrientation {
+fn reading_orientation(nl: MeasuredNetlist, r: DiodeModeReading) -> JunctionOrientation {
   match r.display {
     OverLimit => OrientationUnread
-    ForwardMillivolts { millivolts: _ } => match r.red_on {
-      ProbePlacementUnrecorded => OrientationUnread
-      OnNode { node: anode } => match r.black_on {
-        ProbePlacementUnrecorded => OrientationUnread
-        OnNode { node: cathode } => CathodeOn { cathode_node: cathode, anode_node: anode }
+    ForwardMillivolts { millivolts: _ } => match r.probes {
+      PlacementUnrecorded { between: _ } => OrientationUnread
+      RedBlack { red, black } => match measured_net_of(netlist: nl, t: red) {
+        Absent => OrientationUnread
+        Present { value: anode } => match measured_net_of(netlist: nl, t: black) {
+          Absent => OrientationUnread
+          Present { value: cathode } => CathodeOn { cathode_net: cathode, anode_net: anode }
+        }
       }
     }
   }
@@ -234,23 +264,26 @@ fn reading_orientation(r: DiodeModeReading) -> JunctionOrientation {
 
 fn is_oriented(o: JunctionOrientation) -> Bool {
   match o {
-    CathodeOn { cathode_node: _, anode_node: _ } => true
+    CathodeOn { cathode_net: _, anode_net: _ } => true
     OrientationUnread => false
   }
 }
 
-// The orientation the raw readings between two nodes establish, if any reading establishes one.
-fn orientation_between(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> JunctionOrientation {
-  match filter(map(readings_between(c: c, a: a, b: b), r => reading_orientation(r: r)), o => is_oriented(o: o)).first() {
-    Absent => OrientationUnread
-    Present { value: o } => o
+// The orientation the raw readings across a part establish, if any reading establishes one.
+fn part_orientation(c: MeasuredCircuit, terminals: List<ElectricalTerminalRef>) -> JunctionOrientation {
+  match circuit_netlist(c: c) {
+    NetlistRefused { cause: _ } => OrientationUnread
+    NetlistDerived { netlist: nl } => match filter(map(readings_across(c: c, terminals: terminals), r => reading_orientation(nl: nl, r: r)), o => is_oriented(o: o)).first() {
+      Absent => OrientationUnread
+      Present { value: o } => o
+    }
   }
 }
 
-fn probe_text(p: ProbePoint) -> String {
+fn probe_text(p: ProbePlacement) -> String {
   match p {
-    OnNode { node: n } => join(["'", n as String, "'"], "")
-    ProbePlacementUnrecorded => "an unrecorded node"
+    RedBlack { red, black } => join(["red on '", terminal_text(t: red), "', black on '", terminal_text(t: black), "'"], "")
+    PlacementUnrecorded { between } => join(["across ", join(map(between, t => join(["'", terminal_text(t: t), "'"], "")), " and "), " with probe placement unrecorded"], "")
   }
 }
 
@@ -262,40 +295,49 @@ fn display_text(d: MeterDisplay) -> String {
 }
 
 fn reading_text(r: DiodeModeReading) -> String {
-  join(["red on ", probe_text(p: r.red_on), ", black on ", probe_text(p: r.black_on), ": ", display_text(d: r.display)], "")
+  join([probe_text(p: r.probes), ": ", display_text(d: r.display)], "")
 }
 
-fn junction_text(c: MeasuredCircuit, a: NonEmptyStr, b: NonEmptyStr) -> String {
-  let rs = readings_between(c: c, a: a, b: b)
+fn junction_text(c: MeasuredCircuit, terminals: List<ElectricalTerminalRef>) -> String {
+  let rs = readings_across(c: c, terminals: terminals)
   match rs.first() {
-    Absent => "no diode-mode reading between these nodes"
+    Absent => "no diode-mode reading across these terminals"
     Present { value: _ } => join([
       "diode mode: ", join(map(rs, r => reading_text(r: r)), "; "),
       if count(rs) == 1 { "; the reverse direction was not read" } else { "" },
-      match orientation_between(c: c, a: a, b: b) {
-        CathodeOn { cathode_node: k, anode_node: _ } => join(["; cathode on '", k as String, "'"], "")
+      match part_orientation(c: c, terminals: terminals) {
+        CathodeOn { cathode_net: k, anode_net: _ } => join(["; cathode on net '", net_local_label(n: k) as String, "'"], "")
         OrientationUnread => "; orientation not established"
       },
     ], "")
   }
 }
 
-// THE DEDUCTION. A part every one of whose positive terminals is on the input's supply node, and every
-// one of whose return terminals is on ground, is across that input; the evidence is rendered from the
-// circuit itself, raw diode readings included. Any other part keeps the membership it would have
-// without the circuit.
-fn membership_by_circuit(c: MeasuredCircuit, positives: List<NonEmptyStr>, returns: List<NonEmptyStr>, supply: NonEmptyStr, ground: NonEmptyStr, otherwise: PathMembership) -> PathMembership {
-  let placed = count(positives) > 0 && count(returns) > 0
-    && all(positives, t => on_node(c: c, terminal: t, node: supply))
-    && all(returns, t => on_node(c: c, terminal: t, node: ground))
-  if placed {
-    RatingAcrossInputRail { evidence: join([
-      "measured circuit on asset ", c.asset as String, " (", c.read_on as String, ", ", c.conditions as String, "): ",
-      join(map(positives, t => join(["'", t as String, "'"], "")), ", "), " on node '", supply as String, "', ",
-      join(map(returns, t => join(["'", t as String, "'"], "")), ", "), " on node '", ground as String, "'; ",
-      junction_text(c: c, a: ground, b: supply),
-    ], "") as NonEmptyStr }
-  } else { otherwise }
+fn quoted_terminals(ts: List<ElectricalTerminalRef>) -> String {
+  join(map(ts, t => join(["'", terminal_text(t: t), "'"], "")), ", ")
+}
+
+// THE DEDUCTION. A part every one of whose positive terminals is on the circuit's supply net, and every
+// one of whose return terminals is on its ground net, is across that input; the evidence is rendered
+// from the circuit itself, raw diode readings included. A circuit whose readings contradict each other
+// places nothing, and any part the circuit does not place keeps the membership it would have without it.
+fn membership_by_circuit(c: MeasuredCircuit, positives: List<ElectricalTerminalRef>, returns: List<ElectricalTerminalRef>, otherwise: PathMembership) -> PathMembership {
+  match circuit_netlist(c: c) {
+    NetlistRefused { cause: _ } => otherwise
+    NetlistDerived { netlist: nl } => {
+      let placed = count(positives) > 0 && count(returns) > 0
+        && all(positives, t => on_measured_net(netlist: nl, t: t, net: c.input_supply))
+        && all(returns, t => on_measured_net(netlist: nl, t: t, net: c.ground))
+      if placed {
+        RatingAcrossInputRail { evidence: join([
+          "measured circuit on asset ", c.asset as String, " (", c.read_on as String, ", ", c.conditions as String, "): ",
+          quoted_terminals(ts: positives), " on net '", net_local_label(n: c.input_supply) as String, "', ",
+          quoted_terminals(ts: returns), " on net '", net_local_label(n: c.ground) as String, "'; ",
+          junction_text(c: c, terminals: concat(positives, returns)),
+        ], "") as NonEmptyStr }
+      } else { otherwise }
+    }
+  }
 }
 
 // ── THE K1 UNIT (listing photographs) ────────────────────────────────────────────────────────
@@ -319,8 +361,8 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   module_receptacles: ["J3", "J4"],
   grey_edge_connectors: "two large grey blocks on the top edge; position count, rating and pin assignment unread",
   j20_connector: "J20, a black shrouded two-row power-style receptacle on the left edge, its 16 positions counted from a listing photograph (the E1 carrier, read in hand, has 18: recount on this unit); rating and pin assignment unread",
-  j20_positions: 16,
-  j20_rows: [],
+  j20: CountedFromPhotograph { positions: 16, source: "a listing photograph" },
+  circuit: Absent,
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 10,
     obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
@@ -328,7 +370,7 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   },
   management_io_survey: WholeBoardPhotographed,
   management_io_observed: [
-    "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
+    "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB in the listing photograph; the operator confirms 2026-10-16 that the received K1 carries it, marked Amphenol / 1502 (see the E1's reading of the same part for its dimensions). A micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
   ],
   power_components: [
     ObservedComponent {
@@ -413,39 +455,118 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
 
 // ── THE E1 UNIT (the operator's bench readings, asset p4261_e1_b) ──────────────────────────────
 //
-// J20'S INPUT CIRCUIT AS MEASURED, 2026-10-15. The nine J20 supply pins, both ends of F1 (it tests
-// intact, so its ends read joined) and D2's tab nearer J20 form one node; the nine J20 ground pins,
-// D2's farther tab and the two probed cans' negative terminals form ground. Those cans' positive
-// terminals are NOT joined to J20's supply: two diode-mode readings between them gave 523 mV and open,
-// with the probe placement unrecorded. D2 read 600 mV with red on ground and black on J20 supply; its
-// reverse direction was not read. R010, the switch candidate and the third can were not probed.
-data j20_supply_node: NonEmptyStr = "J20 supply"
-data board_ground_node: NonEmptyStr = "ground"
-data capacitor_rail_node: NonEmptyStr = "capacitor rail"
+// THE E1 AS A DESIGN in product.electrical.connectivity's vocabulary: its parts are component instances
+// scoped to this board, their pads are terminals, and every bench reading is a raw continuity or diode
+// reading over those terminals. Nets are derived (product.electrical.continuity), never stated: the
+// ground net is whatever continuity joined to J20's latch-side row, J20's supply net whatever it joined
+// to the row away from the latch. A continuity net conducts through intact fuses and shunts, so F1's
+// two ends on one net say F1 is intact and nothing about which side of it J20 sits on.
+//
+// Readings, 2026-10-15: each J20 row's nine positions beep to each other; the latch-side row beeps to
+// D2's farther tab and the probed cans' negative terminals, the other row to both ends of F1 and D2's
+// nearer tab; the two probed cans' positive terminals beep to each other and NOT to J20's supply; D2
+// read 600 mV with red on its farther tab and black on its nearer; between the cans' positives and J20's
+// supply, 523 mV one way and open the other, probe placement unrecorded. 2026-10-16: every copper-ringed
+// mounting hole beeps to J20's latch-side row; D5's upper tab (as the operator described it) beeps to
+// ground and its lower tab to J20's supply, as does every large bare pad by F300 (the unpopulated F302
+// footprint among them), and so do both ends of F300; D5 read 605 mV with red on its upper tab and
+// black on its lower.
+// R010, the switch candidate and the third can are not yet in a recorded reading. F300 and F1 both sit
+// on J20's supply continuity net, which says both are intact and nothing about whether either is in
+// series with J20 or on a branch from it: continuity does not see through a fuse.
+data e1_design: ElectricalDesignIdentity = "p4261-e1-b" as ElectricalDesignIdentity
 
-data e1_j20_input_circuit: MeasuredCircuit = MeasuredCircuit {
+data e1_j20: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "J20")
+data e1_f1: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "F1")
+data e1_d2: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "D2")
+data e1_d5: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "D5")
+data e1_f300: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "F300")
+data e1_c10: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "C10_P5")
+data e1_c12: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "C12_P5")
+// Two readings each covered a whole population at once ("every ring", "every large bare pad"), with the
+// members neither counted nor designated; each population is carried as one component whose one terminal
+// stands for all of its members, until a reading separates them.
+data e1_mounting_rings: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "copper-ringed mounting holes")
+data e1_bare_pads: ComponentInstanceIdentity = component_instance_identity(design: e1_design, local_identity: "large bare pads by F300")
+
+fn e1_terminal(c: ComponentInstanceIdentity, name: NonEmptyStr) -> ElectricalTerminalRef {
+  terminal_ref(component: c, terminal: name as TerminalIdentity)
+}
+
+// J20'S EIGHTEEN POSITIONS, by side and by index along the row. The index runs from the end the operator
+// called pin 1 (2026-10-15, top left as photographed, which is on the row away from the latch); the
+// latch-side row is indexed in the same direction. Which end is the connector maker's pin 1 is unread.
+data j20_row_indices: List<Nat> = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+fn j20_position_terminal(side: RowSide, index: Nat) -> TerminalIdentity {
+  let row = match side {
+    LatchSide => "latch-side row"
+    AwayFromLatch => "row away from the latch"
+    SideUnrecorded => "row of unrecorded side"
+  }
+  (join([row, ", position ", to_string(index)], "") as NonEmptyStr) as TerminalIdentity
+}
+
+fn j20_row(side: RowSide) -> List<HousingPosition> {
+  map(j20_row_indices, i => HousingPosition { terminal: j20_position_terminal(side: side, index: i), side: side, index: i })
+}
+
+data e1_j20_housing: ConnectorHousing = ConnectorHousing {
+  component: e1_j20,
+  positions: concat(j20_row(side: LatchSide), j20_row(side: AwayFromLatch)),
+}
+
+fn housing_side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminalRef> {
+  map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
+}
+
+data e1_j20_latch_1: ElectricalTerminalRef = terminal_ref(component: e1_j20, terminal: j20_position_terminal(side: LatchSide, index: 1))
+data e1_j20_away_1: ElectricalTerminalRef = terminal_ref(component: e1_j20, terminal: j20_position_terminal(side: AwayFromLatch, index: 1))
+data e1_f1_near: ElectricalTerminalRef = e1_terminal(c: e1_f1, name: "end nearer J20")
+data e1_f1_far: ElectricalTerminalRef = e1_terminal(c: e1_f1, name: "end farther from J20")
+data e1_d2_near: ElectricalTerminalRef = e1_terminal(c: e1_d2, name: "tab nearer J20")
+data e1_d2_far: ElectricalTerminalRef = e1_terminal(c: e1_d2, name: "tab farther from J20")
+data e1_d5_upper: ElectricalTerminalRef = e1_terminal(c: e1_d5, name: "upper tab (as the operator described it, 2026-10-16)")
+data e1_d5_lower: ElectricalTerminalRef = e1_terminal(c: e1_d5, name: "lower tab (as the operator described it, 2026-10-16)")
+data e1_c10_pos: ElectricalTerminalRef = e1_terminal(c: e1_c10, name: "positive")
+data e1_c10_neg: ElectricalTerminalRef = e1_terminal(c: e1_c10, name: "negative")
+data e1_c12_pos: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "positive")
+data e1_c12_neg: ElectricalTerminalRef = e1_terminal(c: e1_c12, name: "negative")
+data e1_f300_one_end: ElectricalTerminalRef = e1_terminal(c: e1_f300, name: "one end")
+data e1_f300_other_end: ElectricalTerminalRef = e1_terminal(c: e1_f300, name: "the other end")
+data e1_every_ring: ElectricalTerminalRef = e1_terminal(c: e1_mounting_rings, name: "every ring (count unread)")
+data e1_every_bare_pad: ElectricalTerminalRef = e1_terminal(c: e1_bare_pads, name: "every pad (count unread)")
+
+data e1_ground: NetIdentity = net_identity(design: e1_design, local_identity: "ground")
+data e1_j20_supply: NetIdentity = net_identity(design: e1_design, local_identity: "J20 supply")
+data e1_capacitor_rail: NetIdentity = net_identity(design: e1_design, local_identity: "capacitor rail")
+
+data e1_measured_circuit: MeasuredCircuit = MeasuredCircuit {
   asset: p4261_e1_b,
-  read_on: "2026-10-15",
+  read_on: "2026-10-15 and 2026-10-16",
   conditions: "unpowered, module removed, handheld multimeter in continuity and diode modes",
-  nodes: [
-    CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)", "F1 end nearer J20", "F1 end farther from J20", "D2 tab nearer J20"] },
-    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "every copper-ringed mounting hole (operator, 2026-10-16: J20 ground beeps to all of them)", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
-    CircuitNode { name: capacitor_rail_node, terminals: ["C10_P5 positive", "C12_P5 positive"] },
+  readings: [
+    JoinedByContinuity { terminals: concat(housing_side_terminals(h: e1_j20_housing, side: LatchSide), [e1_d2_far, e1_c10_neg, e1_c12_neg]) },
+    JoinedByContinuity { terminals: concat(housing_side_terminals(h: e1_j20_housing, side: AwayFromLatch), [e1_f1_near, e1_f1_far, e1_d2_near]) },
+    JoinedByContinuity { terminals: [e1_c10_pos, e1_c12_pos] },
+    OpenByContinuity { a: e1_j20_away_1, b: e1_c10_pos },
+    JoinedByContinuity { terminals: [e1_j20_latch_1, e1_every_ring] },
+    JoinedByContinuity { terminals: [e1_j20_latch_1, e1_d5_upper] },
+    JoinedByContinuity { terminals: [e1_j20_away_1, e1_d5_lower, e1_every_bare_pad] },
+    JoinedByContinuity { terminals: [e1_j20_away_1, e1_f300_one_end, e1_f300_other_end] },
   ],
+  anchors: [
+    NetAnchor { net: e1_ground, anchor: e1_j20_latch_1 },
+    NetAnchor { net: e1_j20_supply, anchor: e1_j20_away_1 },
+    NetAnchor { net: e1_capacitor_rail, anchor: e1_c10_pos },
+  ],
+  input_supply: e1_j20_supply,
+  ground: e1_ground,
   diode_readings: [
-    NodePairReadings {
-      nodes: [board_ground_node, j20_supply_node],
-      readings: [
-        DiodeModeReading { red_on: OnNode { node: board_ground_node }, black_on: OnNode { node: j20_supply_node }, display: ForwardMillivolts { millivolts: 600 } },
-      ],
-    },
-    NodePairReadings {
-      nodes: [capacitor_rail_node, j20_supply_node],
-      readings: [
-        DiodeModeReading { red_on: ProbePlacementUnrecorded, black_on: ProbePlacementUnrecorded, display: ForwardMillivolts { millivolts: 523 } },
-        DiodeModeReading { red_on: ProbePlacementUnrecorded, black_on: ProbePlacementUnrecorded, display: OverLimit },
-      ],
-    },
+    DiodeModeReading { probes: RedBlack { red: e1_d2_far, black: e1_d2_near }, display: ForwardMillivolts { millivolts: 600 } },
+    DiodeModeReading { probes: PlacementUnrecorded { between: [e1_c10_pos, e1_j20_away_1] }, display: ForwardMillivolts { millivolts: 523 } },
+    DiodeModeReading { probes: PlacementUnrecorded { between: [e1_c10_pos, e1_j20_away_1] }, display: OverLimit },
+    DiodeModeReading { probes: RedBlack { red: e1_d5_upper, black: e1_d5_lower }, display: ForwardMillivolts { millivolts: 605 } },
   ],
 }
 
@@ -453,13 +574,15 @@ data e1_adjacency_j20: PathMembership = OnPathByAdjacency {
   basis: "operator close-ups of the E1 carrier, 2026-10-15: the part sits beside J20 and was not probed; adjacency, not a traced net",
 }
 
-data e1_adjacency_grey: PathMembership = OnPathByAdjacency {
-  basis: "operator close-up of the E1 carrier, 2026-10-15: F300 sits toward the top edge above J20's region and was not probed; adjacency, not a traced net",
+// A fuse has no return terminal, so the circuit cannot place its rating across the input the way it
+// places a TVS diode's; F300's ends on J20's supply net put it on J20's path, not across the rail.
+data e1_f300_on_j20_supply: PathMembership = OnPathByAdjacency {
+  basis: "measured circuit on the E1 carrier, 2026-10-16: both ends of F300 are on J20's supply continuity net, so the fuse is on J20's input; a fuse's interrupt rating is not a rating across the rail, and whether F300 is in series with J20 or on a branch is not decidable from continuity",
 }
 
 // The probed cans' fallback when the circuit does not place them across J20 -- which it does not.
 data e1_caps_not_across_j20: PathMembership = OnPathByAdjacency {
-  basis: "measured circuit on the E1 carrier: the cans' negative terminals are on ground, their positive terminals on a separate 'capacitor rail' node, joined to J20's supply only through a one-way junction (523 mV / open, probe placement unrecorded) -- consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
+  basis: "measured circuit on the E1 carrier: the cans' negative terminals are on ground, their positive terminals on a separate 'capacitor rail' net, read open to J20's supply in continuity and joined to it only through a one-way junction (523 mV / open, probe placement unrecorded) -- consistent with the body diode of the switch between R010 and the cans, and equally with a converter's switch, which would put the cans on a different rail",
 }
 
 data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
@@ -469,12 +592,9 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   ],
   module_receptacles: [],
   grey_edge_connectors: "one of the two photographed face-on by the operator 2026-10-16: about 9 columns x 4 rows of cavities, each holding a two-window insert with a row of fine gold contacts along its edge, and a steel guide pin on the board beside the housing; no large power blade visible on the face. The face reads as a blind-mate high-speed backplane receptacle, which is inference from the photograph, not a reading; family, part number and pin assignment unread",
-  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Rows by side (j20_rows), marked by the operator on a photograph 2026-10-16: the row on the latch side is ground, the row on the F1 / D2 side is the fused supply. Caliper, 2026-10-16: 26.32 mm from the inner left wall of a row's first cavity to the outer right wall of its ninth (eight pitches plus one cavity), and 5.27 mm from the top wall of the supply row's ninth cavity to the bottom wall of the ground row's ninth (one row pitch plus one cavity). With square cavities both fit a 3.0 mm pitch on both axes and a cavity of about 2.3 mm, and both exclude a 4.2 mm pitch (Mini-Fit Jr); the family is unread, and Molex Micro-Fit 3.0 is the candidate those dimensions match",
-  j20_positions: 18,
-  j20_rows: [
-    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true, side: LatchSide },
-    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true, side: AwayFromLatch },
-  ],
+  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded, with a latch on one long side; its positions, what continuity joins them to and its polarity are the housing and the measured circuit below. Caliper, 2026-10-16: 26.32 mm from the inner left wall of a row's first cavity to the outer right wall of its ninth (eight pitches plus one cavity), and 5.27 mm from the top wall of the supply row's ninth cavity to the bottom wall of the ground row's ninth (one row pitch plus one cavity). With square cavities both fit a 3.0 mm pitch on both axes and a cavity of about 2.3 mm, and both exclude a 4.2 mm pitch (Mini-Fit Jr); the family is unread, and Molex Micro-Fit 3.0 is the candidate those dimensions match",
+  j20: MappedOnHousing { housing: e1_j20_housing },
+  circuit: Present { value: e1_measured_circuit },
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 2,
     obligation: "two fine-pitch shrouded edge receptacles appear in the 2026-10-16 label photograph, one silkscreened J11 and the other's designator cut off; count the rest, read their J-numbers and one housing's marking on this unit",
@@ -483,19 +603,20 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   management_io_survey: PartlyPhotographed { not_covered: "the board has been photographed only in close-ups (J20, its fuse and capacitors, D2, U522, the sticker area); its other edges and the region around U4 are unphotographed" },
   management_io_observed: [
     "J620, a 2 x 5 pin header beside U78-U81 (2026-10-16 label photograph), one position marked with a white square, which reads as pin 1: function and pinout unread; a candidate for a debug, JTAG or UART header, unconfirmed",
+    "an edge receptacle marked Amphenol / 1502 (operator, 2026-10-16) with two openings side by side, about 7 mm and about 5 mm wide, into the wider of which a micro-USB plug fits. That is the USB 3.0 Micro-B receptacle's shape (a 6.85 mm Micro-B opening beside a SuperSpeed one, about 12 mm overall) -- identified by its dimensions; the part number and what '1502' encodes are unread, and what the board routes to it is untraced",
   ],
   power_components: [
     ObservedComponent {
       designators: ["F300"],
       quantity: 1,
-      role: "fuse toward the top edge, above J20's region",
+      role: "fuse left of J20 by the board edge, beside the unpopulated F302 footprint",
       identification: RatingPrintedOnBody {
         voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
         current: Present { value: ampere(count: 100) },
         marking_read: "LF 75V 100A (Littelfuse's 881 series sells a 75 VDC / 100 A part, 0881100, and lists a sibling's marking as 'LF 75V 60A' -- a pattern, the 100 A marking itself not read from a Littelfuse table)",
       },
-      path: GreyBlindMatePath,
-      membership: e1_adjacency_grey,
+      path: J20InputPath,
+      membership: e1_f300_on_j20_supply,
     },
     ObservedComponent {
       designators: ["D2"],
@@ -506,7 +627,18 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
         marking_read: "5PGK / ZCN5U under a boxed maker logo that is not identified: 5PGK is 5.0SMDJ60A in both Bourns's and Alpha and Omega Semiconductor's marking tables",
       },
       path: J20InputPath,
-      membership: membership_by_circuit(c: e1_j20_input_circuit, positives: ["D2 tab nearer J20"], returns: ["D2 tab farther from J20"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_adjacency_j20),
+      membership: membership_by_circuit(c: e1_measured_circuit, positives: [e1_d2_near], returns: [e1_d2_far], otherwise: e1_adjacency_j20),
+    },
+    ObservedComponent {
+      designators: ["D5"],
+      quantity: 1,
+      role: "unidirectional TVS diode beside F300, in an SMC-class package",
+      identification: MarkingSharedByMakers {
+        rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a],
+        marking_read: "5PGK / 2CN5U, the code D2 carries: 5.0SMDJ60A in both Bourns's and Alpha and Omega Semiconductor's marking tables",
+      },
+      path: J20InputPath,
+      membership: membership_by_circuit(c: e1_measured_circuit, positives: [e1_d5_lower], returns: [e1_d5_upper], otherwise: e1_adjacency_j20),
     },
     ObservedComponent {
       designators: ["F1"],
@@ -538,7 +670,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       role: "SMD hybrid polymer capacitors beside J20, 150 uF 63 V, probed",
       identification: IdentifiedByDatasheetMarking { row: eeh_zu1j151, marking_read: "150 / J ZU / 26AL on both cans" },
       path: J20InputPath,
-      membership: membership_by_circuit(c: e1_j20_input_circuit, positives: ["C10_P5 positive", "C12_P5 positive"], returns: ["C10_P5 negative", "C12_P5 negative"], supply: j20_supply_node, ground: board_ground_node, otherwise: e1_caps_not_across_j20),
+      membership: membership_by_circuit(c: e1_measured_circuit, positives: [e1_c10_pos, e1_c12_pos], returns: [e1_c10_neg, e1_c12_neg], otherwise: e1_caps_not_across_j20),
     },
     ObservedComponent {
       designators: [],
@@ -563,6 +695,8 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   unresolved_parts: [
     "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up",
     "an 8-pin MSOP left of the VCI mark, read 'P617A / 01 14 / 226' at the photograph's resolution: maker and function unresolved",
+    "F302, an unpopulated footprint of large bare pads beside F300 (2026-10-16 photograph); its pads are among the large bare pads continuity puts on J20's supply net",
+    "a part marked 'HA...' below D5, partly in frame in the 2026-10-16 photograph: unread",
   ],
 }
 
@@ -706,13 +840,6 @@ fn hypothesis_text(h: InvestigationHypothesis) -> String {
 
 // THE READING the bench plan consumes: what the photographs establish about the carrier's power
 // input, and what they leave open.
-fn continuity_target_text(t: ContinuityTarget) -> String {
-  match t {
-    ToGround => "ground"
-    ToFuse { designator: d } => join(["fuse ", d as String], "")
-  }
-}
-
 fn row_side_text(s: RowSide) -> String {
   match s {
     LatchSide => "on the latch side"
@@ -729,41 +856,80 @@ fn row_side_code(s: RowSide) -> Nat {
   }
 }
 
-fn rows_text(rows: List<PinRowContinuity>) -> String {
-  match rows.first() {
-    Absent => "pin continuity unread"
-    Present { value: _ } => join(map(rows, r => join([to_string(r.pins), " pins ", if r.tied_together { "joined, " } else { "" }, "to ", continuity_target_text(t: r.tied_to), ", ", row_side_text(s: r.side)], "")), "; ")
+fn j20_position_count(layout: CarrierLayoutObservation) -> Nat {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, source: _ } => n
+    MappedOnHousing { housing } => count(housing.positions)
   }
 }
 
-fn row_is_ground(r: PinRowContinuity) -> Bool {
-  match r.tied_to {
-    ToGround => true
-    ToFuse { designator: _ } => false
+// The one net every position on a side lies on, if there is one.
+fn side_net(nl: MeasuredNetlist, h: ConnectorHousing, side: RowSide) -> NetIdentity? {
+  let ts = housing_side_terminals(h: h, side: side)
+  match ts.first() {
+    Absent => Absent
+    Present { value: t0 } => match measured_net_of(netlist: nl, t: t0) {
+      Absent => Absent
+      Present { value: n } => if all(ts, t => on_measured_net(netlist: nl, t: t, net: n)) { Present { value: n } } else { Absent }
+    }
   }
 }
 
-fn one_recorded_side(rows: List<PinRowContinuity>) -> RowSide {
-  match rows.first() {
-    Absent => SideUnrecorded
-    Present { value: r } =>
-      if row_side_code(s: r.side) != 0 && all(rows, x => row_side_code(s: x.side) == row_side_code(s: r.side)) { r.side } else { SideUnrecorded }
+fn side_is_on(nl: MeasuredNetlist, h: ConnectorHousing, side: RowSide, net: NetIdentity) -> Bool {
+  match side_net(nl: nl, h: h, side: side) {
+    Absent => false
+    Present { value: n } => net_identity_eq(a: n, b: net)
   }
 }
 
-fn polarity_reading(rows: List<PinRowContinuity>) -> PolarityReading {
-  let ground = one_recorded_side(rows: filter(rows, r => row_is_ground(r: r)))
-  let supply = one_recorded_side(rows: filter(rows, r => !row_is_ground(r: r)))
-  if row_side_code(s: ground) == 0 {
-    PolarityUnrecorded { reason: "the ground row's side is unrecorded or inconsistent" }
+fn housing_polarity(h: ConnectorHousing, c: MeasuredCircuit) -> PolarityReading {
+  if any(h.positions, p => row_side_code(s: p.side) == 0) {
+    PolarityUnrecorded { reason: "a position's side on the housing is unrecorded" }
   } else {
-    if row_side_code(s: supply) == 0 {
-      PolarityUnrecorded { reason: "the supply row's side is unrecorded or inconsistent" }
-    } else {
-      if row_side_code(s: ground) == row_side_code(s: supply) {
-        PolarityUnrecorded { reason: "ground and supply are recorded on the same side, a contradiction" }
-      } else {
-        PolarityRecorded { supply_side: supply, ground_side: ground }
+    match circuit_netlist(c: c) {
+      NetlistRefused { cause } => PolarityUnrecorded { reason: join(["the measured circuit refuses: ", continuity_refusal_text(c: cause)], "") as NonEmptyStr }
+      NetlistDerived { netlist: nl } =>
+        if side_is_on(nl: nl, h: h, side: AwayFromLatch, net: c.input_supply) && side_is_on(nl: nl, h: h, side: LatchSide, net: c.ground) {
+          PolarityRecorded { supply_side: AwayFromLatch, ground_side: LatchSide }
+        } else {
+          if side_is_on(nl: nl, h: h, side: LatchSide, net: c.input_supply) && side_is_on(nl: nl, h: h, side: AwayFromLatch, net: c.ground) {
+            PolarityRecorded { supply_side: LatchSide, ground_side: AwayFromLatch }
+          } else {
+            PolarityUnrecorded { reason: "the housing's two sides do not lie one on the supply net and one on ground" }
+          }
+        }
+    }
+  }
+}
+
+fn polarity_reading(layout: CarrierLayoutObservation) -> PolarityReading {
+  match layout.j20 {
+    CountedFromPhotograph { positions: _, source: _ } => PolarityUnrecorded { reason: "J20's positions are counted from a photograph, not mapped" }
+    MappedOnHousing { housing } => match layout.circuit {
+      Absent => PolarityUnrecorded { reason: "no measured circuit on this unit" }
+      Present { value: c } => housing_polarity(h: housing, c: c)
+    }
+  }
+}
+
+fn side_summary(nl: MeasuredNetlist, h: ConnectorHousing, side: RowSide) -> String {
+  join([
+    to_string(count(housing_side_terminals(h: h, side: side))), " ", row_side_text(s: side),
+    match side_net(nl: nl, h: h, side: side) {
+      Absent => " on no single named net"
+      Present { value: n } => join([" on net '", net_local_label(n: n) as String, "'"], "")
+    },
+  ], "")
+}
+
+fn j20_text(layout: CarrierLayoutObservation) -> String {
+  match layout.j20 {
+    CountedFromPhotograph { positions: n, source: src } => join([to_string(n), " positions counted from ", src as String, "; pin continuity unread"], "")
+    MappedOnHousing { housing } => match layout.circuit {
+      Absent => join([to_string(count(housing.positions)), " positions mapped on the housing; no measured circuit"], "")
+      Present { value: c } => match circuit_netlist(c: c) {
+        NetlistRefused { cause } => join(["the measured circuit refuses: ", continuity_refusal_text(c: cause)], "")
+        NetlistDerived { netlist: nl } => join([to_string(count(housing.positions)), " positions: ", side_summary(nl: nl, h: housing, side: LatchSide), "; ", side_summary(nl: nl, h: housing, side: AwayFromLatch)], "")
       }
     }
   }
@@ -779,7 +945,7 @@ fn polarity_text(p: PolarityReading) -> String {
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "grey blind-mate path: ", bound_text(b: path_bound(layout: layout, path: GreyBlindMatePath)), ". ", hypothesis_text(h: p4261_grey_path_hypothesis),
-    ". J20 input path at ", layout.j20_connector as String, " (", to_string(layout.j20_positions), " positions; ", rows_text(rows: layout.j20_rows), "; ", polarity_text(p: polarity_reading(rows: layout.j20_rows)), "): ",
+    ". J20 input path at ", layout.j20_connector as String, " (", j20_text(layout: layout), "; ", polarity_text(p: polarity_reading(layout: layout)), "): ",
     bound_text(b: path_bound(layout: layout, path: J20InputPath)),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
