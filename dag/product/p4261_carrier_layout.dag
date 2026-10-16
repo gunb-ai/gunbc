@@ -90,11 +90,25 @@ type ContinuityTarget
   = ToGround
   | ToFuse { designator: NonEmptyStr }
 
+// WHICH PHYSICAL ROW, against a reference on the housing anyone can find: the latch. A row swap reverses
+// polarity, so a row whose side was not recorded is never assumed.
+type RowSide
+  = LatchSide
+  | AwayFromLatch
+  | SideUnrecorded
+
 type PinRowContinuity {
   pins: Nat
   tied_to: ContinuityTarget
   tied_together: Bool
+  side: RowSide
 }
+
+// Polarity is recorded only when every ground row and every supply row has a recorded side, the ground
+// rows share one side, the supply rows share one side, and the two sides differ.
+type PolarityReading
+  = PolarityRecorded { supply_side: RowSide, ground_side: RowSide }
+  | PolarityUnrecorded { reason: NonEmptyStr }
 
 // THE MEASURED CIRCUIT: the part of one board's netlist a multimeter has established, unpowered. A node
 // is a set of terminals continuity found joined to each other. A diode-mode reading is kept RAW -- which
@@ -455,11 +469,11 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   ],
   module_receptacles: [],
   grey_edge_connectors: "not photographed or read on this unit",
-  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Which physical row is which was not recorded: re-read polarity before any connection",
+  j20_connector: "J20, a black shrouded 2 x 9 receptacle on the left edge, its positions keyed square and rounded; a power input by continuity (j20_rows): one row of nine to ground, the other row of nine joined and tied to fuse F1, which tests intact. Rows by side (j20_rows), marked by the operator on a photograph 2026-10-16: the row on the latch side is ground, the row on the F1 / D2 side is the fused supply",
   j20_positions: 18,
   j20_rows: [
-    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true },
-    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true },
+    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true, side: LatchSide },
+    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true, side: AwayFromLatch },
   ],
   edge_high_speed_connectors: CensusPartial {
     counted_at_least: 2,
@@ -699,17 +713,73 @@ fn continuity_target_text(t: ContinuityTarget) -> String {
   }
 }
 
+fn row_side_text(s: RowSide) -> String {
+  match s {
+    LatchSide => "on the latch side"
+    AwayFromLatch => "on the side away from the latch"
+    SideUnrecorded => "side unrecorded"
+  }
+}
+
+fn row_side_code(s: RowSide) -> Nat {
+  match s {
+    SideUnrecorded => 0
+    LatchSide => 1
+    AwayFromLatch => 2
+  }
+}
+
 fn rows_text(rows: List<PinRowContinuity>) -> String {
   match rows.first() {
     Absent => "pin continuity unread"
-    Present { value: _ } => join(map(rows, r => join([to_string(r.pins), " pins ", if r.tied_together { "joined, " } else { "" }, "to ", continuity_target_text(t: r.tied_to)], "")), "; ")
+    Present { value: _ } => join(map(rows, r => join([to_string(r.pins), " pins ", if r.tied_together { "joined, " } else { "" }, "to ", continuity_target_text(t: r.tied_to), ", ", row_side_text(s: r.side)], "")), "; ")
+  }
+}
+
+fn row_is_ground(r: PinRowContinuity) -> Bool {
+  match r.tied_to {
+    ToGround => true
+    ToFuse { designator: _ } => false
+  }
+}
+
+fn one_recorded_side(rows: List<PinRowContinuity>) -> RowSide {
+  match rows.first() {
+    Absent => SideUnrecorded
+    Present { value: r } =>
+      if row_side_code(s: r.side) != 0 && all(rows, x => row_side_code(s: x.side) == row_side_code(s: r.side)) { r.side } else { SideUnrecorded }
+  }
+}
+
+fn polarity_reading(rows: List<PinRowContinuity>) -> PolarityReading {
+  let ground = one_recorded_side(rows: filter(rows, r => row_is_ground(r: r)))
+  let supply = one_recorded_side(rows: filter(rows, r => !row_is_ground(r: r)))
+  if row_side_code(s: ground) == 0 {
+    PolarityUnrecorded { reason: "the ground row's side is unrecorded or inconsistent" }
+  } else {
+    if row_side_code(s: supply) == 0 {
+      PolarityUnrecorded { reason: "the supply row's side is unrecorded or inconsistent" }
+    } else {
+      if row_side_code(s: ground) == row_side_code(s: supply) {
+        PolarityUnrecorded { reason: "ground and supply are recorded on the same side, a contradiction" }
+      } else {
+        PolarityRecorded { supply_side: supply, ground_side: ground }
+      }
+    }
+  }
+}
+
+fn polarity_text(p: PolarityReading) -> String {
+  match p {
+    PolarityRecorded { supply_side, ground_side } => join(["polarity recorded: fused supply ", row_side_text(s: supply_side), ", ground ", row_side_text(s: ground_side)], "")
+    PolarityUnrecorded { reason } => join(["polarity UNRECORDED (", reason as String, "): re-read before any connection"], "")
   }
 }
 
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "grey blind-mate path: ", bound_text(b: path_bound(layout: layout, path: GreyBlindMatePath)), ". ", hypothesis_text(h: p4261_grey_path_hypothesis),
-    ". J20 input path at ", layout.j20_connector as String, " (", to_string(layout.j20_positions), " positions; ", rows_text(rows: layout.j20_rows), "): ",
+    ". J20 input path at ", layout.j20_connector as String, " (", to_string(layout.j20_positions), " positions; ", rows_text(rows: layout.j20_rows), "; ", polarity_text(p: polarity_reading(rows: layout.j20_rows)), "): ",
     bound_text(b: path_bound(layout: layout, path: J20InputPath)),
     ". Which connector carries the module's power is not established. The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")

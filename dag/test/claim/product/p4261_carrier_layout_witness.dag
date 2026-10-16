@@ -26,6 +26,14 @@ import product.p4261_carrier_layout {
   PinRowContinuity,
   ToGround,
   ToFuse,
+  RowSide,
+  LatchSide,
+  AwayFromLatch,
+  SideUnrecorded,
+  PolarityReading,
+  PolarityRecorded,
+  PolarityUnrecorded,
+  polarity_reading,
   MeasuredCircuit,
   CircuitNode,
   CathodeOn,
@@ -287,6 +295,49 @@ test fn a_close_up_establishes_no_absence() -> Bool {
     && e1.contains("J620")
     && k1.contains("shows no RJ45")
     && e1_as_whole.contains("shows no RJ45")
+}
+
+fn supply_side_is_away(p: PolarityReading) -> Bool {
+  match p {
+    PolarityRecorded { supply_side, ground_side } => match supply_side {
+      AwayFromLatch => match ground_side { LatchSide => true _ => false }
+      _ => false
+    }
+    PolarityUnrecorded { reason: _ } => false
+  }
+}
+
+fn supply_side_is_latch(p: PolarityReading) -> Bool {
+  match p {
+    PolarityRecorded { supply_side, ground_side: _ } => match supply_side { LatchSide => true _ => false }
+    PolarityUnrecorded { reason: _ } => false
+  }
+}
+
+fn is_unrecorded(p: PolarityReading) -> Bool {
+  match p {
+    PolarityRecorded { supply_side: _, ground_side: _ } => false
+    PolarityUnrecorded { reason: _ } => true
+  }
+}
+
+fn j20_rows_with(ground: RowSide, supply: RowSide) -> List<PinRowContinuity> {
+  [
+    PinRowContinuity { pins: 9, tied_to: ToGround, tied_together: true, side: ground },
+    PinRowContinuity { pins: 9, tied_to: ToFuse { designator: "F1" }, tied_together: true, side: supply },
+  ]
+}
+
+// J20'S POLARITY IS READ AGAINST THE LATCH, AND ONLY A CONSISTENT READING COUNTS. The E1's rows put the
+// fused supply away from the latch and ground on it; the same rows swapped read the other way round;
+// a row with no recorded side, or both rows on one side, refuses rather than guessing.
+test fn j20_polarity_is_read_against_the_latch() -> Bool {
+  supply_side_is_away(p: polarity_reading(rows: p4261_e1_layout.j20_rows))
+    && supply_side_is_latch(p: polarity_reading(rows: j20_rows_with(ground: AwayFromLatch, supply: LatchSide)))
+    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: LatchSide, supply: SideUnrecorded)))
+    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: SideUnrecorded, supply: AwayFromLatch)))
+    && is_unrecorded(p: polarity_reading(rows: j20_rows_with(ground: LatchSide, supply: LatchSide)))
+    && is_unrecorded(p: polarity_reading(rows: p4261_k1_layout.j20_rows))
 }
 
 fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {
