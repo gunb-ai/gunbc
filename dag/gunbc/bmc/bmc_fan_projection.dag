@@ -125,6 +125,7 @@ type BmcFanPolicyProjectionCapability {
   publication_protocol: LinuxFilePublicationProtocol
   durability_boundaries: List<StateDurabilityBoundary>
   required_tach_inputs: List<NonEmptyStr>
+  controller_machine: NonEmptyStr
 }
 
 type BmcAdmittedConfigDigest
@@ -268,6 +269,7 @@ fn bmc_fan_policy_projection_capability(
   publication_protocol: LinuxFilePublicationProtocol,
   durability_boundaries: List<StateDurabilityBoundary>,
   required_tach_inputs: List<NonEmptyStr>,
+  controller_machine: NonEmptyStr,
 ) -> BmcFanPolicyProjectionCapability {
   BmcFanPolicyProjectionCapability {
     board: board,
@@ -283,6 +285,7 @@ fn bmc_fan_policy_projection_capability(
     publication_protocol: publication_protocol,
     durability_boundaries: durability_boundaries,
     required_tach_inputs: required_tach_inputs,
+    controller_machine: controller_machine,
   }
 }
 
