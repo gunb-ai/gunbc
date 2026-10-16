@@ -386,15 +386,34 @@ data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
 // (review 81149, finding 3). And aarch64 does not imply SMpro: an AWS Graviton or an NVIDIA Grace is
 // aarch64 silicon with no SMpro interface at all, so keying on the architecture would assert a facility
 // these machines do not have.
-data ampere_smpro_carrying_soc_families: List<SoCFamily> = [
-  ampere_altra_soc_family,
-  ampere_altra_max_soc_family,
-]
+// ONE FAMILY THE UPSTREAM SET NAMES, WITH THE CITATION THAT NAMES IT, in one row. The citation cannot
+// sit beside the set as a separate list: a row no fold reads is dangling, and a reader who takes
+// ampere_smpro_carrying_soc_families without its companion gets an uncited claim about silicon. Carrying
+// the citation inside the row is the corpus's own shape for exactly this — CpuModelCatalogRow keeps
+// socket_citations and l1_cache_citations next to the facts they ground.
+type SmproCarryingSocFamily {
+  family: SoCFamily
+  citations: List<FactCitation>
+}
 
-data ampere_smpro_carrying_soc_families_citations: List<FactCitation> = [
-  FactCitation {
-    fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
-    authority: altra_ssif_patch_authority,
+data ampere_smpro_carrying_soc_families: List<SmproCarryingSocFamily> = [
+  SmproCarryingSocFamily {
+    family: ampere_altra_soc_family,
+    citations: [
+      FactCitation {
+        fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
+        authority: altra_ssif_patch_authority,
+      },
+    ],
+  },
+  SmproCarryingSocFamily {
+    family: ampere_altra_max_soc_family,
+    citations: [
+      FactCitation {
+        fact: decl_ref(module_path: "extdeps.ampere.altra_ssif_patch", decl_name: "altra_ssif_v6_purpose"),
+        authority: altra_ssif_patch_authority,
+      },
+    ],
   },
 ]
 
@@ -405,7 +424,7 @@ data ampere_smpro_carrying_soc_families_citations: List<FactCitation> = [
 // (gunbc.host.smpro_platform_capability.smpro_facility).
 fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
   match ampere_smpro_carrying_soc_families
-    |> filter(c => soc_family_eq(a: c, b: family))
+    |> filter(c => soc_family_eq(a: c.family, b: family))
     |> first() {
     Present { value: _ } => true
     Absent => false
