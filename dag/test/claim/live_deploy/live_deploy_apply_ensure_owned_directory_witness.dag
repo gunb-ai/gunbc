@@ -6,6 +6,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.realization_reconcile { Converged, NotConverged, Reconciliation }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.exec.command { argv_words }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_arguments }
+import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, CiRunnerSudoBinary, SudoInstall }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
@@ -402,26 +405,41 @@ fn is_intent_of_host_os(applied: HostEffectIntent) -> Bool {
 }
 
 // ══ WHAT GOES ON THE WIRE (byte-equivalence wall, DESIGN §5) ════════════════════════════════════
-// The privileged write is the SEALED operation, so the words are the provider's, not this module's.
-// Pinned word-for-word against what the deleted script emitted: one sudo, one -n, /usr/bin/install,
-// then `-d -m 0755 -o gunbc -g gunbc <path>` in that order, each flag and its operand as SEPARATE
-// words. Separate words are the point: nothing is quoted because nothing is re-joined into a string,
-// and a path or owner containing a space cannot change the command's meaning.
-test fn the_privileged_write_is_the_sealed_install_operation_word_for_word() -> Bool {
+// THE WITNESS'S REAL JOB: what the leaf puts on the wire must be what the deleted script put on the
+// wire. The expected command is built HERE, from the same builders the apply script used to call
+// (coreutils_install_directory_owned_arguments for the operands, ci_runner_sudo_binary_path for the
+// sudoers-granted install path, sudo's own calling convention from extdeps.sudo.elevation) -- not
+// typed out by hand, so the claim cannot pass because I typed the wrong thing, and cannot silently
+// drift if the sealed operation's row is ever edited. `-d` and `-m` and `-o`/`-g` and the path must
+// appear in that order, each flag SEPARATE from its operand: nothing is quoted because nothing is
+// re-joined into a string, and a path or owner containing a space cannot change the command's
+// meaning. There is exactly one elevation word and no shell carrier.
+test fn the_privileged_write_is_what_the_deleted_script_emitted() -> Bool {
+  let plan = OwnedDirectoryInstallPlan { path: w_path(), owner: w_owner(), mode: w_mode() }
   let words = argv_words(
-    command: executor_privileged_operation_elevated_command(
-      op: live_deploy_apply_install_op(
-        plan: OwnedDirectoryInstallPlan { path: w_path(), owner: w_owner(), mode: w_mode() },
-      ),
+    command: executor_privileged_operation_elevated_command(op: live_deploy_apply_install_op(plan: plan)),
+  )
+  // THE EXPECTED COMMAND, SPELLED BY THE BUILDERS THE SCRIPT USED.
+  let expected = concat(
+    [
+      sudo_program().invocation as String,
+      sudo_non_interactive_flag as String,
+      ci_runner_sudo_binary_path(b: SudoInstall) as String,
+    ],
+    coreutils_install_directory_owned_arguments(
+      mode: w_mode(), owner: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr, path: "/srv/gunbc/artifacts",
     ),
   )
-  words == ["/usr/bin/sudo", "-n", "/usr/bin/install", "-d", "-m", "0755", "-o", "gunbc", "-g", "gunbc", "/srv/gunbc/artifacts"]
-    // One elevation, and no shell carrier anywhere in the words.
+  (words == expected)
+    // One elevation, no second sudo, and no shell anywhere in the words.
     && (count_word(words: words, wanted: "-n") == 1)
+    && (count_word(words: words, wanted: "/usr/bin/sudo") == 1)
     && (!string_contains(s: w_words_of(argv: words), pattern: "bash"))
     && (!string_contains(s: w_words_of(argv: words), pattern: "; "))
-    // The mode operand is the provider's rendering of the DECLARED mode, not a fixture literal.
-    && (file_mode_octal(mode: w_mode()) == "755")
+    // The flags are their own words, so no quoting is needed: assert the separation directly.
+    && (count_word(words: words, wanted: "-m") == 1)
+    && (count_word(words: words, wanted: "0755") == 1)
+    && (count_word(words: words, wanted: "-d") == 1)
 }
 
 fn count_word(words: List<String>, wanted: String) -> Int {
