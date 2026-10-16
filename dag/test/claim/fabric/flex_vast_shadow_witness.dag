@@ -295,7 +295,7 @@ fn qwen_image() -> String {
   }
 }
 
-fn flex_template_is_the_recipes_realization() -> Bool {
+test fn flex_template_is_the_recipes_realization() -> Bool {
   match flex_serving_template(recipe: serving_recipe(id: flex_serving_recipe)) {
     FlexTemplateResolved { template: t } =>
       (t.image as String == "vastai/vllm:v0.30.0-cuda-13.0")
@@ -898,13 +898,13 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
           id: 1,
           machine_id: 1,
           label: Present { value: flex_owner_label_gunbc_flex as String },
-          dollars: 2,
+          dollars: 4,
         ),
         inst_labelled(id: 2, machine_id: 2, label: Present { value: "ctrl-bidder" }, dollars: 9),
       ]),
     ) {
       FlexCapOver { occupied: o, cap: c } =>
-        (money_amount_micro_count(m: o.amount) == 2000000)
+        (money_amount_micro_count(m: o.amount) == 4000000)
           && (money_amount_micro_count(m: c.amount) == 3000000)
       _ => false
     })
