@@ -1514,6 +1514,53 @@ fn infer_variant_arm_reference_value_optional(
   }
 }
 
+// EMIT'S NULLARY-ARM PROJECTOR KEYS THIS, NOT TYPE-NODE SHAPE. A use is a zero-parameter
+// coproduct's empty-product arm when the RESOLVED declaration says so: VariantArmPayload, the
+// arm's declaring identity is a coproduct (infer_coproduct_path_of_variant_arm, never the
+// spelling's parent), that coproduct has no type parameters, and the arm body is the empty
+// product. An Atom or Conj rhs whose resolved declaration is a record or an alias is false
+// here, so emit does not project it as a nullary arm.
+fn infer_nullary_zero_param_coproduct_arm_use(
+  node: Node,
+  index: SymbolIndex,
+  facts: InferredFacts
+) -> Bool {
+  match facts.denotation {
+    Absent => false
+    Present { value: denoted } =>
+      if !infer_empty_product_shape(node: denoted) {
+        false
+      } else {
+        match declaration_reference_path_optional(node: node) {
+          Absent => false
+          Present { value: path } =>
+            match symbol_index_lookup(index: index, qualified_path: path) {
+              Absent => false
+              Present { value: declared } =>
+                match infer_variant_arm_reference_value_joined(
+                  bindings: index,
+                  arm_path: path,
+                  declared: declared
+                ) {
+                  VariantArmReferenceValueIdentityUnavailable => false
+                  VariantArmReferenceValueIdentityContested { claimants: _ } => false
+                  VariantArmReferenceValueBodyUnavailable => false
+                  VariantArmReferenceValueNotDerived => false
+                  VariantArmReferenceValueCoproduct { coproduct: coproduct } =>
+                    match symbol_index_declared_type_params_at(
+                      index: index,
+                      qualified_path: coproduct
+                    ) {
+                      Empty => true
+                      Cons { head: _, tail: _ } => false
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
 fn infer_variant_arm_value_reference_facts(
   n: Node,
   resolved: ResolvedTree,
