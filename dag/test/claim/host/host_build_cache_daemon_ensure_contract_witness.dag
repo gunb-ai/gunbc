@@ -1,9 +1,9 @@
 module test.claim.host.host_build_cache_daemon_ensure_contract_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { list_map }
 import std.optional { Absent, Optional, Present }
 import extdeps.cache.sccache { sccache_installed_binary_path, sccache_release_0_15_0 }
+import extdeps.sudo.elevation { sudo_non_interactive_flag, sudo_program }
 import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement, ServerPlacementAbsent, ci_cache_instance }
 import gunbc.build_cache.build_cache_provision_verdict {
   BuildCacheDaemonObservation,
@@ -124,12 +124,17 @@ fn build_cache_contract_plan_derives_the_ensure_legs() -> Bool {
     )
   match plan {
     EnsureOps { ops: steps } =>
-      list_length(xs: steps) == 5
-        && build_cache_op_is_privileged(index: 0, want: "dd", steps: steps)
-        && build_cache_op_is_privileged(index: 1, want: "install", steps: steps)
-        && build_cache_op_unprivileged_argument_is(index: 2, want: "daemon-reload", steps: steps)
-        && build_cache_op_is_privileged(index: 3, want: "enable", steps: steps)
-        && build_cache_op_is_privileged(index: 4, want: "restart", steps: steps)
+      list_length(items: steps) == 5
+        && build_cache_op_is_elevated_to(index: 0, want: "dd", steps: steps)
+        && build_cache_op_is_elevated_to(index: 1, want: "install", steps: steps)
+        && build_cache_op_is_elevated_to(index: 2, want: "daemon-reload", steps: steps)
+        && build_cache_op_is_elevated_to(index: 3, want: "enable", steps: steps)
+        && build_cache_op_is_elevated_to(index: 4, want: "restart", steps: steps)
+        // THE WRITE CARRIES ITS BYTES ON STDIN AND THE OTHER FOUR DO NOT. A plan that staged the unit
+        // but lost the stdin binding would write an empty file and still exit zero, which is the
+        // silent-success shape this whole claim exists to make impossible.
+        && build_cache_op_takes_stdin(index: 0, steps: steps)
+        && !build_cache_op_takes_stdin(index: 1, steps: steps)
     _ => false
   }
 }
@@ -169,36 +174,48 @@ fn build_cache_observe_unresponsive_for_control() -> BuildCacheObserve {
   )
 }
 
-// THE PRIVILEGED WRITING AND STARTING LEGS, and only those. `want` is the tool the leg ultimately runs, so
-// the assertion checks BOTH that the privilege broker wraps it and that the wrapped tool is the one named:
-// a leg that lost its elevation, or a leg that quietly became a different tool, fails here. Stated as the
-// shape the site's elevation gate accepts, so a fix that un-elevates the install to make this claim pass
-// fails it instead.
-fn build_cache_op_is_privileged(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
-  build_cache_op_program_is(index: index, want: "sudo", steps: steps)
-    && build_cache_op_argument_is(index: index, want: want, steps: steps)
-}
-
-// THE MANAGER CONVERSATION CARRIES NO PRIVILEGE. `systemctl daemon-reload` talks to a socket the unprivileged
-// principal may reach, so wrapping it would be privilege the effect does not need -- and the asymmetry
-// between it and enable/restart is the measured shape, not a style preference. One assertion for the program
-// and one for the operand, so an unprivileged-but-wrong tool at this index also fails.
-fn build_cache_op_unprivileged_argument_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
-  build_cache_op_program_is(index: index, want: "systemctl", steps: steps)
-    && !build_cache_op_program_is(index: index, want: "sudo", steps: steps)
-    && build_cache_op_argument_is(index: index, want: want, steps: steps)
-}
-
-fn build_cache_op_program_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
-  match get(xs: list_map(xs: steps, f: fn(s) { s.op.argv.program.invocation as String }), index: index) {
-    Present { value: got } => got == want
+// EVERY LEG RUNS UNDER THE PRIVILEGE BROKER, AND RUNS THE TOOL IT NAMES. `want` is the tool the leg
+// ultimately invokes, so this asserts BOTH that the broker wraps it AND that the wrapped tool is the one
+// named: a leg that lost its elevation fails, and so does a leg that quietly became a different tool.
+//
+// INCLUDING daemon-reload, which is not an oversight and is not this claim's opinion: the cited systemctl
+// operation carries sudo itself, with its own written justification -- the unit lives in the SYSTEM
+// manager, so an unelevated invocation is not a weaker version of the request but a different one that
+// fails. Asserting the ABSENCE of privilege on any leg would be asserting a posture the upstream module
+// does not have, which is the mistake this claim was nearly written with; the control that matters is the
+// one below, that all five legs reach their tool THROUGH the broker, in the order that makes them correct
+// (staged write, install, reload so the manager can see the unit, enable, start).
+fn build_cache_op_is_elevated_to(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: steps, index: index) {
     Absent => false
+    Present { value: step } =>
+      step.argv.program.invocation as String == sudo_program().invocation as String
+        && build_cache_args_contain(args: step.argv.arguments, want: sudo_non_interactive_flag as String)
+        && build_cache_args_contain(args: step.argv.arguments, want: want)
   }
 }
 
-fn build_cache_op_argument_is(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
-  match get(xs: list_map(xs: steps, f: fn(s) { join(elements: s.op.argv.arguments, separator: " ") }), index: index) {
-    Present { value: got } => string_contains(s: got, pattern: want)
+// THE UNIT BYTES TRAVEL ON THE WRITE LEG'S STANDARD INPUT -- the typed replacement for the script's
+// heredoc. Asserted on two legs rather than one: a plan that staged the unit but lost the stdin binding
+// would write an empty file, exit zero, and converge, which is the silent-success shape the whole claim
+// exists to make impossible -- and a plan that bound stdin to the install leg too would read its own
+// staged file as its payload.
+fn build_cache_op_takes_stdin(index: Int, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => step.unit_bytes_on_stdin
+  }
+}
+
+// A WORD CARRYING `want` APPEARS SOMEWHERE IN THE LEG. fold rather than a find combinator: the fold
+// accumulates the first hit and keeps it, which is also what the fragment scan beside it does, so the two
+// scans in this file read the same way.
+fn build_cache_args_contain(args: List<String>, want: String) -> Bool {
+  match fold(args, init: Absent as Optional<String>, f: (acc, a) => match acc {
+    Present { value: _ } => acc
+    Absent => if string_contains(s: a, pattern: want) { Present { value: a } } else { acc }
+  }) {
+    Present { value: _ } => true
     Absent => false
   }
 }
