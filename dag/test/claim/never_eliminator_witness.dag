@@ -68,15 +68,15 @@ test fn empty_match_on_never_is_admitted() -> Bool {
 }
 
 // THE EMITTED IMAGE of an admitted empty uninhabited match is rustc's empty-enum exhaustiveness
-// form `match n {}` (parent: lower it to match x {} on an empty enum). Seed emit_typed_match
-// concatenates match + scrutinee + braces with zero arms; rustfmt may collapse the braces onto
-// one line. It must not become unreachable!/panic!/todo!. dissolve-on: none -- permanent
+// form `match <scrutinee> {}` on the empty enum. Seed emit_typed_match concatenates match +
+// scrutinee + braces with zero arms, and the scrutinee is emitted as `n.clone()`. The pin is the
+// real emitted form with ZERO arms between the braces; it must not become unreachable!/panic!/todo!. dissolve-on: none -- permanent
 // regression control per DESIGN 4b(4).
 test fn empty_uninhabited_match_emits_match_on_empty_enum() -> Bool {
   compile_dag_rust_emit_check(
     empty_match_never_source,
     "src/neverprobe_nv.rs",
-    ["match n {"],
+    ["match n.clone() {\n\n}"],
     ["unreachable!(", "todo!(", "panic!("]
   )
 }

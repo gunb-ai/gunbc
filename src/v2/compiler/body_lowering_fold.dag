@@ -72,6 +72,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom,
   dag_string_literal_node,
   dag_string_literal_value_symbol_optional,
+  dag_float_literal_lexeme_optional,
   string_template_optional,
   StringTemplate,
   StringTemplateSegment,
@@ -7298,6 +7299,9 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
   match body_lower_string_literal_value_optional(node: stripped) {
     Present { value: literal } => optional_present(value: literal)
     Absent =>
+  match body_lower_float_literal_value_optional(node: stripped) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
@@ -7320,6 +7324,17 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
       }
   }
   }
+  }
+  }
+}
+
+// A FLOAT LITERAL IS READ WHOLE, lexeme payload and occurrence kept, for the reason a string literal is:
+// the parser built it carrying its exact source digits (dag_float_literal_node_from_lexeme), and
+// rebuilding it as a bare atom drops them, leaving a float no later stage can tell from any other.
+fn body_lower_float_literal_value_optional(node: Node) -> Optional<Node> {
+  match dag_float_literal_lexeme_optional(node: node) {
+    Present { value: _ } => optional_present(value: node)
+    Absent => optional_absent()
   }
 }
 

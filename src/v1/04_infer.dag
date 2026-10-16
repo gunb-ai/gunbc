@@ -223,6 +223,7 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
+  node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
   expand_scrut_type_for_variant_lookup,
@@ -1666,6 +1667,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
   }
   else if nominal_product_inhabitance_refusal(
       declared: declared, produced: produced, scope: scope) != none {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
+  else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -4698,6 +4707,33 @@ fn collection_versus_established_identity(declared: Node, produced: Node, scope:
 fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
     && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+}
+
+// A VALUE NEVER INHABITS NEVER. Never has no producer, so any produced value that is not itself
+// Never (by DeclarationRef identity, node_is_never_declaration) is refused at a Never position.
+// Without this arm the declared head exposes as OpaqueTypeHead, which the relations above leave
+// unjudged, so absurd(i: Int) was admitted (gunbc.recurring_failure_mode
+// a_value_of_any_type_is_admitted_at_an_opaque_declared_type: this is one leaf of that class, to
+// be folded in when the relation distinguishes host-realized opaques from constructor-less
+// declarations). A generic or unresolved produced type is not judged here.
+fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let env = scope.type_env
+  let declared_resolved = match lookup_type_for(env: env, node: declared) {
+    Present { value: r } => r
+    Absent => declared
+  }
+  let produced_resolved = match lookup_type_for(env: env, node: produced) {
+    Present { value: r } => r
+    Absent => produced
+  }
+  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  node_is_never_declaration(resolved: declared_resolved, env: env)
+    && !produced_is_generic
+    && authored_name_at(source_indices: env.source_indices, node: produced) != ""
+    && !node_is_never_declaration(resolved: produced_resolved, env: env)
 }
 
 fn declared_head_is_kernel_scalar_through_refinement(declared: Node, scope: InferScope) -> Bool {

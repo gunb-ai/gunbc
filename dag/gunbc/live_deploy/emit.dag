@@ -348,8 +348,6 @@ data live_deploy_apply_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED_
 
 data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy RETRACT intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid deploy shell, so the committed .github/live-deploy-srv1-retract.sh drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
-data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy ensure-dependency intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid reconcile-step shell, so the per-dep ConvergePlan step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
-
 data live_deploy_systemd_retirement_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ systemd runtime-retirement intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid deploy shell, so the committed retract artifact drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
 // WHAT IS LEFT IN THIS FUNCTION IS THE COUNTED RESIDUAL, and it is named here rather than left to
@@ -4811,12 +4809,15 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec, revision: ReleaseRevisionB
   render(doc: emit_systemd_unit_doc(spec: spec, revision: revision, now_epoch: now_epoch), proto: live_deploy_protocol)
 }
 
-fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
-  Pipeline {
-    steps: ensure_dependency_steps(dep: dep, privileged: false),
-    on_failure: FailFast
-  }
-}
+// THE SERVE ROUTE BUILDER BELOW IS THE PATTERN this site's ensure-dependency route followed when
+// it dissolved (#13988). Its companion, `deployment_ensure_dependency_script`, is gone: the
+// ensure-dependency route now runs its probe/install and write/install trees as typed effects at
+// the site in gunbc.host.host_effect_realize (realize_live_deploy_ensure_dependency_on_host), so
+// no script of its is rendered here any more. What remains in this module is the PIPELINE the
+// bulk-apply frame still embeds (ensure_dependency_steps, used by the bulk apply plan's
+// mutate_steps) -- that route composes steps inside a larger pipeline the frame itself renders,
+// which is a different consumer with a different owner (the retained bulk-apply script), not this
+// site's.
 
 // ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a typed command of its own: the same privileged argv the
 // mapping member's apply and teardown steps carry, for the tailnet door cutover
@@ -4835,10 +4836,6 @@ fn deployment_serve_route_command(endpoint: TailscaleServeEndpoint, enabled: Boo
   sudo_elevate_command(
     command: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
   )
-}
-
-fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
-  emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
 // THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than

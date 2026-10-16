@@ -1,0 +1,91 @@
+module gunbc.design.brand_mark_assets
+
+import std.types { Int, List, String }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.w3c.png { PngRelativeColorimetric, PngRefusal, PngEncoded, PngRefused, png_encode }
+import gunbc.design.brand_mark { BrandMarkKind, FaceMark, RobotMark, brand_mark, brand_mark_badge_stone, brand_mark_ink }
+import gunbc.design.brand_mark_raster {
+  BrandRasterSpec, BrandRasterPlacement, BrandRasterGround, BrandBadgeGround, BrandRastered, BrandRasterRefused,
+  BrandRasterRefusal, brand_mark_raster,
+}
+
+// THE RASTER LOGO FILES, EACH DERIVED FROM gunbc.design.brand_mark. One row per file a surface
+// outside this repository serves: gunb.ai's favicons and touch icons, the iOS app icon, and the two
+// GitHub App avatars. A row names the mark, the composition and the paints; the pixels are
+// gunbc.design.brand_mark_raster's and the bytes extdeps.w3c.png's. The files are written by the
+// native program gunbc.design.brand_mark_assets_cli, and a changed mark changes every file on its
+// next run. Uploading a GitHub App avatar stays a manual step (GitHub has no API for it).
+//
+// TWO GROUNDS. A badge the host may show on any background is the stone rounded square the site's
+// favicon draws (128 units, corner 28). A ground the host masks itself -- an iOS icon, a touch icon,
+// a GitHub avatar -- is the full opaque square (corner 0), because those hosts refuse or flatten
+// transparency. Both place the mark at (10, 12), 108 across, as the favicon does.
+
+type BrandAssetTarget {
+  file: String
+  kind: BrandMarkKind
+  spec: BrandRasterSpec
+}
+
+// Which stage refused a file, with that stage's own located cause.
+type BrandAssetRefusal = BrandAssetRasterRefused { cause: BrandRasterRefusal } | BrandAssetPngRefused { cause: PngRefusal }
+
+type BrandAssetEncoding
+  = BrandAssetEncoded { file: String, octets: List<Int> }
+  | BrandAssetRefused { file: String, cause: BrandAssetRefusal }
+
+data brand_asset_canvas: Int = 128
+data brand_asset_badge_corner: Int = 28
+
+data brand_asset_placement: BrandRasterPlacement = BrandRasterPlacement { x: 10, y: 12, extent: 108 }
+
+// gunbai-ci's alternate paints. TRANSCRIBED, UNCITED: sampled on 2026-10-16 from the App's live
+// avatar (avatars.githubusercontent.com/in/2653532, the two dominant colors). The design file they
+// came from is not in this repository; reading it is what would ground them.
+data brand_asset_ci_ground: Srgb8 = Srgb8 { r: 235, g: 233, b: 224 }
+data brand_asset_ci_ink: Srgb8 = Srgb8 { r: 25, g: 64, b: 37 }
+
+fn brand_asset_spec(pixels: Int, ground: Srgb8, corner: Int, ink: Srgb8) -> BrandRasterSpec {
+  BrandRasterSpec {
+    pixels: pixels,
+    canvas: brand_asset_canvas,
+    ground: BrandBadgeGround { paint: ground, corner: corner },
+    placement: brand_asset_placement,
+    ink: ink,
+    intent: PngRelativeColorimetric,
+  }
+}
+
+fn brand_asset_badge(file: String, pixels: Int) -> BrandAssetTarget {
+  BrandAssetTarget { file: file, kind: FaceMark, spec: brand_asset_spec(pixels: pixels, ground: brand_mark_badge_stone.color, corner: brand_asset_badge_corner, ink: brand_mark_ink.color) }
+}
+
+fn brand_asset_square(file: String, kind: BrandMarkKind, pixels: Int, ground: Srgb8, ink: Srgb8) -> BrandAssetTarget {
+  BrandAssetTarget { file: file, kind: kind, spec: brand_asset_spec(pixels: pixels, ground: ground, corner: 0, ink: ink) }
+}
+
+fn brand_asset_targets() -> List<BrandAssetTarget> {
+  let stone = brand_mark_badge_stone.color
+  let ink = brand_mark_ink.color
+  [
+    brand_asset_badge(file: "gunb.ai/favicon-16.png", pixels: 16),
+    brand_asset_badge(file: "gunb.ai/favicon-32.png", pixels: 32),
+    brand_asset_badge(file: "gunb.ai/favicon-48.png", pixels: 48),
+    brand_asset_badge(file: "gunb.ai/icon-192.png", pixels: 192),
+    brand_asset_badge(file: "gunb.ai/icon-512.png", pixels: 512),
+    brand_asset_square(file: "gunb.ai/apple-touch-icon.png", kind: FaceMark, pixels: 180, ground: stone, ink: ink),
+    brand_asset_square(file: "ios/app-icon-1024.png", kind: FaceMark, pixels: 1024, ground: stone, ink: ink),
+    brand_asset_square(file: "github-apps/gunbai-bot.png", kind: RobotMark, pixels: 512, ground: stone, ink: ink),
+    brand_asset_square(file: "github-apps/gunbai-ci.png", kind: FaceMark, pixels: 512, ground: brand_asset_ci_ground, ink: brand_asset_ci_ink),
+  ]
+}
+
+fn brand_asset_encode(target: BrandAssetTarget) -> BrandAssetEncoding {
+  match brand_mark_raster(mark: brand_mark(kind: target.kind), spec: target.spec) {
+    BrandRasterRefused { cause } => BrandAssetRefused { file: target.file, cause: BrandAssetRasterRefused { cause: cause } }
+    BrandRastered { image } => match png_encode(image: image) {
+      PngEncoded { octets } => BrandAssetEncoded { file: target.file, octets: octets }
+      PngRefused { cause } => BrandAssetRefused { file: target.file, cause: BrandAssetPngRefused { cause: cause } }
+    }
+  }
+}
