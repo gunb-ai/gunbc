@@ -34,14 +34,14 @@ data gcp_operation_poll_cadence: Second = second(count: 5)
 
 data gcp_operation_poll_budget: Second = second(count: 120)
 
-data gcp_iam_converge_actuation_allowance_minutes: Int = 10
+data gcp_iam_converge_actuation_allowance: Second = second(count: 600)
 
 fn gcp_operation_poll_ticks() -> Int {
   second_count(s: gcp_operation_poll_budget) / second_count(s: gcp_operation_poll_cadence)
 }
 
 fn gcp_operation_budget_fits_actuation_allowance() -> Bool {
-  second_count(s: gcp_operation_poll_budget) <= gcp_iam_converge_actuation_allowance_minutes * 60
+  second_count(s: gcp_operation_poll_budget) <= second_count(s: gcp_iam_converge_actuation_allowance)
 }
 
 // ── ONE READ, and the pure decision after it ─────────────────────────────────────────────────────
