@@ -14934,9 +14934,16 @@ fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String
     }
     field_binding_with_pattern(field_binding: e.arm, pattern: inner_pattern)
   )
+  // A wildcard arm is the inner match's only fallthrough for the refutable arms before it, and grouping
+  // would fold those into one inner match without it (E0004 over CoreEdgeLabel in v2.std.node
+  // resolved_reference_kind_of_label); the ordinary lowering likewise skips grouping then.
+  if posed |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a))) {
+    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  } else {
   rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
     emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
     emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  }
 }
 
 // AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
