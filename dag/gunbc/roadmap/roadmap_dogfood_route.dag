@@ -34,7 +34,7 @@ import gunbc.roadmap.roadmap_publish {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.roadmap.roadmap_session_placement {
-  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
+  SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable,
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
 }
@@ -428,6 +428,7 @@ fn dogfood_placement_grant_reading(p: SessionPlacementObservation) -> PlacementG
     SessionPlacementAbsent { unit } => PlacementGrantGap { gap: StageOwed { owed_by: join(["no session slot is held for ", unit], "") } }
     SessionPlacementUnreadable { unit: _, detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
     SessionPlacementForeign { unit: _, detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
+    SessionPlacementUnnameable { detail } => PlacementGrantGap { gap: StageRefused { reason: detail } }
     SessionPlacementObserved { slot: _, grant, returned: _ } =>
       match grant {
         SessionGrantRecorded { record } => PlacementGrantEstablished { evidence: PlacementGrantEvidence { host: record.host, unit: record.unit, grant_identity: record.grant_identity, fence_generation: record.fence_generation } }
@@ -446,6 +447,7 @@ fn dogfood_cleanup_reading(p: SessionPlacementObservation) -> CleanupReading {
     SessionPlacementAbsent { unit } => CleanupGap { gap: StageOwed { owed_by: join(["no session slot is held for ", unit, ", so there is no hold to release"], "") } }
     SessionPlacementUnreadable { unit: _, detail } => CleanupGap { gap: StageRefused { reason: detail } }
     SessionPlacementForeign { unit: _, detail } => CleanupGap { gap: StageRefused { reason: detail } }
+    SessionPlacementUnnameable { detail } => CleanupGap { gap: StageRefused { reason: detail } }
     SessionPlacementObserved { slot: _, grant, returned } =>
       match grant {
         SessionGrantNotRecorded { path: _ } => CleanupGap { gap: StageOwed { owed_by: "no placement grant is recorded, so no release can be bound to one" } }

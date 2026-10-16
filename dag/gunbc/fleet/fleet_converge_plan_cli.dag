@@ -66,8 +66,6 @@ import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
-  SlotRetirementEvidencePresent,
-  transition_retirement_admission,
   observe_transition_retirement_evidence,
   interruption_authorization_for_host,
   HostInterruptionAuthorizationPresent,
@@ -486,10 +484,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 // was still being built, which is why the actuator drafted in `gunbc.runner.runner_slot_retirement` was
 // deleted rather than called from this function.
 //
-// PERMISSION IS DECIDED BEFORE ANY READ. A transition whose required retirees are not fully covered by
-// the operator's interruption authorization yields evidence-absent with the uncovered units named, so
-// the plan renders refusals rather than masks. Reading standings first and checking coverage later
-// would make the refusal a property of what the host happened to report.
+// COVERAGE IS DECIDED OVER THIS RUN'S READBACK. observe_transition_retirement_evidence reads
+// standings for the durable required set, then admits only if every unit that is not already
+// RetirementComplete is inside the grant. A completed standing discharges interruption demand for
+// this plan; it does not edit the obligation. A stored run id is not that standing.
 //
 // AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
 // a host with no deploy row has no transition and nothing here may speak for it.
@@ -509,18 +507,11 @@ fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvid
         HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
           SlotRetirementEvidenceAbsent { cause: c }
         HostInterruptionAuthorizationPresent { authorization: host_auth } =>
-          match transition_retirement_admission(
+          observe_transition_retirement_evidence(
+            transport: LocalShell,
             host: host as HostIdentity,
             auth: host_auth,
-          ) {
-            SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
-            SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
-              observe_transition_retirement_evidence(
-                transport: LocalShell,
-                host: host as HostIdentity,
-                auth: auth,
-              )
-          }
+          )
       }
   }
 }
