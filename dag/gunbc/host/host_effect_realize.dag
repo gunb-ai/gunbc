@@ -6076,6 +6076,10 @@ type MicrovmControllerInstallStaging
   = MicrovmControllerInstallReady { steps: List<MicrovmControllerInstallStep> }
   | MicrovmControllerInstallRefused { reason: String }
 
+// THE EDGE EVERY REFUSAL AND EVERY VERDICT NAMES, so a failure says which edge refused
+// rather than only that something failed.
+data microvm_controller_install_edge: String = "host_effect_apply: MicrovmControllerInstall"
+
 // The one pin the retired script carried as data rather than as a row: the guest
 // kernel artifact's digest is what the copy of it is verified against, and the
 // retired step list refused with `exit 1` when the artifact carried none. Refusing
