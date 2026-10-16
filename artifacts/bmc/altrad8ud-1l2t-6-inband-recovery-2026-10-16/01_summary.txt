@@ -1,0 +1,36 @@
+In-band IPMI (KCS) BMC credential recovery — first executed specimen
+Board: ASRock Rack ALTRAD8UD-1L2T, BMC 192.168.1.250 (lease bmc-altrad8ud-1l2t-6, MAC 9c:6b:00:e7:c9:fa)
+Firmware: OpenBMC 3.22.00
+Date: 2026-10-16, executed by session royal-seal-46, LAN reached via jump host srv2.
+
+PRECONDITION (the load-bearing fact): a reachable host OS with in-band KCS.
+  A rescue Ubuntu live USB (user installer / password rescue, passwordless sudo) booted on the host
+  and took a DHCP lease at 192.168.1.251 (hostname came up as `ubuntu-server`, not `rescue`).
+  Host NIC MAC 9c:6b:00:e7:ca:9b — adjacent to the BMC MAC on the same board.
+  ipmitool installed from Ubuntu archive; kernel modules ipmi_devintf/ipmi_ssif/ipmi_msghandler loaded;
+  /dev/ipmi0 present (crw------- root root 235,0). In-band KCS is implicitly ADMINISTRATOR — no old password needed.
+
+OBSERVED BMC STATE (read-only, in-band):
+  mc info: ASRock Rack Incorporation, Firmware Revision 3.22.
+  user list 1: ID 1 = root, ADMINISTRATOR, enabled on channel 1 (802.3 LAN).
+  lan print 1: IP 192.168.1.250, DHCP.
+
+PRIVILEGED WRITE 1 — set temp admin password over KCS (classify in privileged_effect_census):
+  `ipmitool user set password 1 '0penBmc'`         -> IPMI "Invalid data field in request"
+  `ipmitool user set password 1 '0penBmc' 20`      -> same (OpenBMC 3.22 policy: published 7-char factory
+                                                       password is rejected; min length >= 8).
+  `ipmitool user set password 1 '<temp 20-char>' 20` -> "Set User Password command successful (user 1)"
+  Out-of-band verify: GET https://192.168.1.250/redfish/v1/Managers/bmc with root/<temp> -> HTTP 200 (FirmwareVersion 3.22.00).
+
+PRIVILEGED WRITE 2 — destructive factory reset (needs explicit operator approval + readback):
+  Action discovery: #Manager.ResetToDefaults advertises ResetType@Redfish.AllowableValues: ["ResetAll"],
+  but the firmware requires the parameter spelled `ResetToDefaultsType` (ResetType is rejected as unknown).
+  POST .../Actions/Manager.ResetToDefaults  {"ResetToDefaultsType":"ResetAll"} -> HTTP 200.
+
+POST-RESET READBACK (the recovery's terminal observation):
+  BMC went unreachable ~2.5 min, returned at 192.168.1.250, and root/0penBmc now returns
+  HTTP 403 Base.1.x PasswordChangeRequired — the factory-credential-active first-contact state
+  (same as srv13 at onboarding). This re-enters gunbc.tools.bmc_onboard factory-login -> rotate.
+  The temp password set in WRITE 1 was wiped by the reset; no loose credential remains.
+
+NOTE: the temp password is intentionally NOT recorded here. This file is the executed route and its verdicts.
