@@ -298,11 +298,11 @@ test fn an_owned_card_amortizes_its_capital_and_zero_hours_is_unamortizable() ->
   // $10,000 over 10,000 hours is $1/h.
   (hourly_micro(h: serving_card_hourly(
     recipe: serving_recipe_flash_next_lab_vllm,
-    supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 10000 },
+    supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 36000000) },
   )) == 1000000)
     && (hourly_micro(h: serving_card_hourly(
       recipe: serving_recipe_flash_next_lab_vllm,
-      supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 0 },
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 0) },
     )) == -1)
 }
 
@@ -317,7 +317,7 @@ fn recipe_rate(supply: ServingCardSupply) -> MoneyPerHour {
 }
 
 fn owned_supply() -> ServingCardSupply {
-  OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization_hours: 10000 }
+  OwnedCardSupply { capital: money_amount_micro(count: 10000000000), currency: Usd, amortization: second(count: 36000000) }
 }
 
 fn rented_supply() -> ServingCardSupply {
