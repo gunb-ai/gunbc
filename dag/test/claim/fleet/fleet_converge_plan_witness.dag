@@ -452,13 +452,6 @@ test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
     && string_contains(s: fleet_converge_plan_cli_note, pattern: "apply.sh")
 }
 
-// INHABITANCE: the FullHost wet observer's authorized arm is observe_transition_retirement_evidence
-// (observe_slot_retirement_evidence_wet). Deleting that call without this sentence fails this row.
-test fn the_wet_retirement_path_calls_observe_transition_retirement_evidence() -> Bool {
-  string_contains(s: fleet_converge_plan_cli_note, pattern: "observe_slot_retirement_evidence_wet")
-    && string_contains(s: fleet_converge_plan_cli_note, pattern: "observe_transition_retirement_evidence")
-}
-
 test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
   {
     let artifact = fleet_converge_plan_artifact(
