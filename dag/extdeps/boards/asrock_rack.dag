@@ -1208,11 +1208,13 @@ fn asrock_altrad8ud_published_factory_password_write_policy_for(
   }
 }
 
+// WHICH RELEASE A ROW IS ABOUT, BY THE STRUCTURAL EQUALITY OF THE TYPED VERSION. The row's `firmware` is
+// the same BmcFirmwareVersion the catalog keys on, so this compares the values instead of walking
+// family/major/minor/patch field by field: a fourth field added to FirmwareSemanticVersion would have been
+// silently ignored by the field-by-field version, and the version it ignored would still have matched.
 fn policy_names_firmware(policy: PublishedFactoryPasswordWritePolicy, firmware: BmcFirmwareVersion) -> Bool {
-  let row = match policy {
-    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _ } => f
-    NotMeasured { firmware: f } => f
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, capture: _ } => f == firmware
+    NotMeasured { firmware: f } => f == firmware
   }
-  row.family == firmware.family && row.version.major == firmware.version.major
-    && row.version.minor == firmware.version.minor && row.version.patch == firmware.version.patch
 }
