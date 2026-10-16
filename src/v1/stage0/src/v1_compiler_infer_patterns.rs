@@ -968,52 +968,6 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
     }
 }
 
-pub fn env_binds_never_declaration(env: Rc<TypeEnv>) -> bool {
-    if (env.module_path.clone() == never_type_declaration().module_path.clone()) {
-        true
-    } else {
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
-            env.symbol_index.clone(),
-            crate::std_primitive_projection::never_type_qualified_path(),
-        ) {
-            std::option::Option::None => false,
-            Some(indexed) => match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                never_type_declaration().decl_name.clone(),
-            ) {
-                std::option::Option::None => false,
-                Some(bound) => {
-                    (bound.occurrence_identity.clone() == indexed.occurrence_identity.clone())
-                }
-            },
-        }
-    }
-}
-
-pub fn never_declaration_occurrence(
-    env: Rc<TypeEnv>,
-) -> std::option::Option<Rc<NodeOccurrenceIdentity>> {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
-        env.symbol_index.clone(),
-        crate::std_primitive_projection::never_type_qualified_path(),
-    ) {
-        Some(indexed) => std::option::Option::Some(indexed.occurrence_identity.clone()),
-        std::option::Option::None => {
-            if (env.module_path.clone() != never_type_declaration().module_path.clone()) {
-                std::option::Option::None
-            } else {
-                match crate::v1_compiler_infer_env::lookup_type_by_name(
-                    env.clone(),
-                    never_type_declaration().decl_name.clone(),
-                ) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(bound) => std::option::Option::Some(bound.occurrence_identity.clone()),
-                }
-            }
-        }
-    }
-}
-
 pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), n.clone()) {
         Some(def) => def,
@@ -1027,53 +981,64 @@ pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> 
     }
 }
 
-pub fn node_ident_is_never_binding(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match crate::v1_compiler_infer_env::lookup_type_by_name(
-        env.clone(),
-        never_type_declaration().decl_name.clone(),
+pub fn never_identity_node(env: Rc<TypeEnv>) -> std::option::Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::symbol_index_lookup(
+        env.symbol_index.clone(),
+        crate::std_primitive_projection::never_type_qualified_path(),
     ) {
-        std::option::Option::None => false,
-        Some(bound) => match n.ident.clone() {
-            std::option::Option::None => false,
-            Some(id) => match bound.ident.clone() {
-                std::option::Option::None => false,
-                Some(bid) => (id == bid),
-            },
-        },
+        Some(indexed) => std::option::Option::Some(indexed),
+        std::option::Option::None => {
+            if (env.module_path.clone() != never_type_declaration().module_path.clone()) {
+                std::option::Option::None
+            } else {
+                crate::v1_compiler_infer_env::lookup_type_by_name(
+                    env.clone(),
+                    never_type_declaration().decl_name.clone(),
+                )
+            }
+        }
     }
 }
 
-pub fn candidate_is_never_declaration(
-    n: Rc<Node>,
-    env: Rc<TypeEnv>,
-    never_occ: Rc<NodeOccurrenceIdentity>,
-) -> bool {
-    (n.occurrence_identity.clone() == never_occ.clone())
-        || node_ident_is_never_binding(n.clone(), env.clone())
+pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {
+    (n.occurrence_identity.clone() == identity.occurrence_identity.clone())
+        || match n.ident.clone() {
+            std::option::Option::None => false,
+            Some(id) => match identity.ident.clone() {
+                std::option::Option::None => false,
+                Some(bid) => (id == bid),
+            },
+        }
 }
 
 pub fn node_is_never_declaration(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    match never_declaration_occurrence(env.clone()) {
+    match never_identity_node(env.clone()) {
         std::option::Option::None => false,
-        Some(never_occ) => {
+        Some(identity) => {
             let peeled = peel_never_identity_candidate(resolved.clone(), env.clone());
             let peeled2 = peel_never_identity_candidate(peeled.clone(), env.clone());
-            candidate_is_never_declaration(resolved.clone(), env.clone(), never_occ.clone())
-                || candidate_is_never_declaration(peeled.clone(), env.clone(), never_occ.clone())
-                || candidate_is_never_declaration(peeled2.clone(), env.clone(), never_occ.clone())
-                || match crate::v1_compiler_infer_env::lookup_type_by_name(
+            let against_identity = candidate_joins_never_identity(
+                resolved.clone(),
+                identity.clone(),
+            ) || candidate_joins_never_identity(peeled.clone(), identity.clone())
+                || candidate_joins_never_identity(peeled2.clone(), identity.clone());
+            if against_identity {
+                true
+            } else if (env.module_path.clone() != never_type_declaration().module_path.clone()) {
+                false
+            } else {
+                match crate::v1_compiler_infer_env::lookup_type_by_name(
                     env.clone(),
                     never_type_declaration().decl_name.clone(),
                 ) {
                     std::option::Option::None => false,
                     Some(bound) => {
-                        (resolved.occurrence_identity.clone() == bound.occurrence_identity.clone())
-                            || (peeled.occurrence_identity.clone()
-                                == bound.occurrence_identity.clone())
-                            || (peeled2.occurrence_identity.clone()
-                                == bound.occurrence_identity.clone())
+                        candidate_joins_never_identity(resolved.clone(), bound.clone())
+                            || candidate_joins_never_identity(peeled.clone(), bound.clone())
+                            || candidate_joins_never_identity(peeled2.clone(), bound.clone())
                     }
                 }
+            }
         }
     }
 }

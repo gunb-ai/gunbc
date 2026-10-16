@@ -2805,17 +2805,28 @@ fn infer_type_head_and_args(t: Node) -> InferTypeHeadArgs {
   }
 }
 
-fn infer_match_path_is_never_type(path: QualifiedName) -> Bool {
+fn infer_match_path_is_never_type(path: QualifiedName, constructing_module: Optional<Symbol>) -> Bool {
   match qualified_name_last_segment(qn: path) {
     Absent => false
     Present { value: last } =>
-      declaration_ref_eq(
-        a: decl_ref(
-          module_path: qualified_name_to_dotted_string(qn: qualified_name_init(qn: path)),
-          decl_name: symbol_lexeme(sym: last)
-        ),
-        b: never_type_declaration
-      )
+      let init = qualified_name_to_dotted_string(qn: qualified_name_init(qn: path))
+      let module_path =
+        if init != "" {
+          init
+        } else {
+          match constructing_module {
+            Absent => ""
+            Present { value: m } => symbol_lexeme(sym: m)
+          }
+        }
+      if module_path == "" {
+        false
+      } else {
+        declaration_ref_eq(
+          a: decl_ref(module_path: module_path, decl_name: symbol_lexeme(sym: last)),
+          b: never_type_declaration
+        )
+      }
   }
 }
 
@@ -2848,7 +2859,7 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
                 }
               }
             TypeNode { connective: Atom { identity: _ } } =>
-              if infer_match_path_is_never_type(path: path) {
+              if infer_match_path_is_never_type(path: path, constructing_module: resolved.constructing_module) {
                 UninhabitedScrutinee
               } else {
                 CoproductNotDeclared
