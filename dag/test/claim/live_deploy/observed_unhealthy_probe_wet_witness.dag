@@ -33,14 +33,19 @@ import extdeps.http.client
 import extdeps.tools.sleep
 import extdeps.filesystem.filesystem_io
 import extdeps.shell
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.instruments.emit_host_transport { node_http_serve_port_seed, node_http_await_reaped }
 import gunbc.roadmap.roadmap_site_surface_types {
   HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
 }
 import gunbc.live_deploy.readiness { healthz_effective_read_from_status_get }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// THE WITNESS'S OWN INPUT-DOMAIN STATEMENT (std.live_tree: the authority is this row, in the entry
+// file). ReadsLiveTree, not SubstrateInputsOnly, and honestly so: the evaluation runs the `node`
+// binary found on the host's PATH, which no resolved substrate closure contains, and it reads the
+// loopback stack. A SubstrateInputsOnly stamp here would claim the result depends on nothing outside
+// the closure -- which is exactly what this witness exists to test about the host.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE SICK SERVE, as a model value (the bytes reach disk only through Filesystem.Write below, so no
 // file template crosses a boundary -- the same shape the process-lifecycle wet witness uses). One
