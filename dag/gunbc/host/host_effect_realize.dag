@@ -5147,7 +5147,18 @@ fn live_deploy_preamble_consumed(state: LiveDeployPreambleLegState) -> Int {
   }
 }
 
-// The pair (state, calls) the two folds accumulate.
+// The pair (state, calls) the two folds accumulate. `state` is what the fold decided; `observations`
+// counts the transport/executor calls actually attempted, which is what makes the short-circuit
+// falsifiable (a fold that kept observing after a refusal would report the same state).
+type LiveDeployPreambleRun = LiveDeployPreambleRun { state: LiveDeployPreambleLegState, observations: Int }
+
+// The fold's accumulator. `pending` is gone from the impure fold (it observes on demand) and the pure
+// fold supplies results by step name instead, so neither needs a positional carrier.
+type LiveDeployPreambleFoldAcc = PreambleFoldAcc { state: LiveDeployPreambleLegState, observations: Int }
+
+data live_deploy_preamble_fold_init: LiveDeployPreambleFoldAcc =
+  PreambleFoldAcc { state: live_deploy_preamble_leg_ok, observations: 0 }
+
 // THE IMPURE FOLD — gate first, observe second, so a refusal costs no later privileged call at all.
 // It is the pure fold above with its observations produced on demand, and both go through the same
 // live_deploy_preamble_leg_decision / live_deploy_preamble_next_state pair, so what the witness pins is
@@ -5202,7 +5213,7 @@ fn live_deploy_preamble_cleanup_scratch(scratch: String, access: DeployAccess) -
   match run_argv_over_host_effect_transport(command: rm_recursive_force_command(path: scratch), transport: access.transport) {
     RunArgvTransportRefused { reason: r } => Present { value: r }
     RunArgvTransportObserved { observed: o } =>
-      if o.success { none } else { Present { value: join(["exited ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      if o.success { Absent } else { Present { value: join(["exited ", to_string(o.exit_code), ": ", o.stderr], "") } }
   }
 }
 
