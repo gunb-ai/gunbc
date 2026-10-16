@@ -2379,9 +2379,9 @@ test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> 
 // it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
 // rather than the helpers beneath it: a control that proved the realization and left the renderer
 // unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
-// THE FIXTURE IS A REQUIRED RETIREE OF THE OPEN UNION, NOT WIDTH+1. Review 80784: srv4's prior
-// equals its committed width. 07..12 are required and outside the origin/main 13..50 grant.
-// An empty or unresolved set yields srv1-00, which is never a retiree.
+// THE FIXTURE IS A REQUIRED RETIREE OF THE OPEN REMAINDER after completed retirement discharges
+// 07..12. Remaining 14..50 are inside the origin/main 13..50 grant. An empty or unresolved set
+// yields srv1-00, which is never a retiree.
 fn witness_open_transition_delta_units() -> List<NonEmptyStr> {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: us } => us
@@ -2424,12 +2424,51 @@ fn witness_open_transition_delta_is_a_required_retiree() -> Bool {
     RetireesKnown { units: us } =>
       any(us, u => (u as String) == (witness_open_transition_delta_unit(offset: 0) as String))
         && list_length(items: us) > 0
-        && !interruption_authorization_covers(
+        && interruption_authorization_covers(
           auth: srv1_transition_interruption_authorization,
           unit: witness_open_transition_delta_unit(offset: 0) as String,
         )
     RetireesUnresolved { host: _, cause: _ } => false
   }
+}
+
+fn witness_unpermitted_completed_unit() -> NonEmptyStr {
+  runner_slot_unit_name(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 7 })
+}
+
+fn witness_unpermitted_completed_instance() -> String {
+  match read_runner_unit_name(observed: witness_unpermitted_completed_unit()) {
+    RunnerUnitInstance { registration_name: n } => n as String
+    NotARunnerUnit { observed: _ } => "srv1-00"
+    RunnerUnitInstanceMalformed { observed: _, cause: _ } => "srv1-00"
+  }
+}
+
+fn witness_unpermitted_completed_members() -> List<RunnerSlotMember> {
+  [runner_slot_member_observed(
+    instance_name: witness_unpermitted_completed_instance(),
+    provenance: SlotProvenanceObserved {
+      in_host_grammar: true,
+      registration: SlotUnregistered,
+      unit_active: false,
+      unit_enabled: false,
+    },
+  )]
+}
+
+fn witness_unpermitted_complete_standing() -> RunnerRetirementStanding {
+  runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: witness_unpermitted_completed_unit(),
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  )
+}
+
+fn removes_unpermitted_completed_tree(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: join(["/opt/actions-runner/", witness_unpermitted_completed_instance()], "")))
 }
 
 fn witness_no_retirement_evidence() -> SlotRetirementEvidence {
@@ -2492,18 +2531,44 @@ fn witness_open_transition_delta_apply(standings: List<RunnerRetirementStanding>
   )
 }
 
-// FIRST PASS: the unit is required and UNPERMITTED. The renderer must neither mask nor remove.
+fn witness_unpermitted_completed_apply(standings: List<RunnerRetirementStanding>) -> List<String> {
+  slot_apply_lines(
+    host: "srv1" as NonEmptyStr,
+    observed_slots: witness_unpermitted_completed_members(),
+    retirement_evidence: witness_srv1_evidence(standings: standings),
+  )
+}
+
+// FIRST PASS, UNPERMITTED: srv1-07 is outside the grant. The renderer must neither mask nor remove.
 test fn the_first_pass_does_not_act_on_an_unpermitted_required_retiree() -> Bool {
+  let lines = witness_unpermitted_completed_apply(standings: [])
+  !interruption_authorization_covers(
+    auth: srv1_transition_interruption_authorization,
+    unit: witness_unpermitted_completed_unit() as String,
+  )
+    && !emits_mask_command(lines: lines)
+    && !removes_unpermitted_completed_tree(lines: lines)
+}
+
+// SECOND PASS, UNPERMITTED: complete standing does not authorize teardown the grant does not name.
+test fn the_second_pass_does_not_remove_an_unpermitted_required_retiree() -> Bool {
+  let lines = witness_unpermitted_completed_apply(standings: [witness_unpermitted_complete_standing()])
+  !removes_unpermitted_completed_tree(lines: lines)
+    && !emits_mask_command(lines: lines)
+}
+
+// FIRST PASS, PERMITTED: a remaining required retiree the grant names is masked.
+test fn the_first_pass_masks_a_permitted_required_retiree() -> Bool {
   let lines = witness_open_transition_delta_apply(standings: [])
   witness_open_transition_delta_is_a_required_retiree()
-    && !emits_mask_command(lines: lines)
+    && emits_mask_command(lines: lines)
     && !removes_retired_tree(lines: lines)
 }
 
-// SECOND PASS: complete standing does not authorize teardown the grant does not name.
-test fn the_second_pass_does_not_remove_an_unpermitted_required_retiree() -> Bool {
+// SECOND PASS, PERMITTED: independently complete standing tears the tree down.
+test fn the_second_pass_removes_a_permitted_required_retiree() -> Bool {
   let lines = witness_open_transition_delta_apply(standings: [witness_open_transition_delta_complete_standing()])
-  !removes_retired_tree(lines: lines)
+  removes_retired_tree(lines: lines)
     && !emits_mask_command(lines: lines)
 }
 

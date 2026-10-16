@@ -364,7 +364,7 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
 // before any SSH. On srv1, committed width 7 desires 01 through 06; fabric member 13 is not a
-// retiree; the union of open rows retires 07..12 and 14..50.
+// retiree; completed retirement discharges 07..12, so observe lists 14..50.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
@@ -377,9 +377,10 @@ test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-05.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-06.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-07.service")
-        && length(s.retired_units) == 43
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-07.service")
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
+        && length(s.retired_units) == 37
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-07.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-14.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
         && any(s.fabric_units, u => (u as String) == "actions-runner@srv1-13.service")

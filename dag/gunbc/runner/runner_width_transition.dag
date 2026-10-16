@@ -1,6 +1,6 @@
 module gunbc.runner.runner_width_transition
 
-import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length, WorkflowRunId }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, committed_unit_names_at }
@@ -9,6 +9,8 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 
 // THE OBLIGATION TO RETIRE IS A PROPERTY OF THE TRANSITION, NOT OF ANYONE'S PERMISSION TO ACT ON IT.
 //
@@ -56,10 +58,10 @@ type RunnerWidthTransition sole_constructor {
 //
 // srv3 and srv4 were each admitted 21 slots; their committed width is still 21, so the prior
 // equals the target and they owe no retirees while those rows stay open. srv1 keeps
-// `runner-slot-26-25-gib` at prior 50 until a typed completion receipt supersedes it; run
-// 38785880931 is cited in the PR body and is not readable evidence here (review 80879). The
-// 12→7 cut is a second open row. Required is the union: committed(50) minus committed(7) =
-// srv1-07..12 and 14..50 (13 stays). srv2 is absent deliberately.
+// `runner-slot-26-25-gib` at prior 50; the 12→7 cut is a second open row. The raw union is
+// committed(50) minus committed(7) = srv1-07..12 and 14..50 (13 stays). Completed-retirement
+// rows discharge the 12→7 delta and the width-12 hole srv1-12 against readback run
+// 38785880931, so the open remainder is 14..50. srv2 is absent deliberately.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
@@ -173,6 +175,74 @@ fn required_retirees_union_of_rows(rows: List<RunnerWidthTransition>) -> Require
   )
 }
 
+// A COMPLETED RETIREMENT IS A TYPED RECEIPT, NOT A COMMENT. DESIGN §4c: annotations are never
+// evidence. The 12→7 units left the host on Actions run 38785880931; without this carrier they
+// stay in the open union and coverage treats them as required-but-unauthorized against the
+// origin/main 13..50 grant. Units are derived from the open 12→7 row (plus srv1-12, which
+// committed(12) never named and which the 50-row still lists).
+type CompletedWidthRetirement sole_constructor {
+  host: HostIdentity
+  units: List<NonEmptyStr>
+  readback_run_id: WorkflowRunId
+}
+
+fn srv1_width_12_7_open_row() -> List<RunnerWidthTransition> {
+  slot_width_transition_26_25 |> filter(t =>
+    (t.host as String) == (operator_host_srv1 as String)
+      && (t.transition_id as String) == "runner-slot-width-12-7"
+  )
+}
+
+fn completed_units_of_transition(t: RunnerWidthTransition) -> List<NonEmptyStr> {
+  match transition_required_retirees(t: t) {
+    RetireesUnresolved { host: _, cause: _ } => []
+    RetireesKnown { units: units } => units
+  }
+}
+
+fn srv1_width_12_never_committed_unit() -> NonEmptyStr {
+  runner_slot_unit_name(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 12 })
+}
+
+fn srv1_width_7_completed_retirement() -> CompletedWidthRetirement {
+  let from_cut = match srv1_width_12_7_open_row().first() {
+    Absent => []
+    Present { value: t } => completed_units_of_transition(t: t)
+  }
+  CompletedWidthRetirement {
+    host: operator_host_srv1,
+    units: union_retiree_units(a: from_cut, b: [srv1_width_12_never_committed_unit()]),
+    readback_run_id: "38785880931" as WorkflowRunId,
+  }
+}
+
+data completed_width_retirements: List<CompletedWidthRetirement> = [
+  srv1_width_7_completed_retirement(),
+]
+
+fn completed_retirement_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+  fold(
+    completed_width_retirements,
+    init: [],
+    f: (acc, row) =>
+      if (row.host as String) == (host as String) {
+        union_retiree_units(a: acc, b: row.units)
+      } else {
+        acc
+      },
+  )
+}
+
+fn retirees_minus_completed(required: RequiredRetirees, completed: List<NonEmptyStr>) -> RequiredRetirees {
+  match required {
+    RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
+    RetireesKnown { units: units } =>
+      RetireesKnown {
+        units: units |> filter(u => !any(completed, c => (c as String) == (u as String))),
+      }
+  }
+}
+
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {
   let rows = transition_row_for_host(host: host)
   match rows.first() {
@@ -191,7 +261,11 @@ fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStan
 fn required_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
   match host_width_transition_standing(host: host) {
     HostHasNoOpenTransition { host: _ } => RetireesKnown { units: [] }
-    HostTransitionOpen { transition: _, required: r } => r
+    HostTransitionOpen { transition: _, required: r } =>
+      retirees_minus_completed(
+        required: r,
+        completed: completed_retirement_units_for_host(host: host),
+      )
   }
 }
 
