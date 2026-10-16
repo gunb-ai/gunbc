@@ -7217,15 +7217,16 @@ pub fn emit_rust_selected(
         } else {
             "v1_compiled".to_string()
         };
+        let native_effects = native_entry_effects(typed.modules.clone(), ctx.registry.clone());
         let rust_crate = Rc::new(EmittedRustCrate {
             crate_name: crate_name.clone(),
             demand: EmittedCrateDependencyDemand {
                 renders_clap_cli: has_pipeline.clone(),
-                renders_async_services: (has_services.clone()
-                    || closure_renders_async_trait_resource(typed.clone())),
+                renders_async_services: ((has_services.clone()
+                    || closure_renders_async_trait_resource(typed.clone()))
+                    || native_entry_has_effects(native_effects.clone())),
             },
         });
-        let native_effects = native_entry_effects(typed.modules.clone(), ctx.registry.clone());
         let native_effect_refusals =
             native_entry_effect_diagnostics(native_effects.clone(), typed.modules.clone());
         if ((native_effect_refusals.clone().len() as i64) > 0) {
@@ -42218,6 +42219,13 @@ pub fn native_entry_effects(
                 admissions: v1_rt::concat(resource_admissions.clone(), service_admissions.clone()),
             }))
         }
+    }
+}
+
+pub fn native_entry_has_effects(effects: Option<Rc<NativeEntryEffects>>) -> bool {
+    match effects.clone() {
+        std::option::Option::None => false,
+        Some(e) => ((e.admissions.clone().len() as i64) > 0),
     }
 }
 
