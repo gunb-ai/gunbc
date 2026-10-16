@@ -2262,6 +2262,16 @@ const FIXTURE_ARGV_WORD_LIST_GREEN_PATH: &str =
 /// THE RED FOR THE LOCATED ARGV-TYPE REFUSAL: an Int in a shell argv must emit compile_error!,
 /// never emit_simple_expr leftover. rustc refusing this fixture's emitted module with that
 /// sentence is the class; E0308 is a different subject (the route's text-boundary red).
+///
+/// SEED DELTA (ctrl hand-Rust receipt): test-only items in this existing host
+/// (`FIXTURE_ARGV_NON_STRING_RED_PATH`, `FIXTURE_ARGV_NON_STRING_EXPECTED`,
+/// `fixture_argv_non_string_discrimination_passed`). No new production route; no deleted
+/// scaffold. WHY RUST: the discriminator is rustc-on-emitted-crate; a `.dag` claim cannot be
+/// that verdict. PURPOSE: `gunbc.v1.v1_maintenance_standing` `v1_seed_standing` — the argv
+/// splice has to stay an executed RED for native emit. Lane `v1-hand-queue-drain`. Deferral:
+/// delete these three with the rest of this file's fixture pairs when the native compiler
+/// owns `v1.compiler.emit_rust` `emit_shell_call` argv classification and this pair is a v2
+/// claim on the emitted crate.
 #[cfg(test)]
 const FIXTURE_ARGV_NON_STRING_RED_PATH: &str =
     "fixtures/fixture_closure_rustc/argv_non_string_element_probe.dag";
