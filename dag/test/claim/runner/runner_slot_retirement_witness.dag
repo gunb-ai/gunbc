@@ -100,7 +100,6 @@ import gunbc.runner.runner_slot_retirement {
   TransitionRetireesNotPermitted,
   RetirementActuationAuthorized,
   RetirementActuationRefused,
-  transition_retirement_admission,
   transition_retirement_admission_over,
   SlotRetirementEvidencePresent,
   SlotRetirementEvidenceAbsent,
@@ -995,22 +994,6 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
       auth: srv1_transition_interruption_authorization,
       unit: "actions-runner@srv1-01.service",
     )
-}
-
-// EMPTY STANDINGS ARE THIS RUN WITH NO READBACK: 07..12 stay outstanding and admission is Absent.
-// That is the production consumer on main: observe_slot_retirement_evidence_wet called
-// transition_retirement_admission (no standings) and never read the host, so 14..50 were
-// withheld with the unpermitted 07..12.
-test fn srv1_admission_without_this_runs_readback_is_absent() -> Bool {
-  match interruption_authorization_for_host(host: operator_host_srv1) {
-    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
-    HostInterruptionAuthorizationPresent { authorization: auth } =>
-      match transition_retirement_admission(host: operator_host_srv1, auth: auth) {
-        SlotRetirementEvidencePresent { authorization: _, standings: _ } => false
-        SlotRetirementEvidenceAbsent { cause: c } =>
-          string_contains(s: c, pattern: "actions-runner@srv1-07.service")
-      }
-  }
 }
 
 // SUPPLIED COMPLETE STANDINGS ARE THIS RUN'S READBACK, not a stored Actions run id. 07..12

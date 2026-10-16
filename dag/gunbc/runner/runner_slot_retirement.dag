@@ -1099,23 +1099,6 @@ fn outstanding_required_retirees(
   )
 }
 
-fn transition_retirement_admission(
-  host: HostIdentity,
-  auth: InterruptionAuthorization,
-) -> SlotRetirementEvidence {
-  match transition_required_retiring(host: host) {
-    RetireesUnresolved { host: uh, cause: c } =>
-      SlotRetirementEvidenceAbsent {
-        cause: join([
-          "the retirement obligation for ", uh as String,
-          " is not derivable, so no interruption coverage can be decided over it and no retirement is admitted: ", c,
-        ], ""),
-      }
-    RetireesKnown { units: required } =>
-      transition_retirement_admission_over(host: host, auth: auth, required: required, standings: [])
-  }
-}
-
 fn transition_retirement_admission_over(
   host: HostIdentity,
   auth: InterruptionAuthorization,
