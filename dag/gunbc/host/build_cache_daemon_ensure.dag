@@ -1,5 +1,38 @@
 module gunbc.host.build_cache_daemon_ensure
 
+import std.types { Bool, Int, List, NonEmptyStr, Optional, String }
+import std.optional { Absent, Present }
+import extdeps.crypto.hash { Digest }
+import extdeps.cache.sccache {
+  sccache_installed_binary_path,
+  sccache_misconfigured_log_fragments,
+  sccache_release_0_15_0,
+  sccache_stats_query_command,
+}
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.posix.test_utility { test_executable_command }
+import extdeps.systemd.systemctl {
+  systemctl_daemon_reload_command,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+}
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_file_argv,
+  dd_overwrite_path_command,
+  rm_force_command,
+}
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement }
+import gunbc.build_cache.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  DaemonMisconfigured,
+  DaemonStatsOk,
+  DaemonUnresponsive,
+}
+import gunbc.build_cache.build_cache_unit { build_cache_unit_system_path, build_cache_unit_text }
+import gunbc.host.verified_binary_install { verified_binary_install_install_steps }
+import gunbc.host.sccache_verified_install { sccache_verified_install_params }
+
 // THE TYPED BUILD-CACHE DAEMON ENSURE (shell->dag W7, effect grain; PR-b of the W7 ruling).
 //
 // WHAT THIS MODULE REPLACES. The build-cache ensure step used to hand `retained_srvn` a five-line bash
@@ -42,40 +75,6 @@ module gunbc.host.build_cache_daemon_ensure
 // the script's `trap ... EXIT`, which could not survive: `mktemp -d` invented the path at run time, so
 // no fold could name the cleanup before running it — the same reason the compile-pool slice staged a
 // destination sibling).
-
-import std.types { Bool, Int, List, NonEmptyStr, Optional, String }
-import std.optional { Absent, Present }
-import extdeps.crypto.hash { Digest }
-import extdeps.cache.sccache {
-  sccache_installed_binary_path,
-  sccache_misconfigured_log_fragments,
-  sccache_release_0_15_0,
-  sccache_stats_query_command,
-}
-import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.posix.test_utility { test_executable_command }
-import extdeps.systemd.systemctl {
-  systemctl_daemon_reload_command,
-  systemctl_enable_argv,
-  systemctl_restart_argv,
-}
-import extdeps.sudo.elevation { sudo_elevate_command }
-import extdeps.tools.gnu_coreutils {
-  coreutils_install_file_argv,
-  dd_overwrite_path_command,
-  rm_force_command,
-}
-import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement }
-import gunbc.build_cache.build_cache_provision_verdict {
-  BuildCacheDaemonObservation,
-  DaemonMisconfigured,
-  DaemonStatsOk,
-  DaemonUnresponsive,
-}
-import gunbc.build_cache.build_cache_unit { build_cache_unit_system_path, build_cache_unit_text }
-import gunbc.host.verified_binary_install { verified_binary_install_install_steps }
-import gunbc.host.sccache_verified_install { sccache_verified_install_params }
-
 // THE STAGE SUFFIX IS THIS ENSURE'S OWN and deliberately does not share `compile_pool_slice_stage_suffix`
 // with the compile-pool slice beside it. Same convention (a sibling of the destination, inside the same
 // privileged directory, so `install` never crosses a filesystem boundary and no partly-installed unit is
@@ -173,15 +172,11 @@ fn build_cache_merged_capture(observed: BuildCacheHostRunObserved) -> String {
 fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
   fold(
     sccache_misconfigured_log_fragments,
-    Absent as Optional<String>,
-    (acc: Optional<String>, frag: String) ->
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if string_contains(s: capture, pattern: frag) { Present { value: frag } } else {
-            acc
-          }
-      },
+    init: Absent as Optional<String>,
+    f: (acc, frag) => match acc {
+      Present { value: _ } => acc
+      Absent => if string_contains(s: capture, pattern: frag) { Present { value: frag } } else { acc }
+    },
   )
 }
 
@@ -270,8 +265,7 @@ fn build_cache_daemon_ensure_plan(
     let staged = build_cache_unit_staged_path(instance: instance)
     let dest = build_cache_unit_system_path(instance: instance)
     EnsureOps {
-      ops:
-        append(
+      ops: append(
           if install_needed {
             map(
               verified_binary_install_install_steps(
@@ -356,8 +350,7 @@ fn build_cache_daemon_ensure_observation(
       }
     ObserveStatsOk { stats: _ } =>
       DaemonUnresponsive {
-        detail:
-          "the build-cache observe step reported the daemon answering and ended there, so the daemon was never confirmed to answer after an ensure" as NonEmptyStr,
+        detail: "the build-cache observe step reported the daemon answering and ended there, so the daemon was never confirmed to answer after an ensure" as NonEmptyStr,
       }
     ObserveMisconfigured { matched_fragment: frag, stats: s } =>
       DaemonMisconfigured { matched_fragment: frag, detail: s as NonEmptyStr }
@@ -368,8 +361,7 @@ fn build_cache_daemon_ensure_observation(
           DaemonUnresponsive { detail: build_cache_failure_detail(op: o, observed: f) as NonEmptyStr }
         EnsureNotRun =>
           DaemonUnresponsive {
-            detail:
-              "the build-cache binary was absent and the ensure was not run, so nothing could answer the read-back" as NonEmptyStr,
+            detail: "the build-cache binary was absent and the ensure was not run, so nothing could answer the read-back" as NonEmptyStr,
           }
         EnsureCompleted { restart: _ } =>
           build_cache_read_back_observation(read_back: read_back, placement: placement)
@@ -389,8 +381,7 @@ fn build_cache_read_back_observation(
         DaemonStatsOk { stats_line: o.stdout, placement: placement }
       } else {
         DaemonUnresponsive {
-          detail:
-            join(
+          detail: join(
               [
                 "the build-cache ensure exited ",
                 to_string(o.exit_code),
