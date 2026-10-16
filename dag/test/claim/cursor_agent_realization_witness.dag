@@ -1,0 +1,200 @@
+module test.claim.cursor_agent_realization_witness
+
+import std.types { Bool, Int, List, String }
+import gunbc.host.cursor_agent_realization {
+  cursor_agent_pinned_version,
+  cursor_agent_executable_path,
+  cursor_agent_sandbox_helper_path,
+  admit_cursor_agent_path,
+  CursorAgentPathAdmitted,
+  CursorAgentPathRefused,
+  PathHasWildcard,
+  PathHasParentTraversal,
+  PathUnderUserWritableRoot,
+  PathOutsidePinnedRoot,
+  render_cursor_agent_profile,
+  CursorAgentProfileRendered,
+  CursorAgentProfileUnrenderable,
+  ProfileFileObserved,
+  ProfileFileUnobserved,
+  LoadedProfilesObserved,
+  LoadedProfilesUnobserved,
+  InstallTreeObserved,
+  InstallTreeUnobserved,
+  CursorAgentReadbackHolds,
+  CursorAgentReadbackFails,
+  CursorAgentReadbackUnobserved,
+  ProfileDigestMismatch,
+  ProfileDigestUnreadable,
+  ProfileNotRootOwned,
+  ProfileModeNotPinned,
+  ProfileNotLoaded,
+  ProfileLoadedNotEnforcing,
+  InstallExecutableMissing,
+  InstallHelperMissing,
+  InstallEntriesNotRootOwned,
+  InstallEntriesWritable,
+  InstallSymlinkEscapes,
+  cursor_agent_realization_readback,
+  readback_install_tree,
+  ModeBits,
+  mode_bits_group_or_other_writable,
+}
+
+// SUPPLIED VALUES AT ONE INTERFACE. The expected profile below is typed out, not derived, so a renderer
+// that leaks the vendor glob, drops `userns,`, or attaches a different path fails here.
+
+data pinned_helper: String = "/opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursorsandbox"
+
+data expected_profile: String = "profile gunbc_cursor_sandbox_agent_cli /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursorsandbox flags=(attach_disconnected) {\n  file,\n  /** ix,\n\n  capability sys_admin,\n  capability net_admin,\n  capability chown,\n  capability setuid,\n  capability setgid,\n  capability setpcap,\n  network unix,\n  network inet stream,\n  network inet6 stream,\n  network inet dgram,\n  network inet6 dgram,\n  network netlink raw,\n  signal (receive) peer=unconfined,\n\n  userns,\n\n  mount,\n  remount,\n  umount,\n\n  /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursorsandbox mr,\n}\n"
+
+test fn pinned_paths_are_the_exact_root_owned_ones() -> Bool {
+  cursor_agent_sandbox_helper_path(version: cursor_agent_pinned_version) == pinned_helper
+    && cursor_agent_executable_path(version: cursor_agent_pinned_version)
+      == "/opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent"
+}
+
+test fn the_profile_is_the_vendor_rules_with_the_exact_path_and_explicit_userns() -> Bool {
+  match render_cursor_agent_profile(helper_path: pinned_helper) {
+    CursorAgentProfileRendered { text: t } => t == expected_profile
+    CursorAgentProfileUnrenderable { refusal: _ } => false
+  }
+}
+
+fn refused_with_wildcard(path: String) -> Bool {
+  match admit_cursor_agent_path(path: path) {
+    CursorAgentPathRefused { path: _, refusal: PathHasWildcard } => true
+    _ => false
+  }
+}
+
+test fn the_vendor_attachment_glob_is_refused_as_a_wildcard() -> Bool {
+  refused_with_wildcard(path: "/home/*/.local/share/cursor-agent/versions/*/cursorsandbox")
+    && refused_with_wildcard(path: "/opt/gunbc/cursor-agent/*/cursorsandbox")
+}
+
+test fn user_writable_traversing_and_foreign_paths_are_refused_with_their_own_cause() -> Bool {
+  (match admit_cursor_agent_path(path: "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursorsandbox") {
+    CursorAgentPathRefused { path: _, refusal: PathUnderUserWritableRoot } => true
+    _ => false
+  })
+    && (match admit_cursor_agent_path(path: "/opt/gunbc/cursor-agent/../../../home/x/cursorsandbox") {
+      CursorAgentPathRefused { path: _, refusal: PathHasParentTraversal } => true
+      _ => false
+    })
+    && (match admit_cursor_agent_path(path: "/usr/local/bin/cursor-agent") {
+      CursorAgentPathRefused { path: _, refusal: PathOutsidePinnedRoot } => true
+      _ => false
+    })
+    && (match admit_cursor_agent_path(path: "cursor-agent") {
+      CursorAgentPathRefused { path: _, refusal: PathOutsidePinnedRoot } => true
+      _ => false
+    })
+}
+
+test fn the_pinned_helper_path_is_admitted_and_a_wildcard_is_never_rendered() -> Bool {
+  (match admit_cursor_agent_path(path: pinned_helper) {
+    CursorAgentPathAdmitted { path: p } => p == pinned_helper
+    _ => false
+  })
+    && (match render_cursor_agent_profile(helper_path: "/home/*/.local/share/cursor-agent/versions/*/cursorsandbox") {
+      CursorAgentProfileUnrenderable { refusal: PathHasWildcard } => true
+      _ => false
+    })
+}
+
+// ── READBACK ──────────────────────────────────────────────────────────────────────────────────
+
+data good_line: String = "1daecb56016b61b8651631ab196a114613ac5ff71deae46fafd0c5ee4da9c98d  /etc/apparmor.d/gunbc-cursor-sandbox-agent-cli"
+
+fn good_file() -> ProfileFileObserved {
+  ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: good_line }
+}
+
+data good_profiles: String = "unconfined\ngunbc_cursor_sandbox_agent_cli (enforce)\nsnap.x (enforce)\n"
+
+fn good_tree() -> InstallTreeObserved {
+  InstallTreeObserved {
+    executable_present: true,
+    helper_present: true,
+    entries_not_root_owned: 0,
+    entries_group_or_other_writable: 0,
+    symlinks_leaving_tree: 0,
+  }
+}
+
+fn read_back(file: ProfileFileObserved, profiles: String, tree: InstallTreeObserved) -> Bool {
+  match cursor_agent_realization_readback(
+    profile_file: file,
+    loaded: LoadedProfilesObserved { profiles: profiles },
+    tree: tree,
+  ) {
+    CursorAgentReadbackHolds => true
+    _ => false
+  }
+}
+
+test fn a_root_owned_pinned_loaded_enforcing_complete_tree_holds() -> Bool {
+  read_back(file: good_file(), profiles: good_profiles, tree: good_tree())
+}
+
+test fn each_wrong_leg_fails_with_its_own_cause() -> Bool {
+  (match cursor_agent_realization_readback(
+    profile_file: ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: "0000000000000000000000000000000000000000000000000000000000000000  x" },
+    loaded: LoadedProfilesObserved { profiles: good_profiles },
+    tree: good_tree(),
+  ) { CursorAgentReadbackFails { cause: ProfileDigestMismatch } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: ProfileFileObserved { owner: "briansrls:briansrls", mode: "644", sha256sum_line: good_line },
+      loaded: LoadedProfilesObserved { profiles: good_profiles },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileNotRootOwned } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: ProfileFileObserved { owner: "root:root", mode: "664", sha256sum_line: good_line },
+      loaded: LoadedProfilesObserved { profiles: good_profiles },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileModeNotPinned } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: "not a digest" },
+      loaded: LoadedProfilesObserved { profiles: good_profiles },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileDigestUnreadable } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: good_file(),
+      loaded: LoadedProfilesObserved { profiles: "unconfined\n" },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: good_file(),
+      loaded: LoadedProfilesObserved { profiles: "gunbc_cursor_sandbox_agent_cli (complain)\n" },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileLoadedNotEnforcing } => true, _ => false })
+}
+
+test fn each_tree_defect_fails_with_its_own_cause() -> Bool {
+  (match readback_install_tree(observed: InstallTreeObserved { executable_present: false, helper_present: true, entries_not_root_owned: 0, entries_group_or_other_writable: 0, symlinks_leaving_tree: 0 }) { CursorAgentReadbackFails { cause: InstallExecutableMissing } => true, _ => false })
+    && (match readback_install_tree(observed: InstallTreeObserved { executable_present: true, helper_present: false, entries_not_root_owned: 0, entries_group_or_other_writable: 0, symlinks_leaving_tree: 0 }) { CursorAgentReadbackFails { cause: InstallHelperMissing } => true, _ => false })
+    && (match readback_install_tree(observed: InstallTreeObserved { executable_present: true, helper_present: true, entries_not_root_owned: 1, entries_group_or_other_writable: 0, symlinks_leaving_tree: 0 }) { CursorAgentReadbackFails { cause: InstallEntriesNotRootOwned } => true, _ => false })
+    && (match readback_install_tree(observed: InstallTreeObserved { executable_present: true, helper_present: true, entries_not_root_owned: 0, entries_group_or_other_writable: 1, symlinks_leaving_tree: 0 }) { CursorAgentReadbackFails { cause: InstallEntriesWritable } => true, _ => false })
+    && (match readback_install_tree(observed: InstallTreeObserved { executable_present: true, helper_present: true, entries_not_root_owned: 0, entries_group_or_other_writable: 0, symlinks_leaving_tree: 1 }) { CursorAgentReadbackFails { cause: InstallSymlinkEscapes } => true, _ => false })
+}
+
+// A leg that could not look is never a pass, and a wrong answer elsewhere still fails.
+test fn unobserved_never_holds_and_failure_dominates_it() -> Bool {
+  (match cursor_agent_realization_readback(
+    profile_file: good_file(),
+    loaded: LoadedProfilesUnobserved { reason: "no aa read" },
+    tree: good_tree(),
+  ) { CursorAgentReadbackUnobserved { reason: _ } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: ProfileFileUnobserved { reason: "ssh down" },
+      loaded: LoadedProfilesObserved { profiles: "unconfined\n" },
+      tree: InstallTreeUnobserved { reason: "ssh down" },
+    ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
+}
+
+test fn only_group_or_other_write_bits_count_as_writable() -> Bool {
+  !mode_bits_group_or_other_writable(bits: ModeBits { owner: 7, group: 5, other: 5 })
+    && mode_bits_group_or_other_writable(bits: ModeBits { owner: 7, group: 7, other: 5 })
+    && mode_bits_group_or_other_writable(bits: ModeBits { owner: 6, group: 4, other: 2 })
+}
