@@ -36,6 +36,8 @@ import gunbc.live_deploy.service_ready {
 import gunbc.host.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
+  ConvergePlanApplied,
+  ToolchainHomeInterferenceDiscriminated,
   BootstrapFragment,
   ThinInvocation,
   HostEffectIntent,
@@ -229,6 +231,10 @@ test fn witness_digest_readback_dispatch_body_converges_with_readback_bytes() ->
   ) {
     Converged { evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: err }, applied: _ } =>
       code == 0 && out == body && err == ""
+    // the readback's own evidence is the shell's applied receipt; the other two HostEffectEvidence
+    // shapes (a 3-variant sum) are the exhaustive fallthrough for the specific pattern above.
+    Converged { evidence: ConvergePlanApplied { exit_code: _, stdout: _ }, applied: _ } => false
+    Converged { evidence: ToolchainHomeInterferenceDiscriminated, applied: _ } => false
     NotConverged { reason: _, applied: _ } => false
   }
 }
