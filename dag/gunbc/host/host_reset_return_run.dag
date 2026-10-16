@@ -514,7 +514,6 @@ fn host_reset_return_issue_and_watch(
   }
   let outcome = oob_boot_handoff(
     observation: candidate.binding.observation,
-    capability_row: candidate.binding.host.capability_row,
     username: candidate.binding.account,
     password_file: password_file,
     selection: candidate.boot_selection,

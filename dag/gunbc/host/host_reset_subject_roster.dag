@@ -68,7 +68,7 @@ fn admit_reset_subject(host: ManagedHost) -> ResetSubjectAdmission {
       match reset_boot_selection(host: host) {
         VirtualMediaBootSelectionRefused { cause: c } => ResetSubjectNoSelection { host: host.host, cause: c }
         VirtualMediaBootSelectionAdmitted { selection: selection } => {
-          let admission = oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row)
+          let admission = oob_boot_handoff_admission(observation: b.observation)
           if oob_handoff_is_admitted(admission: admission) {
             ResetSubjectAdmitted { subject: AdmittedResetSubject { binding: b, boot_selection: selection } }
           } else {

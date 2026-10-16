@@ -21,7 +21,9 @@ import gunbc.machine_intake.oob_boot_handoff {
   OobBootHandoffOutcome,
   OobHandoffAdmitted,
   OobHandoffBootSourceOverrideUnavailable,
-  OobHandoffFirmwareMismatch,
+  OobHandoffRowUncatalogued,
+  OobHandoffRowAmbiguous,
+  oob_boot_handoff_admission_for_row,
   OobHandoffPowerControlUnavailable,
   OobHandoffRouteUnobserved,
   PowerCommandAcceptedNoTransition,
@@ -152,7 +154,6 @@ fn boot_drive_handoff(
     CredentialPathGiven { path: pw } => {
       let outcome = oob_boot_handoff(
         observation: subject.binding.observation,
-        capability_row: subject.binding.host.capability_row,
         username: subject.binding.account,
         password_file: pw,
         selection: subject.selection,
@@ -179,20 +180,22 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
     ManagedHostNotSecured { cause: _ } => Present { value: concat(host.host as String, ": controller is not BmcSecured, so the row is not bound") }
     ManagedHostEndpointMismatch { observed: _, secured: _ } => Present { value: concat(host.host as String, ": observed and secured controllers differ, so the row is not bound") }
     ManagedHostBound { binding: b } => {
-      let admitted = match oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row) {
+      let admitted = match oob_boot_handoff_admission(observation: b.observation) {
         OobHandoffAdmitted { route: _ } => true
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => false
         OobHandoffPowerControlUnavailable => false
-        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+        OobHandoffRowUncatalogued { firmware: _ } => false
+        OobHandoffRowAmbiguous { firmware: _, count: _ } => false
       }
-      let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: host.capability_row.firmware, capabilities: [] }
-      let refused_without_capability = match oob_boot_handoff_admission(observation: b.observation, capability_row: unexercised) {
+      let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: b.observation.identity.firmware, capabilities: [] }
+      let refused_without_capability = match oob_boot_handoff_admission_for_row(observation: b.observation, capability_row: unexercised) {
         OobHandoffAdmitted { route: _ } => false
         OobHandoffRouteUnobserved => false
         OobHandoffBootSourceOverrideUnavailable => true
         OobHandoffPowerControlUnavailable => false
-        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+        OobHandoffRowUncatalogued { firmware: _ } => false
+        OobHandoffRowAmbiguous { firmware: _, count: _ } => false
       }
       if admitted == false {
         Present { value: concat(host.host as String, ": measured rows did NOT admit the controller") }
