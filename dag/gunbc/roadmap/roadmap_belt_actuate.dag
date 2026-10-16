@@ -63,7 +63,10 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
   dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
-import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail, systemd_run_property_assignment }
+import extdeps.systemd.systemd_run {
+  systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
+  SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
+}
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
@@ -142,7 +145,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command,
+  dispatch_worker_unit_properties_for_plan,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -178,6 +181,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
   dispatch_current_attempt_validation_receipt_path_for_instance,
   dispatch_worktree_path_for_instance,
+  dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files,
   dispatch_verification_checkout_path_for_instance,
   git_worktree_add_detached_argv_for_instance,
   dispatch_current_attempt_key_path_for_instance,
@@ -253,8 +257,25 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
-import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
-import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
+import gunbc.roadmap.attempt_system_unit_launch {
+  attempt_system_unit_start_request_from_plan,
+  attempt_system_unit_enqueue_start, AttemptSystemUnitEnqueued, AttemptSystemUnitEnqueueOccupied,
+  AttemptSystemUnitEnqueueRefused,
+  attempt_system_unit_launch_host_argv, attempt_system_unit_launch_argv_refused_detail,
+  attempt_system_unit_host_exec_from_launch_argv,
+  AttemptSystemUnitLaunchArgvReady, AttemptSystemUnitLaunchArgvRefused,
+  AttemptSystemUnitLaunchArgvRevisionUnreadable,
+  attempt_system_unit_read_answer,
+  attempt_system_unit_harness_start_from_launcher_exit,
+  AttemptSystemUnitHarnessStarted, AttemptSystemUnitHarnessFailed,
+}
+import extdeps.systemd {
+  ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax,
+  systemd_time_span_of_seconds, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
 import std.measure { byte_size_count, kibibyte }
 import gunbc.deploy_transition {
@@ -473,7 +494,12 @@ import gunbc.fleet.origin_main_revision_observe {
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
-import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args, git_pathspec_literal }
+import extdeps.git {
+  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
+  shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
+  git_dir_path_from_gitfile, git_untrusted_config_env_words,
+  git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
+}
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject }
 import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
@@ -639,7 +665,7 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
   session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
   session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
-  session_placement_observe_for_attempt, SessionPlacementUnreadable,
+  session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap.roadmap_workflow_command {
@@ -1494,23 +1520,66 @@ fn belt_session_container_create(
           }
         Present { value: held } => {
           let properties = dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: held.grant.amount, process_bounds: session_process_bounds)
-          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: map(properties, p => systemd_run_property_assignment(property: p))) {
+          match systemd_run_property_assignments(properties: properties) {
+            SystemdRunPropertyAssignmentsRefused { cause: why } =>
+              ExecStepFailed { step: "session-placement-record", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+            SystemdRunPropertyAssignmentsReady { assignments: property_texts } =>
+          match session_placement_record_write(stores: held.stores, host: instance.host_identity as String, grant: held.grant, unit_properties: property_texts) {
             SessionPlacementWriteFailed { path, error } =>
               ExecStepFailed { step: "session-placement-record", detail: join(["the placement record could not be written at ", path, ": ", error], "") }
             SessionPlacementWritten { path: _ } =>
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
-                    SystemdRunCommandRefused { cause: why } =>
-                      ExecStepFailed { step: "harness-unit-start", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
-                    SystemdRunCommandReady { command: command } =>
-                      belt_exec_steps(
-                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
-                        workdir: workdir,
-                      )
+                  match attempt_system_unit_enqueue_start(
+                    instance_root: instance.instance_root as String,
+                    request: attempt_system_unit_start_request_from_plan(plan: plan, granted: launched.amount),
+                  ) {
+                    AttemptSystemUnitEnqueueRefused { detail } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: detail }
+                    AttemptSystemUnitEnqueueOccupied { entry } =>
+                      ExecStepFailed {
+                        step: "harness-unit-start",
+                        detail: join(["a request for this attempt already exists at ", entry], ""),
+                      }
+                    AttemptSystemUnitEnqueued { entry } =>
+                      match attempt_system_unit_launch_host_argv(instance: instance) {
+                        AttemptSystemUnitLaunchArgvRefused { cause } =>
+                          ExecStepFailed {
+                            step: "harness-unit-start",
+                            detail: attempt_system_unit_launch_argv_refused_detail(cause: cause),
+                          }
+                        AttemptSystemUnitLaunchArgvRevisionUnreadable =>
+                          ExecStepFailed {
+                            step: "harness-unit-start",
+                            detail: "attempt-system-unit launcher revision receipt is unreadable",
+                          }
+                        AttemptSystemUnitLaunchArgvReady { argv: launch_argv } => {
+                          let launched_exec = belt_exec(
+                            cmd: attempt_system_unit_host_exec_from_launch_argv(argv: launch_argv),
+                            workdir: workdir,
+                          )
+                          let exit_code = match launched_exec {
+                            ExecOk { stdout: _ } => 0
+                            ExecFailed { program: _, exit_code: c, stderr: _ } => c
+                            ExecRefused { program: _, reason: _ } => 1
+                          }
+                          match attempt_system_unit_harness_start_from_launcher_exit(
+                            exit_code: exit_code,
+                            reading: attempt_system_unit_read_answer(
+                              instance_root: instance.instance_root as String,
+                              entry: entry,
+                            ),
+                          ) {
+                            AttemptSystemUnitHarnessStarted => ExecStepsOk
+                            AttemptSystemUnitHarnessFailed { detail } =>
+                              ExecStepFailed { step: "harness-unit-start", detail: detail }
+                          }
+                        }
+                      }
                   }
               }
+          }
           }
         }
       }
@@ -5388,7 +5457,7 @@ fn belt_sessions_observe() -> BeltObserve {
 // THE REALIZATION-NEUTRAL OCCURRENCE POPULATION (branch review 2026-09-23, blocker 1). The launch
 // census ran the tmux observation alone, so a production attempt held by a systemd transient unit
 // was invisible to AlreadyLive and to capacity. This observer unions the tmux sessions, the
-// user-manager's gunbc-attempt-*/gunbc-supervisor-* units (each read through the same per-unit
+// system-manager gunbc-attempt-* units and user-manager gunbc-supervisor-* units (each read through the same per-unit
 // observation the convene gate uses), and the durable attempt records (the attempts ledger joined
 // with each attempt's persisted launch identity), and the pure producer
 // (gunbc.roadmap.roadmap_attempt_occurrence) assigns every discovered container to exactly one
@@ -5400,9 +5469,9 @@ type BeltOccurrencePopulation
   = OccurrencePopulationObserved { occurrences: List<DispatchAttemptOccurrence> }
   | OccurrencePopulationRefused { reason: String }
 
-// One unit name per gunbc attempt/supervisor unit, user manager, all loaded states.
+// Attempt workers live on the system manager; supervisors remain user-manager transients.
 fn belt_occurrence_unit_names() -> List<String>? {
-  let attempts = systemd.Systemctl.ListUnitsUserAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
+  let attempts = systemd.Systemctl.ListUnitsAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
   if !attempts.success {
     none
   } else {
@@ -5639,13 +5708,26 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent => {
-          let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
-          worker_process_from_attempt_unit(
-            observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-            unit: unit,
-          )
-        }
+        Absent =>
+          match dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key) {
+            SystemdUnitNameStemEmpty =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameStemEmpty) as NonEmptyStr,
+              }
+            SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameDisallowedCharacter { stem: s, character: ch }) as NonEmptyStr,
+              }
+            SystemdUnitNameOverlong { length: n } =>
+              WorkerProcessUnobserved {
+                reason: systemd_unit_name_refusal_detail(admission: SystemdUnitNameOverlong { length: n }) as NonEmptyStr,
+              }
+            SystemdUnitNameAdmitted { name } =>
+              worker_process_from_attempt_unit(
+                observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+                unit: systemd_unit_name_wire(name: name),
+              )
+          }
         Present { value: pane } =>
           worker_process_from_attempt_pane(pane: pane)
       }
@@ -6219,7 +6301,7 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     },
     review: review_report_standing_for_pointer(pointer_state: pointer_state),
     goal_audit: [],
-    session_placement: SessionPlacementUnreadable { unit: "", detail: placement_detail },
+    session_placement: SessionPlacementUnnameable { detail: placement_detail },
   }
 }
 
@@ -6551,16 +6633,74 @@ type BeltCommitOutcome
   | CommitDeferred { node_id: String, reason: String }
   | CommitSubjectUnaddressable { node_id: String, reason: String }
 
+type BeltCommitGitTrust
+  = BeltCommitGitTrusted { git_dir: String, work_tree: String }
+  | BeltCommitGitUntrusted { cause: String }
+
+fn belt_commit_gitfile_points_at(contents: String, expected_git_dir: String) -> Bool {
+  match git_dir_path_from_gitfile(contents: contents) {
+    Absent => false
+    Present { value: pointer } => pointer == expected_git_dir
+  }
+}
+
+fn belt_commit_commondir_points_at(contents: String, expected_common: String) -> Bool {
+  let line = trim(s: contents)
+  line == git_worktree_commondir_relative || line == expected_common
+}
+
+fn belt_commit_git_trust(instance: HostDashboardInstance, worktree: String) -> BeltCommitGitTrust {
+  let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: worktree)
+  let expected_git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
+  let expected_common = join([instance.repo_root as String, "/.git"], "")
+  let gitfile = Filesystem.Read(path: pointers.gitfile)
+  if !gitfile.success {
+    BeltCommitGitUntrusted { cause: "worktree gitfile is missing or unreadable" }
+  } else if !belt_commit_gitfile_points_at(contents: gitfile.content, expected_git_dir: expected_git_dir) {
+    BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" }
+  } else {
+    let commondir = Filesystem.Read(path: pointers.commondir)
+    if !commondir.success {
+      BeltCommitGitUntrusted { cause: "worktree commondir is missing or unreadable" }
+    } else if !belt_commit_commondir_points_at(contents: commondir.content, expected_common: expected_common) {
+      BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
+    } else {
+      BeltCommitGitTrusted { git_dir: expected_git_dir, work_tree: worktree }
+    }
+  }
+}
+
 fn belt_commit_git(instance: HostDashboardInstance, worktree: String, args: List<String>) -> BeltExecOutcome {
-  belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(
-        environment: instance.execution_environment,
-        cap: GitWorkspaceCapability,
-      ),
-      args: args,
+  match belt_commit_git_trust(instance: instance, worktree: worktree) {
+    BeltCommitGitUntrusted { cause } =>
+      ExecRefused {
+        program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+        reason: cause,
+      }
+    BeltCommitGitTrusted { git_dir, work_tree } =>
+      belt_exec(
+        cmd: belt_commit_git_argv(instance: instance, git_dir: git_dir, work_tree: work_tree, args: args),
+        workdir: work_tree,
+      )
+  }
+}
+
+fn belt_commit_git_argv(
+  instance: HostDashboardInstance,
+  git_dir: String,
+  work_tree: String,
+  args: List<String>,
+) -> HostExecArgv {
+  let git = dispatch_capability_program(
+    environment: instance.execution_environment,
+    cap: GitWorkspaceCapability,
+  )
+  host_exec_argv(
+    program: "/usr/bin/env",
+    args: concat(
+      concat(git_untrusted_config_env_words(), [git, join([git_dir_flag_prefix, git_dir], ""), join([git_work_tree_flag_prefix, work_tree], "")]),
+      concat(git_command_config_inert_args(), args),
     ),
-    workdir: worktree,
   )
 }
 
@@ -14637,12 +14777,12 @@ fn belt_obligation_unit_command(
   gunbc_user_work_transient_command(
     unit: unit,
     properties: concat([
-      SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
-      SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
-      SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
-      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
+      NamedUnitSetting { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     ], match stop_hook {
-      Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
+      Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
       Absent => [] as List<SystemdRunProperty>
     }),
     setenv_bindings: [SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr }],

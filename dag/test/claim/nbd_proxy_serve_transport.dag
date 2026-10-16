@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd { MemoryMax, WorkingDirectoryProperty }
-import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command }
 import gunbc.host.host_effect_nbd_proxy_serve {
   BmcwebSessionTokenObservation,
   BmcwebSessionTokenUsable,
@@ -238,7 +238,7 @@ test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool
 test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false
@@ -254,7 +254,7 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
 test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
-    properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false
@@ -279,7 +279,7 @@ test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
 test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "nbd-proxy-witness.service",
-    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    properties: [NamedUnitSetting { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { cause: _ } => false

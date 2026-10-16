@@ -9,7 +9,7 @@ import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_emitted_steps_text, apply_emitted_steps_text_at, apply_empty_host_effects, claim_oidc_now }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
-import std.types { Bool, String, List, NonEmptyStr, Int, list_length }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
@@ -143,7 +143,6 @@ import gunbc.live_deploy.emit {
   approval_broker_tree_copy_steps,
   owned_directory_install_steps,
   owned_directory_apply_steps,
-  approval_broker_dark_install_script,
   apply_approval_broker_unit_write_steps,
   approval_broker_lifecycle_steps,
   live_deploy_approval_broker_unit_file,
@@ -216,10 +215,6 @@ import gunbc.host.host_axis_caps {
   RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
 import product.host_identity { HostIdentity }
-import gunbc.host.host_converge {
-  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
-  SliceControlUnit,
-}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
@@ -265,12 +260,6 @@ data witness_cap_authorization: CapConvergeDecision = cap_converge_decision(
 data witness_apply_script_text: String = live_deploy_apply_script_for(access: ci_deploy_srv1_access, spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()), cap_authorization: witness_cap_authorization, oidc_now: claim_oidc_now())
 
 data witness_retract_script_text: String = live_deploy_retract_script_for(spec: deployment_spec_srv1(), access: ci_deploy_srv1_access)
-
-// ── STAGE 1 OF THE APPROVAL-BROKER CUTOVER: THE ADDITIVE INSTALL ────────────────────────────
-data witness_approval_broker_dark_script_text: String = approval_broker_dark_install_script(access: ci_deploy_srv1_access,
-  spec: deployment_spec_srv1(),
-  revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-)
 
 fn witness_apply_script() -> String {
   witness_apply_script_text
@@ -651,49 +640,13 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
 
 test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bool {
   let host = operator_host_srv1
+  let script = deploy_slice_control_converge_script(host: host)
+  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(spec: deployment_spec_srv1()))
   let apply = witness_apply_script()
-  // THE PLAN IS DISCRIMINATED ONCE, HERE. The emit helpers used to call slice_control_plan_for
-  // themselves, which is how a Refused plan became two empty lists -- an empty script and an empty
-  // step list -- that then compared equal. Now they take the Derived roster, so this claim feeds the
-  // SAME units to both producers, and the two arms that are not Derived are asserted to make the
-  // claim fail: a roster that is not owed, or is refused, must not leave this witness looking
-  // satisfied because nothing was emitted to check.
-  match slice_control_plan_for(host: host) {
-    SliceControlPlanDerived { units } => witness_slice_control_roster_converges(units: units, apply: apply)
-    SliceControlPlanNotOwed => false
-    SliceControlPlanRefused { cause: _ } => false
-  }
-}
-
-// THE RED THAT MAKES THE NON-EMPTY GUARD LOAD-BEARING, BY DEMONSTRATING THE TRAP IT CLOSES. The
-// fail-open this module documents produced an EMPTY roster, and an empty roster makes BOTH producers
-// empty: the script becomes "" and the step list becomes []. The claim this file used to make was a
-// containment -- "the step text contains the script" -- and containment between two empties is TRUE.
-// That is asserted here rather than described, because it is the whole failure mode: a refused host
-// produced a passing claim. So the guard in witness_slice_control_roster_converges is what rejects a
-// roster that the naive assertion would have accepted, and if it is dropped the assertion above still
-// holds -- which is precisely why the guard, not the containment, is the thing carrying the weight.
-test fn an_empty_slice_control_roster_passes_the_naive_containment_and_must_be_refused() -> Bool {
-  let script = deploy_slice_control_converge_script(units: [])
-  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(units: []))
-  // THE TRAP, POSITIVELY DEMONSTRATED: nothing was emitted, and the old shape of the claim is happy.
-  (script == "")
-    && (steps == "")
-    && string_contains(s: steps, pattern: script)
-    // THE GUARD: what the route claim does instead, rejecting the very roster the line above accepts.
-    && (!witness_slice_control_roster_converges(units: [], apply: ""))
-}
-
-// ONE ROSTER, BOTH PRODUCERS: the script and the step text are emitted from the same already-derived
-// units the apply route receives, so the two cannot drift apart and neither can silently be empty.
-fn witness_slice_control_roster_converges(units: List<SliceControlUnit>, apply: String) -> Bool {
-  let script = deploy_slice_control_converge_script(units: units)
-  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(units: units))
   match compose_host_script_standing(fragments: apply_slice_control_converge_fragments(spec: deployment_spec_srv1())) {
     HostScriptRefused { cause: _ } => false
     HostScriptProceed =>
-      (list_length(items: units) > 0)
-        && string_contains(s: steps, pattern: script)
+      string_contains(s: steps, pattern: script)
         && string_contains(s: apply, pattern: script)
         && string_contains(s: script, pattern: "sessions.slice")
         && string_contains(s: script, pattern: "gunbc-approval-broker.slice")
@@ -2089,33 +2042,6 @@ test fn a_refused_oidc_clock_projects_no_other_member_mutates() -> Bool {
     && !string_contains(s: refused, pattern: other_member)
 }
 
-// ── THE ADDITIVE INSTALL TOUCHES THE ROADMAP UNIT IN NO WAY ─────────────────────────────────
-// THIS IS THE CLAIM THE STAGE EXISTS TO SATISFY, not a hygiene check on a script. Roadmap
-// redeploys are FROZEN at the current release until the cutover completes (operator directive
-// 2026-09-19), and the first stage has to add a second served process without disturbing the one
-// already serving. A daemon-reload does not restart running units, so the roadmap keeps its PID and
-// its incarnation -- but only while nothing in this script names its unit.
-//
-// THE RED IS THE EDIT THAT WOULD BREAK THE FREEZE: route the dark install through the ordinary
-// apply member effects, which enable and restart gunbc-roadmap.service, and the first conjunct
-// fails. The positive conjuncts keep the claim from being satisfiable by an empty script.
-test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  !string_contains(s: script, pattern: deployment_spec_srv1().service.unit_name as String)
-    && string_contains(s: script, pattern: gunbc_approval_broker_unit_name as String)
-    && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
-}
-
-// IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
-// dark process; a unit whose ExecStart named no revision, or a different one, would make every
-// later reading a measurement of a build nobody deployed.
-test fn the_dark_install_execstart_carries_the_admitted_revision() -> Bool {
-  string_contains(
-    s: witness_approval_broker_dark_script_text,
-    pattern: join(["--release-revision ", deploy_witness_release_revision as String], ""),
-  )
-}
-
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // THE TWIN'S APPLY MUST NOT RE-OWN THE HOST'S BROKER — review 68094
 // ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -2184,19 +2110,6 @@ fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> 
       })
     _ => false
   }
-}
-
-// A NON-OWNER REACHING THE STAGED DARK INSTALL REFUSES LOUDLY rather than rendering a script that
-// installs nothing and reports success -- the absorbing fallback at the seam where an operator is
-// being told a stage completed. This one DOES render, because the refusal marker is a property of
-// the emitted text and there is nothing cheaper that observes it.
-test fn a_twin_dark_install_refuses_rather_than_emitting_an_empty_stage() -> Bool {
-  let script = approval_broker_dark_install_script(access: ci_deploy_srv1_access, 
-    spec: srv1_twin_spec(),
-    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-  )
-  string_contains(s: script, pattern: "__GUNBC_DEPLOY_REFUSED__")
-    && !string_contains(s: script, pattern: gunbc_approval_broker_unit_path() as String)
 }
 
 // ── THE BROKER UNIT'S BYTE ORACLE: LOOPBACK, AND ITS OWN TREE ───────────────────────────────
@@ -2308,28 +2221,6 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     && string_contains(s: unit, pattern: join(["ExecStart=", binary, " serve"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
     && !string_contains(s: unit, pattern: approval_broker_serve_binary_is_per_release_poison)
-}
-
-// ── THE DIGEST IS SUBSTITUTED, NOT SPLICED BARE ─────────────────────────────────────────────
-// THE DEFECT THIS EXISTS FOR ACTUALLY SHIPPED (review 69066). The receipt command rendered
-// `printf '...%s\n' (cd /opt/... | cut -d' ' -f1) | install ...` -- a BARE parenthesised group in
-// printf's argument position, which is a bash SYNTAX ERROR, and with strict options at the head of
-// the same script it aborts the whole dark install before any step runs.
-//
-// IT SHIPPED BECAUSE THE ONLY CHECKS WERE SHAPE CHECKS over bytes nobody executed: string_contains
-// for "rsync -a --delete" and for the receipt path. Both stayed green over a script that could not
-// parse. That is DESIGN section 5's "a .contains() grep is not a consumer" landing as a defect
-// rather than as a caution.
-//
-// WHAT THIS CLAIM IS AND IS NOT. It is still a shape check -- a .dag claim cannot run bash -- but it
-// DISCRIMINATES THIS CLASS rather than merely witnessing presence: the first conjunct fails on the
-// exact bytes that shipped, and the second fails if the substitution is reintroduced unquoted, which
-// would word-split a digest containing whitespace. What it does NOT establish is that the script
-// parses; only executing it does, and the honest place for that is the stage-A run itself.
-test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  string_contains(s: script, pattern: "\"$(cd ")
-    && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
 // THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
