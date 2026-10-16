@@ -28,6 +28,16 @@ data mtcollins1_fan_credential_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_BMC_CRE
 // entry unable to write its own receipt without importing CI.
 data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-observation.txt"
 
+// THE FETCH-FAILED CREDENTIAL SENTINEL, SHIPPED TO THE PRELUDE BY NAME (review 81077). The boot-phase
+// lane's credential fetch and decode are brought INSIDE the typed path: when the Secret Manager read or
+// the base64 decode fails, the prelude writes THIS line into the credential file instead of dying under
+// set -e, and this module's boot entry reads the file, recognizes the sentinel, and refuses typed - so
+// an unmodeled transport failure becomes a receipt with a named cause and ExitSuccess, exactly like an
+// admission refusal, and the step needs no continue-on-error to keep the boot honest. The line is a
+// CAUSE NAME, never a password: it is safe for the receipt, and it is what the upload shows when a run
+// could not reach the controller at all.
+data mtcollins1_fan_credential_fetch_failed_sentinel: String = "GUNBC-FAN-BOOT-PHASE-CREDENTIAL-FETCH-FAILED"
+
 // SIX ROUNDS AT TEN SECONDS IS A MINUTE OF SERIES, AND THE SHAPE IS THE POINT RATHER THAN THE
 // DURATION. One sample cannot distinguish a controller holding a fixed output from one that happens
 // to be commanding that output right now; a minute of samples can show whether the number moves at
@@ -109,9 +119,19 @@ fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
   }
 }
 
-// BOOT WRAPPER, NON-GATING. Every observation refusal is a typed receipt (FanObserveBootPhaseRefused)
-// and ExitSuccess; only an unwritable receipt fails, and the job step's continue-on-error is the
-// backstop that keeps the power cycle scheduled. The standalone mtcollins1_fan_observe_wet stays strict.
+// BOOT WRAPPER, NON-GATING BECAUSE EVERY FAILURE IT CAN SEE IS ALREADY A TYPED RECEIPT - and it
+// sees more than it used to. Every observation refusal, every credential-path absence, and the
+// prelude's Secret Manager fetch and decode (which write
+// mtcollins1_fan_credential_fetch_failed_sentinel instead of dying under set -e) are a
+// FanObserveBootPhaseRefused receipt naming the cause, with ExitSuccess. Nothing the step models is
+// absorbed by continue-on-error: a crash or a step timeout is an UNMODELED failure and fails the
+// job at this step, before the boot, located (review 81077; DESIGN §5 - no escape hatch). Only an
+// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict.
+fn mtcollins1_fan_credential_file_fetched(path: NonEmptyStr) -> Bool {
+  (Filesystem.Read(path: path as String).content as String)
+    != mtcollins1_fan_credential_fetch_failed_sentinel
+}
+
 fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
 {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
@@ -130,7 +150,13 @@ fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
               content: join(["FanObserveBootPhaseRefused credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
             )
         FanCredentialPathReady { path: password_file } =>
-          fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
+          if mtcollins1_fan_credential_file_fetched(path: password_file) {
+            fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)
+          } else {
+            mtcollins1_fan_observe_boot_phase_receipt(
+              content: join(["FanObserveBootPhaseRefused credential=fetch-failed env=", mtcollins1_fan_credential_path_env as String], ""),
+            )
+          }
       }
   }
 }

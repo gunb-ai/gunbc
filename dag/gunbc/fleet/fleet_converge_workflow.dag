@@ -4064,10 +4064,14 @@ fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
 // (cut 7); the unit is this job. The invoke is gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
 // the IPMI SDR series (fan_observe / bmc_fan_observation), so the step name is that series' name
 // — not Cooling Manager / PWM REST. The standalone mtcollins1_fan_observe mode stays fail-closed.
-// NON-GATING: every observation refusal is a typed receipt and ExitSuccess; continue-on-error and a
-// step timeout are the backstop that keep the boot step scheduled. GET get_manager_status /
-// get_fan_info plus PWM write / guard / restore is a named follow-up. Steps in one job run
-// strictly sequentially, so this interpreter exits before the boot step's concurrent pair.
+// NON-GATING BY THE MODEL, NOT BY A FLAG: every failure the phase can be handed - admission refusal,
+// credential-path absence, a refused Secret Manager fetch or decode - is a typed
+// FanObserveBootPhaseRefused receipt with ExitSuccess, so the boot step is scheduled because the
+// entry said so in a receipt, not because an exit code was absorbed (review 81077). An unmodeled
+// failure fails the job at this step, before the boot. A step timeout bounds a hang the same way.
+// GET get_manager_status / get_fan_info plus PWM write / guard / restore is a named follow-up.
+// Steps in one job run strictly sequentially, so this interpreter exits before the boot step's
+// concurrent pair.
 fn fleet_converge_fan_policy_phase_step() -> Step {
   RunStep {
     name: Present { value: fleet_converge_fan_observe_ipmi_series_step_name },
@@ -4079,7 +4083,16 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     ] },
     working_directory: none,
     if_condition: none,
-    continue_on_error: Present { value: true },
+    // NO continue-on-error (review 81077). Every failure this step MODELS - admission refusal,
+    // credential-path absence, a Secret Manager fetch or decode that came back refused - is a typed
+    // FanObserveBootPhaseRefused receipt with ExitSuccess INSIDE the entry, so the boot stays
+    // scheduled by the model, not by an absorbed exit code. What remains - an interpreter crash, a
+    // hung bounded call, the step timeout - is unmodeled and must fail the job HERE, before the boot
+    // step, located. continue-on-error absorbed exactly those, and the job still finished green: the
+    // operator addendum this step exists for forbids a machine sitting on a controller default
+    // unobserved after boot, and that flag let an unobserved boot pass. DESIGN §5: an escape hatch is
+    // a hard reject. timeout_minutes stays - a hang dies loudly at this step, not in the runner.
+    continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
