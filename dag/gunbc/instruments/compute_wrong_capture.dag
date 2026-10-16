@@ -165,6 +165,11 @@ fn wrong_capture_build(
     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
     granted: compute_run_unit_cold_unit_grant(),
     user_runtime_dir: runtime_dir,
+    // #14149 made this a required 9th parameter (ComputeUnitStopObservation). C4's head carries the
+    // same fix at the call site my refactor MOVED into wrong_capture_build, so a merge of the two
+    // drops it silently -- the call compiles as 8-of-9 and resolve fails at dispatch. Pinned here,
+    // and pinned by a witness row, so the shared function cannot lose it again.
+    stop_observation: NoStopObservation,
   ) {
     ComputeUnitRunRefused { cause: _ } => "unit launch refused"
     ComputeUnitRunExecuted { run: unit_run } =>
