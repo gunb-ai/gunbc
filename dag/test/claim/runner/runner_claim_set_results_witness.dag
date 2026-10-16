@@ -1,0 +1,141 @@
+module test.claim.runner.runner_claim_set_results_witness
+
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, Cons, Empty }
+import std.content_hash { serialize_content_hash }
+import extdeps.bazel.label { Label, render_label }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
+import gunbc.fabric.fabric_witness_run {
+  VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
+}
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold }
+import gunbc.runner.runner_claim_set_results {
+  ClaimSetResult, ClaimSetResultsDecode, ClaimSetResultsDecoded, ClaimSetResultsRefused,
+  ResultsDriveSizeMismatch, ResultsDriveUnobserved, ResultsDriveUnwritten, ResultsMagicMismatch, ResultsTruncated,
+  ResultsDigestMismatch, ResultsTrailingBytes, ResultsRecordMalformed, ResultsExitNotAStanding,
+  ResultsCountMissing, ResultsCountMalformed, ResultsDigestMissing, ClaimSetResultsUndecodable,
+  ClaimSetResultsAdmission, ClaimSetResultsAdmitted, ClaimSetResultsNotDecoded, ClaimSetResultsClaimMismatch,
+  ClaimSetResultsCountMismatch, ClaimSetResultsForAnotherTree,
+  claim_set_results_frame, decode_claim_set_results, admit_claim_set_results, claim_set_outputs_digest,
+}
+
+// THE RESULTS DRIVE AT ITS INTERFACE: supplied bytes, framed by the one renderer the guest program
+// will use, decoded by the host's reader. The positive control round-trips a two-claim frame into an
+// admitted result set whose outputs digest is the host's own fold; every red changes one fact of
+// the frame or the job and must refuse by name. The frame writer's join to this reader is executed in
+// test.claim.runner.runner_claim_set_guest_wet_witness; the full guest run is S4b-3's stand-in.
+
+data commit_hex: String = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
+data tree_hex: String = "c8983a3d8412a5e37a309b2d90ceafc698856619"
+data other_tree_hex: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data padding: String = "\u{0}\u{0}\u{0}\u{0}\u{0}\u{0}\u{0}\u{0}"
+
+fn revision() -> List<VerifiedGitCommitTree> {
+  match git_sha1_object_id(hex: commit_hex) {
+    Absent => []
+    Present { value: c } => match git_sha1_object_id(hex: tree_hex) {
+      Absent => []
+      Present { value: t } => match verify_git_commit_tree(commit: c, declared_tree: t, observed_commit_tree: t) {
+        GitCommitTreeVerified { subject: s } => [s]
+        GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => []
+      }
+    }
+  }
+}
+
+fn claims() -> FreeSemigroup<Label> {
+  FreeSemigroup { head: self_host_label(), tail: [v2_native_cli_label()] }
+}
+
+fn result(label: Label, verdict: ClaimRouteVerdict, tree: String) -> ClaimSetResult {
+  ClaimSetResult { label: render_label(l: label), verdict: verdict, commit: commit_hex as NonEmptyStr, tree: tree as NonEmptyStr }
+}
+
+fn good_results() -> List<ClaimSetResult> {
+  [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex), result(label: v2_native_cli_label(), verdict: ClaimDidNotHold, tree: tree_hex)]
+}
+
+fn drive(text: String) -> ClaimSetResultsDecode {
+  decode_claim_set_results(text: text, staged_bytes: text_bytes(text: text), observed_bytes: text_bytes(text: text))
+}
+
+fn cause(d: ClaimSetResultsDecode) -> String {
+  match d {
+    ClaimSetResultsDecoded { results: rs, stated_digest: _ } => concat("decoded:", to_string(count(rs)))
+    ClaimSetResultsRefused { cause: c } => match c {
+      ResultsDriveSizeMismatch { staged: _, observed: _ } => "size"
+      ResultsDriveUnobserved { detail: _ } => "unobserved"
+      ResultsDriveUnwritten => "unwritten"
+      ResultsMagicMismatch => "magic"
+      ResultsCountMissing => "count-missing"
+      ResultsCountMalformed { line: _ } => "count-malformed"
+      ResultsRecordMalformed { index: _, line: _ } => "record"
+      ResultsExitNotAStanding { index: _, exit: _ } => "exit-not-a-standing"
+      ResultsTruncated { declared: _, present: _ } => "truncated"
+      ResultsDigestMissing => "digest-missing"
+      ResultsDigestMismatch { stated: _, recomputed: _ } => "digest-mismatch"
+      ResultsTrailingBytes => "trailing"
+    }
+  }
+}
+
+fn admission(d: ClaimSetResultsDecode, c: FreeSemigroup<Label>) -> String {
+  match revision() {
+    Empty {} => "no-revision"
+    Cons { head: rev, tail: _ } => match admit_claim_set_results(decode: d, claims: c, revision: rev) {
+      ClaimSetResultsAdmitted { results: _, outputs: o } =>
+        if serialize_content_hash(hash: o) == serialize_content_hash(hash: claim_set_outputs_digest(results: good_results())) { "admitted" } else { "admitted-other-digest" }
+      ClaimSetResultsNotDecoded { cause: _ } => "not-decoded"
+      ClaimSetResultsClaimMismatch { index: _, expected: _, observed: _ } => "claim-mismatch"
+      ClaimSetResultsCountMismatch { expected: _, observed: _ } => "count-mismatch"
+      ClaimSetResultsForAnotherTree { index: _, commit: _, tree: _ } => "another-tree"
+    }
+  }
+}
+
+fn good_frame() -> String {
+  claim_set_results_frame(results: good_results())
+}
+
+test fn a_framed_results_drive_decodes_and_admits_with_the_hosts_own_digest() -> Bool {
+  let d = drive(text: concat(good_frame(), padding))
+  cause(d: d) == "decoded:2" && admission(d: d, c: claims()) == "admitted"
+}
+
+test fn every_framing_fault_refuses_by_name() -> Bool {
+  let frame = good_frame()
+  let lines: List<String> = frame.split(delimiter: "\n")
+  let without_second_record = join(take(lines, 3) + skip(lines, 4), "\n")
+  let tampered = frame.replace("v2-native-cli 1 ", "v2-native-cli 0 ")
+  cause(d: decode_claim_set_results(text: concat(frame, padding), staged_bytes: text_bytes(text: concat(frame, padding)), observed_bytes: text_bytes(text: concat(concat(frame, padding), "\u{0}")))) == "size"
+    && cause(d: drive(text: padding)) == "unwritten"
+    && cause(d: drive(text: concat(frame.replace("GUNBC-CLAIMSET-RESULTS 1", "GUNBC-CLAIMSET-RESULTS 2"), padding))) == "magic"
+    && cause(d: drive(text: concat(frame.replace("claims 2", "claims two"), padding))) == "count-malformed"
+    && cause(d: drive(text: concat(without_second_record, padding))) == "truncated"
+    && cause(d: drive(text: concat(tampered, padding))) == "digest-mismatch"
+    && cause(d: drive(text: concat(concat(frame, padding), "x"))) == "trailing"
+    && cause(d: drive(text: concat(frame.replace("v2-native-cli 1 ", "v2-native-cli one "), padding))) == "record"
+    // A record cannot hold exit 99, so only the guest-written text can carry it.
+    && cause(d: drive(text: concat(frame.replace("v2-native-cli 1 ", "v2-native-cli 99 "), padding))) == "exit-not-a-standing"
+}
+
+test fn results_for_another_tree_or_out_of_order_claims_are_not_admitted() -> Bool {
+  let other_tree = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex), result(label: v2_native_cli_label(), verdict: ClaimHeld, tree: other_tree_hex)]), padding))
+  let reversed = drive(text: concat(claim_set_results_frame(results: [result(label: v2_native_cli_label(), verdict: ClaimHeld, tree: tree_hex), result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex)]), padding))
+  let one = drive(text: concat(claim_set_results_frame(results: [result(label: self_host_label(), verdict: ClaimHeld, tree: tree_hex)]), padding))
+  admission(d: other_tree, c: claims()) == "another-tree"
+    && admission(d: reversed, c: claims()) == "claim-mismatch"
+    && admission(d: one, c: claims()) == "count-mismatch"
+    && admission(d: drive(text: padding), c: claims()) == "not-decoded"
+}
+
+fn text_bytes(text: String) -> ByteSize {
+  match checked_int_to_nat(n: length(text)) {
+    Present { value: n } => byte_size(count: n)
+    Absent => byte_size(count: 0)
+  }
+}

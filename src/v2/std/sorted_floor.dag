@@ -1,0 +1,52 @@
+module v2.std.sorted_floor
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.integer { Int }
+
+// THE LAST POSITION WHOSE KEY IS AT OR BEFORE A QUERY, over keys held in ascending order. One
+// authority for this search: a source text's line starts (v2.std.source_position) and the census's
+// per-file occurrence-id ranges (v2.compiler.source_root_eval) both ask it. v2 has no integer
+// division, so the search is binary lifting: descending power-of-two strides, each taken when the key
+// it lands on is still at or before the query.
+//
+// THE STRIDES GROW WITH THE KEYS, ONE STEP PER KEY. A table that is filled one key at a time (the
+// census absorbs one file at a time) keeps them current at O(1) per key instead of rebuilding them
+// per question: they are every power of two not above `count`, largest first.
+type SortedFloorStrides {
+  count: Int
+  strides: FreeMonoid<Int>
+  next_power: Int
+}
+
+fn sorted_floor_strides_empty() -> SortedFloorStrides {
+  SortedFloorStrides { count: 0, strides: Empty, next_power: 1 }
+}
+
+fn sorted_floor_strides_grown(s: SortedFloorStrides) -> SortedFloorStrides {
+  let count = s.count + 1
+  if count == s.next_power {
+    SortedFloorStrides { count: count, strides: Cons { head: count, tail: s.strides }, next_power: s.next_power * 2 }
+  } else {
+    SortedFloorStrides { count: count, strides: s.strides, next_power: s.next_power }
+  }
+}
+
+// The largest position whose key is at or before `key`, or Absent when even the first key is after
+// it (or there are none). `key_at` reads the key at a position and answers Absent past the end.
+fn sorted_floor_position(strides: SortedFloorStrides, key: Int, key_at: fn(Int) -> Optional<Int>) -> Optional<Int> {
+  match key_at(0) {
+    Absent => optional_absent()
+    Present { value: first } =>
+      if first <= key {
+        optional_present(value: fold_list(xs: strides.strides, empty: 0, cons: fn(at, stride) {
+          match key_at(at + stride) {
+            Absent => at
+            Present { value: k } => if k <= key { at + stride } else { at }
+          }
+        }))
+      } else {
+        optional_absent()
+      }
+  }
+}

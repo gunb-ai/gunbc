@@ -43,8 +43,8 @@ data host_seam_self_call_diverges_when_its_arm_is_absent: RecurringFailureMode =
   ],
 
   evidence: [
-    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_lookup_primitive_delegate", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.std.collection", decl_name: "map_lookup_host_binding", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "map_lookup_primitive_delegate", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.primitives", decl_name: "lookup_contract", field: WholeDeclaration },
     DeclarationRef { module_path: "std.primitive_projection", decl_name: "primitive_projection_roster", field: WholeDeclaration },
     DeclarationRef { module_path: "std.primitive_projection", decl_name: "symbol_lexeme_seam_disposition_note", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.v1.v1_interpreter_primitive_surface", decl_name: "v1_interpreter_primitive_arms", field: WholeDeclaration },

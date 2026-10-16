@@ -15,9 +15,7 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional
 }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.collection {
-  list_at_optional
-}
+import std.algebra { list_at_optional }
 import std.optional {
   Absent,
   Optional,

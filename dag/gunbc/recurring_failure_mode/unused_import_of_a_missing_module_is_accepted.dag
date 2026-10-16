@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.unused_import_of_a_missing_module_is_accepted
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unused_import_of_a_missing_module_is_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "unused_import_of_a_missing_module_is_accepted" as NonEmptyStr,
+
+  receipts: [
+    "**importing a nonexistent module and using nothing from it was accepted silently** (INVALID STATE: an `import` names a dependency; the native NamespaceOnlyY admission checked only captured alias rows, so a missing module whose listed names were unused — or whose block was empty and yielded zero rows — never reached module_root_find, and the program was Accepted. HARM: DESIGN section 5 silent wrongness — an unresolvable dependency is indistinguishable from a module that imports nothing).",
+
+    "DISTINGUISHING FACTS. Seed resolve_module_imports still walks every import node and refuses UnresolvedImport regardless of use (compile_fixture control unused_import_of_a_missing_module_refuses). Native acquisition already requests each import decl (v2.compiler.module_acquisition acquisition_read_requests). The drop is the native resolver: admit_captured_import_rows under NamespaceOnlyY, fed only AliasBindingRow values. Controls: unused missing refuses; unused real still accepts; used missing keeps its refusal.",
+
+    "RUNG FOUND AT: silent on the native NamespaceOnlyY admission path; mechanically preventable on the seed resolve_import path (blocking UnresolvedImport). RUNG NOW: mechanically preventable on both — native refuses with resolve_module_not_found at the authored import declaration (v2.compiler.name_resolve admit_imported_modules projects module_root_find's refusal onto CapturedImportTarget.at, the span-index extent of the import decl captured with the alias rows). CEILING: structurally guaranteed — every import decl's target is a carried QualifiedName with its authored locus, and admission has no Accepted arm that skips module_root_find. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: imported_modules is part of NormalizedTree construction so a hand-built tree cannot omit the import modules the parse named; until then a fixture that forgets the field can still Accept a missing import.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Enrolled controls: v2.test.claim.name_resolve.admission_fail_closed unused_missing_import_refuses_under_namespace_only (reason and import-line locus) and unused_existing_import_accepts_under_namespace_only (native NamespaceOnlyY); v2.test.claim.unused_missing_import unused_import_of_a_missing_module_refuses (seed compile_fixture) and unused_missing_import_refusal_is_located_at_the_import_line (parse capture inhabitance of that locus).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.name_resolve", decl_name: "admit_imported_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.normalize", decl_name: "import_binding_capture", field: WholeDeclaration },
+  ],
+}

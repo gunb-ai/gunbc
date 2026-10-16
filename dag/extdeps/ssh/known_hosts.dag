@@ -1,0 +1,40 @@
+module extdeps.ssh.known_hosts
+
+import std.types { String, NonEmptyStr, Port }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import extdeps.uri { Uri, Https }
+import extdeps.network.endpoint { SocketAddress, render_network_host }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man.openbsd.org/sshd.8#SSH_KNOWN_HOSTS_FILE_FORMAT",
+  }
+}
+
+// Reading: sshd(8) SSH_KNOWN_HOSTS FILE FORMAT owns how a host pattern names a port; this function
+// is that rule as code.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.ssh.known_hosts", decl_name: "known_hosts_host_field", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE PORT IS PART OF WHOSE KEY A LINE PINS. sshd(8): "A hostname or address may optionally be
+// enclosed within '[' and ']' brackets then followed by ':' and a non-standard port number." ssh(1)
+// looks a host on a non-standard port up under that bracketed form, so a key written under the bare
+// host does not answer for it. The standard port is 22 and is written bare, which is the form every
+// line in the fleet registry already has.
+data openssh_standard_port: Port = 22
+
+fn known_hosts_host_field(address: SocketAddress) -> NonEmptyStr {
+  let host = render_network_host(host: address.host) as String
+  if address.port == openssh_standard_port {
+    host as NonEmptyStr
+  } else {
+    join(["[", host, "]:", to_string(address.port)], "") as NonEmptyStr
+  }
+}

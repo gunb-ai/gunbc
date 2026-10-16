@@ -1,0 +1,52 @@
+module extdeps.procps.ps
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.algebra { trim }
+import std.optional { Absent, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/ps.1.html"
+  }
+}
+
+// ps(1) from procps-ng. `-e` selects every process; `-o unit=,comm=` prints, per process, the systemd
+// unit that owns it (the `unit` format specifier, built with systemd support) and its command name
+// (`comm`, at most 15 bytes), each with an empty header so no title line is printed. A process with
+// no owning unit prints `-` in that column. Every word is in the fleet SSH portability alphabet.
+fn ps_unit_comm_listing_argv() -> List<String> {
+  ["ps", "-e", "-o", "unit=,comm="]
+}
+
+// Every process with its owning user name, numeric uid, pid and full argument vector (`-o
+// user,uid,pid,args`); the header line is kept, since a reader matches on argument content.
+fn ps_program() -> ProgramIdentity = uncataloged_program(invocation: "ps")
+
+fn ps_user_uid_pid_args_listing_args() -> List<String> {
+  ["-eo", "user,uid,pid,args"]
+}
+
+// WHETHER A NAMED UNIT OWNS A PROCESS WITH A NAMED COMMAND, read from that listing. Lines are
+// `<unit> <comm>` separated by runs of spaces; a line naming the unit with the command is a match.
+fn ps_unit_runs_command(listing: String, unit: String, comm: String) -> Bool {
+  any(split(s: listing, delimiter: "\n"), line => {
+    let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+    match words.first() {
+      Absent => false
+      Present { value: u } =>
+        u == unit && match words.skip(n: 1).first() { Absent => false Present { value: c } => c == comm }
+    }
+  })
+}
+
+// WHETHER THE LISTING ATTRIBUTES ANY PROCESS TO THE NAMED UNIT at all, read from the same column.
+fn ps_unit_runs_any_process(listing: String, unit: String) -> Bool {
+  any(split(s: listing, delimiter: "\n"), line => {
+    let words = filter(split(s: trim(s: line), delimiter: " "), w => w != "")
+    match words.first() { Absent => false Present { value: u } => u == unit }
+  })
+}

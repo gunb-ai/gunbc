@@ -179,10 +179,13 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   // Why the rows cannot simply stay: the witness returns false at BOTH heads, because a
   // compile refusal at the call site makes the whole module fail to compile and the
   // claim never reaches a verdict -- a runtime bool claim cannot discharge a compile-time
-  // exit condition. And cadence QuarantineProbeExpectRed has no executing consumer in
-  // this tree (falsifier.yml's runner was deleted in 611fd02770), so a row left in it is
-  // a ledger entry nothing runs. The RED stays enrolled as a permanent regression
-  // control (DESIGN section 6b meta-obligation 4); only the quarantine goes. The two
+  // exit condition. And no scheduled executor runs the QuarantineProbeExpectRed batch: the
+  // cadence is read by gunbc.quarantine_probe_disposition, which derives from it WHICH mechanism
+  // holds a probe's red obligation, but nothing in .github/workflows executes rows in it (no
+  // workflow carries a cargo test or claim_batch step). So a row left in the cadence is a ledger
+  // entry nothing runs -- the same gap gunbc.rung_drop transitional_admission_exception enrols
+  // sixteen other rows for, and named there with the same exit condition. The RED stays enrolled as a permanent regression
+  // control (DESIGN section 4b meta-obligation 4); only the quarantine goes. The two
   // alias_route_probe_red rows below are a DIFFERENT class (alias_rhs_of_decl on a
   // non-leaf rhs) and are NOT discharged here.
   known_red_probe(

@@ -13,7 +13,7 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_post_install_refusal_prefix }
 import gunbc.host.host_axis_caps { CapConvergeWithheld }
 
 import std.types { Bool, String, List, NonEmptyStr, Int }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
@@ -26,7 +26,6 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_sudoers_temp_path,
   approval_broker_helper_grant_steps,
   approval_broker_dark_install_release_steps,
-  approval_broker_dark_install_body_fragments,
   approval_device_store_fragments,
   approval_broker_helper_grant_fragments,
   approval_broker_helper_snapshot_retire_command,
@@ -366,49 +365,6 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
   string_contains(s: basename(p: approval_broker_helper_sudoers_temp_path as String), pattern: ".")
     && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: ".")
     && !string_contains(s: basename(p: approval_broker_helper_sudoers_path as String), pattern: "~")
-}
-
-// THE DARK INSTALL CARRIES THIS RELEASE'S GRANT BEFORE THE BROKER UNIT. Store, helper grant,
-// and the unit write are one fragment list (`approval_broker_dark_install_body_fragments`).
-// Mutate order is owned-directory, helper-grant, dark-install so a helpers-stretch failure
-// exits before daemon-reload and cannot leave NeedDaemonReload=yes with a new unit on disk.
-// release_steps is the tree only (composed into the unit write). Grant last step is the
-// snapshot retire command; dark-install mutate is prefixed by the unit-write steps.
-test fn the_dark_install_composes_this_releases_grant() -> Bool {
-  let spec = deployment_spec_srv1()
-  let revision = rev_a()
-  let principal = fleet_posix_ci_runner_principal()
-  let body = approval_broker_dark_install_body_fragments(spec: spec, revision: revision, principal: principal)
-  let unit = apply_approval_broker_unit_write_steps(principal: principal, spec: spec, revision: revision)
-  let mutate_members = flat_map(body, f => match f {
-    Mutate { member: m, steps: _ } => [m as String]
-    Decide { member: _, standing: _, steps: _ } => []
-  })
-  let grant = match host_script_mutate_projection(fragments: approval_broker_helper_grant_fragments(revision: revision, principal: principal)) {
-    MutateStepsAdmitted { steps } => steps
-    MutateRefused { member: _, cause: _ } => []
-  }
-  let dark_mutate = match filter(body, f => match f {
-    Mutate { member: m, steps: _ } => (m as String) == "dark-install"
-    Decide { member: _, standing: _, steps: _ } => false
-  }) |> first {
-    Present { value: f } => match f {
-      Mutate { member: _, steps: s } => s
-      Decide { member: _, standing: _, steps: _ } => []
-    }
-    Absent => []
-  }
-  mutate_members == ["owned-directory", "helper-grant", "dark-install"]
-    && count(approval_broker_dark_install_release_steps(spec: spec, revision: revision))
-      == count(approval_broker_tree_copy_steps(spec: spec, revision: revision))
-    && match grant |> last {
-      Present { value: st } =>
-        pipeline_step_text(st: st) == approval_broker_helper_snapshot_retire_command(revision: revision)
-      Absent => false
-    }
-    && count(unit) > 0
-    && count(dark_mutate) >= count(unit)
-    && pipeline_steps_text(steps: dark_mutate |> take(n: count(unit))) == pipeline_steps_text(steps: unit)
 }
 
 // ── THE RUN-AS GENERALISATION MOVES NO EXISTING GRANT ──────────────────────────────────────

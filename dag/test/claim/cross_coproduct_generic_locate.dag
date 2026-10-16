@@ -4,6 +4,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_count_at_key,
   census_total_count,
 }
 
@@ -60,14 +61,30 @@ test fn same_arm_two_applied_box_int_is_accepted() -> Bool {
 // actuals' identity differs. Both actuals are VALUES, not type names — a type name in
 // an argument position would refuse at parse/resolve and make the blocking_count > 0
 // assertion true for a reason that has nothing to do with the rebind rule.
+// The census module is explicit that the row set is the WHOLE COMPILE'S, imported closure
+// included, so `blocking_count(...) > 0` is not evidence the fixture refused for the reason
+// claimed -- any unrelated blocking row in the closure satisfies it. The two exact forms the
+// module itself prescribes are used here: a count scoped to class AND subject_name, and a
+// DIFFERENTIAL between two censuses. `refusal_rows` is the scoped count, keyed on what the
+// fold actually emits: type_mismatch_error (src/v1/04_infer.dag:14153-14160) projects to
+// diagnostic_class "TypeMismatch" with subject_name = the rejected actual's
+// node_type_shape, which is why the keys below name the second actual's shape and not a
+// message substring (a census row has no message field).
+fn refusal_rows(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
 test fn same_arm_two_distinct_coproduct_values_refuse() -> Bool {
-  blocking_count(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }")) > 0
+  refusal_rows(source: same_arm_source(a: "P1 { x: 1 }", b: "Q1 { x: 1 }"), wanted_class: "TypeMismatch", wanted_subject: "Q1") > 0
 }
 
 test fn same_arm_int_bool_values_refuse() -> Bool {
-  blocking_count(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n") > 0
+  refusal_rows(source: "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Primitive(Bool)") > 0
 }
 
 test fn same_arm_nested_two_distinct_coproduct_values_refuse() -> Bool {
-  blocking_count(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n") > 0
+  refusal_rows(source: "module locate.arg\ntype Box<T>\nfn same_arm<A>(a: A, b: A) -> Bool { true }\nfn probe(x: Box<Int>, y: Box<Bool>) -> Bool {\n  same_arm(a: x, b: y)\n}\n", wanted_class: "TypeMismatch", wanted_subject: "Box<Bool>") > 0
 }
