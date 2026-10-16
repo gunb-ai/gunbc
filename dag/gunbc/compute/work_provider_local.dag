@@ -200,9 +200,9 @@ fn compute_layout_in(instance: HostDashboardInstance, store_root: Materializatio
     // from, one another's target. Per-identity is what the lease makes safe: the lease is keyed
     // by the same identity and is taken create-if-absent, so no two attempts of one identity can
     // overlap and the target the build writes is exactly the one compute_return_outputs hashes
-    // from (TargetRoot). A memoized identity keeps one stable work_dir across requests, so its
-    // target is still reused warm; only the cross-identity sharing is gone. sccache stays the
-    // shared wrapper.
+    // from (TargetRoot). The target is DISPOSABLE: compute_settled_record removes it once the
+    // outputs are returned and the store settlement has landed, while the lease is still held, so
+    // cross-request reuse lives in the shared sccache and the result store, never in a target.
     target_dir: owned_cargo_target_dir(base_root: work_root, owner: identity_hex),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
@@ -1575,8 +1575,8 @@ fn compute_settled_record(
 ) -> ProvideResult {
   let document = work_outcome_wire(o: outcome, subject: subject, op: op)
   match compute_store_commit(materialization: materialization, layout: layout, op: op, outcome: outcome, document: document) {
-    ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
-    ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
+    ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: compute_remove_owned_target(layout: layout) }
+    ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: compute_remove_owned_target(layout: layout) }
     ComputeCommitRefused { detail } =>
       compute_fresh(
         outcome: WorkRefusedByInfrastructure {
@@ -1584,12 +1584,28 @@ fn compute_settled_record(
           cause: StoreUnavailable {
             detail: join([
               "the work ended ", work_outcome_ending(o: outcome),
-              " and its reservation was released, but the materialization store refused its record, so it is not shared: ",
+              " and its reservation was released, but the materialization store refused its record, so it is not shared (the owned target at ",
+              layout.target_dir, " is KEPT, since settlement did not land): ",
               detail,
             ], ""),
           },
         },
         subject: subject, op: op)
+  }
+}
+
+// THE OWNED TARGET'S LIFETIME ENDS AT SETTLEMENT, while the identity's lease is still held. The target
+// is per-identity (gunbc.owned_cargo_target) and identities change with every source, toolchain and
+// provider revision, so a target nothing removes grows without bound. It is removed only after the
+// outputs were returned and the store settlement landed (the callers' commit arms); a settlement that
+// did not land keeps it. A failed removal never changes what the work did: like a lease that could
+// not be dropped, it rides as a located host-record loss naming the path to remove.
+fn compute_remove_owned_target(layout: ComputeLayout) -> HostRecordStatus {
+  let removed = shell.Remove.RecursiveForce(path: layout.target_dir as FilePath)
+  if removed.success {
+    HostRecordWritten
+  } else {
+    HostRecordLost { detail: join(["the owned target at ", layout.target_dir, " could not be removed after settlement; remove it by hand: rm -rf failed"], "") }
   }
 }
 
