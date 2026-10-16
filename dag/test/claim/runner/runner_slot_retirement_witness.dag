@@ -100,6 +100,9 @@ import gunbc.runner.runner_slot_retirement {
   TransitionRetireesNotPermitted,
   RetirementActuationAuthorized,
   RetirementActuationRefused,
+  transition_retirement_admission_over,
+  SlotRetirementEvidencePresent,
+  SlotRetirementEvidenceAbsent,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -991,6 +994,65 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
       auth: srv1_transition_interruption_authorization,
       unit: "actions-runner@srv1-01.service",
     )
+}
+
+// SUPPLIED COMPLETE STANDINGS ARE THIS RUN'S READBACK, not a stored Actions run id. 07..12
+// complete drop out of the coverage demand; 14..50 remain and the 13..50 grant covers them.
+test fn srv1_admission_with_complete_readback_for_07_through_12_is_present() -> Bool {
+  let required = known_obligation_of(host: operator_host_srv1)
+  let completed = [
+    "actions-runner@srv1-07.service",
+    "actions-runner@srv1-08.service",
+    "actions-runner@srv1-09.service",
+    "actions-runner@srv1-10.service",
+    "actions-runner@srv1-11.service",
+    "actions-runner@srv1-12.service",
+  ] |> map(u => RetirementComplete { unit: u })
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_retirement_admission_over(
+        host: operator_host_srv1,
+        auth: auth,
+        required: required,
+        standings: completed,
+      ) {
+        SlotRetirementEvidenceAbsent { cause: _ } => false
+        SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
+          list_length(items: ss) == 6
+      }
+  }
+}
+
+// AN UNMASKED 07 IS A DIFFERENT OBSERVATION. Pending drain keeps it outstanding; the grant
+// still does not cover it; admission stays Absent. A completed-retirement row keyed by run
+// id would have stayed discharged.
+test fn srv1_admission_stays_absent_if_07_is_not_complete_on_this_readback() -> Bool {
+  let required = known_obligation_of(host: operator_host_srv1)
+  let standings = concat(
+    [RetirementPendingDrain { unit: "actions-runner@srv1-07.service", cause: "unmasked" }],
+    [
+      "actions-runner@srv1-08.service",
+      "actions-runner@srv1-09.service",
+      "actions-runner@srv1-10.service",
+      "actions-runner@srv1-11.service",
+      "actions-runner@srv1-12.service",
+    ] |> map(u => RetirementComplete { unit: u }),
+  )
+  match interruption_authorization_for_host(host: operator_host_srv1) {
+    HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+    HostInterruptionAuthorizationPresent { authorization: auth } =>
+      match transition_retirement_admission_over(
+        host: operator_host_srv1,
+        auth: auth,
+        required: required,
+        standings: standings,
+      ) {
+        SlotRetirementEvidencePresent { authorization: _, standings: _ } => false
+        SlotRetirementEvidenceAbsent { cause: c } =>
+          string_contains(s: c, pattern: "actions-runner@srv1-07.service")
+      }
+  }
 }
 
 // THE OBLIGATION DOES NOT READ THE CENSUS, which is the durability property the declaration exists
