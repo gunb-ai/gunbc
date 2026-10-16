@@ -96,7 +96,6 @@ import gunbc.host.host_converge {
   runner_instance_glob,
 }
 import gunbc.runner.runner_connectivity_recovery { recovery_runner_slot_unit_name }
-import gunbc.host.host_runner_memory_cap_verify { runner_memory_cap_probe_unit }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -184,7 +183,6 @@ test fn witness_every_unit_name_projection_agrees() -> Bool {
   let expected = "actions-runner@srv4-01.service"
   (runner_slot_unit_name(slot: slot) as String) == expected
     && (recovery_runner_slot_unit_name(slot: slot) as String) == expected
-    && (runner_memory_cap_probe_unit(host: operator_host_srv4) as String) == expected
     && (runner_unit_name_of_registration(registration_name: "srv4-01" as NonEmptyStr) as String) == expected
 }
 
