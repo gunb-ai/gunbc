@@ -4864,9 +4864,30 @@ type LiveDeployPreambleLegResult
   = LegObserved { outcome: RunArgvTransportOutcome }
   | LegEffectConverged
   | LegEffectRefused { reason: String }
+  // The check of an `A || B` leg PASSED, so the second command was never run. Its own arm rather than
+  // LegEffectConverged so a witness can tell "account existed" from "account was created": a leg that
+  // ran useradd after a passing check could not report this arm.
+  | LegActSkipped
+  // The check failed and the second command ran and worked: two calls, not one.
+  | LegActRan
   // A failure observed *inside* one leg that spans several commands, where the leg's own step name
-  // would blame the wrong command. The `A || B` leg reports the step that actually died.
-  | LegRefusedAt { step: LiveDeployPreambleStep, reason: String }
+  // would blame the wrong command. The `A || B` leg reports the step that actually died, and how many
+  // calls it made getting there (1 = the check itself was refused, 2 = the act ran and failed).
+  | LegRefusedAt { step: LiveDeployPreambleStep, reason: String, calls: Int }
+
+// HOW MANY transport/executor calls an observation represents. The fold adds this to `observations`,
+// which is what separates "the fold stopped" from "the fold ran everything and reported the first
+// failure": the same final state can come from either, and only the call count says which.
+fn live_deploy_preamble_result_calls(result: LiveDeployPreambleLegResult) -> Int {
+  match result {
+    LegObserved { outcome: _ } => 1
+    LegEffectConverged => 1
+    LegEffectRefused { reason: _ } => 1
+    LegActSkipped => 1
+    LegActRan => 2
+    LegRefusedAt { step: _, reason: _, calls: c } => c
+  }
+}
 
 // `consumed` is how many legs actually ran. It exists so the short-circuit is OBSERVABLE: a fold that
 // kept running legs after a refusal would report the same refusal, and only the count distinguishes
@@ -4935,8 +4956,10 @@ fn live_deploy_preamble_next_state(
     PreambleLegOk { consumed: n } =>
       match result {
         LegEffectConverged => PreambleLegOk { consumed: n + 1 }
+        LegActSkipped => PreambleLegOk { consumed: n + 1 }
+        LegActRan => PreambleLegOk { consumed: n + 1 }
         LegEffectRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
-        LegRefusedAt { step: s, reason: why } =>
+        LegRefusedAt { step: s, reason: why, calls: _ } =>
           PreambleLegFailed { step: s, reason: live_deploy_preamble_refusal_text(step: s, detail: why), consumed: n }
         LegObserved { outcome: out } =>
           match out {
@@ -4996,20 +5019,22 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
     // exists to remove. So the check's own transport refusal is reported as one, at the check's step.
     PreambleEither { check_step: cs, check: c, act_step: as_, act: a_ } =>
       match run_argv_over_host_effect_transport(command: c, transport: access.transport) {
-        RunArgvTransportRefused { reason: why } => LegRefusedAt { step: cs, reason: join(["precondition check could not run: ", why], "") }
+        RunArgvTransportRefused { reason: why } =>
+          LegRefusedAt { step: cs, reason: join(["precondition check could not run: ", why], ""), calls: 1 }
         RunArgvTransportObserved { observed: o } =>
           if o.success {
-            LegEffectConverged
+            LegActSkipped
           } else {
             match run_argv_over_host_effect_transport(command: a_, transport: access.transport) {
-              RunArgvTransportRefused { reason: why } => LegRefusedAt { step: as_, reason: why }
+              RunArgvTransportRefused { reason: why } => LegRefusedAt { step: as_, reason: why, calls: 2 }
               RunArgvTransportObserved { observed: o2 } =>
                 if o2.success {
-                  LegEffectConverged
+                  LegActRan
                 } else {
                   LegRefusedAt {
                     step: as_,
                     reason: join(["exited ", to_string(o2.exit_code), ": ", o2.stderr], ""),
+                    calls: 2,
                   }
                 }
             }
@@ -5055,7 +5080,11 @@ fn live_deploy_preamble_fold(
                     observations: obs + 1,
                   }
                 [first, ...rest] =>
-                  PreambleFoldAcc { state: live_deploy_preamble_next_state(state: st, leg: leg, result: first), pending: rest, observations: obs + 1 }
+                  PreambleFoldAcc {
+                    state: live_deploy_preamble_next_state(state: st, leg: leg, result: first),
+                    pending: rest,
+                    observations: obs + live_deploy_preamble_result_calls(result: first),
+                  }
               }
           }
       },
@@ -5085,10 +5114,11 @@ fn live_deploy_preamble_run_legs(legs: List<LiveDeployPreambleLeg>, access: Depl
           match live_deploy_preamble_leg_decision(state: st) {
             Stop { reason: _ } => PreambleFoldAcc { state: st, pending: [], observations: obs }
             ContinueAndRun =>
+              let result = live_deploy_preamble_observe_leg(leg: leg, access: access)
               PreambleFoldAcc {
-                state: live_deploy_preamble_next_state(state: st, leg: leg, result: live_deploy_preamble_observe_leg(leg: leg, access: access)),
+                state: live_deploy_preamble_next_state(state: st, leg: leg, result: result),
                 pending: [],
-                observations: obs + 1,
+                observations: obs + live_deploy_preamble_result_calls(result: result),
               }
           }
       },
