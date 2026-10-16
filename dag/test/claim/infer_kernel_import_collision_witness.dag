@@ -52,7 +52,9 @@ data mint_import_source: String = "module probe_kernel_mint_import\n\nimport std
 data mint_decl_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
 
 // Import by name next to `T?`: the pair the review names.
-data importer_with_t_question_source: String = "module probe_collision_importer\n\nimport std.optional \{ Optional \}\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_t_question(o: Int?) -> Int \{\n  collision_seven()\n\}\n"
+data colliding_importer_source: String = "module probe_colliding_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ Optional \}\n\nfn imported_optional_value(o: Optional, p: Int?) -> Int \{\n  match o \{\n    CollisionWrapped \{ value: v \} => v\n    CollisionEmpty => 0\n  \}\n\}\n"
+
+data importer_with_t_question_source: String = "module probe_collision_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_t_question(o: Int?) -> Int \{\n  collision_seven()\n\}\n"
 
 fn compile_importer() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -101,10 +103,21 @@ fn outcome_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+fn compile_colliding_importer() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source(collision_path, collision_fn_source),
+      fixture_source("std/optional.dag", mint_decl_source),
+      fixture_source("probe_colliding_importer.dag", colliding_importer_source)
+    ],
+    entry: "probe_colliding_importer.dag"
+  })
+}
+
 fn compile_importer_with_t_question() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
-      file_source(path: collision_path),
+      fixture_source(collision_path, collision_fn_source),
       fixture_source("std/optional.dag", mint_decl_source),
       fixture_source("probe_collision_importer.dag", importer_with_t_question_source)
     ],
@@ -112,10 +125,32 @@ fn compile_importer_with_t_question() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-// RED: importing the colliding declaration BY NAME (file_source importer) never completes clean
-// -- it is a typed refusal, so the second Optional referent cannot be quietly accepted.
-test fn importing_a_second_optional_by_name_never_completes_clean() -> Bool {
-  !outcome_clean(o: compile_importer())
+// EXECUTED FINDING (re-enrollment run): importing a second `Optional` by name does NOT refuse any
+// more -- the seed has no mint to collide with, so the compile completes clean. That is the honest
+// rung (no wall), not structural impossibility. What keeps it from being a quiet fork is IDENTITY:
+// `T?` is std.optional's Optional (optional_declaration_ref) and the imported type is its own
+// declaration; passing one where the other is expected must refuse. RED below is that mismatch.
+data crossed_importer_source: String = "module probe_crossed_importer\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ Optional \}\n\nfn takes_imported(o: Optional) -> Int \{\n  0\n\}\n\nfn crosses(p: Int?) -> Int \{\n  takes_imported(o: p)\n\}\n"
+
+fn compile_crossed_importer() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source(collision_path, collision_fn_source),
+      fixture_source("std/optional.dag", mint_decl_source),
+      fixture_source("probe_crossed_importer.dag", crossed_importer_source)
+    ],
+    entry: "probe_crossed_importer.dag"
+  })
+}
+
+// RED: the imported Optional and `T?` are two declarations; mixing them refuses (not a quiet fork).
+test fn passing_t_question_where_the_imported_second_optional_is_expected_refuses() -> Bool {
+  !outcome_clean(o: compile_crossed_importer())
+}
+
+// Pinned observation: importing the second Optional by name beside `T?` is itself admitted.
+test fn importing_a_second_optional_by_name_beside_t_question_is_admitted_as_a_distinct_declaration() -> Bool {
+  outcome_clean(o: compile_colliding_importer())
 }
 
 // Positive control: the collision module stays importable for a name that is not Optional, with
