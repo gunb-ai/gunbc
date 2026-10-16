@@ -9,6 +9,9 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareVersion, 
 import extdeps.bmc.ipmi {
   IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
   ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_request_data_length_invalid_text,
+  IpmiCommandInterface, IpmiCommandInterfaceParse, IpmiCommandInterfaceParsed,
+  IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
+  ipmi_command_interface_is_in_band_host_transport, LanPlusTransport, DummyTestInterface,
 }
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
@@ -233,29 +236,54 @@ fn rescue_host_reachable(
 // board with an unknown password is reachable: the host-to-BMC interface inside the chassis
 // authenticates by PHYSICAL POSITION, not by a secret. So the fact is not a comment beside a
 // function -- it is a type, and it is the type the route admits on.
-type SsifAccessWithoutCredential
-  = SsifChannelPasswordless {
-      ipmi_interface: NonEmptyStr
+type InBandAccessWithoutCredential
+  = InBandChannelPasswordless {
+      interface: IpmiCommandInterface
       argv_credential_words: List<String>
     }
-  | SsifChannelNotObserved { detail: NonEmptyStr }
+  | InBandChannelNotObserved { detail: NonEmptyStr }
 
-// Passwordless is a claim about what was NOT on the command line, so it is made checkable rather than
-// asserted: the interface must not be a network one, and the credential-bearing words must be empty.
-// An empty list is not nothing -- it is the recorded fact that the argv was read and carried no -I,
-// no -U, no -P. A caller who passed a credential has to fill the list, and then this is false and the
-// channel admits nothing. The network interfaces are refused BY NAME because `ipmitool -I lanplus`
-// over the LAN DOES need a credential, and a route that accepted it would quietly be a route that
-// assumes the very password it set out to recover.
-fn ssif_channel_is_passwordless(channel: SsifAccessWithoutCredential) -> Bool {
+// PASSWORDLESS IS A CLAIM ABOUT WHAT WAS *NOT* ON THE COMMAND LINE, so it is made checkable rather than
+// asserted: the transport must be one of the arms that reaches the controller from inside its own chassis
+// (extdeps.bmc.ipmi's closed sum, refused at the parse if the captured name did not map to one), and the
+// credential-bearing words must be empty. An empty list is not nothing -- it is the recorded fact that the
+// argv was read and carried no -I, no -U, no -P. A caller who passed a credential has to fill the list, and
+// then this is false and the channel admits nothing.
+//
+// The transport is a SUM, not a string, and there is no deny-list here. An earlier revision compared the
+// interface against ""/lanplus/lan/open, which failed open (a typo, a casing change, a trailing space, or a
+// transport nobody listed all counted as in-band) AND refused the wrong thing: `open` is ipmitool's OpenIPMI
+// driver over /dev/ipmi0 -- exactly the in-band, passwordless interface the captured unit used. The
+// classification now lives in one place, ipmi_command_interface_is_in_band_host_transport, and a transport
+// that authenticates by a secret can never be admitted however it is spelled (§5).
+fn in_band_channel_is_passwordless(channel: InBandAccessWithoutCredential) -> Bool {
   match channel {
-    SsifChannelPasswordless { ipmi_interface, argv_credential_words } =>
-      (ipmi_interface as String) != ""
-        && (ipmi_interface as String) != "lanplus"
-        && (ipmi_interface as String) != "lan"
-        && (ipmi_interface as String) != "open"
-        && list_length(items: argv_credential_words) == 0
-    SsifChannelNotObserved { detail: _ } => false
+    InBandChannelPasswordless { interface: interface, argv_credential_words: words } =>
+      ipmi_command_interface_is_in_band_host_transport(interface: interface)
+        && list_length(items: words) == 0
+    InBandChannelNotObserved { detail: _ } => false
+  }
+}
+
+// The captured channel, read from the bytes: /dev/ipmi0 was present with ipmi_ssif loaded, and no -I was
+// passed, so ipmitool used its default transport -- `open`, the OpenIPMI kernel driver over /dev/ipmi0
+// (upstream's DEFAULT_INTF_NO_ENV when the driver is built). Note what the capture does NOT say: `ipmi_ssif`
+// is the kernel MODULE for the SMBus/IPMI-SSIF bus beneath that driver, not a name `ipmitool -I` accepts;
+// naming the interface "ssif" would have been a transport that does not exist, and it would now be refused
+// at the parse rather than modeled.
+// The out-of-band transport, built by the same route through the parse, for the law that requires it to be
+// refused. It IS an arm of the sum -- ipmitool does have it -- it simply is not an in-band host path.
+fn lan_plus_recovery_interface() -> IpmiCommandInterface {
+  match ipmi_command_interface_from_wire(wire: "lanplus") {
+    IpmiCommandInterfaceParsed { wire: _, interface: interface } => interface
+    IpmiCommandInterfaceUnrecognized { wire: _ } => DummyTestInterface
+  }
+}
+
+fn in_band_recovery_interface() -> IpmiCommandInterface {
+  match ipmi_command_interface_from_wire(wire: "open") {
+    IpmiCommandInterfaceParsed { wire: _, interface: interface } => interface
+    IpmiCommandInterfaceUnrecognized { wire: _ } => DummyTestInterface
   }
 }
 
@@ -277,12 +305,12 @@ fn in_band_administrator_account_reads_back(account: InBandAdministratorAccount)
 
 // The channel observation as one carrier: which unit, which rescue host read it, the device node and
 // drivers, the passwordless fact, and the Administrator account that came back.
-type InBandSsifChannelObservation {
+type InBandChannelObservation {
   subject: MachineIntakeSubject
   rescue_host_address: Ipv4Address
   device_node: NonEmptyStr
   kernel_modules: List<LinuxKernelModuleName>
-  channel: SsifAccessWithoutCredential
+  channel: InBandAccessWithoutCredential
   administrator: InBandAdministratorAccount
   evidence: EvidenceRef
   observed_at: EpochMs
@@ -291,13 +319,13 @@ type InBandSsifChannelObservation {
 // The channel has to have been read FROM THE HOST THAT WAS DECLARED REACHABLE, on the device and
 // drivers that host reported. A channel observation lifted from a different machine, or from before
 // the rescue OS booted, is not a precondition of anything -- it is a story about some BMC.
-fn in_band_ssif_channel_admits(
-  observation: InBandSsifChannelObservation,
+fn in_band_channel_admits(
+  observation: InBandChannelObservation,
   reachability: RescueHostReachability,
 ) -> Bool {
   match reachability {
     RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
-      ssif_channel_is_passwordless(channel: observation.channel)
+      in_band_channel_is_passwordless(channel: observation.channel)
         && in_band_administrator_account_reads_back(account: observation.administrator)
         && observation.rescue_host_address == a
         && (observation.device_node as String) == (ipmi.device_node as String)
@@ -342,12 +370,12 @@ fn reset_to_defaults_clears_unknown_credential(kind: RedfishResetToDefaultsType)
 }
 
 type RecoveryActuationKind
-  = SsifTemporaryAdministratorPassword
+  = InBandTemporaryAdministratorPassword
   | RedfishManagerResetToDefaults { reset_type: RedfishResetToDefaultsType }
 
 fn recovery_actuation_is_destructive(kind: RecoveryActuationKind) -> Bool {
   match kind {
-    SsifTemporaryAdministratorPassword => false
+    InBandTemporaryAdministratorPassword => false
     RedfishManagerResetToDefaults { reset_type: r } => reset_to_defaults_clears_unknown_credential(kind: r)
   }
 }
@@ -504,7 +532,7 @@ fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Bool {
 
 // THE GATE ON THE IN-BAND PASSWORD WRITE. Admits only against its own census row, whose selection the
 // selection module derives from the effect's own characteristics, and refuses unless the channel the route
-// claims really was passwordless -- `ssif_channel_is_passwordless` is re-checked on the carried channel
+// claims really was passwordless -- `in_band_channel_is_passwordless` is re-checked on the carried channel
 // rather than trusted from the outcome. That re-check is the point: a temporary Administrator password is
 // being written into the controller's user table by a caller asserting that no credential was involved, and
 // the carrier for that assertion is the argv the channel observation carries.
@@ -512,7 +540,7 @@ fn admit_recovery_in_band_password_write(route: RecoveryInBandRoute) -> Recovery
   let kind = recovery_in_band_password_actuation()
   if recovery_ledger_conforms(site_ref: recovery_in_band_password_write_site()) == false {
     RecoveryWriteRefused { kind: kind, cause: "the census verdict at this site does not select the operator-approved capability the effect's classification forces" as NonEmptyStr }
-  } else if ssif_channel_is_passwordless(channel: route.channel.admits) == false {
+  } else if in_band_channel_is_passwordless(channel: route.channel.admits) == false {
     RecoveryWriteRefused { kind: kind, cause: "the in-band channel is not admitted as passwordless, so this is not the write the census row classifies" as NonEmptyStr }
   } else {
     RecoveryWritePasswordAdmitted { authorized_by: recovery_in_band_password_write_site() }
@@ -647,7 +675,7 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochM
 type RecoveryInBandRoute {
   subject: MachineIntakeSubject
   rescue_host: RescueHostReachability
-  in_band: InBandSsifChannelObservation
+  in_band: InBandChannelObservation
   controller: BmcAccessObservation
   password_write_policy: PublishedFactoryPasswordWritePolicy
   operator_approval: DeclarationRef
@@ -775,7 +803,7 @@ fn converge_in_band_recovery(
     Present { value: c } =>
       InBandRecoveryStanding { subject: route.subject, route: route, outcome: RecoveryHostUnreachable { cause: c } }
     Absent =>
-      if in_band_ssif_channel_admits(observation: route.in_band, reachability: route.rescue_host) == false {
+      if in_band_channel_admits(observation: route.in_band, reachability: route.rescue_host) == false {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
@@ -827,11 +855,11 @@ fn converge_in_band_recovery(
             RecoveryWriteResetAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => RecoveryWriteNotAdmitted { kind: recovery_reset_actuation(), cause: "unreachable: admitted arm" as NonEmptyStr }
           },
         }
-      } else if recovery_write_was_attempted(record: in_band_write, kind: SsifTemporaryAdministratorPassword) == false {
+      } else if recovery_write_was_attempted(record: in_band_write, kind: InBandTemporaryAdministratorPassword) == false {
         InBandRecoveryStanding {
           subject: route.subject,
           route: route,
-          outcome: RecoveryWriteUnverified { kind: SsifTemporaryAdministratorPassword },
+          outcome: RecoveryWriteUnverified { kind: InBandTemporaryAdministratorPassword },
         }
       } else if recovery_write_was_attempted(record: reset_write, kind: recovery_reset_actuation()) == false {
         InBandRecoveryStanding {
@@ -1047,17 +1075,17 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant,
   )
-  let observation = InBandSsifChannelObservation {
+  let observation = InBandChannelObservation {
     subject: recovery_test_subject(),
     rescue_host_address: recovery_controller_address(),
     device_node: recovery_ipmi_device_node,
     kernel_modules: recovery_ipmi_kernel_modules,
-    channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
+    channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant,
   }
-  in_band_ssif_channel_admits(observation: observation, reachability: reached) == false
+  in_band_channel_admits(observation: observation, reachability: reached) == false
     // and a declared medium never reaches the reachable arm at all -- matched as the coproduct it is
     && match reached {
         RescueHostUnreachable { cause: _ } => true
@@ -1066,15 +1094,48 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
 }
 
 test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
-  ssif_channel_is_passwordless(
-    channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: ["-P", "0penBmc"] },
+  in_band_channel_is_passwordless(
+    channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: ["-P", "0penBmc"] },
   ) == false
-    && ssif_channel_is_passwordless(
-      channel: SsifChannelPasswordless { ipmi_interface: "lanplus", argv_credential_words: [] },
+    && in_band_channel_is_passwordless(
+      channel: InBandChannelPasswordless { interface: lan_plus_recovery_interface(), argv_credential_words: [] },
     ) == false
-    && ssif_channel_is_passwordless(
-      channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
+    && in_band_channel_is_passwordless(
+      channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
     )
+}
+
+// THE SUM IS CLOSED, AND IT REFUSES IN BOTH DIRECTIONS. The reviewer's ask, stated as a law: the
+// interface the captured unit actually used -- `open`, the OpenIPMI driver over /dev/ipmi0 -- is ADMITTED
+// (the earlier deny-list refused it, which would have blocked the only route that exists for this board),
+// and a name that does not map to an arm is REFUSED rather than assumed in-band. Casing and a trailing
+// space are not interfaces ipmitool would load -- its dispatch is strcmp against ipmi_intf_table -- so a
+// capture that appears to name them was read wrong, and that refusal is worth having rather than
+// silently inventing a transport in front of a destructive reset.
+test fn the_interface_sum_admits_the_captured_transport_and_refuses_anything_unlisted() -> Bool {
+  // admitted: the in-band arms, including the one this capture used
+  (match ipmi_command_interface_from_wire(wire: "open") {
+    IpmiCommandInterfaceParsed { wire: w, interface: i } => w == "open" && ipmi_command_interface_is_in_band_host_transport(interface: i)
+    IpmiCommandInterfaceUnrecognized { wire: _ } => false
+  })
+    && ipmi_command_interface_is_in_band_host_transport(interface: BmcKernelDriver)
+    && ipmi_command_interface_is_in_band_host_transport(interface: UsbTransport)
+    // refused: out-of-band transports that authenticate by a secret, and the arms that are not a host path
+    && ipmi_command_interface_is_in_band_host_transport(interface: LanTransport) == false
+    && ipmi_command_interface_is_in_band_host_transport(interface: lan_plus_recovery_interface()) == false
+    && ipmi_command_interface_is_in_band_host_transport(interface: DbusLocalService) == false
+    && ipmi_command_interface_is_in_band_host_transport(interface: SerialTerminal) == false
+    && ipmi_command_interface_is_in_band_host_transport(interface: DummyTestInterface) == false
+    // refused at the PARSE: a transport nobody named, in any spelling
+    && match ipmi_command_interface_from_wire(wire: "ssif") { IpmiCommandInterfaceUnrecognized { wire: w } => w == "ssif" IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
+    && match ipmi_command_interface_from_wire(wire: "LANPLUS") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
+    && match ipmi_command_interface_from_wire(wire: "lanplus ") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
+    && match ipmi_command_interface_from_wire(wire: "") { IpmiCommandInterfaceUnrecognized { wire: _ } => true IpmiCommandInterfaceParsed { wire: _, interface: _ } => false }
+    // and an unparseable name can never be handed to the channel predicate as if it were in-band: the
+    // carrier has no arm for it, so the refusal above is the only way the observation can land
+    && in_band_channel_is_passwordless(
+      channel: InBandChannelNotObserved { detail: "ipmitool reported an interface this model has no arm for" },
+    ) == false
 }
 
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
@@ -1282,12 +1343,12 @@ fn recovery_test_route(policy: PublishedFactoryPasswordWritePolicy) -> RecoveryI
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant,
     ),
-    in_band: InBandSsifChannelObservation {
+    in_band: InBandChannelObservation {
       subject: recovery_test_subject(),
       rescue_host_address: recovery_rescue_host_address(),
       device_node: recovery_ipmi_device_node,
       kernel_modules: recovery_ipmi_kernel_modules,
-      channel: SsifChannelPasswordless { ipmi_interface: "ssif", argv_credential_words: [] },
+      channel: InBandChannelPasswordless { interface: in_band_recovery_interface(), argv_credential_words: [] },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant,
@@ -1319,7 +1380,7 @@ fn recovery_admitted_reset_write() -> RecoveryWriteAuthorization {
 
 fn recovery_in_band_write_record() -> RecoveryWriteRecord {
   ExecutedWithoutByteCapture {
-    kind: SsifTemporaryAdministratorPassword,
+    kind: InBandTemporaryAdministratorPassword,
     observed_exit: 0,
     detail: "operator-observed only; wiped by the reset before it could be re-read",
   }

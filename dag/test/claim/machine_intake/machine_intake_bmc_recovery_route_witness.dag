@@ -26,7 +26,7 @@ import std.decl_ref { declaration_ref_display_key }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
   RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
-  recovery_reset_actuation, SsifTemporaryAdministratorPassword,
+  recovery_reset_actuation, InBandTemporaryAdministratorPassword,
   RecoveryRouteUnavailable, RecoveryFirmwarePolicyUnknown, recovery_test_route,
   recovery_measured_refusal_policy, converge_in_band_recovery, recovery_readback_is_factory_active,
   recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback,
@@ -158,8 +158,11 @@ data recovery_in_band_site_name: String = "gunbc.machine_intake.bmc_recovery_rou
 data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route::admit_recovery_manager_reset_to_defaults"
 
 fn recovery_site_verdicts() -> List<SiteVerdict> {
-  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == recovery_in_band_site_name
-    || declaration_ref_display_key(v.site) == recovery_reset_site_name
+  filter(
+    census_verdicts(),
+    v => declaration_ref_display_key(v.site) == recovery_in_band_site_name
+      || declaration_ref_display_key(v.site) == recovery_reset_site_name,
+  )
 }
 
 fn verdict_for(wanted: String) -> SiteVerdict? {
@@ -282,7 +285,7 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
     detail: "observed in session; request and response bodies were not captured",
   }
   let wrong_kind = ExecutedWithoutByteCapture {
-    kind: SsifTemporaryAdministratorPassword,
+    kind: InBandTemporaryAdministratorPassword,
     observed_exit: 0,
     detail: "the other arm of the same run, presented as the reset",
   }
