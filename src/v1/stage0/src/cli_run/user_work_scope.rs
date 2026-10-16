@@ -533,14 +533,17 @@ fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path
     };
     let mut any_read = false;
     let mut binding_limit = false;
+    let mut zero_limit = false;
     let mut swap_forbidden = false;
     let mut current = path.trim().trim_end_matches('/').to_string();
     while !current.is_empty() {
         let dir = format!("{}{current}", sysfs_root.display());
         if let Ok(max) = std::fs::read_to_string(format!("{dir}/memory.max")) {
             any_read = true;
-            if max.trim().parse::<u64>().is_ok() {
-                binding_limit = true;
+            match max.trim().parse::<u64>() {
+                Ok(0) => zero_limit = true,
+                Ok(_) => binding_limit = true,
+                Err(_) => {}
             }
         }
         if let Ok(swap) = std::fs::read_to_string(format!("{dir}/memory.swap.max")) {
@@ -554,7 +557,7 @@ fn observed_cgroup_bound_in(proc_self_cgroup: &str, sysfs_root: &std::path::Path
             None => current.clear(),
         }
     }
-    if binding_limit && swap_forbidden {
+    if binding_limit && !zero_limit && swap_forbidden {
         CgroupBound::Bounded
     } else if any_read {
         CgroupBound::Unbounded
@@ -640,6 +643,16 @@ mod observed_cgroup_bound_tests {
         assert_eq!(verdict(swap, "/system.slice/job.service"), "unbounded");
         let huge = tree(&[("/system.slice/job.service", "99999999999999999999999", "0")]);
         assert_eq!(verdict(huge, "/system.slice/job.service"), "unbounded");
+        let zero = tree(&[("/system.slice/job.service", "0", "0")]);
+        assert_eq!(verdict(zero, "/system.slice/job.service"), "unbounded");
+        let zero_ancestor = tree(&[
+            ("/system.slice/job.service", "21474836480", "0"),
+            ("/system.slice", "0", "max"),
+        ]);
+        assert_eq!(
+            verdict(zero_ancestor, "/system.slice/job.service"),
+            "unbounded"
+        );
     }
 
     #[test]
