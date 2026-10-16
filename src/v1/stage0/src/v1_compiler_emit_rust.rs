@@ -6644,7 +6644,8 @@ pub fn shared_layer_of_undecided_kernel_spelling(
             type_decl_items.clone(),
             leaf.clone(),
         );
-        if ((corpus.clone().len() as i64) == 0) {
+        if (((corpus.clone().len() as i64) == 0) || crate::std_types::is_kernel_type(leaf.clone()))
+        {
             Rc::new(SharedLayerAnswer::SharedLayerAtValue)
         } else {
             {

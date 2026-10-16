@@ -3475,7 +3475,10 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
 
 fn shared_layer_of_undecided_kernel_spelling(shared_types: Set<String>, leaf: String, type_decl_items: TypeDeclIndex) -> SharedLayerAnswer {
   let corpus = type_decl_identities_of_leaf(index: type_decl_items, leaf: leaf)
-  if (corpus |> count) == 0 {
+  // A kernel spelling is undecided precisely because the corpus also declares the leaf; the host
+  // spelling (i64, String, ...) is the value layer, never the declaration's. Deciding by the
+  // declarations' own sharing wrapped every Int struct field in Rc (E0308/E0204 at v1_std_core).
+  if (corpus |> count) == 0 || is_kernel_type(name: leaf) {
     SharedLayerAtValue
   } else {
     let shared_n = corpus |> filter(id => shared_types_contains_identity(shared_types: shared_types, identity: id)) |> count
