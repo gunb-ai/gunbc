@@ -662,7 +662,7 @@ fn emit_partition_with_target(
       f: fn(tree) {
         if produced_module_bodies_declare_members(root: tree.root) {
           emit_module_body_members(
-            tree: InferredTree { root: tree.root, facts: partition.ambient.facts },
+            tree: tree,
             target: target,
             realization_host: realization_host,
             kinds: kinds,
@@ -717,6 +717,9 @@ fn emit_for_target(
 // in it: the caller that still holds the module's NormalizedTree passes its type_declaration_kinds (the
 // closure door does), and emit_for_target, whose callers hold only the inferred tree, passes none -- so a
 // plain Conj member there refuses as undecided rather than being guessed a record.
+// DECLARED GAP: emit_for_target also passes empty_symbol_index. Callers with a ResolvedTree use
+// emit_for_target_with_declarations (closure_emission). Frozen compiler_closure_emit stays on
+// emit_for_target until that route is deleted.
 fn emit_for_target_with_declarations(
   program: InferredTree,
   segment: ProgramSegment,

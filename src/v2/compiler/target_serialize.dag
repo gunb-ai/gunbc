@@ -64,25 +64,15 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason
 }
 import v2.std.node {
-  ArrowBodyForm,
   Atom,
-  ComputationBody,
   Conj,
-  DeclarationReferenceBody,
-  DirectAtomBody,
   Edge,
   Authored,
-  FunctionValueBody,
-  LexicalReferenceBody,
   Node,
-  ParameterReferenceBody,
   Positional,
-  RecordConstructBody,
   StructuralLabel,
   Symbol,
   TypeNode,
-  UnsupportedArrowBody,
-  classify_arrow_body_form,
   declaration_reference_body_marked,
   node_subtree_count,
   Arrow,
@@ -774,6 +764,11 @@ fn translate_generic_arrow_not_rendered_diagnostic(arrow: Node) -> Diagnostic {
   }
 }
 
+// DECLARED GAP: this serialize entry is given an emitted Node, not an InferredTree. Nullary-arm
+// stamp lookup therefore cannot fire here; a declaration-reference body refuses
+// emit_declaration_reference_inferred_facts_absent rather than guessing. The module-emit path
+// carries the real tree. empty_symbol_index at these call sites is the same gap: no resolve index
+// is in scope at relation-row serialize.
 fn serialize_facts_absent_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
@@ -806,19 +801,6 @@ fn emit_nullary_coproduct_arm_path_absent_diagnostic(body: Node) -> Diagnostic {
     reason: ^emit_nullary_coproduct_arm_path_absent,
     at: node_locus(node: body),
     correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn arrow_body_form_is_declaration_reference(form: ArrowBodyForm) -> Bool {
-  match form {
-    DeclarationReferenceBody => true
-    DirectAtomBody => false
-    RecordConstructBody => false
-    ParameterReferenceBody => false
-    LexicalReferenceBody => false
-    ComputationBody { behavior: _ } => false
-    FunctionValueBody => false
-    UnsupportedArrowBody => false
   }
 }
 
