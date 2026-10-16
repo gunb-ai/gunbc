@@ -378,7 +378,16 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 4. **§3b External facts, Owns:** add "accepted formal mathematics".
 5. **§4, operations clause:** pending §6 (A/B/C).
 6. **§4 example:** the reference to `dag/std/algebra.dag` as the substrate exemplar moves to the new homes.
-7. **Ruling record** in `gunbc.design_ruling`: this design as the N3 answer for `List`, `NonEmptyList`,
+7. **§4 text paragraph (DESIGN.md line 329) is corrected.** It currently reads "`v2.std.text` `String` is
+   `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other", from ruling
+   `gunbc.design_ruling text_crossings_go_through_the_unfold`. Under §3.1 of this design there is one `String`
+   declaration, realized as host text, whose declared unfold produces `List<Char>`; it is not itself
+   `FreeMonoid<Char>`. The ruling is amended, not deleted: "every crossing goes through the declared unfold or
+   refuses" still holds, with the crossing now between `String` and `List<Char>` rather than between two
+   `String`s.
+8. **§3b Cardinality / absence, existing authorities (DESIGN.md line 285):** `std.algebra::FreeMonoid` is
+   replaced by the `List` declaration.
+9. **Ruling record** in `gunbc.design_ruling`: this design as the N3 answer for `List`, `NonEmptyList`,
    `String`, and the direction for `Map`/`Set`.
 
 ---
