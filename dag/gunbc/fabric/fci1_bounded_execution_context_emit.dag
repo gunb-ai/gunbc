@@ -10,7 +10,9 @@ import gunbc.fabric.fci1_bounded_execution_context {
   fci1_bounded_execution_context,
 }
 import std.optional { Present, Absent }
-import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
+import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name, fci1_controls_slice_memory_max }
+import gunbc.fabric.fci1_controls_slice { fci1_controls_slice_unit_text, fci1_controls_slice_unit_path }
+import std.measure { byte_size_count }
 import extdeps.systemd { SliceProperty, WorkingDirectoryProperty, RuntimeDirectoryProperty, MemoryMax, MemoryHigh, systemd_unit_property_wire }
 
 type Fci1BoundedExecutionContextEmission
@@ -69,6 +71,19 @@ fn expected_fci1_bounded_execution_context_env() -> Fci1BoundedExecutionContextE
           "FCI1_MEMORY_HIGH_BYTES=", to_string(finite_byte_size_count(size: high)), "\n",
           "FCI1_DRIVER_UNIT=", context.driver_unit as String, "\n",
           "readonly FCI1_MEMORY_MAX_BYTES FCI1_MEMORY_HIGH_BYTES FCI1_DRIVER_UNIT\n",
+          "fci1_install_controls_slice() {\n",
+          "  [[ ! -e ", fci1_controls_slice_unit_path(), " ]] || { echo 'ControlRefused: ", fci1_controls_slice_unit_path(), " already exists' >&2; return 2; }\n",
+          "  cat >", fci1_controls_slice_unit_path(), " <<'FCI1_SLICE_UNIT'\n",
+          fci1_controls_slice_unit_text(),
+          "FCI1_SLICE_UNIT\n",
+          "  systemctl daemon-reload\n",
+          "  [[ $(systemctl show ", fci1_controls_slice_unit_name as String, " --property=MemoryMax --value) == ", to_string(byte_size_count(b: fci1_controls_slice_memory_max())), " ]] || { echo 'ControlRefused: slice cap not live' >&2; return 2; }\n",
+          "}\n",
+          "fci1_remove_controls_slice() {\n",
+          "  systemctl stop ", fci1_controls_slice_unit_name as String, " 2>/dev/null || true\n",
+          "  rm -f ", fci1_controls_slice_unit_path(), "\n",
+          "  systemctl daemon-reload\n",
+          "}\n",
           "fci1_run_bounded_driver() {\n",
           "  local checkout_root=$1; shift\n",
           "  systemd-run --quiet --wait --collect --unit=\"$FCI1_DRIVER_UNIT\" \\\n",
