@@ -3,6 +3,7 @@ module v2.test.claim.resolve.namespace_only_policy
 import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
+  empty_module_outcome_index,
   NotDeclaring,
   ResolveContext,
   Namespace,
@@ -11,7 +12,7 @@ import v2.compiler.resolve {
   scope_from_namespace
 }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { empty_map }
+import std.algebra { empty_map }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.node {
   Atom,
@@ -49,7 +50,7 @@ fn policy_pilot_namespace_with_index(
     test_code: test_code_index_empty(),
     declared_in: module_qn,
     imported_origins: empty_map(),
-    unavailable_providers: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 

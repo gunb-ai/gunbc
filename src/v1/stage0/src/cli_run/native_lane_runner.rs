@@ -1,4 +1,4 @@
-//! The v2-native ROUTE's host harness (route authority: `gunbc.witness.v2_native_route`),
+//! The v2-native ROUTE's host harness (route authority: `v2.workflow.v2_native_route`),
 //! reached as `claim_executor --v2-native-route`.
 //!
 //! IT IS NOT A REQUIRED LANE, and the prefixes below say so. The required-v2-native CI job was
@@ -24,7 +24,7 @@
 //! (the marked declarations of the `v2` modules) with the floor's own per-file discovery producer,
 //! executes every derived identity plus the authority's named live-verdict controls, mints the `NativeRouteReceipt`, and
 //! evaluates `native_route_admission` and `native_route_admission_summary` over it
-//! (`v2.compiler.compile` `native_lane_run`).
+//! (`v2.workflow.v2_native_route` `native_route_admission`).
 //!
 //! WHAT THIS MODULE NO LONGER DOES, AND WHY THE DELETION IS THE POINT. It used to bracket the
 //! route with the v1 interpreter on both ends: a Wet interpreter context folding
@@ -67,7 +67,7 @@ const PRODUCT_REUSE_FRESH_VALUE: &str = "fresh";
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
 /// authority is now inside that closure, the binary judges its own receipt.
-const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/compile.dag";
+const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 
 /// THE V2-EXCLUSIVE CLI'S ENTRY, AND WHY IT IS A SECOND CONSTANT RATHER THAN A SECOND ROUTE.
 ///
@@ -202,7 +202,7 @@ const CLI_DOOR_REFUSAL_EXIT: i32 = 1;
 /// THE STATUS A PARSE REFUSAL TAKES, WHICH IS NOT THE EMIT REFUSAL'S. `v2_cli_exit` maps a
 /// `CliUsageRefused` -- a command line that was not usable, decided before any walk -- to
 /// `extdeps.process.gnu_bash_exit` `exit_code_misuse`, which is `2`, the same split
-/// `v2.compiler.compile` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
+/// `v2.compiler.source_root_eval` `native_driver_plan_exit` makes. The no-entry control is such a refusal.
 const CLI_DOOR_USAGE_REFUSAL_EXIT: i32 = 2;
 
 /// THE THREE MARKERS OF THE CLI'S REFUSAL RECORD, named so each is required rather than sought.
@@ -254,7 +254,7 @@ struct EmittedPreparation {
 }
 
 /// The emitted compiler's build as the receipt records it — mirror of
-/// `gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
+/// `v2.workflow.v2_native_route` `NativeRouteEmittedBuild`. Every field is read from the
 /// spawn that ran or the toolchain that answered, never composed from what was intended.
 struct EmittedBuildObserved {
     cargo_argv: Vec<String>,
@@ -373,13 +373,44 @@ fn emitted_build_failed_refusal(
 /// compiler" is. The seed is used exactly once here, in-process, to emit; the receipt records
 /// the seed's identity honestly, and this job claims no native bootstrap.
 fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
-    prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY)
+    prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY).map_err(String::from)
+}
+
+/// WHICH PREPARATION REFUSAL, carried by the producer that knows. The two causes a consumer must tell
+/// apart (the seed emit refused the entry; the emitted compiler did not build) are variants set at the
+/// refusing site, so no caller reads the message text to classify. Every other refusal is `Other`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparationCause {
+    EmissionRefused,
+    EmittedCompilerBuildFailed,
+    Other,
+}
+
+#[derive(Debug)]
+pub struct PreparationRefusal {
+    pub cause: PreparationCause,
+    pub message: String,
+}
+
+impl From<String> for PreparationRefusal {
+    fn from(message: String) -> Self {
+        PreparationRefusal {
+            cause: PreparationCause::Other,
+            message,
+        }
+    }
+}
+
+impl From<PreparationRefusal> for String {
+    fn from(refusal: PreparationRefusal) -> String {
+        refusal.message
+    }
 }
 
 fn prepare_emitted_compiler_for_entry(
     source_roots: &[String],
     entry: &str,
-) -> Result<EmittedPreparation, String> {
+) -> Result<EmittedPreparation, PreparationRefusal> {
     let workspace = super::process_workspace_root();
     // A root PRIVATE TO THIS RUN, created under the declared execution environment's base
     // (per-job runner temp in CI, system temp locally): `emitted_closure_compile_host`
@@ -401,13 +432,13 @@ fn prepare_emitted_compiler_for_entry(
         std::env::var(PRODUCT_REUSE_ENV).ok().as_deref() == Some(PRODUCT_REUSE_FRESH_VALUE);
     let store = if fresh_required {
         if let Some(root) = super::native_product_cache::store_root() {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=NativeProductReuseRefused — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE} \
                  requires this run to emit and build {entry} itself, yet GUNBC_NATIVE_CACHE_ROOT binds a native \
                  product store at {}; a restored final product may not stand in for the build this run owes, so \
                  unbind the store or withdraw the input",
                 root.display()
-            ));
+            )));
         }
         eprintln!(
             "v2-native-route: FRESH PRODUCT REQUIRED — {PRODUCT_REUSE_ENV}={PRODUCT_REUSE_FRESH_VALUE}: the native \
@@ -484,11 +515,11 @@ fn prepare_emitted_compiler_for_entry(
                     })?;
                 let binary_identity = sha256_file(&binary_path)?;
                 if binary_identity != manifest.binary_sha256 {
-                    return Err(format!(
+                    return Err(PreparationRefusal::from(format!(
                         "V2-NATIVE REFUSAL cause=NativeProductRestoredDifferently — restored \
                          {binary_identity}, manifest records {}",
                         manifest.binary_sha256
-                    ));
+                    )));
                 }
                 // THE ORACLE COMPILER IS THIS HOST'S, NOT THE PRODUCER'S. `manifest.compiler_path`
                 // names the executable on the host that built the product; a shared-store restore
@@ -503,12 +534,12 @@ fn prepare_emitted_compiler_for_entry(
                         format!("V2-NATIVE REFUSAL cause=NativeProductCompilerUnresolved — {cause}")
                     })?;
                 if local_identity != manifest.rustc_identity {
-                    return Err(format!(
+                    return Err(PreparationRefusal::from(format!(
                         "V2-NATIVE REFUSAL cause=NativeProductToolchainDiffers — this host's \
                          compiler {local_compiler} is `{local_identity}`, the product was built \
                          by `{}`",
                         manifest.rustc_identity
-                    ));
+                    )));
                 }
                 let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
                     format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
@@ -556,17 +587,21 @@ fn prepare_emitted_compiler_for_entry(
     match &run.disposition {
         super::CompileDisposition::Completed { .. } => {}
         super::CompileDisposition::Refused { phase, cause } => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmissionRefused stage={phase} — {cause}"
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmissionRefused,
+                message: format!("V2-NATIVE REFUSAL cause=EmissionRefused stage={phase} — {cause}"),
+            })
         }
         super::CompileDisposition::NotExecuted {
             earlier_phase,
             cause,
         } => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmissionRefused stage={earlier_phase} — {cause}"
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmissionRefused,
+                message: format!(
+                    "V2-NATIVE REFUSAL cause=EmissionRefused stage={earlier_phase} — {cause}"
+                ),
+            })
         }
     }
     let emitted = super::emitted_closure_compile_host::write_probe_crate(&run, &probe_root, entry)
@@ -615,21 +650,24 @@ fn prepare_emitted_compiler_for_entry(
         &verdict
     {
         // INFRA, NOT A SELF-HOST DEFECT: no compiler judged the emitted crate.
-        return Err(format!(
+        return Err(PreparationRefusal::from(format!(
             "V2-NATIVE REFUSAL cause=EmittedBuildDependencyFetchFailed class=Infra — {}",
             super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-        ));
+        )));
     }
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
-        return Err(emitted_build_failed_refusal(
-            probe_root,
-            &crate_dir,
-            &verdict,
-            &format!(
-                "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
-                invocation.argv, invocation.rustflags
+        return Err(PreparationRefusal {
+            cause: PreparationCause::EmittedCompilerBuildFailed,
+            message: emitted_build_failed_refusal(
+                probe_root,
+                &crate_dir,
+                &verdict,
+                &format!(
+                    "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
+                    invocation.argv, invocation.rustflags
+                ),
             ),
-        ));
+        });
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
     // below are the run's own; a verdict of any other shape refused above.
@@ -647,11 +685,14 @@ fn prepare_emitted_compiler_for_entry(
             *cargo_network_retries,
         ),
         other => {
-            return Err(format!(
-                "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
-                 is not a completed run: {}",
-                super::emitted_closure_compile_host::cargo_verdict_summary(other)
-            ))
+            return Err(PreparationRefusal {
+                cause: PreparationCause::EmittedCompilerBuildFailed,
+                message: format!(
+                    "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
+                     is not a completed run: {}",
+                    super::emitted_closure_compile_host::cargo_verdict_summary(other)
+                ),
+            })
         }
     };
     let build = EmittedBuildObserved {
@@ -675,11 +716,11 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::probe_package_name(entry),
     );
     if !binary_path.is_file() {
-        return Err(format!(
+        return Err(PreparationRefusal::from(format!(
             "V2-NATIVE REFUSAL cause=EmittedCompilerAbsent — cargo reported success but {} is \
              not a file",
             binary_path.display()
-        ));
+        )));
     }
     let binary_identity = sha256_file(&binary_path)?;
     let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
@@ -715,7 +756,7 @@ fn prepare_emitted_compiler_for_entry(
     // THE PLANTED DEFECT, ON THE ARTIFACT THIS PREPARATION IS ABOUT TO HAND ON.
     //
     // Until this block landed, both retained native build subjects -- the test driver
-    // (`v2.compiler.compile`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
+    // (`v2.compiler.source_root_eval`) and the CLI (`v2.cli.compile_cli`) -- were admitted on a GREEN CARGO
     // RUN ALONE, and this call site passed the literal
     // `"v2_native_lane_carries_no_mutation_probe"` where the required emit-compile phase passes its
     // probe symbol. A cargo phase that is green because nothing was measured is the decoration
@@ -758,10 +799,10 @@ fn prepare_emitted_compiler_for_entry(
             &entry_module,
         );
         if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
                 super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-            ));
+            )));
         }
         eprintln!(
             "v2-native-route: discriminating red established — {}",
@@ -770,12 +811,12 @@ fn prepare_emitted_compiler_for_entry(
         red_completed = true;
         let identity_after_mutation = sha256_file(&binary_path)?;
         if identity_after_mutation != binary_identity {
-            return Err(format!(
+            return Err(PreparationRefusal::from(format!(
                 "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
                  when the clean baseline built it and is {identity_after_mutation} after the fault was \
                  injected and removed; the executable handed on is not the one the green build produced",
                 binary_path.display()
-            ));
+            )));
         }
     }
 
@@ -1109,7 +1150,7 @@ struct NativeTerminalMarker {
     advised_files: u64,
     admitted: bool,
     summary: String,
-    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
+    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
     /// census marker, which carries no population to judge; nothing reads it there.
     frontier: String,
 }
@@ -1127,7 +1168,7 @@ enum NativeMemberVerdict {
     Refused,
 }
 
-/// `gunbc.instrument_targets` `native_route_member_termination`'s result, mirrored.
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`'s result, mirrored.
 ///
 /// Three arms rather than four: `InvocationRefused` is not reachable from a population fold, so an
 /// arm for it here would be a constructor nothing can build -- the decoration DESIGN section 4b
@@ -1139,7 +1180,7 @@ pub enum NativeMemberTermination {
     SubjectUnreached,
 }
 
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored arm for arm INCLUDING the
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored arm for arm INCLUDING the
 /// precedence, which is the one decision in that fold that could have gone the other way.
 ///
 /// A definite failure outranks an unobserved sibling; an unobserved member outranks the passes
@@ -1381,7 +1422,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             continue;
         }
         // A CAUSE GROUP IS RECOGNIZED AND NOT CONSUMED HERE. `census` now prints the same file
-        // refusals grouped by fatal reason (v2.compiler.compile native_census_cause_group_rows);
+        // refusals grouped by fatal reason (v2.compiler.source_root_eval native_census_cause_group_rows);
         // the malformed control reads the per-file row above and owes nothing to the grouping,
         // whose consumer is the census instrument (`//gunbc/instruments:v2-native-census`). A
         // `census_root` row is the same members ranked by closure fan-out
@@ -1678,7 +1719,7 @@ fn write_host_facts(
         ),
     ];
     // THE EMITTED BUILD CROSSES AS ROWS TOO: the six facts of NativeRouteEmittedBuild
-    // (gunbc.witness.v2_native_route) are the host's own spawn observations, so they are host
+    // (v2.workflow.v2_native_route) are the host's own spawn observations, so they are host
     // facts by the same rule as the identities above. The argv is one row per word under a
     // length row, because a word is opaque bytes and the TSV grammar has one value per key --
     // no separator is smuggled into a value.
@@ -1741,7 +1782,7 @@ fn write_host_facts(
 /// module also behave as the seed does on a discriminating corpus, and that half
 /// (`--behavioral-receipt-*`) is a declared drop that no required run performs. Nor is it the
 /// second generation: the built binary emitting the same closure is the v2 -> v2 boundary, and it
-/// refuses today because `v2.compiler.compile` declares `SourceRootEvalDriver`, whose rendered main
+/// refuses today because `v2.compiler.source_root_eval` declares `SourceRootEvalDriver`, whose rendered main
 /// answers `census` and `adjudicate` and has no compile mode at all. That refusal is the honest next
 /// position and belongs in this step when a driver exists that can reach it.
 /// What the self-host generation observed, as the fields a caller renders. Returned rather than
@@ -1962,7 +2003,7 @@ pub struct V2NativeCliHeld {
 /// THE V2-EXCLUSIVE CLI, EMITTED AND BUILT. This is the door the self-host step stops in front of.
 ///
 /// `//gunbc/instruments:self-host` establishes that the seed can emit and build
-/// `v2.compiler.compile`; what it explicitly does NOT establish is the second generation, because
+/// `v2.compiler.source_root_eval`; what it explicitly does NOT establish is the second generation, because
 /// that entry declares `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate`
 /// and has no compile mode. `v2.cli.compile_cli` is the entry that does have one, and this producer
 /// is the question "does that door exist as a built binary today" asked the same way its sibling
@@ -3397,7 +3438,7 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
 }
 
 /// THE GENERATION-ONE EXECUTABLE OUTLIVES THE RUN, because generation two is that executable
-/// emitting `v2.compiler.compile` and nothing else may stand in for it. The probe root is NOT
+/// emitting `v2.compiler.source_root_eval` and nothing else may stand in for it. The probe root is NOT
 /// retained: once the executable is copied out and its copy re-hashes to the identity the run
 /// recorded, the root and its per-run cargo target dir have no further consumer, so it drops as
 /// `PrivateProbeRoot` is designed to. The copy is named by its own sha256, so the path names the
@@ -3488,6 +3529,27 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
     })
 }
 
+/// ONE `emit --entry <module>` RUN OF THE NATIVE v2 CLI PER MODULE, over a CLI prepared once. The
+/// caller reads each module's own refusal out of the JSON; this carries status and both streams
+/// unjudged (`gunbc.cardinality_realization_seed_growth`).
+pub fn run_v2_native_cli_emit(
+    source_roots: &[String],
+    entries: &[String],
+) -> Result<Vec<(String, Option<i32>, String, String)>, String> {
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, V2_NATIVE_CLI_ENTRY)?;
+    let mut runs = Vec::new();
+    for entry in entries {
+        let mut args = vec!["emit".to_string(), "--entry".to_string(), entry.clone()];
+        for root in source_roots {
+            args.push("--source-root".to_string());
+            args.push(root.clone());
+        }
+        let run = run_cli_door(&prepared.binary_path, &args)?;
+        runs.push((entry.clone(), run.status, run.stdout, run.stderr));
+    }
+    Ok(runs)
+}
+
 /// ONE RUN OF A `std.compiler_entry` `NativeClaimDriver` PROGRAM, as the observation the reader
 /// needs and nothing it decides. `gunbc.native_claim_program` `native_claim_program_standing` reads
 /// `stdout` and `status` and answers held / not held / no observation; this struct carries them
@@ -3532,7 +3594,7 @@ pub fn run_native_claim_program(
     source_roots: &[String],
     entry: &str,
     deadline: std::time::Duration,
-) -> Result<NativeClaimProgramAttempt, String> {
+) -> Result<NativeClaimProgramAttempt, PreparationRefusal> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-claim: {entry} built (closure {}) -- running {} deadline_ms={}",
@@ -3594,9 +3656,9 @@ pub fn run_native_claim_program(
                 let _ = child.kill();
                 let _ = stdout_join.join();
                 let _ = stderr_join.join();
-                return Err(format!(
+                return Err(PreparationRefusal::from(format!(
                     "NATIVE-CLAIM REFUSAL cause=WaitFailed entry={entry} — {cause}"
-                ));
+                )));
             }
         }
     };
@@ -3920,7 +3982,7 @@ fn native_serve_start(
 /// of a decision this function already holds, free to disagree with it.
 ///
 /// THE ARMS ARE NAMED FOR WHAT THE BIT ACTUALLY DECIDES, AND THE NAMING IS THE WHOLE POINT. It is
-/// `gunbc.witness.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
+/// `v2.workflow.v2_native_route` `native_route_admission_with`'s WHOLE-ROUTE LANE QUALIFICATION
 /// -- a conjunction over roughly twenty clauses including `JobNameMismatch`,
 /// `PreparationSeedUnrecorded`, `EmittedBuildNotClean`, `MalformedControlAcceptedByRoute`,
 /// `PositivePopulationEmpty` and `RequiredNativePassRegressed`. It is NOT "the targets the operator
@@ -3974,7 +4036,7 @@ pub fn run_required_v2_native(
     }
 }
 
-/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `gunbc.native_frontier_ratchet`
+/// THE FRONTIER RATCHET'S ANSWER FOR ONE WHOLE-UNIVERSE RUN, as `v2.workflow.native_frontier_ratchet`
 /// `native_frontier_verdict_word` rendered it inside the emitted binary. The host decides nothing
 /// here: it carries the word, and the lane's own qualification summary beside it for the reader.
 /// Which words pass is the instrument's single match, `target_invocation_host`
@@ -3995,7 +4057,7 @@ pub fn run_v2_native_frontier(source_roots: &[String]) -> Result<NativeFrontierR
 }
 
 /// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping is
-/// decided inside the binary (`v2.compiler.compile` `native_census_cause_groups_add`); the host
+/// decided inside the binary (`v2.compiler.source_root_eval` `native_census_cause_groups_add`); the host
 /// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
     pub cause_groups: u64,
@@ -4100,6 +4162,15 @@ fn host_memory_budget_receipt_line(
         HostBudgetResolution::Unreadable { reason } => {
             format!("[v2-native-census] host_memory_budget source=unreadable reason=\"{reason}\"")
         }
+        HostBudgetResolution::ExternallyBounded { run_id } => format!(
+            "[v2-native-census] host_memory_budget source=externally_bounded \
+             executor={}",
+            super::user_work_scope::standing_wire(
+                &super::user_work_scope::UserWorkScopeStanding::ExternallyBoundedExecutor {
+                    run_id: run_id.clone(),
+                },
+            )
+        ),
     }
 }
 
@@ -4231,7 +4302,7 @@ fn decode_census_terminal(
 }
 
 /// WHETHER THE SCOPED RUN'S POPULATION IS THE SUBJECT'S WHOLE CLOSURE, as the terminal states it:
-/// `v2.compiler.compile` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
+/// `v2.compiler.source_root_eval` `NativeCensusScope`'s two arms, and nothing else. A blocked population is
 /// carried with its block count, never reported as closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NativeCensusScopeWord {
@@ -4260,10 +4331,19 @@ pub struct NativeCensusScopedRun {
 }
 
 /// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
-/// verb over the bound subject's acquired closure (gunbc.plans.census_scoped_run). The rows are
+/// verb over the bound subject's acquired closure. The rows are
 /// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
 /// `subject_label` must be the label this instrument bound, so a run is never reported as another
 /// subject's.
+///
+/// COLD AND WARM COST ARE NOT YET REPORTED APART -- A DECLARED FRONTIER (DESIGN §4b). Current
+/// ceiling: a scoped run can be timed by hand, and native-product reuse records hit/miss standing
+/// separately (`native_product_cache::record_outcome`), but no one receipt binds this run's
+/// preparation disposition to its whole-command wall time, so a measured wall mixes the driver
+/// build in. Next rung: each scoped-run receipt names cold build versus verified hit, restored or
+/// refused preparation, and carries whole-command wall time, enough to compare an eligible
+/// same-input warm run against a cold one. Trigger: the next planning decision that needs a warm
+/// census figure.
 pub fn run_v2_native_census_scoped(
     subject_label: &str,
     source_roots: &[String],
@@ -4272,8 +4352,7 @@ pub fn run_v2_native_census_scoped(
         "{}",
         host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
     );
-    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED (gunbc.plans.census_scoped_run
-    // section 6): every way this run can end short of a decoded terminal -- a refused preparation,
+    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED: every way this run can end short of a decoded terminal -- a refused preparation,
     // a killed driver, a malformed terminal -- leaves this run's own file reading incomplete.
     // THE BASELINE IS THE SUBJECT'S MOST RECENT COMPLETED RECORD, chosen before this run's own record
     // exists so it can never be this run; the driver compares against it (census_run_diff) and the
@@ -4343,7 +4422,7 @@ fn census_run_record_root() -> PathBuf {
         .join("census-runs")
 }
 
-/// ONE SCOPED RUN'S RECORD FILE (gunbc.plans.census_scoped_run section 6). It is opened incomplete,
+/// ONE SCOPED RUN'S RECORD FILE. It is opened incomplete,
 /// naming the run, its subject, its roots and the revision as CLAIMED (`GITHUB_SHA`, or null when no
 /// one claimed one -- the identity rests on the members' content digests, not on the claim), and
 /// `complete` replaces it atomically with the producer's identity and every JSON row the run printed:
@@ -4947,7 +5026,7 @@ fn run_required_v2_native_inner(
     let lane_started = std::time::Instant::now();
     let workspace = super::process_workspace_root();
     // THE TESTED TREE IS OBSERVED OR THE RUN REFUSES (review 64210). This defaulted to the literal
-    // "local", and `tested_tree` is not telemetry: `gunbc.witness.v2_native_route`
+    // "local", and `tested_tree` is not telemetry: `v2.workflow.v2_native_route`
     // `native_route_tested_tree_recorded` admits on `tested_tree != ""`, so the default SATISFIED
     // its own admission clause and the receipt then asserted it described a tree named `local`.
     // That is the defect the rendered main fixes for its sibling field in this same change, and
@@ -5034,7 +5113,7 @@ fn run_required_v2_native_inner(
     // possible. `gunbc test <operand>` passes the operand's own pattern, already admitted by
     // `extdeps.bazel.target_pattern` and rendered by its own renderer; the lane and the frontier
     // pass none, and the emitted binary adjudicates by its own default,
-    // `gunbc.witness.v2_native_route` `native_route_default_pattern` (the whole native universe), read
+    // `gunbc.native_route_universe` `native_route_default_pattern` (the whole native universe), read
     // inside the compiler where it is declared. The seed therefore carries no spelling of that default
     // to hand over. This runner does not parse, default or widen the pattern it is given: a pattern
     // that reached here was decided by the authority, and substituting one here would let the run
@@ -6079,6 +6158,18 @@ mod tests {
             "got: {unreadable}"
         );
         assert!(!unreadable.contains("bytes="), "got: {unreadable}");
+        let external = host_memory_budget_receipt_line(&HostBudgetResolution::ExternallyBounded {
+            run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548".to_string(),
+        });
+        assert!(
+            external.contains("source=externally_bounded"),
+            "got: {external}"
+        );
+        assert!(
+            external.contains("ExternallyBoundedExecutor:bb77f2ae-888b-4f04-9bef-6dab045b1548"),
+            "got: {external}"
+        );
+        assert!(!external.contains("bytes="), "got: {external}");
     }
 
     /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
@@ -6107,7 +6198,7 @@ mod tests {
     }
 
     /// AN ADJUDICATE MARKER WITHOUT THE FRONTIER WORD REFUSES. The emitted main always prints
-    /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
+    /// `v2.workflow.native_frontier_ratchet` `native_frontier_verdict_word` on it, so its absence means
     /// the binary is not the one this host was built against; defaulting it would be the
     /// absorbing arm.
     #[test]

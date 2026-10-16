@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_model
 
-import std.types { NonEmptyStr, brand }
+import std.types { NonEmptyStr, brand, Map }
 import std.content_hash { Fnv1a64Structural }
 import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
 import gunbc.roadmap.roadmap_status {
@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_status {
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
 import gunbc.roadmap.roadmap_execution_contract { WorkItemExecutionContract }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_sizing {
   SizingSubject, SizingSubjectId, NodeSizingDerivation, derive_task_sizing,
 }

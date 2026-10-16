@@ -1,11 +1,11 @@
 module v2.test.claim.resolve.fold_handler_binder_resolve
 
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
-  NativeCensusModuleOutcome,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
+  NativeCensusModule,
+  NativeCensusModuleOutcome,
   NativeTestContext,
   native_census_module_resolution,
   native_census_modules,

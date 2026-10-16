@@ -12,9 +12,7 @@ import v2.test.claim.emit.fold_call_closure_fixture {
   fold_fixture_param_arrow_with_closure
 }
 import extdeps.communication.medium { Medium }
-import v2.std.collection {
-  Map
-}
+import std.types { Map }
 import std.optional {
   Optional,
   Present,
