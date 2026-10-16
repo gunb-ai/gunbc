@@ -4,6 +4,8 @@ import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { uncataloged_program }
 import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -104,4 +106,32 @@ service apt.PackageManager {
     exit { 0 => Unit nonzero => String "apt-get exact non-removing install refused" }
     mock_response { 1 => { success: false, stdout: "", stderr: "no installation supplied" } "no fabricated package installation" }
   }
+}
+
+// THE PACKAGE INSTALL AS A TYPED COMMAND, the leg a caller runs after its probe reports the package is
+// not present. ITS AUTHORITY IS THE Operation ROW `PackageManager.Install` above, whose transport shell
+// argv is ["apt-get","install","--yes","{package}"]; the words below are that row's. NOTHING IS ADDED:
+// no `-y` alias (apt accepts both; the row says `--yes`), no env prefix (that belongs to
+// InstallExactNonRemoving, a different operation with a different argv), and no elevation -- the
+// ensure-dependency route is the unprivileged one, so it runs apt-get exactly as the row spells it, and
+// the elevation question stays with the caller rather than being decided inside an upstream's spelling
+// of its own command. The program is the word the row spells, NOT apt_get_binary_path: that constant is
+// the absolute path a sudoers rule grants, and this row is not an elevated one.
+// WHY A SEALED COMMAND AND NOT THE ROW'S OWN ARGV. The row is read by the Bash emitter through
+// v2.std.operation_argv, which yields argv TEXT. This lane runs commands over an argument-vector
+// transport with no shell in it, and that seam takes a sealed `ArgvCommand` -- a program identity beside
+// its argument tail -- so there is no form of the row that lane could consume directly. This is the
+// ArgvCommand counterpart of the shell-text builders gunbc.live_deploy.operations carries for its own
+// emit path: one operation, two carrier grammars, each module owning its own (the posture
+// extdeps.systemd.systemctl records for `systemctl_daemon_reload_command`, and the one dpkg.dag's
+// `dpkg_query_status_command` already sits in). WHAT KEEPS THE TWO FROM DRIFTING is not this comment; it
+// is `live_deploy_apt_install_argv_matches_op_row`, which materializes the row and compares its argv to
+// these words token by token -- the check
+// `gunbc.systemd_run_transient.systemd_run_transient_operation_argv_matches_authority` records as the
+// answer to a duplicated argv: checked, never asserted.
+fn apt_get_install_command(package: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: "apt-get"),
+    arguments: ["install", "--yes", package as String],
+  )
 }
