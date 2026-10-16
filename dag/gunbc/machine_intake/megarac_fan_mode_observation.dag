@@ -1,0 +1,364 @@
+module gunbc.machine_intake.megarac_fan_mode_observation
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, celsius, percent, percent_count, rpm, rpm_count }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import extdeps.bmc.megarac_fan_policy {
+  CoolingManagerAutomatic,
+  CoolingManagerDisabledManual,
+  MegaRacFanManagerStanding,
+  MegaRacFanPwmAllAdmitted,
+  MegaRacFanPwmAllRefused,
+  MegaRacSdrFanPresence,
+  MegaRacSdrFanPresenceAbsent,
+  MegaRacSdrFanRotatingInBand,
+  megarac_fan_pwm_all_of,
+}
+
+// GROUNDED READ OF THE MEGARAC FAN-MODE SURFACE (Foxconn Mt. Collins, 2026-10-14 ~21:50Z).
+// Executor: operator credential, POST /api/session, GET these two paths, DELETE /api/session.
+// Source of the path names: served UI bundle source.min.js (gzip sha256 prefix ee9b14cbf7141b78),
+// AMI copyright, kept off-tree. This module is an observing-layer receipt, not an upstream fact.
+//
+// manager_disabled 0 at this instant is AUTOMATIC Cooling Manager. The 21:50Z row is not
+// overwritten. Post-hand-set GET 2026-10-14T22:09:18Z recorded manager_disabled 1 with the
+// same get_fan_info pwm echo (1-4 at 0, 5-6 at 20) and FAN4/FAN5 still near 5700 rpm.
+// Operator hearing ~22:20Z: PWM 40 audible, PWM 20 inaudible. 22:23:52Z SDR still ~5700.
+// gunbc.fleet.fleet_fan_acoustic_evidence is catalog published-level fittability, not this
+// hearing. Tach fidelity on this unit is Unestablished and can clear. Missing socket-1 fans
+// remain a chassis fact.
+
+type MegaRacFanInfoRow {
+  fan_number: Int
+  fan_pwm: Percent
+}
+
+type MegaRacSdrFanRow {
+  header: NonEmptyStr
+  presence: MegaRacSdrFanPresence
+}
+
+// HOW AN OBSERVATION WAS TAKEN. Every row here came from an operator session's curl/ipmitool, not
+// from a repository-executed read; the repository's own reads are the IPMI SDR series.
+type MegaRacObservationProvenance
+  = OperatorSessionProbe { executor: NonEmptyStr }
+
+data megarac_operator_session_probe_2026_10_14: MegaRacObservationProvenance = OperatorSessionProbe {
+  executor: "operator session curl against the BMC REST API, 2026-10-14; not executed by repository code",
+}
+
+type MegaRacFanModeObservation {
+  provenance: MegaRacObservationProvenance
+  host: HostIdentity
+  observed_at: NonEmptyStr
+  manager: MegaRacFanManagerStanding
+  fans: List<MegaRacFanInfoRow>
+  sdr_fans: List<MegaRacSdrFanRow>
+}
+
+data mtcollins1_megarac_fan_mode_observation_2026_10_14: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
+  host: operator_host_mtcollins1,
+  observed_at: "2026-10-14T21:50:00Z" as NonEmptyStr,
+  manager: CoolingManagerAutomatic,
+  fans: [
+    MegaRacFanInfoRow { fan_number: 1, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 2, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 3, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 4, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
+    MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
+  ],
+  sdr_fans: [
+    MegaRacSdrFanRow { header: "FAN0_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN0_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow {
+      header: "FAN4_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN4_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5800) },
+    },
+  ],
+}
+
+// THERMALS FROM THE SAME READ, KEPT HERE BECAUSE THEY ARE NOT MEGARAC FAN-POLICY DOCUMENTATION.
+// System_Inlet at 2C is marked suspect; it is not a failsafe input.
+type MegaRacThermalSnapshot {
+  cpu0_soc: Celsius
+  outlet_min: Celsius
+  outlet_max: Celsius
+  system_inlet: Celsius
+  system_inlet_suspect: Bool
+}
+
+data mtcollins1_megarac_fan_mode_observation_2026_10_14_220918: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
+  host: operator_host_mtcollins1,
+  observed_at: "2026-10-14T22:09:18Z" as NonEmptyStr,
+  manager: CoolingManagerDisabledManual,
+  fans: [
+    MegaRacFanInfoRow { fan_number: 1, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 2, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 3, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 4, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
+    MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
+  ],
+  sdr_fans: [
+    MegaRacSdrFanRow { header: "FAN0_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN0_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow {
+      header: "FAN4_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5600), max_rpm: rpm(5600) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN4_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+  ],
+}
+
+type MegaRacOperatorHandSetStanding
+  = HandSetObserved { observation: MegaRacFanModeObservation }
+  | HandSetDeclaredUnobserved { declared_at: NonEmptyStr, read_obligation: NonEmptyStr }
+
+data mtcollins1_megarac_operator_hand_set_2026_10_14_2200: MegaRacOperatorHandSetStanding = HandSetObserved {
+  observation: mtcollins1_megarac_fan_mode_observation_2026_10_14_220918,
+}
+
+data mtcollins1_megarac_thermal_snapshot_2026_10_14_220918: MegaRacThermalSnapshot = MegaRacThermalSnapshot {
+  cpu0_soc: celsius(42),
+  outlet_min: celsius(38),
+  outlet_max: celsius(40),
+  system_inlet: celsius(2),
+  system_inlet_suspect: true,
+}
+
+data mtcollins1_megarac_fan_mode_observation_2026_10_14_222352: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
+  host: operator_host_mtcollins1,
+  observed_at: "2026-10-14T22:23:52Z" as NonEmptyStr,
+  manager: CoolingManagerDisabledManual,
+  fans: [
+    MegaRacFanInfoRow { fan_number: 1, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 2, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 3, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 4, fan_pwm: percent(0) },
+    MegaRacFanInfoRow { fan_number: 5, fan_pwm: percent(20) },
+    MegaRacFanInfoRow { fan_number: 6, fan_pwm: percent(20) },
+  ],
+  sdr_fans: [
+    MegaRacSdrFanRow { header: "FAN0_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN0_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN1_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN2_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_0", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow { header: "FAN3_1", presence: MegaRacSdrFanPresenceAbsent },
+    MegaRacSdrFanRow {
+      header: "FAN4_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN4_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_0",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5700), max_rpm: rpm(5700) },
+    },
+    MegaRacSdrFanRow {
+      header: "FAN5_1",
+      presence: MegaRacSdrFanRotatingInBand { min_rpm: rpm(5800), max_rpm: rpm(5800) },
+    },
+  ],
+}
+
+type MegaRacOperatorDutyAudibility
+  = MegaRacDutyAudible { pwm: Percent }
+  | MegaRacDutyInaudible { pwm: Percent }
+
+data mtcollins1_operator_duty_audibility_2026_10_14_2220: List<MegaRacOperatorDutyAudibility> = [
+  MegaRacDutyInaudible { pwm: percent(20) },
+  MegaRacDutyAudible { pwm: percent(40) },
+]
+
+// TACH FIDELITY AND BOOT DUTY ARE THIS REPOSITORY'S OBSERVING-LAYER POLICY, NOT AMI INTERFACE
+// FACTS. The catalog acoustic fold (gunbc.fleet.fleet_fan_acoustic_evidence) is SKU published-
+// level fittability, not whether this BMC's tach tracks commanded duty. The 20..100 step-5 set
+// stays in extdeps as the cited UI shape; [20,25,30] is the boot-phase subset this repo chose.
+data megarac_duty_tach_move_floor: RevolutionsPerMinute = rpm(200)
+
+type MegaRacFanTachFidelity
+  = MegaRacTachFidelityEstablished
+  | MegaRacTachFidelityUnestablished { clears_when: NonEmptyStr }
+
+type MegaRacDutyConvergeVerdict
+  = MegaRacDutyConvergedTachMoved
+  | MegaRacDutyConvergedEchoTachUnfaithful { fidelity: MegaRacFanTachFidelity }
+  | MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: Bool }
+  | MegaRacDutyNotConvergedTachPopulationMismatch
+  | MegaRacDutyNotConvergedEchoMismatch
+  | MegaRacDutyNotConvergedGuardOpen
+
+type MegaRacTachMotion
+  = MegaRacTachPopulationMismatch
+  | MegaRacTachUnmoved
+  | MegaRacTachMoved
+
+fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Nat {
+  let ac = rpm_count(r: a)
+  let bc = rpm_count(r: b)
+  if (ac >= bc) {
+    ac - bc
+  } else {
+    bc - ac
+  }
+}
+
+fn megarac_tach_rpm_motion(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> MegaRacTachMotion {
+  if (before.length() != after.length()) {
+    MegaRacTachPopulationMismatch
+  } else {
+    match before.first() {
+      Absent => MegaRacTachUnmoved
+      Present { value: b } => match after.first() {
+        Absent => MegaRacTachPopulationMismatch
+        Present { value: a } =>
+          if (megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor)) {
+            MegaRacTachMoved
+          } else {
+            megarac_tach_rpm_motion(
+              before: before.skip(n: 1),
+              after: after.skip(n: 1),
+              floor: floor,
+            )
+          }
+      }
+    }
+  }
+}
+
+fn megarac_duty_converge_verdict(
+  fidelity: MegaRacFanTachFidelity,
+  pwm_echo_matches_desired: Bool,
+  guard_holds_over_dwell: Bool,
+  tach_before_rpm: List<RevolutionsPerMinute>,
+  tach_after_rpm: List<RevolutionsPerMinute>,
+) -> MegaRacDutyConvergeVerdict {
+  match fidelity {
+    MegaRacTachFidelityUnestablished { clears_when: _ } =>
+      if (!pwm_echo_matches_desired) {
+        MegaRacDutyNotConvergedEchoMismatch
+      } else if (!guard_holds_over_dwell) {
+        MegaRacDutyNotConvergedGuardOpen
+      } else {
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: fidelity }
+      }
+    MegaRacTachFidelityEstablished =>
+      if (!pwm_echo_matches_desired) {
+        MegaRacDutyNotConvergedEchoMismatch
+      } else {
+        match megarac_tach_rpm_motion(
+          before: tach_before_rpm,
+          after: tach_after_rpm,
+          floor: megarac_duty_tach_move_floor,
+        ) {
+          MegaRacTachPopulationMismatch => MegaRacDutyNotConvergedTachPopulationMismatch
+          MegaRacTachUnmoved =>
+            MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
+          MegaRacTachMoved =>
+            if (!guard_holds_over_dwell) {
+              MegaRacDutyNotConvergedGuardOpen
+            } else {
+              MegaRacDutyConvergedTachMoved
+            }
+        }
+      }
+  }
+}
+
+fn megarac_fan_boot_pwm_admitted(duty: Percent) -> Bool {
+  let n = percent_count(p: duty) as Int
+  (n == 20 || n == 25 || n == 30)
+    && match megarac_fan_pwm_all_of(duty: duty) {
+      MegaRacFanPwmAllAdmitted { wire: _ } => true
+      MegaRacFanPwmAllRefused { duty: _ } => false
+    }
+}
+
+data mtcollins1_megarac_tach_fidelity: MegaRacFanTachFidelity = MegaRacTachFidelityUnestablished {
+  clears_when: "SDR FAN*_Speed tracks commanded duty across two PWM points whose operator-audible difference is already established (20 inaudible vs 40 audible, 2026-10-14 ~22:20Z)",
+}
+
+data mtcollins1_megarac_thermal_snapshot_2026_10_14: MegaRacThermalSnapshot = MegaRacThermalSnapshot {
+  cpu0_soc: celsius(36),
+  outlet_min: celsius(33),
+  outlet_max: celsius(35),
+  system_inlet: celsius(2),
+  system_inlet_suspect: true,
+}
+
+// DESIRED PHASES OF THE ONE PHYSICAL-MACHINE CONVERGE (no new workflow mode).
+// Boot (power-on through boot terminal): Cooling Manager disabled, PWM in [20,30].
+// Bringup and after: Cooling Manager automatic while a run is alive. Any exit, trip, or
+// unreadable temperature leaves the manager enabled (manager_disabled 0 read back). PWM write
+// is fan_pwm_all as a string.
+type FanPolicyPhase
+  = BootThroughTerminal
+  | HostBringupAndAfter
+
+type MegaRacFanPhaseDesire {
+  phase: FanPolicyPhase
+  manager: MegaRacFanManagerStanding
+  manual_pwm_min: Percent
+  manual_pwm_max: Percent
+}
+
+data megarac_fan_boot_phase_desire: MegaRacFanPhaseDesire = MegaRacFanPhaseDesire {
+  phase: BootThroughTerminal,
+  manager: CoolingManagerDisabledManual,
+  manual_pwm_min: percent(20),
+  manual_pwm_max: percent(30),
+}
+
+data megarac_fan_bringup_phase_desire: MegaRacFanPhaseDesire = MegaRacFanPhaseDesire {
+  phase: HostBringupAndAfter,
+  manager: CoolingManagerAutomatic,
+  manual_pwm_min: percent(20),
+  manual_pwm_max: percent(30),
+}
