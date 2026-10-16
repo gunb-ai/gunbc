@@ -29,6 +29,9 @@ import gunbc.host.host_software_surface {
   user_manager_wrote_into_home_observed_on_this_host_obligation,
   host_kill_signal_realization,
   host_kill_signal_realizations,
+  HostKillRealizations,
+  KillRealizationsEstablished,
+  KillRealizationsBuiltinUnobserved,
 }
 import extdeps.linux.apparmor_userns {
   apparmor_restrict_unprivileged_userns_sysctl_name,
@@ -211,19 +214,31 @@ fn realization_is_procps_argv(r: KillSignalRealization) -> Bool {
   }
 }
 
+fn established_kill_realizations(r: HostKillRealizations) -> List<KillSignalRealization> {
+  match r {
+    KillRealizationsEstablished { realizations: rs } => rs
+    KillRealizationsBuiltinUnobserved { known: _ } => []
+  }
+}
+
 test fn a_shell_builtin_kill_does_not_inherit_the_procps_pgid_quirk() -> Bool {
-  let realized = host_kill_signal_realizations(surface: srv1_software_surface())
+  let realized = established_kill_realizations(r: host_kill_signal_realizations(surface: srv1_software_surface()))
   any(realized, realization_is_shell_builtin)
     && any(realized, realization_is_procps_argv)
     && procps_ng_kill_term_pgid_form(realization: ShellBuiltinKill, pgid: 1234) == none
     && procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234)
       == Present { value: procps_ng_kill_term_pgid_argv(pgid: 1234) }
-    && host_kill_signal_realizations(surface: unobserved_software_surface(host: operator_host_srv2)).length() == 0
+    && match host_kill_signal_realizations(surface: unobserved_software_surface(host: operator_host_srv2)) {
+      KillRealizationsBuiltinUnobserved { known: k } => k.length() == 0
+      KillRealizationsEstablished { realizations: _ } => false
+    }
 }
 
-// THE REALIZATIONS FOLLOW THE SURFACE'S OBSERVATION, NOT THE HOST'S NAME (review 81037). srv1's own
-// observed surface with the builtin observed as NOT listed, or not observed at all, yields procps-ng
-// alone. The earlier fold read the receipt for srv1 whatever the surface said, so this row was red.
+// THE REALIZATIONS FOLLOW THE SURFACE'S OBSERVATION, NOT THE HOST'S NAME (review 81037), AND AN
+// UNOBSERVED BUILTIN IS CARRIED AS UNOBSERVED, NEVER AS ABSENT (review 81199). srv1's own surface with
+// the builtin observed not listed establishes procps-ng alone; with it unobserved the answer is the
+// BuiltinUnobserved arm carrying procps-ng as known; listed establishes both. The argv selection is
+// procps-ng in all three, because an argv exec is never shadowed by a shell builtin.
 fn srv1_surface_with_kill_builtin(listed: Bool?) -> HostSoftwareSurface {
   let s = srv1_software_surface()
   HostSoftwareSurface {
@@ -239,14 +254,32 @@ fn srv1_surface_with_kill_builtin(listed: Bool?) -> HostSoftwareSurface {
   }
 }
 
+fn argv_selection_is_procps(surface: HostSoftwareSurface) -> Bool {
+  match host_kill_signal_realization(surface: surface) {
+    Present { value: r } => realization_is_procps_argv(r: r)
+    Absent => false
+  }
+}
+
 test fn kill_realizations_follow_the_surface_observation_not_the_host_identity() -> Bool {
-  let not_listed = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: Present { value: false }))
-  let unobserved = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: none))
-  let listed = host_kill_signal_realizations(surface: srv1_surface_with_kill_builtin(listed: Present { value: true }))
-  !any(not_listed, realization_is_shell_builtin)
-    && any(not_listed, realization_is_procps_argv)
-    && !any(unobserved, realization_is_shell_builtin)
-    && any(listed, realization_is_shell_builtin)
+  let not_listed = srv1_surface_with_kill_builtin(listed: Present { value: false })
+  let unobserved = srv1_surface_with_kill_builtin(listed: none)
+  let listed = srv1_surface_with_kill_builtin(listed: Present { value: true })
+  (match host_kill_signal_realizations(surface: not_listed) {
+      KillRealizationsEstablished { realizations: rs } => !any(rs, realization_is_shell_builtin) && any(rs, realization_is_procps_argv)
+      KillRealizationsBuiltinUnobserved { known: _ } => false
+    })
+    && (match host_kill_signal_realizations(surface: unobserved) {
+      KillRealizationsBuiltinUnobserved { known: k } => any(k, realization_is_procps_argv) && !any(k, realization_is_shell_builtin)
+      KillRealizationsEstablished { realizations: _ } => false
+    })
+    && (match host_kill_signal_realizations(surface: listed) {
+      KillRealizationsEstablished { realizations: rs } => any(rs, realization_is_shell_builtin) && any(rs, realization_is_procps_argv)
+      KillRealizationsBuiltinUnobserved { known: _ } => false
+    })
+    && argv_selection_is_procps(surface: not_listed)
+    && argv_selection_is_procps(surface: unobserved)
+    && argv_selection_is_procps(surface: listed)
 }
 
 test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {

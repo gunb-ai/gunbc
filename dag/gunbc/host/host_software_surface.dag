@@ -473,28 +473,41 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
   )
 }
 
-fn kill_realizations_with_shell_builtin() -> List<KillSignalRealization> {
-  [ProcpsNgArgvKill, ShellBuiltinKill]
-}
+// WHICH kill REALIZATIONS A SURFACE ESTABLISHES, WITH THE BUILTIN'S STANDING CARRIED (review 81199).
+// procps-ng's binary is established by its observed version label; a shell builtin only by the
+// surface's own observation. An unobserved builtin is carried as unobserved, never read as absent.
+type HostKillRealizations
+  = KillRealizationsEstablished { realizations: List<KillSignalRealization> }
+  | KillRealizationsBuiltinUnobserved { known: List<KillSignalRealization> }
 
-fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> List<KillSignalRealization> {
+fn host_procps_kill_realizations(surface: HostSoftwareSurface) -> List<KillSignalRealization> {
   match host_program_version(surface: surface, program: kill_program()) {
     Absent => []
     Present { value: fact } =>
       match fact.version_label {
         Absent => []
-        Present { value: _ } =>
-          match surface.kill_shell_builtin {
-            Present { value: listed } =>
-              if listed { kill_realizations_with_shell_builtin() } else { [ProcpsNgArgvKill] }
-            Absent => [ProcpsNgArgvKill]
-          }
+        Present { value: _ } => [ProcpsNgArgvKill]
       }
   }
 }
 
+fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> HostKillRealizations {
+  let procps = host_procps_kill_realizations(surface: surface)
+  match surface.kill_shell_builtin {
+    Present { value: listed } =>
+      KillRealizationsEstablished { realizations: if listed { concat(procps, [ShellBuiltinKill]) } else { procps } }
+    Absent => KillRealizationsBuiltinUnobserved { known: procps }
+  }
+}
+
+// THE ARGV REALIZATION DOES NOT DEPEND ON THE BUILTIN'S STANDING. ProcpsNgArgvKill is an exec of the
+// procps-ng binary by argv, which no shell interprets, so a shell builtin cannot shadow it; it is
+// admissible exactly when procps-ng's binary is established, whether the builtin was observed or
+// not. The builtin's standing stays on HostKillRealizations for any caller that runs kill through
+// a shell, which must not read an unobserved builtin as absent.
 fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
-  fold(host_kill_signal_realizations(surface: surface), init: none, f: (acc, r) =>
+  let established = host_procps_kill_realizations(surface: surface)
+  fold(established, init: none, f: (acc, r) =>
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
