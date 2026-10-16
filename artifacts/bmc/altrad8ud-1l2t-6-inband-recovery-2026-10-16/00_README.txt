@@ -14,9 +14,15 @@ CAPTURED (raw bytes in this directory, checksummed in SHA256SUMS):
                           Passwordless in-band system interface (SSIF — ipmi_ssif loaded, ipmi_si
                           absent): every ipmitool call uses /dev/ipmi0 with NO -I lanplus and
                           NO credential on the command line.
-  04_post_reset_readback.json  step 4 terminal state. GET root/0penBmc => HTTP 403,
-                          MessageId Base.1.16.0.PasswordChangeRequired (OpenBMC 3.22). This is the
+  04_post_reset_readback.txt   step 4 terminal state. GET root/0penBmc => HTTP 403 with body
+                          MessageId Base.1.16.0.PasswordChangeRequired. This is the
                           factory-credential-active first-contact state that re-enters bmc_onboard.
+                          NAMED .txt, NOT .json: the file is an annotated capture (### request/status
+                          lines around the body), not a JSON document, so nothing should try to parse
+                          it as one. WHAT IT DOES NOT HOLD: no firmware/version context. The 3.22
+                          attribution comes from mc info in 02_inband_channel.txt (Firmware Revision
+                          3.22); the authenticated GET that reported FirmwareVersion 3.22.00 had its
+                          body unsaved (see PRIVILEGED WRITE 1). Read no version from this file.
 
 PROVIDER: the rescue OS arrived by PHYSICAL USB medium (operator inserted a prepared Ubuntu live
   USB; it DHCP'd to .251). Netboot was NOT used; mark the netboot provider UNEXECUTED.

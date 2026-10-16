@@ -15,4 +15,4 @@
   ]
 }
 ### HTTP 403
-### unauth service root (firmware/version context):
+NOT CAPTURED: the unauthenticated service root (firmware/version context) was never saved for this response; the FirmwareVersion in this run came from an authenticated GET that followed the temporary-password write, whose body was not saved either. Do not read firmware/version from this file.
