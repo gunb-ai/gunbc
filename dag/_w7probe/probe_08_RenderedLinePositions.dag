@@ -1,9 +1,0 @@
-module probe.RenderedLinePositions
-
-type RenderedLinePositions {
-  index: Int
-  verify_line_seen: Bool
-  verify_before_move: Bool
-  set_e_is_first: Bool
-}
-

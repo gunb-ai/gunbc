@@ -96,19 +96,78 @@ fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String
 // truncated read) yields no digest and REFUSES; a digest that is not the expected one REFUSES.
 // Nothing in either branch installs anything. THIS IS THE RED'S SUBJECT: a digest mismatch refuses
 // and nothing gets installed.
+// The check's verdict. The refusal carries BOTH values: a refusal that says only "mismatch" cannot be
+// triaged, and a refusal that drops the observed line destroys the difference between "the download is
+// corrupt" and "no digest was ever computed" -- which is the difference between a failed attack and a
+// failed build. `Verified` carries the digest that was actually seen, so an admitted install can be
+// audited against the byte the check read rather than against the value it hoped for.
 type VerifiedBinaryInstallVerdict =
   | Verified { observed: Digest }
-  | Refused { expected: Digest, observed_line: String }
+  | Refused { reason: String, expected: Digest, observed_line: String }
+
+// WHY THE PLAN IS A SUM AND NOT A LIST. A caller that receives `List<ArgvCommand>` and sees `[]` cannot
+// tell three different worlds apart: the binary was already in place, the download produced no byte, or
+// verification refused. All three look like a successful no-op to a caller that can only count steps --
+// the silent default DESIGN 3 and 6b forbid, and the reason `host_effect_plan_apply` refuses an empty
+// plan rather than converging on it. So the refusal travels as its own arm, carrying the reason and
+// BOTH digests (a refusal that drops the observed line cannot distinguish "the download is corrupt"
+// from "no digest was ever computed", which is the difference between a failed attack and a failed
+// build), plus the destination and url so the caller's message names what it refused to touch.
+// A caller reporting to a human maps RefusedToInstall onto NotConverged with `reason` -- the same
+// carrier every other host effect uses (std.realization_reconcile.Reconciliation).
+type VerifiedBinaryInstallPlan =
+    Planned { steps: List<ArgvCommand> }
+  | RefusedToInstall {
+      reason: String,
+      expected: Digest,
+      observed_line: String,
+      dest_path: NonEmptyStr,
+      source_url: NonEmptyStr,
+    }
+
+data verified_binary_install_unreadable_line_refusal_reason: String =
+  "verified_binary_install: the sha256sum -c line produced no digest, so the download was never verified and nothing is installed"
+
+data verified_binary_install_digest_mismatch_refusal_reason: String =
+  "verified_binary_install: the sha256sum -c line reports a digest other than the expected one, so the download does not match the pinned release and nothing is installed"
 
 fn verified_binary_install_admission(
   expected: Digest,
   observed_sha256sum_line: String,
 ) -> VerifiedBinaryInstallVerdict {
   match sha256sum_line_digest(line: observed_sha256sum_line) {
-    Absent => Refused { expected: expected, observed_line: observed_sha256sum_line }
+    Absent =>
+      Refused {
+        reason: join(
+          [
+            verified_binary_install_unreadable_line_refusal_reason,
+            " -- expected sha256 ",
+            expected.hex as String,
+            ", read: ",
+            observed_sha256sum_line,
+          ],
+          "",
+        ),
+        expected: expected,
+        observed_line: observed_sha256sum_line,
+      }
     Present { value: d } =>
       if d == expected { Verified { observed: d } }
-      else { Refused { expected: expected, observed_line: observed_sha256sum_line } }
+      else
+        Refused {
+          reason: join(
+            [
+              verified_binary_install_digest_mismatch_refusal_reason,
+              " -- expected sha256 ",
+              expected.hex as String,
+              ", read: ",
+              observed_sha256sum_line,
+            ],
+            "",
+          ),
+          expected: expected,
+          observed_line: observed_sha256sum_line,
+        }
   }
 }
 
@@ -132,16 +191,56 @@ fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List
   [extract, move, mode, cleanup_archive, cleanup_staging]
 }
 
-// THE ADMITTED PLAN. The fold the RED reads: on Refused the plan is EMPTY -- not shorter, not
-// best-effort, empty -- so "nothing gets installed" is a statement about the returned value rather
-// than about how a shell happened to exit. On Verified it is the install body.
+// THE ADMITTED PLAN. The fold the RED reads: on Refused there is NO plan at all, and the caller is told
+// why in its own value -- not a shorter plan, not a best-effort plan, and not an empty list that a caller
+// could mistake for "nothing to do, all done". "Nothing gets installed" is therefore a statement about
+// the returned value rather than about how a shell happened to exit, and the reason for it survives all
+// the way to whoever reports the step. On Verified the plan is the install body.
 fn verified_binary_install_admitted_plan(
   p: VerifiedBinaryInstallParams,
   observed_sha256sum_line: String,
-) -> List<ArgvCommand> {
+) -> VerifiedBinaryInstallPlan {
   match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: observed_sha256sum_line) {
-    Refused { expected: _, observed_line: _ } => []
-    Verified { observed: _ } => verified_binary_install_install_steps(p: p)
+    Refused { reason: why, expected: e, observed_line: seen } =>
+      RefusedToInstall {
+        reason: why,
+        expected: e,
+        observed_line: seen,
+        dest_path: p.dest_path,
+        source_url: p.url,
+      }
+    Verified { observed: _ } => Planned { steps: verified_binary_install_install_steps(p: p) }
+  }
+}
+
+// The steps of an admitted plan, or nothing when the check refused. Callers that want the refusal must
+// match on `verified_binary_install_admitted_plan` themselves; this exists so a caller that has already
+// admitted the install can hand its steps to a transport without re-matching.
+fn verified_binary_install_plan_steps(plan: VerifiedBinaryInstallPlan) -> List<ArgvCommand> {
+  match plan {
+    Planned { steps: s } => s
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => []
+  }
+}
+
+// Whether the plan carries an install at all. A caller that reports to a human should use
+// `verified_binary_install_plan_refusal_reason` on the false branch rather than reporting success.
+fn verified_binary_install_plan_is_planned(plan: VerifiedBinaryInstallPlan) -> Bool {
+  match plan {
+    Planned { steps: _ } => true
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+  }
+}
+
+// THE REFUSAL, AS THE CALLER SEES IT. Present exactly when no install will happen, carrying the reason
+// and both digests so a step reporting `NotConverged { reason: ... }` reports the truth of WHY rather
+// than an empty plan that reads as a no-op (std.realization_reconcile.Reconciliation is the carrier the
+// host pipeline already uses; this is the same fact in the shape that feeds it).
+fn verified_binary_install_plan_refusal_reason(plan: VerifiedBinaryInstallPlan) -> String? {
+  match plan {
+    Planned { steps: _ } => Absent
+    RefusedToInstall { reason: why, expected: _, observed_line: _, dest_path: _, source_url: _ } =>
+      Present { value: why }
   }
 }
 

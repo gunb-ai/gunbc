@@ -1,339 +1,356 @@
 module test.claim.host.verified_binary_install_witness
 
-import std.types { Bool, Int, NonEmptyStr, String }
+// THE WITNESS FOR THE GENERIC VERIFIED-DOWNLOAD-PLUS-INSTALL EFFECT (shell->dag program W7, ruling
+// B). DESIGN 3's witness rule: a witness that only exercises a synthetic input proves nothing about
+// the product, so this one carries BOTH -- synthetic values that supply the boundary cases a
+// production call never happens to hit, AND one inhabitance claim that runs the REAL route:
+// `build_cache_ensure_daemon_body`, the same function the build-cache step realizes, is read back and
+// the install the effect contributed is what is asserted.
+//
+// WHAT THE RED IS. The claim is "a digest mismatch refuses, AND nothing gets installed". An empty
+// plan alone could not make that claim: a caller that can only count steps reads `[]` as "nothing to
+// do" -- the silent default DESIGN 3 and 6b forbid, and the reason `verified_binary_install_plan` is
+// a sum whose refusal arm carries a reason. So the RED asserts TWO things from the refused input and
+// neither alone is sufficient:
+//   * the plan is a refusal that NAMES BOTH DIGESTS, so the caller reporting NotConverged reports why;
+//   * the steps that refusal yields are NONE, so nothing is installed.
+// The positive control is the same call with the release row's own digest: the plan is admitted and
+// carries the install. The pair is discriminating -- both arms run the same fold, so only the digest
+// decides, and a weakened check that compared only a prefix (or nothing) would make the refusal arm
+// fail while the positive control still passed.
+//
+// LIVE-TREE DISPOSITION. SubstrateInputsOnly: every value here is a string or a record built from
+// strings, plus the ArgvCommand values the cited extdeps builders return. Nothing is executed; no
+// host, no process, no network.
+
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Present, Absent }
-import extdeps.exec.command { shell_command_render }
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.crypto.hash { sha256_digest }
-import extdeps.cache.sccache { sccache_release_0_15_0, sccache_installed_binary_path }
+import extdeps.cache.sccache { sccache_installed_binary_path, sccache_release_0_15_0 }
 import gunbc.host.verified_binary_install {
   VerifiedBinaryInstallParams,
-  Verified,
-  Refused,
-  AlreadyInstalled,
-  InstallNeeded,
+  VerifiedBinaryInstallPlan,
+  VerifiedBinaryInstallVerdict,
   verified_binary_install_admission,
+  verified_binary_install_admitted_plan,
   verified_binary_install_destination_present,
+  verified_binary_install_if_absent_shell,
+  verified_binary_install_install_steps,
+  verified_binary_install_plan_is_planned,
+  verified_binary_install_plan_refusal_reason,
+  verified_binary_install_plan_steps,
+  verified_binary_install_presence,
   verified_binary_install_shell,
+  verified_binary_install_verify_line,
 }
 import gunbc.host.sccache_verified_install {
+  sccache_verified_install_if_absent_script,
   sccache_verified_install_params,
   sccache_verified_install_script,
-  sccache_verified_install_if_absent_script,
-  sccache_verified_install_admitted_plan,
 }
 import gunbc.host.host_effect_realize { build_cache_ensure_daemon_body }
-import gunbc.build_cache.build_cache_instance { ci_cache_instance }
-import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host_identity_converge { ci_cache_instance }
+import gunbc.identity { srv1_host }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE WITNESS FOR THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT
-// (gunbc.host.verified_binary_install) AND ITS SCCACHE ADAPTER
-// (gunbc.host.sccache_verified_install).
-//
-// WHY A FILE OF ITS OWN RATHER THAN MORE CLAIMS IN THE TWO WITNESSES THAT ALREADY TOUCH sccache:
-// those two prove their own narrow thing -- the elevation witness proves the non-interactive sudo
-// refusal survived the migration, and test.claim.runner.runner_host_deploy_witness proves the pinned
-// url and digest are named. Neither proves the two claims this migration rests on: that the effect is
-// GENERIC (sccache's values arrive as PARAMETERS, so a second product can bind its own), and that a
-// digest mismatch REFUSES rather than installing something anyway. A "generic" effect with one
-// consumer and no second set of boundary values is a sccache-shaped string wearing a parameter list.
-//
-// THE BOUNDARY VALUES ARE SUPPLIED, NOT ASSUMED (DESIGN 3's witness rule). Every claim that needs a
-// url, a digest, a member path or a destination reads them off the cited row (`sccache_release_0_15_0`,
-// `sccache_installed_binary_path`) instead of re-typing a literal. A witness that hard-coded the
-// digest it checks would keep passing after someone rotated the release and forgot the adapter --
-// which is the exact failure mode this migration exists to remove.
-
-// THE LINE THE GATE WOULD READ for a file whose bytes hash to `hex`: digest, TWO spaces, path. One
-// space would parse as a different field and the gate would refuse for the wrong reason, which is the
-// bug the two-space contract exists to prevent.
-fn observed_line_for(hex: NonEmptyStr, path: String) -> String {
-  join([hex as String, "  ", path], "")
+// The observed sha256sum line for a digest: hex, the two spaces `sha256sum -c -` requires, the path.
+fn observed_line_for(hex: NonEmptyStr, path: NonEmptyStr) -> String {
+  join([hex, "  ", path], "")
 }
 
-fn sccache_params() -> VerifiedBinaryInstallParams {
+// sccache's boundary values, from the release row. The witness supplies them rather than reading them
+// out of a production call, which is what lets it supply the UNPUBLISHED arch and the wrong digest.
+fn sccache_params(digest_hex: NonEmptyStr) -> VerifiedBinaryInstallParams {
   sccache_verified_install_params(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
+    digest: sha256_digest(hex: digest_hex),
   )
 }
 
-// THE POSITIVE CONTROL, FIRST, because every claim below is vacuous if this one is red: with the
-// release row's own aarch64 digest and the line that download would print, the gate ADMITS and the
-// admitted plan is the install body -- five steps, and the move names the destination the adapter
-// says the binary lands at.
-test fn the_verified_release_admits_the_install_plan() -> Bool {
-  let params = sccache_params()
-  let gate_ok =
-    match verified_binary_install_admission(
-      expected: params.digest,
-      observed_sha256sum_line: observed_line_for(hex: params.digest.hex, path: params.download_path),
-    ) {
-      Verified { observed: observed } => observed == params.digest
-      Refused { expected: _, observed_line: _ } => false
-    }
-  let plan = sccache_verified_install_admitted_plan(
-    rel: sccache_release_0_15_0,
-    arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
-    observed_sha256sum_line: observed_line_for(
-      hex: sccache_release_0_15_0.digest_aarch64.hex,
-      path: "/tmp/sccache.tar.gz",
-    ),
-  )
-  let move_is_fourth =
-    match plan.skip(n: 3).first() {
-      Present { value: step } =>
-        shell_command_render(command: step)
-          == join(["'/usr/bin/sudo' '-n' 'mv' '", params.staged_binary_path, "' '", params.dest_path, "'"], "")
-      Absent => false
-    }
-  gate_ok && plan.length() == 5 && move_is_fourth
-}
-
-// THE RED. A DIGEST MISMATCH REFUSES, AND NOTHING GETS INSTALLED.
-//
-// The wrong digest is not invented: it is the SAME ROW's x86_64 digest handed to the aarch64 install.
-// That is the realistic mistake -- a rotated release, a copy-paste across arches, a manifest read
-// against the wrong key -- and it is well-formed (64 hex, Sha256), so the gate cannot pass it by
-// accident and cannot reject it for a shape reason. The observed line is the line the aarch64 bytes
-// would print, i.e. what curl actually wrote.
-//
-// Two halves, because the refusal has to hold in BOTH realizations: the typed gate says Refused and
-// carries both values, and the admitted PLAN IS EMPTY. Not shorter, not best-effort -- empty. That is
-// the difference between "the shell exited non-zero" and "no install step was ever produced".
-test fn a_digest_mismatch_refuses_and_installs_nothing() -> Bool {
-  let wrong_digest = sccache_release_0_15_0.digest_x86_64
-  let observed =
-    observed_line_for(hex: sccache_release_0_15_0.digest_aarch64.hex, path: "/tmp/sccache.tar.gz")
-  let gate_refused =
-    match verified_binary_install_admission(expected: wrong_digest, observed_sha256sum_line: observed) {
-      Refused { expected: e, observed_line: o } => e == wrong_digest && o == observed
-      Verified { observed: _ } => false
-    }
-  let nothing_installed =
-    sccache_verified_install_admitted_plan(
-      rel: sccache_release_0_15_0,
-      arch: "aarch64",
-      digest: wrong_digest,
-      observed_sha256sum_line: observed,
-    ).length() == 0
-  gate_refused && nothing_installed
-}
-
-// THE RED'S DISCRIMINATING PAIR. A claim that is red under every input is a broken claim, not a
-// refusal. This asserts BOTH directions from one line: the correct digest does not refuse and the
-// wrong digest does not admit. Read with the claim above, it shows the gate keys on the digest and
-// not on the shape of the line or on which branch happens to be written first.
-test fn the_gate_discriminates_on_the_digest_alone() -> Bool {
-  let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64.hex, path: "/tmp/sccache.tar.gz")
-  let accepts_the_right_one =
-    match verified_binary_install_admission(
-      expected: sccache_release_0_15_0.digest_aarch64,
-      observed_sha256sum_line: line,
-    ) {
-      Verified { observed: _ } => true
-      Refused { expected: _, observed_line: _ } => false
-    }
-  let rejects_the_wrong_one =
-    match verified_binary_install_admission(
-      expected: sccache_release_0_15_0.digest_x86_64,
-      observed_sha256sum_line: line,
-    ) {
-      Refused { expected: _, observed_line: _ } => true
-      Verified { observed: _ } => false
-    }
-  accepts_the_right_one && rejects_the_wrong_one
-}
-
-// THE RED'S OTHER HALF: A LINE THAT IS NOT A DIGEST REFUSES RATHER THAN DEFAULTING. A truncated
-// fetch, an empty body, or a curl that wrote an error page produces a line whose first field is not
-// 64 hex. There is no "assume verified" arm: unreadable is refused, so a fetch that silently produced
-// nothing installs nothing.
-test fn an_unreadable_digest_line_refuses_rather_than_defaulting() -> Bool {
-  let html_plan =
-    sccache_verified_install_admitted_plan(
-      rel: sccache_release_0_15_0,
-      arch: "aarch64",
-      digest: sccache_release_0_15_0.digest_aarch64,
-      observed_sha256sum_line: "<html><body>404 Not Found</body></html>",
-    ).length() == 0
-  let blank_plan =
-    sccache_verified_install_admitted_plan(
-      rel: sccache_release_0_15_0,
-      arch: "aarch64",
-      digest: sccache_release_0_15_0.digest_aarch64,
-      observed_sha256sum_line: "",
-    ).length() == 0
-  html_plan && blank_plan
-}
-
-// THE BOUNDARY VALUES ARE THE RELEASE ROW'S, NOT THIS FILE'S. The adapter must supply url, member,
-// staged path, destination and digest FROM the cited row. Checking them against the row's own fields
-// rather than against literals is what turns a rotation that updates the row and forgets the adapter
-// into a red claim here instead of a surprise on a host.
-test fn the_adapter_supplies_the_release_row_values() -> Bool {
-  let params = sccache_params()
-  let version = sccache_release_0_15_0.version as String
-  let dir = join(["sccache-", version, "-aarch64-unknown-linux-musl"], "")
-  params.url == join(["https://github.com/mozilla/sccache/releases/download/", version, "/", dir, ".tar.gz"], "")
-    && params.archive_member == join([dir, "/sccache"], "")
-    && params.staged_binary_path == join(["/tmp/", dir, "/sccache"], "")
-    && params.staged_root == join(["/tmp/", dir], "")
-    && params.extract_root == "/tmp"
-    && params.dest_path == sccache_installed_binary_path
-    && params.digest == sccache_release_0_15_0.digest_aarch64
-    && params.elevated
-}
-
-// WHERE THE DIGEST CHECK SITS IN THE RENDERED SCRIPT. Position is measured over the render's own
-// lines rather than by substring search, because "verified before installed" is a statement about
-// ORDER: a script that checked the digest after the move would contain every one of the same
-// substrings and still install an unverified binary.
+// Where a rendered line sits. Returns three facts at once so a test does not need chained let-bindings.
 type RenderedLinePositions {
-  index: Int
-  verify_line_seen: Bool
-  verify_before_move: Bool
-  set_e_is_first: Bool
+  verify_line_index: Int,
+  step_move_index: Int,
+  first_line_is_set_e: Bool,
 }
 
 fn line_positions_of(script: String) -> RenderedLinePositions {
+  let parts = split(script, "\n")
   fold(
-    split(s: script, delimiter: "\n"),
-    init: RenderedLinePositions { index: 0, verify_line_seen: false, verify_before_move: false, set_e_is_first: false },
-    f: (acc, line) => RenderedLinePositions {
-      index: acc.index + 1,
-      verify_line_seen: acc.verify_line_seen || string_contains(s: line, pattern: "sha256sum -c -"),
-      verify_before_move:
-        acc.verify_before_move
-          || (acc.verify_line_seen && string_contains(s: line, pattern: sccache_installed_binary_path)),
-      set_e_is_first: acc.set_e_is_first || (acc.index == 0 && line == "set -e"),
-    },
+    parts,
+    init: RenderedLinePositions { verify_line_index: -1, step_move_index: -1, first_line_is_set_e: false },
+    f: (acc, pair) =>
+      RenderedLinePositions {
+        verify_line_index:
+          if acc.verify_line_index < 0 && starts_with(pair.value, "echo '")
+          { pair.index } else { acc.verify_line_index },
+        step_move_index:
+          if acc.step_move_index < 0 && starts_with(pair.value, "'/usr/bin/sudo' '-n' 'mv' ")
+          { pair.index } else { acc.step_move_index },
+        first_line_is_set_e:
+          if pair.index == 0 { pair.value == "set -e" } else { acc.first_line_is_set_e },
+      }
   )
 }
 
-// THE SHELL REALIZATION IS THE TYPED ONE, LINE FOR LINE. The shell form is a transport, not a second
-// implementation: `set -e` first, the digest check before the first move, and the two-space contract
-// present in the verify line. The ORDER is the property -- a script that checked the digest after
-// installing would pass every other claim in this file and still install an unverified binary.
-test fn the_shell_form_orders_the_digest_check_before_any_install_step() -> Bool {
+// POSITIVE CONTROL. The same fold the RED runs, on a matching digest: the check admits, and the plan
+// is the install body. If this fails, nothing below this line means anything.
+test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64, path: p.download_path)
+  match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: line) {
+    Refused { reason: _, expected: _, observed_line: _ } => false
+    Verified { observed: d } => d == p.digest
+  }
+  &&
+  match verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: line) {
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+    Planned { steps: s } => count(s) == 5
+  }
+  &&
+  match verified_binary_install_plan_refusal_reason(
+    plan: verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: line),
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  // The install body really is the install body: the move step is the fifth thing the plan would run.
+  && string_contains(
+    shell_command_render(command: get(list: verified_binary_install_install_steps(p: p), index: 1)),
+    "'/usr/bin/sudo' '-n' 'mv' ",
+  )
+}
+
+// THE RED, FIRST HALF: A WRONG DIGEST REFUSES, AND THE REFUSAL CARRIES ITS REASON. The digest fed to
+// the fold is x86_64's published value while the observed line is the aarch64 release's real content:
+// both are genuine 64-hex digests, so only the comparison can tell them apart. "Nothing gets
+// installed" is then read back twice over: the plan is a refusal, and the steps it yields are none.
+test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_x86_64)
+  let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64, path: p.download_path)
+  let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: line)
+  // (1) the plan is a refusal, not a shorter plan and not an empty success
+  match plan {
+    Planned { steps: _ } => false
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+  }
+  // (2) THE VERDICT TRAVELS: the caller sees the reason and both digests, so a caller reporting
+  // NotConverged reports WHY rather than reading an empty list as a no-op.
+  && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    Absent => false
+    Present { value: why } =>
+      string_contains(why, sccache_release_0_15_0.digest_x86_64)
+      && string_contains(why, sccache_release_0_15_0.digest_aarch64)
+  }
+  // (3) nothing gets installed: the steps this refusal yields are NONE.
+  && count(verified_binary_install_plan_steps(plan: plan)) == 0
+  && !verified_binary_install_plan_is_planned(plan: plan)
+  // (4) the refusal names the destination it declined to write and the url it declined to trust.
+  && match plan {
+    Planned { steps: _ } => false
+    RefusedToInstall {
+      reason: _,
+      expected: e,
+      observed_line: seen,
+      dest_path: d,
+      source_url: u,
+    } =>
+      e == p.digest
+      && seen == line
+      && d == p.dest_path
+      && u == p.url
+  }
+}
+
+// THE RED IS DISCRIMINATING, NOT VACUOUS. Both arms below read the SAME observed line through the
+// SAME fold, so no difference in the input can rescue a weakened check: swapping the expected digest
+// is the only thing that differs. A check that compared nothing, or only the hex prefix, would refuse
+// neither arm (or refuse both) and this test would fail.
+test fn the_refusal_is_caused_by_the_digest_alone() -> Bool {
+  let good = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  let bad = sccache_params(digest_hex: sccache_release_0_15_0.digest_x86_64)
+  let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64, path: good.download_path)
+  match verified_binary_install_admitted_plan(p: good, observed_sha256sum_line: line) {
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+    Planned { steps: s } => count(s) == 5
+  }
+  &&
+  match verified_binary_install_admitted_plan(p: bad, observed_sha256sum_line: line) {
+    Planned { steps: _ } => false
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+  }
+}
+
+// A LINE THAT YIELDS NO DIGEST AT ALL REFUSES, AND SAYS SO. `sha256sum -c -` prints the line it was fed
+// when the format is unusable (a 404 body, an empty file), so the second refusal arm is the one a
+// network or mirror fault actually hits. It must refuse too -- a digest that cannot be read is not a
+// digest that was verified, and the reason must say the line was unreadable rather than merely
+// mismatched, or a mirror outage reads as an attack and an attack reads as an outage.
+test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: "<html>404 Not Found</html>")
+  match plan {
+    Planned { steps: _ } => false
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
+  }
+  && match verified_binary_install_plan_refusal_reason(plan: plan) {
+    Absent => false
+    Present { value: why } =>
+      string_contains(why, "<html>404 Not Found</html>")
+      && string_contains(why, sccache_release_0_15_0.digest_aarch64)
+  }
+  && count(verified_binary_install_plan_steps(plan: plan)) == 0
+}
+
+// THE ADAPTER SUPPLIES BOUNDARY VALUES, IT DOES NOT INVENT THEM. Every parameter the generic effect
+// needs comes from the release row or from the instance's identity -- which is the whole reason the
+// effect can be generic: the knowledge of WHICH binary lives WHERE is the product's, not the effect's.
+test fn the_sccache_adapter_supplies_the_release_row_values() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  p.url == join(["https://github.com/mozilla/sccache/releases/download/v", sccache_release_0_15_0.version, "/sccache-v", sccache_release_0_15_0.version, "-", "aarch64", "-unknown-linux-musl.tar.gz"], "")
+  && p.digest == sha256_digest(hex: sccache_release_0_15_0.digest_aarch64)
+  && p.dest_path == sccache_installed_binary_path
+  && p.archive_member == join(["sccache-v", sccache_release_0_15_0.version, "-aarch64-unknown-linux-musl/sccache"], "")
+  && p.staged_binary_path == join(["/tmp/sccache-v", sccache_release_0_15_0.version, "-aarch64-unknown-linux-musl/sccache"], "")
+  && p.staged_root == "/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl"
+  && p.exec_mode == "+x"
+}
+
+// ORDERING THE SHELL CANNOT ENFORCE ITSELF. `set -e` is the only thing that stops an install after a
+// failed download or a failed check, and it is set-once: a body whose first line is not it would let a
+// failed check fall through into the install. The verify line must therefore sit before the move, and
+// the move is the step that writes the binary into place.
+test fn the_rendered_body_checks_before_it_moves_and_set_e_gates_everything() -> Bool {
   let script = sccache_verified_install_script(
     rel: sccache_release_0_15_0,
     arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
+    digest: sha256_digest(hex: sccache_release_0_15_0.digest_aarch64),
   )
-  let positions = line_positions_of(script: script)
-  positions.verify_line_seen && positions.verify_before_move && positions.set_e_is_first
-    && string_contains(s: script, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
-    && string_contains(s: script, pattern: "'  /tmp/sccache.tar.gz' | sha256sum -c -")
+  let pos = line_positions_of(script: script)
+  pos.first_line_is_set_e
+  && pos.verify_line_index > 0
+  && pos.step_move_index > pos.verify_line_index
+  // The check is the cited one: it is a `sha256sum -c` of the digest against the download path.
+  && string_contains(
+    verified_binary_install_verify_line(p: sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)),
+    "| sha256sum -c -",
+  )
 }
 
-// THE PRESENCE PRECONDITION SURVIVED AS AN OBSERVATION, not as a shell guard. The site this effect was
-// lifted out of guarded its install with `if [ ! -x <dest> ]`; the gate is now a typed observation over
-// the cited `test -x` op, so it cannot be dropped when the transport changes. Both arms keep the old
-// refusal: an executable destination means no install, anything else -- including a non-executable file
-// sitting at that path -- means install. The if-absent render still carries the guard line, because a
-// consumer whose transport is a host shell needs it and it must be the same words the observation uses.
-test fn the_presence_observation_gates_the_install() -> Bool {
-  let params = sccache_params()
-  let present =
-    match verified_binary_install_destination_present(p: params, test_executable_exit: 0) {
-      AlreadyInstalled { dest_path: p } => p == sccache_installed_binary_path
-      InstallNeeded { dest_path: _ } => false
-    }
-  let missing =
-    match verified_binary_install_destination_present(p: params, test_executable_exit: 1) {
-      InstallNeeded { dest_path: p } => p == sccache_installed_binary_path
-      AlreadyInstalled { dest_path: _ } => false
-    }
-  let if_absent = sccache_verified_install_if_absent_script(
-    rel: sccache_release_0_15_0,
-    arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
+// THE PRECONDITION IS AN OBSERVATION, NOT A COMMENT. The install is gated on the destination being
+// executable, so an already-provisioned instance costs nothing; the gate is a typed observation over
+// the cited `test -x` op, and its two arms are different values the caller can act on.
+test fn the_binary_presence_precondition_gates_the_install() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  match verified_binary_install_presence(p: p, destination_executable: true) {
+    InstallNeeded { dest_path: _ } => false
+    AlreadyInstalled { dest_path: d } => d == p.dest_path
+  }
+  &&
+  match verified_binary_install_presence(p: p, destination_executable: false) {
+    AlreadyInstalled { dest_path: _ } => false
+    InstallNeeded { dest_path: d } => d == p.dest_path
+  }
+  // The gate is rendered, not merely typed: an already-installed destination runs nothing.
+  && starts_with(
+    sccache_verified_install_if_absent_script(
+      rel: sccache_release_0_15_0,
+      arch: "aarch64",
+      digest: sha256_digest(hex: sccache_release_0_15_0.digest_aarch64),
+    ),
+    "if [ ! -x ",
   )
-  present && missing
-    && starts_with(s: if_absent, prefix: join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then\nset -e\n"], ""))
 }
 
-// ONE INHABITANCE CLAIM ON THE REAL ROUTE. Everything above would pass with the effect wired to
-// nothing, so this one renders the script the build-cache provisioning step ACTUALLY emits -- through
-// the production entry point gunbc.host.host_effect_realize.build_cache_ensure_daemon_body, with a
-// real instance and the release row's own values -- and requires the effect's evidence there: the
-// cited url, the version, the two-space digest contract against the staging file, and the pinned
-// destination. It fails if a consumer is re-pointed at a hand-rolled string, which is the exact
-// regression the deleted sccache_install_script was.
-test fn the_build_cache_route_actually_runs_the_effect() -> Bool {
+// INHABITANCE, ON THE REAL ROUTE. This is DESIGN 3's other half: the effect does not merely render in
+// isolation, it is what the build-cache ensure step actually contributes. `build_cache_ensure_daemon_body`
+// is the same function `build_cache_ensure_step` realizes; reading the install out of ITS output is the
+// claim that the swap landed on the route callers use, not beside it.
+test fn the_build_cache_ensure_step_installs_through_the_generic_effect() -> Bool {
   let body = build_cache_ensure_daemon_body(
     instance: ci_cache_instance(host: srv1_host.identity),
-    arch_token: "aarch64" as NonEmptyStr,
-    digest: sccache_release_0_15_0.digest_aarch64,
+    arch_token: "aarch64",
+    digest: sha256_digest(hex: sccache_release_0_15_0.digest_aarch64),
   )
-  string_contains(s: body, pattern: "github.com/mozilla/sccache/releases/download/")
-    && string_contains(s: body, pattern: sccache_release_0_15_0.version as String)
-    && string_contains(
-      s: body,
-      pattern: join([sccache_release_0_15_0.digest_aarch64.hex as String, "  /tmp/sccache.tar.gz"], ""),
-    )
-    && string_contains(s: body, pattern: sccache_installed_binary_path)
+  // The url and the pinned digest the release row carries, in the body the step realizes.
+  string_contains(body, "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
+  && string_contains(body, sccache_release_0_15_0.digest_aarch64)
+  // The cited check, and the install gated on the destination being absent.
+  && string_contains(body, "| sha256sum -c -")
+  && string_contains(body, join(["if [ ! -x '", sccache_installed_binary_path, "' ]; then"], ""))
+  // NOT a package manager, and NOT the legacy image path: the two ways this step used to be a shell
+  // guess about how binaries arrive.
+  && !string_contains(body, "apt-get install")
+  && !string_contains(body, "/usr/bin/sccache")
 }
 
-// THE EFFECT IS GENERIC, NOT SCCACHE-SHAPED. A second product's boundary values -- its own url,
-// member, destination, octal mode, and a privilege bit that says un-elevated -- must render a script
-// carrying those values and NONE of sccache's. If any of them had been baked into the effect, this is
-// the claim that says so. It is also the shape extdeps.container.docker_ce will use when it migrates
-// (same effect, its own keyring bytes, its own privilege): the lane rule keeps that a later consumer,
-// so nothing here migrates it and its trigger stays live and bound.
-test fn a_second_product_supplies_its_own_values() -> Bool {
-  let other = VerifiedBinaryInstallParams {
-    url: "https://download.example.org/other/other-1.2.3-x86_64.tar.gz",
-    digest: sha256_digest(hex: "0000000000000000000000000000000000000000000000000000000000000001"),
-    archive_member: "other-1.2.3-x86_64/bin/other",
-    staged_root: "/tmp/other-1.2.3-x86_64",
-    staged_binary_path: "/tmp/other-1.2.3-x86_64/bin/other",
-    download_path: "/tmp/other.tar.gz",
+// THE GENERICITY, PROVEN. A second product's values -- different url, member, destination, mode, and
+// an unprivileged install -- go through the SAME effect and produce no sudo at all. The privilege
+// lever is a parameter, not a hard-coded privilege. The effect still knows nothing about products:
+// nothing here is sccache's, and the assertions are the shapes only the generic op can produce.
+test fn a_second_products_own_values_produce_a_different_privilege_free_install() -> Bool {
+  let p = VerifiedBinaryInstallParams {
+    url: "https://example.invalid/tools/thing-9.9.9.tar.gz",
+    digest: sha256_digest(hex: sccache_release_0_15_0.digest_x86_64),
+    archive_member: "thing-9.9.9/bin/thing",
+    staged_root: "/tmp/thing-9.9.9",
+    staged_binary_path: "/tmp/thing-9.9.9/bin/thing",
+    download_path: "/tmp/thing.tar.gz",
     extract_root: "/tmp",
-    dest_path: "/opt/other/bin/other",
-    exec_mode: "0755" as NonEmptyStr,
+    dest_path: "/opt/tools/bin/thing",
+    exec_mode: "0755",
     elevated: false,
   }
-  let script = verified_binary_install_shell(p: other)
-  string_contains(s: script, pattern: "download.example.org/other/other-1.2.3-x86_64.tar.gz")
-    && string_contains(s: script, pattern: "'mv' '-T' '/tmp/other-1.2.3-x86_64/bin/other' '/opt/other/bin/other'")
-    && string_contains(s: script, pattern: "'/bin/chmod' '0755' '/opt/other/bin/other'")
-    && string_contains(s: script, pattern: "'0000000000000000000000000000000000000000000000000000000000000001  /tmp/other.tar.gz'")
-    && !string_contains(s: script, pattern: "/usr/bin/sudo")
-    && !string_contains(s: script, pattern: "sccache")
+  let steps = verified_binary_install_install_steps(p: p)
+  count(steps) == 5
+  // No elevation anywhere: the move and the mode are the cited ops, run as the caller.
+  && !string_contains(shell_command_render(command: get(list: steps, index: 1)), "/usr/bin/sudo")
+  && string_contains(
+    shell_command_render(command: get(list: steps, index: 1)),
+    "'mv' '-T' '/tmp/thing-9.9.9/bin/thing' '/opt/tools/bin/thing'",
+  )
+  && string_contains(
+    shell_command_render(command: get(list: steps, index: 2)),
+    "'/bin/chmod' '0755' '/opt/tools/bin/thing'",
+  )
+  // The product's name never reaches the generic effect: the body names only what was passed.
+  && !string_contains(verified_binary_install_shell(p: p), "sccache")
+  // Still gated the same way, and still verified with the cited check.
+  && string_contains(verified_binary_install_shell(p: p), "set -e")
+  && string_contains(
+    verified_binary_install_verify_line(p: p),
+    "| sha256sum -c -",
+  )
 }
 
-// THE PRIVILEGE PARAMETER IS A POLICY LEVER, NOT DECORATION. The same effect, with the bit flipped
-// the other way, must put the cited non-interactive sudo in front of the move and the mode -- the
-// refusal that a host without the NOPASSWD grant hits instead of blocking on a tty CI does not have.
-// Pinned together with the un-elevated claim above so the two arms are tested as a pair: an
-// implementation that ignored `elevated` entirely would pass one and fail the other.
-test fn the_privilege_parameter_puts_the_cited_sudo_in_front() -> Bool {
-  let script = sccache_verified_install_script(
-    rel: sccache_release_0_15_0,
-    arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
+// THE PRIVILEGE LEVER, FLIPPED. Same effect, same params, elevated: the move and the mode gain the
+// cited non-interactive sudo and nothing else changes. Asserting both directions is what makes the
+// lever a parameter rather than a default that happens to be right.
+test fn the_privilege_lever_put_sudo_in_front_of_the_move() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  shell_command_render(command: get(list: verified_binary_install_install_steps(p: p), index: 1))
+  == join(["'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '", sccache_installed_binary_path, "'"], "")
+  && string_contains(
+    shell_command_render(command: get(list: verified_binary_install_install_steps(p: p), index: 2)),
+    "'/usr/bin/sudo' '-n' 'chmod' '+x' ",
   )
-  let params = sccache_params()
-  string_contains(s: script, pattern: join(["'/usr/bin/sudo' '-n' 'mv' '", params.staged_binary_path, "' '", params.dest_path, "'"], ""))
-    && string_contains(s: script, pattern: join(["'/usr/bin/sudo' '-n' 'chmod' '+x' '", params.dest_path, "'"], ""))
 }
 
-// THE CLEANUP IS PART OF THE EFFECT, NOT A COURTESY. An install that leaves a world-readable copy of
-// its own archive and its own extracted member in /tmp has left a second, unverified copy of the
-// binary reachable -- the thing the digest check was for. Both staging paths are removed by the plan.
-test fn the_plan_removes_both_staging_paths() -> Bool {
-  let params = sccache_params()
-  let script = sccache_verified_install_script(
-    rel: sccache_release_0_15_0,
-    arch: "aarch64",
-    digest: sccache_release_0_15_0.digest_aarch64,
-  )
-  string_contains(s: script, pattern: join(["'rm' '-rf' '", params.download_path, "'"], ""))
-    && string_contains(s: script, pattern: join(["'rm' '-rf' '", params.staged_root, "'"], ""))
+// THE STAGING IS CLEANED UP. An install that leaves a world-writable archive and an extracted tree
+// behind in /tmp has traded a binary for two attack surfaces. Both removals are in the plan, both
+// carry their own path, and neither is the destination.
+test fn the_plan_removes_the_download_and_the_extracted_tree() -> Bool {
+  let p = sccache_params(digest_hex: sccache_release_0_15_0.digest_aarch64)
+  let steps = verified_binary_install_install_steps(p: p)
+  let archive = shell_command_render(command: get(list: steps, index: 3))
+  let staging = shell_command_render(command: get(list: steps, index: 4))
+  string_contains(archive, "'/tmp/sccache.tar.gz'")
+  && string_contains(staging, "'/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl'")
+  && !string_contains(archive, sccache_installed_binary_path)
+  && !string_contains(staging, sccache_installed_binary_path)
 }

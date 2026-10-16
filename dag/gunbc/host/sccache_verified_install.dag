@@ -1,7 +1,7 @@
 module gunbc.host.sccache_verified_install
 
 import std.types { List, NonEmptyStr, String }
-import extdeps.exec.command { ArgvCommand }
+
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { SccacheBinaryRelease, sccache_installed_binary_path }
 import gunbc.host.verified_binary_install {
@@ -28,9 +28,11 @@ import gunbc.host.verified_binary_install {
 // and adds only the staging layout the cited tarball's shape dictates.
 //
 // WHAT IT DOES NOT DO: decide the refusal. A digest mismatch is refused by
-// `verified_binary_install_admitted_plan` in the generic module, whose plan comes back EMPTY. This
-// module is where the digest COMES FROM, which is why a witness that changes the digest here is the
-// RED that says nothing gets installed.
+// `verified_binary_install_admitted_plan` in the generic module, which returns
+// `RefusedToInstall { reason, expected, observed_line, dest_path, source_url }` — a refusal the
+// consumer must report, never an empty list that could be read as "nothing to do". This module is
+// where the digest COMES FROM, which is why a witness that changes the digest here is the RED that
+// says nothing gets installed.
 
 // THE STAGING LAYOUT OF THE CITED TARBALL. The release publishes
 // `sccache-v<version>-<arch>-unknown-linux-musl.tar.gz`, and the archive contains that same
@@ -95,15 +97,16 @@ fn sccache_verified_install_if_absent_script(
 
 // THE RED'S ENTRY POINT, AND WHY IT IS HERE RATHER THAN IN THE GENERIC MODULE. The claim "a digest
 // mismatch refuses and nothing gets installed" is about sccache's digest, so the test supplies
-// sccache's boundary values with the digest swapped and reads back an empty plan. Same shape for the
-// positive control: with the release row's own digest the plan is the five install steps (extract,
-// move, mode, and the two staging removals).
+// sccache's boundary values with the digest swapped and reads back the refusal: the plan is refused,
+// its reason names both digests, and `verified_binary_install_plan_steps` on it is empty. Same shape
+// for the positive control: with the release row's own digest the plan is Planned with the five
+// install steps (extract, move, mode, and the two staging removals).
 fn sccache_verified_install_admitted_plan(
   rel: SccacheBinaryRelease,
   arch: NonEmptyStr,
   digest: Digest,
   observed_sha256sum_line: String,
-) -> List<ArgvCommand> {
+) -> VerifiedBinaryInstallPlan {
   verified_binary_install_admitted_plan(
     p: sccache_verified_install_params(rel: rel, arch: arch, digest: digest),
     observed_sha256sum_line: observed_sha256sum_line,
