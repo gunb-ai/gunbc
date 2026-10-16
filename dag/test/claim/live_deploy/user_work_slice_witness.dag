@@ -1125,8 +1125,21 @@ test fn fci1_bounded_wrappers_carry_the_slice_and_the_unbounded_control_does_not
     Fci1BoundedExecutionContextEmitted { content: c } => {
       let slice_line = join(["--property=\"Slice=", fci1_controls_slice_unit_name as String, "\" \\\n"], "")
       string_contains(s: c, pattern: slice_line)
-        && string_contains(s: c, pattern: "checkout_root\" \\\n    --property=\"MemoryMax=infinity\"")
+        && string_contains(s: c, pattern: "fci1_run_unbounded_memory_control() {\n  local unit=$1 checkout_root=$2; shift 2\n  systemd-run --quiet --wait --collect --unit=\"$unit\" \\\n    --property=\"WorkingDirectory=$checkout_root\" \\\n    --property=\"MemoryMax=infinity\"")
+        && string_contains(s: c, pattern: "fci1_install_controls_slice()")
+        && string_contains(s: c, pattern: "fci1_remove_controls_slice()")
     }
+    _ => false
+  }
+}
+
+// The scripts source the COMMITTED file, so the claim reads it: the committed bytes must equal the
+// producer's, which carries the slice in the bounded wrappers, the install/remove functions, and no
+// slice in the unbounded control.
+test fn the_committed_fci1_env_equals_the_emitter_output() -> Bool {
+  match expected_fci1_bounded_execution_context_env() {
+    Fci1BoundedExecutionContextEmitted { content: c } =>
+      filesystem_read(path: "tools/fabric_ci_fci1_bounded_execution_context.env").content == c
     _ => false
   }
 }
