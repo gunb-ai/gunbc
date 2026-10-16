@@ -13,6 +13,7 @@ import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted,
   PhysicalMachineRefused,
   PhysicalMachineHostAllocationMismatch,
+  PhysicalMachineControlSubjectMismatch,
   physical_machine_admission,
   receipt_applies_to_binding,
 }
@@ -32,7 +33,10 @@ import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_unit_key_standing,
   mtcollins1_assembly,
   mtcollins1_firmware_manifest,
+  mtcollins1_bmc_secure_standing,
 }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
+import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 
 // ---- fixture unit keys (board serials; distinct from mtcollins1's real unit) ----
@@ -137,6 +141,64 @@ test fn positive_mtcollins1_resolves_to_unit_and_current_subject() -> Bool {
           match mtcollins1_unit_key_standing {
             UnitKeyBound { key: u } => binding.unit_key == u && (binding.subject.subject.unit_key == u)
             _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED4 (axis 3): a BOUND control route that secured ANOTHER unit's credential refuses to seal. The
+// route is minted through snappy's bmc_control_binding join itself (sole_constructor upstream: the
+// unit comes from the secured standing's subject), then handed to admission for THIS unit.
+test fn red4_bound_control_route_other_unit_refuses() -> Bool {
+  match mtcollins1_bmc_secure_standing() {
+    Present { value: secured_b } =>
+      match bmc_control_binding(observed: mtcollins1_access_standing, secured: secured_b) {
+        BmcControlBound { binding: route } =>
+          match physical_machine_admission(
+            host: operator_host_mtcollins1,
+            unit_standing: UnitKeyBound { key: unit_a },
+            current_subject: Present { value: subject_for(unit_a) },
+            fleet: Absent,
+            control: Present { value: BmcControlBound { binding: route } },
+          ) {
+            PhysicalMachineRefused { cause: PhysicalMachineControlSubjectMismatch { physical_unit: p, control_unit: c } } =>
+              p == unit_a && (c == secured_b.subject.subject.unit_key)
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// CONTROL-BEARING POSITIVE: mtcollins1 seals WITH its own bound control route present -- an
+// unenrolled unit (no fleet axis) is still controllable, the route travels keyed by
+// (endpoint, unit) inside the standing, and admission does not require a HostIdentity to carry it.
+test fn positive_mtcollins1_seals_with_bound_control_route() -> Bool {
+  match mtcollins1_bmc_secure_standing() {
+    Present { value: secured } =>
+      match bmc_control_binding(observed: mtcollins1_access_standing, secured: secured) {
+        BmcControlBound { binding: route } =>
+          let current = mtcollins1_current_intake_subject()
+          match current {
+            Present { value: cs } =>
+              match physical_machine_admission(
+                host: operator_host_mtcollins1,
+                unit_standing: mtcollins1_unit_key_standing,
+                current_subject: Present { value: cs },
+                fleet: Absent,
+                control: Present { value: bmc_control_binding(observed: mtcollins1_access_standing, secured: secured) },
+              ) {
+                PhysicalMachineAdmitted { binding } =>
+                  match binding.control {
+                    Present { value: BmcControlBound { binding: sealed_route } } => sealed_route.unit == route.unit
+                    _ => false
+                  }
+                _ => false
+              }
+            Absent => false
           }
         _ => false
       }

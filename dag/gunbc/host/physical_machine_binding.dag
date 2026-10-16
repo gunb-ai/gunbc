@@ -13,17 +13,19 @@ module gunbc.host.physical_machine_binding
 //                                (gunbc.machine_intake.subject)
 //   axis 2  fleet binding      = HostEnrollmentIntent?
 //                                (gunbc.fleet.fleet_enrollment; Absent before enrollment is valid)
-//   axis 3  control standing   = BmcSecureStanding?
-//                                (gunbc.machine_intake.bmc_secure; present only when observed)
+//   axis 3  control standing   = BmcControlStanding?
+//                                (gunbc.host.bmc_control_binding; the secured route keyed by
+//                                controller endpoint + unit, never by host label)
 //
 // The operator supplies a HostIdentity; admission resolves it against the physical observation
 // before any effect is permitted. See the ruling one_physical_machine_boot_transaction (one
 // transaction surface, no label branching) and physical_and_guest_control_remain_distinct.
 //
-// NOTE ON AXIS 3: today it carries BmcSecureStanding (the secured subject + policy + outcome).
-// cut 2 (snappy-seal-211) wraps this in BmcControlBinding { endpoint, unit, secured } keyed by the
-// controller endpoint and unit, not by host label; this module retypes axis 3 to BmcControlBinding
-// on the cut-2 rebase. It is present only when observed and, like axis 2, needs no HostIdentity.
+// AXIS 3 IS THE CONTROL STANDING, not a host label. It is cut 2's BmcControlStanding: the Bound arm
+// carries a BmcControlBinding keyed by the observed controller endpoint and the unit whose credential
+// secured it (never HostIdentity), and each refusal arm keeps its own cause uncoined. Like axis 2 it is
+// present only when observed, and an UNENROLLED unit whose subject is valid still seals with a control
+// standing present -- control does not require a HostIdentity.
 
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -44,7 +46,7 @@ import gunbc.fleet.fleet_host_backing {
   HostUnitNotOwned,
   resolve_host_unit,
 }
-import gunbc.machine_intake.bmc_secure { BmcSecureStanding }
+import gunbc.host.bmc_control_binding { BmcControlStanding, BmcControlBound }
 
 // THE SEALED JOIN. Every field names a separate existing axis; none is a ManagedHost.
 type PhysicalMachineBinding sole_constructor {
@@ -54,9 +56,10 @@ type PhysicalMachineBinding sole_constructor {
   // axis 2: the fleet enrollment for this host, when present. Absent is a valid sealed state for
   // an unenrolled machine (arrival, mtcollins1/mtjade1) -- RED3.
   fleet: HostEnrollmentIntent?
-  // axis 3: the control standing, when observed. Absent is a valid sealed state; its presence
-  // needs no HostIdentity.
-  control: BmcSecureStanding?
+  // axis 3: the control standing, when observed. Its presence needs no HostIdentity, and a
+  // refusal-stance standing (NotSecured, AccessUnobserved, EndpointMismatch) is a HONEST observation
+  // distinct from Absent (no observation taken) -- per dag_absence_is_one_meaning.
+  control: BmcControlStanding?
 }
 
 // WHY THE JOIN WILL NOT SEAL. Each cause names the axis and the disagreement, so a consumer can
@@ -69,7 +72,7 @@ type PhysicalMachineBinding sole_constructor {
 //   PhysicalMachineHostAllocationNotOwned axis 2: the host's backing is a ProviderGuest (not physical).
 //   PhysicalMachineHostAllocationRefused  axis 2: the backing unit read was refused.
 //   PhysicalMachineHostAllocationMismatch axis 2: THE ALLOCATION POINTS AT ANOTHER UNIT (RED2).
-//   PhysicalMachineControlSubjectMismatch axis 3: the control standing was observed for another unit.
+//   PhysicalMachineControlSubjectMismatch axis 3: the bound control route secured another unit's credential.
 type PhysicalMachineRefusalCause
   = PhysicalMachineUnitKeyAbsent
   | PhysicalMachineUnitKeyRefused { cause: UnitKeyRefusalCause }
@@ -95,7 +98,7 @@ fn physical_machine_admission(
   unit_standing: UnitKeyStanding,
   current_subject: MachineIntakeSubject?,
   fleet: HostEnrollmentIntent?,
-  control: BmcSecureStanding?,
+  control: BmcControlStanding?,
 ) -> PhysicalMachineAdmission {
   match unit_standing {
     UnitKeyRefused { cause } => PhysicalMachineRefused { cause: PhysicalMachineUnitKeyRefused { cause } }
@@ -121,7 +124,7 @@ fn physical_machine_fleet(
   host: HostIdentity,
   subject: MachineIntakeSubject,
   fleet: HostEnrollmentIntent?,
-  control: BmcSecureStanding?,
+  control: BmcControlStanding?,
 ) -> PhysicalMachineAdmission {
   match fleet {
     Absent => physical_machine_axis3(unit: unit, subject: subject, fleet: fleet, control: control)
@@ -142,7 +145,7 @@ fn physical_machine_allocation(
   unit: UnitKey,
   subject: MachineIntakeSubject,
   fleet: HostEnrollmentIntent?,
-  control: BmcSecureStanding?,
+  control: BmcControlStanding?,
   enrollment: HostEnrollmentIntent,
 ) -> PhysicalMachineAdmission {
   match resolve_host_unit(backing: enrollment.backing) {
@@ -161,36 +164,43 @@ fn physical_machine_allocation(
   }
 }
 
-// axis 3 is checked last: a present control standing must be the standing of THIS unit.
+// axis 3 is checked last: a BOUND control route must secure THIS unit's credential. A refusal-stance
+// standing (NotSecured / AccessUnobserved / EndpointMismatch) is an honest observation of the route,
+// not a machine-identity disagreement -- it seals (the cause travels inside the standing, uncoined).
+// Only a Bound route for ANOTHER unit refuses: that control fact belongs to a different machine.
 fn physical_machine_axis3(
   unit: UnitKey,
   subject: MachineIntakeSubject,
   fleet: HostEnrollmentIntent?,
-  control: BmcSecureStanding?,
+  control: BmcControlStanding?,
 ) -> PhysicalMachineAdmission {
   match control {
     Absent =>
       PhysicalMachineAdmitted {
         binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Absent }
       }
-    Present { value: standing } =>
-      match (standing.subject.subject.unit_key == unit) {
+    Present { value: BmcControlBound { binding: route } } =>
+      match (route.unit == unit) {
         true =>
           PhysicalMachineAdmitted {
             binding: PhysicalMachineBinding {
               unit_key: unit,
               subject,
               fleet,
-              control: Present { value: standing },
+              control: control,
             }
           }
         false =>
           PhysicalMachineRefused {
             cause: PhysicalMachineControlSubjectMismatch {
               physical_unit: unit,
-              control_unit: standing.subject.subject.unit_key,
+              control_unit: route.unit,
             }
           }
+      }
+    Present { value: standing } =>
+      PhysicalMachineAdmitted {
+        binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Present { value: standing } }
       }
   }
 }
