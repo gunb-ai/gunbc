@@ -128,6 +128,9 @@ fn mtcollins1_boot_row(controller: BmcControllerEndpoint) -> MegaRacBootRowStand
       row: MegaRacBootRow {
         controller: controller,
         operator_host: operator_host_mtcollins1 as NonEmptyStr,
+        // What mtcollins1 calls itself. This is the row's word, not the adapter's: a MegaRAC adapter
+        // has no name to print.
+        label: "mtcollins1",
         ipmi: MegaRacIpmiReadPolicy {
           deadline: mtcollins1_boot_ipmi_read_deadline,
           kill_after: mtcollins1_boot_ipmi_kill_after,

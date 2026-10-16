@@ -29,6 +29,7 @@ import gunbc.machine_intake.ampere_smpro_observation {
   smpro_socket_records, smpro_socket_word, smpro_outcome_word, smpro_outcome_text,
 }
 import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
+import gunbc.host.smpro_platform_capability { SmproReading, SmproProbed, SmproNotTaken }
 import gunbc.machine_intake.megarac_sensor_observation { MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming, megarac_sensor_table_text, megarac_sensor_anomalies }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacSdrSocketNaming }
@@ -73,7 +74,6 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded,
   PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, PopulationNotRecorded,
   ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, ProcessorSocketUnreadable, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryBelowRecordedPopulation, MemoryNotNominal, SelHardwareEvent,
-  mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes, SpanConsoleReading, span_console_readings,
 }
 import gunbc.machine_intake.ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
@@ -393,6 +393,10 @@ type MegaRacRedfishReadPolicy sole_constructor {
 type MegaRacBootRow sole_constructor {
   controller: BmcControllerEndpoint,
   operator_host: NonEmptyStr,
+  // What this machine calls itself in the text of a bundle it produced. The adapter prints whatever the
+  // row says; it has no name of its own to print, which is the whole point -- a bundle that names a
+  // machine the row did not name is naming a machine it did not read.
+  label: NonEmptyStr,
   ipmi: MegaRacIpmiReadPolicy,
   redfish: MegaRacRedfishReadPolicy,
   // How long the bundle write may take before the attempt stops waiting on it.
@@ -421,7 +425,10 @@ type MegaRacConsoleReference sole_constructor {
 // bundle text and the harness notes and does not decide it. A row that cannot classify its evidence
 // says so with an unread account -- it does not inherit another machine's answer.
 type MegaRacAccountReceipt sole_constructor {
-  account: PowerOnAccount,
+  // The row's classification of its own evidence, or nothing when the row cannot classify it. Nothing
+  // is a real answer here: it means the row read no account, and it is not the same as another row's
+  // answer.
+  account: PowerOnAccount?,
   text: String,
   notes: List<String>,
 }
@@ -445,11 +452,10 @@ type MegaRacAccountReceipt sole_constructor {
 // words, so a read that failed says why in the protocol's voice rather than being reported as off.
 fn megarac_host_power(o: ChassisPowerObservation) -> HostPowerState {
   match o {
-    ChassisOn => PowerOn
-    ChassisOff => PowerOff
-    ChassisPowerUnread { detail: d } => PowerUnread { reason: d as NonEmptyStr }
-    ChassisCommandFailed { detail: d } => PowerUnread { reason: d as NonEmptyStr }
-    ChassisCommandUnreadable { detail: d } => PowerUnread { reason: d as NonEmptyStr }
+    ChassisPowerRead { power_on: true } => PowerOn
+    ChassisPowerRead { power_on: false } => PowerOff
+    ChassisStatusUndecodable { cause: c } => PowerUnread { reason: c }
+    ChassisUnreadable => PowerUnread { reason: "the chassis status read returned nothing decodable" }
   }
 }
 
@@ -523,7 +529,7 @@ fn megarac_handoff_media_record(h: MegaRacHandoff) -> HandoffMedia {
 fn megarac_end_media_record(e: MegaRacEndMedia) -> EndMedia {
   match e {
     MegaRacEndMediaNotTaken { reason: reason } => EndMediaNotTaken { reason: reason }
-    MegaRacEndMediaObserved { look: l } => EndMediaObserved { presentation: megarac_presentation(r: l) }
+    MegaRacEndMediaObserved { look: l } => EndMediaObserved { look: megarac_presentation(r: l) }
   }
 }
 
@@ -585,7 +591,7 @@ fn megarac_console_diagnostic_ref(c: ConsoleReading) -> DiagnosticRef {
       against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } =>
       DiagnosticRetained { path: p, digest: dg, findings: [] }
     ConsoleExceedsBound { path: p, size: s, bound: b } =>
-      DiagnosticNotRetained { reason: concat("the capture at ", p, " is ", to_string(byte_count(s)), " bytes, over the bound of ", to_string(byte_count(b))) }
+      DiagnosticNotRetained { reason: concat("the capture at ", p, " is ", to_string(byte_size_count(b: s)), " bytes, over the bound of ", to_string(byte_size_count(b: b))) }
     NotRetained { path: p } => DiagnosticNotRetained { reason: concat("the capture at ", p, " is not retained with this attempt") }
     ConsoleUnread { path: p, detail: d } => DiagnosticUnavailable { reason: concat("the capture at ", p, " could not be read: ", d) }
     ConsoleNotConfigured => DiagnosticNotRetained { reason: "no console capture was configured for this attempt" }
@@ -1063,14 +1069,14 @@ fn media_loss_after_handoff(handoff: MegaRacHandoff, end: MegaRacEndMedia) -> Me
 // THE ATTEMPT'S TERMINAL CAUSE. A success stands -- the host reported its census, so whatever the
 // controller did afterwards did not stop it (the finding still records the loss) -- and a failure is
 // re-attributed to the loss, keeping the downstream symptom beside it rather than discarding it.
-fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MegaRacMediaLossAfterHandoff) -> ProcessExit {
+fn outcome_attributing_media_loss(row: MegaRacBootRow, outcome: ProcessExit, loss: MegaRacMediaLossAfterHandoff) -> ProcessExit {
   match outcome {
     ExitSuccess => ExitSuccess
     ExitFailure { code: c, reason: r } =>
       match loss {
         MediaLossNotAffirmed => ExitFailure { code: c, reason: r }
         MediaLossAffirmed { phase: p, reason: why } =>
-          ExitFailure { code: c, reason: join(["mtcollins1 boot: media presentation lost at ", media_loss_phase_text(p: p), " (", why as String, "); the attempt then reported: ", r], "") }
+          ExitFailure { code: c, reason: join([concat(row.label, " boot: media presentation lost at "), media_loss_phase_text(p: p), " (", why as String, "); the attempt then reported: ", r], "") }
       }
   }
 }
@@ -1162,7 +1168,7 @@ fn megarac_boot_override_consumption(before: BootParam5Reading, after: BootParam
   }
 }
 
-fn megarac_power_after_attempt(observation: ChassisPowerObservation, census_ended: Bool) -> MegaRacPowerAfter {
+fn megarac_power_after_from_observation(observation: ChassisPowerObservation, census_ended: Bool) -> MegaRacPowerAfter {
   match observation {
     ChassisPowerRead { power_on: on } =>
       if on { MegaRacPoweredOnAfterAttempt } else if census_ended { MegaRacPoweredOffAfterCensusEnd } else { MegaRacPoweredOffWithoutCensusEnd }
@@ -1243,6 +1249,21 @@ fn megarac_run_record_text(row: MegaRacBootRow, r: MegaRacRunRecord) -> String {
 // and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
 // gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
 // verdict reads it (gunbc.machine_intake.megarac_kvm_still).
+type MembersReading<T>
+  = MembersRead { members: List<T> }
+  | MembersUnread { cause: BmcReadCause }
+  | MembersNotTaken { reason: NonEmptyStr }
+
+// THE BMC'S OWN INVENTORY. `credential_removed` is carried because the per-attempt netrc that
+// authenticated the reads must be shredded, and a shred that failed is a standing exposure this
+// attempt created, which the bundle states rather than hides.
+type InventoryReading {
+  system_id: String
+  memory: MembersReading<RedfishMemoryMember>
+  processors: MembersReading<RedfishProcessorMember>
+  credential_removed: Bool
+}
+
 type BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -1783,7 +1804,7 @@ type MegaRacBootFindings {
 }
 
 fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> List<HarnessFinding> {
-  let failed = bmc_all_reads_failed(bundle: bundle)
+  let failed = bmc_all_reads_failed(row: row, bundle: bundle)
   concat(if count(failed) == 0 { [] } else { [MegaRacEveryReadFailed { failed: failed }] },
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
@@ -1937,10 +1958,10 @@ fn sensors_text(row: MegaRacBootRow, s: SensorReading) -> String {
   }
 }
 
-fn megarac_boot_bundle_text(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> String {
-  let findings = megarac_boot_findings(row: row, bundle: bundle)
+fn megarac_boot_bundle_text(row: MegaRacBootRow, bundle: BootDiagnosticBundle, account: MegaRacAccountReceipt) -> String {
+  let findings = megarac_boot_findings(row: row, bundle: bundle, account: account)
   join([
-    "mtcollins1 boot diagnostics",
+    concat(row.label, " boot diagnostics"),
     concat("attempt=", attempt_identity_text(a: bundle.attempt)),
     concat("outcome=", bundle.outcome),
     "== our best understanding of what happened (the power-on account) ==",
@@ -1986,14 +2007,14 @@ fn megarac_boot_bundle_text(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -
 
 
 
-fn megarac_diagnostics_allowance(row: MegaRacBootRow, ) -> Second {
+fn megarac_diagnostics_allowance(row: MegaRacBootRow) -> Second {
   let sel = row.ipmi.planned_reads * ((second_count(s: row.ipmi.deadline) as Int) + (second_count(s: row.ipmi.kill_after) as Int))
   let redfish = row.redfish.read_budget * (second_count(s: row.redfish.read_deadline) as Int)
   second(count: sel + redfish + (second_count(s: row.publish_allowance) as Int))
 }
 
 // ── READS (effects) ──────────────────────────────────────────────────────────────────────────
-fn megarac_ipmi_endpoint(row: MegaRacBootRow, ) -> NonEmptyStr {
+fn megarac_ipmi_endpoint(row: MegaRacBootRow) -> NonEmptyStr {
   concat("ipmi lanplus ", row.controller.host as String) as NonEmptyStr
 }
 
@@ -2130,7 +2151,7 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
   )
-  bmc_reachability_of_read(at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
+  bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
 
 fn sel_snapshot_of_read(row: MegaRacBootRow, at: NonEmptyStr, success: Bool, stdout: String, exit_code: Int, stderr: String) -> SelSnapshotReading {
@@ -2341,24 +2362,24 @@ fn fetch_collection_pages(row: MegaRacBootRow,
 {
   let at = clock_now_probed_at_or_unknown()
   if pages_left <= 0 {
-    return CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(path: collection as String), at: at, detail: concat("page bound ", to_string(row.redfish.collection_page_bound), " reached with Members@odata.nextLink still pending") }, left: left }
+    return CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(row: row, path: collection as String), at: at, detail: concat("page bound ", to_string(row.redfish.collection_page_bound), " reached with Members@odata.nextLink still pending") }, left: left }
   }
-  match redfish_get(netrc: netrc, path: page, left: left, not_reached: concat("the rest of ", collection as String, " and every member of it")) {
+  match redfish_get(row: row, netrc: netrc, path: page, left: left, not_reached: concat("the rest of ", collection as String, " and every member of it")) {
     RedfishGetFailed { cause: c, left: l } => CollectionFetchFailed { cause: c, left: l }
     RedfishGot { body: body, left: l } =>
       match redfish_collection_page_of(body: body) {
-        ObservationRefused { cause: c } => CollectionFetchFailed { cause: BmcResponseMalformed { endpoint: megarac_redfish_url(path: page as String), at: at, detail: c as String }, left: l }
+        ObservationRefused { cause: c } => CollectionFetchFailed { cause: BmcResponseMalformed { endpoint: megarac_redfish_url(row: row, path: page as String), at: at, detail: c as String }, left: l }
         ObservationEstablished { observed: p } => {
           let pages = concat(read, [p])
           match p.next_link {
             Present { value: next } =>
               match redfish_same_origin_link(link: next) {
-                RedfishLinkRefused { cause: why } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(path: page as String), at: at, detail: concat("Members@odata.nextLink not followed: ", why as String) }, left: l }
-                RedfishLinkSameOrigin { path: next_path } => fetch_collection_pages(netrc: netrc, collection: collection, page: next_path, pages_left: pages_left - 1, left: l, read: pages)
+                RedfishLinkRefused { cause: why } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(row: row, path: page as String), at: at, detail: concat("Members@odata.nextLink not followed: ", why as String) }, left: l }
+                RedfishLinkSameOrigin { path: next_path } => fetch_collection_pages(row: row, netrc: netrc, collection: collection, page: next_path, pages_left: pages_left - 1, left: l, read: pages)
               }
             Absent =>
               match redfish_collection_assembly(pages: pages, member_bound: row.redfish.collection_member_bound) {
-                CollectionRefused { detail: d } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(path: collection as String), at: at, detail: d as String }, left: l }
+                CollectionRefused { detail: d } => CollectionFetchFailed { cause: BmcCollectionIncomplete { endpoint: megarac_redfish_url(row: row, path: collection as String), at: at, detail: d as String }, left: l }
                 CollectionComplete { links: links } => CollectionFetched { links: links, left: l }
               }
           }
@@ -2401,7 +2422,7 @@ fn read_memory_members(row: MegaRacBootRow, netrc: NonEmptyStr, collection: NonE
 {
   match fetch_member_bodies(row: row, netrc: netrc, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
-    MemberBodiesFetched { bodies: bs, left: l } => MemoryFold { reading: assemble_memory_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
+    MemberBodiesFetched { bodies: bs, left: l } => MemoryFold { reading: assemble_memory_members(row: row, collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
   }
 }
 
@@ -2409,7 +2430,7 @@ fn read_processor_members(row: MegaRacBootRow, netrc: NonEmptyStr, collection: N
 {
   match fetch_member_bodies(row: row, netrc: netrc, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
-    MemberBodiesFetched { bodies: bs, left: l } => ProcessorFold { reading: assemble_processor_members(collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
+    MemberBodiesFetched { bodies: bs, left: l } => ProcessorFold { reading: assemble_processor_members(row: row, collection: collection, at: clock_now_probed_at_or_unknown(), bodies: bs), left: l }
   }
 }
 
@@ -2563,13 +2584,13 @@ fn bundle_write_receipt_line(row: MegaRacBootRow, w: BundleWrite) -> String {
   }
 }
 
-fn megarac_boot_write_bundle(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> BundleWrite {
-  let written = Filesystem.Write(path: row.diagnostics_path, content: megarac_boot_bundle_text(row: row, bundle: bundle))
+fn megarac_boot_write_bundle(row: MegaRacBootRow, bundle: BootDiagnosticBundle, account: MegaRacAccountReceipt) -> BundleWrite {
+  let written = Filesystem.Write(path: row.diagnostics_path, content: megarac_boot_bundle_text(row: row, bundle: bundle, account: account))
   if written.success { BundleWritten } else { BundleWriteFailed { error: written.error } }
 }
 
-fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, bundle: BootDiagnosticBundle, write: BundleWrite) -> ProcessExit {
-  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: outcome, findings: megarac_boot_findings(row: row, bundle: bundle))
+fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, bundle: BootDiagnosticBundle, write: BundleWrite, account: MegaRacAccountReceipt) -> ProcessExit {
+  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: outcome, findings: megarac_boot_findings(row: row, bundle: bundle, account: account))
   match write {
     BundleWritten => with_findings
     BundleWriteFailed { error: e } =>
