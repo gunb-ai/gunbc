@@ -1,21 +1,25 @@
-In-band IPMI (KCS) BMC credential recovery — first executed specimen
+In-band IPMI (SSIF) BMC credential recovery — first executed specimen
 Board: ASRock Rack ALTRAD8UD-1L2T, BMC 192.168.1.250 (lease bmc-altrad8ud-1l2t-6, MAC 9c:6b:00:e7:c9:fa)
 Firmware: OpenBMC 3.22.00
 Date: 2026-10-16, executed by session royal-seal-46, LAN reached via jump host srv2.
 
-PRECONDITION (the load-bearing fact): a reachable host OS with in-band KCS.
+AUTHORITY: this file is the route narrative. 00_README.txt is the provenance record (captured vs
+observed) and 04_post_reset_readback.json is the captured terminal state; where this summary restates
+either, those files govern. Response bodies for the privileged writes were not saved as bytes.
+
+PRECONDITION (the load-bearing fact): a reachable host OS with an in-band IPMI system interface (SSIF on this board).
   A rescue Ubuntu live USB (user installer / password rescue, passwordless sudo) booted on the host
   and took a DHCP lease at 192.168.1.251 (hostname came up as `ubuntu-server`, not `rescue`).
   Host NIC MAC 9c:6b:00:e7:ca:9b — adjacent to the BMC MAC on the same board.
   ipmitool installed from Ubuntu archive; kernel modules ipmi_devintf/ipmi_ssif/ipmi_msghandler loaded;
-  /dev/ipmi0 present (crw------- root root 235,0). In-band KCS is implicitly ADMINISTRATOR — no old password needed.
+  /dev/ipmi0 present (crw------- root root 235,0). The in-band system interface (SSIF) is implicitly ADMINISTRATOR — no old password needed.
 
 OBSERVED BMC STATE (read-only, in-band):
   mc info: ASRock Rack Incorporation, Firmware Revision 3.22.
   user list 1: ID 1 = root, ADMINISTRATOR, enabled on channel 1 (802.3 LAN).
   lan print 1: IP 192.168.1.250, DHCP.
 
-PRIVILEGED WRITE 1 — set temp admin password over KCS (classify in privileged_effect_census):
+PRIVILEGED WRITE 1 — set temp admin password over the in-band SSIF channel (classify in privileged_effect_census):
   `ipmitool user set password 1 '0penBmc'`         -> IPMI "Invalid data field in request"
   `ipmitool user set password 1 '0penBmc' 20`      -> same (OpenBMC 3.22 policy: published 7-char factory
                                                        password is rejected; min length >= 8).
@@ -24,12 +28,13 @@ PRIVILEGED WRITE 1 — set temp admin password over KCS (classify in privileged_
 
 PRIVILEGED WRITE 2 — destructive factory reset (needs explicit operator approval + readback):
   Action discovery: #Manager.ResetToDefaults advertises ResetType@Redfish.AllowableValues: ["ResetAll"],
-  but the firmware requires the parameter spelled `ResetToDefaultsType` (ResetType is rejected as unknown).
-  POST .../Actions/Manager.ResetToDefaults  {"ResetToDefaultsType":"ResetAll"} -> HTTP 200.
+  but the firmware requires the parameter spelled `ResetToDefaultsType` (see 00_README.txt):
+  POST .../Actions/Manager.ResetToDefaults {"ResetType":"ResetAll"}         -> HTTP 400 (ResetToDefaultsType required)
+  POST .../Actions/Manager.ResetToDefaults {"ResetToDefaultsType":"ResetAll"} -> HTTP 200.
 
 POST-RESET READBACK (the recovery's terminal observation):
   BMC went unreachable ~2.5 min, returned at 192.168.1.250, and root/0penBmc now returns
-  HTTP 403 Base.1.x PasswordChangeRequired — the factory-credential-active first-contact state
+  HTTP 403 Base.1.16.0.PasswordChangeRequired (captured in 04) — the factory-credential-active first-contact state
   (same as srv13 at onboarding). This re-enters gunbc.tools.bmc_onboard factory-login -> rotate.
   The temp password set in WRITE 1 was wiped by the reset; no loose credential remains.
 
