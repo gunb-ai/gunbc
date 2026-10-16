@@ -18031,16 +18031,7 @@ pub fn present_payload_declared_from_optional(
             {
                 Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
             } else {
-                if node_is_std_optional(exp.clone(), scope.clone()) {
-                    std_optional_payload_node(
-                        exp.clone(),
-                        type_name.clone(),
-                        field_name.clone(),
-                        scope.clone(),
-                    )
-                } else {
-                    std::option::Option::None
-                }
+                std::option::Option::None
             }
         }
     }
