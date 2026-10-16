@@ -1705,6 +1705,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -11197,6 +11205,24 @@ fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, s
   }
 }
 
+// THE PRESENT PAYLOAD IS A DECLARED-TYPE POSITION WHATEVER THE PAYLOAD'S SYNTAX. present_value_expected_from_optional hands the
+// peeled payload type to a nested record or list literal only, so `Present { value: r }` for a plain reference `r` was never
+// judged against the declared payload and a whole record escaped a declared `T?` (gunbc.recurring_failure_mode
+// record_value_escapes_declared_optional_return). This is the same peeled node without the value-shape filter; it answers none
+// for any expected that is not a plain Optional, so alias and nominal-application Optionals keep abstaining.
+fn present_payload_declared_from_optional(type_name: String, field_name: String, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let names_present_payload = name_is_std_optional_present_arm(scope: scope, name: type_name) && name_is_std_optional_payload_member(scope: scope, name: field_name)
+      if exp.return_cardinality == CardOptional && names_present_payload {
+        Present { value: with_required_cardinality(n: exp) }
+      } else if node_is_std_optional(n: exp, scope: scope) {
+        std_optional_payload_node(exp: exp, type_name: type_name, field_name: field_name, scope: scope)
+      } else { none }
+  }
+}
+
 // FREEZE-ONLY: the `T?` arm peels only the Present payload, keyed on the std.optional Present arm and
 // payload member read from the canonical declaration (name_is_std_optional_present_arm and name_is_std_optional_payload_member), the same declaration the
 // nominal arm reads; it dissolves with slice 3, the kernel Optional mint cut.
@@ -11520,10 +11546,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => []
     }
+    let present_payload_diags = match present_payload_declared_from_optional(type_name: tn_str, field_name: fi_name, expected: expected, scope: scope) {
+      Present { value: payload_declared } =>
+        let payload_produced = resolved_type(n: ar_typed)
+        if product_versus_coproduct_head_mismatch(declared: payload_declared, produced: payload_produced, scope: scope) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: payload_declared, source_indices: scope.type_env.source_indices),
+            got: node_type_shape(n: payload_produced, source_indices: scope.type_env.source_indices),
+            span: ar_typed.span,
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      Absent => []
+    }
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+      diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
