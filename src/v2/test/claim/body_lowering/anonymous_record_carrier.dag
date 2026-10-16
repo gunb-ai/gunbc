@@ -39,7 +39,7 @@ module v2.test.claim.body_lowering.anonymous_record_carrier
 // claims) is poisoned by any refusing source inside it -- every claim there then refuses at prepare with
 // cause=positive_population_empty.
 
-import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
