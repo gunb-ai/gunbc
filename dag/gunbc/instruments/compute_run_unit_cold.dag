@@ -41,7 +41,9 @@ import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.systemd { ExecStopProperty }
 import extdeps.systemd.systemd_run {
+  SystemdRunProperty,
   SystemdRunWaitSummary, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   ServiceResultFormatNotGrounded, SummaryNoInvocation, SummarySuppressedByQuietLauncher,
   SummaryCaptureEmpty, SummaryLineAbsent, SystemdSetenvBinding,
@@ -342,6 +344,7 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
         launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
         granted: kibibyte_from_byte_size_floor(b: gibibyte_to_byte_size(g: gibibyte(count: 1))),
         user_runtime_dir: runtime_dir,
+        extra_properties: [],
       ) {
         ComputeUnitRunRefused { cause: _ } => UnitPrintenvRefused { reason: "unit launch refused", text: "" }
         ComputeUnitRunExecuted { run: unit_run } =>
@@ -394,7 +397,7 @@ fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
 }
 
 
-fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int) -> CliWireResponse {
+fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, extra_properties: List<SystemdRunProperty>) -> CliWireResponse {
       let identity = to_string(value: frame)
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
@@ -458,7 +461,7 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                     instance: instance,
                     layout: layout,
                     identity_hex: identity,
-                    argv: concat(unit_stats_trailer_argv(), compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency)),
+                    argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: NoComputeDependency),
                     env: concat(
                       concat(
                         concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
@@ -469,6 +472,7 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
                     user_runtime_dir: runtime_dir,
+                    extra_properties: extra_properties,
                   ) {
                     ComputeUnitRunRefused { cause: _ } =>
                       CliWirePrintable {
@@ -551,12 +555,11 @@ fn sccache_stat_value(text: String, label: String) -> Int? {
 
 // The unit's sccache server is auto-spawned by the client inside the unit's cgroup and is reaped
 // with it (KillMode=control-group, gunbc.compute.unit_bounds), and `sccache --show-stats` with no
-// listener prints a plausible all-zero table. So the stats are read INSIDE the unit, after the build
-// command and before the unit ends, with the unit's own SCCACHE_SERVER_UDS (compute_unit_sccache_setenv
-// in compute_run_unit); the build's exit status is preserved. The first identity's reading is context;
-// the second identity's cache is warm only if its server read the first's persistent cache.
-fn unit_stats_trailer_argv() -> List<String> {
-  ["/bin/sh", "-c", join(["\"$@\"; rc=$?; ", sccache_installed_binary_path, " --show-stats; exit $rc"], ""), "sh"]
+// listener prints a plausible all-zero table. So the stats are read by the unit's own ExecStop=
+// (systemd.service(5): always performed after a successful start, before the cgroup is reaped), with
+// the unit's own SCCACHE_SERVER_UDS.
+fn unit_stats_on_stop() -> List<SystemdRunProperty> {
+  [SystemdRunProperty { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
 }
 
 fn sccache_reading_from(text: String) -> SccacheUnitReading {
@@ -601,21 +604,19 @@ fn sccache_reading_wire(label: String, r: SccacheUnitReading) -> String {
 }
 
 // Two identities back to back in ONE dispatch: same slot, uid and cache directory. Each unit reads
-// its own server's stats (unit_stats_trailer_argv), so the second reading is whole, not a difference.
+// the second unit's own server's stats (unit_stats_on_stop), so the second reading is whole, not a difference.
 fn cold_two_identity_exit(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, first_frame: Int) -> CliWireResponse {
-  let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame)
+  let first = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: first_frame, extra_properties: [])
   if !cold_run_succeeded(r: first) {
     first
   } else {
     match observe_run_frame() {
       Absent => no_observation(bytes: cold_run_bytes(r: first), reason: "second run frame unreadable")
       Present { value: second_frame } => {
-        let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame)
-        let reading_1 = sccache_reading_from(text: cold_run_bytes(r: first))
-        let reading_2 = sccache_reading_from(text: cold_run_bytes(r: second))
+        let second = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: second_frame, extra_properties: unit_stats_on_stop())
+                let reading_2 = sccache_reading_from(text: cold_run_bytes(r: second))
         let bytes = join([
           cold_run_bytes(r: first), "\n=== second identity ===\n", cold_run_bytes(r: second), "\n",
-          sccache_reading_wire(label: "sccache in first identity's unit", r: reading_1),
           sccache_reading_wire(label: "sccache in second identity's unit", r: reading_2),
         ], "")
         if !cold_run_succeeded(r: second) {
