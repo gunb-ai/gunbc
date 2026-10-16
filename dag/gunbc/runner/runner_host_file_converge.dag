@@ -14,9 +14,10 @@ import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_lis
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
 import extdeps.posix.getent { getent_passwd_command }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
-import extdeps.jobserver { jobserver_makeflags_env_name }
+import extdeps.tools.make { make_makeflags_env_name }
+import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit, ctrl_jobserver_residue_files, ctrl_jobserver_residue_directories }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
-import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path, gunbc_runner_jobserver_service }
+import gunbc.host.host_converge { gunbc_runner_per_slot_cpu_dropin_path }
 import gunbc.host.host_axis_caps { cap_dropin_content }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan, runner_host_deployment_for,
@@ -39,7 +40,7 @@ import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope, path_ancestor_prefixes }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -96,6 +97,11 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationOutcome, SlotActuationRefused,
+  activate_runner_slot_over, drain_and_mask_runner_slot_over,
+  slot_actuation_settled, slot_actuation_outcome_wire,
+}
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_width_transition {
@@ -420,11 +426,8 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
 // resolves its subject some other way -- gunbc.fleet.host_credential_custody_converge resolves custody
 // from the host SPEC, because the App key does not depend on slot width -- consumes this rather than
 // spelling the pair again (DESIGN §3).
-fn administrator_ssh_target(host: HostIdentity) -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
-  }
+fn administrator_ssh_target(host: HostIdentity) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
 }
 
 fn runner_host_file_subject_over_obligation(
@@ -442,14 +445,19 @@ fn runner_host_file_subject_over_obligation(
         ], ""),
       }
     RetireesKnown { units: retired } =>
-      RunnerHostFileSubjectAdmitted {
-        subject: RunnerHostFileSubject {
-          host: host,
-          target: administrator_ssh_target(host: host),
-          desired_units: units,
-          retired_units: retired,
-          fabric_units: runner_host_fabric_member_units(host: host),
-        },
+      match administrator_ssh_target(host: host) {
+        SshTargetRefused { endpoint: e, refusal: why } =>
+          RunnerHostFileSubjectRefused { cause: join(["runner_host_file_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], "") }
+        SshTargetResolved { target: target } =>
+          RunnerHostFileSubjectAdmitted {
+            subject: RunnerHostFileSubject {
+              host: host,
+              target: target,
+              desired_units: units,
+              retired_units: retired,
+              fabric_units: runner_host_fabric_member_units(host: host),
+            },
+          }
       }
   }
 }
@@ -717,7 +725,7 @@ fn classify_slot_allocation(reading: RunnerSlotUnitReading, expect: RunnerSlotEx
     SlotAllocationNotEffective { detail: join(["CPUQuotaPerSecUSec=", trim(s: reading.cpu_quota_per_sec), " want=", expect.cpu_quota_identity, "us"], "") }
   } else {
     let env = trim(s: reading.environment)
-    if expect.forbid_makeflags && slot_environment_names(environment: env, name: jobserver_makeflags_env_name) {
+    if expect.forbid_makeflags && slot_environment_names(environment: env, name: make_makeflags_env_name) {
       SlotAllocationNotEffective { detail: "Environment still carries MAKEFLAGS" }
     } else {
       match expect.compile_jobs {
@@ -1358,7 +1366,7 @@ fn runner_job_user_uid_reading_line(reading: RunnerJobUserUidReading) -> String 
 // WHAT THE RETIRED DAEMON LEFT ON A HOST, AS ITS INSTALLER PLACED IT. Cited from gunb-ai/ctrl
 // scripts/session-dashboard/host/install-ctrl-jobserver.sh: the daemon at /usr/local/sbin, its unit
 // at /etc/systemd/system, its knobs at /etc/default, and the FIFO's directory /var/lib/ctrl/jobserver
-// (the FIFO is gunbc.host.host_converge gunbc_runner_jobserver_default_fifo inside it). Operator
+// (the FIFO lived inside it; the names are gunbc.host.ctrl_jobserver_residue). Operator
 // ruling 2026-10-14 retires it: allocation is declared up front as each slot's CPU ceiling, so
 // nothing lends permits at runtime and nothing can leak them.
 //
@@ -1374,13 +1382,9 @@ type RetiredHostResidue {
 }
 
 data ctrl_jobserver_retired_residue: RetiredHostResidue = RetiredHostResidue {
-  unit: gunbc_runner_jobserver_service as NonEmptyStr,
-  files: [
-    "/etc/systemd/system/ctrl-jobserver.service",
-    "/etc/default/ctrl-jobserver",
-    "/usr/local/sbin/ctrl-jobserver",
-  ],
-  directories: ["/var/lib/ctrl/jobserver"],
+  unit: ctrl_jobserver_unit,
+  files: ctrl_jobserver_residue_files,
+  directories: ctrl_jobserver_residue_directories,
 }
 
 type RetiredResidueObservation
@@ -1711,6 +1715,9 @@ type RunnerHostFileRun {
   privilege: RunnerHostPrivilegeStanding
   results: List<RunnerHostFileResult>
   withheld: List<RunnerHostFileWithheld>
+  pre_actuation_reload: RunnerHostManagerReload
+  actuation_admission: RunnerHostActuationAdmission
+  actuations: List<SlotActuationOutcome>
   residue: RetiredResidueResult
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
@@ -1751,11 +1758,148 @@ fn runner_host_manager_reload_step(
   }
 }
 
+// THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode
+// activates every desired runner slot (gunbc.runner.runner_slot_actuation activate_runner_slot_over) and
+// drains and masks every fabric member and required retiree (drain_and_mask_runner_slot_over) over the
+// same administrator edge; observe mode actuates nothing. The per-slot quota divides the host by the
+// committed width, so writing it while fewer slots run would hold the live runners to a share sized
+// for slots that are not there -- the CPU drop-in is withheld until every actuation settled.
+fn runner_host_slot_actuations(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+) -> List<SlotActuationOutcome>
+{
+  match mode {
+    RunnerHostFilesObserveOnly => []
+    RunnerHostFilesApply =>
+      match privilege {
+        AdministratorPrivilegeRefused { reason: why } =>
+          map(concat(subject.desired_units, runner_host_drain_units(subject: subject)), u => SlotActuationRefused { unit: u, step: "privilege", reason: why })
+        AdministratorPrivilegeAvailable =>
+          concat(
+            map(subject.desired_units, u => activate_runner_slot_over(target: subject.target, context: context, unit: u)),
+            map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)),
+          )
+      }
+  }
+}
+
+fn runner_host_drain_units(subject: RunnerHostFileSubject) -> List<NonEmptyStr> {
+  concat(subject.fabric_units, filter(subject.retired_units, r => !any(subject.fabric_units, f => (f as String) == (r as String))))
+}
+
+type RunnerHostCpuDropinGate {
+  files: List<RunnerHostFileDesired>
+  withheld: List<RunnerHostFileWithheld>
+}
+
+fn runner_host_cpu_dropin_gate(
+  files: List<RunnerHostFileDesired>,
+  withheld: List<RunnerHostFileWithheld>,
+  actuations: List<SlotActuationOutcome>,
+  admission: RunnerHostActuationAdmission,
+) -> RunnerHostCpuDropinGate {
+  let unsettled = filter(actuations, a => !slot_actuation_settled(o: a))
+  let skipped = match admission { ActuationAdmitted => false ActuationSkipped { cause: _ } => true }
+  if length(unsettled) == 0 && !skipped {
+    RunnerHostCpuDropinGate { files: files, withheld: withheld }
+  } else {
+    RunnerHostCpuDropinGate {
+      files: filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String)),
+      withheld: concat(withheld, [RunnerHostFileWithheld {
+        subject: "runner-cpu-dropin" as NonEmptyStr,
+        cause: join(["the slot population is not yet at the committed width (", if skipped { "actuations skipped" } else { concat(to_string(length(unsettled)), " actuations unsettled") }, "), so the per-slot quota sized for that width is not written"], "") as NonEmptyStr,
+      }]),
+    }
+  }
+}
+
 // ORDER: privilege, observe every file, write the ones that need it, read every slot, reload if the
 // manager owes one, read every slot again. The privilege leg runs FIRST and gates every write, so a host
 // where the declared administrator cannot sudo reports that by name. Observation does not need
 // privilege and still runs, so an observe-only dispatch against such a host still says what WOULD be
 // written and what the slots hold.
+fn runner_host_file_result(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  file: RunnerHostFileDesired,
+) -> RunnerHostFileResult
+{
+  let p = plan_runner_host_file(subject: subject, context: context, file: file)
+  RunnerHostFileResult {
+    planned: p,
+    outcome: match mode {
+      RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly
+      RunnerHostFilesApply =>
+        match privilege {
+          AdministratorPrivilegeRefused { reason: why } => HostFileNotAttempted { reason: concat("administrator privilege refused: ", why) }
+          AdministratorPrivilegeAvailable => apply_runner_host_file(subject: subject, context: context, planned: p)
+        }
+    },
+  }
+}
+
+// A WRITTEN UNIT FILE IS LOADED BEFORE ANY SLOT IS ACTUATED. When this run wrote a file, the manager
+// is reloaded first, so an activation starts the unit the fragment just declared rather than a stale
+// one. The answer is the run's own typed reload standing (RunnerHostManagerReload), never a slot result.
+fn runner_host_pre_actuation_reload(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: RunnerHostFileConvergeMode,
+  privilege: RunnerHostPrivilegeStanding,
+  results: List<RunnerHostFileResult>,
+) -> RunnerHostManagerReload
+{
+  let wrote = any(results, r => match r.outcome {
+    HostFileConvergedByWrite { converged: _ } => true
+    HostFileLeftInPlace => false
+    HostFileWriteRefused { step: _, reason: _ } => false
+    HostFileNotAttempted { reason: _ } => false
+    HostFileNotAppliedObserveOnly => false
+  })
+  if !wrote { ManagerReloadNotOwed } else {
+    match mode {
+      RunnerHostFilesObserveOnly => ManagerReloadOwedNotAttempted { reason: "observe-only" }
+      RunnerHostFilesApply =>
+        match privilege {
+          AdministratorPrivilegeRefused { reason: why } => ManagerReloadOwedNotAttempted { reason: concat("administrator privilege refused: ", why) }
+          AdministratorPrivilegeAvailable => reload_runner_host_manager(subject: subject, context: context)
+        }
+    }
+  }
+}
+
+fn runner_host_manager_reload_settled(r: RunnerHostManagerReload) -> Bool {
+  match r {
+    ManagerReloadNotOwed => true
+    ManagerReloaded => true
+    ManagerReloadRefused { reason: _ } => false
+    ManagerReloadOwedNotAttempted { reason: _ } => false
+  }
+}
+
+// NO SLOT IS STARTED FROM AN UNRELOADED OR UNWRITTEN UNIT FILE. In apply mode the actuations run only
+// when every unit-file write settled and the pre-actuation reload settled; otherwise they are skipped
+// whole, the CPU drop-in is withheld with them, and the run refuses on the cause.
+type RunnerHostActuationAdmission
+  = ActuationAdmitted
+  | ActuationSkipped { cause: String }
+
+fn runner_host_actuation_admission(results: List<RunnerHostFileResult>, pre_reload: RunnerHostManagerReload) -> RunnerHostActuationAdmission {
+  let unsettled = filter(results, r => !runner_host_file_outcome_settled(outcome: r.outcome))
+  if length(unsettled) > 0 {
+    ActuationSkipped { cause: join(["unit files not converged: ", join(map(unsettled, r => r.planned.file.subject as String), ",")], "") }
+  } else if !runner_host_manager_reload_settled(r: pre_reload) {
+    ActuationSkipped { cause: concat("the pre-actuation reload did not settle: ", runner_host_manager_reload_wire(reload: pre_reload)) }
+  } else {
+    ActuationAdmitted
+  }
+}
+
 fn run_runner_host_files(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -1766,21 +1910,26 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_runner_host_administrator_privilege(subject: subject, context: context)
-  let planned = map(files, f => plan_runner_host_file(subject: subject, context: context, file: f))
-  let results = map(planned, p =>
-    RunnerHostFileResult {
-      planned: p,
-      outcome: match mode {
-        RunnerHostFilesObserveOnly => HostFileNotAppliedObserveOnly
-        RunnerHostFilesApply =>
-          match privilege {
-            AdministratorPrivilegeRefused { reason: why } => HostFileNotAttempted { reason: concat("administrator privilege refused: ", why) }
-            AdministratorPrivilegeAvailable => apply_runner_host_file(subject: subject, context: context, planned: p)
-          }
-      },
-    })
+  // ORDER (review on ff67e67949): every file but the CPU drop-in is written first and the manager
+  // reloaded, so a fresh host has the unit fragment before a slot is activated and converges in one
+  // pass; then the slots are actuated; only then is the CPU drop-in written, gated on every actuation
+  // having settled, so no host carries the committed-width quota over fewer running slots.
+  let unit_files = filter(files, f => (f.path as String) != (gunbc_runner_per_slot_cpu_dropin_path as String))
+  let unit_results = map(unit_files, f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+  let pre_reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: unit_results)
+  let admission = match mode {
+    RunnerHostFilesObserveOnly => ActuationAdmitted
+    RunnerHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
+  }
+  let actuations = match admission {
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege)
+    ActuationSkipped { cause: _ } => []
+  }
+  let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
+  let cpu_results = map(filter(gated.files, f => (f.path as String) == (gunbc_runner_per_slot_cpu_dropin_path as String)), f => runner_host_file_result(subject: subject, context: context, mode: mode, privilege: privilege, file: f))
+  let results = concat(unit_results, cpu_results)
   let residue_observed = observe_retired_residue(subject: subject, context: context, residue: ctrl_jobserver_retired_residue)
-  let fragment_delivered = runner_host_files_deliver_fragment(files: files)
+  let fragment_delivered = runner_host_files_deliver_fragment(files: gated.files)
   let expect = runner_slot_expectation(per_slot: per_slot, fragment_delivered: fragment_delivered, residue_absent: match residue_observed {
     ResidueAbsent => true
     ResiduePresent { unit_known: _, present: _ } => false
@@ -1795,7 +1944,7 @@ fn run_runner_host_files(
     ManagerReloadOwedNotAttempted { reason: _ } => before
   }
   let gate = residue_retirement_gate(
-    withheld: withheld,
+    withheld: gated.withheld,
     fragment_delivered: fragment_delivered && all(results, r => runner_host_file_outcome_settled(outcome: r.outcome)),
     slots_effective: runner_slot_population_effective(population: slots),
   )
@@ -1804,7 +1953,10 @@ fn run_runner_host_files(
     mode: mode,
     privilege: privilege,
     results: results,
-    withheld: withheld,
+    withheld: gated.withheld,
+    pre_actuation_reload: pre_reload,
+    actuation_admission: admission,
+    actuations: actuations,
     residue: converge_retired_residue(subject: subject, context: context, mode: mode, privilege: privilege, residue: ctrl_jobserver_retired_residue, observed: residue_observed, gate: gate),
     reload: reload,
     slots: slots,
@@ -1851,6 +2003,9 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
     RunnerHostFilesApply =>
       all(run.results, r => runner_host_file_outcome_settled(outcome: r.outcome))
         && length(run.withheld) == 0
+        && runner_host_manager_reload_settled(r: run.pre_actuation_reload)
+        && (match run.actuation_admission { ActuationAdmitted => true ActuationSkipped { cause: _ } => false })
+        && all(run.actuations, a => slot_actuation_settled(o: a))
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
@@ -1894,10 +2049,13 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "host=", run.subject.host as String,
     " mode=", runner_host_file_run_mode_wire(mode: run.mode),
     " principal=", run.subject.target.principal as String,
-    " endpoint=", run.subject.target.endpoint as String, "\n",
+    " endpoint=", ssh_target_wire(target: run.subject.target) as String, "\n",
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
+    match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },
+    join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
     retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",
     runner_slot_population_text(population: run.slots),

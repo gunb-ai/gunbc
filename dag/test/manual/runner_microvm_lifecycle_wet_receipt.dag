@@ -8,7 +8,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, systemd_unit_property_wire, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
 }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 
@@ -63,7 +63,7 @@ import gunbc.runner.runner_microvm_lifecycle_realize {
 data wet_slice: NonEmptyStr = "gunbc-wetlifecycle.slice"
 
 fn wet_slice_property() -> SystemdRunProperty {
-  SystemdRunProperty { property: SliceProperty, value: wet_slice }
+  NamedUnitSetting { property: SliceProperty, value: wet_slice }
 }
 
 fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool

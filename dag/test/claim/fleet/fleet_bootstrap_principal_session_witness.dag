@@ -1,5 +1,7 @@
 module test.claim.fleet.fleet_bootstrap_principal_session_witness
 
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import std.types { Bool, List, String, NonEmptyStr }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user, fleet_bootstrap_principal_login }
 import gunbc.host.host_cli_dependency { HostCliDependencyAbsence }
@@ -133,7 +135,7 @@ test fn the_credential_environment_variable_names_a_file_and_not_a_secret() -> B
 // hermetic mocks answer with different stdout, so the operation is observable rather than inferred --
 // and the bootstrap assertion below is RED against the pre-repair code, where this principal reached
 // the key transport.
-data witness_bootstrap_target_endpoint: NonEmptyStr = "srv-test.example" as NonEmptyStr
+data witness_bootstrap_target_address: SocketAddress = socket_address(host: host_by_name(name: HostName { name: DomainName { labels: ["srv-test" as DnsLabel, "example" as DnsLabel] }, qualification: PartiallyQualified }), port: 22)
 
 fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredentialLocus) -> String? {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
@@ -144,7 +146,7 @@ fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredenti
         Present { value: words } =>
           match exec_as_fleet_principal_with_stdin_observed(
             context: context,
-            target: SshTarget { endpoint: witness_bootstrap_target_endpoint, principal: principal },
+            target: SshTarget { address: witness_bootstrap_target_address, principal: principal },
             words: words,
             stdin_payload: "",
             credential: credential,
@@ -220,7 +222,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
           match exec_as_fleet_principal_with_stdin_observed(
             context: context,
             target: SshTarget {
-              endpoint: witness_bootstrap_target_endpoint,
+              address: witness_bootstrap_target_address,
               principal: fleet_bootstrap_principal_login(),
             },
             words: words,

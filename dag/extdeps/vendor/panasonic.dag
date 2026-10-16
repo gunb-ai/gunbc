@@ -1,0 +1,33 @@
+module extdeps.vendor.panasonic
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-15 from the ZUU-series capacitor datasheet (dated 01-Sep-25), whose notices name the
+// issuer "Panasonic Industry". The corporate suffix is not printed there, and the company's own site
+// answered 403 to the fetch made while authoring this module, so the name is carried exactly as the
+// datasheet prints it rather than completed from memory.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "industrial.panasonic.com/cdbs/www-data/pdf/RDD0000/ast-ind-280898.pdf"
+  }
+}
+
+data panasonic: Vendor<Hardware> = Vendor { legal_name: "Panasonic Industry" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.panasonic",
+      decl_name: "panasonic",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

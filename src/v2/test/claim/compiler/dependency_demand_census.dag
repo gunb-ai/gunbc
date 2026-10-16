@@ -2,7 +2,7 @@ module v2.test.claim.compiler.dependency_demand_census
 
 import std.algebra { Cons, Empty, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.compile { native_demand_census_report }
+import v2.compiler.source_root_eval { native_demand_census_report }
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.dependency_demand { FunctionValueCalled, OpaqueOperationCalled }
 import v2.compiler.dependency_demand_census {
@@ -61,7 +61,7 @@ import v2.std.text { String }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (DESIGN section 3). The boundary these claims
-// discriminate is v2.compiler.compile native_demand_census_report over an ingest, so its input --
+// discriminate is v2.compiler.source_root_eval native_demand_census_report over an ingest, so its input --
 // source bytes -- is constructed, and everything above it is the production front end, the real
 // resolver and the D13 reducer. The fixture is a closed ingest whose uses fns are
 // the controlled population the count-conservation claim is grounded in (DESIGN section 5: a literal

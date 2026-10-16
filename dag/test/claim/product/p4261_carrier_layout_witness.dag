@@ -2,116 +2,723 @@ module test.claim.product.p4261_carrier_layout_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { volt, volt_count, ampere }
-import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage, FuseInterruptRating }
+import std.measure { volt, volt_count }
+import product.placement_supply { physical_asset_identity_eq }
+import gunbc.fleet.fleet_asset_identity { p4261_k1_a, p4261_e1_b }
+import extdeps.electronic_component.types { ElectronicComponentRow, CapacitorSpec, CapacitorSpecification }
+import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
+import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
+import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  TerminalIdentity,
+  ElectricalTerminalRef,
+  ElectricalNet,
+  component_instance_identity,
+  component_identity_eq,
+  terminal_ref,
+  terminal_ref_equal,
+  net_identity,
+  net_contains_terminal,
+}
+import product.electrical.continuity {
+  ContinuityObservation,
+  ContinuityResult,
+  DiodeModeObservation,
+  DiodeDisplay,
+  OverLimit,
+  BuzzerAsserted,
+  BuzzerNotAsserted,
+  both_points_recorded,
+  PointRecorded,
+  PointInferred,
+  ReadAboveThreshold,
+  reachability_text,
+  RedBlack,
+  ForwardMillivolts,
+  EvidenceRef,
+  OperatorStatement,
+  OperatorPhotograph,
+  RecordedPointsOnly,
+  IncludesInferredPoints,
+  JunctionForward,
+  JunctionContradicted,
+  ReverseUnread,
+  ReverseOverLimit,
+  reachability,
+  is_reachable,
+  is_inferred,
+  junction_between,
+}
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
-  ObservedComponent,
-  PathMembership,
-  RatingPrintedOnBody,
+  InstalledComponent,
+  MeasuredBoard,
+  InputConnector,
+  ConnectorHousing,
+  HousingPosition,
+  ManagementIoSurvey,
+  WholeBoardPhotographed,
+  RowSide,
+  LatchSide,
+  AwayFromLatch,
+  SideUnrecorded,
+  PolarityEstablished,
+  PolarityContradicted,
+  PolarityUnestablished,
+  NoMeasuredBoard,
+  SidesUnrecorded,
+  AcrossInputStanding,
+  AcrossInput,
+  AcrossInputContradicted,
+  AcrossInputUnestablished,
+  TerminalsNotPlaced,
+  InputPolarityNotEstablished,
+  InputBoundStanding,
+  BoundEstablished,
+  BoundContradicted,
+  BoundUnestablished,
+  IdentifiedByMarking,
+  MarkingSharedByMakers,
   MarkingUnresolved,
-  MainInputPath,
-  AuxiliaryInputPath,
-  OnPathByAdjacency,
-  RatingAcrossInputRail,
-  BoundByRatedParts,
-  NoEstablishedBound,
+  MarkingReading,
   p4261_k1_layout,
-  p4261_main_bus_hypothesis,
-  path_bound,
+  p4261_e1_layout,
+  e1_measured,
+  e1_input,
+  e1_j20_housing,
+  e1_j20,
+  e1_f1,
+  e1_d2,
+  e1_d5,
+  e1_c10,
+  e1_c12,
+  e1_third_can,
+  e1_f300,
+  e1_f300_one,
+  e1_f302_one,
+  e1_d2_near,
+  e1_d2_far,
+  e1_d5_top,
+  e1_d5_bottom,
+  e1_f1_near,
+  e1_f1_far,
+  e1_rail_ref,
+  e1_ground_ref,
+  e1_bench,
+  k1_design,
+  input_polarity,
+  polarity_grade,
+  CarrierFinding,
+  J20ContactInventory,
+  J20Polarity,
+  ComponentAcrossInput,
+  ComponentIdentified,
+  InputUpperBound,
+  carrier_finding,
+  is_finding_established,
+  input_bound,
+  across_input,
+  shared_withstand,
+  side_terminals,
+  j20_position_count,
   carrier_input_reading,
+  management_io_text,
 }
 
-// THE REAL PATH: every rated part on the K1's main path was placed by adjacency in a photograph, so no
-// part's rating is shown to apply across the input rail and the photographs establish NO input bound.
-// The 75 V fuse rating is carried as an observation and named, never promoted to a ceiling.
-test fn the_photographs_establish_no_input_bound() -> Bool {
-  match path_bound(layout: p4261_k1_layout, path: MainInputPath) {
-    NoEstablishedBound { observed_ratings: rs } =>
-      any(rs, r => (r as String).contains("75 V fuse voltage rating, placed by adjacency only"))
-        && any(rs, r => (r as String).contains("100 V drain-source maximum"))
-    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
-  }
-}
+// ── HELPERS ───────────────────────────────────────────────────────────────────────────────────
 
-// The auxiliary path's rated-looking parts are the 12 A fuse (no voltage printed) and capacitors whose
-// code is NOT decoded: nothing rated, so nothing observed and nothing bounded.
-test fn undecoded_capacitors_bound_nothing() -> Bool {
-  match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
-    NoEstablishedBound { observed_ratings: rs } => count(rs) == 0
-    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
-  }
-}
-
-fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
+fn layout_with(base: CarrierLayoutObservation, components: List<InstalledComponent>, measured: MeasuredBoard?, input: InputConnector?) -> CarrierLayoutObservation {
   CarrierLayoutObservation {
-    labels: p4261_k1_layout.labels,
-    module_receptacles: p4261_k1_layout.module_receptacles,
-    main_input_connectors: p4261_k1_layout.main_input_connectors,
-    auxiliary_connector: p4261_k1_layout.auxiliary_connector,
-    auxiliary_connector_positions: p4261_k1_layout.auxiliary_connector_positions,
-    edge_high_speed_connectors: p4261_k1_layout.edge_high_speed_connectors,
-    management_io_observed: p4261_k1_layout.management_io_observed,
-    power_components: concat(p4261_k1_layout.power_components, [c]),
-    unresolved_parts: p4261_k1_layout.unresolved_parts,
+    asset: base.asset,
+    design: base.design,
+    markings: base.markings,
+    module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors,
+    j20: base.j20,
+    j20_calipers: base.j20_calipers,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: base.management_io_survey,
+    management_io: base.management_io,
+    components: components,
+    measured: measured,
+    input: input,
+    unresolved: base.unresolved,
   }
 }
 
-fn rated_part(volts: Nat, kind_is_fuse: Bool, membership: PathMembership) -> ObservedComponent {
-  ObservedComponent {
-    designators: [],
-    quantity: 1,
-    role: "supplied part",
-    identification: RatingPrintedOnBody {
-      voltage: Present { value: ComponentVoltageRating { kind: if kind_is_fuse { FuseInterruptRating } else { CapacitorRatedVoltage }, maximum: volt(count: volts) } },
-      current: Absent,
-      marking_read: "supplied",
+fn e1_with_continuity(cs: List<ContinuityObservation>) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: cs, diode_readings: e1_measured.diode_readings } }, input: p4261_e1_layout.input)
+}
+
+fn component_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
+  filter(layout.components, x => component_identity_eq(a: x.component, b: c))
+}
+
+fn placement_of(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> List<AcrossInputStanding> {
+  map(component_of(layout: layout, c: c), x => across_input(layout: layout, c: x))
+}
+
+fn is_unplaced(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => false
+    AcrossInputContradicted { component: _, readings: _ } => false
+    AcrossInputUnestablished { component: _, gap } => match gap {
+      TerminalsNotPlaced => true
+      _ => false
+    }
+  }
+}
+
+fn bound_volts(b: InputBoundStanding) -> Nat {
+  match b {
+    BoundEstablished { bound, equally_limiting: _, observed: _ } => volt_count(v: bound.rated.maximum)
+    BoundContradicted { contradicted: _, observed: _ } => 0
+    BoundUnestablished { observed: _ } => 0
+  }
+}
+
+fn bound_limiter_is(b: InputBoundStanding, c: ComponentInstanceIdentity) -> Bool {
+  match b {
+    BoundEstablished { bound, equally_limiting: _, observed: _ } => component_identity_eq(a: bound.limiting_component, b: c)
+    BoundContradicted { contradicted: _, observed: _ } => false
+    BoundUnestablished { observed: _ } => false
+  }
+}
+
+fn bound_ties(b: InputBoundStanding) -> List<ComponentInstanceIdentity> {
+  match b {
+    BoundEstablished { bound: _, equally_limiting, observed: _ } => map(equally_limiting, x => x.limiting_component)
+    BoundContradicted { contradicted: _, observed: _ } => []
+    BoundUnestablished { observed: _ } => []
+  }
+}
+
+fn is_unestablished_bound(b: InputBoundStanding) -> Bool {
+  match b {
+    BoundEstablished { bound: _, equally_limiting: _, observed: _ } => false
+    BoundContradicted { contradicted: _, observed: _ } => false
+    BoundUnestablished { observed: _ } => true
+  }
+}
+
+fn supplied_said() -> EvidenceRef {
+  OperatorStatement { stated_on: "supplied", verbatim: "supplied" }
+}
+
+fn read(a: ElectricalTerminalRef, b: ElectricalTerminalRef, result: ContinuityResult) -> ContinuityObservation {
+  ContinuityObservation { asset: p4261_e1_b, first: a, second: b, record: both_points_recorded, conditions: e1_bench, result: result, evidence: supplied_said() }
+}
+
+fn positive_term() -> TerminalIdentity {
+  "positive" as TerminalIdentity
+}
+
+fn negative_term() -> TerminalIdentity {
+  "negative" as TerminalIdentity
+}
+
+// ── THE K1: its listing photographs, and nothing measured on another board ───────────────────
+
+// The K1 has no measured board, so every rated part is an observed rating with no placement and the
+// photographs establish NO bound; the 75 V fuse and the 100 V MOSFETs are carried, never promoted.
+test fn the_photographs_establish_no_input_bound() -> Bool {
+  match input_bound(layout: p4261_k1_layout) {
+    BoundUnestablished { observed } =>
+      any(observed, o => volt_count(v: o.rated.maximum) == 75) && any(observed, o => volt_count(v: o.rated.maximum) == 100)
+        && all(observed, o => match o.placement {
+          AcrossInputUnestablished { component: _, gap } => match gap {
+            InputPolarityNotEstablished => true
+            _ => false
+          }
+          AcrossInput { component: _, on_fused: _, on_return: _, fused_path: _, return_path: _ } => false
+          AcrossInputContradicted { component: _, readings: _ } => false
+        })
+    BoundEstablished { bound: _, equally_limiting: _, observed: _ } => false
+    BoundContradicted { contradicted: _, observed: _ } => false
+  }
+}
+
+// A READING ON THE E1 CANNOT QUALIFY THE K1. The K1 given the E1's very readings and J20 mapping still
+// derives nothing: every reading names the E1 asset, and the K1's board is the K1 asset.
+test fn a_reading_on_the_e1_cannot_qualify_the_k1() -> Bool {
+  let k1_given_e1 = layout_with(base: p4261_k1_layout, components: p4261_k1_layout.components,
+    measured: Present { value: MeasuredBoard { asset: p4261_k1_a, continuity: e1_measured.continuity, diode_readings: e1_measured.diode_readings } },
+    input: Present { value: e1_input })
+  let unpolarized = match input_polarity(layout: k1_given_e1) {
+    PolarityUnestablished { gaps: _ } => true
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
+    PolarityContradicted { readings: _ } => false
+  }
+  unpolarized && is_unestablished_bound(b: input_bound(layout: k1_given_e1))
+    && j20_position_count(layout: p4261_k1_layout) == 16
+    && physical_asset_identity_eq(a: e1_measured.asset, b: p4261_e1_b)
+}
+
+// TWO COMPONENTS WITH ONE LOCAL LABEL ON TWO DESIGNS DO NOT JOIN. The K1's D2 and the E1's D2 share a
+// label and are different identities; a reading between K1-design terminals filed on the E1 asset
+// joins nothing on the E1, so its bound is unchanged.
+test fn identical_labels_on_another_design_do_not_join() -> Bool {
+  let k1_d2 = component_instance_identity(design: k1_design, local_identity: "D2")
+  let k1_j20 = component_instance_identity(design: k1_design, local_identity: "J20")
+  let stray = read(a: terminal_ref(component: k1_j20, terminal: e1_ground_ref.terminal), b: terminal_ref(component: k1_d2, terminal: e1_d2_near.terminal), result: BuzzerAsserted)
+  let with_stray = e1_with_continuity(cs: concat(e1_measured.continuity, [stray]))
+  !component_identity_eq(a: k1_d2, b: e1_d2)
+    && !terminal_ref_equal(a: terminal_ref(component: k1_d2, terminal: e1_d2_near.terminal), b: e1_d2_near)
+    && bound_volts(b: input_bound(layout: with_stray)) == 60
+    && bound_limiter_is(b: input_bound(layout: with_stray), c: e1_d2)
+}
+
+// ── THE E1: polarity, placement and the bound ───────────────────────────────────────────────
+
+fn row_is(s: RowSide, away: Bool) -> Bool {
+  match s {
+    AwayFromLatch => away
+    LatchSide => !away
+    SideUnrecorded => false
+  }
+}
+
+fn housing_with_sides(latch_row: RowSide, away_row: RowSide) -> ConnectorHousing {
+  ConnectorHousing {
+    component: e1_j20_housing.component,
+    positions: map(e1_j20_housing.positions, p => HousingPosition {
+      terminal: p.terminal,
+      side: match p.side {
+        LatchSide => latch_row
+        AwayFromLatch => away_row
+        SideUnrecorded => SideUnrecorded
+      },
+      index: p.index,
+    }),
+    sides_evidence: e1_j20_housing.sides_evidence,
+  }
+}
+
+fn e1_with_housing(h: ConnectorHousing) -> CarrierLayoutObservation {
+  layout_with(base: p4261_e1_layout, components: p4261_e1_layout.components, measured: p4261_e1_layout.measured, input: Present { value: InputConnector { housing: h, fuse_terminal: e1_input.fuse_terminal } })
+}
+
+// J20'S POLARITY IS DERIVED, AND SAYS WHAT IT RESTS ON. The fused contacts are the row away from the
+// latch, the return contacts the latch side, separated by silent (above-threshold) readings to ground on the fused side;
+// the return-side readings have inferred second points, and the standing carries them. The same
+// positions recorded on the opposite sides read the other way round; a side left unrecorded refuses;
+// the K1 has no measured board.
+test fn j20_polarity_is_derived_from_the_readings() -> Bool {
+  let e1 = match input_polarity(layout: p4261_e1_layout) {
+    PolarityEstablished { fused_side, return_side, fused: _, returns, isolation } =>
+      row_is(s: fused_side, away: true) && row_is(s: return_side, away: false)
+        && any(returns, o => is_inferred(o: o)) && count(isolation) > 0
+    PolarityContradicted { readings: _ } => false
+    PolarityUnestablished { gaps: _ } => false
+  }
+  let swapped = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: AwayFromLatch, away_row: LatchSide))) {
+    PolarityEstablished { fused_side, return_side: _, fused: _, returns: _, isolation: _ } => row_is(s: fused_side, away: false)
+    PolarityContradicted { readings: _ } => false
+    PolarityUnestablished { gaps: _ } => false
+  }
+  let unrecorded = match input_polarity(layout: e1_with_housing(h: housing_with_sides(latch_row: LatchSide, away_row: SideUnrecorded))) {
+    PolarityUnestablished { gaps } => any(gaps, g => match g {
+      SidesUnrecorded => true
+      _ => false
+    })
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
+    PolarityContradicted { readings: _ } => false
+  }
+  let k1 = match input_polarity(layout: p4261_k1_layout) {
+    PolarityUnestablished { gaps } => any(gaps, g => match g {
+      NoMeasuredBoard => true
+      _ => false
+    })
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
+    PolarityContradicted { readings: _ } => false
+  }
+  e1 && swapped && unrecorded && k1
+}
+
+fn placed_d2(s: AcrossInputStanding) -> Bool {
+  match s {
+    AcrossInput { component: _, on_fused, on_return, fused_path, return_path } =>
+      terminal_ref_equal(a: on_fused, b: e1_d2_near) && terminal_ref_equal(a: on_return, b: e1_d2_far) && count(fused_path) > 0 && count(return_path) > 0
+    AcrossInputContradicted { component: _, readings: _ } => false
+    AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+// EACH READING IS COUNTED ONCE. Every contact on an established side reaches one class, so the polarity's
+// readings are that class's, taken once: the inferred readings it rests on can never outnumber the
+// board's own inferred readings, which they would if each contact carried the class again.
+test fn each_reading_is_counted_once() -> Bool {
+  let board = count(filter(e1_measured.continuity, o => is_inferred(o: o)))
+  match polarity_grade(p: input_polarity(layout: p4261_e1_layout)) {
+    IncludesInferredPoints { readings } => count(readings) > 0 && count(readings) <= board
+    RecordedPointsOnly => false
+  }
+}
+
+// THE BOUND CARRIES TYPED CAUSES. D2 and D5, each a 5PGK-class TVS with its tabs read to the two sides,
+// bound J20 at 60 V; the bound names D2 as limiting, D5 as equally limiting, J20 as the input and the
+// E1 as the asset, D2's fused-side and return-side terminals, and the grade of the readings it rests on.
+test fn the_bound_carries_typed_causes() -> Bool {
+  match input_bound(layout: p4261_e1_layout) {
+    BoundEstablished { bound, equally_limiting, observed: _ } =>
+      volt_count(v: bound.rated.maximum) == 60
+        && component_identity_eq(a: bound.limiting_component, b: e1_d2)
+        && component_identity_eq(a: bound.input_connector, b: e1_j20)
+        && physical_asset_identity_eq(a: bound.asset, b: p4261_e1_b)
+        && any(equally_limiting, x => component_identity_eq(a: x.limiting_component, b: e1_d5))
+        && placed_d2(s: bound.placement)
+        && match bound.grade {
+          IncludesInferredPoints { readings } => count(readings) > 0
+          RecordedPointsOnly => false
+        }
+    BoundContradicted { contradicted: _, observed: _ } => false
+    BoundUnestablished { observed: _ } => false
+  }
+}
+
+fn is_zu1j151(c: InstalledComponent) -> Bool {
+  match c.identification {
+    IdentifiedByMarking { row, marking: _ } => (row.ordering_code as String).contains("EEH-ZU1J151")
+    _ => false
+  }
+}
+
+fn is_unresolved_marking(c: InstalledComponent) -> Bool {
+  match c.identification {
+    MarkingUnresolved { marking: _, discriminator: _ } => true
+    _ => false
+  }
+}
+
+// THE CANS ARE NOT ACROSS J20, AND THE UNPROBED ONE INHERITS NOTHING. C10_P5 and C12_P5 are two
+// instances identified by their own markings, their negatives on ground and their positives read silent
+// to the rail, so neither is placed. The third can has no reading and no decoded marking: no rating,
+// no placement, nothing from its neighbours.
+test fn the_capacitors_do_not_bound_and_the_third_inherits_nothing() -> Bool {
+  let caps = filter(p4261_e1_layout.components, c => is_zu1j151(c: c))
+  let third = component_of(layout: p4261_e1_layout, c: e1_third_can)
+  count(caps) == 2
+    && all(caps, c => is_unplaced(s: across_input(layout: p4261_e1_layout, c: c)))
+    && count(third) == 1
+    && all(third, c => is_unplaced(s: across_input(layout: p4261_e1_layout, c: c)) && is_unresolved_marking(c: c))
+}
+
+fn shared_marking_evidence(c: ComponentInstanceIdentity) -> List<String> {
+  flat_map(component_of(layout: p4261_e1_layout, c: c), x => match x.identification {
+    MarkingSharedByMakers { rows: _, marking } => [evidence_text(e: marking.evidence)]
+    _ => []
+  })
+}
+
+fn evidence_text(e: EvidenceRef) -> String {
+  match e {
+    OperatorStatement { stated_on, verbatim } => join([stated_on as String, verbatim as String], " ")
+    OperatorPhotograph { taken_on, locator } => join([taken_on as String, locator as String], " ")
+    _ => "listing"
+  }
+}
+
+fn with_d5_unread(c: InstalledComponent) -> InstalledComponent {
+  if component_identity_eq(a: c.component, b: e1_d5) {
+    InstalledComponent { component: c.component, terminals: c.terminals, identification: MarkingUnresolved { marking: Absent, discriminator: "supplied: unread" } }
+  } else { c }
+}
+
+// D5 CANNOT INHERIT D2'S IDENTITY. Each carries its own marking receipt (different photographs); D5
+// re-declared with its marking unread drops out of the bound, which D2 then limits alone.
+test fn d5_cannot_inherit_d2s_identity() -> Bool {
+  let d2_evidence = shared_marking_evidence(c: e1_d2)
+  let d5_evidence = shared_marking_evidence(c: e1_d5)
+  let b = input_bound(layout: layout_with(base: p4261_e1_layout, components: map(p4261_e1_layout.components, c => with_d5_unread(c: c)), measured: p4261_e1_layout.measured, input: p4261_e1_layout.input))
+  count(d2_evidence) == 1 && count(d5_evidence) == 1 && all(d2_evidence, x => all(d5_evidence, y => x != y))
+    && bound_limiter_is(b: b, c: e1_d2) && count(bound_ties(b: b)) == 0
+}
+
+fn low_can_row() -> ElectronicComponentRow {
+  ElectronicComponentRow {
+    vendor: eeh_zu1j151.vendor,
+    ordering_code: "supplied 16 V can",
+    package: "supplied",
+    top_marking: "supplied",
+    specification: CapacitorSpec { capacitor: CapacitorSpecification { capacitance_microfarads: 100, rated_voltage: volt(count: 16) } },
+    vendor_application_statements: [],
+  }
+}
+
+// A RATING COUNTS ONLY ACROSS THE INPUT. F300's 75 V is observed with its placement unestablished --
+// both its ends are on the fused side -- so it bounds nothing and the bound stays 60 V. A supplied
+// 16 V can read across the two sides lowers the bound to 16 V; the same can with no readings does not.
+test fn only_a_rating_across_the_input_bounds_it() -> Bool {
+  let f300 = placement_of(layout: p4261_e1_layout, c: e1_f300)
+  let low = component_instance_identity(design: e1_d2.design, local_identity: "supplied 16 V can")
+  let low_part = InstalledComponent { component: low, terminals: [positive_term(), negative_term()], identification: IdentifiedByMarking { row: low_can_row(), marking: MarkingReading { text: "supplied", evidence: supplied_said() } } }
+  let low_pos = terminal_ref(component: low, terminal: positive_term())
+  let low_neg = terminal_ref(component: low, terminal: negative_term())
+  let with_low = concat(p4261_e1_layout.components, [low_part])
+  let placed = layout_with(base: p4261_e1_layout, components: with_low, measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: concat(e1_measured.continuity, [read(a: low_pos, b: e1_rail_ref, result: BuzzerAsserted), read(a: low_neg, b: e1_ground_ref, result: BuzzerAsserted)]), diode_readings: e1_measured.diode_readings } }, input: p4261_e1_layout.input)
+  let unread = layout_with(base: p4261_e1_layout, components: with_low, measured: p4261_e1_layout.measured, input: p4261_e1_layout.input)
+  count(f300) == 1 && all(f300, s => is_unplaced(s: s))
+    && bound_volts(b: input_bound(layout: p4261_e1_layout)) == 60
+    && bound_volts(b: input_bound(layout: placed)) == 16 && bound_limiter_is(b: input_bound(layout: placed), c: low)
+    && bound_volts(b: input_bound(layout: unread)) == 60
+}
+
+fn moved_to(o: ContinuityObservation, from: ElectricalTerminalRef, to: ElectricalTerminalRef) -> ContinuityObservation {
+  if terminal_ref_equal(a: o.first, b: from) {
+    ContinuityObservation { asset: o.asset, first: to, second: o.second, record: o.record, conditions: o.conditions, result: o.result, evidence: o.evidence }
+  } else { o }
+}
+
+// MOVING A TERMINAL IDENTITY -- NOT A LABEL -- TURNS THE DEDUCTION RED. The reading that put D2's farther
+// tab on ground, re-filed against the third can's negative terminal, leaves D2 unplaced; the bound is
+// then D5's alone.
+test fn moving_a_terminal_identity_turns_the_deduction_red() -> Bool {
+  let third_neg = terminal_ref(component: e1_third_can, terminal: negative_term())
+  let l = e1_with_continuity(cs: map(e1_measured.continuity, o => moved_to(o: o, from: e1_d2_far, to: third_neg)))
+  all(placement_of(layout: l, c: e1_d2), s => is_unplaced(s: s))
+    && bound_limiter_is(b: input_bound(layout: l), c: e1_d5) && count(bound_ties(b: input_bound(layout: l))) == 0
+}
+
+fn rl_c(c: ComponentInstanceIdentity) -> ComponentInstanceIdentity {
+  component_instance_identity(design: c.design, local_identity: join(["relabelled ", c.local_identity as String], "") as NonEmptyStr)
+}
+
+fn rl_t(t: TerminalIdentity) -> TerminalIdentity {
+  (join(["relabelled ", t as String], "") as NonEmptyStr) as TerminalIdentity
+}
+
+fn rl_ref(r: ElectricalTerminalRef) -> ElectricalTerminalRef {
+  terminal_ref(component: rl_c(c: r.component), terminal: rl_t(t: r.terminal))
+}
+
+fn rl_obs(o: ContinuityObservation) -> ContinuityObservation {
+  ContinuityObservation { asset: o.asset, first: rl_ref(r: o.first), second: rl_ref(r: o.second), record: o.record, conditions: o.conditions, result: o.result, evidence: o.evidence }
+}
+
+fn rl_diode(o: DiodeModeObservation) -> DiodeModeObservation {
+  DiodeModeObservation {
+    asset: o.asset,
+    probes: match o.probes {
+      RedBlack { red, black } => RedBlack { red: rl_ref(r: red), black: rl_ref(r: black) }
+      _ => o.probes
     },
-    path: MainInputPath,
-    membership: membership,
+    display: o.display,
+    conditions: o.conditions,
+    evidence: o.evidence,
   }
 }
 
-// A BOUND COMES ONLY FROM AN ESTABLISHED RELATION, in both directions. A lower-rated part placed by
-// adjacency -- standing in for a capacitor on a downstream converted rail that shares the region --
-// bounds nothing. The same part with its rating established across the input rail does bound it, and
-// the lowest such rating wins.
-test fn only_a_rating_across_the_input_rail_bounds_it() -> Bool {
-  let adjacent = match path_bound(layout: with_component(c: rated_part(volts: 16, kind_is_fuse: false, membership: OnPathByAdjacency { basis: "supplied: shares the region" })), path: MainInputPath) {
-    NoEstablishedBound { observed_ratings: rs } => any(rs, r => (r as String).contains("16 V capacitor rated voltage, placed by adjacency only"))
-    BoundByRatedParts { maximum: _, limiting: _, relation: _ } => false
-  }
-  let across = RatingAcrossInputRail { evidence: "supplied: traced from the input terminal block" }
-  let one = with_component(c: rated_part(volts: 75, kind_is_fuse: true, membership: across))
-  let bounded = match path_bound(layout: one, path: MainInputPath) {
-    BoundByRatedParts { maximum: m, limiting: _, relation: r } => volt_count(v: m) == 75 && (r as String).contains("traced from the input terminal block")
-    NoEstablishedBound { observed_ratings: _ } => false
-  }
-  let two = CarrierLayoutObservation {
-    labels: one.labels,
-    module_receptacles: one.module_receptacles,
-    main_input_connectors: one.main_input_connectors,
-    auxiliary_connector: one.auxiliary_connector,
-    auxiliary_connector_positions: one.auxiliary_connector_positions,
-    edge_high_speed_connectors: one.edge_high_speed_connectors,
-    management_io_observed: one.management_io_observed,
-    power_components: concat(one.power_components, [rated_part(volts: 63, kind_is_fuse: false, membership: across)]),
-    unresolved_parts: one.unresolved_parts,
-  }
-  let lowest = match path_bound(layout: two, path: MainInputPath) {
-    BoundByRatedParts { maximum: m, limiting: _, relation: _ } => volt_count(v: m) == 63
-    NoEstablishedBound { observed_ratings: _ } => false
-  }
-  adjacent && bounded && lowest
+fn rl_housing(h: ConnectorHousing) -> ConnectorHousing {
+  ConnectorHousing { component: rl_c(c: h.component), positions: map(h.positions, p => HousingPosition { terminal: rl_t(t: p.terminal), side: p.side, index: p.index }), sides_evidence: h.sides_evidence }
 }
 
-// The rendered reading states the input contract as unknown and carries the 48-54 V idea as a sourced
-// hypothesis with what would decide it -- never as a derived class.
-test fn the_reading_names_its_limits() -> Bool {
-  let r = carrier_input_reading(layout: p4261_k1_layout)
-  r.contains("no input bound established")
-    && r.contains("hypothesis, not a derivation: the P4261 main input is a 48-54 V-class bus")
-    && r.contains("The input voltage contract is unknown")
-    && !r.contains("at most")
-    && count(p4261_main_bus_hypothesis.sources) == 2
+fn relabelled_e1() -> CarrierLayoutObservation {
+  layout_with(
+    base: p4261_e1_layout,
+    components: map(p4261_e1_layout.components, c => InstalledComponent { component: rl_c(c: c.component), terminals: map(c.terminals, t => rl_t(t: t)), identification: c.identification }),
+    measured: Present { value: MeasuredBoard { asset: e1_measured.asset, continuity: map(e1_measured.continuity, o => rl_obs(o: o)), diode_readings: map(e1_measured.diode_readings, o => rl_diode(o: o)) } },
+    input: Present { value: InputConnector { housing: rl_housing(h: e1_j20_housing), fuse_terminal: rl_ref(r: e1_input.fuse_terminal) } },
+  )
+}
+
+// CHANGING EVERY LABEL LEAVES THE CONCLUSION UNCHANGED. Every component and terminal identity on the
+// E1 is re-spelled consistently -- components, housing, input, readings, diode readings -- and the
+// bound is still 60 V, limited by the re-spelled D2: the deduction joins identities, not spellings.
+test fn relabeling_cannot_change_a_deduction() -> Bool {
+  let r = relabelled_e1()
+  bound_volts(b: input_bound(layout: r)) == 60
+    && bound_limiter_is(b: input_bound(layout: r), c: rl_c(c: e1_d2))
+    && !bound_limiter_is(b: input_bound(layout: r), c: e1_d2)
+    && carrier_input_reading(layout: r).contains("limited by relabelled D2's TVS reverse standoff")
+}
+
+// CONTINUITY THROUGH AN INTACT FUSE DOES NOT MERGE COPPER NETS, AND F1 STAYS A COMPONENT EDGE. F1's two
+// ends are reachable through the readings; two design nets either side of F1 stay two nets, and F1's
+// ends stay two terminals of one installed two-terminal part.
+test fn continuity_through_a_fuse_does_not_merge_nets() -> Bool {
+  let before = ElectricalNet { identity: net_identity(design: e1_d2.design, local_identity: "supplied: J20 side of F1"), members: [e1_rail_ref, e1_f1_near] }
+  let after = ElectricalNet { identity: net_identity(design: e1_d2.design, local_identity: "supplied: far side of F1"), members: [e1_f1_far, e1_d2_near] }
+  is_reachable(s: reachability(observations: e1_measured.continuity, asset: p4261_e1_b, a: e1_f1_near, b: e1_f1_far))
+    && !net_contains_terminal(net: before, t: e1_f1_far) && !net_contains_terminal(net: after, t: e1_f1_near)
+    && !terminal_ref_equal(a: e1_f1_near, b: e1_f1_far)
+    && count(component_of(layout: p4261_e1_layout, c: e1_f1)) == 1
+    && all(component_of(layout: p4261_e1_layout, c: e1_f1), c => count(c.terminals) == 2)
+}
+
+// CONFLICTING READINGS REFUSE. A supplied beep from D2's nearer tab to ground joins the rail to ground,
+// where F300's ends and the MOSFET's tab were read silent to ground: polarity is contradicted, and nothing
+// is bounded.
+test fn conflicting_readings_refuse() -> Bool {
+  let l = e1_with_continuity(cs: concat(e1_measured.continuity, [read(a: e1_d2_near, b: e1_ground_ref, result: BuzzerAsserted)]))
+  match input_polarity(layout: l) {
+    PolarityContradicted { readings } => count(readings) > 0 && is_unestablished_bound(b: input_bound(layout: l))
+    PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => false
+    PolarityUnestablished { gaps: _ } => false
+  }
+}
+
+// ── JUNCTIONS ─────────────────────────────────────────────────────────────────────────────────
+
+fn diode(red: ElectricalTerminalRef, black: ElectricalTerminalRef, display: DiodeDisplay) -> DiodeModeObservation {
+  DiodeModeObservation { asset: p4261_e1_b, probes: RedBlack { red: red, black: black }, display: display, conditions: e1_bench, evidence: supplied_said() }
+}
+
+// A MISSING REVERSE READING STAYS MISSING, AND CONTRADICTORY DIODE READINGS REFUSE. D2's one forward
+// reading puts its anode on the farther tab and its cathode on the nearer, the reverse unread; a
+// supplied forward reading the other way makes the junction contradicted; a supplied over-limit reverse
+// reading is carried as read. D5's reading puts its anode on its top tab.
+test fn junction_readings_are_raw_and_total() -> Bool {
+  let d2 = junction_between(observations: e1_measured.diode_readings, asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far)
+  let forward_unread = match d2 {
+    JunctionForward { anode, cathode, forward, reverse } => terminal_ref_equal(a: anode, b: e1_d2_far) && terminal_ref_equal(a: cathode, b: e1_d2_near) && count(forward) == 1 && match reverse {
+      ReverseUnread => true
+      _ => false
+    }
+    _ => false
+  }
+  let contradicted = match junction_between(observations: concat(e1_measured.diode_readings, [diode(red: e1_d2_near, black: e1_d2_far, display: ForwardMillivolts { millivolts: 600 })]), asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far) {
+    JunctionContradicted { readings } => count(readings) == 2
+    _ => false
+  }
+  let reverse_read = match junction_between(observations: concat(e1_measured.diode_readings, [diode(red: e1_d2_near, black: e1_d2_far, display: OverLimit)]), asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far) {
+    JunctionForward { anode: _, cathode: _, forward: _, reverse } => match reverse {
+      ReverseOverLimit { readings } => count(readings) == 1
+      _ => false
+    }
+    _ => false
+  }
+  let d5 = match junction_between(observations: e1_measured.diode_readings, asset: p4261_e1_b, a: e1_d5_top, b: e1_d5_bottom) {
+    JunctionForward { anode, cathode, forward: _, reverse: _ } => terminal_ref_equal(a: anode, b: e1_d5_top) && terminal_ref_equal(a: cathode, b: e1_d5_bottom)
+    _ => false
+  }
+  forward_unread && contradicted && reverse_read && d5
+}
+
+// A SILENT BUZZER SEPARATES WITHOUT CLAIMING AN OPEN CIRCUIT. The E1's rail and ground references are
+// separated by no-beep readings and stand ReadAboveThreshold, which keeps the two low-impedance classes
+// apart; D2's forward diode reading conducts across exactly those classes, so the silence cannot be a
+// literal open circuit, and the rendering says "above the continuity threshold", never "open".
+test fn a_silent_buzzer_separates_without_claiming_an_open_circuit() -> Bool {
+  let s = reachability(observations: e1_measured.continuity, asset: p4261_e1_b, a: e1_rail_ref, b: e1_ground_ref)
+  let separated = match s {
+    ReadAboveThreshold { readings } => count(readings) > 0 && all(readings, o => match o.result {
+      BuzzerNotAsserted => true
+      BuzzerAsserted => false
+    })
+    _ => false
+  }
+  let conducts_across = match junction_between(observations: e1_measured.diode_readings, asset: p4261_e1_b, a: e1_d2_near, b: e1_d2_far) {
+    JunctionForward { anode: _, cathode: _, forward: _, reverse: _ } => true
+    _ => false
+  }
+  let text = reachability_text(s: s)
+  separated && conducts_across && !is_reachable(s: s)
+    && text.contains("above the continuity threshold") && !text.contains("open")
+}
+
+// AN ENDPOINT IS RECORDED ONLY WHERE THE OPERATOR NAMED IT. D2's and D5's tabs were named, so their first
+// points are recorded; F300's ends (from "everything i touched") and the MOSFET's middle lead (from "the
+// very middle little small pin") are inferred from the visible population, and both kinds still carry
+// their inferred grade into what they support.
+fn first_point_recorded_for(t: ElectricalTerminalRef) -> List<Bool> {
+  map(filter(e1_measured.continuity, o => terminal_ref_equal(a: o.first, b: t)), o => match o.record.first {
+    PointRecorded => true
+    PointInferred { basis: _ } => false
+  })
+}
+
+test fn population_statements_infer_their_endpoints() -> Bool {
+  let named = concat(concat(first_point_recorded_for(t: e1_d2_near), first_point_recorded_for(t: e1_d2_far)), concat(first_point_recorded_for(t: e1_d5_top), first_point_recorded_for(t: e1_d5_bottom)))
+  let population = concat(first_point_recorded_for(t: e1_f300_one), first_point_recorded_for(t: e1_f302_one))
+  count(named) == 4 && all(named, r => r)
+    && count(population) > 0 && all(population, r => !r)
+    && all(filter(e1_measured.continuity, o => terminal_ref_equal(a: o.first, b: e1_f300_one)), o => is_inferred(o: o))
+}
+
+// A NARROW FINDING STANDS OR FALLS ALONE. On the E1 every finding a consumer cites is established; on the
+// K1 the polarity and the bound are not, and its J20 is only counted. Removing D2's tab readings from the
+// E1 unestablishes D2's placement while J20's inventory and C10's identification stand untouched, so a
+// consumer citing one finding is reopened by that finding and no other.
+test fn a_narrow_finding_stands_or_falls_alone() -> Bool {
+  let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound]
+  let e1_all = all(e1_findings, f => is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: f)))
+  let k1_open = !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20Polarity))
+    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: InputUpperBound))
+    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20ContactInventory))
+  let without_d2 = e1_with_continuity(cs: filter(e1_measured.continuity, o => !terminal_ref_equal(a: o.first, b: e1_d2_near) && !terminal_ref_equal(a: o.first, b: e1_d2_far)))
+  let only_d2_falls = !is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentAcrossInput { component: e1_d2 }))
+    && is_finding_established(s: carrier_finding(layout: without_d2, f: J20ContactInventory))
+    && is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentIdentified { component: e1_c10 }))
+  let unresolved = !is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+  e1_all && k1_open && only_d2_falls && unresolved
+}
+
+// ── IDENTIFICATION AND COUNTS ─────────────────────────────────────────────────────────────────
+
+// A SHARED MARKING SUPPORTS ONLY WHAT EVERY CANDIDATE SUPPORTS: two TVS rows of one standoff yield it;
+// a TVS row beside a MOSFET row -- different kinds of limit -- yields none.
+test fn a_shared_marking_supports_only_what_every_candidate_supports() -> Bool {
+  let same = match shared_withstand(rows: [tvs_5_0smdj60a, tvs_5_0smdj60a]) {
+    Present { value: w } => volt_count(v: w.maximum) == 60
+    Absent => false
+  }
+  let mixed = match shared_withstand(rows: [tvs_5_0smdj60a, ipb017n10n5lf]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  same && mixed
+}
+
+// COUNTS ARE DERIVED. J20's position count is its contact inventory's length -- nine a side -- and the
+// K1's is the photograph count; component counts are counts of instances.
+test fn counts_are_derived_from_inventories() -> Bool {
+  j20_position_count(layout: p4261_e1_layout) == count(e1_j20_housing.positions)
+    && j20_position_count(layout: p4261_e1_layout) == 18
+    && count(side_terminals(h: e1_j20_housing, side: LatchSide)) == 9
+    && count(side_terminals(h: e1_j20_housing, side: AwayFromLatch)) == 9
+    && count(component_of(layout: p4261_e1_layout, c: e1_c10)) == 1
+    && count(component_of(layout: p4261_e1_layout, c: e1_c12)) == 1
+}
+
+// ── THE REPORT IS RENDERED FROM THE TYPED MODEL ───────────────────────────────────────────────
+
+fn with_survey(base: CarrierLayoutObservation, survey: ManagementIoSurvey) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    asset: base.asset,
+    design: base.design,
+    markings: base.markings,
+    module_receptacles: base.module_receptacles,
+    backplane_connectors: base.backplane_connectors,
+    j20: base.j20,
+    j20_calipers: base.j20_calipers,
+    edge_high_speed_connectors: base.edge_high_speed_connectors,
+    management_io_survey: survey,
+    management_io: base.management_io,
+    components: base.components,
+    measured: base.measured,
+    input: base.input,
+    unresolved: base.unresolved,
+  }
+}
+
+// The E1's reading renders its bound, its tie, its evidence grade and the caliper fit from the typed
+// model; the K1's renders no bound and an unestablished polarity. A close-up establishes no absence of
+// management I/O: the same E1 rows re-declared as photographed whole would claim one. The edge
+// receptacle stays a candidate family, and U522's bus pins render as trace targets from typed roles.
+test fn the_report_is_rendered_from_the_typed_model() -> Bool {
+  let e1 = carrier_input_reading(layout: p4261_e1_layout)
+  let k1 = carrier_input_reading(layout: p4261_k1_layout)
+  let e1_io = management_io_text(layout: p4261_e1_layout)
+  e1.contains("at most 60 V, limited by D2's TVS reverse standoff")
+    && e1.contains("equally limited by D5")
+    && e1.contains("readings with a probe point inferred from the operator's words")
+    && e1.contains("caliper spans fit a 3.0 mm pitch and do not fit a 4.2 mm pitch")
+    && k1.contains("no input bound established")
+    && k1.contains("polarity UNESTABLISHED")
+    && !e1_io.contains("shows no RJ45")
+    && management_io_text(layout: with_survey(base: p4261_e1_layout, survey: WholeBoardPhotographed)).contains("shows no RJ45")
+    && management_io_text(layout: p4261_k1_layout).contains("shows no RJ45")
+    && e1_io.contains("USB 3.0 SuperSpeed Micro-B (part number, protocol and role unestablished)")
+    && e1_io.contains("U522 ('TI 31 / T275') is TMP275AIDGKR; trace pins 1 SDA (serial data), 2 SCL (serial clock), 3 ALERT (alert output)")
 }

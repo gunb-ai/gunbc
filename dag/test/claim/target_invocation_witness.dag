@@ -40,6 +40,8 @@ import gunbc.target_binding {
   SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
+  NativeClaimProgramProducer,
+  CliWireProgramProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -95,6 +97,12 @@ import gunbc.instrument_targets {
   shared_type_leaf_collision_census_label,
   cardinality_realization_label,
   regen_round_cost_label,
+  compute_run_unit_cold_label,
+  compute_run_unit_cold_entry,
+  compute_run_unit_cold_function,
+  compute_wrong_capture_label,
+  compute_wrong_capture_entry,
+  compute_wrong_capture_function,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -125,6 +133,8 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// Importing the C1 control makes a resolve failure in it refuse this corpus; the instrument sits outside the required gate closure.
+import gunbc.instruments.compute_wrong_capture { compute_wrong_capture_exit }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
@@ -719,7 +729,7 @@ test fn the_canonicality_cause_reaches_the_rendered_refusal() -> Bool {
 // THE NATIVE ROUTE'S UNIVERSE, SUPPLIED AT THIS BOUNDARY RATHER THAN DERIVED. `admit_test_operand`
 // takes it as a parameter precisely so a claim can author one, and the production caller supplies
 // the pattern the seed parses from the constant `gunbc.native_route_seed_boundary_emit` renders from
-// `gunbc.witness.v2_native_route` `native_route_default_pattern`. Spelling it here means the arms
+// `gunbc.native_route_universe` `native_route_default_pattern`. Spelling it here means the arms
 // below discriminate the CONTAINMENT decision rather than one compiled-in constant.
 fn native_universe() -> extdeps.bazel.target_pattern.TargetPattern {
   SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
@@ -1068,6 +1078,26 @@ test fn the_cardinality_realization_operand_routes_to_its_own_producer() -> Bool
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: cardinality_realization_label())
         && (b.producer == CardinalityRealizationProducer {})
+        && !(b.producer == RegenRoundCostProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-wrong-capture") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_wrong_capture_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() })
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_run_unit_cold_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-run-unit-cold") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_run_unit_cold_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_function() })
+        && !(b.producer == NativeClaimProgramProducer { entry: compute_run_unit_cold_entry() deadline: millisecond(count: 7200000) })
         && !(b.producer == RegenRoundCostProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }

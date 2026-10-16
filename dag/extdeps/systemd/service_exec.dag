@@ -171,6 +171,34 @@ fn exec_command_line(command: ArgvCommand) -> ExecCommandLineRendering {
   }
 }
 
+// AN ARGV WHOSE WORDS MAY ALSO NAME VARIABLES THE UNIT LOADS FROM ITS ENVIRONMENT. systemd substitutes
+// "${NAME}" in a command line from Environment= and EnvironmentFile= as well as from its own stop-time
+// variables (systemd.service(5), "Command lines"). The caller declares which names its unit loads,
+// and a word may carry "${NAME}" only for one of those; the remainder after stripping them must be an
+// admissible literal, exactly as exec_word_is_rendered_expansion reads the modeled variables. An
+// undeclared name, or a "$" anywhere else, refuses.
+fn exec_command_line_with_environment(command: ArgvCommand, environment: List<NonEmptyStr>) -> ExecCommandLineRendering {
+  exec_words_line_with_environment(words: argv_words(command: command), environment: environment)
+}
+
+fn exec_words_line_with_environment(words: List<String>, environment: List<NonEmptyStr>) -> ExecCommandLineRendering {
+  let refused = words |> filter(w => !exec_literal_admissible(text: w) && !exec_word_is_rendered_expansion(word: w)
+    && !exec_word_is_environment_reference(word: w, environment: environment))
+  match refused.first() {
+    Present { value: bad } =>
+      ExecCommandLineRefused { reason: join(["argv word carries a character systemd would read as syntax: ", bad], "") as NonEmptyStr }
+    Absent => match words.first() {
+      Absent => ExecCommandLineRefused { reason: "an empty argv has no program" as NonEmptyStr }
+      Present { value: _ } => ExecCommandLineRendered { line: join(words, " ") as NonEmptyStr }
+    }
+  }
+}
+
+fn exec_word_is_environment_reference(word: String, environment: List<NonEmptyStr>) -> Bool {
+  let stripped = fold(environment, init: word, f: (acc, name) => replace(acc, join(["$", "{", name as String, "}"], ""), ""))
+  stripped != word && exec_literal_admissible(text: stripped)
+}
+
 // THE "+" COMMAND-LINE PREFIX, from the special executable prefixes systemd.service(5) documents
 // ("Command lines"): it runs that one command with full privileges -- outside the unit's file-system
 // namespacing and sandboxing (ProtectSystem=, ProtectHome=, ReadWritePaths= and the rest), while the

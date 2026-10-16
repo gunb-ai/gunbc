@@ -15,7 +15,6 @@ pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_coercion::unicode_scalar_fold;
 pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_optional::Optional;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -640,18 +639,16 @@ pub fn semver_identifier_list_parse(
     segments: Rc<Vec<Rc<Vec<i64>>>>,
     strict_numeric: bool,
 ) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
-    segments
-        .iter()
-        .cloned()
-        .fold(Some(Rc::new(vec![])), |st: _, seg: Rc<Vec<i64>>| {
-            match st.clone() {
+    segments.iter().cloned().fold(
+        Some(Rc::new(vec![])),
+        |st: Option<Rc<Vec<Rc<SemVerIdentifier>>>>, seg: Rc<Vec<i64>>| match st.clone() {
+            std::option::Option::None => std::option::Option::None,
+            Some(acc) => match semver_identifier_parse(seg.clone(), strict_numeric.clone()) {
                 std::option::Option::None => std::option::Option::None,
-                Some(acc) => match semver_identifier_parse(seg.clone(), strict_numeric.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
-                },
-            }
-        })
+                Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
+            },
+        },
+    )
 }
 
 pub fn semver_pre_release_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {

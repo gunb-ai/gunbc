@@ -44,7 +44,6 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
-pub use crate::std_optional::Optional;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -6930,7 +6929,19 @@ pub fn transparent_named_carrier_root(
                         decl.occurrence_identity.clone(),
                         n.occurrence_identity.clone(),
                     ) {
-                        n.clone()
+                        if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                            decl.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            transparent_representation_root(
+                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
+                                env.clone(),
+                                target.clone(),
+                                v1_rt::int_sub(fuel.clone(), 1),
+                            )
+                        } else {
+                            n.clone()
+                        }
                     } else {
                         transparent_representation_root(
                             decl.clone(),

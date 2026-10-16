@@ -1,0 +1,79 @@
+module test.claim.systemd_unit_name_witness
+
+import std.types { Bool, String, Int }
+import extdeps.systemd {
+  systemd_service_unit_name, systemd_unit_name_wire, systemd_service_unit_suffix,
+  systemd_unit_name_max_length,
+  SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
+  SystemdUnitNameOverlong,
+}
+
+fn a_repeat(n: Int) -> String {
+  if n <= 0 {
+    ""
+  } else if n >= 16 {
+    join(["aaaaaaaaaaaaaaaa", a_repeat(n: n - 16)], "")
+  } else {
+    join(["a", a_repeat(n: n - 1)], "")
+  }
+}
+
+test fn an_empty_stem_is_refused() -> Bool {
+  match systemd_service_unit_name(stem: "") {
+    SystemdUnitNameStemEmpty => true
+    SystemdUnitNameAdmitted { name: _ } => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}
+
+test fn a_stem_with_a_space_is_refused() -> Bool {
+  match systemd_service_unit_name(stem: "gunbc-attempt-a b-k") {
+    SystemdUnitNameDisallowedCharacter { stem: s, character: ch } =>
+      s == "gunbc-attempt-a b-k" && ch == " "
+    SystemdUnitNameAdmitted { name: _ } => false
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}
+
+test fn a_stem_with_at_is_refused() -> Bool {
+  match systemd_service_unit_name(stem: "gunbc-attempt-x@y-k") {
+    SystemdUnitNameDisallowedCharacter { stem: _, character: ch } => ch == "@"
+    SystemdUnitNameAdmitted { name: _ } => false
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}
+
+test fn a_name_from_valid_parts_renders_as_the_attempt_unit_join() -> Bool {
+  match systemd_service_unit_name(stem: join(["gunbc-attempt-", "n1", "-", "k1"], "")) {
+    SystemdUnitNameAdmitted { name } =>
+      (systemd_unit_name_wire(name: name) as String)
+        == join(["gunbc-attempt-", "n1", "-", "k1", systemd_service_unit_suffix], "")
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}
+
+test fn a_stem_that_makes_the_unit_name_over_255_is_refused() -> Bool {
+  let stem = a_repeat(n: systemd_unit_name_max_length - string_length(s: systemd_service_unit_suffix) + 1)
+  match systemd_service_unit_name(stem: stem) {
+    SystemdUnitNameOverlong { length: n } => n == systemd_unit_name_max_length + 1
+    SystemdUnitNameAdmitted { name: _ } => false
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+  }
+}
+
+test fn a_stem_at_the_255_character_ceiling_is_admitted() -> Bool {
+  let stem = a_repeat(n: systemd_unit_name_max_length - string_length(s: systemd_service_unit_suffix))
+  match systemd_service_unit_name(stem: stem) {
+    SystemdUnitNameAdmitted { name } =>
+      string_length(s: systemd_unit_name_wire(name: name) as String) == systemd_unit_name_max_length
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}

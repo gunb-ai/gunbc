@@ -26,7 +26,7 @@ import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepar
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
-import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_trees }
+import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_trees }
 import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
@@ -281,7 +281,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
+      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
     }
   )
 }
@@ -325,7 +325,8 @@ fn closure_member_emission(
                 segment: program_segment_whole_program(),
                 target: target,
                 boundary: partition_boundary_fail_closed(),
-                kinds: member.tree.type_declaration_kinds
+                kinds: member.tree.type_declaration_kinds,
+                declarations: resolved.resolved_declarations
               )
             }
           )

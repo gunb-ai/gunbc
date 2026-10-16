@@ -154,7 +154,7 @@ data non_executing_witness_module_prefixes_restoration: DissolutionCondition = u
 // the same producer the phase itself calls. No figure from that run is transcribed here.
 //
 // STILL A ROW. Widening or narrowing this list remains a cost decision, not a Rust edit.
-data required_v2_emission_entries: List<String> = ["src/v2/compiler/compile.dag"]
+data required_v2_emission_entries: List<String> = ["src/v2/compiler/source_root_eval.dag"]
 
 // ENROLMENT AUTHORITY: this phase is required in --required-ci on an operator ruling
 // relayed through the requesting session on 2026-08-23, at a measured +135s. The row
@@ -366,6 +366,10 @@ data excl_behavioral_receipt_dissolve: DissolutionCondition = unbound_dissolutio
 data excl_wet_integration_reason: String = "wet-integration class, operator-ruled OFFLINE (hermetic-floor posture 2026-07-11): performs genuinely live host effects the hermetic envelope refuses by construction (wet_integration_offline_note)"
 
 data excl_wet_integration_dissolve: DissolutionCondition = unbound_dissolution(description: "the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget; then the file enrolls there as declared execution rows and this row deletes (wet_integration_offline_note)")
+
+data excl_attempt_launcher_grant_on_runner_host_reason: String = "wet sandbox enforcement of dashboard attempt workers: hermetic discovery cannot observe kernel/manager refusal. The file stays OfflineLocalRecipe until the attempt-system-unit launcher grant is installed on a runner host (root-owned release + sudoers pin). bright-moth-475 runs the wet cells on srv1 lab after that deploy; that receipt is the evidence."
+
+data excl_attempt_launcher_grant_on_runner_host_dissolve: DissolutionCondition = unbound_dissolution(description: "THE CAPABILITY: the attempt-system-unit launcher grant installed on a runner host, sufficient for test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness to enroll as a gated execution consumer (writes_through_the_launcher_to_bin_and_source_hooks_are_refused). Then this row deletes.")
 
 data excl_probe_universe_carrier_reason: String = "non-witness workflow carrier: discovery never scans it (it declares no test); the row exists for the whole_tree_resolve_exclusion_substrings probe-universe consumers"
 
@@ -955,6 +959,16 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "pre_swap_admission_merge_base_inhabitance_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "pre_swap_admission_serve_compile_inhabitance_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "fabric_storage_file_store_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1085,6 +1099,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_immutable_pin_no_ci_wet_lane_reason,
     dissolution: excl_immutable_pin_no_ci_wet_lane_dissolve},
   WitnessExclusionRow {
+    pattern: "attempt_discharge_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "host_capacity_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1104,6 +1123,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "dispatch_worker_writable_sandbox_wet_witness.dag",
+    classification: OfflineLocalRecipe,
+    reason: excl_attempt_launcher_grant_on_runner_host_reason,
+    dissolution: excl_attempt_launcher_grant_on_runner_host_dissolve},
   WitnessExclusionRow {
     pattern: "roadmap_belt_exit_drain_wet_witness.dag",
     classification: LocalRepoWetLane,
