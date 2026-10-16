@@ -41,6 +41,7 @@ import gunbc.instruments.compute_run_unit_cold {
 data wrong_capture_marker_a: String = "C1-WRONG-CAPTURE-MARKER-A"
 data wrong_capture_marker_b: String = "C1-WRONG-CAPTURE-MARKER-B"
 
+// No typed file-write effect exists for compute_exec (missing capability); sed -i takes the path as one argv element, no shell interprets it.
 // A bin source gets a #[used] static, so each tree's binary carries its own marker bytes.
 data wrong_capture_marked_sources: List<String> = ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/bin/claim_batch.rs"]
 
@@ -48,9 +49,9 @@ fn wrong_capture_mark_tree(instance: HostDashboardInstance, layout: ComputeLayou
   fold(wrong_capture_marked_sources, init: "", f: (acc, rel) =>
     if acc != "" { acc } else {
       match compute_exec(
-        program: "/bin/sh",
+        program: "/usr/bin/sed",
         workdir: layout.checkout,
-        args: ["-c", join(["printf '\\n#[used]\\nstatic C1_MARKER: &str = \"", marker, "\";\\n' >> ", layout.checkout, "/", rel], "")],
+        args: ["-i", "-e", join(["$a#[used] static C1_MARKER: &str = \"", marker, "\";"], ""), join([layout.checkout, "/", rel], "")],
       ) {
         ComputeExecOk { stdout: _, stderr: _ } => ""
         ComputeExecFailed { exit_code: _, stdout: _, stderr } => join(["could not mark ", rel, ": ", stderr], "")
