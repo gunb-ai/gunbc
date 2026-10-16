@@ -333,6 +333,7 @@ type ServeRouteAction
   | ServeActionDispatchNode
   | ServeActionStopNode
   | ServeActionPublishNode
+  | ServeActionRetireLineage
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -346,6 +347,7 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
     ServeActionStopNode => "stop-node" as NonEmptyStr
     ServeActionPublishNode => "publish-node" as NonEmptyStr
+    ServeActionRetireLineage => "retire-lineage" as NonEmptyStr
   }
 }
 
@@ -517,6 +519,7 @@ fn human_action_authorization_decision(
         ServeActionDispatchNode => Permit
         ServeActionStopNode => Permit
         ServeActionPublishNode => Permit
+        ServeActionRetireLineage => Permit
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
