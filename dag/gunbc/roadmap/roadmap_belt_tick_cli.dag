@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_write_for_instance,
   belt_tick_result_json_value,
   belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
-  belt_verify_one_for_instance, BeltVerifyOneResult,
+  belt_verify_one_for_instance, belt_verify_resume_for_instance, BeltVerifyOneResult,
   VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
   belt_verify_outcome_json,
   belt_integrate_candidate_core_for_instance, BeltIntegrationCoreStep,
@@ -303,6 +303,19 @@ fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, 
       ))
       let w = Filesystem.Write(path: receipt_path, content: document)
       if !w.success { exit_failure(reason: join(["belt_verify_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+    }
+  }
+}
+
+fn belt_verify_resume_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_verify_resume_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceResolved { instance } => {
+      let document = serialize_json(v: belt_verify_one_result_json(
+        r: belt_verify_resume_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      ))
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success { exit_failure(reason: join(["belt_verify_resume_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
     }
   }
 }

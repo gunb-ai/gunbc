@@ -714,6 +714,38 @@ fn belt_verification_decision(
   }
 }
 
+// THE OPERATOR'S RESUME OF A REFUSED VERIFICATION (2026-10-03 manual-resume ruling). A refusal is an
+// environment fact, not a verdict, and nothing re-owes it automatically, so the operator is the one
+// who runs it again. Only a recorded REFUSED verdict for the exact subject resumes; a passed or failed
+// verdict is a judgment of the candidate and stays recorded, and every other decision is unchanged.
+fn belt_verification_resume_decision(
+  expected: VerificationSubject,
+  source: ExactVerificationReceiptSource,
+) -> BeltVerificationDecision {
+  match belt_verification_decision(expected: expected, source: source) {
+    BeltVerificationDefer { reason } =>
+      match source {
+        ExactVerificationReceiptPresent { text } =>
+          match verification_receipt_text_classify(receipt: text) {
+            VerificationReceiptTextV2 { receipt } =>
+              if validation_verdict_key(verdict: receipt.verdict) == "refused" {
+                BeltVerificationRun
+              } else {
+                BeltVerificationDefer { reason: reason }
+              }
+            VerificationReceiptTextUndecodable { reason: _ } => BeltVerificationDefer { reason: reason }
+            VerificationReceiptTextLegacyAttempt { verdict_key: _ } => BeltVerificationDefer { reason: reason }
+            VerificationReceiptTextV1ExactHead { legacy: _ } => BeltVerificationDefer { reason: reason }
+          }
+        ExactVerificationReceiptAbsent => BeltVerificationDefer { reason: reason }
+        ExactVerificationReceiptUnreadable { detail: _ } => BeltVerificationDefer { reason: reason }
+      }
+    BeltVerificationRun => BeltVerificationRun
+    BeltVerificationRefuse { reason: r } => BeltVerificationRefuse { reason: r }
+    BeltVerificationEvidenceUnreadable { reason: r } => BeltVerificationEvidenceUnreadable { reason: r }
+  }
+}
+
 // AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them.
 type ValidationExecution {
   validation: ValidationOperation

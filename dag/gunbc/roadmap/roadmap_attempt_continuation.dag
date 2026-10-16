@@ -127,7 +127,7 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
         WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending => ContinuationHold { reason: "the prior attempt's verification is owed and still pending; the belt owes it, not a spawn" }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's verification is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt retries it when the environment recovers, so no spawn" }
+        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
       }
   }
 }
