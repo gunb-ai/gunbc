@@ -54,7 +54,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
 }
 import gunbc.machine_intake.ampere_checkpoint_console_observation { AmpereCheckpointRelation }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread,
+  SelSnapshotReading, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread,
 }
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, EngineeringSample, ProductionPart,
