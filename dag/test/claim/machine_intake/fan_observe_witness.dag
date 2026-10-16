@@ -294,17 +294,18 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
 }
 
 // CONTROL (review round, blocker 2): the boot's eligibility is decided by the MODELED refusal path,
-// executed end to end, not by the absence of a flag. Supply a refused series (a fabricated cause - the
-// only thing fabricated here is the cause string; the transport, the fold, the receipt write and the
-// exit code are all real) to the boot-phase fold, and the outcome must be: ExitSuccess - which is what
-// keeps the boot step scheduled - and a receipt whose exact content is the typed
-// FanObserveBootPhaseRefused line naming that cause. A fold that silently succeeded without a receipt,
-// or wrote one and still failed the step, fails this claim.
+// executed end to end, not by the absence of a flag. An admitted host is taken through the REAL
+// admission route (managed_host_binding_for over the roster - no fixture constructor), a refused
+// series (only the cause string is fabricated) is fed to the boot-phase fold, and the outcome must
+// be: ExitSuccess - which is what keeps the boot step scheduled - and a receipt whose exact content
+// is the typed FanObserveBootPhaseRefused line naming that cause. A fold that silently succeeded
+// without a receipt, or wrote one and still failed the step, fails this claim.
 test fn a_modeled_refusal_leaves_the_boot_eligible_by_execution() -> Bool {
   let receipt_path = "target/eh810-fan-boot-phase-refusal-receipt.txt"
-  match managed_hosts().first() {
+  let admittable = filter(managed_hosts(), r => match fan_observe_admission(lookup: managed_host_binding_for(host: r.host.host as NonEmptyStr)) { FanObserveAdmitted { host: _ } => true  _ => false })
+  match admittable.first() {
     Present { value: row } =>
-      match fan_observe_admission(lookup: ManagedHostFound { standing: managed_host_binding(host: managed_host_fixture(host: row.host, access: row.access, capability_row: row.capability_row, secure: row.secure, unit_hold: row.unit_hold, smpro: row.smpro)) }) {
+      match fan_observe_admission(lookup: managed_host_binding_for(host: row.host.host as NonEmptyStr)) {
         FanObserveAdmitted { host: h } =>
           match fan_write_boot_phase_observation(
             host: h,
