@@ -19,9 +19,10 @@ import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.systemd { ExecStopProperty }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
-  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -555,10 +556,23 @@ fn compute_unit_sccache_setenv(user_runtime_dir: FilePath) -> List<SystemdSetenv
   ]
 }
 
+// THE ONLY EXTENSION OF THE UNIT'S PROPERTIES, CLOSED. compute_unit_properties is the one authority
+// tying the memory grant to the unit, so a caller cannot append properties: it picks an arm here, and
+// compute_run_unit alone maps the arm to a property. SccacheStatsAtStop is ExecStop= (systemd.service(5)),
+// which runs after the main process and before KillMode reaps the unit's sccache server.
+type ComputeUnitStopObservation = NoStopObservation | SccacheStatsAtStop
+
+fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) -> List<SystemdRunProperty> {
+  match observation {
+    NoStopObservation => []
+    SccacheStatsAtStop => [NamedUnitSetting { property: ExecStopProperty, value: join([sccache_installed_binary_path, " --show-stats"], "") as NonEmptyStr }]
+  }
+}
+
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -572,7 +586,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     })
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: compute_unit_properties(layout: layout, granted: granted),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted), compute_stop_observation_properties(observation: stop_observation)),
       setenv_bindings: concat(
         concat(
           [
@@ -2569,7 +2583,7 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },

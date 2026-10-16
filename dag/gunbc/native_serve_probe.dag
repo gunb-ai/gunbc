@@ -266,9 +266,12 @@ type NativeServeWire {
   body: String
 }
 
-// The head binder is re-bound with its type because match-arm binders are not yet typed from the
-// scrutinee (gunbc.rung_drop.match_arm_binder_typing_lost_to_lexical_carrier); untyped, the builtin
-// split over it refuses as not in scope.
+// The head binder is re-bound with its type because the builtin split over it still refuses as not in
+// scope when the binder is used directly (checked by execution 2026-10-16: removing the re-bind gives
+// "function 'split' not found in scope"). The scrutinee here is a builtin's List<String>, not a declared
+// coproduct, so the restored declared-variant binder typing does not reach it; this is a distinct
+// remaining reason, not the retired drop (gunbc.recurring_failure_mode
+// builtin_list_arm_binder_still_untyped_in_its_use).
 fn native_serve_wire_parse(response: String) -> NativeServeWire? {
   match split(s: response, delimiter: "\r\n\r\n") {
     Cons { head: head, tail: rest } =>

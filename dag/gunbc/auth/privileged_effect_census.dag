@@ -9,6 +9,7 @@ import gunbc.auth.standing_operator_grant {
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -1342,6 +1343,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: rented_host_ssh_effect(),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: rented_host_permit_unredeemed },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.attempt_system_unit_launch", decl_name: "attempt_system_unit_launch_cli"),
+    effect: attempt_system_unit_privileged_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
 ]
 

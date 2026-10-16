@@ -133,6 +133,8 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// Importing the C1 control makes a resolve failure in it refuse this corpus; the instrument sits outside the required gate closure.
+import gunbc.instruments.compute_wrong_capture { compute_wrong_capture_exit }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
