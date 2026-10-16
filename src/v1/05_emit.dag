@@ -1189,6 +1189,7 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
 type FileVerb
   = FileRead
   | FileWrite
+  | FileWriteBytes
   | FileWriteOwnerOnly
   | FileWriteCreateNew
   | FileWriteCreateNewWithMode
@@ -1292,7 +1293,7 @@ fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineInd
       else if v == file_transport_verb_write_create_new { FileWriteCreateNew }
       else if v == file_transport_verb_write_create_new_with_mode { FileWriteCreateNewWithMode }
       else if v == file_transport_verb_link_create_new { FileLinkCreateNew }
-      else if v == file_transport_verb_write_bytes { FileWrite }
+      else if v == file_transport_verb_write_bytes { FileWriteBytes }
       else { FileWriteOwnerOnly }
     Absent =>
       if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { FileWrite }
@@ -2817,10 +2818,9 @@ data file_transport_verb_write_create_new: String = "write_create_new"
 // both verbs; this one passes the declared bits, the other passes none.
 data file_transport_verb_write_create_new_with_mode: String = "write_create_new_with_mode"
 
-// write_bytes: Write whose content is Bytes rather than text. It binds the SAME realization as Write
-// (FileWrite): the emitted write takes the content's octets whatever its type. The verb exists so
-// the seed interpreter, whose file transport reads content as text, refuses it as an unknown verb
-// rather than writing a byte list's printed form.
+// write_bytes: Write whose content is Bytes rather than text. The seed interpreter's file transport
+// reads content as text, so it refuses this verb as unknown rather than writing a byte list's
+// printed form; a program that writes bytes runs as emitted Rust.
 data file_transport_verb_write_bytes: String = "write_bytes"
 
 fn file_transport_declared_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {

@@ -278,7 +278,7 @@ import v1.compiler.emit {
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
@@ -18076,6 +18076,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
   match verb {
     FileRead           => file_read_match_expr
     FileWrite          => file_write_expr
+    FileWriteBytes     => file_write_bytes_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
     FileWriteCreateNew => file_write_create_new_expr
     FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr
@@ -18144,9 +18145,7 @@ data file_delete_match_expr: String = "match std::fs::remove_file(&file_path) {\
 
 data file_list_match_expr: String = "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = Vec::new();\n        let mut listing_refusal: Option<String> = None;\n        for dir_entry in dir_entries {\n            let dir_entry = match dir_entry {\n                Ok(admitted) => admitted,\n                Err(advance_err) => {\n                    listing_refusal = Some(format!(\"directory enumeration failed after {} entr(ies) were read, so this listing accounts for no known portion of the directory and establishes no absence: {}\", entry_names.len(), advance_err));\n                    break;\n                }\n            };\n            let entry_name = match dir_entry.file_name().into_string() {\n                Ok(admitted) => admitted,\n                Err(native_name) => {\n                    listing_refusal = Some(format!(\"directory entry name {:?} is not valid UTF-8, and this listing encoding carries Unicode names only, so the entry cannot be represented faithfully. The rendering shown is a diagnostic and is not the operational pathname\", native_name));\n                    break;\n                }\n            };\n            if entry_name.contains('\\n') {\n                listing_refusal = Some(format!(\"directory entry name {:?} contains a line feed, which is the delimiter this listing encoding joins entries with, so one entry would be indistinguishable from two and a membership test could answer yes for an entry that is not there\", entry_name));\n                break;\n            }\n            entry_names.push(entry_name);\n        }\n        match listing_refusal {\n            Some(refused) => (false, String::new(), refused, 0i64, \"other\".to_string()),\n            None => {\n                entry_names.sort();\n                let listing = entry_names.join(\"\\n\");\n                let listing_bytes = listing.len() as i64;\n                (true, listing, String::new(), listing_bytes, String::new())\n            }\n        }\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64, file_io_error_kind(&list_err)),\n};"
 
-// The content is written as its octets, whatever its type: `&*content` is a &str for text and a
-// &[u8] for Bytes (Vec<u8>), and std::fs::write takes either. Write and write_bytes share this.
-data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, &*content) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
+data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
 
 // THE EMITTED REALIZATION PUBLISHES ONLY COMPLETE CONTENT, exactly as the interpreter helper does,
 // and this row exists because review 5089156132 on gunbc#10069 found the two had DIVERGED. The
@@ -18185,6 +18184,11 @@ data file_link_create_new_expr: String = "match v1_rt::gunbc_file_link_create_ne
 // `mode` is the declared permission-bit value (extdeps.access.posix file_mode_bits). A value that is
 // not a mode REFUSES as InvalidInput before anything is created; it is never truncated into one.
 data file_write_create_new_with_mode_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+
+// Write with Bytes content: the same write as file_write_expr over the content's octets. The
+// collect is what makes it the same write for every Bytes realization (Vec<u8> in the seed's
+// runtime, im::Vector<u8> in the emitted v2 runtime), neither of which has a text view.
+data file_write_bytes_expr: String = "{\n    let octets: Vec<u8> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};"
 
