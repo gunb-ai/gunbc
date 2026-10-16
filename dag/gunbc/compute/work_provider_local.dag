@@ -113,7 +113,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -149,7 +149,16 @@ type ComputeLayout {
   attempts_dir: String
 }
 
-fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout {
+// THE LAYOUT EXISTS ONLY FOR AN INSTANCE THAT DECLARES A STORE, because its staging directory is
+// derived from that store. Production, which already holds the store, builds it with compute_layout_in.
+fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> ComputeLayout? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: compute_layout_in(instance: instance, store_root: store_root, identity_hex: identity_hex) }
+  }
+}
+
+fn compute_layout_in(instance: HostDashboardInstance, store_root: MaterializationStoreRoot, identity_hex: String) -> ComputeLayout {
   let root = compute_root(instance: instance) as String
   let work_dir = join([root, "/work/", identity_hex], "")
   ComputeLayout {
@@ -159,7 +168,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
     out_dir: join([work_dir, "/out"], ""),
     leases_dir: join([root, "/leases"], ""),
     lease_path: join([root, "/leases/", identity_hex], ""),
-    staging_dir: compute_staging_dir(instance: instance),
+    staging_dir: materialization_store_staging_root_path(root: store_root),
     target_dir: join([root, "/target"], ""),
     log_path: join([work_dir, "/log"], ""),
     consumption_path: join([work_dir, "/consumption"], ""),
@@ -947,8 +956,11 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // and the commit's link is a link, never a copy (C1b refuses a cross-device stage). It is DERIVED from
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
-fn compute_staging_dir(instance: HostDashboardInstance) -> String {
-  materialization_store_staging_root_path(root: instance.materialization_store_root, scope_root: instance.instance_root as String)
+fn compute_staging_dir(instance: HostDashboardInstance) -> String? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present { value: materialization_store_staging_root_path(root: store_root) }
+  }
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1704,15 +1716,15 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 // scratch root with fixture rows.
 type ComputeStore {
   root: MaterializationStoreRoot
-  scope_root: String
   budgets: List<LocalStoreFamilyBudget>
 }
 
-fn compute_store(instance: HostDashboardInstance) -> ComputeStore {
-  ComputeStore {
-    root: instance.materialization_store_root,
-    scope_root: instance.instance_root as String,
-    budgets: materialization_store_durable_family_budgets,
+fn compute_store(instance: HostDashboardInstance) -> ComputeStore? {
+  match instance.materialization_store_root {
+    Absent => none
+    Present { value: store_root } => Present {
+      value: ComputeStore { root: store_root, budgets: materialization_store_durable_family_budgets },
+    }
   }
 }
 
@@ -1804,7 +1816,7 @@ type ComputeStoreOpen
 // Initialization is idempotent (an existing marker opens as the store it names), so opening and
 // initializing are one call; a missing root refuses, it is never created elsewhere.
 fn compute_store_open(store: ComputeStore) -> ComputeStoreOpen {
-  match local_store_initialize(root: store.root, scope_root: store.scope_root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
+  match local_store_initialize(root: store.root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
     LocalStoreInitializationRefused { root_path, cause } => ComputeStoreOpenRefused { detail: join(["the materialization store at ", root_path, " could not be initialized: ", compute_store_unavailable_detail(c: cause)], "") }
     LocalStoreInitialized { opening } => ComputeStoreOpened { opening: opening }
   }
@@ -2070,7 +2082,7 @@ fn compute_provide_leaf(
     ComputeMaterializationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
-      let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
+      let layout = compute_layout_in(instance: instance, store_root: store.root, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
       let materialization = ComputeMaterialization { store: store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
@@ -2517,11 +2529,16 @@ fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op:
         SubjectResolutionRefused { detail } =>
           compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
         SubjectResolved { subject } =>
-          match op {
-            BuildGunbcBinaries { profile: _, bins: _ } =>
-              compute_provide_leaf(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-            CompileEntry { entry: _ } => compute_provide_dependent(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
-            RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: compute_store(instance: instance), instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+          match compute_store(instance: instance) {
+            Absent =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+            Present { value: store } =>
+              match op {
+                BuildGunbcBinaries { profile: _, bins: _ } =>
+                  compute_provide_leaf(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain)
+              }
           }
       }
   }

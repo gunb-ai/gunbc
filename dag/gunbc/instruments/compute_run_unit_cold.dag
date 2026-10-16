@@ -51,8 +51,9 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // WAVE-0 B: drive the real compute_run_unit through a cold cargo release of work_default_build.
 // Bus presence, refusal, and launcher_env bindings are THIS FOLD; the unit launch is
 // gunbc.compute.work_provider_local compute_run_unit, not a copy. No bus is ExitFailure code 2
-// (gunbc test: no observation). Each run's instance root is
-// <git-toplevel>/.gunbc-compute-hermetic/<unix-millis>, so target_dir is empty at start.
+// (gunbc test: no observation). Each run's frame is its unix-millis reading, and its instance root
+// is /tmp/gunbc_compute_<frame> (std.materialization_store_grant materialization_store_frame_root),
+// so target_dir is empty at start and nothing the run writes lands in the persistent workspace.
 
 // THE UNIT GRANT IS ONE BYTESIZE. compute_run_unit takes Kibibyte; the dispatch job cgroup must
 // admit that grant PLUS the wet CliWire evaluator that launches systemd-run --user. Those two
@@ -89,10 +90,10 @@ fn observe_workspace(instance: HostDashboardInstance) -> String {
   }
 }
 
-fn observe_run_identity() -> String {
+fn observe_run_frame() -> Int? {
   match clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail: _ } => ""
-    ClockUnixMillisObserved { millis } => to_string(value: millis)
+    ClockUnixMillisRefused { detail: _ } => none
+    ClockUnixMillisObserved { millis } => Present { value: millis }
   }
 }
 
@@ -227,36 +228,44 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
         bytes: "compute-run-unit-cold: no observation: user session bus absent at /run/user/<uid>/bus (systemd-run --user cannot run)",
         reason: "user session bus absent",
       )
-    HermeticUserSessionRuntimeBound { runtime_dir } => {
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
       match observe_isolated_job_toolchain_homes() {
         Absent =>
           CliWirePrintable {
             bytes: "compute-run-unit-cold: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty (job isolation did not run; refusing ambient PATH and developer-home cargo)",
             exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
           }
-        Present { value: toolchain_homes } => {
-      let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes)
+        Present { value: toolchain_homes } =>
+          match observe_run_frame() {
+            Absent =>
+              no_observation(
+                bytes: "compute-run-unit-cold: no observation: clock unix millis unreadable, so this run has no frame",
+                reason: "run frame unreadable",
+              )
+            Present { value: frame } => {
+      let identity = to_string(value: frame)
+      let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
-      let identity = observe_run_identity()
       if workspace == "" {
         CliWirePrintable {
           bytes: "compute-run-unit-cold: git toplevel (job workspace) could not be read",
           exit: ExitFailure { code: 1, reason: "workspace unreadable" },
         }
-      } else if identity == "" {
-        no_observation(
-          bytes: "compute-run-unit-cold: no observation: clock unix millis unreadable, so this run has no unique root",
-          reason: "run identity unreadable",
-        )
       } else if path_is_under_production_instance_root(path: workspace) {
         CliWirePrintable {
           bytes: join(["compute-run-unit-cold: workspace is host-shared production path ", workspace], ""),
           exit: ExitFailure { code: 1, reason: "workspace under the production instance root" },
         }
       } else {
-        let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
-        let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
-        let layout = compute_layout(instance: instance, identity_hex: identity)
+        let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+        let run_root = instance.instance_root as String
+        match compute_layout(instance: instance, identity_hex: identity) {
+          Absent =>
+            CliWirePrintable {
+              bytes: "compute-run-unit-cold: the hermetic instance declares no materialization store",
+              exit: ExitFailure { code: 1, reason: "no materialization store declared" },
+            }
+          Present { value: layout } => {
         let root = compute_root(instance: instance) as String
         if path_is_under_production_instance_root(path: instance.instance_root as String) || path_is_under_production_instance_root(path: root) {
           CliWirePrintable {
@@ -362,11 +371,13 @@ fn compute_run_unit_cold_exit() -> CliWireResponse {
             }
           }
         }
-      }
+          }
         }
-    }
+      }
+            }
+          }
+      }
   }
-}
 }
 
 fn observe_argv(program: String, args: List<String>) -> String {
@@ -446,16 +457,20 @@ type UnitPrintenvObservation
   | UnitPrintenvRefused { reason: String, text: String }
 
 fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes) -> UnitPrintenvObservation {
+  match observe_run_frame() {
+    Absent => UnitPrintenvRefused { reason: "run frame unreadable", text: "" }
+    Present { value: frame } => {
+  let identity = to_string(value: frame)
   let workspace = observe_workspace(
-    instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: toolchain_homes),
+    instance: fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes),
   )
-  let identity = observe_run_identity()
-  if (workspace == "") || (identity == "") || path_is_under_production_instance_root(path: workspace) {
-    UnitPrintenvRefused { reason: "workspace or identity unusable", text: "" }
+  if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
+    UnitPrintenvRefused { reason: "workspace unusable", text: "" }
   } else {
-    let run_root = join([workspace, "/.gunbc-compute-hermetic/", identity], "")
-    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: toolchain_homes)
-    let layout = compute_layout(instance: instance, identity_hex: identity)
+    let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+    match compute_layout(instance: instance, identity_hex: identity) {
+    Absent => UnitPrintenvRefused { reason: "no materialization store declared", text: "" }
+    Present { value: layout } => {
     let roots_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
       && mkdir_ok(instance: instance, path: layout.work_dir)
       && mkdir_ok(instance: instance, path: layout.checkout)
@@ -494,6 +509,10 @@ fn observe_unit_printenv(runtime_dir: FilePath, toolchain_homes: IsolatedJobTool
             }
           }
       }
+    }
+  }
+    }
+    }
     }
   }
 }

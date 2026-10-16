@@ -207,7 +207,7 @@ fn fresh_root_path() -> String {
 }
 
 fn opened(root: MaterializationStoreRoot) -> LocalStoreCapability? {
-  match local_store_initialize(root: root, scope_root: "", instance_label: "wet-witness", budgets: witness_family_budgets) {
+  match local_store_initialize(root: root, instance_label: "wet-witness", budgets: witness_family_budgets) {
     LocalStoreInitialized { opening: o } => match o {
       LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
       LocalStoreUnavailable { root_path: _, cause: _ } => none
@@ -370,14 +370,14 @@ test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_executio
 test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() -> Bool {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
-  let open_refused = match local_store_open(root: root, scope_root: "", budgets: witness_family_budgets) {
+  let open_refused = match local_store_open(root: root, budgets: witness_family_budgets) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreNotInitialized { marker_path: _ } => true
       _ => false
     }
     LocalStoreOpened { capability: _, durability: _ } => false
   }
-  let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root" }, scope_root: "", budgets: witness_family_budgets) {
+  let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root" }, budgets: witness_family_budgets) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreGrantRefused { verb: _, target: _, frame: _ } => true
       _ => false
@@ -545,7 +545,7 @@ test fn an_open_sweeps_an_object_no_index_names_by_real_execution() -> Bool {
       let kept = local_store_commit(capability: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"), parts: [])
       let orphan = object_name(req: bundle_req(module: "orphan"))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
-      let swept = match local_store_open(root: root, scope_root: "", budgets: witness_family_budgets) {
+      let swept = match local_store_open(root: root, budgets: witness_family_budgets) {
         LocalStoreOpened { capability: c, durability: _ } => c.sweep.removed |> any(n => n == orphan)
         LocalStoreUnavailable { root_path: _, cause: _ } => false
       }
@@ -821,7 +821,7 @@ test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> 
       let first = local_store_commit(capability: store, req: bundle_req(module: "c"), payloads: verdicts(text: "c pass"), parts: [])
       let foreign = "notes.materialization.txt"
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: foreign), content: "not the store's").success
-      let swept_alone = match local_store_open(root: root, scope_root: "", budgets: witness_family_budgets) {
+      let swept_alone = match local_store_open(root: root, budgets: witness_family_budgets) {
         LocalStoreOpened { capability: c, durability: _ } => !(c.sweep.removed |> any(n => n == foreign))
         LocalStoreUnavailable { root_path: _, cause: _ } => false
       }
@@ -951,7 +951,7 @@ test fn a_fingerprint_named_record_stays_accounted_and_is_retired_by_capacity_by
       let planted_part = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: old_part), content: repeat_string(s: "p", n: 200)).success
       let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
       let planted_row = Filesystem.Write(path: slot, content: join(["gunbc-store-occupancy v2", "next 2", concat(old_name, " 2000 1")], "\n")).success
-      match local_store_open(root: root, scope_root: "", budgets: witness_family_budgets) {
+      match local_store_open(root: root, budgets: witness_family_budgets) {
         LocalStoreUnavailable { root_path: _, cause: _ } => false
         LocalStoreOpened { capability: store, durability: _ } => {
           let kept_by_sweep = !(store.sweep.removed |> any(n => n == old_name || n == old_part))
@@ -1113,7 +1113,7 @@ test fn an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_
       let c = local_store_commit(capability: store, req: bundle_req(module: "k"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-k", bytes: "exe-bytes-k"))
       let orphan = concat(object_name(req: bundle_req(module: "orphan")), concat(".part.", output_module_test_verdicts as String))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
-      let reopened = local_store_open(root: root, scope_root: "", budgets: witness_family_budgets)
+      let reopened = local_store_open(root: root, budgets: witness_family_budgets)
       commit_tag(c: c.commit) == "committed" && planted.success
         && !Filesystem.Read(path: store_path(root_path: root_path, name: orphan)).success
         && Filesystem.Read(path: part_path(root_path: root_path, req: bundle_req(module: "k"))).success
@@ -1177,8 +1177,8 @@ test fn opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real
     Absent => false
     Present { value: store } => {
       let c = local_store_commit(capability: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"), parts: [])
-      let partial = local_store_open(root: root, scope_root: "", budgets: witness_family_budgets |> filter(b => b.family != native_module_verdict_bundle_artifact_kind))
-      let empty = local_store_open(root: root, scope_root: "", budgets: [])
+      let partial = local_store_open(root: root, budgets: witness_family_budgets |> filter(b => b.family != native_module_verdict_bundle_artifact_kind))
+      let empty = local_store_open(root: root, budgets: [])
       commit_tag(c: c.commit) == "committed"
         && opening_refused_for_catalog(o: partial) && opening_refused_for_catalog(o: empty)
         && Filesystem.Read(path: object_path(root_path: root_path, req: bundle_req(module: "b"))).success
@@ -1309,7 +1309,7 @@ test fn reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_b
       let c = local_store_commit(capability: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"), parts: [])
       let larger = witness_family_budgets |> map(b => LocalStoreFamilyBudget { family: b.family, budget: byte_size(count: measure_count(m: b.budget) * 4) })
       commit_tag(c: c.commit) == "committed"
-        && opening_refused_for_catalog(o: local_store_open(root: root, scope_root: "", budgets: larger))
+        && opening_refused_for_catalog(o: local_store_open(root: root, budgets: larger))
         && root_object_bytes(root_path: root_path) <= budget
     }
   }
@@ -1345,7 +1345,7 @@ test fn a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution() 
       let orphan_bytes = budget - root_object_bytes(root_path: root_path)
       let planted = shell.Mkdir.NewOwnerOnly(path: orphan_dir).success
         && Filesystem.WriteCreateNew(path: concat(orphan_dir, "/residue"), content: repeat_string(s: "x", n: orphan_bytes)).success
-      let reopened = local_store_open(root: root, scope_root: "", budgets: witness_family_budgets)
+      let reopened = local_store_open(root: root, budgets: witness_family_budgets)
       let wrote = match reopened {
         LocalStoreOpened { capability: c, durability: _ } =>
           commit_tag(c: local_store_commit(capability: c, req: bundle_req(module: "late"), payloads: half_budget_verdicts(module: "late"), parts: []).commit) == "committed"
@@ -1371,11 +1371,11 @@ test fn an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution() -> 
     Present { value: store } => {
       let orphan = object_name(req: bundle_req(module: "orphan"))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue").success
-      match local_store_with_family(capability: store, of: bundle_req(module: "o"), run: h => local_store_open(root: root, scope_root: "", budgets: witness_family_budgets)) {
+      match local_store_with_family(capability: store, of: bundle_req(module: "o"), run: h => local_store_open(root: root, budgets: witness_family_budgets)) {
         LocalStoreBracketRefused { refusal: _ } => false
         LocalStoreBracketRan { value: inside, hold_release: _ } => {
           let still_there = Filesystem.Read(path: store_path(root_path: root_path, name: orphan)).success
-          let after = local_store_open(root: root, scope_root: "", budgets: witness_family_budgets)
+          let after = local_store_open(root: root, budgets: witness_family_budgets)
           planted && opening_refused_for_sweep(o: inside) && still_there
             && match after {
               LocalStoreOpened { capability: c, durability: _ } => c.sweep.removed |> any(n => n == orphan)
@@ -1408,7 +1408,7 @@ test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_re
       let residue = budget - root_object_bytes(root_path: root_path)
       let planted = shell.Mkdir.NewOwnerOnly(path: copy_dir).success
         && Filesystem.WriteCreateNew(path: concat(copy_dir, "/residue"), content: repeat_string(s: "x", n: residue)).success
-      let reopened = local_store_open(root: root, scope_root: "", budgets: witness_family_budgets)
+      let reopened = local_store_open(root: root, budgets: witness_family_budgets)
       let wrote = match reopened {
         LocalStoreOpened { capability: c, durability: _ } =>
           commit_tag(c: local_store_commit(capability: c, req: bundle_req(module: "late"), payloads: half_budget_verdicts(module: "late"), parts: []).commit) == "committed"

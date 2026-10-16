@@ -1259,8 +1259,7 @@ fn deployment_role_singleton_ensured_steps(holding: RoleSingletonHolding) -> Lis
 // layout resolved through a total host-identity lookup.
 fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
   let owner = PosixOwnerNames { user: gunbc_service_user, group: gunbc_service_user }
-  let store = srv1_live_dashboard_instance().materialization_store_root
-  [
+  let host = [
     OwnedDirectoryDeclared {
       member: "devboot-artifact-store" as NonEmptyStr,
       path: srv1_devboot_artifact_store_root,
@@ -1273,19 +1272,24 @@ fn deployment_srv1_host_directories() -> List<OwnedDirectoryTarget> {
       owner: owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
     },
-    OwnedDirectoryDeclared {
-      member: "materialization-store" as NonEmptyStr,
-      path: materialization_store_root_path(root: store, scope_root: "") as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
-    OwnedDirectoryDeclared {
-      member: "materialization-store-staging" as NonEmptyStr,
-      path: materialization_store_staging_root_path(root: store, scope_root: "") as NonEmptyStr,
-      owner: owner,
-      mode: DirectoryOwnerAllEveryoneTraverse,
-    },
   ]
+  match srv1_live_dashboard_instance().materialization_store_root {
+    Absent => host
+    Present { value: store } => concat(host, [
+      OwnedDirectoryDeclared {
+        member: "materialization-store" as NonEmptyStr,
+        path: materialization_store_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+      OwnedDirectoryDeclared {
+        member: "materialization-store-staging" as NonEmptyStr,
+        path: materialization_store_staging_root_path(root: store) as NonEmptyStr,
+        owner: owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+      },
+    ])
+  }
 }
 
 fn deployment_ensured_steps(target: DeploymentHostTarget, holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {

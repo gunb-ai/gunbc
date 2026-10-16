@@ -5,9 +5,11 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef 
 import std.measure { ByteSize }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
+  materialization_store_frame_root,
 }
 import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
+  MacbookLocal, Srv2Deploy,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
@@ -239,7 +241,7 @@ type HostDashboardInstance {
   toolchain: DashboardToolchain
   dispatch_worker_memory_max: ByteSize
   directory_owner: PosixOwnerNames
-  materialization_store_root: MaterializationStoreRoot
+  materialization_store_root: MaterializationStoreRoot?
 }
 
 // THE TOOLCHAIN IS CARRIED, NOT ONLY CONSUMED, because provisioning needs it too and provisioning
@@ -963,7 +965,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: macbook_local_directory_owner,
-    materialization_store_root: PersistentInstanceWorkspace,
+    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: MacbookLocal } },
   }
 }
 
@@ -1066,7 +1068,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: DurableHostVolume,
+    materialization_store_root: Present { value: DurableHostVolume },
   }
 }
 
@@ -1189,7 +1191,7 @@ fn isolated_dashboard_instance_admitting(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: FrameJobWorkspace,
+    materialization_store_root: none,
   }
 }
 
@@ -1350,7 +1352,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    materialization_store_root: PersistentInstanceWorkspace,
+    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv2Deploy } },
   }
 }
 
@@ -1436,14 +1438,18 @@ fn fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes) -> Dashboa
   }
 }
 
-fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, toolchain_homes: IsolatedJobToolchainHomes) -> HostDashboardInstance {
-  let instance_root = workspace
+// THE HERMETIC INSTANCE OWNS ONLY ITS FRAME. Its source is the job's workspace (repo_root and
+// origin), and everything it writes -- compute root, store, staging -- lives under
+// /tmp/gunbc_compute_<frame>, the frame-owned scratch grant, so a self-hosted slot's persistent
+// workspace never holds a store typed EphemeralToFrame.
+fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int, toolchain_homes: IsolatedJobToolchainHomes) -> HostDashboardInstance {
+  let instance_root = materialization_store_frame_root(frame: frame) as FilePath
   let toolchain = fleet_compute_hermetic_toolchain(homes: toolchain_homes)
   HostDashboardInstance {
     deployment: fleet_compute_hermetic_deployment,
     instance_id: fleet_compute_hermetic_dashboard_id,
     host_identity: "ghrunner-hermetic" as NonEmptyStr,
-    provision_parent_root: workspace,
+    provision_parent_root: instance_root,
     instance_root: instance_root,
     local_origin_root: workspace,
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
@@ -1459,7 +1465,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, toolchain_h
       serve_binary: dashboard_instance_child(root: instance_root, child: "bin/gunbc"),
     ),
     provider_state: DashboardExistingProviderState {
-      root: dashboard_instance_child(root: workspace, child: ".gunbc-compute-hermetic-codex"),
+      root: dashboard_instance_child(root: instance_root, child: "codex"),
       executable: none,
       binding: admitted_single_session_binding(
         selection: CodexDefaultAccount,
@@ -1478,7 +1484,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, toolchain_h
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: fleet_compute_hermetic_directory_owner,
-    materialization_store_root: FrameJobWorkspace,
+    materialization_store_root: Present { value: FrameJobWorkspace { frame: frame } },
   }
 }
 

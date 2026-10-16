@@ -35,7 +35,9 @@ import std.materialization_store_grant {
 }
 import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
+  MacbookLocal, Srv2Deploy,
 }
+import gunbc.compile_census_probe { total_blocking_count_for }
 import std.access { Permit, Deny }
 import std.effect_grant { Read, Write }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
@@ -514,22 +516,22 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
   let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
   let two = [budget_row(family: "zeta", bytes: 7), budget_row(family: "alpha", bytes: 4096)]
   let marker = store_marker_content(root: root, instance_label: "witness", budgets: two)
-  let opened = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: two) {
+  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: two) {
     LocalStorePreOpened { pre: p, durability: _ } =>
       p.binding.store.provider == materialization_store_local_id
         && (p.binding.budgets |> map(b => b.family as String)) == ["alpha", "zeta"]
         && (p.binding.budgets |> map(b => measure_count(m: b.budget))) == [4096, 7]
     LocalStorePreOpenRefused { root_path: _, cause: _ } => false
   }
-  let uninitialized = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathAbsent { path: "/m" }, budgets: two) {
+  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }, budgets: two) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let foreign = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolume, instance_label: "witness", budgets: two) }, budgets: two) {
+  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolume, instance_label: "witness", budgets: two) }, budgets: two) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let duplicate_offer = match local_store_open_decide(root: root, scope_root: "", marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: [budget_row(family: "alpha", bytes: 4096), budget_row(family: "alpha", bytes: 4096), budget_row(family: "zeta", bytes: 7)]) {
+  let duplicate_offer = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: [budget_row(family: "alpha", bytes: 4096), budget_row(family: "alpha", bytes: 4096), budget_row(family: "zeta", bytes: 7)]) {
     LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreCatalogInadmissible { detail: _ } => true, _ => false }
     LocalStorePreOpened { pre: _, durability: _ } => false
   }
@@ -840,58 +842,54 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
 }
 
 test fn durable_volume_and_job_workspace_paths_are_constructed() -> Bool {
-  let scope = "/job-workspace"
-  (materialization_store_root_path(root: DurableHostVolume, scope_root: "/tmp/x") == materialization_store_host_volume_path)
-    && (materialization_store_root_path(root: PersistentInstanceWorkspace, scope_root: scope) == "/job-workspace/materialization-store")
-    && (materialization_store_root_path(root: FrameJobWorkspace, scope_root: scope) == "/job-workspace/materialization-store")
+  (materialization_store_root_path(root: DurableHostVolume) == materialization_store_host_volume_path)
+    && (materialization_store_root_path(root: PersistentInstanceWorkspace { scope: Srv2Deploy }) == join([materialization_store_persistent_srv2_scope, "/materialization-store"], ""))
+    && (materialization_store_root_path(root: PersistentInstanceWorkspace { scope: MacbookLocal }) == join([materialization_store_persistent_macbook_scope, "/materialization-store"], ""))
+    && (materialization_store_root_path(root: FrameJobWorkspace { frame: 7 }) == "/tmp/gunbc_compute_7/materialization-store")
     && match materialization_store_durability(root: DurableHostVolume) {
       DurableAcrossRuns => true
       EphemeralToFrame => false
     }
-    && match materialization_store_durability(root: PersistentInstanceWorkspace) {
+    && match materialization_store_durability(root: PersistentInstanceWorkspace { scope: MacbookLocal }) {
       DurableAcrossRuns => true
       EphemeralToFrame => false
     }
-    && match materialization_store_durability(root: FrameJobWorkspace) {
+    && match materialization_store_durability(root: FrameJobWorkspace { frame: 7 }) {
       EphemeralToFrame => true
       DurableAcrossRuns => false
     }
 }
 
-test fn persistent_instance_workspace_admission_refuses_an_undeclared_scope() -> Bool {
-  match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: "/tmp", verb: Read) {
-    Permit => false
-    Deny { refusal: _ } => true
+// Every constructible store root is admitted at the path it derives, for read and write: the two
+// declared persistent scopes at their own roots, and a frame under the scratch grant.
+test fn every_constructible_store_root_is_admitted_at_its_own_path() -> Bool {
+  match materialization_store_admissible(root: PersistentInstanceWorkspace { scope: MacbookLocal }, verb: Read) {
+    Permit => true
+    Deny { refusal: _ } => false
   }
-    && match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: materialization_store_persistent_macbook_scope, verb: Read) {
+    && match materialization_store_admissible(root: PersistentInstanceWorkspace { scope: Srv2Deploy }, verb: Write) {
       Permit => true
       Deny { refusal: _ } => false
     }
-    && match materialization_store_admissible(root: PersistentInstanceWorkspace, scope_root: materialization_store_persistent_srv2_scope, verb: Write) {
+    && match materialization_store_admissible(root: FrameJobWorkspace { frame: 1792098308 }, verb: Write) {
       Permit => true
       Deny { refusal: _ } => false
     }
 }
 
-// A frame store may not alias a durable one: the srv1 volume's parent, a persistent scope, and a
-// path inside the srv1 store all refuse, while an ordinary job workspace is admitted.
-test fn frame_job_workspace_admission_refuses_a_durable_store_path() -> Bool {
-  match materialization_store_admissible(root: FrameJobWorkspace, scope_root: "/var/lib/gunbc", verb: Write) {
-    Permit => false
-    Deny { refusal: _ } => true
-  }
-    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: materialization_store_persistent_srv2_scope, verb: Write) {
-      Permit => false
-      Deny { refusal: _ } => true
-    }
-    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: join([materialization_store_host_volume_path, "/frame"], ""), verb: Read) {
-      Permit => false
-      Deny { refusal: _ } => true
-    }
-    && match materialization_store_admissible(root: FrameJobWorkspace, scope_root: "/home/ghrunner/work/gunbc/.gunbc-compute-hermetic/1", verb: Write) {
-      Permit => true
-      Deny { refusal: _ } => false
-    }
+// NEGATIVE CONTROL (review 80836, then 80861): a frame or persistent store cannot be handed a path.
+// Each forged source names a durable location through the arm's operand and must fail to compile;
+// the paired accepted source proves the census ran and that the refusal is the operand, not the module.
+data forged_frame_store_path_source: String = "module probe_forged_frame_store_path\nimport std.materialization_store_grant { MaterializationStoreRoot, FrameJobWorkspace }\nfn forged() -> MaterializationStoreRoot {\n  FrameJobWorkspace { root: \"/var/lib/gunbc\" }\n}\n"
+
+data forged_persistent_store_path_source: String = "module probe_forged_persistent_store_path\nimport std.materialization_store_grant { MaterializationStoreRoot, PersistentInstanceWorkspace }\nfn forged() -> MaterializationStoreRoot {\n  PersistentInstanceWorkspace { scope: \"/var/lib/gunbc\" }\n}\n"
+
+data accepted_frame_store_source: String = "module probe_accepted_frame_store\nimport std.materialization_store_grant { MaterializationStoreRoot, FrameJobWorkspace }\nfn accepted() -> MaterializationStoreRoot {\n  FrameJobWorkspace { frame: 1 }\n}\n"
+
+test fn a_store_root_cannot_be_constructed_on_a_caller_chosen_path() -> Bool {
+  (total_blocking_count_for(source: forged_frame_store_path_source) > 0)
+    && (total_blocking_count_for(source: forged_persistent_store_path_source) > 0)
+    && (total_blocking_count_for(source: accepted_frame_store_source) == 0)
 }
 
 test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {
