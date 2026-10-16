@@ -1,21 +1,21 @@
-module test.claim.native_route_progress_guard_witness
+module v2.test.claim.native_route_progress_guard_witness
 
 import std.types { List }
 import std.algebra { count_where, is_empty, length }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.content_hash { structural_content_hash }
 import v2.compiler.native_test_vocabulary {
-  NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval
+  NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval,
+  NativeRouteTestIdentity
 }
-import gunbc.witness.v2_native_route {
+import v2.workflow.v2_native_route {
   NativeRouteExclusionCause, NativeRouteDivergenceCause,
   NativeEntryResolutionLimit, NativePassedExpectedRed, NativeReturnedOtherVerdict,
-  NativeRouteTestIdentity,
   NativeAgreementPass, NativeAgreementExpectedRed,
   NativeExclusion, CompilerFrontierAttributed,
   NativeRouteEmittedBuild
 }
-import gunbc.native_route_progress_guard {
+import v2.workflow.native_route_progress_guard {
   NativeRouteAttainment, AttainRefused, AttainDiverged, AttainAgreed,
   NativeBaselineAttainment, BaselineRefused, BaselineDiverged, BaselineAgreed,
   NativeCauseTransitionDisposition, NativeCauseTransitionRow,
@@ -94,7 +94,7 @@ fn observed(identity: NativeRouteTestIdentity, attained: NativeRouteAttainment) 
 // by, so every claim that does not vary it is comparing within one meaning of green -- which is
 // the only condition under which a per-identity comparison says anything.
 data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
-  authority: "gunbc.witness.v2_native_route native_route_admission",
+  authority: "v2.workflow.v2_native_route native_route_admission",
   closure_identity: structural_content_hash(digest: "1111222233334444"),
   receipt_identity: optional_present(value: "native_route_receipt.json")
 }
@@ -103,7 +103,7 @@ data current_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication 
 // the discriminator moved off `authority`: a gate strengthening that renames nothing -- the
 // NORMAL case, since gunbc#11829 renamed nothing it strengthened.
 data strengthened_adjudicator: NativeVerdictAdjudication = NativeVerdictAdjudication {
-  authority: "gunbc.witness.v2_native_route native_route_admission",
+  authority: "v2.workflow.v2_native_route native_route_admission",
   closure_identity: structural_content_hash(digest: "aaaabbbbccccdddd"),
   receipt_identity: optional_absent()
 }

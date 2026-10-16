@@ -3,9 +3,11 @@ module gunbc.host.boot_medium
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
-import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import extdeps.network.endpoint { socket_address, host_by_name }
+import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
+import extdeps.ssh.known_hosts { openssh_standard_port }
 import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, ssh_target_wire }
 import gunbc.machine_intake.boot_image_export_ownership { boot_image_export_ownership_requirement }
 
 // WHERE A CONTROLLER READS BOOT MEDIA FROM: the host that serves the export, as the fleet-SSH target
@@ -19,9 +21,18 @@ type BootImageExport {
   dir: NonEmptyStr
 }
 
+// THE EXPORT HOST IS ADDRESSED HERE, BY NAME, and no longer read through
+// gunbc.fleet.fleet_reach_endpoint fleet_probe_endpoint_for. A data row cannot refuse, and that
+// function returns text a target must parse; srv2 is reached by its LAN name (it is neither a provider
+// guest nor a Spark binding, so the function answered its own identity), and that name is built here
+// from its label. This is one fewer consumer of the root gunbc.endpoint_authority_replacement_cut
+// retires; when the fleet attachment authority lands, this row reads srv2's attachment instead.
 data bmc_boot_image_export: BootImageExport = BootImageExport {
   target: SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String) as NonEmptyStr,
+    address: socket_address(
+      host: host_by_name(name: HostName { name: DomainName { labels: [operator_host_srv2 as String as DnsLabel] }, qualification: PartiallyQualified }),
+      port: openssh_standard_port,
+    ),
     principal: fleet_automation_user.name,
   },
   dir: boot_image_export_ownership_requirement.export_path,
@@ -66,7 +77,7 @@ type BootMedium {
 // directory served by another host, or reached as another principal, is a different set of bytes.
 fn boot_image_export_eq(a: BootImageExport, b: BootImageExport) -> Bool {
   (a.dir as String) == (b.dir as String)
-    && (a.target.endpoint as String) == (b.target.endpoint as String)
+    && (ssh_target_wire(target: a.target) as String) == (ssh_target_wire(target: b.target) as String)
     && (a.target.principal as String) == (b.target.principal as String)
 }
 

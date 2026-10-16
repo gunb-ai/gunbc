@@ -90,22 +90,6 @@ data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.contr
 // /etc/systemd/system.control drop-in until reboot or `systemctl revert`. Live 18/20 GiB on
 // gunbc-approval-broker.slice (2026-09-30) is that runtime residue: no row produces it.
 data gunbc_runtime_system_control_dropin_dir_prefix: String = "/run/systemd/system.control/"
-data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
-
-// THE DAEMON'S FIFO PATH, WHICH THE RUNNER UNIT HAS TO NAME AND NOTHING HERE PREVIOUSLY DID.
-//
-// The jobserver's token count already lives beside the env file above; the FIFO those tokens are
-// handed out over did not, because no consumer here had to name it until a runner unit was
-// rendered from gunbc. It sits here rather than in `extdeps.jobserver` for the reason that
-// module's placement caveat states: the protocol shape is upstream's, this fleet's installed
-// daemon is ours.
-//
-// It is the DEFAULT. The daemon reads `/etc/default/ctrl-jobserver` and a host may override it
-// there, so a render assuming this path on a host that overrode it would point MAKEFLAGS at a FIFO
-// nobody owns. Hence the unit render takes the path as a parameter and this row is what the fleet
-// passes, rather than the render reaching for a constant it cannot check.
-data gunbc_runner_jobserver_default_fifo: String = "/var/lib/ctrl/jobserver/host.fifo"
-
 data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
 
 data gunbc_root_env_key: String = "GUNBC_ROOT"

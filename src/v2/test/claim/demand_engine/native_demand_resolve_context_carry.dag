@@ -1,6 +1,6 @@
 module v2.test.claim.demand_engine.native_demand_resolve_context_carry
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeDemandRun,
   NativeDemandStepResult,
   NativeLaneModuleContextRowsDecided,
