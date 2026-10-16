@@ -13,7 +13,6 @@ import gunbc.host.host_effect_realize {
   live_deploy_digest_readback_verdict,
   live_deploy_digest_readback_argv,
   host_effect_apply,
-  host_effect_identity_evidence,
 }
 import extdeps.http.client { http_client_localhost_connect_timeout_flag, http_client_max_time_flag }
 import extdeps.tools.curl { curl_localhost_max_time }
@@ -43,6 +42,7 @@ import gunbc.host.host_effect {
   LocalShell,
   HostOs,
   LiveDeployDigestReadback,
+  host_effect_identity_evidence,
 }
 import gunbc.fleet.fleet_intent { srv1_host }
 import std.algebra { string_contains }
