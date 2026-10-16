@@ -8622,14 +8622,11 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
 
 fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> String {
   let field_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field)
-  if type_var_in_fn_generic_scope(id: field_leaf, generic_param_names: generic_param_names) {
-    return ty
-  }
   // The env-consulting mint comes first: a field written `count: Nat` is a reference whose own-span
   // fallback names the referencing file, so the env-less read inside shared_layer_of_type_expr never
   // sees the native row (std.nat Nat = i64) and refused the declaration (run 4: 5 sites).
   let native_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: rt_field, dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), env: env, source_indices: source_indices))
-  if native_scalar != none { return ty }
+  if type_var_in_fn_generic_scope(id: field_leaf, generic_param_names: generic_param_names) || native_scalar != none { return ty }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: rt_field, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
   match layer {
     SharedLayerRefuse { leaf: leaf, cause: cause } => return shared_layer_refuse_expr(leaf: leaf, cause: cause)
