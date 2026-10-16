@@ -359,7 +359,7 @@ data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthoriza
     "actions-runner@srv1-05.service" as NonEmptyStr,
     "actions-runner@srv1-06.service" as NonEmptyStr,
   ],
-  operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs",
+  operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs" as NonEmptyStr,
 }
 
 // srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
