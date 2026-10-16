@@ -9,7 +9,11 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { mkdir_parents_command, rm_force_command, mv_exact_destination_command, ln_symbolic_force_command }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.crypto.hash { sha256sum_program }
+import extdeps.tools.stat { stat_program }
+import extdeps.posix.test_utility { test_program }
+import extdeps.tools.gnu_coreutils { readlink_program, ls_program, cat_program, mkdir_parents_command, rm_force_command, mv_exact_destination_command, ln_symbolic_force_command }
 import gunbc.cloudflare.r2_origin { OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt }
 import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease, NinferInstalledFile }
 
@@ -235,8 +239,10 @@ fn serving_names_protected(argument: String, protected: ServingProtectedPaths) -
     || serving_covers(argument: argument, protected: protected.model_link)
 }
 
-fn serving_read_only_program(invocation: String) -> Bool {
-  invocation == "sha256sum" || invocation == "readlink" || invocation == "stat" || invocation == "ls" || invocation == "cat" || invocation == "test"
+// Read-only is a fact of the modeled program identity, not of a spelling: each row is the identity its own
+// extdeps module declares. curl is absent (its -o writes a file).
+fn serving_read_only_program(program: ProgramIdentity) -> Bool {
+  program == sha256sum_program() || program == readlink_program() || program == stat_program() || program == ls_program() || program == cat_program() || program == test_program()
 }
 
 fn serving_operand_words(command: ArgvCommand) -> List<String> {
@@ -287,8 +293,14 @@ fn serving_mutating_endangers(invocation: String, command: ArgvCommand, protecte
 // An operand with a `.` or `..` segment or a doubled slash names a path by a spelling the string comparison
 // cannot place (`<root>/partial/../sha256/<digest>` is neither equal to nor inside the protected path), so it
 // refuses with the relative operands. Symlinked directories are not followed: the layout creates none.
+// A flag that carries a path or a value (`--target-directory=DIR`) names a destination inside the flag itself,
+// where the operand filter would drop it, so it refuses with the unplaceable spellings.
+fn serving_flag_carries_path(argument: String) -> Bool {
+  starts_with(s: argument, prefix: "-") && (string_contains(s: argument, pattern: "/") || string_contains(s: argument, pattern: "="))
+}
+
 fn serving_unplaceable_spelling(argument: String) -> Bool {
-  string_contains(s: argument, pattern: "/../") || string_contains(s: argument, pattern: "/./") || string_contains(s: argument, pattern: "//")
+  serving_flag_carries_path(argument: argument) || string_contains(s: argument, pattern: "/../") || string_contains(s: argument, pattern: "/./") || string_contains(s: argument, pattern: "//")
     || ends_with(s: argument, suffix: "/..") || ends_with(s: argument, suffix: "/.")
 }
 
@@ -296,7 +308,7 @@ fn serving_unplaceable_spelling(argument: String) -> Bool {
 // list that carries one is refused BEFORE the per-program branches (mv and ln included).
 fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
   let invocation = command.program.invocation as String
-  if serving_read_only_program(invocation: invocation) {
+  if serving_read_only_program(program: command.program) {
     false
   } else {
     any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) || serving_unplaceable_spelling(argument: a) })
