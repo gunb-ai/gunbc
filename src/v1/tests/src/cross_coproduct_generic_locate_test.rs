@@ -270,3 +270,129 @@ fn same_arm_alias_and_foreign_expansion_still_refuses() {
         "FreeMonoid<Symbol> vs FreeMonoid<Other> must still refuse after the alias unfolds: {msgs:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// VARIABLE-CAPTURE DISCRIMINATOR (stern-bat-401 msg_d5018d11). Hypothesis under test:
+// the fold keys its binding map by type-variable NAME without scoping per callee
+// INSTANCE, so a nested or sibling call to a DIFFERENT generic function that also spells
+// its variable T makes the two callees' variables collide -- which would explain the
+// Product(Unit<>) family, where the first binding's span is the return annotation of
+// fn outcome_accepted<T> (src/v2/std/diagnostic.dag:6513-6520) while the later argument's
+// span is the return annotation of fn bind_outcome<T, U> (:14331-14338): two annotations
+// from two different generic functions, neither a settled value expression.
+// Each row below is measured, not asserted-from-hope: the two ACCEPT rows are programs the
+// corpus needs to keep accepting (a capture bug would refuse them, and the refusal would
+// name a variable bound from two callees); the REJECT twin is the same call shape with one
+// callee's own two arguments settled to different types, which must keep refusing.
+// ---------------------------------------------------------------------------
+
+fn capture_prelude() -> &'static str {
+    "module locate.capture\n\ntype P = P1 { x: Int } | P2 { y: Int }\ntype Q = Q1 { x: Int } | Q2 { y: Int }\n\n"
+}
+
+// Two DIFFERENT generic callees, both spelling their variable T, called in one
+// expression. Legally typed: pair binds T := Int from both of its own arguments; consumes
+// binds its own T := Bool. Nothing is shared between the two callees, so a refusal here is
+// capture, not a misbinding.
+#[test]
+fn sibling_generic_calls_with_the_same_variable_letter_are_accepted() {
+    let src = format!(
+        "{}fn pair<T>(a: T, b: T) -> Bool {{ true }}\nfn consumes<T>(x: T) -> Bool {{ true }}\nfn probe(i: Int, j: Int, b: Bool) -> Bool {{ pair(a: i, b: j) && consumes(x: b) }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        !has_generic_rebind(&msgs),
+        "two separate callees each binding their own T must not collide; got {msgs:?}"
+    );
+}
+
+// The NESTED form the corpus actually has (bind_outcome(outcome_accepted(..), ..)):
+// inner callee's T settles to Int, outer callee's T settles to Int through the inner
+// result and a sibling argument. Legal whatever the letters are.
+#[test]
+fn nested_generic_call_with_the_same_variable_letter_is_accepted() {
+    let src = format!(
+        "{}fn inner1<T>(x: T) -> T {{ x }}\nfn outer2<T>(a: T, b: T) -> Bool {{ true }}\nfn probe(i: Int, j: Int) -> Bool {{ outer2(a: inner1(x: i), b: j) }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        !has_generic_rebind(&msgs),
+        "a nested callee whose variable is spelled the same must not collide; got {msgs:?}"
+    );
+}
+
+// The same nesting with genuinely DIFFERENT settled types for the two callees: inner1's T
+// := Bool (legal, it only flows through inner1), outer2's T := Int from both of ITS
+// arguments. Still legal, so still must accept. This is the row that separates 'keys are
+// per-callee' (accepts) from 'keys are global by letter' (refuses, naming T).
+#[test]
+fn nested_generic_call_with_different_settled_types_per_callee_is_accepted() {
+    let src = format!(
+        "{}fn inner1<T>(x: T) -> T {{ x }}\nfn outer2<T>(a: T, b: T) -> Bool {{ true }}\nfn probe(i: Int, j: Int) -> Bool {{ outer2(a: inner1(x: i), b: j) && inner1(x: true) == true }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        !has_generic_rebind(&msgs),
+        "inner callee settling its T to Bool while outer settles T to Int is legal; got {msgs:?}"
+    );
+}
+
+// REJECT TWIN: ONE callee, its OWN two arguments settled to two distinct types. Not
+// capture -- a genuine misbinding -- and must keep refusing, or the three rows above prove
+// nothing (an implementation that simply stopped binding would pass them all).
+#[test]
+fn one_callee_two_distinct_settled_arguments_still_refuses() {
+    let src = format!(
+        "{}fn pair<T>(a: T, b: T) -> Bool {{ true }}\nfn probe(i: Int) -> Bool {{ pair(a: i, b: true) }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        has_generic_rebind(&msgs),
+        "one callee binding T to Int and Bool must refuse; got {msgs:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// UNSETTLED-BINDING PREDICATE (stern-bat-401 msg_0306d56f, part (2): "The fold treats a
+// TypeVariable leaf as unsettled; that predicate is APPROVED now, with its own accept
+// control and a refusal twin"). The old uninformative authority only followed a SINGLE
+// child, so Map(C, Int) -- where C is still a type variable -- was treated as settled and
+// compared leaf-wise against Map(String, Int), refusing C against String even though C
+// could BE String. The accept control below is that program; the refusal twin removes the
+// variable so the two types are genuinely distinct and must keep refusing.
+// ---------------------------------------------------------------------------
+
+// ACCEPT: a callee whose own second parameter is still a variable when another actual for
+// the same variable arrives settled. Legal program -> must not refuse.
+#[test]
+fn binding_still_carrying_a_type_variable_is_not_settled_evidence_accepted() {
+    let src = format!(
+        "{}fn takes_pair<T>(a: Map<T, Int>, b: Map<String, Int>) -> Bool {{ true }}\nfn probe(k: Symbol, m1: Map<Symbol, Int>, m2: Map<String, Int>) -> Bool {{ takes_pair(a: m1, b: m2) }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        !has_generic_rebind(&msgs),
+        "a binding whose element is still a variable must not refuse a settled Map(String, Int); got {msgs:?}"
+    );
+}
+
+// REJECT TWIN: identical shape, no variable anywhere -- Map(Int, Int) against
+// Map(String, Int) is a genuine misbinding and must refuse, or the row above proves
+// nothing (an implementation that stopped binding variables entirely would pass it).
+#[test]
+fn settled_map_argument_pair_of_different_element_types_still_refuses() {
+    let src = format!(
+        "{}fn takes_pair<T>(a: Map<T, Int>, b: Map<T, Int>) -> Bool {{ true }}\nfn probe(m1: Map<Int, Int>, m2: Map<String, Int>) -> Bool {{ takes_pair(a: m1, b: m2) }}\n",
+        capture_prelude()
+    );
+    let msgs = blocking_messages(&src);
+    assert!(
+        has_generic_rebind(&msgs),
+        "Map(Int, Int) and Map(String, Int) settled to one variable must refuse; got {msgs:?}"
+    );
+}

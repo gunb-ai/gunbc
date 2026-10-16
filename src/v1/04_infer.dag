@@ -7910,6 +7910,31 @@ fn binding_is_unsettled_formal_annotation(n: Node, generics: List<String>, sourc
   generics |> any(g => generic_node_mentions(n: n, name: g, source_indices: source_indices))
 }
 
+// AN UNSETTLED BINDING IS ONE THAT STILL CARRIES A TYPE-VARIABLE LEAF (stern-bat-401
+// msg_0306d56f, predicate APPROVED: "The fold treats a TypeVariable leaf as unsettled").
+// This is deeper than unify_binding_is_uninformative, which only follows a SINGLE-child
+// chain and so answers false for a two-child node like Map(C, Int) whose leaf C is still a
+// variable: comparing such a binding against a settled Map(String, Int) refuses C against
+// String, which is a refusal about a variable that was never settled -- the variable could
+// BE String. The measurement that motivates it: 7 substitutions in the corpus hand a kernel
+// parameter leaf a fabricated Unit node (ins_name="Unit", ins_span=<kernel:Unit>:0-4,
+// expr_data NoExprData, inferred None) against 1196 ordinary ones, fanning out into the
+// Product(Unit<>) census family; an unsettled variable must stay a variable, and while the
+// producer of that Unit is being hunted (parent's part (1)), the fold must not treat a
+// variable-bearing node as settled evidence. Reject twins are unaffected: they contain no
+// type variable at all (Int vs Bool, P vs Q, FreeMonoid<Int> vs FreeMonoid<Bool>).
+fn binding_has_type_variable_leaf(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ =>
+      if n.children |> count == 0 {
+        false
+      } else {
+        n.children |> any(c => binding_has_type_variable_leaf(n: child_type_node(ch: c)))
+      }
+  }
+}
+
 fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = expr_var_name_at(texpr: n, source_indices: source_indices)
   if string_length(s: name) == 0 { false }
@@ -14659,6 +14684,14 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
         // FreeMonoid<Bool>) fall through to the refusal below.
         if binding_is_unsettled_formal_annotation(n: bound, generics: generic_names, source_indices: source_indices) {
           UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_has_type_variable_leaf(n: bound) {
+          // The stored binding still carries a type-variable leaf, so it is not settled
+          // evidence for this variable; this actual is the first settled binding.
+          UnifyGenericsAcc { subst: map_insert(acc, bind_name, actual), diagnostics: [] }
+        } else if binding_has_type_variable_leaf(n: actual) {
+          // This actual still carries a type-variable leaf, so it cannot falsify the stored
+          // binding: the variable could be exactly that type. Keep the first binding.
+          UnifyGenericsAcc { subst: acc, diagnostics: [] }
         } else if unify_binding_is_uninformative(n: bound) {
           if unify_binding_is_uninformative(n: actual) {
             UnifyGenericsAcc { subst: acc, diagnostics: [] }
