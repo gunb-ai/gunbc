@@ -111,29 +111,6 @@ data ar_key_bare_source: String = "module v2.test.ar_key_bare\n\ndata ar_k: Bool
 
 data ar_key_quoted_source: String = "module v2.test.ar_key_quoted\n\ndata ar_k: Bool = { \"n\": true }\n"
 
-// THE CARRIER-MISSING SPECIMENS (census group resolve_anonymous_record_no_expected_type). The tree
-// carried 93 of these: an ANNOTATED list element -- `data x: List<T> = [ { f: v } ]` -- where the
-// author DID write the annotation and the module simply does not carry the name `List`. The annotation
-// is then an unresolvable head, no expectation reaches the element, and resolve refuses at each
-// element rather than manufacturing a structural type. Four sources, three headless elements each at
-// lines 8, 9 and 12: the RED pair carries `FreeMonoid` (so `List` is unbound), the POSITIVE pair is
-// byte-identical but carries `List`, and each pair has a headed twin whose elements name `ArB`
-// themselves. Within a pair only line 4 -- the carrier import -- differs.
-
-data ar_types_source: String = "module v2.test.ar_types\n\nimport std.algebra { FreeMonoid }\n\ntype List<element> = FreeMonoid<element>\n"
-
-
-data ar_carrier_source: String = "module v2.test.ar_carrier\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\ndata ar_entries: List<ArB> = [\n  { n: true, m: false },\n  { n: false, m: true }\n]\n\nfn ar_ret() -> List<ArB> { [{ n: true, m: true }] }\n"
-
-
-data ar_carrier_headed_source: String = "module v2.test.ar_carrier_headed\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\ndata ar_entries: List<ArB> = [\n  ArB { n: true, m: false },\n  ArB { n: false, m: true }\n]\n\nfn ar_ret() -> List<ArB> { [ArB { n: true, m: true }] }\n"
-
-
-data ar_carrier_pos_source: String = "module v2.test.ar_carrier_pos\n\nimport std.types { Bool }\nimport v2.test.ar_types { List }\nimport v2.test.arp { ArB }\n\ndata ar_entries: List<ArB> = [\n  { n: true, m: false },\n  { n: false, m: true }\n]\n\nfn ar_ret() -> List<ArB> { [{ n: true, m: true }] }\n"
-
-
-data ar_carrier_pos_headed_source: String = "module v2.test.ar_carrier_pos_headed\n\nimport std.types { Bool }\nimport v2.test.ar_types { List }\nimport v2.test.arp { ArB }\n\ndata ar_entries: List<ArB> = [\n  ArB { n: true, m: false },\n  ArB { n: false, m: true }\n]\n\nfn ar_ret() -> List<ArB> { [ArB { n: true, m: true }] }\n"
-
 data ar_list_headed_source: String = "module v2.test.ar_list_headed\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
 
 data ar_list_headless_source: String = "module v2.test.ar_list_headless\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
