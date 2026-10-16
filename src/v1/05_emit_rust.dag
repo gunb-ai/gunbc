@@ -3770,14 +3770,17 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let has_services = has_service_items(typed: typed)
   let has_pipeline = compiler_pipeline_entry_is_retained_host(modules: typed.modules)
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
+  let native_effects = native_entry_effects(modules: typed.modules, registry: ctx.registry)
+  // A native entry with effects renders `#[tokio::main]` (emit_native_claim_driver_effect_main_rs), so
+  // the manifest demands tokio for it whether or not any resource renders an async trait: an
+  // Observation resource with no capabilities (AllocationCounter) does not, and its crate failed E0433.
   let rust_crate = EmittedRustCrate {
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
-      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed)
+      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed) || (native_effects |> count) > 0
     }
   }
-  let native_effects = native_entry_effects(modules: typed.modules, registry: ctx.registry)
   let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
   if native_effect_refusals |> count > 0 {
     return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [], rust_crates: [] }
@@ -6820,6 +6823,20 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
   }
 }
 
+// A DECLARED RESOURCE IS NOT A HOST-REALIZED KERNEL SCALAR. A resource has no type node of its own, so
+// the env resolves its name to a bare leaf carrying a kernel identity span, which is exactly the shape
+// import_name_resolves_to_host_realized_kernel_scalar reads as a kernel scalar; the resource's use-line
+// was dropped and the `uses` parameter type then named nothing in the emitted module (E0425, measured by
+// dumping the filter state of gunbc.instruments.native_allocation_observation). The declaration is
+// decided on the imported module's item kind, by name, not on the resolved node's provenance.
+fn imported_name_is_resource_declaration(name: String, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Absent => false
+    Present { value: tm } =>
+      tm.items |> any(item => item.module_item_kind == ModuleItemResource && authored_name_at(source_indices: source_indices, node: item) == name)
+  }
+}
+
 // EMISSION FOLLOWS RESOLUTION AT THE AUTHORED-IMPORT BOUNDARY (#9813's contract, 2026-08-31).
 // A name in an authored import list earns a use-line only if the module's RESOLVED binding for
 // that bare spelling is the imported declaration. Post-#9813 the kernel overlay sits above the
@@ -6841,20 +6858,6 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
 // declared structure (Bool's True|False Disj, Optional) realizes THROUGH the cited declaration,
 // so its use-line is the path to that realization and stays -- measured in the seed mirror, whose
 // bodies consume the structural Bool enum by bare spelling.
-// A DECLARED RESOURCE IS NOT A HOST-REALIZED KERNEL SCALAR. A resource has no type node of its own, so
-// the env resolves its name to a bare leaf carrying a kernel identity span, which is exactly the shape
-// import_name_resolves_to_host_realized_kernel_scalar reads as a kernel scalar; the resource's use-line
-// was dropped and the `uses` parameter type then named nothing in the emitted module (E0425, measured by
-// dumping the filter state of gunbc.instruments.native_allocation_observation). The declaration is
-// decided on the imported module's item kind, by name, not on the resolved node's provenance.
-fn imported_name_is_resource_declaration(name: String, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
-  match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-    Absent => false
-    Present { value: tm } =>
-      tm.items |> any(item => item.module_item_kind == ModuleItemResource && authored_name_at(source_indices: source_indices, node: item) == name)
-  }
-}
-
 fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env: TypeEnv?) -> Bool {
   match module_env {
     Absent => false
