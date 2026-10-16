@@ -570,7 +570,7 @@ type OccurrenceBinding
   // AN ELIDED HEAD: a headless record literal `{ .. }` takes its declaration from the expected type's
   // head (resolve_elided_construct_walk), so the head occurrence is answered by that
   // expectation, not by a name the author wrote. Its own source is recorded so every reference carries
-  // exactly one; a re-binding of it is a re-binding of the annotation, which has its own occurrence.
+  // exactly one, and the binding census reads it as a row of its own (source expected_type).
   | BoundByExpectedType { identity: ResolvedReferenceIdentity }
 
 // One answered reference: the reference's own minted occurrence and the binding that answered it. The
@@ -607,6 +607,26 @@ fn occurrence_binding_authored(n: Node) -> Optional<QualifiedName> {
 fn occurrence_binding_entries(n: Node, binding: OccurrenceBinding) -> List<OccurrenceBindingEntry> {
   let record = OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: binding }
   match n.occurrence_id {
+    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceSynthetic => []
+    OccurrencePending { caused_by: _ } => []
+  }
+}
+
+// THE ELIDED HEAD'S ENTRY. It has no spelling of its own, so its authored spelling is the expected type's
+// head as the author wrote it: the name the binding census keys the occurrence by. Its target is the
+// declaration the expectation reached, alias-unfolded, which can differ from what that spelling's own
+// occurrence binds -- the reason it is a census row of its own.
+fn elided_head_binding_entries(elided: Node, x: ResolveExpectation, path: QualifiedName) -> List<OccurrenceBindingEntry> {
+  let record = OccurrenceBindingRecord {
+    authored: match resolve_expected_head_node_optional(t: x.expected) {
+      Present { value: head } => occurrence_binding_authored(n: head)
+      Absent => optional_absent()
+    },
+    binding: BoundByExpectedType { identity: ResolvedToDeclaration { path: path } }
+  }
+  match elided.occurrence_id {
     OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
     OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
     OccurrenceSynthetic => []
@@ -3463,7 +3483,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
                 tag: ResolveWalkAccepted {
                   value: declaration_reference_node(qn: path, occurrence_id: elided.occurrence_id),
                   diagnostics: None,
-                  bindings: occurrence_binding_entries(n: elided, binding: BoundByExpectedType { identity: ResolvedToDeclaration { path: path } })
+                  bindings: elided_head_binding_entries(elided: elided, x: x, path: path)
                 },
                 field: fn(e, record) { resolve_record_field_edge(ctx: ctx, e: e, record: record) }
               )

@@ -178,8 +178,9 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
     BoundToTypeParameter { canonical: _ } => false
     BoundToDeclaration { identity: _ } => true
     BoundAmbient { table: t, identity: _ } => ambient_table_is_module_level(table: t)
-    // An elided head follows its annotation, whose own occurrence is the row a wave can move.
-    BoundByExpectedType { identity: _ } => false
+    // An elided head is bound by the expected type's head after alias unfolding, so a wave that retargets
+    // an alias moves it while the annotation's own row stays put: it is a row of its own.
+    BoundByExpectedType { identity: _ } => true
   }
 }
 
