@@ -4599,16 +4599,13 @@ fn realize_live_deploy_apply_on_host(
   }
 }
 
-// RETRACT IS A LOCAL OPERATION OVER THE HOST-EFFECT TRANSPORT, parallel to apply. The unit
-// teardown it performs (stop/disable the owned units, remove the owned files, daemon-reload) is
-// realized as TYPED effects over the LOCAL deploy principal: the removals run as the principal's
-// sudo -n, the observes run unprivileged, and nothing is emitted to a remote tree. The bash emitter
-// it replaces (gunbc.live_deploy.emit live_deploy_retract_script_for -> retained_srvn) was never
-// modeled over ssh or the thin-run artifact locus, so a non-local locus has no admissible typed
-// realization here: refuse it rather than emit a script to run remotely. Fail-closed narrowing
-// (operator-ruled narrowing): LocalShell proceeds to the typed fold; every other locus refuses before
-// any step runs. The discriminant is the locus, not the effect — an SshShell or FleetSsh retract
-// spec refuses with this refusal and dispatches nothing.
+// RETRACT LOCUS GATE. A fail-closed narrowing placed in front of the STILL-RETAINED retract script:
+// realize_live_deploy_retract_on_host runs retained_srvn(live_deploy_retract_script_for) through
+// realize_shell_on_host, and that script is not modeled over ssh or the thin-run artifact locus, so
+// only the local locus proceeds. LocalShell passes (none); SshShell, FleetSsh and
+// EmitArtifactThenThinRun each refuse before any step runs. This does not make the teardown typed:
+// dissolving the script (and this retained_srvn row) is PB2's typed deploy preamble/retract, which
+// is the trigger that deletes the script and keeps this gate as the typed locus choice.
 fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
   match transport {
     LocalShell => none
