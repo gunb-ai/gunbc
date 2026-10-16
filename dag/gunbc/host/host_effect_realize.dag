@@ -6019,3 +6019,670 @@ fn build_cache_already_converged(
     applied: effect_intent,
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE MICROVM CONTROLLER INSTALL AS TYPED EFFECTS (census W5)
+//
+// The route retires gunbc.live_deploy.emit microvm_controller_install_script and
+// the retained_srvn wrapper that carried it. Every leg is argv data run through
+// the typed transport runners; there is no shell on this edge, so there is no
+// `set -euo pipefail` to carry, no `mktemp -d` stage directory, and no `|| exit 1`
+// to translate. Fail-fast is the fold's shape rather than a shell option, and
+// refusal is a NotConverged arm rather than an exit code.
+//
+// WHY DETERMINISTIC STAGING, THE SAME REASON compile_pool_slice_install_step
+// states it: every argv and the order they run in must be derivable before
+// anything executes, so a witness can name them. A `mktemp -d` directory makes
+// the whole list unknowable in advance, and it is why the retired script could
+// only be witnessed as text.
+//
+// THE INVARIANT THIS BLOCK EXISTS TO STATE AS A PROPERTY, NOT PROSE: the install
+// is additive — it lays down a locus, unit files and a sudoers drop-in, and it
+// starts NOTHING. `systemctl start ... gunbc-microvm-slot@srv1-13` is the
+// shakedown's own dispatch, admitted by the readiness store and a reservation,
+// never by a deploy. Spelled in a script body that sentence was a comment; spelled
+// here as a step list of argv data it is decidable, and
+// microvm_controller_install_starts_nothing is the check.
+//
+// TWO LEGS ARE NOT MINE TO SPELL. The release-tree copy and its receipt belong to
+// the approval-broker tree install vertical (W6, approval_broker_tree_install),
+// which already owns that find-and-install fold for the dark install. Spelling a
+// second copy here would be DESIGN §3's parallel authority, so the step is a
+// Frontier row carrying the trigger, and the fold REFUSES on it: an install that
+// quietly skipped copying its tree would otherwise converge on a half-written
+// release. Deleting the retired script is what makes the frontier honest rather
+// than decorative — there is no second path left to fall back to.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// THREE STEP ARMS, because three different things can be true of a leg. An ARGV
+// leg is words, optionally with bytes on stdin, run and required to exit zero. A
+// VERIFY leg is words run, required to exit zero, with its stdout checked against
+// a pinned digest — the typed form of the retired `echo '<hex>  <path> | sha256sum
+// -c -', which coupled the expected value into the command's spelling. A FRONTIER
+// leg is a step this change does not own: it carries the trigger that retires it
+// and the fold refuses on it rather than skipping it.
+type MicrovmControllerInstallStep
+  = MicrovmControllerArgvStep { name: String, command: ArgvCommand, stdin_payload: String }
+  | MicrovmControllerVerifyStep { name: String, command: ArgvCommand, expected: Digest, subject: String }
+  | MicrovmControllerReceiptStep {
+      name: String,
+      observe: ArgvCommand,
+      write: ArgvCommand,
+      expected_lines: Int,
+    }
+  | MicrovmControllerFrontierStep { name: String, trigger: String }
+
+type MicrovmControllerInstallStaging
+  = MicrovmControllerInstallReady { steps: List<MicrovmControllerInstallStep> }
+  | MicrovmControllerInstallRefused { reason: String }
+
+// The one pin the retired script carried as data rather than as a row: the guest
+// kernel artifact's digest is what the copy of it is verified against, and the
+// retired step list refused with `exit 1` when the artifact carried none. Refusing
+// at staging says the same thing before any copy exists to be unverified, and the
+// two absent arms are kept apart because they are different situations: an
+// artifact this fleet has not measured yet can be pinned, one that was built here
+// never can be (gunbc.runner.microvm_guest_artifacts states why).
+fn microvm_controller_kernel_pin_refusal(kind: String) -> String {
+  join(
+    [
+      microvm_controller_install_edge,
+      " refused before any operation ran: the workspace guest kernel artifact carries no pinned SHA-256, so the copied ",
+      kind,
+      " cannot be verified against anything",
+    ],
+    "",
+  )
+}
+
+// A unit name that carries '/' would place a unit file outside /etc/systemd/system/.
+// systemd unit names never contain one (systemd.unit(5)), so this is a malformed
+// name rather than a path, and it is checked at staging because after the write the
+// damage is done and the unit directory is wrong.
+fn microvm_controller_unit_name_refusal(name: String, kind: String) -> String {
+  join(
+    [
+      microvm_controller_install_edge,
+      " refused before any operation ran: the ",
+      kind,
+      " unit name '",
+      name,
+      "' carries '/', which would place the unit outside its unit directory; systemd unit names never contain one (systemd.unit(5))",
+    ],
+    "",
+  )
+}
+
+fn microvm_controller_kernel_pinned_digest() -> Digest? {
+  match runner_guest_kernel_artifact.integrity {
+    ArtifactDigestPinned { digest: d, provenance: _ } => Present { value: d }
+    ArtifactDigestUnpinned { cause: _ } => none
+    ArtifactDigestNotPinnable { cause: _ } => none
+  }
+}
+
+fn microvm_controller_install_staging(
+  revision: ReleaseRevisionBinding,
+) -> MicrovmControllerInstallStaging {
+  match microvm_controller_kernel_pinned_digest() {
+    none => MicrovmControllerInstallRefused { reason: microvm_controller_kernel_pin_refusal(kind: "guest kernel") }
+    Present { value: kernel_digest } =>
+      if string_contains(s: microvm_controller_slice_unit_name as String, pattern: "/") {
+        MicrovmControllerInstallRefused {
+          reason: microvm_controller_unit_name_refusal(
+            name: microvm_controller_slice_unit_name as String,
+            kind: "slice",
+          ),
+        }
+      } else if string_contains(s: microvm_slot_unit_template_name as String, pattern: "/") {
+        MicrovmControllerInstallRefused {
+          reason: microvm_controller_unit_name_refusal(
+            name: microvm_slot_unit_template_name as String,
+            kind: "slot template",
+          ),
+        }
+      } else if microvm_controller_requires_ci_reservation_unit() && string_contains(s: microvm_slot_reserve_unit_name as String, pattern: "/") {
+        MicrovmControllerInstallRefused {
+          reason: microvm_controller_unit_name_refusal(
+            name: microvm_slot_reserve_unit_name as String,
+            kind: "reservation",
+          ),
+        }
+      } else if string_contains(s: workspace_executor_template_name as String, pattern: "/") {
+        MicrovmControllerInstallRefused {
+          reason: microvm_controller_unit_name_refusal(
+            name: workspace_executor_template_name as String,
+            kind: "commissioning executor",
+          ),
+        }
+      } else if !string_contains(
+        s: firecracker_release_aarch64_tarball_sha256 as String,
+        pattern: "0",
+      ) {
+        // A hex row that is empty cannot verify a download; this is the same check
+        // the kernel pin gets, applied to a row rather than to an artifact arm.
+        MicrovmControllerInstallRefused {
+          reason: microvm_controller_kernel_pin_refusal(kind: "Firecracker tarball"),
+        }
+      } else {
+        MicrovmControllerInstallReady {
+          steps: microvm_controller_install_steps(revision: revision, kernel_digest: kernel_digest),
+        }
+      }
+  }
+}
+
+data microvm_controller_stage_suffix: String = ".gunbc-stage"
+
+data microvm_controller_unit_mode: NonEmptyStr = "0644" as NonEmptyStr
+
+data microvm_controller_grant_mode: NonEmptyStr = "0440" as NonEmptyStr
+
+data microvm_controller_receipt_line: String = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// `install -d -o <owner> -g <owner>` is what the retired install_d_owned_for_user
+// spelled; this is the same argv without the shell node around it.
+fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
+  coreutils_install_directory_owned_argv(
+    mode: install_d_shared_mode,
+    owner: microvm_controller_owner,
+    group: microvm_controller_owner,
+    path: path,
+  )
+}
+
+fn microvm_controller_argv_step(name: String, command: ArgvCommand) -> MicrovmControllerInstallStep {
+  MicrovmControllerArgvStep { name: name, command: command, stdin_payload: "" }
+}
+
+fn microvm_controller_stdin_step(
+  name: String,
+  command: ArgvCommand,
+  stdin_payload: String,
+) -> MicrovmControllerInstallStep {
+  MicrovmControllerArgvStep { name: name, command: command, stdin_payload: stdin_payload }
+}
+
+fn microvm_controller_frontier_step(name: String, trigger: String) -> MicrovmControllerInstallStep {
+  MicrovmControllerFrontierStep { name: name, trigger: trigger }
+}
+
+fn microvm_controller_stage_path(dest: String) -> String {
+  concat(dest, microvm_controller_stage_suffix)
+}
+
+// Staged writes go through a sibling of the destination and an `install`, exactly
+// as the retired deploy_stage_write_command / deploy_stage_install_command pair
+// did — but the bytes ride stdin rather than a `printf %s` argument, so no
+// metacharacter in a unit file, executor script, or sudoers line can change what
+// any command means. The content is data; it never becomes a word.
+fn microvm_controller_staged_write_steps(
+  name: String,
+  content: String,
+  mode: NonEmptyStr,
+  dest: String,
+) -> List<MicrovmControllerInstallStep> {
+  let staged = microvm_controller_stage_path(dest: dest)
+  [
+    microvm_controller_stdin_step(
+      name: join([name, " (stage)"], ""),
+      command: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
+      stdin_payload: content,
+    ),
+    microvm_controller_argv_step(
+      name: join([name, " (install)"], ""),
+      command: sudo_elevate_command(command: coreutils_install_file_argv(mode: mode, source: staged, dest: dest)),
+    ),
+  ]
+}
+
+// THE PLANNED STEP LIST, in the order the retained script ran them:
+// approval-broker tree install (W6's vertical, consumed as one leg), the release-locus
+// dir spine, the firecracker vmm install (stage, download, digest verify, extract, two
+// installs, receipt), the workspace image install (digest verify, dir, two installs),
+// the owner-owned receipt dirs, the slot/executor unit writes, the dispatch grant, and
+// the daemon reload. Every step is argv data; nothing here is shell text. The list is
+// planned whole BEFORE any effect runs, so the witness can read the shape without
+// touching the substrate.
+fn microvm_controller_install_steps(
+  revision: ReleaseRevisionBinding,
+  source_root: String,
+  kernel_digest: Digest,
+) -> List<MicrovmControllerInstallStep> {
+  let release_dir = microvm_controller_release_dir(revision: revision)
+  let stage = microvm_controller_stage_dir(revision: revision)
+  let tarball = microvm_controller_tarball_stage_path(revision: revision)
+  let firecracker_digest = microvm_controller_kernel_pinned_digest()
+  concat(
+    [
+      // W6's typed tree install vertical (PR 14138, gunbc.host.host_effect_realize
+      // approval_broker_tree_install). Consumed as ONE leg at the cutover, never
+      // re-implemented here (the fold over it is jolly-gull-446's, witnessed there).
+      // The source root is read THROUGH the transport (W6's contract), so it is taken
+      // as a parameter rather than minted from an ambient cwd here.
+      microvm_controller_frontier_step(
+        name: "approval-broker tree install",
+        trigger: "W6 approval_broker_tree_install (PR 14138) on main; consumed at the cutover of this fold",
+      ),
+      // release_locus_install_steps: the dir spine. The tree/binary/receipt legs of the
+      // old builder are W6's scope above; the dirs stay W5-owned.
+      microvm_controller_argv_step(
+        name: "release-locus dir spine",
+        command: sudo_elevate_command(command: coreutils_install_directory_argv(paths: [
+          microvm_controller_root,
+          approval_broker_releases_dir(root: microvm_controller_root),
+          release_dir,
+        ])),
+      ),
+      // install_d_owned_for_user x4: the owner-owned receipt stores. Each becomes its
+      // OWN step, so the failure names the store that failed instead of the batch.
+      microvm_controller_argv_step(
+        name: "slot controller receipt dir",
+        command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_slot_controller_receipt_dir)),
+      ),
+      microvm_controller_argv_step(
+        name: "cell readiness store dir",
+        command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: cell_readiness_store_location)),
+      ),
+      microvm_controller_argv_step(
+        name: "commissioning store dir",
+        command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: workspace_commissioning_store_location)),
+      ),
+      microvm_controller_argv_step(
+        name: "runner converged receipt dir",
+        command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: runner_microvm_converged_receipt_root)),
+      ),
+    ],
+    concat(
+      [
+        // microvm_controller_vmm_install_steps.
+        microvm_controller_argv_step(
+          name: "vmm stage dir",
+          command: mkdir_parents_command(path: stage),
+        ),
+        microvm_controller_argv_step(
+          name: "vmm tarball download",
+          command: curl_download_command(
+            url: firecracker_release_download_url(),
+            destination: tarball,
+          ),
+        ),
+        microvm_controller_verify_step(
+          name: "vmm tarball digest",
+          command: sha256sum_file_command(path: tarball),
+          expected: kernel_digest,
+          subject: tarball,
+        ),
+        microvm_controller_argv_step(
+          name: "vmm tarball extract",
+          command: tar_extract_command(
+            archive: tarball,
+            into_directory: stage,
+            strip_components: 0,
+          ),
+        ),
+        microvm_controller_argv_step(
+          name: "vmm binary install",
+          command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+            mode: install_executable_shared_mode,
+            owner: microvm_controller_owner,
+            group: microvm_controller_owner,
+            source: join([stage, "/", firecracker_release_binary_path_in_tarball()], ""),
+            dest: microvm_controller_vmm_binary(revision: revision),
+          )),
+        ),
+        microvm_controller_argv_step(
+          name: "jailer install",
+          command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+            mode: install_executable_shared_mode,
+            owner: microvm_controller_owner,
+            group: microvm_controller_owner,
+            source: join([stage, "/", firecracker_release_jailer_path_in_tarball()], ""),
+            dest: microvm_controller_jailer_binary(revision: revision),
+          )),
+        ),
+        // The vmm receipt: the two-binary sha256sum lines, observed here and written
+        // as stdin DATA (never re-spliced into shell text). This replaces the old
+        // 'sha256sum A B | install /dev/stdin' leg; the reader (apply.dag
+        // microvm_controller_vmm_receipt_present) checks both binaries are named, and
+        // the lines written ARE the lines this step observed, so the receipt records
+        // the binaries that were installed, not what sha256sum prints a second time.
+        microvm_controller_receipt_step(
+          name: "vmm receipt",
+          command: sha256sum_file_command(path: microvm_controller_vmm_binary(revision: revision)),
+          observe2: sha256sum_file_command(path: microvm_controller_jailer_binary(revision: revision)),
+          write: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+            mode: install_file_shared_mode,
+            owner: microvm_controller_owner,
+            group: microvm_controller_owner,
+            source: "/dev/stdin",
+            dest: microvm_controller_vmm_receipt_path(revision: revision),
+          )),
+          subject: microvm_controller_vmm_binary(revision: revision),
+        ),
+      ],
+      concat(
+        [
+          // workspace_image_install_steps.
+          microvm_controller_verify_step(
+            name: "workspace guest kernel digest",
+            command: sha256sum_file_command(path: runner_guest_base_artifact_path()),
+            expected: kernel_digest,
+            subject: runner_guest_base_artifact_path(),
+          ),
+          microvm_controller_verify_step(
+            name: "workspace guest image digest",
+            command: sha256sum_file_command(path: workspace_image_path()),
+            expected: kernel_digest,
+            subject: workspace_image_path(),
+          ),
+          microvm_controller_argv_step(
+            name: "workspace image dir",
+            command: sudo_elevate_command(command: coreutils_install_directory_argv(paths: [workspace_installed_image_root()])),
+          ),
+          microvm_controller_argv_step(
+            name: "workspace kernel install",
+            command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+              mode: install_file_shared_mode,
+              owner: microvm_controller_owner,
+              group: microvm_controller_owner,
+              source: runner_guest_base_artifact_path(),
+              dest: join([workspace_installed_image_root(), "/", "kernel"], ""),
+            )),
+          ),
+          microvm_controller_argv_step(
+            name: "workspace image install",
+            command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+              mode: install_file_shared_mode,
+              owner: microvm_controller_owner,
+              group: microvm_controller_owner,
+              source: workspace_image_path(),
+              dest: join([workspace_installed_image_root(), "/", "image.raw"], ""),
+            )),
+          ),
+        ],
+        concat(
+          // microvm_slot_unit_write_steps: staged write (content as stdin) then owned
+          // install, per unit. Templates only -- the fold NEVER starts an instance.
+          concat(
+            microvm_controller_staged_write_steps(
+              name: "controller slice unit",
+              dest: microvm_controller_slice_unit_path() as String,
+              mode: microvm_controller_unit_mode,
+              content: serialize_systemd_unit_file(file: microvm_controller_slice_unit_file()),
+            ),
+            concat(
+              microvm_controller_staged_write_steps(
+                name: "slot template unit",
+                dest: microvm_slot_unit_path() as String,
+                mode: microvm_controller_unit_mode,
+                content: serialize_systemd_unit_file(file: microvm_slot_unit_file_with_workspace_root(
+                  release_dir: microvm_controller_release_dir(revision: revision),
+                )),
+              ),
+              if microvm_controller_requires_ci_reservation_unit() {
+                microvm_controller_staged_write_steps(
+                  name: "slot reserve unit",
+                  dest: microvm_slot_reserve_unit_path() as String,
+                  mode: microvm_controller_unit_mode,
+                  content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
+                    file: microvm_slot_reserve_unit_file(release_dir: microvm_controller_release_dir(revision: revision)),
+                    release_dir: microvm_controller_release_dir(revision: revision),
+                  )),
+                )
+              } else {
+                []
+              },
+            ),
+          ),
+          concat(
+            // workspace_executor_install_steps.
+            concat(
+              microvm_controller_staged_write_steps(
+                name: "commissioning executor script",
+                dest: join([release_dir, "/", workspace_executor_script_name], ""),
+                mode: install_executable_shared_mode,
+                content: workspace_commissioning_executor_script(),
+              ),
+              concat(
+                microvm_controller_staged_write_steps(
+                  name: "commissioning helper",
+                  dest: join([release_dir, "/", workspace_executor_helper_name], ""),
+                  mode: install_executable_shared_mode,
+                  content: workspace_executor_helper_script(release_dir: release_dir),
+                ),
+                microvm_controller_staged_write_steps(
+                  name: "commissioning executor unit",
+                  dest: workspace_executor_unit_path() as String,
+                  mode: microvm_controller_unit_mode,
+                  content: workspace_executor_unit_text(
+                    release_dir: release_dir,
+                    fleet_lock: fleet_generation_lock,
+                    wait_bound: workspace_executor_wait_bound,
+                  ),
+                ),
+              ),
+            ),
+            concat(
+              // workspace_dispatch_grant_steps: pending file, visudo -cf BEFORE it
+              // becomes live, install 0440, visudo -cf on the live path, atomic
+              // rename -T, visudo -cf again. Every leg is its own named step.
+              microvm_controller_stdin_step(
+                name: "dispatch grant (pending)",
+                command: dd_overwrite_path_command(path: concat(workspace_dispatch_grant_path, ".pending")),
+                stdin_payload: workspace_dispatch_grant_content(
+                  release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr,
+                ),
+              ),
+              microvm_controller_argv_step(
+                name: "dispatch grant visudo check (pending)",
+                command: visudo_check_command(file_path: concat(workspace_dispatch_grant_path, ".pending")),
+              ),
+              microvm_controller_argv_step(
+                name: "dispatch grant install (pending)",
+                command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
+                  mode: microvm_controller_grant_mode,
+                  owner: microvm_controller_owner,
+                  group: microvm_controller_owner,
+                  source: concat(workspace_dispatch_grant_path, ".pending"),
+                  dest: concat(workspace_dispatch_grant_path, ".pending"),
+                )),
+              ),
+              microvm_controller_argv_step(
+                name: "dispatch grant policy check (pending)",
+                command: visudo_policy_check_command(file_path: concat(workspace_dispatch_grant_path, ".pending")),
+              ),
+              microvm_controller_argv_step(
+                name: "dispatch grant rename",
+                command: sudo_elevate_command(command: rename_no_target_directory_argv(
+                  source: concat(workspace_dispatch_grant_path, ".pending"),
+                  dest: workspace_dispatch_grant_path,
+                )),
+              ),
+              microvm_controller_argv_step(
+                name: "dispatch grant policy check (live)",
+                command: visudo_policy_check_command(file_path: workspace_dispatch_grant_path),
+              ),
+            ),
+            [
+              // systemctl daemon-reload, LAST: the units above are templates; the
+              // reload makes them known and starts nothing (the W5 invariant).
+              microvm_controller_argv_step(
+                name: "systemd daemon-reload",
+                command: systemctl_daemon_reload_command(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+// THE FAIL-FAST FOLD, step order preserved and the first failure terminal. Each leg
+// runs over the typed transport seams and its exit status is read as data -- the old
+// 'set -e' / '|| exit N' discipline survives as a NotConverged naming the step, never
+// as a silent default and never as script text.
+data microvm_controller_install_fold_edge: String = "host_effect_apply: MicrovmControllerInstall"
+
+// The observed stdout of a step, or the refusal that replaces it. Both runners share
+// this shape: a refused transport is a refusal of the whole edge with the runner's
+// own authority text, never a success with empty output.
+type MicrovmControllerStepRun
+  = StepRan { exit_code: Int, success: Bool, stdout: String, stderr: String }
+  | StepRefused { reason: String }
+
+fn microvm_controller_run_step(step: MicrovmControllerInstallStep, transport: HostEffectTransport) -> MicrovmControllerStepRun {
+  match step {
+    MicrovmControllerArgvStep { command: command, stdin_payload: stdin_text } => {
+      let outcome = if stdin_text == "" {
+        run_argv_over_host_effect_transport(command: command, transport: transport)
+      } else {
+        run_argv_stdin_over_host_effect_transport(command: command, stdin_payload: stdin_text, transport: transport)
+      }
+      match outcome {
+        RunArgvTransportObserved { observed: observed } => StepRan {
+          exit_code: observed.exit_code,
+          success: observed.success,
+          stdout: observed.stdout,
+          stderr: observed.stderr,
+        }
+        RunArgvTransportRefused { reason: why } => StepRefused { reason: why }
+      }
+    }
+    _ => StepRefused { reason: "microvm controller install: a non-argv step reached the argv runner" }
+  }
+}
+
+fn microvm_controller_run_verify(step_name: String, command: ArgvCommand, subject: String, expected: Digest, transport: HostEffectTransport) -> MicrovmControllerStepRun {
+  match microvm_controller_run_step(step: MicrovmControllerArgvStep { name: step_name, command: command, stdin_payload: "" }, transport: transport) {
+    StepRefused { reason: why } => StepRefused { reason: why }
+    StepRan { exit_code: code, success: ran, stdout: out, stderr: err } => {
+      if !ran {
+        StepRan { exit_code: code, success: false, stdout: out, stderr: err }
+      } else {
+        match sha256sum_line_digest(line: out) {
+          none => StepRan {
+            exit_code: 1,
+            success: false,
+            stdout: out,
+            stderr: join([microvm_controller_install_fold_edge, " step '", step_name, "' on '", subject, "': sha256sum printed no 64-hex digest field"], ""),
+          }
+          Present { value: observed } => {
+            if observed == expected {
+              StepRan { exit_code: 0, success: true, stdout: out, stderr: err }
+            } else {
+              StepRan {
+                exit_code: 1,
+                success: false,
+                stdout: out,
+                stderr: join([
+                  microvm_controller_install_fold_edge, " step '", step_name, "' on '", subject,
+                  "': the file's digest does not match the pinned release digest; refusing to install an artifact that is not the pinned release",
+                ], ""),
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn microvm_controller_run_receipt(
+  step_name: String,
+  command: ArgvCommand,
+  observe2: ArgvCommand,
+  write: ArgvCommand,
+  subject: String,
+  transport: HostEffectTransport,
+) -> MicrovmControllerStepRun {
+  let first = microvm_controller_run_step(step: MicrovmControllerArgvStep { name: step_name, command: command, stdin_payload: "" }, transport: transport)
+  let second = microvm_controller_run_step(step: MicrovmControllerArgvStep { name: step_name, command: observe2, stdin_payload: "" }, transport: transport)
+  match first {
+    StepRefused { reason: why } => StepRefused { reason: why }
+    StepRan { exit_code: c1, success: s1, stdout: o1, stderr: e1 } =>
+      match second {
+        StepRefused { reason: why } => StepRefused { reason: why }
+        StepRan { exit_code: c2, success: s2, stdout: o2, stderr: e2 } => {
+          let lines = join([trim(s: o1), "\n", trim(s: o2), "\n"], "")
+          let receipt = microvm_controller_stdin_step(name: step_name, command: write, stdin_payload: lines)
+          match microvm_controller_run_step(step: receipt, transport: transport) {
+            StepRefused { reason: why } => StepRefused { reason: why }
+            StepRan { exit_code: code, success: ran, stdout: out, stderr: err } =>
+              if !s1 || !s2 {
+                StepRan {
+                  exit_code: if s1 { c2 } else { c1 },
+                  success: false,
+                  stdout: out,
+                  stderr: join([microvm_controller_install_fold_edge, " step '", step_name, "': the receipt source digest run on '", subject, "' failed (exit ", to_string(if s1 { c2 } else { c1 }), ")"], ""),
+                }
+              } else if !ran {
+                StepRan { exit_code: code, success: false, stdout: out, stderr: err }
+              } else {
+                StepRan { exit_code: 0, success: true, stdout: out, stderr: err }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn microvm_controller_install_fold(
+  candidate: CandidateRelease,
+  source_root: String,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let revision = ReleaseRevisionBinding { commit_sha: candidate.revision as NonEmptyStr }
+  match microvm_controller_install_staging(revision: revision) {
+    MicrovmControllerInstallRefused { reason: why } => NotConverged { reason: why, applied: intent }
+    MicrovmControllerInstallReady { kernel_digest: kernel_digest } => {
+      let acc = fold(
+        microvm_controller_install_steps(revision: revision, source_root: source_root, kernel_digest: kernel_digest),
+        init: RunOk { exit_code: 0, stdout: "", stderr: "" },
+        f: (a, s) =>
+          match a {
+            RunFailed { reason: why } => RunFailed { reason: why }
+            RunOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err } =>
+              match s {
+                MicrovmControllerArgvStep { name: name, command: command, stdin_payload: _ } =>
+                  match microvm_controller_run_step(step: s, transport: transport) {
+                    StepRefused { reason: why } => RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, success: ran, stdout: out, stderr: err } =>
+                      if ran { RunOk { exit_code: code, stdout: out, stderr: err } }
+                      else { RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
+                  }
+                MicrovmControllerVerifyStep { name: name, command: command, expected: expected, subject: subject } =>
+                  match microvm_controller_run_verify(step_name: name, command: command, subject: subject, expected: expected, transport: transport) {
+                    StepRefused { reason: why } => RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, success: ran, stdout: out, stderr: err } =>
+                      if ran { RunOk { exit_code: code, stdout: out, stderr: err } }
+                      else { RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "' refused (exit ", to_string(code), "): ", err], "") } }
+                  }
+                MicrovmControllerReceiptStep { name: name, command: command, observe2: observe2, write: write, subject: subject } =>
+                  match microvm_controller_run_receipt(step_name: name, command: command, observe2: observe2, write: write, subject: subject, transport: transport) {
+                    StepRefused { reason: why } => RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "': ", why], "") }
+                    StepRan { exit_code: code, success: ran, stdout: out, stderr: err } =>
+                      if ran { RunOk { exit_code: code, stdout: out, stderr: err } }
+                      else { RunFailed { reason: join([microvm_controller_install_fold_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
+                  }
+                MicrovmControllerFrontierStep { name: name, trigger: trigger } => RunFailed {
+                  reason: join([
+                    microvm_controller_install_fold_edge, " step '", name,
+                    "': no typed route exists yet for this leg and the fold refuses rather than replaying the retired shell script; frontier: ", trigger,
+                  ], ""),
+                }
+              }
+          },
+      )
+      match acc {
+        RunFailed { reason: why } => NotConverged { reason: why, applied: intent }
+        RunOk { exit_code: code, stdout: out, stderr: err } => Converged {
+          evidence: ShellEffectApplied { exit_code: code, stdout: out, stderr: err },
+          applied: intent,
+        }
+      }
+    }
+  }
+}
