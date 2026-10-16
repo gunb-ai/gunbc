@@ -65,12 +65,12 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // The rows the fixture must produce, each as its whole printed line.
 fn ambient_census_fixture_expected() -> List<String> {
   [
-    "binding\tfx.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
-    "binding\tfx.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
-    "binding\tfx.uses\thelper\t0\tdeclared\tfx.decls.helper",
-    "binding\tfx.uses\thelper\t1\tdeclared\tfx.decls.helper",
-    "binding\tfx.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:Bool",
-    "binding\tfx.uses\ttrue\t0\tambient:kernel_canonical_symbol\tkernel:true"
+    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
+    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
+    "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper",
+    "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper",
+    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:Bool",
+    "binding\texamples.uses\ttrue\t0\tambient:kernel_canonical_symbol\tkernel:true"
   ]
 }
 
@@ -109,11 +109,11 @@ fn module_lines(stdout: String) -> List<String> {
   split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_module\t"))
 }
 
-// binding_module's fields: 3 the occurrences recorded twice, 5 the declaration references the resolved
+// binding_module's fields: 3 the occurrences recorded with two different bindings, 5 the declaration references the resolved
 // tree carries with no record at all. Either is a breach of exactly one source per occurrence.
 fn duplicate_record_failure(stdout: String) -> Optional<String> {
   match first(module_lines(stdout: stdout) |> filter(l => field_at(line: l, index: 3) != "0")) {
-    Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " recorded " + field_at(line: l, index: 3) + " occurrence(s) twice: each occurrence must carry exactly one binding source" }
+    Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " recorded " + field_at(line: l, index: 3) + " occurrence(s) with two different bindings: each occurrence must carry exactly one binding source" }
     Absent =>
       match first(module_lines(stdout: stdout) |> filter(l => field_at(line: l, index: 5) != "0")) {
         Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " has " + field_at(line: l, index: 5) + " declaration reference(s) with no binding record: each occurrence must carry exactly one binding source" }

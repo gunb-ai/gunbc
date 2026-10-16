@@ -217,7 +217,7 @@ fn rebind_red_failure(base_stdout: String, head_stdout: String) -> Optional<Stri
   if count(diff.unreached_one_side + diff.unobserved_both_sides) != 0 {
     optional_present(value: "the re-bind fixture was not observed: " + ((diff.unreached_one_side + diff.unobserved_both_sides) |> join(separator: ", ")))
   } else {
-      if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\tfx.uses helper#0\tdeclared examples.a.helper -> declared examples.b.helper")) == 1 {
+      if count(refused |> filter(d => delta_line(d: d) == "refused\tTargetChanged\texamples.uses helper#0\tdeclared examples.a.helper -> declared examples.b.helper")) == 1 {
         if count(refused) == 1 {
           optional_absent()
         } else {
@@ -234,9 +234,9 @@ fn home_control_rows() -> List<AmbientNameHome> {
 }
 
 fn home_control_failure() -> Optional<String> {
-  let before = "binding\tfx.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int\n"
-  let moved = "binding\tfx.uses\tInt\t0\tdeclared\tfx.home.Int\n"
-  let elsewhere = "binding\tfx.uses\tInt\t0\tdeclared\tfx.other.Int\n"
+  let before = "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int\n"
+  let moved = "binding\texamples.uses\tInt\t0\tdeclared\texamples.home.Int\n"
+  let elsewhere = "binding\texamples.uses\tInt\t0\tdeclared\texamples.other.Int\n"
   let home = binding_diff(base_stdout: before, head_stdout: moved, rows: home_control_rows())
   let not_home = binding_diff(base_stdout: before, head_stdout: elsewhere, rows: home_control_rows())
   if (count(home.admitted) != 1) || (count(home.refused) != 0) {

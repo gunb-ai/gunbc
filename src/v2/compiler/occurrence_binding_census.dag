@@ -45,7 +45,7 @@ type OccurrenceBindingCensusRow {
   target: String
 }
 
-// What one module contributed: its rows, the occurrences resolve recorded twice (a resolver defect the
+// What one module contributed: its rows, the occurrences resolve recorded with two different bindings (a resolver defect the
 // exactly-one-source control refuses on), and the occurrences whose authored spelling did not read
 // (reported, never keyed under a guessed spelling).
 type OccurrenceBindingContribution {

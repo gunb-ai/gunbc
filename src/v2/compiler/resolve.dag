@@ -403,17 +403,26 @@ fn resolved_tree_occurrence_binding(tree: ResolvedTree, reference: Node) -> Opti
   }
 }
 
-// THE OCCURRENCES RECORDED TWICE, each once. One pass with a seen-set.
+// THE OCCURRENCES RECORDED WITH TWO DIFFERENT BINDINGS, each once. One pass with a seen-map. A second
+// record EQUAL to the first is not a second source: an Arrow carries its declared type in two
+// positional slots (codomain and declared return, the one shape `fn` and `data` lower to), and both
+// slots hold the same node, so the walk records that one occurrence's one binding twice. Only a record
+// that disagrees with the first is a breach of exactly one source per occurrence.
 type BindingDuplicateScan {
-  seen: Map<OccurrenceId, Bool>
+  seen: Map<OccurrenceId, OccurrenceBindingRecord>
   duplicates: List<OccurrenceId>
 }
 
 fn occurrence_binding_duplicates(entries: List<OccurrenceBindingEntry>) -> List<OccurrenceId> {
   let scan = fold(entries, init: BindingDuplicateScan { seen: empty_map(), duplicates: [] }, f: fn(acc, e) {
     match map_lookup(m: acc.seen, key: e.reference) {
-      Present { value: _ } => BindingDuplicateScan { seen: acc.seen, duplicates: list_append(left: acc.duplicates, right: [e.reference]) }
-      Absent => BindingDuplicateScan { seen: map_insert(acc.seen, e.reference, true), duplicates: acc.duplicates }
+      Present { value: first } =>
+        if first == e.record {
+          acc
+        } else {
+          BindingDuplicateScan { seen: acc.seen, duplicates: list_append(left: acc.duplicates, right: [e.reference]) }
+        }
+      Absent => BindingDuplicateScan { seen: map_insert(acc.seen, e.reference, e.record), duplicates: acc.duplicates }
     }
   })
   scan.duplicates
