@@ -1,0 +1,133 @@
+module test.claim.infer_kernel_import_collision_witness
+
+import extdeps.filesystem.filesystem_io
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ONE RULE (re-enrolled after the kernel Optional mint cut, DESIGN section 4b meta-obligation 4): a
+// module that declares its own `type Optional`, imported by name beside `T?`, must yield a typed
+// refusal or ONE referent -- never a quiet two-referent fork. `T?` denotes the one declaration
+// gunbc.structural_realization_bindings optional_declaration_ref names (std.optional Optional);
+// the seed has no kernel mint, so there is no second lookup to disagree with. The prior RED
+// (ImportCollidesWithKernelName) guarded the mint and is gone; this control keeps the invalid
+// SOURCE as its input and asserts the new expected outcome on the real compile path.
+//
+// THE RED BYTES ARE THE FILES. The collision declaration lives under fixtures/ (not a source-root):
+// a second Optional type in the accepted corpus is itself a leaf-name fork.
+
+data collision_path: String = "fixtures/native_emission_controls_optional_collision.dag"
+data importer_path: String = "fixtures/native_emission_controls_optional_importer.dag"
+
+fn file_text(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn file_source(path: String) -> FixtureSource {
+  fixture_source(path: path, content: file_text(path: path))
+}
+
+// SAME MODULE PATH as the collision file, but no `import std.types` — compile_fixture
+// does not supply that module. The module still DECLARES Optional so the control is
+// "import a non-kernel name from a module that also declares the colliding type".
+data collision_fn_source: String = "module gunbc.instruments.native_emission_controls_optional_collision\n\ntype Optional\n  = CollisionWrapped \{ value: Int \}\n  | CollisionEmpty\n\nfn collision_seven() -> Int \{\n  7\n\}\n"
+
+data non_kernel_import_source: String = "module probe_kernel_import_ok\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_fn() -> Int \{\n  collision_seven()\n\}\n"
+
+data mint_import_source: String = "module probe_kernel_mint_import\n\nimport std.optional \{ Optional \}\n\nfn uses_mint(o: Optional<Int>) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
+
+data mint_decl_source: String = "module std.optional\n\ntype Optional<T>\n  = Absent\n  | Present \{ value: T \}\n"
+
+// Import by name next to `T?`: the pair the review names.
+data importer_with_t_question_source: String = "module probe_collision_importer\n\nimport std.optional \{ Optional \}\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_t_question(o: Int?) -> Int \{\n  collision_seven()\n\}\n"
+
+fn compile_importer() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      file_source(path: collision_path),
+      file_source(path: importer_path)
+    ],
+    entry: importer_path
+  })
+}
+
+fn compile_non_kernel_import() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source(collision_path, collision_fn_source),
+      fixture_source("probe_kernel_import_ok.dag", non_kernel_import_source)
+    ],
+    entry: "probe_kernel_import_ok.dag"
+  })
+}
+
+fn compile_mint_import() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/optional.dag", mint_decl_source),
+      fixture_source("probe_kernel_mint_import.dag", mint_import_source)
+    ],
+    entry: "probe_kernel_mint_import.dag"
+  })
+}
+
+fn outcome_rows(o: MultiModuleCompileFixtureOutcome) -> List<CompileDiagnosticCensusRow>? {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => Present { value: rows }
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } => Present { value: rows }
+    FixtureInstrumentRefused { cause: _ } => none
+  }
+}
+
+fn outcome_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false,
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+fn compile_importer_with_t_question() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      file_source(path: collision_path),
+      fixture_source("std/optional.dag", mint_decl_source),
+      fixture_source("probe_collision_importer.dag", importer_with_t_question_source)
+    ],
+    entry: "probe_collision_importer.dag"
+  })
+}
+
+// RED: importing the colliding declaration BY NAME (file_source importer) never completes clean
+// -- it is a typed refusal, so the second Optional referent cannot be quietly accepted.
+test fn importing_a_second_optional_by_name_never_completes_clean() -> Bool {
+  !outcome_clean(o: compile_importer())
+}
+
+// Positive control: the collision module stays importable for a name that is not Optional, with
+// `T?` in the same module, so the RED above is about the colliding NAME and not the module.
+test fn t_question_beside_a_non_optional_import_from_the_collision_module_is_accepted() -> Bool {
+  outcome_clean(o: compile_importer_with_t_question())
+}
+
+test fn importing_a_non_kernel_name_from_the_same_module_is_accepted() -> Bool {
+  outcome_clean(o: compile_non_kernel_import())
+}
+
+test fn importing_the_kernel_mint_optional_is_accepted() -> Bool {
+  outcome_clean(o: compile_mint_import())
+}

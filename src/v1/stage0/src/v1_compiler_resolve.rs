@@ -965,6 +965,7 @@ pub fn kahn_drain(
                 }
             },
         );
+        let new_zero_seed = v1_rt::rc_empty_map::<String, bool>();
         let new_zero_set = Rc::new({
             let mut __result = Vec::new();
             for neighbor in Rc::new({
@@ -996,7 +997,7 @@ pub fn kahn_drain(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
+            new_zero_seed.clone(),
             |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },

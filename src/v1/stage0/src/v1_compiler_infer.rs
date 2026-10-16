@@ -19,8 +19,7 @@ pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    literal_homomorphism_rows,
+    kernel_grounding_rows, literal_homomorphism_rows, optional_declaration_ref,
 };
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{carrier_container_equality_rows, kernel_carrier_admits_numeral};
@@ -73,26 +72,24 @@ use crate::std_kernel_type_name::KernelTypeNameAdmission::{
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
-    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
-};
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
-    elaborate_literal_at, kernel_grounding_for, kernel_mint_declaration_for,
-    literal_elaboration_refusal_message, literal_source_kind_of,
+    elaborate_literal_at, kernel_grounding_for, literal_elaboration_refusal_message,
+    literal_source_kind_of,
 };
 pub use crate::std_literal_elaboration::{
-    KernelGrounding, KernelGroundingLookup, KernelMintDeclarationLookup, LiteralElaboration,
-    LiteralElaborationOutcome, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
+    KernelGrounding, KernelGroundingLookup, LiteralElaboration, LiteralElaborationOutcome,
+    LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
+pub use crate::std_optional::Optional;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -309,13 +306,13 @@ use crate::v1_std_core::CompilerDiagnostic::{
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
     EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOptionalityMismatch,
-    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
+    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
     MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
-    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
-    SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
-    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
-    UnresolvedType, VariantCollision,
+    OptionalCastNotEliminated, OptionalDeclarationShapeMismatch, ReceiverTypeUnestablished,
+    ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
+    SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
+    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -1175,43 +1172,29 @@ pub fn variant_reference_inferred_node(
 }
 
 pub fn kernel_mint_parent_identity(minted_name: String) -> Rc<VariantParentIdentity> {
-    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
-        kernel_mint_declaration_rows(),
-        minted_name.clone(),
-    ))
-    .clone()
-    {
-        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+    match (*crate::std_kernel_type_name::kernel_type_name(minted_name.clone())).clone() {
+        KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => {
             Rc::new(VariantParentIdentity::VariantParentIdentified {
-                key: Rc::new(VariantParentKey::VariantParentDeclaration {
-                    declaration: d.clone(),
+                key: Rc::new(VariantParentKey::VariantParentKernelType {
+                    kernel_name: k.clone(),
                 }),
             })
         }
-        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => {
+        KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => {
             Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-                cause: "the owning kernel mint is bound to more than one declaration".to_string(),
+                cause: "the owning coproduct is a kernel mint whose name is not a kernel type"
+                    .to_string(),
             })
         }
-        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
-            match (*crate::std_kernel_type_name::kernel_type_name(minted_name.clone())).clone() {
-                KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => {
-                    Rc::new(VariantParentIdentity::VariantParentIdentified {
-                        key: Rc::new(VariantParentKey::VariantParentKernelType {
-                            kernel_name: k.clone(),
-                        }),
-                    })
-                }
-                KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => {
-                    Rc::new(VariantParentIdentity::VariantParentUnrecovered {
-                        cause:
-                            "the owning coproduct is a kernel mint whose name is not a kernel type"
-                                .to_string(),
-                    })
-                }
-            }
-        }
     }
+}
+
+pub fn optional_parent_identity() -> Rc<VariantParentIdentity> {
+    Rc::new(VariantParentIdentity::VariantParentIdentified {
+        key: Rc::new(VariantParentKey::VariantParentDeclaration {
+            declaration: optional_declaration_ref(),
+        }),
+    })
 }
 
 pub fn variant_parent_identity_of(
@@ -1348,7 +1331,7 @@ pub fn expected_deciding_variant_owner(
                         scope.clone(),
                     )
                 } else {
-                    kernel_optional_owner_declaring(scope.type_env.clone(), name.clone())
+                    optional_owner_declaring(scope.type_env.clone(), name.clone())
                 }
             }
             std::option::Option::None => std::option::Option::None,
@@ -10888,7 +10871,7 @@ pub fn annotate_pattern_parent_enums(
                         {
                             Rc::new(PatternParentReading {
                                 parent_enum: Some("Optional".to_string()),
-                                identity: kernel_mint_parent_identity(kernel_optional_mint_name()),
+                                identity: optional_parent_identity(),
                             })
                         } else {
                             if witness_container_subject.clone() {
@@ -25478,24 +25461,22 @@ pub fn kernel_arm_owner_add(
     }
 }
 
-pub fn kernel_optional_owner_declaring(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match env.parents.clone().last().cloned() {
-        Some(kernel) => {
-            match v1_rt::map_get(&kernel.str_bindings.clone(), "Optional".to_string()) {
-                Some(binding) => {
-                    if ((binding.resolved.clone().connective.clone() == Connective::Disj)
-                        && crate::v1_std_core::has_child_named(
-                            binding.resolved.clone(),
-                            name.clone(),
-                            env.source_indices.clone(),
-                        ))
-                    {
-                        Some(binding.resolved.clone())
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-                std::option::Option::None => std::option::Option::None,
+pub fn optional_owner_declaring(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::declaration_node_of_ref(
+        optional_declaration_ref(),
+        env.clone(),
+    ) {
+        Some(decl) => {
+            if ((decl.connective.clone() == Connective::Disj)
+                && crate::v1_std_core::has_child_named(
+                    decl.clone(),
+                    name.clone(),
+                    env.source_indices.clone(),
+                ))
+            {
+                Some(decl.clone())
+            } else {
+                std::option::Option::None
             }
         }
         std::option::Option::None => std::option::Option::None,
@@ -27754,110 +27735,6 @@ pub fn build_ancestry_precedence(
     }
 }
 
-pub fn kernel_optional_type_node() -> Rc<Node> {
-    {
-        let present_value_field = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "value".to_string(),
-            span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let present_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Present".to_string(),
-            span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![present_value_field.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let absent_variant = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Absent".to_string(),
-            span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_optional = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Optional".to_string(),
-            span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![present_variant.clone(), absent_variant.clone()]),
-            connective: Connective::Disj,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        kernel_optional
-    }
-}
-
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -27996,19 +27873,6 @@ pub fn build_type_env(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
-            }),
-        );
-        let kernel_optional = kernel_optional_type_node();
-        let kernel_bindings = v1_rt::rc_map_insert(
-            kernel_bindings.clone(),
-            crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())
-                .id
-                .clone(),
-            Rc::new(TypeBinding {
-                name: "Optional".to_string(),
-                resolved: kernel_optional.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,
             }),
@@ -28646,19 +28510,6 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let kernel_optional = kernel_optional_type_node();
-        let kernel_bindings = v1_rt::rc_map_insert(
-            kernel_bindings.clone(),
-            crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())
-                .id
-                .clone(),
-            Rc::new(TypeBinding {
-                name: "Optional".to_string(),
-                resolved: kernel_optional.clone(),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
-            }),
-        );
         let kernel_bindings = v1_rt::rc_map_insert(
             kernel_bindings.clone(),
             crate::v1_std_core::intern(intern_table.clone(), "Bool".to_string())
@@ -31437,27 +31288,19 @@ pub fn payload_field_type_binder(
     }
 }
 
-pub fn kernel_optional_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option<String> {
+pub fn optional_payload_field_name() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "value".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn optional_declaration_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option<String> {
     {
         let si = env.source_indices.clone();
-        let mint = kernel_optional_type_node();
-        let mint_payload_field = match Rc::new({
-            let mut __result = Vec::new();
-            for v in mint.children.clone().iter().cloned() {
-                __result.extend(
-                    (*crate::v1_std_core::variant_node_fields(v.clone()))
-                        .iter()
-                        .cloned(),
-                );
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(f) => f.name.clone(),
-            std::option::Option::None => "".to_string(),
-        };
+        let mint_payload_field = optional_payload_field_name();
         let is_coproduct = (decl.connective.clone() == Connective::Disj);
         if !is_coproduct.clone() {
             Some("it is not a coproduct".to_string())
@@ -31547,7 +31390,7 @@ pub fn kernel_optional_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option
                                                             f.clone(),
                                                         ),
                                                     ),
-                                                    "' where the kernel mint names it '"
+                                                    "' where the optional of T names it '"
                                                         .to_string(),
                                                 ),
                                                 mint_payload_field.clone(),
@@ -31574,76 +31417,39 @@ pub fn kernel_optional_shape_refusal(decl: Rc<Node>, env: Rc<TypeEnv>) -> Option
     }
 }
 
-pub fn kernel_mint_shape_diagnostics(
+pub fn optional_declaration_shape_diagnostics(
     env: Rc<TypeEnv>,
     module_name: String,
     module_span: Rc<SourceSpan>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for row in kernel_mint_declaration_rows().iter().cloned() {
-            __result.extend(
-                (*if (row.declaration.clone().module_path.clone() != module_name.clone()) {
-                    Rc::new(vec![])
-                } else {
-                    if (row.minted_name.clone() != kernel_optional_mint_name()) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                declaration_name: row.declaration.clone().decl_name.clone(),
-                                cause: v1_rt::concat(
-                                    v1_rt::concat(
-                                        "the seed mints no kernel type named '".to_string(),
-                                        row.minted_name.clone(),
-                                    ),
-                                    "'".to_string(),
-                                ),
-                                span: module_span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        match crate::v1_compiler_infer_env::declaration_node_of_ref(
-                            row.declaration.clone(),
-                            env.clone(),
-                        ) {
-                            std::option::Option::None => {
-                                Rc::new(vec![crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                        declaration_name: row.declaration.clone().decl_name.clone(),
-                                        cause: "this module does not declare it".to_string(),
-                                        span: module_span.clone(),
-                                    }),
-                                    module_name.clone(),
-                                )])
-                            }
-                            Some(decl) => {
-                                match kernel_optional_shape_refusal(decl.clone(), env.clone()) {
-                                    std::option::Option::None => Rc::new(vec![]),
-                                    Some(cause) => {
-                                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                                            Rc::new(CompilerDiagnostic::KernelMintShapeMismatch {
-                                                declaration_name: row
-                                                    .declaration
-                                                    .clone()
-                                                    .decl_name
-                                                    .clone(),
-                                                cause: cause.clone(),
-                                                span: decl.span.clone(),
-                                            }),
-                                            module_name.clone(),
-                                        )])
-                                    }
-                                }
-                            }
-                        }
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
+    {
+        let ref_ = optional_declaration_ref();
+        if (ref_.module_path.clone() != module_name.clone()) {
+            Rc::new(vec![])
+        } else {
+            match crate::v1_compiler_infer_env::declaration_node_of_ref(ref_.clone(), env.clone()) {
+                std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::OptionalDeclarationShapeMismatch {
+                        declaration_name: ref_.decl_name.clone(),
+                        cause: "this module does not declare it".to_string(),
+                        span: module_span.clone(),
+                    }),
+                    module_name.clone(),
+                )]),
+                Some(decl) => match optional_declaration_shape_refusal(decl.clone(), env.clone()) {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(cause) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::OptionalDeclarationShapeMismatch {
+                            declaration_name: ref_.decl_name.clone(),
+                            cause: cause.clone(),
+                            span: decl.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )]),
+                },
+            }
         }
-        __result
-    })
+    }
 }
 
 pub fn ground_kernel_views(
@@ -32000,7 +31806,7 @@ pub fn typecheck_module(
                             ),
                             grounded.diagnostics.clone(),
                         ),
-                        kernel_mint_shape_diagnostics(
+                        optional_declaration_shape_diagnostics(
                             env.clone(),
                             resolved_module_name.clone(),
                             resolved.module.clone().span.clone(),
@@ -33078,19 +32884,6 @@ pub fn compiler_kernel_type_env(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
-            }),
-        );
-        let kernel_optional = kernel_optional_type_node();
-        let kernel_bindings = v1_rt::rc_map_insert(
-            kernel_bindings.clone(),
-            crate::v1_std_core::intern(intern_table.clone(), "Optional".to_string())
-                .id
-                .clone(),
-            Rc::new(TypeBinding {
-                name: "Optional".to_string(),
-                resolved: kernel_optional.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,
             }),
