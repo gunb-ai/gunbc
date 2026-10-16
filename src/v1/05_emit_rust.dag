@@ -1755,7 +1755,6 @@ fn rust_carrier_shared_layer(n: Node, source_indices: Map<String, NewlineIndex>,
 
 fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, shared_types: Set<String>, type_decl_items: TypeDeclIndex) -> String {
   if rust_carrier_realizes_as_machine_scalar(n: n, type_name: type_name) {
-    if is_container_type(name: type_name) { return concat("DEBUG3_container_machine_scalar_", type_name) }
     return rust_carrier_optional_wrap(n: n, rendered: rendered)
   }
   rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types, type_decl_items: type_decl_items))
@@ -1910,9 +1909,6 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
   }
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  if name == "FreeMonoid" && n.children |> count > 0 {
-    return concat("DEBUG4<in_set=", (if set_contains(shared_types, name) { "t" } else { "f" }), " generics=", to_string(generic_param_names |> count), " overlay=", (if find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none { "t" } else { "f" }), " layer=", match shared_layer_of_leaf(shared_types: shared_types, leaf: name, type_decl_items: type_decl_items, generic_param_names: generic_param_names) { SharedLayerAtShared => "shared"  SharedLayerAtValue => "value"  SharedLayerRefuse { leaf: _, cause: c } => c }, " scalar=", (if rust_carrier_realizes_as_machine_scalar(n: n, type_name: name) { "t" } else { "f" }), ">")
-  }
   let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
   match exact_leaf {
     Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
@@ -3488,15 +3484,19 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
     } else {
       match resolution {
         TypeDeclResolved { identity: identity, decl: _ } =>
-          if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerRefuse { leaf: leaf, cause: concat("DEBUGresolved_not_shared identity=", identity) } }
-        TypeDeclLeafAmbiguous { leaf: amb } => SharedLayerRefuse { leaf: leaf, cause: concat("DEBUG3 ambiguous container leaf not in set: ", amb) }
-        _ => SharedLayerRefuse { leaf: leaf, cause: concat("DEBUGcontainer_not_in_set ids=", to_string(match map_get(type_decl_items.identities_by_leaf, leaf) { Present { value: ids } => ids |> count  Absent => -1 }), " indexed_idents=", match map_get(type_decl_items.identities_by_leaf, leaf) { Present { value: ids } => ids |> join(separator: ",")  Absent => "none" }) }
+          if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
+        TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
+        _ => SharedLayerAtValue
       }
     }
   } else if is_kernel_type(name: leaf) {
     // A kernel spelling realizes as the host type (i64, String, ...), at the value layer, whichever
     // declaration the corpus also gives the same leaf (emitted Int enum-variant fields as Rc<i64>).
     SharedLayerAtValue
+  } else if set_contains(shared_types, leaf) {
+    // The bare leaf key is inserted only for a unique declarer (or a container template), so it names
+    // the one declaration the leaf means; identity lookup alone answered the value layer for FreeMonoid.
+    SharedLayerAtShared
   } else {
     match resolution {
       TypeDeclResolved { identity: identity, decl: _ } =>
