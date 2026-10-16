@@ -97,8 +97,9 @@ type ComputeSubjectResolution
   = ComputeSubjectResolved { subject: ComputeCapacitySubject }
   | ComputeSubjectHostUnresolved { host: NonEmptyStr }
 
-// THE COMPUTE ROOT THE WORK PROVIDER AND THIS POOL DEMAND: leases, checkouts, the shared per-host
-// target directory, the content store and the capacity partition all live under it
+// THE COMPUTE ROOT THE WORK PROVIDER AND THIS POOL DEMAND: leases, checkouts, per-identity target
+// directories (each under that identity's work_dir), the content store and the capacity partition
+// all live under it
 // (gunbc.compute.work_provider_local reads it from here). Declared at this, the lower of the two
 // modules, as an owned-directory target both deployment routes ensure
 // (gunbc.roadmap.dashboard_instance_directories); under a root-owned /opt/gunbc a worker's first
