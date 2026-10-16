@@ -1457,6 +1457,48 @@ fn ct_resource_item_is_not_a_type_item_test() -> String {
   )
 }
 
+fn ct_imported_resource_name_is_recognised_by_kind_and_name_test() -> String {
+  concat(
+    "    // THE DECISION BEHIND AN IMPORTED RESOURCE'S USE-LINE. emit_specific_import_use_lines drops an\n",
+    "    // imported name the env resolves to a bare kernel-identity leaf (a host-realized scalar), and a\n",
+    "    // resource resolves to exactly that shape, so its use-line was dropped and the `uses` parameter\n",
+    "    // type named nothing (E0425 in the emitted crate). The executed consumer of the positive arm is\n",
+    "    // the native-allocation-observation label (red at gunbc#13892 head 170e4410b2b, green after the\n",
+    "    // repair, same inputs); this row pins the decision itself on both arms and the same-spelling case.\n",
+    "    #[test]\n",
+    "    fn an_imported_resource_name_is_recognised_by_kind_and_name() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        use crate::v1_std_core::ParsedModuleItemKind::\{ModuleItemResource, ModuleItemTypeDeclaration};\n",
+    "        let resource = item_of_kind(\"AllocationCounter\", ModuleItemResource, vec![\"kind\", \"mode\"]);\n",
+    "        assert!(\n",
+    "            crate::v1_compiler_emit_rust::resource_item_declares_name(\n",
+    "                resource.clone(),\n",
+    "                \"AllocationCounter\".to_string(),\n",
+    "                source_indices.clone(),\n",
+    "            ),\n",
+    "            \"an imported resource declaration must keep its use-line\"\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_emit_rust::resource_item_declares_name(\n",
+    "                resource,\n",
+    "                \"Other\".to_string(),\n",
+    "                source_indices.clone(),\n",
+    "            ),\n",
+    "            \"a name the resource does not declare must not be kept by this arm\"\n",
+    "        );\n",
+    "        let type_item = item_of_kind(\"AllocationCounter\", ModuleItemTypeDeclaration, Vec::new());\n",
+    "        assert!(\n",
+    "            !crate::v1_compiler_emit_rust::resource_item_declares_name(\n",
+    "                type_item,\n",
+    "                \"AllocationCounter\".to_string(),\n",
+    "                source_indices,\n",
+    "            ),\n",
+    "            \"the same spelling declared as a type is not a resource\"\n",
+    "        );\n",
+    "    }\n\n",
+  )
+}
+
 fn ct_kernel_identity_single_authority_test() -> String {
   concat(
     "    // THE KERNEL-IDENTITY FACT HAS ONE AUTHORITY, AND THIS IS THE ROW THAT SEPARATES IT FROM THE\n",
@@ -2028,7 +2070,8 @@ fn ct_coercion_tests() -> String {
     ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
     ct_an_optional_over_a_collection_of_optional_refuses_test(),
     ct_duplicate_type_parameter_refuses_test(),
-    ct_resource_item_is_not_a_type_item_test())
+    ct_resource_item_is_not_a_type_item_test(),
+    ct_imported_resource_name_is_recognised_by_kind_and_name_test())
 }
 
 // THE ENROLLED RED FOR `rust_call_arg_fail_closed_unwrap`, and the control that keeps the repair

@@ -6833,8 +6833,12 @@ fn imported_name_is_resource_declaration(name: String, import_module: String, ty
   match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     Absent => false
     Present { value: tm } =>
-      tm.items |> any(item => item.module_item_kind == ModuleItemResource && authored_name_at(source_indices: source_indices, node: item) == name)
+      tm.items |> any(item => resource_item_declares_name(item: item, name: name, source_indices: source_indices))
   }
+}
+
+fn resource_item_declares_name(item: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  item.module_item_kind == ModuleItemResource && authored_name_at(source_indices: source_indices, node: item) == name
 }
 
 // EMISSION FOLLOWS RESOLUTION AT THE AUTHORED-IMPORT BOUNDARY (#9813's contract, 2026-08-31).
