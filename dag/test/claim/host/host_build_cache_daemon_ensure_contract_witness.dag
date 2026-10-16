@@ -65,6 +65,12 @@ import gunbc.witness.live_tree_disposition { LiveTreeDisposition, SubstrateInput
 // the fix changes. So the claim goes red for the defect and for nothing else, and each conjunct fails for a
 // distinguishable reason if the machinery around the fix is broken.
 
+// EVERY VALUE HERE IS SUPPLIED BY THE CLAIM: the captures, the digests, the instance, the placement, the
+// privilege broker's own argv. Nothing in this file opens a host, a filesystem, or the live tree -- which is
+// what makes the claim reproducible by whoever has to fix the arm it quarantines, rather than true only on
+// the one machine it was written against.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 data zeroed_stats_table: String = "Compile requests                      0\nCompile requests executed                 0\nCache hits                              0\nCache misses                            0\n"
 
 // THE CITED FRAGMENT, IMPORTED RATHER THAN RETYPED (the no-policy-literals rule applies to a witness as
