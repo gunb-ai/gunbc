@@ -34,7 +34,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 
 import std.algebra { trim, AlgebraFieldTemplate }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core { Unmarked,
+import v1.std.core { Unmarked, expr_literal_int_optional,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -1506,9 +1506,10 @@ fn emit_width_type_arg_identity_refusal(n: Node, name: String) -> String {
 // from the syntactic position that happened to render it. Unit variants admitted by the resolver's
 // identity-bearing phantom index already receive distinct zero-sized Rust marker declarations;
 // erasing those markers to `()` makes distinct source types identical in the projection.
-// A width Nat literal or Word8–128 token has no Rust type identity at this rung (const-generic N
-// is PR-B). Silent `()` was a second identity for every such argument; the arm is a located
-// compile_error! carrying the source span, the same shape as UnitVariantPhantomEvidenceUnavailable.
+// A non-negative width Nat literal is the StaticWidthIndex<N> const-generic marker; a negative
+// literal or a Word8–128 token has no Rust type identity and is a located compile_error! carrying the
+// source span (same shape as UnitVariantPhantomEvidenceUnavailable) -- silent `()` was a second
+// identity for every such argument.
 fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
   let name = type_leaf_name_for_collapse(n: n, source_indices: source_indices)
   if generic_param_names |> any(g => g == name) {
@@ -1517,7 +1518,14 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
     match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
       UnitVariantPhantomPresent { variant: _ } => Present { value: name }
       UnitVariantPhantomAbsent =>
-        if is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: name) {
+        if is_width_nat_type_literal(n: n) {
+          match expr_literal_int_optional(expr: n) {
+            Present { value: v } =>
+              if v < 0 { Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) } }
+              else { Present { value: concat("StaticWidthIndex<", to_string(v), ">") } }
+            Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+          }
+        } else if is_machine_width_phantom_token(name: name) {
           Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
         } else { none }
       UnitVariantPhantomEvidenceUnavailable =>
@@ -3286,10 +3294,14 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
   }
 }
 
+// std.machine_constraints WidthResolution's StaticWidthIndex arm is indexed by a std.nat Nat; its
+// marker carries that index as a const generic so MachineWidth<8> and MachineWidth<16> are distinct
+// Rust types. PointerWidth and every other unit variant stay the bare unit marker.
 fn rust_phantom_zst_marker_def(vname: String) -> String {
+  let index_params = if vname == "StaticWidthIndex" { "<const N: u128>" } else { "" }
   concat(
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
-    rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";"
+    rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, index_params, ";"
   )
 }
 
