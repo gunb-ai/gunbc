@@ -1095,6 +1095,7 @@ fn fci1_control_standing(path: String, slice_memory: RootCgroupMemoryRead) -> Us
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: join(["0::/", path], "") },
+    bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: true,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
