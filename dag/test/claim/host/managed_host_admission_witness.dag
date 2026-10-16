@@ -8,7 +8,10 @@ import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
 import gunbc.rung_drop {
   AuthoredProse,
   RungDrop,
+  RungDropStanding,
   Standing,
+  Superseded,
+  Retired,
   TypedDeclaration,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
@@ -19,7 +22,6 @@ import gunbc.host.managed_host {
   AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
-  drop_is_standing_citation,
   managed_host_admission,
   managed_host_admission_receipt,
   managed_host_binding_for,
@@ -27,7 +29,6 @@ import gunbc.host.managed_host {
   managed_hosts,
   managed_hosts_projected,
   managed_membership_for,
-  mtcollins1_bmc_secure_standing_drop_ref,
   mtcollins1_managed_host_admission,
   project_managed_host_admission,
   ManagedHostNotManaged,
@@ -50,7 +51,7 @@ test fn w_mtcollins1_membership_is_under_the_declared_drop() -> Bool {
     && rows |> all(m => match m {
       OrdinaryMember { host: _ } => false
       MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
-        (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
+        (d.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
           && (h.host as String) == (operator_host_mtcollins1 as String)
           && (standing.subject.unit_key as NonEmptyStr) == (current.subject.unit_key as NonEmptyStr)
           && content_hash_equal(left: standing.subject.firmware_manifest_digest, right: current.subject.firmware_manifest_digest) == false
@@ -65,19 +66,19 @@ test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool
       match m {
         OrdinaryMember { host: _ } => false
         MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
-          (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
+          (d.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
             && (h.host as String) == (operator_host_mtcollins1 as String)
             && count(reset_subject_roster()) == 1
             && reset_subject_roster() |> all(e => match e {
               OrdinaryResetRosterHost { host: _ } => false
               ResetRosterHostUnderDeclaredDrop { host: rh, drop: rd } =>
                 (rh as String) == (operator_host_mtcollins1 as String)
-                  && (rd.decl_name as String) == (d.decl_name as String)
+                  && (rd.identity as String) == (d.identity as String)
             })
             && match boot_federation_for(host: h.host) {
               BootFederationProvisioned { federation: _ } => false
               BootFederationProvisionedUnderDeclaredDrop { federation: _, drop: fd, standing_subject: _, current_subject: _ } =>
-                (fd.decl_name as String) == (d.decl_name as String)
+                (fd.identity as String) == (d.identity as String)
               BootFederationUnprovisioned { host: _, cause: _ } => false
             }
       }
@@ -91,7 +92,6 @@ test fn w_a_record_whose_subject_is_current_is_an_ordinary_member() -> Bool {
       match project_managed_host_admission(
         record: r,
         current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
         allocations: gunbc_fleet_hostname_allocations,
       ) {
         Absent => false
@@ -103,18 +103,32 @@ test fn w_a_record_whose_subject_is_current_is_an_ordinary_member() -> Bool {
   }
 }
 
+// A STALE SUBJECT UNDER NO DECLARED DROP REFUSES: covering is the record's own fact, so minting
+// the same facts without the drop leaves the stale-subject arm with nothing to stand on.
 test fn w_a_superseded_subject_with_no_declared_drop_is_absent() -> Bool {
   match mtcollins1_managed_host_admission() {
     Absent => false
     Present { value: r } =>
-      match project_managed_host_admission(
-        record: r,
-        current_subject: mtcollins1_current_intake_subject(),
-        drops: [],
-        allocations: gunbc_fleet_hostname_allocations,
+      match managed_host_admission(
+        host: r.host,
+        subject: r.subject,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Absent,
       ) {
-        Absent => true
-        Present { value: _ } => false
+        without =>
+          match project_managed_host_admission(
+            record: without,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
       }
   }
 }
@@ -122,14 +136,26 @@ test fn w_a_superseded_subject_with_no_declared_drop_is_absent() -> Bool {
 test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bool {
   match mtcollins1_managed_host_admission() {
     Absent => false
-    Present { value: r } => {
-      let hosts = managed_hosts_projected(
-        records: [r],
-        drops: [],
-        allocations: gunbc_fleet_hostname_allocations,
-      )
-      count(hosts) == 0 && count(reset_subject_roster_of(hosts: hosts)) == 0
-    }
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        subject: r.subject,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Absent,
+      ) {
+        without => {
+          let hosts = managed_hosts_projected(
+            records: [without],
+            allocations: gunbc_fleet_hostname_allocations,
+          )
+          count(hosts) == 0 && count(reset_subject_roster_of(hosts: hosts)) == 0
+        }
+      }
   }
 }
 
@@ -150,7 +176,6 @@ test fn w_a_missing_hold_decision_is_absent() -> Bool {
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
         allocations: gunbc_fleet_hostname_allocations,
       ) {
         Absent => true
@@ -166,7 +191,6 @@ test fn w_a_missing_host_allocation_is_absent() -> Bool {
       match project_managed_host_admission(
         record: r,
         current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
         allocations: [],
       ) {
         Absent => true
@@ -196,7 +220,6 @@ test fn w_a_receipt_for_another_host_is_absent() -> Bool {
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.subject },
-        drops: [mtcollins1_bmc_secure_standing_predates_reflash],
         allocations: gunbc_fleet_hostname_allocations,
       ) {
         Absent => true
@@ -234,46 +257,120 @@ fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<Str
   }
 }
 
-test fn w_covering_is_cited_drop_identity_not_population_prose() -> Bool {
-  drop_is_standing_citation(drop: mtcollins1_bmc_secure_standing_predates_reflash, cited: mtcollins1_bmc_secure_standing_drop_ref)
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: mtcollins1_bmc_secure_standing_predates_reflash.identity,
-        population: ["no host token in this sentence"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    )
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: "some_other_drop" as NonEmptyStr,
-        population: ["mtcollins1 is named here so a substring search would have matched"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    ) == false
+fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
+  let base = mtcollins1_bmc_secure_standing_predates_reflash
+  RungDrop {
+    identity: base.identity,
+    subject: base.subject,
+    declared: base.declared,
+    standing: standing,
+    declaration: base.declaration,
+  }
+}
+
+// A DECLARED DROP QUALIFIES ONLY WHILE IT STANDS, and the check is now a read of the record's own
+// value -- no roster, no citation. Superseded is the honest shape of the 2026-10-04 ruling (its
+// trigger never fired); Retired would CLAIM the trigger fired. Neither may default to membership.
+test fn w_a_superseded_covering_drop_is_absent() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        subject: r.subject,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_with_standing(standing: Superseded {
+            ruling: "test: a ruling that ended the row without its trigger firing" as NonEmptyStr,
+            decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
+            loss_holder: mtcollins1_bmc_secure_standing_predates_reflash.identity,
+          }),
+        },
+      ) {
+        superseded =>
+          match project_managed_host_admission(
+            record: superseded,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+      }
+  }
+}
+
+test fn w_a_retired_covering_drop_is_absent() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        subject: r.subject,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_with_standing(standing: Retired {
+            trigger_fired: "test: trigger fired after the standing was read" as NonEmptyStr,
+          }),
+        },
+      ) {
+        retired =>
+          match project_managed_host_admission(
+            record: retired,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+      }
+  }
 }
 
 test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_mtcollins1() -> Bool {
   match mtcollins1_managed_host_admission() {
     Absent => false
     Present { value: r } =>
-      match project_managed_host_admission(
-        record: r,
-        current_subject: mtcollins1_current_intake_subject(),
-        drops: [
-          drop_with_identity_and_population(
+      match managed_host_admission(
+        host: r.host,
+        subject: r.subject,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_with_identity_and_population(
             identity: mtcollins1_bmc_secure_standing_predates_reflash.identity,
             population: ["unrelated bounded population with no unit name"],
           ),
-        ],
-        allocations: gunbc_fleet_hostname_allocations,
+        },
       ) {
-        Absent => false
-        Present { value: m } => match m {
-          OrdinaryMember { host: _ } => false
-          MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
-            (d.decl_name as String) == (mtcollins1_bmc_secure_standing_drop_ref.decl_name as String)
-              && (h.host as String) == (operator_host_mtcollins1 as String)
-        }
+        covered =>
+          match project_managed_host_admission(
+            record: covered,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => false
+            Present { value: m } => match m {
+              OrdinaryMember { host: _ } => false
+              MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
+                (d.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
+                  && (h.host as String) == (operator_host_mtcollins1 as String)
+            }
+          }
       }
   }
 }

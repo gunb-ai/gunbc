@@ -21,7 +21,7 @@ import gunbc.host.bmc_control_binding {
   bmc_control_binding,
 }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
-import std.decl_ref { DeclarationRef }
+import gunbc.rung_drop { RungDrop }
 
 // ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
 // (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
@@ -108,7 +108,7 @@ type ManagedHostBootFederationStanding
   = BootFederationProvisioned { federation: ManagedHostBootFederation }
   | BootFederationProvisionedUnderDeclaredDrop {
       federation: ManagedHostBootFederation
-      drop: DeclarationRef
+      drop: RungDrop
       standing_subject: MachineIntakeSubject
       current_subject: MachineIntakeSubject
     }
