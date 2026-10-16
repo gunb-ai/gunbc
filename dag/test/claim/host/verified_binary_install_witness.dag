@@ -20,9 +20,9 @@ module test.claim.host.verified_binary_install_witness
 // the cited extdeps builders return. Nothing executes; no host, no process, no network.
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool }
+import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
-import extdeps.exec.command { shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.crypto.hash { Digest }
 import extdeps.cache.sccache { sccache_installed_binary_path, sccache_release_0_15_0 }
 import gunbc.host.verified_binary_install {
@@ -49,9 +49,9 @@ import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The sha256sum -c input line: hex, the TWO SPACES the format requires, the path. Written here rather
-// than imported so the witness controls the exact bytes -- a check whose input is built by the code
-// under test cannot catch a check that accepts the wrong format.
+// THE sha256sum -c input line: hex, the TWO SPACES the format requires, the path. Built here rather
+// than taken from the code under test, because a check whose input is assembled by the check itself
+// cannot catch a check that accepts the wrong format.
 fn observed_line_for(hex: String, path: String) -> String {
   join([hex, "  ", path], "")
 }
@@ -66,7 +66,7 @@ fn sccache_params(digest: Digest) -> VerifiedBinaryInstallParams {
 }
 
 // A second product's own values: different url, member, destination, mode, and unprivileged. Nothing
-// sccache's is, which is what makes this the genericity witness rather than a second sccache witness.
+// sccache's is, which makes this the genericity witness rather than a second sccache witness.
 fn other_product_params() -> VerifiedBinaryInstallParams {
   VerifiedBinaryInstallParams {
     url: "https://example.invalid/tools/thing-9.9.9.tar.gz",
@@ -82,12 +82,67 @@ fn other_product_params() -> VerifiedBinaryInstallParams {
   }
 }
 
+// WHY THESE COMBINATORS EXIST. `get` returns an OPTIONAL -- an index can be out of range -- so a step
+// read is `T?`, and every read has to be matched. What matters is what the absent arm does: rendering
+// a missing step as "" would make a NEGATIVE assertion (`this step carries no sudo`) pass on a plan
+// that has no step at all, which is a silent default wearing a test's clothes. So every combinator
+// here treats a missing step or line as a FAILURE, positive or negative assertion alike.
+fn rendered_step_contains(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => string_contains(s: shell_command_render(command: step), pattern: pattern)
+  }
+}
+
+fn rendered_step_lacks(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => !string_contains(s: shell_command_render(command: step), pattern: pattern)
+  }
+}
+
+fn rendered_step_is(steps: List<ArgvCommand>, index: Int, expect: String) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => shell_command_render(command: step) == expect
+  }
+}
+
+fn rendered_step_starts_with(steps: List<ArgvCommand>, index: Int, prefix: String) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => starts_with(s: shell_command_render(command: step), prefix: prefix)
+  }
+}
+
+fn line_is(lines: List<String>, index: Int, expect: String) -> Bool {
+  match get(xs: lines, index: index) {
+    Absent => false
+    Present { value: one } => one == expect
+  }
+}
+
+fn line_starts_with(lines: List<String>, index: Int, prefix: String) -> Bool {
+  match get(xs: lines, index: index) {
+    Absent => false
+    Present { value: one } => starts_with(s: one, prefix: prefix)
+  }
+}
+
+fn line_contains(lines: List<String>, index: Int, pattern: String) -> Bool {
+  match get(xs: lines, index: index) {
+    Absent => false
+    Present { value: one } => string_contains(s: one, pattern: pattern)
+  }
+}
+
 // POSITIVE CONTROL. The same fold the RED runs, on a matching digest: admitted, and the plan is the
 // install body. If this fails, nothing below it means anything.
 test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64.hex as String, path: p.download_path)
   let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: line)
+  let steps = verified_binary_install_install_steps(p: p)
   match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: line) {
     Refused { reason: _, expected: _, observed_line: _ } => false
     Verified { observed: d } => d == p.digest
@@ -101,14 +156,12 @@ test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
          Present { value: _ } => false
          Absent => true
        }
-    && string_contains(
-         s: shell_command_render(command: get(xs: verified_binary_install_install_steps(p: p), index: 1)),
-         pattern: "'/usr/bin/sudo' '-n' 'mv' ",
-       )
+    // The install body really is the install body: step 1 is the elevated move into place.
+    && rendered_step_starts_with(steps: steps, index: 1, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
 }
 
-// THE RED. The expected digest is x86_64's published value while the observed line carries the
-// aarch64 release's real content: two genuine digests, so only the comparison can tell them apart.
+// THE RED. The expected digest is x86_64's published value while the observed line carries the aarch64
+// release's real content: two genuine digests, so only the comparison can tell them apart.
 test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_x86_64)
   let line = observed_line_for(hex: sccache_release_0_15_0.digest_aarch64.hex as String, path: p.download_path)
@@ -118,8 +171,8 @@ test fn red_a_digest_mismatch_refuses_and_nothing_is_installed() -> Bool {
     Planned { steps: _ } => false
     RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => true
   }
-    // (2) THE VERDICT TRAVELS TO THE CALLER: reason plus both digests, which is what a caller maps
-    // onto NotConverged { reason } instead of reading an empty list as a no-op.
+    // (2) THE VERDICT TRAVELS TO THE CALLER: the reason plus both digests, which is what lets a caller
+    // report NotConverged { reason } instead of reading an empty list as a no-op.
     && match verified_binary_install_plan_refusal_reason(plan: plan) {
          Absent => false
          Present { value: why } =>
@@ -155,8 +208,9 @@ test fn the_refusal_is_caused_by_the_digest_alone() -> Bool {
 }
 
 // A LINE THAT YIELDS NO DIGEST REFUSES TOO, AND SAYS THE LINE WAS UNREADABLE. This is the arm a mirror
-// outage actually hits (a 404 body is fed to the check), and its reason must differ from the mismatch
-// reason: an outage reading as an attack, or an attack reading as an outage, is how both go unnoticed.
+// outage actually hits (a 404 body is what gets fed to the check), and its reason must differ from the
+// mismatch reason: an outage reading as an attack, or an attack reading as an outage, is how both go
+// unnoticed.
 test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   let plan = verified_binary_install_admitted_plan(p: p, observed_sha256sum_line: "<html>404 Not Found</html>")
@@ -174,7 +228,7 @@ test fn an_unreadable_line_refuses_and_says_the_line_was_unreadable() -> Bool {
 }
 
 // THE ADAPTER SUPPLIES BOUNDARY VALUES, IT DOES NOT INVENT THEM. Every parameter comes from the cited
-// release row or the instance's identity -- the whole reason the effect can be generic.
+// release row or from the instance's identity -- which is the whole reason the effect can be generic.
 test fn the_sccache_adapter_supplies_the_release_row_values() -> Bool {
   let p = sccache_params(digest: sccache_release_0_15_0.digest_aarch64)
   string_contains(s: p.url, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
@@ -186,9 +240,10 @@ test fn the_sccache_adapter_supplies_the_release_row_values() -> Bool {
     && p.exec_mode == "+x" as NonEmptyStr
 }
 
-// ORDERING THAT ONLY THE SHELL CAN ENFORCE: `set -e` is what stops an install after a failed download
-// or a failed check, and it must be the first line. The check must sit before the move -- the step that
-// writes the binary into place.
+// ORDERING THAT ONLY THE SHELL CAN ENFORCE. `set -e` is what stops an install after a failed download
+// or a failed check, and it has to be the first line -- a body that sets it later lets a failed check
+// fall through into the install. The check must sit before the move, which is the step that writes the
+// binary into place. Positions are pinned by exact line index, not by an ordering the test inferred.
 test fn the_rendered_body_checks_before_it_moves_and_set_e_gates_everything() -> Bool {
   let script = sccache_verified_install_script(
     rel: sccache_release_0_15_0,
@@ -197,11 +252,11 @@ test fn the_rendered_body_checks_before_it_moves_and_set_e_gates_everything() ->
   )
   let lines = split(s: script, delimiter: "\n")
   count(lines) == 8
-    && get(xs: lines, index: 0) == "set -e"
-    && starts_with(s: get(xs: lines, index: 2), prefix: "echo '")
-    && string_contains(s: get(xs: lines, index: 2), pattern: "| sha256sum -c -")
-    && starts_with(s: get(xs: lines, index: 4), prefix: "'/usr/bin/sudo' '-n' 'mv' ")
-    && starts_with(s: get(xs: lines, index: 1), prefix: "'curl' ")
+    && line_is(lines: lines, index: 0, expect: "set -e")
+    && line_starts_with(lines: lines, index: 1, prefix: "'curl' ")
+    && line_starts_with(lines: lines, index: 2, prefix: "echo '")
+    && line_contains(lines: lines, index: 2, pattern: "| sha256sum -c -")
+    && line_starts_with(lines: lines, index: 4, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
 }
 
 // THE PRECONDITION IS AN OBSERVATION OVER THE CITED test -x OP, with two arms a caller can act on: an
@@ -239,6 +294,8 @@ test fn the_build_cache_ensure_step_installs_through_the_generic_effect() -> Boo
     && string_contains(s: body, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
     && string_contains(s: body, pattern: "| sha256sum -c -")
     && string_contains(s: body, pattern: "if [ ! -x '/usr/local/bin/sccache' ]; then")
+    // NOT a package manager, and NOT the legacy image path: the two ways this step used to be a shell
+    // guess about how binaries arrive.
     && !string_contains(s: body, pattern: "apt-get install")
     && !string_contains(s: body, pattern: "/usr/bin/sccache")
 }
@@ -250,32 +307,33 @@ test fn a_second_products_own_values_produce_a_privilege_free_install() -> Bool 
   let p = other_product_params()
   let steps = verified_binary_install_install_steps(p: p)
   count(steps) == 5
-    && !string_contains(s: shell_command_render(command: get(xs: steps, index: 1)), pattern: "/usr/bin/sudo")
-    && shell_command_render(command: get(xs: steps, index: 1)) == "'mv' '-T' '/tmp/thing-9.9.9/bin/thing' '/opt/tools/bin/thing'"
-    && shell_command_render(command: get(xs: steps, index: 2)) == "'/bin/chmod' '0755' '/opt/tools/bin/thing'"
+    && rendered_step_lacks(steps: steps, index: 1, pattern: "/usr/bin/sudo")
+    && rendered_step_is(steps: steps, index: 1, expect: "'mv' '-T' '/tmp/thing-9.9.9/bin/thing' '/opt/tools/bin/thing'")
+    && rendered_step_is(steps: steps, index: 2, expect: "'/bin/chmod' '0755' '/opt/tools/bin/thing'")
     && !string_contains(s: verified_binary_install_shell(p: p), pattern: "sccache")
     && starts_with(s: verified_binary_install_shell(p: p), prefix: "set -e")
     && string_contains(s: verified_binary_install_verify_line(p: p), pattern: "| sha256sum -c -")
 }
 
 // THE PRIVILEGE LEVER, FLIPPED THE OTHER WAY. Same effect, sccache's values, elevated: the byte-for-byte
-// contract the elevation witness pins, asserted here so the two cannot drift apart.
+// contract the elevation witness pins, asserted here too so the two cannot drift apart.
 test fn the_privilege_lever_puts_sudo_in_front_of_the_move_and_mode() -> Bool {
   let steps = verified_binary_install_install_steps(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64))
-  shell_command_render(command: get(xs: steps, index: 1))
-    == "'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'"
-    && starts_with(s: shell_command_render(command: get(xs: steps, index: 2)), prefix: "'/usr/bin/sudo' '-n' 'chmod' '+x' ")
+  rendered_step_is(
+    steps: steps,
+    index: 1,
+    expect: "'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'",
+  )
+    && rendered_step_starts_with(steps: steps, index: 2, prefix: "'/usr/bin/sudo' '-n' 'chmod' '+x' ")
 }
 
 // THE STAGING IS CLEANED UP. An install that leaves a world-writable archive and an extracted tree in
-// /tmp traded a binary for two attack surfaces. Both removals are in the plan and neither is the
-// destination.
+// /tmp traded a binary for two attack surfaces. Both removals are in the plan, both carry their own
+// path, and neither is the destination.
 test fn the_plan_removes_the_download_and_the_extracted_tree() -> Bool {
   let steps = verified_binary_install_install_steps(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64))
-  let archive = shell_command_render(command: get(xs: steps, index: 3))
-  let staging = shell_command_render(command: get(xs: steps, index: 4))
-  string_contains(s: archive, pattern: "'/tmp/sccache.tar.gz'")
-    && string_contains(s: staging, pattern: "'/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl'")
-    && !string_contains(s: archive, pattern: sccache_installed_binary_path)
-    && !string_contains(s: staging, pattern: sccache_installed_binary_path)
+  rendered_step_contains(steps: steps, index: 3, pattern: "'/tmp/sccache.tar.gz'")
+    && rendered_step_contains(steps: steps, index: 4, pattern: "'/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl'")
+    && rendered_step_lacks(steps: steps, index: 3, pattern: sccache_installed_binary_path)
+    && rendered_step_lacks(steps: steps, index: 4, pattern: sccache_installed_binary_path)
 }
