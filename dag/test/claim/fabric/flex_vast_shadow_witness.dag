@@ -909,3 +909,20 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
       _ => false
     })
 }
+
+test fn bisect_a() -> Bool { flex_search_type == vast_ai_search_type_bid }
+test fn bisect_b() -> Bool {
+  match flex_unit_min_host_driver(unit: Qwen3_8_27bOnNinfer) {
+    Present { value: n } => n == serving_recipe_qwen3_8_27b_nvfp4_ninfer.driver_floor.major
+    Absent => false
+  }
+}
+test fn bisect_c() -> Bool {
+  match flex_unit_min_host_driver(unit: Glm53FlashOnVllm) {
+    Present { value: n } => n == flex_vllm_min_driver.major
+    Absent => false
+  }
+}
+test fn bisect_d() -> Bool { money_per_hour_cap_is_three_dollars() && flex_actuation_mode_default_is_dry() }
+test fn bisect_e() -> Bool { objective_is_cost_per_accepted_unit() && money_amount_micro_count(m: flex_delay_unvalued.amount) == 0 }
+test fn bisect_f() -> Bool { read_grant_is_accessor() && machine_key_follows_offer_id() }
