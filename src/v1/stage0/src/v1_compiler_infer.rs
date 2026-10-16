@@ -12273,13 +12273,6 @@ pub fn spine_root_is_shadowed(scope: Rc<InferScope>, root: String) -> bool {
     }
 }
 
-pub fn spine_is_declared_module_path(index: Rc<SymbolIndex>, dotted: String) -> bool {
-    match v1_rt::map_get(&index.module_named_imports.clone(), dotted.clone()) {
-        Some(_) => true,
-        std::option::Option::None => false,
-    }
-}
-
 pub fn qualified_value_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -14606,25 +14599,19 @@ Rc::new(InferResult {
                     match spine_root_is_shadowed(scope.clone(), recv_spine.root.clone()) {
                         true => std::option::Option::None,
                         false => {
-                            if spine_is_declared_module_path(
-                                scope.type_env.clone().symbol_index.clone(),
-                                recv_spine.dotted.clone(),
-                            ) {
-                                {
-                                    let dotted = v1_rt::concat(
-                                        v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
-                                        method_name.clone(),
-                                    );
-                                    Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
+                            let dotted = v1_rt::concat(
+                                v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
+                                method_name.clone(),
+                            );
+                            match crate::v1_compiler_infer_env::symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
+    std::option::Option::None => std::option::Option::None,
+    Some(_) => Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
 })),
     descent_evidence: std::option::Option::None,
-}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone()))
-                                }
-                            } else {
-                                std::option::Option::None
-                            }
+}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+}
                         }
                     }
                 }
