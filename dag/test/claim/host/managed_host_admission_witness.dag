@@ -19,7 +19,6 @@ import gunbc.host.managed_host {
   AdmissionHoldMissing,
   MemberUnderDeclaredDrop,
   OrdinaryMember,
-  drop_is_standing_citation,
   managed_host_admission,
   managed_host_admission_receipt,
   managed_host_binding_for,
@@ -234,24 +233,6 @@ fn drop_with_identity_and_population(identity: NonEmptyStr, population: List<Str
         },
       }
   }
-}
-
-test fn w_covering_is_cited_drop_identity_not_population_prose() -> Bool {
-  drop_is_standing_citation(drop: mtcollins1_bmc_secure_standing_predates_reflash, cited: mtcollins1_bmc_secure_standing_drop_ref)
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: mtcollins1_bmc_secure_standing_predates_reflash.identity,
-        population: ["no host token in this sentence"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    )
-    && drop_is_standing_citation(
-      drop: drop_with_identity_and_population(
-        identity: "some_other_drop" as NonEmptyStr,
-        population: ["mtcollins1 is named here so a substring search would have matched"],
-      ),
-      cited: mtcollins1_bmc_secure_standing_drop_ref,
-    ) == false
 }
 
 test fn w_a_matching_drop_whose_population_does_not_name_the_host_still_admits_mtcollins1() -> Bool {

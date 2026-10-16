@@ -13,6 +13,7 @@ import gunbc.host.managed_host {
 }
 import gunbc.host.bmc_control_binding {
   bmc_control_binding, BmcControlAccessUnobserved, BmcControlEndpointMismatch,
+  bmc_control_route_account, bmc_control_route_endpoint, bmc_control_route_observation,
 }
 import std.types { EpochMs }
 import std.content_hash { Sha256Digest, Sha256Hash }
@@ -44,11 +45,13 @@ test fn w_the_real_row_is_admitted_for_each_megarac_operation_through_its_bindin
       && match admit_megarac_host(host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: _ } => true  MegaRacHostAdmitted { host: _ } => false }
       && megarac_operations_executed_at_0_32 |> all(op => match admit_megarac_host(host: h, operation: op) {
         MegaRacHostAdmitted { host: a } =>
-          (a.binding.host.host as String) == (operator_host_mtcollins1 as String)
+          // The carrier names the host, and its route is the binding's own: the endpoint the binding
+          // observed, the account read through the binding, and the firmware that same observation read.
+          (a.host.host as String) == (operator_host_mtcollins1 as String)
             && a.firmware.family == AmiMegaRac
-            && (a.firmware.raw_version as String) == (a.binding.observation.identity.firmware.raw_version as String)
-            && (a.binding.observation.endpoint.host as String) != ""
-            && (a.binding.account as String) == "gunbc"
+            && (a.firmware.raw_version as String) == (bmc_control_route_observation(route: a.route).identity.firmware.raw_version as String)
+            && (bmc_control_route_endpoint(route: a.route).host as String) != ""
+            && (match bmc_control_route_account(route: a.route) { Present { value: acc } => (acc as String) == "gunbc"  Absent => false })
         MegaRacHostRefused { cause: _ } => false
       }))
 }
