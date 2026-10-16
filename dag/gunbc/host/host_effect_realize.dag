@@ -4852,6 +4852,10 @@ type LiveDeployPreambleLeg
   = PreambleArgv { step: LiveDeployPreambleStep, command: ArgvCommand }
   | PreambleStdin { step: LiveDeployPreambleStep, command: ArgvCommand, payload: String }
   | PreambleEffect { step: LiveDeployPreambleStep, effect: HostEffect }
+  // THE SCRIPT'S `A || B` AS ONE LEG, not two. `id -u -- X >/dev/null 2>&1 || sudo -n useradd … X` is
+  // a single statement with a single meaning: create the account only when it is missing. Split into
+  // two legs it would mean "check, then create anyway", which is a different (and destructive) program.
+  | PreambleEither { check_step: LiveDeployPreambleStep, check: ArgvCommand, act_step: LiveDeployPreambleStep, act: ArgvCommand }
 
 // What one leg observed, as a closed sum. It is the value a witness SUPPLIES: every real transport
 // answer maps into exactly one of these arms, so the whole fold becomes a pure function of
@@ -4860,6 +4864,9 @@ type LiveDeployPreambleLegResult
   = LegObserved { outcome: RunArgvTransportOutcome }
   | LegEffectConverged
   | LegEffectRefused { reason: String }
+  // A failure observed *inside* one leg that spans several commands, where the leg's own step name
+  // would blame the wrong command. The `A || B` leg reports the step that actually died.
+  | LegRefusedAt { step: LiveDeployPreambleStep, reason: String }
 
 // `consumed` is how many legs actually ran. It exists so the short-circuit is OBSERVABLE: a fold that
 // kept running legs after a refusal would report the same refusal, and only the count distinguishes
@@ -4898,6 +4905,9 @@ fn live_deploy_preamble_leg_step(leg: LiveDeployPreambleLeg) -> LiveDeployPreamb
     PreambleArgv { step: s, command: _ } => s
     PreambleStdin { step: s, command: _, payload: _ } => s
     PreambleEffect { step: s, effect: _ } => s
+    // Only used when the whole leg fails without naming an inner command; the Either leg always
+    // reports the step that died through LegRefusedAt, so this is the check's step as a last resort.
+    PreambleEither { check_step: cs, check: _, act_step: _, act: _ } => cs
   }
 }
 
@@ -4926,6 +4936,8 @@ fn live_deploy_preamble_next_state(
       match result {
         LegEffectConverged => PreambleLegOk { consumed: n + 1 }
         LegEffectRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
+        LegRefusedAt { step: s, reason: why } =>
+          PreambleLegFailed { step: s, reason: live_deploy_preamble_refusal_text(step: s, detail: why), consumed: n }
         LegObserved { outcome: out } =>
           match out {
             RunArgvTransportRefused { reason: why } => live_deploy_preamble_failed(leg: leg, detail: why, consumed: n)
@@ -4976,6 +4988,32 @@ fn live_deploy_preamble_observe_leg(leg: LiveDeployPreambleLeg, access: DeployAc
       match host_effect_apply(target: HostOs { node: access.host }, effect: e, evidence: host_effect_identity_evidence, transport: access.transport) {
         Converged { evidence: _, applied: _ } => LegEffectConverged
         NotConverged { reason: why, applied: _ } => LegEffectRefused { reason: why }
+      }
+    // `A || B`, executed as the script executed it: the second command runs ONLY when the first fails,
+    // and a satisfied check spends no privileged call at all. A transport that refuses the CHECK is a
+    // refusal, not "the account is missing" — running the create on that answer would create an
+    // account the script would not have created, which is exactly the silent default this cutover
+    // exists to remove. So the check's own transport refusal is reported as one, at the check's step.
+    PreambleEither { check_step: cs, check: c, act_step: as_, act: a_ } =>
+      match run_argv_over_host_effect_transport(command: c, transport: access.transport) {
+        RunArgvTransportRefused { reason: why } => LegRefusedAt { step: cs, reason: join(["precondition check could not run: ", why], "") }
+        RunArgvTransportObserved { observed: o } =>
+          if o.success {
+            LegEffectConverged
+          } else {
+            match run_argv_over_host_effect_transport(command: a_, transport: access.transport) {
+              RunArgvTransportRefused { reason: why } => LegRefusedAt { step: as_, reason: why }
+              RunArgvTransportObserved { observed: o2 } =>
+                if o2.success {
+                  LegEffectConverged
+                } else {
+                  LegRefusedAt {
+                    step: as_,
+                    reason: join(["exited ", to_string(o2.exit_code), ": ", o2.stderr], ""),
+                  }
+                }
+            }
+          }
       }
   }
 }
@@ -5075,11 +5113,15 @@ fn live_deploy_preamble_legs(access: DeployAccess, scratch: String, principal: N
 // whether a precondition exists at all.
 fn live_deploy_preamble_principal_legs(principal: NonEmptyStr) -> List<LiveDeployPreambleLeg> {
   let op = EnsureSystemAccount { login: principal, shell: fleet_posix_nologin_shell_path }
-  let check_leg = PreambleArgv { step: PrincipalCheck, command: id_uid_of_command(user: principal) }
-  let create_leg = PreambleArgv { step: PrincipalEnsure, command: executor_privileged_operation_elevated_command(op: op) }
+  let create = PreambleEither {
+    check_step: PrincipalCheck,
+    check: id_uid_of_command(user: principal),
+    act_step: PrincipalEnsure,
+    act: executor_privileged_operation_elevated_command(op: op),
+  }
   match executor_privileged_operation_precondition(op: op) {
-    AccountExistsCheck { login: _ } => [check_leg, create_leg]
-    NoPrecondition => [create_leg]
+    AccountExistsCheck { login: _ } => [create]
+    NoPrecondition => [PreambleArgv { step: PrincipalEnsure, command: executor_privileged_operation_elevated_command(op: op) }]
   }
 }
 
