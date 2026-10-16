@@ -1,0 +1,31 @@
+module extdeps.vendor.bourns
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-15 from Bourns's 5.0SMDJ datasheet (REV. 08/26), which names its issuer "Bourns". The
+// corporate suffix is not printed there, so the name is carried as the datasheet prints it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.bourns.com/docs/product-datasheets/5-0smdj.pdf"
+  }
+}
+
+data bourns: Vendor<Hardware> = Vendor { legal_name: "Bourns" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.bourns",
+      decl_name: "bourns",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

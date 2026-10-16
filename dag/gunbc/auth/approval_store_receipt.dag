@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
 // ── THE STORE RECEIPT KEY ─────────────────────────────────────────────────────────────────────
 //
 // WHAT A STORE RECEIPT IS FOR. The fabric DB's door admits an advance of a protected head
-// (gunbc.spark.pair_serving_d0 d0_store_operation_wall) only under a credential the STORE verifies
+// (gunbc.fabric.fabric_store_operation_admission operation_requirement) only under a credential the STORE verifies
 // for that operation. For an operator-approved operation that credential is a receipt the approval
 // broker mints over its own recorded decision -- the gunbc.auth.approval_capability envelope, with
 // the fabric store as its audience -- bound to the escalation, the approved revision (the sha256 of
@@ -175,7 +175,7 @@ fn filed_request_of(filing: CasGenerationRead) -> FiledRequestReading {
 //
 // CONSUMED BY THE STORE'S DECISION: gunbc.fabric.fabric_store_operation_admission admit_store_operation
 // verifies every presented receipt through verify_store_receipt before it reads the approved intent
-// (d0_store_operation_wall PR 4; moved here from the mint's change so the verifier lands with its
+// (the store-operation wall (gunbc.fabric.fabric_store_operation_admission) PR 4; moved here from the mint's change so the verifier lands with its
 // consumer, proud-deer-538 option D).
 //
 // What the fabric store accepts, configured here and never read from the receipt (the
@@ -255,7 +255,7 @@ fn request_field(line: String, key: String) -> String {
 // THE WIRE A RECEIPT TRAVELS AS: its signing input, then its tag, one line each. The signing input
 // is the capability's one byte projection, so the store rebuilds the claims from it and nothing is
 // serialized twice (the store's reader lands with the door that verifies receipts,
-// d0_store_operation_wall PR 4).
+// the store-operation wall (gunbc.fabric.fabric_store_operation_admission) PR 4).
 fn store_receipt_wire(receipt: ApprovalCapability) -> String {
   join([approval_capability_signing_input(c: receipt.claims) as String, "\n", receipt.tag_b64url as String, "\n"], "")
 }

@@ -94,7 +94,7 @@ test fn an_approved_matching_filing_mints_a_receipt_addressed_to_the_store() -> 
 // THE RECEIPT THE MINT MUST SIGN, PINNED: store_receipt_claims over the witness filing and decision,
 // with the tag HMAC-SHA256 under sr_receipt_key_hex over exactly those claims' signing input (computed
 // outside the substrate, independently of issue_capability). The store's verification of it lands
-// with the door that verifies receipts (d0_store_operation_wall PR 4).
+// with the door that verifies receipts (the store-operation wall (gunbc.fabric.fabric_store_operation_admission) PR 4).
 fn sr_claims() -> ApprovalCapabilityClaims {
   store_receipt_claims(filed: sr_filed(), revision: sr_revision, decided_at: "2026-09-28T00:10:00Z", execute_by: "2026-09-28T01:00:00Z")
 }
