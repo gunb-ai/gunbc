@@ -3,7 +3,7 @@ module gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.optional { Present, Absent }
-import std.measure { finite_byte_size_count }
+import std.measure { finite_byte_size_count, FiniteByteSize }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -104,7 +104,7 @@ fn fci1_diagnostics(observed: Fci1Observed) -> String {
 // ── THE BOUNDED UNIT'S COMMAND ──────────────────────────────────────────────────────────────────
 
 type Fci1UnitBound
-  = Fci1UnitBounded { max: Int, high: Int }
+  = Fci1UnitBounded { max: FiniteByteSize, high: FiniteByteSize }
   | Fci1UnitUnbounded
 
 type Fci1UnitCommand
@@ -117,8 +117,8 @@ fn fci1_unit_properties(working_directory: String, bound: Fci1UnitBound) -> List
     match bound {
       Fci1UnitBounded { max, high } => [
         SystemdRunProperty { property: SliceProperty, value: fci1_controls_slice_unit_name },
-        SystemdRunProperty { property: MemoryMax, value: to_string(max) as NonEmptyStr },
-        SystemdRunProperty { property: MemoryHigh, value: to_string(high) as NonEmptyStr },
+        SystemdRunProperty { property: MemoryMax, value: fci1_bytes_text(size: max) as NonEmptyStr },
+        SystemdRunProperty { property: MemoryHigh, value: fci1_bytes_text(size: high) as NonEmptyStr },
       ]
       Fci1UnitUnbounded => [SystemdRunProperty { property: MemoryMax, value: "infinity" as NonEmptyStr }]
     },
@@ -227,15 +227,20 @@ type Fci1ControlRow {
 data fci1_wrong_cwd_needles: List<String> = ["workspace root", "process_workspace_root"]
 data fci1_unbounded_needles: List<String> = ["UncappedSystemSlice"]
 
+// The quantity stays a FiniteByteSize through the row model; it is lowered to text only where a
+// systemd property value or a child argv word is built.
+fn fci1_bytes_text(size: FiniteByteSize) -> String {
+  to_string(finite_byte_size_count(size: size))
+}
+
 fn fci1_rows(context: Fci1BoundedExecutionContext, checkout_root: String) -> List<Fci1ControlRow> {
-  let max = finite_byte_size_count(size: context.memory_max)
+  let max = context.memory_max
   let high = match context.memory_high {
-    Present { value: h } => finite_byte_size_count(size: h)
+    Present { value: h } => h
     Absent => max
   }
   let bounded = Fci1UnitBounded { max: max, high: high }
-  let envelope_args = [concat("--arg", "") , join(["max=", to_string(max)], ""), "--arg", join(["high=", to_string(high)], "")]
-  let positive_args = ["--arg", join(["max=", to_string(max)], ""), "--arg", join(["high=", to_string(high)], "")]
+  let positive_args = ["--arg", join(["max=", fci1_bytes_text(size: max)], ""), "--arg", join(["high=", fci1_bytes_text(size: high)], "")]
   [
     Fci1ControlRow { name: "driver-positive", unit: context.driver_unit, working_directory: checkout_root, bound: bounded,
       function: "fci1_bounded_envelope_child", arguments: positive_args, expectation: ExpectSuccess },
