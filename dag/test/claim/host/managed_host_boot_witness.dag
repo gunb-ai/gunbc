@@ -6,7 +6,9 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability {
+  bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
+}
 import extdeps.bmc.megarac { megarac_firmware_0_45_3 }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionAdmitted,
@@ -14,6 +16,10 @@ import gunbc.host.virtual_media_boot_selection {
   VirtualMediaUnestablished,
 }
 import gunbc.host.host_capability_row { host_access_repoint_firmware, host_capability_row, HostCapabilityRowKnown }
+import gunbc.host.bmc_release_capability_catalog {
+  megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
+  megarac_release_version_is_machine_read, megarac_release_entry_is_coherent,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { managed_host_fixture, managed_hosts }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch }
@@ -213,6 +219,32 @@ test fn w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit
     }
     at_0_32 && refused_uncatalogued
   }) && count(managed_hosts()) == 1
+}
+
+// THE ANTI-FABRICATION INVARIANT, claim-by-claim over the catalog: a row may call its firmware version
+// MACHINE-READ only when its own evidence records an instrument reading it. The 0.32 row does (a committed
+// hpm readback); the 0.45.3 row must NOT, because the run joined to it read no version and the version came
+// from an operator's page read. Relabel that row MegaRacVersionMachineRead and this claim goes red even
+// though every boot still admits — which is the point: 'the controller told us' must not be reachable by
+// editing a label, and a boot's admission is not the evidence for it.
+test fn w_the_catalog_never_labels_an_unread_build_machine_read() -> Bool {
+  // Every row is internally coherent: a machine-read standing implies run evidence that read THIS release.
+  let all_coherent = megarac_release_capability_catalog
+    |> all(e => megarac_release_entry_is_coherent(entry: e))
+  // Exactly one row is machine-read today, and it is the one backed by a committed instrument readback.
+  let machine_read_rows = megarac_release_capability_catalog
+    |> filter(e => megarac_release_version_is_machine_read(entry: e))
+  let exactly_one_machine_read = count(machine_read_rows) == 1
+  // ...and the 0.45.3 row is NOT among them, so the boot that admits against it is admitting on an
+  // operator attestation, which is what its record says.
+  let at_0_45_3_attested = match megarac_release_capability_catalog
+    |> filter(e => bmc_firmware_release_identity_eq(a: e.firmware, b: megarac_firmware_0_45_3))
+    |> first() {
+    Present { value: e } => megarac_release_version_is_machine_read(entry: e) == false
+      && megarac_release_entry_is_coherent(entry: e)
+    Absent => false
+  }
+  all_coherent && exactly_one_machine_read && at_0_45_3_attested
 }
 
 // (d) RED, the real reflash: the unit moved 0.32 -> 0.45.3 on 2026-10-02. Observed at 0.45.3, the

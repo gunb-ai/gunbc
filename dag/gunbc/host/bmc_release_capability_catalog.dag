@@ -276,6 +276,39 @@ data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
   },
 ]
 
+// WHETHER A ROW'S VERSION STANDING IS A MACHINE READ, as a question a consumer asks before trusting a
+// capability row: an operator attestation is enough to admit a boot, but it is NOT enough to claim the
+// controller told us. Today exactly one row answers true (the 0.32 hpm readback); the 0.45.3 row answers
+// false, and the boot witness pins that so nobody quietly upgrades it to look machine-verified.
+fn megarac_release_version_is_machine_read(entry: MegaRacReleaseCapabilityEntry) -> Bool {
+  match entry.version {
+    MegaRacVersionMachineRead { read_from: _ } => true
+    MegaRacVersionOperatorAttested { attested_on: _, detail: _, upgrade_read: _ } => false
+  }
+}
+
+// WHETHER A ROW'S VERSION STANDING AND ITS EVIDENCE AGREE — the anti-fabrication invariant, checked
+// claim-by-claim in the boot witness. A row may call its version machine-read only if its evidence
+// actually records an instrument reading it: a committed readback file, or an executed run that read this
+// release. A row resting on an operator's page read must NOT be able to claim a machine read while its own
+// evidence says the run read no version at all, and a row backed by a run that read nothing may not be
+// quietly relabelled MegaRacVersionMachineRead to make a boot look verified.
+fn megarac_release_entry_is_coherent(entry: MegaRacReleaseCapabilityEntry) -> Bool {
+  let machine_read = megarac_release_version_is_machine_read(entry: entry)
+  match entry.evidence {
+    MegaRacEvidenceCommittedFile { artifact_path: _, read_from: _ } => true
+    MegaRacEvidenceExecutedRun { run_id: _, run_attempt: _, exercised: _, firmware_read: read, receipt_path: _ } =>
+      if machine_read {
+        match read {
+          MegaRacRunReadFirmware { read: r } => bmc_firmware_release_identity_eq(a: r, b: entry.firmware)
+          MegaRacRunRecordedNoFirmware { why: _ } => false
+        }
+      } else {
+        true
+      }
+  }
+}
+
 // THE TYPED RELEASE CAPABILITY LOOKUP. Resolve the capability row for an OBSERVED firmware release
 // identity against the catalog we establish: one matching entry resolves its row; no entry is a typed
 // uncatalogued refusal (never a default); more than one is an ambiguous refusal with its count. This is
