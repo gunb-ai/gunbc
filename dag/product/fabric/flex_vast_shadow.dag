@@ -366,9 +366,9 @@ fn flex_vast_api_read_grant(target: SecretRef) -> SecretAccessGrant {
   secret_accessor_grant(target: target)
 }
 
-// 1.34 USD/hr, deliberately distinct from ctrl's budget on the same Vast account.
+// 3.00 USD/hr (raised from 1.34 by the operator 2026-10-16; covers two Flash-Next cards at about 1.40/h each). Policy authority: gunbc.design_ruling flex_market_policy_is_operator_decided.
 data flex_trial_fleet_rate_cap: MoneyPerHour = MoneyPerHour {
-  amount: money_amount_micro(count: 1340000),
+  amount: money_amount_micro(count: 3000000),
   currency: Usd,
 }
 

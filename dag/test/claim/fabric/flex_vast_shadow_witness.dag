@@ -322,7 +322,7 @@ test fn operator_template_and_policy_are_named_facts() -> Bool {
       Present { value: n } => n == flex_vllm_min_driver.major
       Absent => false
     }
-    && money_per_hour_cap_is_one_thirty_four()
+    && money_per_hour_cap_is_three_dollars()
     && flex_actuation_mode_default_is_dry()
     && objective_is_cost_per_accepted_unit()
     && money_amount_micro_count(m: flex_delay_unvalued.amount) == 0
@@ -343,8 +343,8 @@ fn machine_key_follows_offer_id() -> Bool {
     == flex_machine_key(account: "vast-account-1", machine: "42").machine
 }
 
-fn money_per_hour_cap_is_one_thirty_four() -> Bool {
-  money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 1340000
+fn money_per_hour_cap_is_three_dollars() -> Bool {
+  money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 3000000
 }
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
@@ -905,7 +905,7 @@ test fn instance_pages_exhaust_before_cap_or_reconcile() -> Bool {
     ) {
       FlexCapOver { occupied: o, cap: c } =>
         (money_amount_micro_count(m: o.amount) == 2000000)
-          && (money_amount_micro_count(m: c.amount) == 1340000)
+          && (money_amount_micro_count(m: c.amount) == 3000000)
       _ => false
     })
 }

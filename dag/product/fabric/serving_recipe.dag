@@ -319,7 +319,7 @@ type ServingHourlyCost
 fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> ServingHourlyCost {
   match supply {
     RentedCardSupply { dph: dph, disk_rate: disk } =>
-      if currency_code_eq(left: dph.currency, right: disk.currency) {
+      if currency_code_eq(a: dph.currency, b: disk.currency) {
         HourlyCostQuoted {
           rate: MoneyPerHour {
             amount: money_amount_micro(
