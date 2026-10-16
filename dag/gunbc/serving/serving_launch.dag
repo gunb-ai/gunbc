@@ -7,7 +7,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.content_hash { Sha256Digest }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
-import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingLinkReading, ServingLinkSwitchNoop, ServingLinkSwitchCommands, serving_link_switch }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingLinkReading, ServingLinkSwitchNoop, ServingLinkSwitchCommands, ServingLinkSwitchRefusedUnreadable, serving_link_switch }
 import extdeps.tools.util_linux_setsid { setsid_fork_words }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
 
@@ -86,8 +86,12 @@ fn serving_launch_leg(launch: NinferServeLaunch, launch_argv: List<String>, read
 
 // THE WHOLE PROGRAM IN ORDER: the placement legs first, the launch leg last, so a refusal at the launch leg
 // still shows the earlier legs were emitted and not skipped.
+type ServingPlacement
+  = ServingPlacementCommands { commands: List<ArgvCommand> }
+  | ServingPlacementRefusedLinkUnreadable { cause: NonEmptyStr }
+
 type ServingStartupProgram {
-  placement_commands: List<ArgvCommand>
+  placement: ServingPlacement
   launch: ServingLaunchLeg
 }
 
@@ -101,9 +105,10 @@ fn serving_startup_program(
   key: ServingServeKeyBinding,
 ) -> ServingStartupProgram {
   ServingStartupProgram {
-    placement_commands: match serving_link_switch(roots: roots, digest: digest, link: link) {
-      ServingLinkSwitchNoop => []
-      ServingLinkSwitchCommands { commands: cs } => cs
+    placement: match serving_link_switch(roots: roots, digest: digest, link: link) {
+      ServingLinkSwitchNoop => ServingPlacementCommands { commands: [] }
+      ServingLinkSwitchCommands { commands: cs } => ServingPlacementCommands { commands: cs }
+      ServingLinkSwitchRefusedUnreadable { cause: c } => ServingPlacementRefusedLinkUnreadable { cause: c }
     },
     launch: serving_launch_leg(launch: launch, launch_argv: launch_argv, reading: reading, key: key),
   }
@@ -132,6 +137,13 @@ fn serving_launch_leg_text(leg: ServingLaunchLeg) -> String {
   }
 }
 
+fn serving_placement_text(placement: ServingPlacement) -> String {
+  match placement {
+    ServingPlacementCommands { commands: cs } => join(map(cs, c => shell_command_render(command: c)), "\n")
+    ServingPlacementRefusedLinkUnreadable { cause: c } => concat("placement: refused: the model link could not be read: ", c as String)
+  }
+}
+
 fn serving_startup_program_text(program: ServingStartupProgram) -> String {
-  concat(join(map(program.placement_commands, c => shell_command_render(command: c)), "\n"), concat("\n", serving_launch_leg_text(leg: program.launch)))
+  concat(serving_placement_text(placement: program.placement), concat("\n", serving_launch_leg_text(leg: program.launch)))
 }

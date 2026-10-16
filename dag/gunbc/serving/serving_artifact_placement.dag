@@ -91,24 +91,41 @@ fn serving_fetch_leg_text(leg: ServingFetchLeg) -> String {
 // ABSENCE promotes (a rename into place); a copy already verified there is never the destination of a rename,
 // so a late-arriving fetch result is dropped with its own partial. A failed fetch removes ONLY its own
 // partial. Stale partials from a crashed attempt are not removed here: they are S5 release's population.
+type ServingArtifactSequence
+  = ServingArtifactCommands { commands: List<ArgvCommand> }
+  | ServingArtifactRefusedCopyDiffers { observed: Sha256Digest, own_partial_cleanup: List<ArgvCommand> }
+  | ServingArtifactRefusedCopyUnreadable { cause: NonEmptyStr, own_partial_cleanup: List<ArgvCommand> }
+
+// A copy at the content-addressed path that differs from its digest, or cannot be read, is a deficit this
+// program does not repair: it refuses typed with what it observed, and carries only the removal of its OWN
+// partial. The path itself is never a removal or overwrite target (S5 release owns deletion).
 fn serving_artifact_sequence(
   roots: ServingStoreRoots,
   digest: Sha256Digest,
   attempt: NonEmptyStr,
   existing: ServingCopyReading,
   fetch: ServingFetchResult,
-) -> List<ArgvCommand> {
+) -> ServingArtifactSequence {
   let partial = serving_partial_path(roots: roots, digest: digest, attempt: attempt)
   let prepare = [mkdir_parents_command(path: serving_partial_directory(roots: roots))]
+  let own_partial_cleanup = list_append(left: prepare, right: [rm_force_command(path: partial)])
   match fetch {
-    ServingFetchFailed { cause: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
+    ServingFetchFailed { cause: _ } => ServingArtifactCommands { commands: own_partial_cleanup }
     ServingFetchSucceeded =>
       match existing {
-        ServingCopyAbsent => list_append(left: prepare, right: [mv_exact_destination_command(source: partial, destination: serving_digest_path(roots: roots, digest: digest))])
-        ServingCopyVerified => list_append(left: prepare, right: [rm_force_command(path: partial)])
-        ServingCopyDiffers { observed: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
-        ServingCopyUnreadable { cause: _ } => list_append(left: prepare, right: [rm_force_command(path: partial)])
+        ServingCopyAbsent => ServingArtifactCommands { commands: list_append(left: prepare, right: [mv_exact_destination_command(source: partial, destination: serving_digest_path(roots: roots, digest: digest))]) }
+        ServingCopyVerified => ServingArtifactCommands { commands: own_partial_cleanup }
+        ServingCopyDiffers { observed: o } => ServingArtifactRefusedCopyDiffers { observed: o, own_partial_cleanup: own_partial_cleanup }
+        ServingCopyUnreadable { cause: c } => ServingArtifactRefusedCopyUnreadable { cause: c, own_partial_cleanup: own_partial_cleanup }
       }
+  }
+}
+
+fn serving_artifact_commands(sequence: ServingArtifactSequence) -> List<ArgvCommand> {
+  match sequence {
+    ServingArtifactCommands { commands: c } => c
+    ServingArtifactRefusedCopyDiffers { observed: _, own_partial_cleanup: c } => c
+    ServingArtifactRefusedCopyUnreadable { cause: _, own_partial_cleanup: c } => c
   }
 }
 
@@ -117,6 +134,7 @@ fn serving_artifact_sequence(
 type ServingLinkSwitch
   = ServingLinkSwitchNoop
   | ServingLinkSwitchCommands { commands: List<ArgvCommand> }
+  | ServingLinkSwitchRefusedUnreadable { cause: NonEmptyStr }
 
 fn serving_link_switch(roots: ServingStoreRoots, digest: Sha256Digest, link: ServingLinkReading) -> ServingLinkSwitch {
   let target = serving_digest_path(roots: roots, digest: digest)
@@ -129,7 +147,7 @@ fn serving_link_switch(roots: ServingStoreRoots, digest: Sha256Digest, link: Ser
   match link {
     ServingLinkPointsAt { target: t } => if (t as String) == target { ServingLinkSwitchNoop } else { switch }
     ServingLinkAbsent => switch
-    ServingLinkUnreadable { cause: _ } => switch
+    ServingLinkUnreadable { cause: c } => ServingLinkSwitchRefusedUnreadable { cause: c }
   }
 }
 
@@ -217,11 +235,21 @@ fn serving_names_protected(argument: String, protected: ServingProtectedPaths) -
 }
 
 fn serving_read_only_program(invocation: String) -> Bool {
-  invocation == "sha256sum" || invocation == "readlink" || invocation == "stat" || invocation == "ls" || invocation == "cat" || invocation == "test" || invocation == "curl"
+  invocation == "sha256sum" || invocation == "readlink" || invocation == "stat" || invocation == "ls" || invocation == "cat" || invocation == "test"
+}
+
+fn serving_operand_words(command: ArgvCommand) -> List<String> {
+  filter(command.arguments, a => !starts_with(s: a, prefix: "-"))
+}
+
+// A relative operand cannot be judged against absolute protected paths without the working directory, so
+// it is treated as endangering (fail closed) rather than skipped.
+fn serving_relative_operand(argument: String) -> Bool {
+  !starts_with(s: argument, prefix: "/")
 }
 
 fn serving_operands(command: ArgvCommand) -> List<String> {
-  filter(command.arguments, a => string_contains(s: a, pattern: "/"))
+  filter(serving_operand_words(command: command), a => starts_with(s: a, prefix: "/"))
 }
 
 fn serving_destination(command: ArgvCommand) -> String {
@@ -251,6 +279,7 @@ fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPa
         false
       } else {
         any(xs: serving_operands(command: command), predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
+          || any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) })
       }
     }
   }

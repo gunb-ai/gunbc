@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, cp_command }
 import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
@@ -15,12 +15,12 @@ import gunbc.serving.rented_ninfer_source {
 }
 import gunbc.serving.serving_artifact_placement {
   ServingStoreRoots, ServingProtectedPaths, ServingCopyVerified, ServingCopyAbsent, ServingFetchFailed, ServingFetchSucceeded,
-  ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_sequence_endangers,
+  ServingFetchRefusedMintEntryUnbuilt, serving_fetch_leg, serving_digest_path, serving_artifact_sequence, serving_artifact_commands, ServingArtifactRefusedCopyDiffers, ServingArtifactRefusedCopyUnreadable, serving_link_switch, ServingLinkSwitchRefusedUnreadable, ServingLinkUnreadable, serving_sequence_endangers,
   ServingInstalledFileRead, ServingEngineVerified, ServingEngineFileDigestDiffers, serving_engine_verdict,
 }
 import gunbc.serving.serving_launch {
   ServingServeNotListening, ServingServeAnswering, ServingServeUnreadable, ServingServeNoop, ServingServeStart, ServingServeRefused, serving_serve_decision,
-  ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
+  ServingPlacementCommands, ServingStartupProgram, ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_artifact_placement { ServingLinkAbsent }
 
@@ -42,21 +42,21 @@ data w_protected: ServingProtectedPaths = ServingProtectedPaths {
 // THE RED: a failed fetch beside a verified copy removes only its own partial.
 test fn a_failed_fetch_beside_a_verified_copy_endangers_nothing() -> Bool {
   !serving_sequence_endangers(
-    commands: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchFailed { cause: "connection reset" as NonEmptyStr }),
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchFailed { cause: "connection reset" as NonEmptyStr })),
     protected: w_protected,
   )
 }
 
 test fn a_succeeded_fetch_beside_a_verified_copy_never_renames_over_it() -> Bool {
   !serving_sequence_endangers(
-    commands: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchSucceeded),
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyVerified, fetch: ServingFetchSucceeded)),
     protected: w_protected,
   )
 }
 
 test fn an_absent_copy_promotes_by_rename_and_endangers_nothing_when_unprotected() -> Bool {
   !serving_sequence_endangers(
-    commands: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyAbsent, fetch: ServingFetchSucceeded),
+    commands: serving_artifact_commands(sequence: serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyAbsent, fetch: ServingFetchSucceeded)),
     protected: ServingProtectedPaths { paths: [], model_link: "/root/serve/model/model.ninfer", model_link_next: "/root/serve/model/model.ninfer.next" },
   )
 }
@@ -147,8 +147,8 @@ test fn the_full_sequence_refuses_at_the_launch_leg_with_no_earlier_leg_skipped(
     key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr },
   )
   (match p.launch { ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true  _ => false })
-    && !serving_sequence_endangers(commands: p.placement_commands, protected: w_protected)
-    && list_length(items: p.placement_commands) == 2
+    && !serving_sequence_endangers(commands: placement_commands_of(p: p), protected: w_protected)
+    && list_length(items: placement_commands_of(p: p)) == 2
 }
 
 // THE RECEIPT TEXT on the real producer: it names both unmet causes and carries the link switch it emitted.
@@ -160,4 +160,33 @@ test fn the_receipt_text_names_both_unmet_causes_and_the_link_switch() -> Bool {
   )
   let t = serving_startup_program_text(program: p)
   string_contains(s: t, pattern: "serve key grant unbound") && string_contains(s: t, pattern: "no modeled stdout-to-file route") && string_contains(s: t, pattern: "model.ninfer")
+}
+
+fn placement_commands_of(p: ServingStartupProgram) -> List<ArgvCommand> {
+  match p.placement { ServingPlacementCommands { commands: c } => c  _ => [] }
+}
+
+// REVIEW 80987: an unreadable or differing copy refuses typed and carries only its own partial's removal; an
+// unreadable model link refuses the switch instead of switching it blind.
+test fn a_differing_or_unreadable_copy_refuses_typed_and_endangers_nothing() -> Bool {
+  let differs = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyDiffers { observed: Sha256Digest { hex: "00" } }, fetch: ServingFetchSucceeded)
+  let unreadable = serving_artifact_sequence(roots: w_roots, digest: w_digest, attempt: "1" as NonEmptyStr, existing: ServingCopyUnreadable { cause: "io error" as NonEmptyStr }, fetch: ServingFetchSucceeded)
+  (match differs { ServingArtifactRefusedCopyDiffers { observed: _, own_partial_cleanup: _ } => true  _ => false })
+    && (match unreadable { ServingArtifactRefusedCopyUnreadable { cause: _, own_partial_cleanup: _ } => true  _ => false })
+    && !serving_sequence_endangers(commands: serving_artifact_commands(sequence: differs), protected: w_protected)
+    && !serving_sequence_endangers(commands: serving_artifact_commands(sequence: unreadable), protected: w_protected)
+}
+
+test fn an_unreadable_model_link_refuses_the_switch() -> Bool {
+  match serving_link_switch(roots: w_roots, digest: w_digest, link: ServingLinkUnreadable { cause: "permission denied" as NonEmptyStr }) {
+    ServingLinkSwitchRefusedUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// REVIEW 80987: a writing program off the read-only list (cp stands in for curl -o, which has no typed builder)
+// onto a digest path is refused, and a relative operand is refused because it cannot be placed.
+test fn a_writing_program_onto_a_digest_path_and_a_relative_operand_are_refused() -> Bool {
+  serving_sequence_endangers(commands: [cp_command(source: "/tmp/x", destination: serving_digest_path(roots: w_roots, digest: w_digest))], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "sha256")], protected: w_protected)
 }
