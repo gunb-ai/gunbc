@@ -10456,8 +10456,9 @@ fn emit_func_def(
   registry: Map<String, ItemInfo>,
   scope: InferScope,
   shared_types: Set<String>,
-  emit_info: EmitGraphInfo
-, type_decl_items: TypeDeclIndex) -> String {
+  emit_info: EmitGraphInfo,
+  type_decl_items: TypeDeclIndex
+) -> String {
 
   if function_type_params(params: params) |> count > 0 {
     return concat("compile_error!(\"emit_func_def saw type params in `", name, "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n")
