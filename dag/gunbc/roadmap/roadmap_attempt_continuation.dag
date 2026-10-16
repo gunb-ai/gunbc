@@ -186,7 +186,7 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
             RefusedRetryExhausted { attempts } =>
               ContinuationRefused { reason: refused_retry_exhausted_reason(attempts: attempts) }
             RefusedRetryOperatorOnly =>
-              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator decides, so no spawn" }
+              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
           }
       }
   }

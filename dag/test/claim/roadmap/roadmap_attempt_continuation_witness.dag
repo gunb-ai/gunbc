@@ -184,7 +184,7 @@ test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
 
 // VERIFICATION OWNED BY THE BELT HOLDS THE LINEAGE: absent, pending, and active segments are the
 // belt's outstanding obligation; a refused verification is an environment fact and the obligation
-// stays outstanding with the retry named; a stopped segment is a state verification does not
+// names the operator resume (nothing retries it automatically); a stopped segment is a state verification does not
 // inhabit and refuses.
 test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
   let owed = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
@@ -205,7 +205,7 @@ test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_
       _ => false
     })
     && (match continuation_decision(prior: Present { value: refused }) {
-      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("retries")
+      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("operator resumes") && !reason.contains("retries")
       _ => false
     })
     && (match continuation_decision(prior: Present { value: stopped }) {
