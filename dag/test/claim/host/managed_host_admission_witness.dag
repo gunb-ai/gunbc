@@ -12,6 +12,7 @@ import gunbc.rung_drop {
   Standing,
   Superseded,
   Retired,
+  Dissolved,
   TypedDeclaration,
 }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
@@ -269,6 +270,34 @@ fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
   }
 }
 
+// Dissolved (main's #14181 fourth standing): admissible ONLY over an EMPTY typed population; any
+// other shape is invalid and FAILS CLOSED -- still standing, counted live, never erased. The helper
+// lets the two companion REDs mint each shape from the record's own cited value.
+fn drop_dissolved_with_population(population: List<String>) -> RungDrop {
+  let base = mtcollins1_bmc_secure_standing_predates_reflash
+  match base.declaration {
+    AuthoredProse { legacy: _, authored: _ } => base
+    TypedDeclaration { previous: p, temporary: t, reason: r, population: _, restoration_trigger: rt } =>
+      RungDrop {
+        identity: base.identity,
+        subject: base.subject,
+        declared: base.declared,
+        standing: Dissolved {
+          ruling: "test: a ruling declaring the rung's population gone" as NonEmptyStr,
+          decision_record: "test.claim.host.managed_host_admission_witness" as NonEmptyStr,
+          population_gone: "test: the typed population is declared gone" as NonEmptyStr,
+        },
+        declaration: TypedDeclaration {
+          previous: p,
+          temporary: t,
+          reason: r,
+          population: population,
+          restoration_trigger: rt,
+        },
+      }
+  }
+}
+
 // A DECLARED DROP QUALIFIES ONLY WHILE IT STANDS, and the check is now a read of the record's own
 // value -- no roster, no citation. Superseded is the honest shape of the 2026-10-04 ruling (its
 // trigger never fired); Retired would CLAIM the trigger fired. Neither may default to membership.
@@ -373,6 +402,82 @@ test fn w_a_retired_covering_drop_is_absent() -> Bool {
         retired =>
           match project_managed_host_admission(
             record: retired,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+      }
+  }
+}
+
+// DISSOLVED FAILS CLOSED (main's #14181 law, adopted into the value classifier): a Dissolved row
+// whose typed population is NOT empty is an invalid dissolution -- the row is still standing,
+// counted live and outstanding, never erased -- so it still covers the subject and membership holds.
+test fn w_a_dissolved_covering_drop_with_a_live_typed_population_still_covers() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        binding: r.binding,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_dissolved_with_population(population: [
+            "test: this typed population is still live, so the dissolution is invalid",
+          ]),
+        },
+      ) {
+        fail_closed =>
+          match project_managed_host_admission(
+            record: fail_closed,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => false
+            Present { value: m } =>
+              match m.arm {
+                ManagedHostFoundUnderDeclaredDrop { host: _, control: _, drop: d, standing_subject: _, current_subject: _ } =>
+                  match d {
+                    Present { value: dv } => dv.identity == mtcollins1_bmc_secure_standing_predates_reflash.identity
+                    Absent => false
+                  }
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// A DISSOLUTION ADMITTED ONLY OVER AN EMPTY TYPED POPULATION erases the drop from live accounting
+// (dissolved_is_admissible), so it can no longer qualify a subject: the declared-drop arm is gone
+// and the stale-subject host drops out of the projection entirely.
+test fn w_an_admissibly_dissolved_covering_drop_is_absent() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        binding: r.binding,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_dissolved_with_population(population: []),
+        },
+      ) {
+        dissolved =>
+          match project_managed_host_admission(
+            record: dissolved,
             current_subject: mtcollins1_current_intake_subject(),
             allocations: gunbc_fleet_hostname_allocations,
           ) {
