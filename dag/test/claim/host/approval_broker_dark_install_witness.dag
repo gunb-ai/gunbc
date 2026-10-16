@@ -36,6 +36,9 @@ import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOw
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import gunbc.live_deploy.spec { gunbc_approval_broker_unit_name }
+import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
+import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.tools.findutils { find_untrusted_entries_command }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -87,6 +90,20 @@ test fn the_unit_legs_enable_and_restart_only_the_broker_unit_after_a_daemon_rel
   steps == [DarkStepSliceUnit, DarkStepBrokerUnit, DarkStepDaemonReload, DarkStepEnable, DarkStepRestart]
 }
 
+// THE FREEZE RED (carried over from the deleted script-text claim): the enable and restart legs name the
+// broker unit and never the roadmap unit, so a stage that restarts gunbc-roadmap.service fails here.
+test fn the_unit_legs_never_name_the_roadmap_unit() -> Bool {
+  let legs = dark_unit_legs(spec: deployment_spec_srv1(), revision: rev())
+  let broker = gunbc_approval_broker_unit_name
+  let roadmap = deployment_spec_srv1().service.unit_name as NonEmptyStr
+  let enable_broker = DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: broker)) }
+  let restart_broker = DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: broker)) }
+  let enable_roadmap = DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: roadmap)) }
+  let restart_roadmap = DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: roadmap)) }
+  any(legs, l => l == enable_broker) && any(legs, l => l == restart_broker)
+    && !any(legs, l => l == enable_roadmap) && !any(legs, l => l == restart_roadmap)
+}
+
 test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
   count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
 }
@@ -116,8 +133,8 @@ test fn slice_control_legs_follow_the_derived_plan() -> Bool {
     SliceControlPlanDerived { units: us } =>
       count(dark_slice_control_legs(units: us)) >= count(us)
         && all(dark_slice_control_legs(units: us), l => leg_step(l: l) == DarkStepSliceControl)
-    SliceControlPlanNotOwed => true
-    SliceControlPlanRefused { cause: _ } => true
+    SliceControlPlanNotOwed => count(dark_slice_control_legs(units: [])) == 0
+    SliceControlPlanRefused { cause: _ } => false
   }
 }
 
