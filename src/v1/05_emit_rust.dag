@@ -1632,6 +1632,10 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared
   // struct at the value layer in fn-parameter position -- E0308 against the seed field types
   // (self-host first_error at std_algebra.rs FinitePowerSet.contains). Kernel leaves stay out:
   // machine-scalar realization is already refused in render_rust_shared_type_with_optional.
+  // ROOT CAUSE this guard stands in for: this reader is keyed by the SPELLED leaf, not by the declaration
+  // the position resolves to, so it cannot tell a kernel-alias leaf (Nat) from a user declaration that
+  // shares its spelling. The identity answer is SharedLayerAnswer (shared_layer_of_type_expr); this
+  // reader is retired when its callers receive type_decl_items and route through it.
   let may_wrap_leaf = is_container_type(name: type_name) || contains(type_name, ".") || (type_name != "" && !is_kernel_type(name: type_name))
   if may_wrap_leaf && set_contains(shared_types, type_name) && !rust_type_is_rc_wrapped(type_name: rendered) {
     wrap_shared_type(target: Rust, inner: rendered)
