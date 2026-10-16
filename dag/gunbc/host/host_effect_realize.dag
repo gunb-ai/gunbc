@@ -6518,6 +6518,25 @@ fn build_cache_unlink_then_ensure(
 // an endpoint-readiness observation the ensure step can wait on, at which point the post-survey
 // runs after it rather than after systemctl returns.
 
+// THE TWO OPTIONAL READ OUTCOMES, each in a function whose RETURN TYPE is declared. A bare
+// `Present { value: x }` / `Absent` pair unifies only where an expected type is pushed into it; inside a
+// `let` (and inside a match arm) nothing is pushed, so each branch gets inferred on its own -- one as a
+// bare Coproduct over the outcome, the other as a bare Coproduct over Optional -- and the join is
+// refused. `Absent as Optional<T>` is not the answer either, being refused as a cast. Routing the two
+// arms through declared-return-type functions is how the corpus writes this (extdeps/uri_validation.dag,
+// gunbc/witness/witness_row_cost.dag), and it keeps the distinction the observer depends on: SKIPPED is
+// its own value, not an empty capture.
+fn build_cache_stats_read_present(
+  command: ArgvCommand,
+  transport: HostEffectTransport,
+) -> Optional<BuildCacheHostRunOutcome> {
+  Present { value: build_cache_argv_read_outcome(command: command, transport: transport) }
+}
+
+fn build_cache_stats_read_skipped() -> Optional<BuildCacheHostRunOutcome> {
+  Absent
+}
+
 // THE EVIDENCE CARRIER FOR A CONVERGED ENSURE THAT RAN NO SHELL. toolchain_ensure_reconcile needs a
 // ShellExecObserved to ground the reconciliation, and the honest one is the read-back the site ran: exit
 // code, stdout and stderr exactly as the host produced them, with the converged stats table as the
@@ -6563,15 +6582,12 @@ fn build_cache_ensure_step(
   let stats_read =
     match presence_read {
       Ran { observed: p_obs } =>
-        // bare Absent, not `Absent as Optional<T>`: the cast is refused as a cast, and it makes this arm
-        // a Coproduct node that cannot join the Present arm's Optional. The skip stays a SKIP -- an absent
-        // read is its own arm in the observer, never a fabricated empty capture.
         if p_obs.exit_code == 0 {
-          Present { value: build_cache_argv_read_outcome(command: stats, transport: transport) }
+          build_cache_stats_read_present(command: stats, transport: transport)
         } else {
-          Absent
+          build_cache_stats_read_skipped()
         }
-      CouldNotRun { phase: _, reason: _ } => Absent
+      CouldNotRun { phase: _, reason: _ } => build_cache_stats_read_skipped()
     }
   let observe = build_cache_observe_observed(presence: presence_read, stats: stats_read)
   let ensure_executed = build_cache_ensure_executed(
@@ -6586,9 +6602,9 @@ fn build_cache_ensure_step(
   // never disagree about whether the phase happened.
   let read_back =
     if build_cache_ensure_is_needed(observe: observe) {
-      Present { value: build_cache_argv_read_outcome(command: stats, transport: transport) }
+      build_cache_stats_read_present(command: stats, transport: transport)
     } else {
-      Absent
+      build_cache_stats_read_skipped()
     }
   let after = survey_build_cache_endpoint(
     instance: instance,
