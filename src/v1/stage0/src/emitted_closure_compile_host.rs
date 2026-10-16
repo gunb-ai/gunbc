@@ -2309,8 +2309,36 @@ pub(crate) fn run_argv_word_list_splice_discrimination(
 }
 
 #[cfg(test)]
+fn fixture_dir_rs_contains(dir: &std::path::Path, needle: &str) -> bool {
+    let Ok(walker) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    walker.filter_map(|e| e.ok()).any(|e| {
+        let path = e.path();
+        if path.is_dir() {
+            fixture_dir_rs_contains(&path, needle)
+        } else {
+            path.extension().is_some_and(|x| x == "rs")
+                && std::fs::read_to_string(&path).is_ok_and(|s| s.contains(needle))
+        }
+    })
+}
+
+#[cfg(test)]
+fn fixture_emitted_rs_contains(outcome: &FixtureClosureOutcome, needle: &str) -> bool {
+    match outcome {
+        FixtureClosureOutcome::Measured { crate_dir, .. } => {
+            fixture_dir_rs_contains(std::path::Path::new(crate_dir), needle)
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn fixture_argv_non_string_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
     fixture_closure_compiled(&pair.green)
+        && !fixture_emitted_rs_contains(&pair.green, "unsupported simple expr")
+        && fixture_emitted_rs_contains(&pair.green, "range_words_named")
         && fixture_closure_reached_rustc(&pair.red)
         && !fixture_closure_compiled(&pair.red)
         && fixture_closure_attributed_line(&pair.red).is_some()

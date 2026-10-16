@@ -40542,6 +40542,7 @@ pub fn emit_shell_call(
                             depth.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
+                            emit_info.clone(),
                         ),
                     ),
                     ")".to_string(),
@@ -40573,11 +40574,11 @@ pub fn emit_shell_call(
             Rc::new({
                 let mut __result = Vec::new();
                 for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
-                    __result.push(if shell_argv_element_is_word_list(arg.clone(), argv_scope.clone(), op_node.clone(), emit_info.clone(), source_indices.clone()) {
-                v1_rt::concat(v1_rt::concat("    .args(".to_string(), emit_shell_argv_word_list_element(arg.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone())), ".iter())".to_string())
+                    __result.push(if shell_argv_element_is_word_list(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
+                v1_rt::concat(v1_rt::concat("    .args(".to_string(), emit_shell_argv_word_list_element(arg.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone())), ".iter())".to_string())
             } else {
-                if shell_argv_element_is_string_word(arg.clone(), argv_scope.clone(), op_node.clone(), emit_info.clone(), source_indices.clone()) {
-                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone())), ")".to_string())
+                if shell_argv_element_is_string_word(arg.clone(), argv_scope.clone(), emit_info.clone(), source_indices.clone()) {
+                    v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_shell_argv_element(arg.clone(), optional_params.clone(), registry.clone(), argv_scope.clone(), depth.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone())), ")".to_string())
                 } else {
                     v1_rt::concat(v1_rt::concat("    .arg(".to_string(), emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat("argv element is not String or List<String> at ".to_string(), arg.span.clone().file.clone()), ":".to_string()), crate::v1_compiler_emit_core_support::to_string(arg.span.clone().start.clone())))), ")".to_string())
                 }
@@ -40775,33 +40776,6 @@ pub fn shell_argv_emit_scope(
     }
 }
 
-pub fn shell_argv_declared_param_type(
-    arg: Rc<Node>,
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            let name = crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone());
-            op_node.params.clone().iter().cloned().fold(
-                std::option::Option::None,
-                |acc: _, p: Rc<Node>| {
-                    if (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
-                        == name.clone())
-                    {
-                        Some(crate::v1_std_core::param_node_type_expr(p.clone()))
-                    } else {
-                        acc.clone()
-                    }
-                },
-            )
-        }
-        _ => std::option::Option::None,
-    }
-}
-
 pub fn argv_follow_inferred(n: Rc<Node>) -> Rc<Node> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
@@ -40812,45 +40786,9 @@ pub fn argv_follow_inferred(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn argv_named_decl(
-    name: String,
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> Option<Rc<Node>> {
-    if (name.clone() == "".to_string()) {
-        std::option::Option::None
-    } else {
-        match v1_rt::map_get(&emit_info.fn_decl_items.clone(), name.clone()) {
-            Some(n) => Some(n.clone()),
-            std::option::Option::None => {
-                let ids = crate::v1_compiler_infer_emit_info::type_decl_identities_of_leaf(
-                    emit_info.type_decl_items.clone(),
-                    name.clone(),
-                );
-                match ids.clone().first().cloned() {
-                    Some(id) => v1_rt::map_get(
-                        &emit_info.type_decl_items.clone().by_identity.clone(),
-                        id.clone(),
-                    ),
-                    std::option::Option::None => {
-                        match crate::v1_compiler_infer_env::lookup_binding_by_name(
-                            scope.type_env.clone(),
-                            name.clone(),
-                        ) {
-                            Some(b) => Some(b.resolved.clone()),
-                            std::option::Option::None => std::option::Option::None,
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn argv_element_type_after_alias_hop(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
-    op_node: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fuel: i64,
@@ -40863,46 +40801,7 @@ pub fn argv_element_type_after_alias_hop(
             source_indices.clone(),
             fuel.clone(),
         )),
-        _ => match shell_argv_declared_param_type(
-            arg.clone(),
-            op_node.clone(),
-            source_indices.clone(),
-        ) {
-            Some(t) => Some(hop_argv_element_type(
-                t.clone(),
-                scope.clone(),
-                emit_info.clone(),
-                source_indices.clone(),
-                fuel.clone(),
-            )),
-            std::option::Option::None => match (*arg.expr_data.clone()).clone() {
-                ExprData::ExprCall {
-                    call_semantics: cs, ..
-                } => {
-                    let fname = match (*crate::v1_std_core::call_semantics_target(cs.clone()))
-                        .clone()
-                    {
-                        CallTargetIdentity::SourceDeclarationCall { decl_name: d, .. } => d.clone(),
-                        CallTargetIdentity::LocallyBoundCall { name: n, .. } => n.clone(),
-                        _ => crate::v1_std_core::expr_call_func_at(
-                            arg.clone(),
-                            source_indices.clone(),
-                        ),
-                    };
-                    match argv_named_decl(fname.clone(), scope.clone(), emit_info.clone()) {
-                        Some(d) => Some(hop_argv_element_type(
-                            argv_follow_inferred(d.clone()),
-                            scope.clone(),
-                            emit_info.clone(),
-                            source_indices.clone(),
-                            fuel.clone(),
-                        )),
-                        std::option::Option::None => std::option::Option::None,
-                    }
-                }
-                _ => std::option::Option::None,
-            },
-        },
+        _ => std::option::Option::None,
     }
 }
 
@@ -40966,59 +40865,36 @@ pub fn hop_argv_element_type(
                             continue;
                         }
                         std::option::Option::None => {
-                            let name = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
+                            match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
+                                emit_info.type_decl_items.clone(),
                                 rt.clone(),
-                            );
-                            match argv_named_decl(name.clone(), scope.clone(), emit_info.clone()) {
-                                Some(d) => {
-                                    let next = argv_follow_inferred(d.clone());
-                                    if crate::v1_compiler_infer::is_where_refinement_type(
-                                        next.clone(),
-                                    ) {
-                                        match next.children.clone().first().cloned() {
-                                            Some(base) => {
-                                                let __tco_0 = base.clone();
-                                                let __tco_1 = scope;
-                                                let __tco_2 = emit_info;
-                                                let __tco_3 = source_indices;
-                                                let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                                __tco_loop_rt = __tco_0;
-                                                __tco_loop_scope = __tco_1;
-                                                __tco_loop_emit_info = __tco_2;
-                                                __tco_loop_source_indices = __tco_3;
-                                                __tco_loop_fuel = __tco_4;
-                                                continue;
-                                            }
-                                            std::option::Option::None => {
-                                                break rt.clone();
-                                            }
-                                        }
-                                    } else {
-                                        let next_name = crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            next.clone(),
-                                        );
-                                        if (next_name.clone() != name.clone()) {
-                                            {
-                                                let __tco_0 = next.clone();
-                                                let __tco_1 = scope;
-                                                let __tco_2 = emit_info;
-                                                let __tco_3 = source_indices;
-                                                let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                                __tco_loop_rt = __tco_0;
-                                                __tco_loop_scope = __tco_1;
-                                                __tco_loop_emit_info = __tco_2;
-                                                __tco_loop_source_indices = __tco_3;
-                                                __tco_loop_fuel = __tco_4;
-                                                continue;
-                                            }
-                                        } else {
-                                            break rt.clone();
-                                        }
-                                    }
+                                source_indices.clone(),
+                            ))
+                            .clone()
+                            {
+                                TypeDeclResolution::TypeDeclResolved { decl: d, .. } => {
+                                    let __tco_0 = argv_follow_inferred(d.clone());
+                                    let __tco_1 = scope;
+                                    let __tco_2 = emit_info;
+                                    let __tco_3 = source_indices;
+                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                    __tco_loop_rt = __tco_0;
+                                    __tco_loop_scope = __tco_1;
+                                    __tco_loop_emit_info = __tco_2;
+                                    __tco_loop_source_indices = __tco_3;
+                                    __tco_loop_fuel = __tco_4;
+                                    continue;
                                 }
-                                std::option::Option::None => {
+                                TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
+                                    break rt.clone();
+                                }
+                                TypeDeclResolution::TypeDeclKernelSpellingUndecided {
+                                    leaf: _,
+                                    ..
+                                } => {
+                                    break rt.clone();
+                                }
+                                TypeDeclResolution::TypeDeclNotDeclared => {
                                     break rt.clone();
                                 }
                             }
@@ -41033,14 +40909,12 @@ pub fn hop_argv_element_type(
 pub fn shell_argv_element_is_word_list(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
-    op_node: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match argv_element_type_after_alias_hop(
         arg.clone(),
         scope.clone(),
-        op_node.clone(),
         emit_info.clone(),
         source_indices.clone(),
         8,
@@ -41053,7 +40927,6 @@ pub fn shell_argv_element_is_word_list(
 pub fn shell_argv_element_is_string_word(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
-    op_node: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -41070,7 +40943,6 @@ pub fn shell_argv_element_is_string_word(
         _ => match argv_element_type_after_alias_hop(
             arg.clone(),
             scope.clone(),
-            op_node.clone(),
             emit_info.clone(),
             source_indices.clone(),
             8,
@@ -41087,49 +40959,17 @@ pub fn emit_shell_argv_word_list_element(
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => crate::v1_compiler_emit::emit_ident(
-            crate::v1_std_core::expr_var_name_at(arg.clone(), source_indices.clone()),
-            RenderTarget::Rust,
-        ),
-        ExprData::ExprCall { .. } => {
-            let fname = crate::v1_std_core::expr_call_func_at(arg.clone(), source_indices.clone());
-            let args = Rc::new({
-                let mut __result = Vec::new();
-                for c in arg.children.clone().iter().cloned() {
-                    __result.push(crate::v1_compiler_emit::emit_simple_expr(
-                        c.clone(),
-                        RenderTarget::Rust,
-                        source_indices.clone(),
-                    ));
-                }
-                __result
-            });
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        crate::v1_compiler_emit::emit_ident(fname.clone(), RenderTarget::Rust),
-                        "(".to_string(),
-                    ),
-                    args.clone().join(&", ".to_string()),
-                ),
-                ")".to_string(),
-            )
-        }
-        _ => emit_typed_expr(
-            arg.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
-            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-            1024,
-        ),
-    }
+    emit_typed_expr(
+        arg.clone(),
+        registry.clone(),
+        scope.clone(),
+        depth.clone(),
+        shared_types.clone(),
+        emit_info.clone(),
+        1024,
+    )
 }
 
 pub fn emit_shell_argv_element(
@@ -41140,6 +40980,7 @@ pub fn emit_shell_argv_element(
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
@@ -41264,7 +41105,7 @@ pub fn emit_shell_argv_element(
             scope.clone(),
             depth.clone(),
             shared_types.clone(),
-            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+            emit_info.clone(),
             1024,
         ),
     }

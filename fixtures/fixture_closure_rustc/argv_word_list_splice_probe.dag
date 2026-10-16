@@ -110,6 +110,20 @@ service fixture.WordListTransport {
     }
   }
 
+  operation NamedCallProducedList {
+    input { base: String, head: String, range: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", range_words_named(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
   operation RemoteNameWord {
     input { remote: GitRemoteName }
     output {
@@ -127,4 +141,8 @@ service fixture.WordListTransport {
 
 fn range_words() -> List<String> {
   ["--", "HEAD"]
+}
+
+fn range_words_named(base: String, head: String, range: String) -> List<String> {
+  [base, head, range]
 }
