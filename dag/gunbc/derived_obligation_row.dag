@@ -265,7 +265,7 @@ fn standing_carries_premise(p: PathExecution, premise: DeclarationRef) -> Bool {
 // THE SUBJECTS AS QUALIFIED NAMES, so a consumer that CAN read the tree has one thing to join on and
 // does not re-derive the dotted spelling. The declaration name carries no dots, so module plus
 // declaration is unambiguous in both directions — the same derivation
-// gunbc.witness.v2_native_route makes for the native lane's identities.
+// v2.workflow.v2_native_route makes for the native lane's identities.
 fn witness_subject_qualified_name(w: WitnessSubject) -> String {
   concat(concat(w.module_path as String, "."), w.function as String)
 }

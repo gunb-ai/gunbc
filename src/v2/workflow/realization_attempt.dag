@@ -7,7 +7,13 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
 import v2.compiler.infer { InferredTree }
-import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
+import v2.compiler.compile {
+  compile_inferred,
+  CompileMode,
+  TranslateTo,
+  TranslateResult,
+  EvalResult
+}
 import v2.compiler.emit_produced { emit_produced_module }
 import v2.extdeps.languages.rust { rust_target_model_staging }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -290,7 +296,7 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
     match list_at_optional(xs: joined, index: 0) {
       Absent => attempt_refused(entry: entry, phase: PhaseResolve, cause: ^realization_attempt_identity_absent)
       Present { value: decl } =>
-        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, module_outcomes: program.module_outcomes, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers, constructing_module: program.constructing_module }) {
+        match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, module_outcomes: program.module_outcomes, outcome_index: program.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: program.type_declaration_modifiers, constructing_module: program.constructing_module }) {
           Rejected { diagnostics: ds } =>
             attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>

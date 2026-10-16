@@ -69,7 +69,7 @@ import gunbc.spark.grant_privileged_operation {
   admit_retired_dropin_removal, retired_dropin_removal_receipts_missing,
   StageGrantFile, CleanupGrantStaging, stage_grant_file_step, cleanup_grant_staging_argv, cleanup_grant_staging_step,
   SparkGrantInstallPlan, SparkGrantInstallSteps, SparkGrantInstallRefused, spark_grant_staging_path, spark_grant_install_plan,
-  spark_grant_install_operation_labels, spark_grant_cleanup_standing, spark_grant_install_plan_wire, spark_grant_install_transport,
+  spark_grant_install_operation_labels, spark_grant_cleanup_standing, spark_grant_install_plan_wire, spark_grant_install_transport, spark_grant_install_target,
   SparkGrantReadback, GrantReadbackConfirmed, GrantReadbackDisagreed, GrantReadbackNotAttempted,
   SparkGrantInstallOutcome, SparkGrantInstallAwaitingOperatorCredential, SparkGrantInstallNotAttempted, SparkGrantInstallExecuted,
   SparkGrantInstallStep, spark_grant_install_execute, spark_grant_install_from_privileged, spark_grant_read_back,
@@ -96,7 +96,7 @@ import gunbc.spark.managed_grant_reconcile {
   SharedInspectDropinShape, PerContainerInspectDropinShape,
 }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host.host_effect_realize { HostEffectTransport, FleetSsh }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
@@ -136,12 +136,16 @@ type SparkGrantInstallRun {
 }
 
 fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: HostIdentity) -> SparkInspectDropinShape {
-  match run_typed_argv_transport(
-    argv: spark_sudoers_dropin_listing_argv(),
-    transport: spark_grant_install_transport(context: context, host: host, principal: spark_managed_executor_login as NonEmptyStr),
-  ) {
-    TypedArgvExecRefused { reason: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
-    TypedArgvExecConverged { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  match spark_grant_install_target(host: host, principal: spark_managed_executor_login as NonEmptyStr) {
+    SshTargetRefused { endpoint: e, refusal: why } => InspectDropinShapeUnobserved { cause: ssh_target_refusal_text(endpoint: e, refusal: why) as NonEmptyStr }
+    SshTargetResolved { target: target } =>
+      match run_typed_argv_transport(
+        argv: spark_sudoers_dropin_listing_argv(),
+        transport: spark_grant_install_transport(context: context, target: target),
+      ) {
+        TypedArgvExecRefused { reason: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
+        TypedArgvExecConverged { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      }
   }
 }
 

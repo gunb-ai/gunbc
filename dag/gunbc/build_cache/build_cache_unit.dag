@@ -19,7 +19,7 @@ import extdeps.cache.sccache {
   SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
   sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
   sccache_idle_timeout_never_env_assignment,
-  sccache_cache_dir_env_var, sccache_cache_size_env_var,
+  sccache_cache_dir_env_var, sccache_cache_size_env_var, sccache_server_uds_env_var,
 }
 
 data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
@@ -113,7 +113,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 fn sccache_endpoint_env_assignment(instance: BuildCacheInstance) -> NonEmptyStr {
   match instance.endpoint {
     SccacheServerUnixSocket { path: p } =>
-      concat("SCCACHE_SERVER_UDS=", p as String) as NonEmptyStr
+      concat(concat(sccache_server_uds_env_var as String, "="), p as String) as NonEmptyStr
     SccacheServerTcpPort { port: n } =>
       concat("SCCACHE_SERVER_PORT=", to_string(n)) as NonEmptyStr
   }
@@ -270,7 +270,7 @@ fn render_build_cache_unit(instance: BuildCacheInstance) -> List<String> {
 // swap pointed them at this render. The wall built for the hand-written unit caught the generated
 // one on its first contact.
 
-// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
+// THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet.fleet_host_budget derives it through compile_pool_bytes_for, which since the jobserver retirement (A2) refuses a declared slice rather than sizing one. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
 //
 // memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
 fn compile_pool_slice_unit_file(slice_unit: NonEmptyStr, sized: ByteSize) -> SystemdUnitFile {
