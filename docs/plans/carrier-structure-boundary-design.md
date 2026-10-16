@@ -1,14 +1,17 @@
 # Carriers and structures: the std / external-mathematics boundary
 
-**Status:** DRAFT for operator review and iteration, 2026-10-16. Not for merge. This document
-proposes design and DESIGN.md changes; roadmap and code changes come after it is agreed.
-**Supersedes, when agreed:** the open N3 question "List versus FreeMonoid" in roadmap node
-`v2-namespace-cutover`.
+**Status:** DRAFT r2 for operator review and iteration, 2026-10-16. Not for merge. Roadmap and code changes
+come after it is agreed. Before merge, the agreed authority moves out of this markdown into the `.dag` design
+carrier (`gunbc.design_document`) and a dated ruling; this file is the drafting surface.
+**Answers, when agreed:** the open N3 question "List versus FreeMonoid" in roadmap node `v2-namespace-cutover`.
 
-Sections 1–3 are the agreed problem and principle. Sections 4–6 are the three design areas still
-open: the module structure (§4, to be decided here), inhabitance (§5, problem statement and open
-questions), and where operations come from (§6, open). §9 drafts the DESIGN.md changes and §12 collects
-every open question with a recommendation.
+**r2 changes** (side-chat review of r1): the design is organised around **distinct typed relations** instead
+of one overloaded "inhabitance"; the linear L0/L1/L2 layering is replaced by a **role/dependency diamond**;
+`std.types` is migration-only, not a target home; the existing v2 `AlgebraInhabitanceDecl` is prior art, not
+the canonical form; Map/Set **denotation** is separated from algebraic inhabitance; the operations question has
+a recommended rule; the second-form check is strengthened from name detection to typed authority uniqueness.
+
+**Decisions still needed from the operator** are in §12, at the top of that table.
 
 ---
 
@@ -73,300 +76,342 @@ witness; no conversion exists because there is one carrier declaration.**
 
 ---
 
-## 2. The principle (agreed)
+## 2. The principle
 
 > **External mathematics names structures; Dag names data.** `extdeps` owns accepted mathematical
 > definitions, structures and laws. `std` owns the concrete data types exposed to ordinary programs and
-> their ordinary operations. A concrete type may inhabit an external mathematical structure, but that
-> fact never gives it a second source-language name.
+> their ordinary operations. A concrete type may inhabit an external mathematical structure, but that fact
+> never gives it a second source-language name.
 
-- **Externally governed meaning** — abstract algebra, order theory, classical logic, set theory, standards,
-  protocols, vendor APIs → `extdeps`.
-- **Dag's programming interface** — `List`, `NonEmptyList`, `Map`, `Set`, `String`, `Bool`, `Int`, `Nat`,
-  their constructors and ordinary operations → `std`.
-- **The relation between them** — an inhabitance fact keyed by declaration identity (§5), never an alias or
-  a spelling table.
-
-Consequence: the end state **deletes `std.algebra`**. It is not relocated; each concern goes to its own home
-(§4.3).
+The end state **deletes `std.algebra`**. It is not relocated: each concern goes to its own home (§5.3).
 
 ---
 
-## 3. Settled points
+## 3. The authority model: one question, one relation
 
-1. **One `String`** (agreed 2026-10-16). One declaration, realized as host text, with a **declared** unfold
-   to `List<Char>`. This amends DESIGN §4's text paragraph and its ruling `text_crossings_go_through_the_unfold`,
-   which today sanction two `String` representations (§9 item 7); the crossing-through-the-unfold rule itself stays. `v2.std.text`'s `type String = FreeMonoid<Char>` is
-   deleted. This also removes a silent-correctness defect: today the host `String` binds "only where no other
-   declaration of the spelling is visible" (`v2.std.node`), so which `String` a file gets depends on its
-   imports. `NonEmptyString` is its own declaration in the same home.
-2. **Map and Set carry the mathematics that is actually true:**
-   - `List<T>` is the free monoid on `T` — the witness must include the generator (singleton) and the
-     universal fold, not only append.
-   - `NonEmptyList<T>` is the free semigroup on `T`.
-   - `Map<K,V>` is a **finite partial function** `K ⇀ V`. It is not a finitely supported total function:
-     that needs a distinguished default in `V`, which a generic `Map` has not got. The sound equivalent is
-     a finitely supported `K → Optional<V>` with `Absent` as the default.
-   - `Set<T>` is a **finite subset** of `T` (a join-semilattice under union). It is **not** a Boolean
-     algebra unless a universe and complement are modelled.
-3. **`FinitelySupportedFunction` and `FinitePowerSet` are not carried forward as copied labels.** The
-   Map/Set redesign records whichever external structure really holds (item 2).
+The r1 draft used "inhabitance" for several materially different facts. Each is its own relation:
+
+| Question | Authority or relation | Example |
+|---|---|---|
+| What values can exist? | **Carrier declaration** | `List<T> = Empty \| Cons { head, tail }` |
+| What computation exists? | **Operation declaration** | `list_append`, `map_get` |
+| What operations and laws define a structure? | **External structure** (`extdeps.math`) | `Monoid`, `FreeMonoid`, `Ring` |
+| How does a carrier satisfy a structure? | **`Inhabits`** | `List<T>` inhabits the free monoid on `T` |
+| What mathematical object does a value represent? | **`Denotes`** | `Map<K,V>` denotes a finite partial function `K ⇀ V` |
+| How do two distinct carriers cross? | **`ConvertsTo`** | `String ↔ List<Char>` |
+| How is a carrier stored or emitted? | **`RealizesAs`** | `String` realized as host text |
+| How does a whole's operation act on a part? | **Component action** | `Car.roll` acts through `wheel_rotate` |
+| What view is computed from an authority? | **`ProjectsFrom`** | v2's structure `TypeNode`s, v1's profile tables (while they live) |
+| What did a migration replace? | **`Replaces`** | atomic; the replaced declaration is absent at the resulting head |
+
+Two live declarations may coexist only through one of these relations. A plain second carrier, a copied
+signature, an untyped re-export, or a carrier alias has no relation and refuses (§8).
 
 ---
 
-## 4. Module structure (to decide in this document)
+## 4. Settled points
 
-### 4.1 The constraint
+1. **One `String`** (agreed 2026-10-16):
+   - `std.text.String` is the one carrier, `RealizesAs` host text. It moves out of `v2.std.node`: the Node model
+     references the language's `String`, it does not own it.
+   - `List<Char>` is a **distinct** carrier, not another representation of `String`.
+   - `string_chars: String -> List<Char>` and `string_from_chars: List<Char> -> String` are the `ConvertsTo`
+     pair. `string_from_chars` is total only if every `Char` is structurally a Unicode scalar. `Char` is
+     `Int where unicode_scalar`; until that construction wall is shown complete, the reverse conversion
+     carries a typed refusal (or a proof obligation). Once both directions are total and inverse, the pair is
+     recorded as an isomorphism.
+   - `String` and `List<Char>` may each inhabit the free monoid on `Char` with their own operations; the
+     conversion preserves that structure.
+   - This **amends** DESIGN §4's text paragraph and ruling `text_crossings_go_through_the_unfold`, which
+     sanction two `String` representations (§9 item 7). The rule that every crossing goes through the declared
+     conversion stays. `v2.std.text`'s `type String = FreeMonoid<Char>` is deleted. This also removes a
+     silent-correctness defect: today the host `String` binds "only where no other declaration of the spelling
+     is visible", so which `String` a file gets depends on its imports.
+2. **The mathematics recorded is the mathematics that holds.** Historical labels are not copied forward:
+   - `List<T>` **inhabits** the free monoid on `T` (§6.3 states what that instance must bind).
+   - `NonEmptyList<T>` inhabits the free semigroup on `T`.
+   - `Map<K,V>` **denotes** a finite partial function `K ⇀ V`. It is not a finitely supported *total* function,
+     which needs a default in `V`; the sound equivalent is finitely supported `K → Optional<V>`.
+   - `Set<T>` **denotes** a finite subset of `T`, and may separately **inhabit** a join-semilattice under
+     union. It is not a Boolean algebra unless a universe and complement are modelled.
 
-The structures need a few base types. `OrderedRing` declares `eq`/`ne: fn(T, T) -> Bool`, the ordered
-structures use `Ordering`, and some structures use `Optional`. Today `Bool` lives in `std.types` and
-`Ordering` in `std.algebra`, so `std.algebra` uses `Bool` ambiently — it cannot import it, because
-`std.types` imports `std.algebra`.
+---
 
-If the structures move to `extdeps.math` and a carrier's witness is recorded in `std.types` beside the
-declaration, the cycle returns: `std.types → extdeps.math → std.types`.
+## 5. Module structure
 
-Facts that make this solvable:
+### 5.1 Why the r1 layering was wrong
 
-- `std.optional`, `std.unicode.types` and `std.error_primitives` already import nothing.
-- `std.types` imports `std.algebra` **only** for the three carriers and the spelling tables
-  (`kernel_algebra_profile`, `carrier_container_*_rows`, `algebra_type_param_names`), all of which this
-  design deletes. Once they are gone, `std.types` imports nothing from the algebra layer.
+r1 proposed L0 base types / L1 `extdeps.math` / L2 `std` carrier modules, with `std.types` kept as L0
+because 3,590 files import it. That is a migration argument, not a design argument, and it would canonize a
+mixed 496-line module (carriers beside workflow ids, `MimeType`, branded strings). The real shape is a
+**diamond per carrier**, not a global stack.
 
-### 4.2 Proposed layering
-
-Three layers, with an import rule a check can enforce:
+### 5.2 The diamond
 
 ```
-L0  std base carriers      Bool, Ordering, Optional, Unit, Int, Nat, Char, List/NonEmptyList (declarations only)
-     imports: nothing outside L0
-
-L1  extdeps.math.*         structures and laws; may import L0 only
-     extdeps.math.abstract_algebra   Magma … Field
-     extdeps.math.order_theory       TotalOrder, Lattice, BoundedLattice, BooleanAlgebra
-     extdeps.math.free_structures    FreeMonoid, FreeSemigroup as STRUCTURES over a generator
-     extdeps.math.set_theory         finite subset, finite partial function
-
-L2  std carrier modules    operations and witnesses: std.list, std.map, std.set, std.text, std.nat, …
-     may import L0 and L1
+   extdeps.math.<area>                 std.<carrier>
+   structures + laws                   carrier declaration + ordinary operations
+   (imports only the few base          (imports no structure)
+    carriers needed to spell
+    signatures: Bool, Ordering)
+              \                           /
+               \                         /
+                v                       v
+              std.<carrier>.inhabitance        std.<carrier>.denotation
+              the join: binds structure         Denotes facts
+              operations to carrier operations
 ```
 
-**Rule:** `extdeps.math` imports only L0. `std` modules that declare witnesses import `extdeps.math`.
-Nothing in L0 imports L1 or L2. The witness for a carrier lives in its L2 module (`std.list` records
-"List inhabits free monoid"), **not** beside the L0 declaration, which is what breaks the cycle.
+- A **carrier module** never imports the structures it inhabits.
+- A **structure module** may import only the base carriers its signatures mention (`Bool`, `Ordering`,
+  perhaps `Optional`), never a carrier's operations or witnesses.
+- The **inhabitance / denotation module** is the intentional join, and the only place both meet.
 
-### 4.3 Where each current `std.algebra` concern goes
+This breaks the current cycle (`std.types → std.algebra → Bool in std.types`) without a global direction rule
+across all of `std` and `extdeps`.
 
-| Concern | Home |
+Module names of the form `std.list` plus `std.list.inhabitance` are legal under the name-to-path rule: a module
+file and a same-named directory already coexist (`dag/std/filesystem.dag` + `dag/std/filesystem/`).
+
+### 5.3 Target homes
+
+| Concept | Target module(s) |
 |---|---|
-| `Magma` … `Field`, `CommutativeMonoid`, `AbelianGroup`, `Semiring` … | `extdeps.math.abstract_algebra` (composed, not restated — §4.5) |
-| `TotalOrder`, `Lattice`, `BoundedLattice`, `BooleanAlgebra` | `extdeps.math.order_theory` |
-| `Ordering` | L0 (a data type, not a structure) |
-| `FreeMonoid`/`FreeSemigroup` **carriers** | become `List`/`NonEmptyList` in L0 |
-| `FreeMonoid`/`FreeSemigroup` **structures** | `extdeps.math.free_structures` |
-| `FinitelySupportedFunction`, `FinitePowerSet`, `PartialFunction`, `TotalMap`, `PointwisePower` | deleted; `Map`/`Set` redesign (§7) records the true structure in `extdeps.math.set_theory` |
-| list operations (`fold_list`, append, reverse, sort, …) | `std.list` |
-| `trim`, `string_contains`, `string_concat_join` | `std.text` |
-| `MapIntroductionEntry`, `map_from_entries` | the map home (§7) |
-| `AlgebraProfile`, `AlgebraFieldTemplate`, `CostShape`, template scanners | realization layer — see §5 Q5; not mathematics |
-| `AlgebraCarrier`, `CarrierSpelling`, `kernel_algebra_profile`, roster/arity rows | deleted (replaced by identity-keyed inhabitance, §5) |
-| numeric admissibility / support axis | open — likely `std.nat`/`std.integer` |
+| `List`, `NonEmptyList`, `Empty`, `Cons`, list operations | `std.list`; `std.list.inhabitance` |
+| Map-backed list algorithms now in `std.list` (duplicate detection, …) | `std.list.keyed` (so `std.list` does not import `Map`) |
+| `String`, `NonEmptyString`, text operations (`trim`, `string_contains`, `string_concat_join` from `std.algebra`) | `std.text`; `std.text.inhabitance`; `std.text.scalar_sequence` (the conversion) |
+| `Map`, map operations, map-literal assembly (`MapIntroductionEntry`, `map_from_entries`) | `std.map`; `std.map.denotation`; `std.map.inhabitance` only for structures Map really carries |
+| `Set`, set operations | `std.set`; `std.set.denotation`; `std.set.inhabitance` |
+| `Ordering` | `std.ordering` |
+| `Optional` | `std.optional` (exists, imports nothing) |
+| `Nat` | `std.nat`; `std.nat.inhabitance` |
+| `Magma` … `Field`, groups, rings | `extdeps.math.algebra` |
+| `TotalOrder`, `Lattice`, `BoundedLattice`, `BooleanAlgebra`, `JoinSemilattice` | `extdeps.math.order` |
+| `FreeMonoid`, `FreeSemigroup` as structures | `extdeps.math.free` |
+| `FinitePartialFunction`, `FiniteSubset` | `extdeps.math.set` |
+| `AlgebraCarrier`, `CarrierSpelling`, `kernel_algebra_profile`, roster/arity rows | deleted |
+| `AlgebraProfile`, `AlgebraFieldTemplate`, `CostShape` | realization layer, identity-keyed (open, §12 I5) |
+| `std.types` | **migration source only**; emptied as each carrier moves, then deleted or reduced to what genuinely belongs together |
 
-### 4.4 Open structural questions
+### 5.4 Disposition of the other mathematical declarations
 
-- **S1. `std.types` itself.** It is 496 lines and mixes L0 carriers with workflow ids, `MimeType`, branded
-  strings and more. Recommended: keep `List`, `Bool`, `Int`, `Char`, `Unit` in `std.types` for the first cut
-  (3,590 files import from it), make `std.types` L0 by deleting its algebra imports, and split the rest out
-  later. The alternative — moving `List` to its own module now — costs a 3,590-file import sweep up front.
-- **S2. `Ordering`.** L0 in `std.types`, or its own module `std.ordering`?
-- **S3. Does `extdeps.math` need `Optional`?** Only if a structure's signature returns it (e.g. a partial
-  inverse). If yes, `std.optional` is already import-free and qualifies as L0.
-- **S4. `src/v2/std` duplicates.** Ten module basenames exist in both `dag/std` and `src/v2/std` (logic, nat,
-  integer, …). This layering applies to both; the de-fork decisions (defork audit) should be taken in the
-  same terms rather than separately.
-- **S5. Enforcement.** The L0/L1/L2 rule is a declared import model, checked the way
-  `v2.std.cross_tree.import_model` checks the dag/v2 direction today. That replaces "folders are browsing
-  conventions" for these layers (§8).
+r1 deleted `PartialFunction`, `TotalMap`, `PointwisePower`, `FinitePowerSet` and `FinitelySupportedFunction`
+outright. Instead, one rule per declaration:
 
-### 4.5 Structures are composed, not restated
+- a consumed, standard mathematical concept → its `extdeps.math` module;
+- only an alternate name for an ordinary Dag carrier → delete that use;
+- unconsumed scaffold → delete;
+- a real open-function or predicate carrier used by ordinary code → give it an ordinary programming name in
+  `std` and record its `Denotes` separately.
 
-Today `CommutativeMonoid` repeats `Monoid`, `Semiring` repeats `CommutativeSemiring`, `AbelianGroup` repeats
-`Group`, and the three lattices each restate `meet`/`join`. The law that distinguishes them (commutativity,
-absorption, …) has no representation, so they are nominal copies. `TotalOrder` is already composed
-(`OrderedRing.order`), so the pattern exists. In `extdeps.math`, each structure is its parent plus its added
-operation or law, and `AlgebraLawObligation` (`v2.std.model_core`) is the existing shape for a law.
+### 5.5 Structures are composed, not restated
+
+`CommutativeMonoid` repeats `Monoid`, `Semiring` repeats `CommutativeSemiring`, `AbelianGroup` repeats `Group`,
+the three lattices restate `meet`/`join`, and the distinguishing laws have no representation. In
+`extdeps.math`, each structure is its parent plus its added operation or law, with laws as declared
+obligations. `TotalOrder` (already composed into `OrderedRing`) is the existing pattern.
 
 ---
 
-## 5. Inhabitance: problem statement and open questions
+## 6. Inhabitance
 
-### 5.1 What has to be recorded
+### 6.1 Today: three mechanisms, none canonical
 
-"Carrier C inhabits structure S, with these operations as S's operations." For example: `List<T>` inhabits
-the free monoid over `T` with `Empty` as unit, `list_append` as concat and `[x]` as generator; `Nat` inhabits
-the ordered commutative semiring; `Bool` inhabits the Boolean algebra; `Int` inhabits the additive group
-**and** the multiplicative monoid.
+| Mechanism | Where | Keyed by |
+|---|---|---|
+| `kernel_algebra_profile: Map<String, AlgebraProfile>` + `AlgebraFieldTemplate` rows | `std.algebra`; read by v1 method binding | spelling |
+| `AlgebraCarrier` / `CarrierSpelling` | `std.algebra`; read by `std.types` and the seed | spelling |
+| `AlgebraInhabitanceDecl { algebra: Node, inhabitant: Node, witness: Node }` | `v2.std.model_core`; rows in `v2.extdeps.languages.dag` `dag_algebra_inhabitance_decls`; structures hand-built as `TypeNode` trees in `v2.std.algebra_structure_signature` | synthetic Nodes |
 
-### 5.2 Today there are three mechanisms
+The v2 form is the closest **prior art**, but it is not the canonical form. Its carrier and structure are
+synthetic Nodes, not references to source declarations. Its structures are a second, hand-built
+representation of the `std.algebra` records, which `gunbc.recurring_failure_mode`
+`algebra_structure_has_two_representations_with_no_declared_mapping` already records as a fork. Moving one side
+to `extdeps.math` would rename the fork, not remove it.
 
-| Mechanism | Where | Keyed by | Used for |
-|---|---|---|---|
-| `kernel_algebra_profile: Map<String, AlgebraProfile>` + `AlgebraFieldTemplate` rows | `std.algebra` | **spelling** (`"FreeMonoid"`, `"Map"`) | v1 method binding (`v1.compiler.infer_method`), cost shapes, emission |
-| `AlgebraCarrier` / `CarrierSpelling` | `std.algebra` | **spelling**, per case style | containerhood, arity, canonical emitted spelling |
-| `AlgebraInhabitanceDecl { algebra, inhabitant, witness }` rows + structure nodes | `v2.std.model_core`, rows in `v2.extdeps.languages.dag` `dag_algebra_inhabitance_decls`, structures in `v2.std.algebra_structure_signature` | **Node / declaration** | v2 infer: operator fields (`+`, `||`, `eq`) derive from the operand type's inhabitance row (`infer_algebra_field_result_type`) |
+### 6.2 The canonical form: source-level and identity-keyed
 
-The v2 mechanism is the closest to this design: it is identity-keyed, it already carries a free-monoid
-**structure** distinct from the `Empty|Cons` carrier (Ruling B, calm-boar-904: the generator is declared per
-row), and `AlgebraLawObligation` exists beside it. The two spelling-keyed mechanisms are what this design
-deletes.
+```
+type StructureInhabitance {
+  carrier: AppliedTypeRef               // e.g. List<T>, generic over T
+  structure: AppliedStructureRef        // e.g. FreeMonoid over T
+  instance_identity: DeclarationRef     // the instance itself is a declaration
+  operation_bindings: List<StructureOperationBinding>
+  law_standings: List<StructureLawStanding>
+}
+type AppliedTypeRef { declaration: DeclarationRef, type_arguments: List<TypeArgumentBinding> }
+type StructureOperationBinding { structure_operation: DeclarationRef, carrier_operation: DeclarationRef }
+```
 
-### 5.3 Requirements
+Requirements:
 
-- R1. Keyed by the carrier's and the structure's **declaration identities**; no spelling anywhere.
-- R2. One form for every carrier (List, NonEmptyList, String, Nat, Int, Bool, Map, Set, and user types).
-- R3. A carrier may inhabit one structure more than once (Int: additive and multiplicative monoid), so a
-  witness is named or otherwise distinguishable.
-- R4. The witness names the actual operations (declaration references), so "the monoid's concat for List"
-  resolves to `list_append`'s identity.
-- R5. Laws are obligations attached to the witness (`AlgebraLawObligation`), checkable or explicitly
-  unchecked.
-- R6. Respects the layering of §4.2 (no cycle).
+- **R1 Identity.** Carrier, structure and every bound operation are declaration references; no spelling.
+- **R2 One form** for every carrier, including user types.
+- **R3 Generic schemas.** One instance states the fact for `List<T>`, not one per element type.
+- **R4 Laws** carry evidence or an explicit unproved standing.
+- **R5 Composition is derived.** A ring instance yields its additive group and multiplicative monoid; they are
+  not stated again.
+- **R6 Coherence.** Implicit instance selection only when exactly one candidate applies. Where a carrier has
+  several instances of one structure (Int's additive and multiplicative monoids), a generic algorithm receives
+  the witness explicitly; "the monoid on Int" is ambiguous and refuses.
+- **R7 Projections.** v2's synthetic structure Nodes and v1's spelling profiles become `ProjectsFrom` views
+  generated from this form while they live, never independently authored.
 
-### 5.4 Open questions
+### 6.3 What a faithful free-monoid instance binds
 
-- **I1. Home of the witness.** Beside the carrier's operations (`std.list`, per §4.2), or in the language
-  model (`v2.extdeps.languages.dag`, where v2 rows live today)? Argument for the language model: "Dag's
-  `Int` is a ring" is a fact about the Dag language. Argument for the carrier module: it is the one place a
-  reader of `std.list` looks, and user-declared types need the same form, with no language-model access.
-- **I2. Is the witness a `data` row, a declaration form, or a derived reading?** Today it is a `data` row of
-  Nodes. A dedicated declaration form (`inhabits FreeMonoid<T> by { … }`) is clearer but is grammar work.
-- **I3. Which structures are worth witnessing at all?** Only those whose derived operations are used
-  (operators, generic folds), or all that hold?
-- **I4. Does the v1 seed need this?** Under ruling 2 (v2 is the authority), v1 mirrors or is bridged; the
-  spelling-keyed profile in v1 needs a named bridge with a deletion trigger until v1 is deleted.
-- **I5. What happens to the realization metamodel** (`AlgebraProfile`, `AlgebraFieldTemplate`, `CostShape`)?
-  It describes how a carrier is realized and what operations cost — realization facts, not mathematics.
-  Likely home: the realization/emission layer, keyed by declaration identity. Needs its own decision.
+Free monoid on `T`: a monoid `M`, an injection `η: T → M`, and for every monoid `N` and `f: T → N` a unique
+monoid homomorphism extending `f`. The current v2 signature carries the generator as a Node but not the
+injection or the universal property. The `List<T>` instance binds:
+
+```
+carrier    List<T>
+identity   Empty
+combine    list_append
+generator  list_singleton
+extension  list_fold_map
+laws       associativity, left_identity, right_identity, generator_extension, universal_uniqueness
+```
+
+The first implementation may carry some laws as obligations, but it names the actual property, not
+"appendable sequence".
 
 ---
 
-## 6. Where operations come from (open)
+## 7. Where operations come from
 
-### 6.1 The tension
+### 7.1 The tension
 
-DESIGN §4 says "operations come from *inhabitance* (no per-type ops)". The naming proposal in §6.4 —
-`list_fold`, `map_get`, `set_contains` — is per-type operations. One of them has to change.
+DESIGN §4 says "operations come from *inhabitance* (no per-type ops)". Read literally, it is why sequence
+operations (`skip`, `take`, `get`, `sort_by`, `enumerate`) sit under a "free monoid" profile today, though
+none follows from being a free monoid. Meanwhile real usage is per-type functions (`fold_list(` ~1,830,
+`list_length(` ~830, pipes ~4,930). Operations-from-inhabitance is real today only for v2 operators (`+`,
+`||`, `eq` through `AlgebraInhabitanceDecl`).
 
-### 6.2 The operator's intent, as stated 2026-10-16
+### 7.2 The operator's intent (2026-10-16)
 
 > When we have a list type in compositional modeling, treating any higher-order composition as a list
 > probably has some effect on the list part — like if you roll a car type, the wheels must spin — though
-> other things might change as well (from the car's perspective). But if you really want to do a list
-> operation, you should probably be doing a list operation. We need to revisit how usage came about across
-> the codebase; there isn't a consistent answer yet.
+> other things might change as well. But if you really want to do a list operation, you should probably be
+> doing a list operation. I don't think I have a very consistent answer on it.
 
-Read as two distinct claims:
+### 7.3 Recommended rule (for operator decision)
 
-- **(Lifting)** An operation on a composite has a defined effect on its components: rolling the car spins
-  the wheels. The composite's operation is derived from, or constrained by, its parts' structure — closer to
-  functorial lifting or lenses than to inheritance.
-- **(Directness)** Code that means "do a list operation" should call a list operation on the list, not
-  reach it through a composite's surface.
+> A carrier's constructors and eliminators come from its declaration. Operations guaranteed by an external
+> structure come from a declaration-identity inhabitance witness. Concrete algorithms over one carrier are
+> ordinary declarations in that carrier's module. A composite acquires no operation merely because a component
+> has it; a whole-to-part action must be declared.
 
-### 6.3 How usage looks today (main, `dag/` + `src/v2/`)
+Consequences:
 
-| Form | Occurrences |
+- `list_append` is an ordinary List operation; the free-monoid instance binds its `combine` to that same
+  declaration. Code meaning "append lists" calls `list_append`; a generic monoid algorithm calls the witness's
+  `combine`.
+- Receiver syntax (`xs.fold(...)`), where kept, resolves to the same declaration by receiver identity — not a
+  method table.
+- **The car and its wheels:** containment alone lifts nothing, because there is no unique lifting — wheels turn
+  under rolling, braking, slipping or a dynamometer. `Car.roll` may be **declared** in terms of `wheel_rotate`
+  (component action). That honours both halves of the operator's intent: the part's behaviour is explicit, and
+  a list operation is a list operation. A component-action model is designed when a real composite consumer
+  needs it.
+
+The r1 call-site classification is no longer a prerequisite for the rule. It stays useful to validate the rule
+against real code and to drive the rewrite (§12 O1).
+
+### 7.4 Naming
+
+`<carrier>_<operation>` for ordinary operations; structure fields keep mathematical vocabulary
+(`Monoid.combine`, `Ring.add`, `FreeMonoid.generator`), and the witness maps them to carrier declarations.
+
+| Current | Target |
 |---|---|
-| Pipe `x \|> f(...)` | ~4,930 |
-| `fold_list(` free call | ~1,830 |
-| `.length()` receiver | ~1,510 |
-| `contains(` free call | ~1,220 |
-| `list_length(` | ~830 |
-| `.contains(` receiver | ~630 |
-| `map_lookup(` / `map_get(` | ~350 / ~160 |
-| `list_map(` | ~265 |
-| `.count()` / `.size()` | ~220 / ~11 |
-| `.map(` / `.filter(` / `.fold(` / `.get(` receivers | ~50 each |
+| `fold_list`, `fold_list_right`, `list_snoc_item` | `list_fold`, `list_fold_right`, `list_snoc` |
+| bare `skip`, `take_prefix`, `is_empty`, `length`, `contains`, `unique` | `list_skip`, `list_take`, `list_is_empty`, `list_length`, `list_contains`, `list_is_unique` |
+| `for_all`, `count_where`, `count_equal` | `list_all`, `list_count_where`, `list_count_equal` |
+| `freemonoid_empty()` | deleted; use `Empty` |
+| `lookup` / `get` / `map_get` / `map_lookup` | `map_get` |
+| `map_has` / `contains_key` / `map_contains_key` | `map_contains_key` |
+| set `member` / `contains` | `set_contains` |
+| `count` / `length` / `size` on Map, Set | `map_size`, `set_size` |
+| text extent | `string_length` |
 
-How they bind:
-
-- **Free calls and pipes** bind by import, to a declaration.
-- **Receiver calls in v1** bind through the spelling-keyed `kernel_algebra_profile` templates.
-- **Operators in v2** (`+`, `||`, `eq`) bind through `AlgebraInhabitanceDecl` rows: this is the one place
-  "operations from inhabitance" is real today.
-
-So §4's rule is implemented for operators (v2) and approximated for receivers (v1, by spelling). Ordinary
-collection operations are per-type functions in practice.
-
-### 6.4 Options
-
-- **(A) Concrete types own their ordinary operations; inhabitance derives only generic ones.** §4 is
-  amended: "a carrier's ordinary operations are its own declarations; inhabitance derives the operations a
-  structure guarantees (operators, generic folds over any monoid)". Receiver syntax is a projection of the
-  carrier's own declarations by receiver identity. Naming convention `<type>_<operation>`:
-
-  | Current | Target |
-  |---|---|
-  | `fold_list`, `fold_list_right` | `list_fold`, `list_fold_right` |
-  | `list_snoc_item` | `list_snoc` |
-  | bare `skip`, `take_prefix`, `is_empty`, `length`, `contains`, `unique` | `list_skip`, `list_take`, `list_is_empty`, `list_length`, `list_contains`, `list_is_unique` |
-  | `for_all`, `count_where`, `count_equal` | `list_all`, `list_count_where`, `list_count_equal` |
-  | `freemonoid_empty()` | delete; use `Empty` |
-  | `lookup` / `get` / `map_get` / `map_lookup` / `map_get_checked` | `map_get` |
-  | set `member` / `contains` | `set_contains` |
-  | `count` / `length` / `size` on Map, Set | `map_size`, `set_size` |
-
-  Cardinality words: `length` for sequences and text, `size` for maps and sets, `count` for counting
-  selected elements.
-
-- **(B) Keep §4 literally.** `contains`, `size`, `fold` are generic operations derived from structures
-  (e.g. a `Foldable`/`Container` structure); `List`, `Set`, `Map` inhabit it. Fewer names; needs a structure
-  for "container", which is not classical algebra and so does not belong in `extdeps.math`.
-
-- **(C) A and lifting.** Option A for ordinary operations, plus a declared lifting mechanism for composites
-  (the car/wheels case): a composite declares how its operation acts on a component, by component
-  identity. This is the operator's lifting claim made explicit; it is a separate design.
-
-### 6.5 Proposed next step
-
-Before choosing: classify a sample of real call sites (receiver calls, free calls, and composite types that
-wrap a `List`) into "direct list operation", "operation the composite owns", and "operation that should lift
-to a component". The split decides between A and C and whether B's generic operations are used at all.
+Cardinality words: `length` for sequences and text, `size` for maps and sets, `count` for counting selected
+elements. A wrapper collapses into the operation it wraps only when its extra outcome is proven uninhabited
+(e.g. `map_get_checked`, which appears to wrap a total `map_get` in an `Accepted` that cannot reject).
 
 ---
 
-## 7. Map and Set (follows the List cut; not in its PRs)
+## 8. Enforcement
 
-Decisions the Map/Set pass must take explicitly: opaque carrier vs. structural constructor;
-duplicate-key/member impossibility; key equality requirements; extensional equality; deterministic iteration
-order; literal duplicate refusal (already refused by `map_introduction_duplicate_key`); insertion/removal and
-persistence semantics; cost contracts.
+DESIGN §3 says the folders are "browsing conventions, not a direction rule". These two gates narrow that only
+where a namespace is declared semantic.
 
-**Default proposal:** opaque nominal carriers with controlled constructors (`type Map<K, V>`,
-`fn empty_map`, `fn map_insert`, `fn map_get -> Optional<V>`; `type Set<T>`, `fn empty_set`,
-`fn set_insert`, `fn set_contains`). Opaque prevents a public `List<MapEntry>` representation from making
-duplicate keys authorable, and prevents the host realization from becoming the interface. Values hold data;
-operations are separate declarations.
+### 8.1 Import-role gate
+
+Modules carry a declared role: `Carrier`, `CarrierOperations`, `ExternalStructure`, `StructureInhabitance`,
+`Denotation`, `Conversion`, `Realization`, `ProductOrWorkflow`. A small import matrix is checked:
+
+- carrier declarations do not import their inhabitance or denotation modules;
+- external structures do not import carrier operations, and import only the base carriers their signatures
+  need;
+- inhabitance and denotation modules may join carrier operations with structures;
+- realization modules define no source semantics;
+- product/workflow modules declare no carrier for a std concept.
+
+### 8.2 Authority-uniqueness gate
+
+The name-based "second form" check in r1 would miss every fork in this area, because they all have
+**different** names (`List`/`FreeMonoid`, `Map`/`FinitelySupportedFunction`, record algebra/Node algebra,
+host/structural `String`). The rule instead:
+
+> Every declaration derived from an existing semantic authority names a typed relation to it (§3). Two live
+> declarations may not independently claim one concept identity.
+
+Over the **whole** source-layout population (not only what required CI happens to compile):
+
+- one live carrier authority per concept; one live structure authority per structure;
+- every alternative representation carries a relation; no plain carrier alias; no compatibility re-export
+  after a migration;
+- structure projections are generated from the canonical declaration;
+- target representations are `RealizesAs`, never source aliases.
+
+Arbitrary semantic equivalence is not mechanically discoverable; what is enforceable is that every authored
+derivation or shared-concept claim carries a relation, and uniqueness over those claims. The existing
+`no_dual_representation` lens scans selected equality sites with partial coverage and is not this check.
+
+### 8.3 Recorded forks fire
+
+A comment or recurring-failure entry recording a fork ("held twice") carries a measurable trigger, or it is
+not admitted.
 
 ---
 
-## 8. Process: keep the next era from forking again
+## 9. Map and Set
 
-- **P1. Layer rule is checked** (§4.4 S5), and DESIGN §3's "folders are browsing conventions" is narrowed to
-  folders outside declared layers.
-- **P2. Second-form check.** A new declaration that duplicates an existing declaration's name in the same
-  layer, or adds an alias to a carrier, is refused unless the change removes the old form or names a ruled
-  exception.
-- **P3. Recorded forks fire.** A comment or recurring-failure entry recording a fork ("held twice") carries
-  a measurable trigger, or it is not admitted.
+Default: **opaque nominal carriers with controlled operations** (`type Map<K, V>`, `empty_map`, `map_insert`,
+`map_get -> Optional<V>`; `type Set<T>`, `empty_set`, `set_insert`, `set_contains`). Opaque keeps a public
+`List<MapEntry>` from making duplicate keys authorable and keeps the host realization from becoming the
+interface.
+
+Decisions the Map/Set pass takes explicitly:
+
+- **Key equality.** Either `Map<K,V>` requires an equality witness on `K`, or the carrier exists for every `K`
+  and `map_get`/`map_insert` require it. The second composes better unless the language has constrained type
+  constructors. Hashing or ordering is a realization choice; source semantics need equality.
+- **Iteration.** An unordered map cannot honestly answer `map_keys: Map<K,V> -> List<K>` without an order. The
+  semantic answer is `Set<K>`; a list projection needs an ordering witness or a declared canonical order.
+  `map_values` is semantically a bag of values.
+- **Merge.** Not one operation until key conflicts have a disposition: left wins, right wins, combine, or
+  refuse on overlap. Each contract gets its own name or takes a conflict function.
+- Also: extensional equality; literal duplicate refusal (exists: `map_introduction_duplicate_key`);
+  persistence and removal semantics; cost contracts.
 
 ---
 
-## 9. Proposed DESIGN.md changes
+## 10. Proposed DESIGN.md changes
 
 DESIGN.md is generated from `gunbc.design_document`; these become edits there plus a dated ruling.
 
-1. **New paragraph, §3, "External semantic authority":**
+1. **§3, new paragraph "External semantic authority":**
    > `extdeps/` owns models whose meaning is governed outside gunbc, including independently versioned
    > upstreams and accepted formal mathematics. A versioned authority cites its version; a timeless formal
    > framework cites a stable source without inventing a version. `std/` owns the concrete programming
@@ -374,71 +419,91 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
    > the carrier, creates an alternate source spelling, or makes ordinary code name the external structure.
 2. **§3, replace** "model the accepted universal frameworks (classical logic, set theory, algebra)
    faithfully, and in `extdeps/` the real upstream spec" with a reference to (1).
-3. **§3, narrow** "the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions" so the
-   declared layers of §4.2 are an enforced import rule.
-4. **§3b External facts, Owns:** add "accepted formal mathematics".
-5. **§4, operations clause:** pending §6 (A/B/C).
-6. **§4 example:** the reference to `dag/std/algebra.dag` as the substrate exemplar moves to the new homes.
-7. **§4 text paragraph (DESIGN.md line 329) is corrected.** It currently reads "`v2.std.text` `String` is
-   `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other", from ruling
-   `gunbc.design_ruling text_crossings_go_through_the_unfold`. Under §3.1 of this design there is one `String`
-   declaration, realized as host text, whose declared unfold produces `List<Char>`; it is not itself
-   `FreeMonoid<Char>`. The ruling is amended, not deleted: "every crossing goes through the declared unfold or
-   refuses" still holds, with the crossing now between `String` and `List<Char>` rather than between two
-   `String`s.
-8. **§3b Cardinality / absence, existing authorities (DESIGN.md line 285):** `std.algebra::FreeMonoid` is
-   replaced by the `List` declaration.
-9. **Ruling record** in `gunbc.design_ruling`: this design as the N3 answer for `List`, `NonEmptyList`,
-   `String`, and the direction for `Map`/`Set`.
+3. **§3, add the relation taxonomy** (§3 of this doc) and the authority-uniqueness rule (§8.2).
+4. **§3, narrow** "the folders are browsing conventions" to namespaces without a declared role (§8.1).
+5. **§3b External facts, Owns:** add "accepted formal mathematics".
+6. **§4, replace** "operations come from inhabitance (no per-type ops)" with the rule in §7.3 (pending
+   operator decision).
+7. **§4 text paragraph (line 329)** is corrected: one `String` carrier realized as host text, a distinct
+   `List<Char>`, and a declared conversion between them. Ruling `text_crossings_go_through_the_unfold` is
+   amended, not deleted.
+8. **§3b Cardinality / absence existing authorities (line 285):** `std.algebra::FreeMonoid` → `std.list::List`.
+9. **§4 example** pointing at `dag/std/algebra.dag` moves to the new homes.
+10. **Ruling** in `gunbc.design_ruling`: the N3 text in §11.
 
 ---
 
-## 10. Interlocks with work in flight
+## 11. Proposed N3 ruling text
 
-- **#14017** (generated import sweep, the namespace lane's one generator — "never a second", N4). It adds
-  `std.algebra` collection-shape imports and sweeps `map_get` → `map_lookup`, deepening the boundary this
-  design removes. Proposal: hold and retarget it to this design's naming table, so the List rewrite runs
-  **through** it. Needs the namespace lane (wise-moth-707) to agree.
+> **N3 — Concrete carriers and external structures.** `List`, `NonEmptyList`, `String`, `Map` and `Set` are the
+> sole source-level carrier declarations for their programming concepts. Accepted mathematical structures are
+> declared under `extdeps.math`; they never serve as alternate source spellings for concrete carriers. A
+> carrier satisfies a structure only through one declaration-identity inhabitance instance that binds the
+> structure's operations to existing carrier operations and carries its law standing. Mathematical denotation,
+> carrier conversion, target realization and whole-to-component action are distinct typed relations and may
+> not be encoded as inhabitance. Ordinary carrier operations are declarations in the carrier's std module;
+> generic structural operations consume an inhabitance witness. Containment alone grants no lifted operation.
+> `String` is one host-text-realized carrier; `List<Char>` is a distinct scalar-sequence carrier, and every
+> crossing uses its declared conversion. No plain carrier alias, compatibility re-export, spelling table or
+> independently authored structure projection may create a second live form.
+
+---
+
+## 12. Interlocks with work in flight
+
+- **#14017** (generated import sweep; the namespace lane's one generator, "never a second", N4). It adds
+  `std.algebra` collection-shape imports and sweeps `map_get` → `map_lookup`, deepening the boundary this design
+  removes. Proposal: freeze and retarget it to this design, so the List rewrite runs **through** it. Needs the
+  namespace lane (wise-moth-707).
 - **#14056** (`node_type_equals` by declaration identity). Keep the identity work; replace its permanent
   `List<Int> == FreeMonoid<Int>` control with a neutral generic-alias control.
-- **`std.coercion` / `std.syntax` `List` imports** (tidy-ant-251, in flight) are compatible: they import
-  `std.types { List }`, which remains the home in the first cut (S1).
-- **Roadmap `core-type-merges`** (stale since 2026-09-30) records List as merged (#12526); the merge landed as
+- **`std.coercion` / `std.syntax` `List` imports** (tidy-ant-251, in flight) import `std.types { List }`; the
+  List cut's generated sweep rewrites them with everything else.
+- **Roadmap `core-type-merges`** (stale since 2026-09-30) records List as merged (#12526); that merge landed as
   the alias this design removes. String's merge stalled (#12809 closed).
+- **The v1 seed** keys container identity to a written carrier module. Under ruling 2 it follows the v2 design
+  through a named bridge with a deletion trigger, and never constrains it.
 
 ---
 
-## 11. Migration order (after agreement)
+## 13. Migration order
 
-1. DESIGN amendment and ruling (§9).
-2. `extdeps.math` created; structures moved and composed; consumers swept; no re-export from `std.algebra`.
-3. **List root cut:** `List` declared in `std.types` (L0); `Empty`/`Cons` move with it; list literals
-   introduce `List`; `FreeMonoid<T>` type positions rewritten; Rust emits `List<T>`; List-specific alias peels
-   and container exceptions deleted (generic alias support stays); free-monoid witness recorded by identity.
-4. List operations move to `std.list` with the §6 naming (if A/C), via the one generator.
-5. `NonEmptyList` and `String` cuts.
-6. Map, then Set.
-7. `std.algebra` deleted, with its remaining tables.
-
-Steps 2 and 3 are independent. Step 3 is the one that unblocks native-seven, so it may go first once step 1
-lands.
+1. Freeze and retarget #14017.
+2. Land the N3 ruling, the DESIGN.md amendments, and the module-role and relation declarations.
+3. Establish the canonical structure and inhabitance forms (§6.2); make v2's synthetic signatures and the v1
+   bridge projections of them.
+4. Move to `extdeps.math` only the structures the first cut needs, deleting their old source authority in the
+   same change. No third representation.
+5. **List cut:** `List` declared in its final home; list literals introduce it; type and import rewrite
+   through the one generator; Rust emits `List<T>`; List-specific alias peels, container exceptions and
+   spelling rows deleted (generic alias support stays); the free-monoid instance recorded.
+6. List operations move and are renamed (§7.4).
+7. `String` canonicalized, then its scalar-sequence conversions.
+8. `Map`, then `Set`: denotation, key equality, iteration, conflict semantics.
+9. Remaining mathematical declarations dispositioned (§5.4).
+10. `std.algebra` deleted.
 
 ---
 
-## 12. Open questions, collected
+## 14. Open questions
+
+**Operator decisions:**
 
 | # | Question | Recommendation |
 |---|---|---|
-| S1 | `List` stays in `std.types` for the first cut? | Yes; split `std.types` later |
-| S2 | `Ordering` home | `std.types` (L0) |
-| S3 | `extdeps.math` may import `std.optional`? | Yes, if a signature needs it |
-| S4 | De-fork `src/v2/std` duplicates in the same terms | Yes |
-| S5 | Layer rule enforced via the import model | Yes |
-| I1 | Witness home: carrier module or language model | Carrier module (user types need the same form) |
-| I2 | Witness: `data` row vs declaration form | `data` row first; form later if warranted |
-| I3 | Which structures to witness | Those whose derived operations are used |
-| I4 | v1 bridge for spelling-keyed profiles | Named bridge with deletion trigger |
-| I5 | Realization metamodel home | Realization layer, identity-keyed; own decision |
-| O1 | §4 operations: A, B, or C | Decide after the §6.5 usage classification |
-| M1 | Map/Set opaque by default | Yes |
-| P1–P3 | Process checks | Adopt all three |
+| D1 | Adopt the operations rule in §7.3 (ordinary per-carrier operations; structure operations via witness; no automatic lifting; declared component action)? | Yes |
+| D2 | Does the List cut go straight to its final home `std.list`, or through `std.types` first? | Straight to `std.list`. Costs: the Map-backed algorithms leave `std.list` first (`std.list.keyed`), and the generated sweep rewrites ~3,590 importers once instead of twice |
+| D3 | Adopt the relation taxonomy (§3) and the two gates (§8) as DESIGN amendments? | Yes |
+
+**Design questions to settle in this doc:**
+
+| # | Question | Recommendation |
+|---|---|---|
+| I1 | Instance declaration: a `data` row of the §6.2 shape, or a dedicated declaration form (grammar work)? | `data` row first |
+| I2 | Which structures get instances? | Those whose operations a generic algorithm or operator consumes |
+| I3 | v1 spelling profiles during migration | `ProjectsFrom` bridge with a deletion trigger |
+| I4 | Home of the realization metamodel (`AlgebraProfile`, `AlgebraFieldTemplate`, `CostShape`) | Realization layer, identity-keyed; its own decision |
+| I5 | `Map` key equality: on the carrier or on the operations | On the operations |
+| I6 | `map_keys` result | `Set<K>`; ordered list only with an ordering witness |
+| O1 | Run the call-site classification to validate D1 before the rewrite? | Yes, as validation, not as a prerequisite |
+| S1 | `src/v2/std` duplicates (logic, nat, integer, …) de-forked in these terms | Yes |
