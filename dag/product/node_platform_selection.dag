@@ -71,6 +71,7 @@ import std.measure { Watt, ByteSize, Bandwidth, byte_size, byte_size_count, watt
 import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
+import product.p4261_carrier_layout { carrier_model_text }
 import product.superchip_assembly_qualification {
   SuperchipAssembly,
   AssemblyWorkloadQualified,
@@ -282,7 +283,7 @@ fn route_label(r: NodeRoute) -> NonEmptyStr {
   match r {
     RetainIncumbentSpark { candidate: _, row: _, standing: _ } => "retain DGX Spark" as NonEmptyStr
     ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } =>
-      join([a.unit.asset as String, " on ", a.carrier.asset as String, " (", a.carrier.carrier_designation as String, " dev carrier, as built)"], "") as NonEmptyStr
+      join([a.unit.asset as String, " on ", a.carrier.asset as String, " (", carrier_model_text(layout: a.carrier.layout), " dev carrier, as built)"], "") as NonEmptyStr
     FactoryServer { candidate: _, server: srv, configuration: cfg, standing: _ } =>
       join([srv.model as String, " factory server (", cfg.gpu.model as String, ")"], "") as NonEmptyStr
   }

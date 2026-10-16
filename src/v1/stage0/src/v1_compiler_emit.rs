@@ -2653,7 +2653,6 @@ pub fn service_field_ctors(fs: ServiceFieldSet, t: Rc<ServiceFieldTemplates>) ->
 pub enum FileVerb {
     FileRead,
     FileWrite,
-    FileWriteBytes,
     FileWriteOwnerOnly,
     FileWriteCreateNew,
     FileWriteCreateNewWithMode,
@@ -2777,11 +2776,7 @@ pub fn bind_file_verb(
                             if (v.clone() == file_transport_verb_link_create_new()) {
                                 FileVerb::FileLinkCreateNew
                             } else {
-                                if (v.clone() == file_transport_verb_write_bytes()) {
-                                    FileVerb::FileWriteBytes
-                                } else {
-                                    FileVerb::FileWriteOwnerOnly
-                                }
+                                FileVerb::FileWriteOwnerOnly
                             }
                         }
                     }
@@ -5962,15 +5957,6 @@ pub fn file_transport_verb_write_create_new_with_mode() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_transport_verb_write_bytes() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "write_bytes".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn file_transport_declared_verb(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -6156,9 +6142,8 @@ pub fn file_emission_verb_refusal(
             {
                 std::option::Option::None
             } else {
-                if (((v.clone() == file_transport_verb_write_owner_only())
+                if ((v.clone() == file_transport_verb_write_owner_only())
                     || (v.clone() == file_transport_verb_write_create_new()))
-                    || (v.clone() == file_transport_verb_write_bytes()))
                 {
                     if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
                         std::option::Option::None
@@ -6944,7 +6929,19 @@ pub fn transparent_named_carrier_root(
                         decl.occurrence_identity.clone(),
                         n.occurrence_identity.clone(),
                     ) {
-                        n.clone()
+                        if crate::v1_compiler_emit_core_support::is_type_alias_item(
+                            decl.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            transparent_representation_root(
+                                crate::v1_compiler_infer_types::resolved_type(decl.clone()),
+                                env.clone(),
+                                target.clone(),
+                                v1_rt::int_sub(fuel.clone(), 1),
+                            )
+                        } else {
+                            n.clone()
+                        }
                     } else {
                         transparent_representation_root(
                             decl.clone(),
@@ -9331,8 +9328,6 @@ pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> 
 pub struct FileRead;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWrite;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FileWriteBytes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileWriteOwnerOnly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

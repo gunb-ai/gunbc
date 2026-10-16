@@ -3395,7 +3395,11 @@ fn transparent_named_carrier_root(n: Node, env: TypeEnv, target: RenderTarget, f
     match lookup_type_for(env: env, node: n) {
       Present { value: decl } =>
         if node_occurrence_ids_equal(left: decl.occurrence_identity, right: n.occurrence_identity) {
-          n
+          if is_type_alias_item(item: decl, source_indices: env.source_indices) {
+            transparent_representation_root(n: resolved_type(n: decl), env: env, target: target, fuel: fuel - 1)
+          } else {
+            n
+          }
         } else {
           transparent_representation_root(n: decl, env: env, target: target, fuel: fuel - 1)
         }

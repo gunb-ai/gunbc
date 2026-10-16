@@ -1,0 +1,274 @@
+module gunbc.instruments.compute_wrong_capture
+
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Present, Absent }
+import extdeps.systemd.systemd_run { SystemdSetenvBinding }
+import extdeps.tools.sed { sed_program, sed_script_expression_flag }
+import extdeps.tools.grep { grep_program }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes }
+import gunbc.compute.host_capacity { compute_root }
+import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkOutput }
+import gunbc.compute.work_provider_local {
+  ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
+  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path, NoStopObservation,
+}
+import gunbc.instruments.compute_run_unit_cold {
+  HermeticUserSessionRuntimeAbsent, HermeticUserSessionRuntimeBound,
+  observe_hermetic_user_session_runtime, observe_isolated_job_toolchain_homes, observe_workspace,
+  observe_run_frame, observe_head, prepare_checkout, mkdir_ok, path_is_under_production_instance_root,
+  hermetic_user_session_unit_setenv, hermetic_toolchain_unit_setenv, hermetic_user_session_launcher_env,
+  compute_run_unit_cold_unit_grant,
+}
+
+// C1: THE CROSS-IDENTITY WRONG CAPTURE, REPRODUCED OR REFUTED ON THE REAL COLD PATH.
+//
+// compute_layout gives each work identity its own checkout, staging path and lease
+// (lease_path = <root>/leases/<identity_hex>, the key compute_reserve_and_run takes under), but ONE
+// target_dir per host. compute_run_unit exports it as CARGO_TARGET_DIR and compute_return_outputs
+// reads the declared TargetRoot outputs back out of it. This instrument drives exactly those two
+// steps for two identities from two distinguishable trees, in the order
+//     A builds -> B builds (writes the shared target) -> A captures -> B captures
+// which is the interleaving compute_spawn_and_collect leaves open between its compute_run_unit and
+// compute_return_outputs calls (it fuses them for one identity, so the interleave needs the two
+// steps called apart). It runs BELOW compute_reserve: reserve is keyed by identity, so the two
+// identities hold disjoint leases and race anyway; omitting it does not weaken the repro.
+//
+// EXPECTED RED ON main. Exit 0 only when A captured A's bytes. Exit 1 prints the two blobs and the
+// markers each captured copy contains.
+
+data wrong_capture_marker_a: String = "C1-WRONG-CAPTURE-MARKER-A"
+data wrong_capture_marker_b: String = "C1-WRONG-CAPTURE-MARKER-B"
+
+// No typed file-write effect exists for compute_exec (missing capability); sed -i takes the path as one argv element, no shell interprets it.
+// A bin source gets a #[used] static, so each tree's binary carries its own marker bytes.
+data wrong_capture_marked_sources: List<String> = ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/bin/claim_batch.rs"]
+
+fn wrong_capture_mark_tree(instance: HostDashboardInstance, layout: ComputeLayout, marker: String) -> String {
+  fold(wrong_capture_marked_sources, init: "", f: (acc, rel) =>
+    if acc != "" { acc } else {
+      match compute_exec(
+        program: sed_program().invocation as String,
+        workdir: layout.checkout,
+        args: ["-i", sed_script_expression_flag, join(["$a#[used] static C1_MARKER: &str = \"", marker, "\";"], ""), join([layout.checkout, "/", rel], "")],
+      ) {
+        ComputeExecOk { stdout: _, stderr: _ } => ""
+        ComputeExecFailed { exit_code: _, stdout: _, stderr } => join(["could not mark ", rel, ": ", stderr], "")
+      }
+    })
+}
+
+fn wrong_capture_unit_env(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes) -> List<SystemdSetenvBinding> {
+  concat(
+    concat(compute_operation_env(op: work_default_build()), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
+    hermetic_toolchain_unit_setenv(homes: homes),
+  )
+}
+
+// grep -c prints the count and exits 1 on zero matches; any other failure (exit 2, unreadable file) is "unreadable".
+fn wrong_capture_marker_count(path: String, marker: String) -> String {
+  match compute_exec(program: grep_program().invocation as String, workdir: ".", args: ["-a", "-c", marker, path]) {
+    ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
+    ComputeExecFailed { exit_code, stdout, stderr: _ } => if (exit_code == 1) && (trim(s: stdout) == "0") { "0" } else { "unreadable" }
+  }
+}
+
+fn wrong_capture_has(path: String, marker: String) -> Bool {
+  let n = wrong_capture_marker_count(path: path, marker: marker)
+  (n != "0") && (n != "unreadable")
+}
+
+fn wrong_capture_unreadable(path: String) -> Bool {
+  (wrong_capture_marker_count(path: path, marker: wrong_capture_marker_a) == "unreadable")
+    || (wrong_capture_marker_count(path: path, marker: wrong_capture_marker_b) == "unreadable")
+}
+
+fn wrong_capture_mismatch(r: OutputsReturn) -> Bool {
+  match r {
+    OutputsReturned { outputs: _ } => false
+    OutputsMismatch { detail: _ } => true
+  }
+}
+
+fn wrong_capture_build(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  identity: String,
+  runtime_dir: FilePath,
+  homes: IsolatedJobToolchainHomes,
+) -> String {
+  match compute_run_unit(
+    instance: instance,
+    layout: layout,
+    identity_hex: identity,
+    argv: compute_command_argv(instance: instance, layout: layout, op: work_default_build(), dependency: NoComputeDependency),
+    env: wrong_capture_unit_env(runtime_dir: runtime_dir, homes: homes),
+    launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
+    granted: compute_run_unit_cold_unit_grant(),
+    user_runtime_dir: runtime_dir,
+    stop_observation: NoStopObservation,
+  ) {
+    ComputeUnitRunRefused { cause: _ } => "unit launch refused"
+    ComputeUnitRunExecuted { run: unit_run } =>
+      match unit_run.exec {
+        ComputeExecOk { stdout: _, stderr: _ } => ""
+        ComputeExecFailed { exit_code, stdout, stderr } =>
+          join(["build exited ", to_string(value: exit_code), "\n", stdout, stderr], "")
+      }
+  }
+}
+
+fn wrong_capture_blobs(r: OutputsReturn) -> List<WorkOutput> {
+  match r {
+    OutputsReturned { outputs } => outputs
+    OutputsMismatch { detail: _ } => []
+  }
+}
+
+fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout, layout_b: ComputeLayout, root: String) -> CliWireResponse {
+  let declared = work_declared_outputs(op: work_default_build())
+  let cap_a = compute_return_outputs(instance: instance, layout: layout_a, declared: declared)
+  let cap_b = compute_return_outputs(instance: instance, layout: layout_b, declared: declared)
+  let rows = map(declared, d => {
+    let rel = d.path
+    let staged_a = compute_staged_path(layout: layout_a, declared: rel)
+    let staged_b = compute_staged_path(layout: layout_b, declared: rel)
+    let blob_a = fold(wrong_capture_blobs(r: cap_a), init: "", f: (acc, o) => if o.declared == rel { o.blob } else { acc })
+    let blob_b = fold(wrong_capture_blobs(r: cap_b), init: "", f: (acc, o) => if o.declared == rel { o.blob } else { acc })
+    let a_has_a = wrong_capture_has(path: staged_a, marker: wrong_capture_marker_a)
+    let a_has_b = wrong_capture_has(path: staged_a, marker: wrong_capture_marker_b)
+    let b_has_b = wrong_capture_has(path: staged_b, marker: wrong_capture_marker_b)
+    let wrong = a_has_b && !a_has_a
+    join([
+      "output=", rel, "\n",
+      "  A blob=", blob_a, " contains_A_marker=", if a_has_a { "true" } else { "false" }, " contains_B_marker=", if a_has_b { "true" } else { "false" }, "\n",
+      "  B blob=", blob_b, " contains_B_marker=", if b_has_b { "true" } else { "false" }, "\n",
+      "  A_blob_equals_B_blob=", if (blob_a == blob_b) && (blob_a != "") { "true" } else { "false" }, "\n",
+      "  staged_a=", staged_a, "\n  staged_b=", staged_b, "\n",
+      "  staging_collides_across_identities=", if staged_a == staged_b { "true" } else { "false" }, "\n",
+      if wrong { "  WRONG_CAPTURE: request A captured request B's bytes\n" } else { "" },
+    ], "")
+  })
+  let any_wrong = any(declared, d => {
+    let staged_a = compute_staged_path(layout: layout_a, declared: d.path)
+    wrong_capture_has(path: staged_a, marker: wrong_capture_marker_b) && !wrong_capture_has(path: staged_a, marker: wrong_capture_marker_a)
+  })
+  let own_bytes = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_a, declared: d.path), marker: wrong_capture_marker_a))
+  let b_own = !any(declared, d => !wrong_capture_has(path: compute_staged_path(layout: layout_b, declared: d.path), marker: wrong_capture_marker_b))
+  // Premise controls: disjoint leases and disjoint staged paths. shared target_dir is a printed reading only, never a gate.
+  let premise = (layout_a.lease_path != layout_b.lease_path) && !any(declared, d => compute_staged_path(layout: layout_a, declared: d.path) == compute_staged_path(layout: layout_b, declared: d.path))
+  let bytes = join([
+    "compute-wrong-capture compute_root=", root, "\n",
+    "shared_target_dir_same_for_both=", if layout_a.target_dir == layout_b.target_dir { "true" } else { "false" }, "\n",
+    "target_dir=", layout_a.target_dir, "\n",
+    "lease_path_a=", layout_a.lease_path, "\nlease_path_b=", layout_b.lease_path, "\n",
+    "leases_disjoint=", if layout_a.lease_path != layout_b.lease_path { "true" } else { "false" }, "\n",
+    join(rows, ""),
+    if any_wrong { "VERDICT: wrong capture reproduced\n" } else if own_bytes && b_own { "VERDICT: each request captured its own bytes\n" } else { "VERDICT: no observation\n" },
+  ], "")
+  let unobserved = wrong_capture_mismatch(r: cap_a) || wrong_capture_mismatch(r: cap_b) || any(declared, d =>
+    wrong_capture_unreadable(path: compute_staged_path(layout: layout_a, declared: d.path)) || wrong_capture_unreadable(path: compute_staged_path(layout: layout_b, declared: d.path)))
+  if !premise {
+    CliWirePrintable { bytes: join([bytes, "no observation: premise control failed (leases or staged paths not disjoint)\n"], ""), exit: ExitFailure { code: 2, reason: "premise control failed" } }
+  } else if unobserved {
+    CliWirePrintable { bytes: join([bytes, "no observation: a capture mismatched or a staged file was unreadable\n"], ""), exit: ExitFailure { code: 2, reason: "capture mismatch or unreadable staged file" } }
+  } else if any_wrong {
+    CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "request A captured request B's bytes from the shared target_dir" } }
+  } else if !(own_bytes && b_own) {
+    CliWirePrintable { bytes: join([bytes, "no observation: not every staged A output has A's marker and every staged B output B's marker\n"], ""), exit: ExitFailure { code: 2, reason: "own marker absent from a staged output" } }
+  } else {
+    CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+  }
+}
+
+fn compute_wrong_capture_exit() -> CliWireResponse {
+  match observe_hermetic_user_session_runtime() {
+    HermeticUserSessionRuntimeAbsent =>
+      CliWirePrintable {
+        bytes: "compute-wrong-capture: no observation: user session bus absent at /run/user/<uid>/bus",
+        exit: ExitFailure { code: 2, reason: "user session bus absent" },
+      }
+    HermeticUserSessionRuntimeBound { runtime_dir } =>
+      match observe_isolated_job_toolchain_homes() {
+        Absent =>
+          CliWirePrintable {
+            bytes: "compute-wrong-capture: ToolchainHomesNotIsolated CARGO_HOME/RUSTUP_HOME unset or empty",
+            exit: ExitFailure { code: 2, reason: "ToolchainHomesNotIsolated" },
+          }
+        Present { value: homes } => {
+          match observe_run_frame() {
+            Absent =>
+              CliWirePrintable {
+                bytes: "compute-wrong-capture: no observation: clock unix millis unreadable, so this run has no frame",
+                exit: ExitFailure { code: 2, reason: "run frame unreadable" },
+              }
+            Present { value: frame } => {
+          let stamp = to_string(value: frame)
+          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: homes)
+          let workspace = observe_workspace(instance: probe)
+          if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
+            CliWirePrintable {
+              bytes: "compute-wrong-capture: no observation: workspace unusable",
+              exit: ExitFailure { code: 2, reason: "workspace unusable" },
+            }
+          } else {
+            let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: homes)
+            let id_a = join([stamp, "a"], "")
+            let id_b = join([stamp, "b"], "")
+            match compute_layout(instance: instance, identity_hex: id_a) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
+                }
+              Present { value: layout_a } =>
+            match compute_layout(instance: instance, identity_hex: id_b) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
+                  exit: ExitFailure { code: 2, reason: "no materialization store declared" },
+                }
+              Present { value: layout_b } => {
+            let root = compute_root(instance: instance) as String
+            let head = observe_head(instance: instance, workdir: workspace)
+            let dirs_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
+              && mkdir_ok(instance: instance, path: layout_a.work_dir)
+              && mkdir_ok(instance: instance, path: layout_b.work_dir)
+              && mkdir_ok(instance: instance, path: layout_a.target_dir)
+              && mkdir_ok(instance: instance, path: layout_a.staging_dir)
+              && mkdir_ok(instance: instance, path: layout_a.attempts_dir)
+            if !dirs_ok || (head == "") {
+              CliWirePrintable {
+                bytes: "compute-wrong-capture: could not create the two layouts or read HEAD",
+                exit: ExitFailure { code: 2, reason: "layout or HEAD unavailable" },
+              }
+            } else {
+              let setup = prepare_checkout(instance: instance, layout: layout_a, head: head)
+              let setup_b = if setup != "" { setup } else { prepare_checkout(instance: instance, layout: layout_b, head: head) }
+              let marked_a = if setup_b != "" { setup_b } else { wrong_capture_mark_tree(instance: instance, layout: layout_a, marker: wrong_capture_marker_a) }
+              let marked_b = if marked_a != "" { marked_a } else { wrong_capture_mark_tree(instance: instance, layout: layout_b, marker: wrong_capture_marker_b) }
+              if marked_b != "" {
+                CliWirePrintable { bytes: join(["compute-wrong-capture: ", marked_b], ""), exit: ExitFailure { code: 2, reason: marked_b } }
+              } else {
+                let built_a = wrong_capture_build(instance: instance, layout: layout_a, identity: id_a, runtime_dir: runtime_dir, homes: homes)
+                let built_b = if built_a != "" { built_a } else { wrong_capture_build(instance: instance, layout: layout_b, identity: id_b, runtime_dir: runtime_dir, homes: homes) }
+                if built_b != "" {
+                  CliWirePrintable { bytes: join(["compute-wrong-capture: a build did not complete\n", built_b], ""), exit: ExitFailure { code: 2, reason: "a build did not complete" } }
+                } else {
+                  wrong_capture_report(instance: instance, layout_a: layout_a, layout_b: layout_b, root: root)
+                }
+              }
+            }
+          }
+              }
+            }
+            }
+          }
+            }
+        }
+      }
+  }
+}

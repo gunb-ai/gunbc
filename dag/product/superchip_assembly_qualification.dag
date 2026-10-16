@@ -8,7 +8,7 @@ import extdeps.memory.types { MemoryKind, Hbm }
 import extdeps.systems.types { CoherentSuperchipCatalogRow }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_configurations, gh200_rail_variants, ModuleRailVariant }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
-import gunbc.fleet.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_k1_a }
+import gunbc.fleet.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_k1_a, p4261_e1_b }
 import gunbc.spark.serving_promotion { QualityReceipt, quality_missing, serving_promotion_policy }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
@@ -17,7 +17,9 @@ import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
   p4261_k1_layout,
+  p4261_e1_layout,
   carrier_input_reading,
+  carrier_label_text,
   management_io_text,
   edge_connector_text,
 }
@@ -110,10 +112,6 @@ type SuperchipUnitObservation {
 // scoped to the assembly that booted (BenchRecord.boot).
 type CarrierUnitObservation {
   asset: PhysicalAssetIdentity
-  serial: NonEmptyStr?
-  carrier_designation: NonEmptyStr
-  carrier_part_number: NonEmptyStr
-  revision: NonEmptyStr
   layout: CarrierLayoutObservation
   module_face: MezzanineFaceObservation
   provenance: NonEmptyStr
@@ -125,9 +123,13 @@ type CarrierUnitObservation {
 // reads "GH100-888K-A1 QUAL SAMPLE". The listing DESCRIPTION (operator transcription, 2026-10-04) also
 // states "CPU Memory: 512GB physical LPDDR5X / roughly 480GB usable in the standard GH200 configuration"
 // and "DV5 development/pre-production revision; compatibility not guaranteed".
+// RECEIVED 2026-10-16: the operator read this unit's label as "S/N 1582823830042 699-2G530-0215-DV5 C1
+// Model:PG530", the part number and revision the listing photographed. Asset gh200-dv5-a is bound to
+// that serial. All four parts are loose; the operator reports the seller appears to have had both
+// modules on the E1 carrier (p4261_e1_b), which is provenance of both, not a pairing.
 data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_a,
-  serial: Absent,
+  serial: Present { value: "1582823830042" },
   board_designation: "PG530",
   board_part_number: "699-2G530-0215-DV5",
   die_marking: "GH100-888K-A1 QUAL SAMPLE",
@@ -151,36 +153,32 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
 }
 
 
-// The operator bought TWO units of this listing (2026-10-04). The second carries the same listing facts
-// and no serial of its own yet, and it has no carrier: it is not an assembly until one is bought, so it
-// is recorded as held rather than paired with anything.
+// The operator bought TWO units of this listing (2026-10-04) and keeps both. The second unit RECEIVED is not the listed
+// part: its label, read 2026-10-16, is "S/N 1583023920189 699-2G530-0215-DV9 D1 Model : PG530" -- DV9
+// where the title and the photographed label say DV5, revision D1 where they say C1. The asset id keeps
+// the "dv5" it was allocated under before receipt; it is an opaque key, and the part number below is
+// the reading. The listing's memory claims are what was sold and stay as listed; its die photograph
+// was of a DV5 C1 unit, so this unit's die marking is unread. It is the module of the held alternate
+// pair (alternate_assembly).
 data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_b,
-  serial: Absent,
+  serial: Present { value: "1583023920189" },
   board_designation: gh200_dv5_unit.board_designation,
-  board_part_number: gh200_dv5_unit.board_part_number,
-  die_marking: gh200_dv5_unit.die_marking,
+  board_part_number: "699-2G530-0215-DV9",
+  die_marking: "unread on this unit; the listing's die photograph (GH100-888K-A1 QUAL SAMPLE) was of a DV5 C1 unit",
   listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
   listed_cpu_memory: gh200_dv5_unit.listed_cpu_memory,
   mezzanine_face: gh200_dv5_unit.mezzanine_face,
   measured_inventory: InventoryUnmeasured,
-  source: "second unit bought from eBay item 298619132349; its own serial and photographs not yet recorded",
+  source: "second unit bought from eBay item 298619132349; label read from the operator's photograph 2026-10-16",
 }
 
-// Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
-// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen -- a printed
-// marking; whether any rework was performed, and what, is unknown. The sticker's
-// "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
-// consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
-// J4, one toward each short edge, each flanked by mounting holes.
-// The label photographs show two serials (p4261_k1_layout labels), so the received unit's serial is
-// unread and the carrier is identified by its allocated asset until it is.
+// The carrier's labels, PCB code and "Rework" silkscreen are typed readings on its layout
+// (product.p4261_carrier_layout p4261_k1_layout markings), and carrier_label reads the received unit's
+// label from there, so this row restates none of them. The module face is the two connectors
+// silkscreened J3 and J4, one toward each short edge, each flanked by mounting holes.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
   asset: p4261_k1_a,
-  serial: Absent,
-  carrier_designation: "P4261",
-  carrier_part_number: "694-24261-0000-100",
-  revision: "K1",
   layout: p4261_k1_layout,
   module_face: MezzanineFacePhotographed {
     connector_count: 2,
@@ -193,6 +191,17 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
 }
 
 
+
+// The E1 carrier, the board the bench readings were taken on (product.p4261_carrier_layout
+// p4261_e1_layout carries its label, PCB code and every reading). Its module receptacles were not
+// photographed face-on, so its face is unobserved: the K1's J3/J4 photographs are another board's.
+data p4261_e1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  asset: p4261_e1_b,
+  layout: p4261_e1_layout,
+  module_face: MezzanineFaceUnobserved { obligation: "photograph the E1's two module receptacles face-on (connector count, contact rows, placement); the K1's J3/J4 photographs describe another board" },
+  provenance: "bought from Central Valley Computer Parts with the two modules; the operator reports the seller appears to have had both modules on this carrier (2026-10-16); untested",
+  source: "the operator's purchase from Central Valley Computer Parts and the operator's photographs and bench readings of 2026-10-15/16",
+}
 
 // ── WHAT A LISTING CLAIM IS CONSISTENT WITH ──────────────────────────────────────────────────
 //
@@ -581,7 +590,7 @@ fn contradicted(requirement: NonEmptyStr, reason: NonEmptyStr) -> QualificationR
 }
 
 fn carrier_label(c: CarrierUnitObservation) -> String {
-  join([c.carrier_designation as String, " ", c.carrier_part_number as String, " rev ", c.revision as String], "")
+  carrier_label_text(layout: c.layout)
 }
 
 fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {
@@ -814,14 +823,24 @@ fn stage_after(a: QualificationStage, b: QualificationStage) -> Bool {
   stage_rank(s: a) > stage_rank(s: b)
 }
 
-// ── THE PURCHASE ─────────────────────────────────────────────────────────────────────────────
+// ── THE PAIRS ────────────────────────────────────────────────────────────────────────────────
 //
-// As bought (operator, 2026-10-04): two DV5 96GB modules and one P4261 rev K1 carrier. One assembly
-// exists, and it is the one the bench qualifies; the second module waits for a second carrier, which is
-// not bought until this assembly has shown the carrier works. (The 80GB DV2 listing and the H1 carrier
-// were considered and not bought, so they are not modeled.)
+// THE FIRST QUALIFICATION SUBJECT (operator ruling, 2026-10-16): DV5 asset A on the E1. The E1 is the
+// carrier actually measured; the DV5 is the exact module the listing advertised and photographed; both
+// came through the Central Valley lot. This names the subject of the experiment, not a qualified pair.
+// THE ONE BOUNDED ALTERNATE is the received DV9 (asset B) on the K1, qualified only if the first pair is
+// refused at instance or pairing scope; no third carrier is bought. (The 80GB DV2 listing and the H1
+// carrier were considered and not bought, so they are not modeled.)
 data first_assembly: SuperchipAssembly = SuperchipAssembly {
   unit: gh200_dv5_unit,
+  carrier: p4261_e1_carrier,
+  row: nvidia_gh200_480gb_catalog,
+  configuration: configuration_unbuilt,
+  bench: bench_unread,
+}
+
+data alternate_assembly: SuperchipAssembly = SuperchipAssembly {
+  unit: gh200_dv5_second_unit,
   carrier: p4261_k1_carrier,
   row: nvidia_gh200_480gb_catalog,
   configuration: configuration_unbuilt,
@@ -830,8 +849,9 @@ data first_assembly: SuperchipAssembly = SuperchipAssembly {
 
 data planned_assemblies: List<SuperchipAssembly> = [first_assembly]
 
-// Modules held with no carrier. A second assembly is planned from these once a carrier is bought.
-data unpaired_modules: List<SuperchipUnitObservation> = [gh200_dv5_second_unit]
+// Held, not under qualification: the alternate is assembled only if the first pair is refused at
+// instance or pairing scope.
+data held_alternates: List<SuperchipAssembly> = [alternate_assembly]
 
 fn assembly_label(a: SuperchipAssembly) -> String {
   join([a.unit.asset as String, " (", a.unit.board_part_number as String, ") on ", a.carrier.asset as String, " (", carrier_label(c: a.carrier), ")"], "")
@@ -855,8 +875,8 @@ fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/product/superchip_assembly_qualification.dag --function assembly_qualification_report
 // Exit 0 only when some planned assembly is workload-qualified; otherwise exit 1 with every assembly's
 // open requirements, stage by stage.
-fn unpaired_line(u: SuperchipUnitObservation) -> String {
-  join([u.asset as String, " (", u.board_part_number as String, "): held, no carrier yet (", u.source as String, ")"], "")
+fn alternate_line(a: SuperchipAssembly) -> String {
+  join(["held alternate: ", assembly_label(a: a), ", assembled only if the first pair is refused at instance or pairing scope"], "")
 }
 
 fn assembly_qualification_report() -> ProcessExit {
@@ -868,6 +888,6 @@ fn assembly_qualification_report() -> ProcessExit {
   if count(qualified) > 0 {
     ExitSuccess
   } else {
-    exit_failure(reason: join(concat(flat_map(planned_assemblies, a => assembly_report_lines(a: a)), map(unpaired_modules, u => unpaired_line(u: u))), "\n"))
+    exit_failure(reason: join(concat(flat_map(planned_assemblies, a => assembly_report_lines(a: a)), map(held_alternates, a => alternate_line(a: a))), "\n"))
   }
 }
