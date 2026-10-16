@@ -665,6 +665,16 @@ test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bo
   }
 }
 
+// THE RED FOR THAT CLAIM, AND THE REASON THE NON-EMPTY GUARD IS NOT DECORATION. The fail-open this
+// module documents produced an EMPTY roster, and an empty roster makes both producers empty: the
+// script becomes "" and the step list becomes []. A claim written as "the step text contains the
+// script" is then comparing "" to "" and PASSES -- which is how a refused host used to look like a
+// converged one. Feeding the empty roster here and requiring false is what pins the guard: if anyone
+// drops `(list_length(items: units) > 0)`, this claim fails.
+test fn an_empty_slice_control_roster_never_satisfies_the_convergence_claim() -> Bool {
+  (!witness_slice_control_roster_converges(units: [], apply: ""))
+}
+
 // ONE ROSTER, BOTH PRODUCERS: the script and the step text are emitted from the same already-derived
 // units the apply route receives, so the two cannot drift apart and neither can silently be empty.
 fn witness_slice_control_roster_converges(units: List<SliceControlUnit>, apply: String) -> Bool {
