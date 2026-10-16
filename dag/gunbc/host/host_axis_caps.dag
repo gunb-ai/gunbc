@@ -649,51 +649,44 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
   shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
-fn slice_control_set_property_stmt(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> Node {
-  shell_privileged_command_intent(
-    argv: systemctl_set_property_argv(
-      unit: unit,
-      property: property,
-      value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
-    )
+fn slice_control_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> List<String> {
+  systemctl_set_property_argv(
+    unit: unit,
+    property: property,
+    value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
   )
 }
 
 // Revert once per unit (clears /run/systemd/system.control AND /etc/systemd/system.control
 // set-property drop-ins), then persistent set-property so the model owns system.control.
 // Two properties cannot each revert: the second revert would undo the first set-property.
-fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
+// THE ARGV LIST IS THE AUTHORITY; the shell statements and the typed realization both project it.
+fn slice_control_converge_argvs_for_caps(caps: SliceControlCaps) -> List<List<String>> {
   [
-    deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: caps.unit)),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_max_property as NonEmptyStr,
-      bytes: caps.memory_max,
-    ),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_high_property as NonEmptyStr,
-      bytes: caps.memory_high,
-    ),
+    systemctl_revert_memory_caps_argv(unit: caps.unit),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_max_property as NonEmptyStr, bytes: caps.memory_max),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_high_property as NonEmptyStr, bytes: caps.memory_high),
   ]
 }
 
 // The sessions CPU cap is appended after MemoryHigh, inside the same single revert: a second revert
 // would undo the memory set-properties.
-fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
+fn slice_control_converge_argvs_for_unit(u: SliceControlUnit) -> List<List<String>> {
   match u {
-    UncappedSliceControl { caps: c } => slice_control_converge_stmts_for_caps(caps: c)
+    UncappedSliceControl { caps: c } => slice_control_converge_argvs_for_caps(caps: c)
     SessionsSliceControl { caps: c, cpu_quota: t } =>
-      concat(slice_control_converge_stmts_for_caps(caps: c), [
-        shell_privileged_command_intent(
-          argv: systemctl_set_property_argv(
-            unit: c.unit,
-            property: systemd_cpu_quota_property as NonEmptyStr,
-            value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
-          )
+      concat(slice_control_converge_argvs_for_caps(caps: c), [
+        systemctl_set_property_argv(
+          unit: c.unit,
+          property: systemd_cpu_quota_property as NonEmptyStr,
+          value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
         ),
       ])
   }
+}
+
+fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
+  map(slice_control_converge_argvs_for_unit(u: u), argv => shell_privileged_command_intent(argv: argv))
 }
 
 fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
