@@ -3,7 +3,9 @@ module gunbc.fleet.fleet_converge_workflow
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
 import gunbc.auth.branch_dispatch_federation {
   branch_dispatch_provider_resource, hetzner_cloud_control_service_account, hetzner_cloud_control_service_account_id,
-  branch_run_key_variable,
+  branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
+  BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
+  RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
 }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
@@ -19,7 +21,7 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
+import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, interpolate, serialize_expression }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -108,6 +110,7 @@ import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop,
   BootFederationUnprovisioned, boot_federation_for, boot_federation_provider_resource,
 }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.ci_app_key_rotation {
   app_key_version_env_name,
@@ -3961,15 +3964,104 @@ fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
   }
 }
 
+fn fleet_converge_github_ref_is_reviewed_main() -> Expression {
+  Equals {
+    left: ContextAccess { context: Github, path: ["ref"] },
+    right: StringLiteral { value: concat("refs/heads/", gunbc_default_branch_name) },
+  }
+}
+
+// THE BOOT JOB'S ONE CREDENTIAL SEAM, TWO ADMITTED SOURCES selected by
+// select_boot_credential_source (which executes select_authorization_pattern): reviewed main keeps
+// the dedicated pool; any other ref waits for the run-scoped grant then federates through the
+// branch-dispatch pool. github.ref in this file is not the wall (a branch can edit it); IAM refuses
+// the dedicated pool off main and refuses the run-scoped SA without this run's cell. The fleet-key
+// step is after this seam, so a missing grant fails before the key is read.
+fn fleet_converge_boot_credential_source_provider(source: BootCredentialSource) -> String {
+  match source {
+    ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_provider_resource()
+    RunScopedApprovedGrant => branch_dispatch_provider_resource()
+  }
+}
+
+fn fleet_converge_boot_credential_source_account(source: BootCredentialSource) -> String {
+  match source {
+    ReviewedMainDedicatedFederation => fleet_converge_mtcollins1_boot_service_account()
+    RunScopedApprovedGrant => mtcollins1_boot_run_scoped_service_account as String
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_source_provider(standing: BootCredentialStanding) -> String {
+  match standing {
+    BootCredentialSourceSelected { source: s } => fleet_converge_boot_credential_source_provider(source: s)
+    BootCredentialSourceRefused { cause: c } => join([boot_credential_source_emit_refused_poison, " ", c as String], "")
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialStanding) -> String {
+  match standing {
+    BootCredentialSourceSelected { source: s } => fleet_converge_boot_credential_source_account(source: s)
+    BootCredentialSourceRefused { cause: c } => join([boot_credential_source_emit_refused_poison, " ", c as String], "")
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
+  interpolate(expression: LogicalOr {
+    left: LogicalAnd {
+      left: fleet_converge_github_ref_is_reviewed_main(),
+      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: true)) },
+    },
+    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  })
+}
+
+fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
+  interpolate(expression: LogicalOr {
+    left: LogicalAnd {
+      left: fleet_converge_github_ref_is_reviewed_main(),
+      right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: true)) },
+    },
+    right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
+  })
+}
+
+fn fleet_converge_mtcollins1_boot_grant_await_if() -> String {
+  serialize_expression(expression: NotEquals {
+    left: ContextAccess { context: Github, path: ["ref"] },
+    right: StringLiteral { value: concat("refs/heads/", gunbc_default_branch_name) },
+  })
+}
+
+fn fleet_converge_mtcollins1_boot_grant_await_step() -> Step {
+  RunStep {
+    name: Present { value: "Run-scoped grant: wait for the grant run main's broker dispatched for this boot attempt" },
+    id: Present { value: "branch_run_grant_await" },
+    run: gunbc_ci_branch_run_grant_await_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_boot_grant_await_if() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: 50 }
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_wif_auth_step() -> Step {
+  ci_wif_auth_step_for(
+    name: "WIF auth (OIDC -> selected mtcollins1 boot source: dedicated SA on reviewed main, run-scoped SA otherwise)",
+    provider_resource: fleet_converge_mtcollins1_boot_wif_provider_resource(),
+    service_account: fleet_converge_mtcollins1_boot_wif_service_account(),
+  )
+}
+
 fn fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: Step, boot_step: Step) -> List<Step> {
   concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
     fleet_converge_mtcollins1_boot_pair_build_step(),
     fleet_converge_mtcollins1_boot_admit_step(),
-    ci_wif_auth_step_for(
-      name: "WIF auth (OIDC -> dedicated mtcollins1-boot pool -> mtcollins1-boot SA, access token only)",
-      provider_resource: fleet_converge_mtcollins1_boot_provider_resource(),
-      service_account: fleet_converge_mtcollins1_boot_service_account(),
-    ),
+    fleet_converge_mtcollins1_boot_grant_await_step(),
+    fleet_converge_mtcollins1_boot_wif_auth_step(),
     fleet_key_step,
     boot_step,
     fleet_converge_mtcollins1_boot_receipt_upload_step(),

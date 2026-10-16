@@ -1551,8 +1551,8 @@ mod compiler_tests {
             crate::cli_run::fixture_closure_summary(&pair.red)
         );
         assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the argv-word-list-splice control must COMPILE and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_argv_non_string_discrimination_passed(&pair),
+            "the argv-word-list-splice control must COMPILE and the non-string argv red must be refused by rustc in its own emitted module carrying the located argv-type refusal; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
