@@ -2392,6 +2392,23 @@ pub(crate) fn run_record_declaring_param_discrimination(
     }
 }
 
+/// The Nat kernel-alias field pair -- subject `v1.compiler.emit_rust` `shared_layer_of_resolution`.
+/// The green was a TypeDeclNotDeclared `compile_error!` refusal before a declaration realized by an
+/// opaque kernel alias row was answered at the value layer.
+#[cfg(test)]
+const FIXTURE_NAT_KERNEL_ALIAS_FIELD_GREEN_PATH: &str =
+    "fixtures/fixture_closure_rustc/nat_kernel_alias_field_probe.dag";
+
+#[cfg(test)]
+pub(crate) fn run_nat_kernel_alias_field_discrimination(
+    probe_root: &PrivateProbeRoot,
+) -> FixtureDiscrimination {
+    FixtureDiscrimination {
+        green: fixture_arm_verdict(FIXTURE_NAT_KERNEL_ALIAS_FIELD_GREEN_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+    }
+}
+
 /// THE SHELL PROJECTION'S RETURN CONVENTION, A PERMANENT REGRESSION CONTROL
 /// (`gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`).
 ///
