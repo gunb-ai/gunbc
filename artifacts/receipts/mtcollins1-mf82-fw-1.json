@@ -18,10 +18,6 @@
       {
         "socket": 0,
         "installed": true
-      },
-      {
-        "socket": 1,
-        "installed": false
       }
     ],
     "dimms": [
