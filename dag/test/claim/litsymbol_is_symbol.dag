@@ -1,0 +1,28 @@
+module test.claim.litsymbol_is_symbol
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+}
+
+// Producer: v1.compiler.infer_types infer_literal_node types LitSymbol as symbol_type.
+// The discriminating RED is the rust unit test infer_literal_node_types_litsymbol_as_symbol
+// (node name Symbol). These rows are compile-path controls that stay after the producer lands.
+// Symbol-vs-String inhabitance at a declared return is the implicit-safe subset, not this PR.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn two_carets_compare() -> Bool {
+  blocking_count(source: "module litsymbol.eq\nfn f() -> Bool { ^tag == ^tag }\n") == 0
+}
+
+test fn quoted_string_still_inhabits_string() -> Bool {
+  blocking_count(source: "module litsymbol.litstr\nfn f() -> String { \"tag\" }\n") == 0
+}
