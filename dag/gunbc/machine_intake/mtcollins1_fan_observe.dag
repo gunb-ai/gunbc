@@ -38,6 +38,17 @@ data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-ob
 // (gunbc_ci_mtcollins1_probe_credential_statements) so the writer and the reader cannot drift.
 data mtcollins1_fan_credential_fetch_status_suffix: String = "-fetch-status"
 
+// THE BOOT PHASE'S TYPED OUTCOME AS A STEP OUTPUT (operator ruling 2026-10-16: a modeled refusal stops
+// the boot, exactly as an unmodeled failure or timeout does; no rung drop, no boot-anyway arm). The
+// receipt is the carrier: a receipt that exists and does not open with the refusal prefix is an
+// observed reading; anything else - refused, missing - is refused. The prelude tail writes this
+// output from the receipt, fails the step on refusal, and the boot step's if: reads the output, so
+// the boot runs only on an observed reading. Names are owned here so writer and reader cannot drift.
+data mtcollins1_fan_boot_phase_refused_prefix: String = "FanObserveBootPhaseRefused"
+data mtcollins1_fan_boot_phase_outcome_output: String = "fan_outcome"
+data mtcollins1_fan_boot_phase_outcome_observed: String = "observed"
+data mtcollins1_fan_boot_phase_outcome_refused: String = "refused"
+
 type MtCollins1FanCredentialFetchStatus
   = FetchOk
   | FetchRefused
@@ -146,9 +157,10 @@ fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
 // are a FanObserveBootPhaseRefused receipt naming the cause, with ExitSuccess. Nothing the step models
 // is absorbed by continue-on-error: a crash or a step timeout is an UNMODELED failure and fails the
 // job at this step, before the boot, located (review 81077; DESIGN §5 - no escape hatch). Only an
-// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. Whether a REFUSED
-// observation should stop the boot is a policy question with its own answer pending (review 81090 A);
-// this entry reports refusals typed and does not decide it by a toggle.
+// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. A REFUSED
+// observation STOPS THE BOOT (operator ruling 2026-10-16): this entry still reports refusals as typed
+// receipts, and the step's prelude tail turns the receipt into the mtcollins1_fan_boot_phase_outcome_output
+// step output and fails the step, so the boot is ineligible.
 fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
 {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
