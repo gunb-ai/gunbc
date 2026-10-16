@@ -12,10 +12,10 @@ import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.host.boot_attempt {
-  MediaAttachNotAttempted, StaleMediumPowerOff,
+  MegaRacMediaAttachNotAttempted,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text,
+  MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
@@ -125,14 +125,14 @@ fn megarac_attach_boot_image(
 {
   let image_name = subject.medium.image_name
   match megarac_boot_media_host(proof: proof) {
-    MegaRacHostRefused { cause: c } => MediaAttachNotAttempted { reason: concat("media attach: ", megarac_host_refusal_text(cause: c) as String) as NonEmptyStr }
+    MegaRacHostRefused { cause: c } => MegaRacMediaAttachNotAttempted { reason: concat("media attach: ", megarac_host_refusal_text(cause: c) as String) as NonEmptyStr }
     MegaRacHostAdmitted { host: host } =>
       if !host_identity_eq(a: host.binding.host.host, b: boot_subject_host(subject: subject)) {
-        MediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }
+        MegaRacMediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }
       } else if password_file == "" {
-        MediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
+        MegaRacMediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
       } else if attempt == "" {
-        MediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
+        MegaRacMediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
       } else {
         let before = megarac_boot_media_chassis_power(host: host, password_file: password_file as NonEmptyStr, bound: bound)
         let off = megarac_stale_power_off(
@@ -291,7 +291,7 @@ fn megarac_stale_power_off(
   share: MegaRacShareBinding,
   replaceable_seeded_stem: NonEmptyStr,
   bound: MegaRacIpmiReadBound,
-) -> StaleMediumPowerOff
+) -> MegaRacStalePowerOff
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
   ]
@@ -352,7 +352,7 @@ fn megarac_stale_power_off_poll(host: AdmittedMegaRacHost, password_file: NonEmp
 fn megarac_power_after_stale_power_off(
   host: AdmittedMegaRacHost,
   before: ChassisPowerObservation,
-  off: StaleMediumPowerOff,
+  off: MegaRacStalePowerOff,
   password_file: NonEmptyStr,
   bound: MegaRacIpmiReadBound,
 ) -> ChassisPowerObservation
@@ -370,7 +370,7 @@ fn megarac_power_after_stale_power_off(
 
 // PURE. A power-off that was attempted and not observed never admits the detach, whatever `power`
 // says; every other arm is the ordinary admission over the reading the attempt took last.
-fn megarac_detach_admission_after_power_off(power: ChassisPowerObservation, off: StaleMediumPowerOff) -> MegaRacDetachAdmission {
+fn megarac_detach_admission_after_power_off(power: ChassisPowerObservation, off: MegaRacStalePowerOff) -> MegaRacDetachAdmission {
   match off {
     MegaRacStalePowerOffCommandRefused { stale_image: i, before: _ } =>
       MegaRacDetachNotAdmitted { reason: concat("chassis power off to replace the stale image was refused: ", i) as NonEmptyStr }
@@ -393,7 +393,7 @@ type MegaRacBootMediaGate
 
 fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
   match record {
-    MediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("media attach: ", r as String) as NonEmptyStr }
+    MegaRacMediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("media attach: ", r as String) as NonEmptyStr }
     MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
       match res.outcome {
         MegaRacPresentationReady { route: _, evidence: e } =>

@@ -81,12 +81,12 @@ fn final_power_read_from_outside_the_actuation() -> String {
 }
 
 fn bundle_param5_read_from_outside_the_hold() -> String {
-  let _x = megarac_boot_param5(username: "admin", password_file: "/tmp/pw")
+  let _x = megarac_boot_param5(row: mtcollins1_boot_row_value, username: "admin", password_file: "/tmp/pw")
   ""
 }
 
 fn bundle_chassis_read_from_outside_the_hold() -> String {
-  let _x = megarac_boot_chassis_power(username: "admin", password_file: "/tmp/pw")
+  let _x = megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: "admin", password_file: "/tmp/pw")
   ""
 }
 

@@ -32,10 +32,10 @@ import gunbc.host.boot_attempt {
   AttemptIdentityUnavailable, AttemptRunId, BootOverrideConsumption, ConsoleExceedsBound, ConsoleNotConfigured, ConsoleNotRetained, ConsoleRetained, ReferenceCaptureRead, boot_override_consumption, power_after_attempt, console_bound, console_reading, console_size_of_stat, OverrideConsumptionUnread, OverridePendingBeforeAttempt, OverrideStillPendingAfterAttempt,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
-  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPowerAfterUnobserved, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacPoweredOnAfterAttempt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, override_harness, power_after_harness, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly,
+  BmcAuthRefused, BmcCollectionIncomplete, BmcDeadlineReached, BmcHttpRefused, BmcLinkUnpublished, BmcResponseMalformed, BmcSessionUnestablished, BmcTimeout, BmcUnreachable, BootDiagnosticBundle, BootParam5NotTaken, BootParam5Read, BootParam5Unread, CollectionComplete, CollectionRefused, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt, MegaRacOverrideNotHandedOff, MegaRacPowerAfterUnobserved, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd, MegaRacPoweredOnAfterAttempt, MegaRacRunRecord, MemberBody, MembersNotTaken, MembersRead, MembersUnread, SdrCacheDumped, SdrCacheNotTaken, SdrCacheUnread, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread, SensorsNotTaken, SensorsRead, assemble_memory_members, bmc_curl_read_cause, bmc_ipmitool_read_cause, harness_finding_text, inventory_not_taken, megarac_boot_bundle_text, megarac_boot_findings, megarac_boot_outcome_with_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_system_inventory_links, megarac_systems_link, member_not_reached, memory_anomalies, override_harness, power_after_harness, processor_anomalies, redfish_budget_refusal, redfish_collection_assembly, megarac_boot_evidence, MegaRacAccountReceipt,
 }
 import gunbc.machine_intake.mtcollins1_boot_row {
-  mtcollins1_boot_collection_member_bound, mtcollins1_boot_redfish_read_budget
+  mtcollins1_boot_collection_member_bound, mtcollins1_boot_redfish_read_budget, mtcollins1_boot_account_receipt, mtcollins1_boot_row_value
 }
 import gunbc.host.smpro_platform_capability {
   SmproNotTaken, SmproProbed, SmproReading
@@ -175,9 +175,17 @@ fn bundle_bmc_silent() -> BootDiagnosticBundle {
 
 // WHAT THE BUNDLE FOUND, rendered: the power-on fold's decoded errors and stage anomalies, then the
 // harness findings, each by its one renderer.
+// The account receipt the RUN procedure's consumer passes to findings: the adapter turns its own
+// protocol readings into evidence and the mtcollins1 row -- which owns the power-on account model --
+// classifies it. Composed here because the adapter cannot import the row (the row imports the
+// adapter); boot_run makes the same composition at its write site.
+fn row_account(bundle: BootDiagnosticBundle) -> MegaRacAccountReceipt {
+  mtcollins1_boot_account_receipt(e: megarac_boot_evidence(row: mtcollins1_boot_row_value, bundle: bundle))
+}
+
 fn found(bundle: BootDiagnosticBundle) -> List<String> {
-  let f = megarac_boot_findings(bundle: bundle)
-  concat(mtcollins1_power_on_account_notes(a: f.account), map(f.harness, h => harness_finding_text(f: h)))
+  let f = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))
+  concat(f.account.notes, map(f.harness, h => harness_finding_text(f: h)))
 }
 
 fn any_contains(xs: List<String>, pattern: String) -> Bool {
@@ -299,7 +307,7 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured, run: no_run(), screen: no_screen() }
   !any_contains(xs: found(bundle: bundle), pattern: "Memory member(s); the board has")
-    && contains(megarac_boot_bundle_text(bundle: bundle), "memory: UNREAD: collection incomplete at https://192.168.1.228/redfish/v1/Systems/Self/Memory")
+    && contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "memory: UNREAD: collection incomplete at https://192.168.1.228/redfish/v1/Systems/Self/Memory")
 }
 
 // ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
@@ -309,7 +317,7 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 // kill-after) + 48 Redfish reads x 15 s + 60 s publish. The SMpro term was the literal 10 until #13058
 // grew the read order to 24 registers per socket, which left this claim red on main.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
-  (second_count(s: megarac_diagnostics_allowance()) as Int) == (4 + 2 * count(smpro_pass_read_order)) * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
+  (second_count(s: megarac_diagnostics_allowance(row: mtcollins1_boot_row_value, )) as Int) == (4 + 2 * count(smpro_pass_read_order)) * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
 test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {
@@ -326,7 +334,7 @@ test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool {
   let bundle = BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro,
     inventory: InventoryReading { system_id: "/redfish/v1/Systems/Self", memory: MembersUnread { cause: cause }, processors: b.inventory.processors, credential_removed: true },
     console: ConsoleNotConfigured, run: no_run(), screen: no_screen() }
-  contains(megarac_boot_bundle_text(bundle: bundle), "memory: UNREAD: diagnostics read budget spent before https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20 (t); not reached: 12 of 32 member read(s)")
+  contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "memory: UNREAD: diagnostics read budget spent before https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20 (t); not reached: 12 of 32 member read(s)")
 }
 
 // ── READ CAUSES ──────────────────────────────────────────────────────────────────────────────
@@ -363,7 +371,7 @@ test fn the_delta_names_the_memory_event_and_not_the_cpu_voltage_sensor() -> Boo
 }
 
 test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -> Bool {
-  let text = megarac_boot_bundle_text(bundle: bundle_socket1_absent())
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle_socket1_absent())
   contains(text, "delta: 3 new record(s) (1 OEM, kept opaque)")
     && contains(text, "OEM record, manufacturer 00cd3a, bytes 0fde70330102 (OEM-defined; not decoded)")
     && contains(text, "-- raw after (ipmitool sel elist, verbatim) --\n3ec | 09/10/2026")
@@ -437,7 +445,7 @@ test fn an_absent_member_is_an_anomaly_only_against_a_recorded_population() -> B
 }
 
 test fn the_findings_reach_the_one_line_refusal() -> Bool {
-  match megarac_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(bundle: bundle_socket1_absent())) {
+  match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle_socket1_absent(), account: row_account(bundle: bundle_socket1_absent()))) {
     ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "sensor CPU1_CPU_VCORE status ns")
     ExitSuccess => false
   }
@@ -446,12 +454,12 @@ test fn the_findings_reach_the_one_line_refusal() -> Bool {
 // ── THE BUNDLE NEVER FLIPS THE VERDICT ───────────────────────────────────────────────────────
 
 test fn findings_never_turn_a_success_into_a_failure() -> Bool {
-  count(found(bundle: bundle_socket1_absent())) > 0 && match megarac_boot_outcome_with_findings(outcome: ExitSuccess, findings: megarac_boot_findings(bundle: bundle_socket1_absent())) { ExitSuccess => true _ => false }
+  count(found(bundle: bundle_socket1_absent())) > 0 && match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: ExitSuccess, findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle_socket1_absent(), account: row_account(bundle: bundle_socket1_absent()))) { ExitSuccess => true _ => false }
 }
 
 // A REFUSAL KEEPS ITS OWN REASON FIRST; the account is appended, never substituted.
 test fn a_refusal_keeps_its_reason_first() -> Bool {
-  match megarac_boot_outcome_with_findings(outcome: exit_failure(reason: "r"), findings: megarac_boot_findings(bundle: bundle_bmc_silent())) {
+  match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: exit_failure(reason: "r"), findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle_bmc_silent(), account: row_account(bundle: bundle_bmc_silent()))) {
     ExitFailure { code: _, reason: r } => starts_with(s: r, prefix: "r | power-on account: ")
     ExitSuccess => false
   }
@@ -486,7 +494,7 @@ test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool {
   let findings = found(bundle: bundle)
   !any_contains(xs: findings, pattern: "every BMC read failed")
     && any_contains(xs: findings, pattern: "sensor CPU1_CPU_VCORE status ns")
-    && contains(megarac_boot_bundle_text(bundle: bundle), "before: UNREAD: no IPMI session")
+    && contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "before: UNREAD: no IPMI session")
 }
 
 // The same bundle with the sensor channel failing too is all-failed, and names every failed channel;
@@ -498,7 +506,7 @@ test fn the_all_failed_finding_names_its_channels() -> Bool {
 }
 
 test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool {
-  let text = megarac_boot_bundle_text(bundle: bundle_bmc_silent())
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle_bmc_silent())
   contains(text, "before: UNREAD: no IPMI session")
     && contains(text, "processors: UNREAD: BMC unreachable at https://192.168.1.228/redfish/v1/Systems (2026-09-23T01:10:00Z)")
     && contains(text, "memory: UNREAD: BMC unreachable")
@@ -524,7 +532,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
     run: no_run(),
     screen: no_screen(),
   }
-  let text = megarac_boot_bundle_text(bundle: bundle)
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle)
   contains(text, "== bmc system event log ==")
     && contains(text, concat("before: NOT TAKEN: ", why as String))
     && contains(text, concat("after: NOT TAKEN: ", why as String))
@@ -584,7 +592,7 @@ test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
 test fn the_unavailable_identity_is_rendered_as_such() -> Bool {
   let b = bundle_bmc_silent()
   let bundle = BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
-  contains(megarac_boot_bundle_text(bundle: bundle), "attempt=UNAVAILABLE: GITHUB_RUN_ID could not be read: not set")
+  contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "attempt=UNAVAILABLE: GITHUB_RUN_ID could not be read: not set")
 }
 
 // THE DRAM FIRMWARE'S EMPTY SOCKET REACHES THE ONE-LINE REFUSAL through the real console route
@@ -604,7 +612,7 @@ test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
     run: no_run(),
     screen: no_screen(),
   }
-  match megarac_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(bundle: bundle)) {
+  match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))) {
     ExitFailure { code: _, reason: r } => contains(r, "the expected topology was not recorded for this attempt") && !contains(r, "the closed DRAM roster lists no DIMM") && !contains(r, "mcu_enable_mask")
     ExitSuccess => false
   }
@@ -625,20 +633,20 @@ fn reference_of(text: String) -> ReferenceCaptureRead {
 }
 
 test fn a_dark_socket_rail_reaches_the_refusal_through_the_bundle() -> Bool {
-  match megarac_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(bundle: bundle_socket1_absent())) {
+  match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle_socket1_absent(), account: row_account(bundle: bundle_socket1_absent()))) {
     ExitFailure { code: _, reason: r } => contains(r, "sensor CPU1_CPU_VCORE status ns") && contains(r, "sensor CPU1_0V75_PCP status ns") && !contains(r, "CPU0_")
     ExitSuccess => false
   }
 }
 
 test fn the_sensor_section_is_rendered_per_socket() -> Bool {
-  let text = megarac_boot_bundle_text(bundle: bundle_socket1_absent())
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle_socket1_absent())
   contains(text, "== bmc sensors (ipmi sdr elist) ==") && contains(text, "socket 1 (CPU1_ sensors: 2 with a reading, 0 without)")
     && contains(text, "socket 0 (CPU0_ sensors: 2 with a reading, 1 without)")
 }
 
 test fn an_unread_sensor_section_says_why() -> Bool {
-  contains(megarac_boot_bundle_text(bundle: bundle_bmc_silent()), "NOT TAKEN: no SDR cache was dumped")
+  contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle_bmc_silent()), "NOT TAKEN: no SDR cache was dumped")
 }
 
 test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
@@ -646,7 +654,7 @@ test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
   let b = bundle_socket1_absent()
   let bundle = BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
     console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 400), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference), run: no_run(), screen: no_screen() }
-  let text = megarac_boot_bundle_text(bundle: bundle)
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle)
   any_contains(found(bundle: bundle), "the expected topology was not recorded for this attempt") && !any_contains(found(bundle: bundle), "active socket(s), 2 expected")
     && contains(text, "GHES 2 severity=info dword0=000003ce -> socket 0 PMPRO FW subtype 3")
     && contains(text, "against the two-socket reference boot artifacts/bmc/mtcollins1-hw-census-sol.log: UNREAD: not supplied")
@@ -659,7 +667,7 @@ test fn a_supplied_reference_renders_its_differences() -> Bool {
   match console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)) {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } => {
       let b = bundle_socket1_absent()
-      let text = megarac_boot_bundle_text(bundle: BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
+      let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
         console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)), run: no_run(), screen: no_screen() })
       contains(text, "3 difference(s)") && contains(text, "Socket[1] printed in the reference summary, absent from this boot's")
         && contains(text, "Inter Socket Connection 0 (reference: Width: x16 / Speed 25 GT/s) not printed by this boot")
@@ -686,10 +694,10 @@ test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
   ]
   let bundle = BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
     smpro: smpro_probed(outcomes: outcomes), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
-  (match megarac_boot_outcome_with_findings(outcome: exit_failure(reason: "q"), findings: megarac_boot_findings(bundle: bundle)) {
+  (match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: exit_failure(reason: "q"), findings: megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))) {
     ExitFailure { code: _, reason: r } => contains(r, "socket 1 SMpro reports a FAILED stage") && contains(r, "reported DDR initialization")
     ExitSuccess => false
-  }) && contains(megarac_boot_bundle_text(bundle: bundle), "== smpro boot stage (ipmi master write-read) ==")
+  }) && contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "== smpro boot stage (ipmi master write-read) ==")
 }
 
 // A NAK FROM THE BMC IS AN ANSWER: a pass where SEL, SDR and Redfish all failed but the SMpro probe
@@ -713,7 +721,7 @@ test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool {
     smpro: smpro_probed(outcomes: [bad]), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   let findings = found(bundle: bundle)
   !any_contains(xs: findings, pattern: "every BMC read failed") && !any_contains(xs: findings, pattern: "did not answer")
-    && contains(megarac_boot_bundle_text(bundle: bundle), "MANUFACTURER_ID_REG: MALFORMED")
+    && contains(megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle), "MANUFACTURER_ID_REG: MALFORMED")
 }
 
 // ── IDENTITY COMPLETENESS ────────────────────────────────────────────────────────────────────
@@ -746,7 +754,7 @@ test fn a_later_page_disagreeing_on_the_count_refuses_the_collection() -> Bool {
 }
 
 test fn two_links_returning_one_id_leave_the_section_unread() -> Bool {
-  match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+  match assemble_memory_members(row: mtcollins1_boot_row_value, collection: memory_collection_path, at: "t", bodies: [
     MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
     MemberBody { link: link_b, body: dimm_body(odata_id: link_b as String, id: "DIMM_A", socket: 0) },
   ]) {
@@ -756,7 +764,7 @@ test fn two_links_returning_one_id_leave_the_section_unread() -> Bool {
 }
 
 test fn a_member_answering_as_another_resource_leaves_the_section_unread() -> Bool {
-  match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+  match assemble_memory_members(row: mtcollins1_boot_row_value, collection: memory_collection_path, at: "t", bodies: [
     MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
     MemberBody { link: link_b, body: dimm_body(odata_id: link_a as String, id: "DIMM_B", socket: 0) },
   ]) {
@@ -771,7 +779,7 @@ test fn distinct_links_stable_total_and_matching_ids_are_complete() -> Bool {
     page(links: [link_a as String], total: Present { value: 2 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=1" }),
     page(links: [link_b as String], total: Present { value: 2 }, next: none),
   ], member_bound: 40) { CollectionComplete { links: ls } => count(ls) == 2 CollectionRefused { detail: _ } => false }
-  links && match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
+  links && match assemble_memory_members(row: mtcollins1_boot_row_value, collection: memory_collection_path, at: "t", bodies: [
     MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
     MemberBody { link: link_b, body: dimm_body(odata_id: link_b as String, id: "DIMM_B", socket: 1) },
   ]) {
@@ -830,11 +838,11 @@ test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() 
   let b = bundle_socket1_absent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
   let bundle = BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptRunId { run_id: "35871654468" }, outcome: "accepted", sel_before: b.sel_before, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: ConsoleNotConfigured, run: no_run(), screen: no_screen() }
-  let text = megarac_boot_bundle_text(bundle: bundle)
-  let findings = megarac_boot_findings(bundle: bundle)
+  let text = megarac_boot_bundle_text(row: mtcollins1_boot_row_value, bundle: bundle)
+  let findings = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle))
   contains(text, "after: UNREAD: BMC timed out at ipmi lanplus 192.168.1.228 (2026-09-23T15:12:43Z): no answer within the diagnostics deadline (coreutils timeout exit 124)")
     && !contains(text, "Memory training failure")
-    && (match megarac_boot_outcome_with_findings(outcome: ExitSuccess, findings: findings) { ExitSuccess => true _ => false })
+    && (match megarac_boot_outcome_with_findings(row: mtcollins1_boot_row_value, outcome: ExitSuccess, findings: findings) { ExitSuccess => true _ => false })
 }
 
 // ── THE INVENTORY STARTS AT THE SERVICE ROOT ─────────────────────────────────────────────────
@@ -844,7 +852,7 @@ test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() 
 // SPEC-SHAPED (DMTF ServiceRoot schema), not observed: no service-root response from mtcollins1 is in
 // the corpus.
 test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool {
-  match megarac_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Systems\": {\"@odata.id\": \"/redfish/v1/Systems\"}}", at: "t") {
+  match megarac_systems_link(row: mtcollins1_boot_row_value, root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Systems\": {\"@odata.id\": \"/redfish/v1/Systems\"}}", at: "t") {
     ObservationEstablished { observed: p } => (p as String) == "/redfish/v1/Systems"
     ObservationRefused { cause: _ } => false
   }
@@ -852,7 +860,7 @@ test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool 
 
 // A root that publishes no Systems link is that typed absence, not an empty inventory.
 test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool {
-  match megarac_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Managers\": {\"@odata.id\": \"/redfish/v1/Managers\"}}", at: "t") {
+  match megarac_systems_link(row: mtcollins1_boot_row_value, root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Managers\": {\"@odata.id\": \"/redfish/v1/Managers\"}}", at: "t") {
     ObservationRefused { cause: BmcLinkUnpublished { endpoint: e, at: _, property: p } } => (p as String) == "Systems" && (e as String) == "https://192.168.1.228/redfish/v1/"
     _ => false
   }
@@ -860,7 +868,7 @@ test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool {
 
 // A Systems link off the service's own origin is refused before a credential is presented to it.
 test fn a_cross_origin_systems_link_is_refused() -> Bool {
-  match megarac_systems_link(root_body: "{\"Systems\": {\"@odata.id\": \"https://elsewhere.example/redfish/v1/Systems\"}}", at: "t") {
+  match megarac_systems_link(row: mtcollins1_boot_row_value, root_body: "{\"Systems\": {\"@odata.id\": \"https://elsewhere.example/redfish/v1/Systems\"}}", at: "t") {
     ObservationRefused { cause: BmcResponseMalformed { endpoint: _, at: _, detail: d } } => contains(d, "service root Systems link refused")
     _ => false
   }
@@ -960,10 +968,10 @@ test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool {
     sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
     console: console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 3465), capture: run_37069907299_firmware, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference),
     run: no_run(), screen: no_screen() }
-  let a = megarac_boot_findings(bundle: bundle).account
-  count(a.cycles) == 2
+  let a = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle)).account
+  match a { Absent => false Present { value: a } => count(a.cycles) == 2
     && (match a.cycles.first() { Present { value: c } => (match c.ended_after { Present { value: r } => (r.last.digits as String) == "00001a0a" Absent => false }) Absent => false })
-    && (match a.ending { StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: n } => n == 1 _ => false })
+    && (match a.ending { StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: n } => n == 1 _ => false }) }
 }
 
 // GAP 4: THE ERROR-RECORD REGISTERS ARE THEIR OWN CARRIER. CUR/BOOTSTAGE read while GPI_RAS_ERR and the
@@ -980,7 +988,7 @@ test fn refused_error_registers_beside_a_read_stage_pair_are_their_own_coverage_
   ]
   let bundle = BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
     smpro: smpro_probed(outcomes: outcomes), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
-  let cov = megarac_boot_findings(bundle: bundle).account.coverage
-  any(cov, c => (match c.carrier { SmproRegisters => true _ => false }) && (match c.standing { CarrierRead => true _ => false }))
-    && any(cov, c => (match c.carrier { SmproErrorRegisters => true _ => false }) && (match c.standing { CarrierRefused { cause: _ } => true CarrierPartial { detail: _ } => true _ => false }))
+  let cov = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: row_account(bundle: bundle)).account
+  match a { Absent => false Present { value: p } => any(p.coverage, c => (match c.carrier { SmproRegisters => true _ => false }) && (match c.standing { CarrierRead => true _ => false }))
+    && any(p.coverage, c => (match c.carrier { SmproErrorRegisters => true _ => false }) && (match c.standing { CarrierRefused { cause: _ } => true CarrierPartial { detail: _ } => true _ => false })) }
 }
