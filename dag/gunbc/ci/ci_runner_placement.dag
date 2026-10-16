@@ -37,6 +37,8 @@ import gunbc.fleet.fleet_host_budget {
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
+  compile_pool_bytes_for,
+  host_cpu_reserve_threads,
 }
 import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim_under,
@@ -169,12 +171,6 @@ type RunnerCpuBoundaryResolution
 // as you can" is the memory axis's answer, and the CPU is then divided among exactly the slots that
 // fit. A width so large that the division floors to zero is refused rather than rendered as a
 // zero-percent quota, which systemd would read as no CPU at all.
-// THE HOST RESERVE IS A POLICY PICK, NOT A MEASUREMENT. Overseer policy, 2026-10-14, reported to
-// the operator and revisable: eight threads stay outside every slot and the sessions slice, for
-// the host's own daemons. It replaces the deleted ctrl-jobserver margin (also 8), which held the same
-// threads back only as unissued permits; here they are held back by construction.
-data host_cpu_reserve_threads: HardwareThreadCount = hardware_thread_count(count: 8)
-
 type HostCpuAllocation {
   sessions_cpu_cap: HardwareThreadCount
   per_slot: HardwareThreadCount
@@ -212,7 +208,7 @@ fn host_cpu_allocation(threads: HardwareThreadCount, reserve: HardwareThreadCoun
 // CompilePoolInRunnerSlots the compiler children of a job run inside that job's own runner boundary,
 // so the slot's ceiling is exactly its share. Under CompilePoolSliceDeclared those children are
 // charged to a separate host pool that carries no modeled CPU charge, so the same per-slot number
-// over-commits the host; that arm refuses until the separate pool is deleted with extdeps.jobserver.
+// over-commits the host; that arm refuses (no sizing authority since the jobserver was retired).
 fn runner_cpu_boundary_for(placement: CompilePoolPlacement, per_slot: HardwareThreadCount) -> RunnerCpuBoundaryResolution {
   match placement {
     CompilePoolInRunnerSlots =>
@@ -336,7 +332,7 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
     HostFixedOverheadAllowance { bytes: b, reason: _ } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
+    HostFixedOverheadUnmeasured { reason: _ } => byte_size(0)
   }
 }
 
@@ -349,9 +345,9 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
   match o {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => HostOverheadResolved { bytes: b }
     HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
-    HostFixedOverheadUnmeasured =>
+    HostFixedOverheadUnmeasured { reason: why } =>
       HostOverheadUnresolved {
-        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
@@ -524,9 +520,9 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
   match r {
     HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamUnmeasured =>
+    HostUsableRamUnmeasured { reason: why } =>
       HostUsableRamUnresolved {
-        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", concat(host, concat("; ", why as String)))
       }
   }
 }
@@ -621,7 +617,7 @@ fn session_slice_of(f: HostWidthFacts) -> HostSessionSliceResolution {
 
 // ONE HOST'S STANDING FROM ITS OFFER AND A SUPPLIED FACTS RECORD. host_deployment_standing supplies
 // gunbc.runner.runner_slot_allocation host_width_facts, the production producer; a witness may supply a
-// record directly, and then the whole standing -- width, conservation, jobserver -- is a function
+// record directly, and then the whole standing -- width, conservation, CPU allocation -- is a function
 // of values it chose. The control-plane claim is the one input still read here, because it is
 // evaluated under the placement argument rather than the default placement the record holds.
 fn host_deployment_standing_given(offer: ComputeOffer, facts: HostWidthFacts, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
@@ -686,20 +682,6 @@ fn host_standing_with_session_slice(
   }
 }
 
-// THE COMPILE POOL IS CHARGED INSIDE THE RUNNER SLOTS, SO ITS SEPARATE CHARGE IS ZERO -- AND ONLY THEN.
-// The separate compile-pool slice and its jobserver-token sizing are retired (ruling 2026-10-14,
-// deleted with extdeps.jobserver in A2), so this producer no longer sizes one: under
-// CompilePoolInRunnerSlots compiler children run inside each slot's own memory and CPU ceilings and
-// the host charge is zero; a flip to CompilePoolSliceDeclared refuses here rather than charging a
-// pool nothing sizes.
-fn runner_slot_compile_pool_charge(placement: CompilePoolPlacement) -> CompilePoolResolution {
-  match placement {
-    CompilePoolInRunnerSlots => CompilePoolDerived { bytes: byte_size(0) }
-    CompilePoolSliceDeclared { slice_unit: u } =>
-      CompilePoolUnresolved { reason: concat("a separate compile-pool slice is declared and nothing sizes it since the jobserver token derivation was retired: ", u) }
-  }
-}
-
 fn host_standing_at_width(
   offer: ComputeOffer,
   facts: HostWidthFacts,
@@ -715,7 +697,7 @@ fn host_standing_at_width(
     HostOverheadUnresolved { reason: orr } =>
       refuse_host(host: host_id, cause: FixedOverheadUnavailable { cause: orr })
     HostOverheadResolved { bytes: overhead } =>
-      match runner_slot_compile_pool_charge(placement: gunbc_compile_pool_placement) {
+      match compile_pool_bytes_for(placement: gunbc_compile_pool_placement) {
         CompilePoolUnresolved { reason: r } =>
           refuse_host(host: host_id, cause: CompilePoolUnavailable { cause: concat("compile pool unresolved: ", r) })
         CompilePoolDerived { bytes: compile_pool } =>

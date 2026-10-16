@@ -66,6 +66,23 @@ type NinferKvDtype
 type NinferSpeculation
   = NinferMtp { draft_tokens: Nat, lm_head_draft: Bool }
 
+fn ninfer_kv_dtype_wire(d: NinferKvDtype) -> NonEmptyStr {
+  match d {
+    NinferKvBf16 => "ninfer-kv-bf16" as NonEmptyStr
+    NinferKvInt8 => "ninfer-kv-int8" as NonEmptyStr
+    NinferKvFp8 => "ninfer-kv-fp8" as NonEmptyStr
+    NinferKvNvfp4 => "ninfer-kv-nvfp4" as NonEmptyStr
+    NinferKvK8V4 => "ninfer-kv-k8v4" as NonEmptyStr
+  }
+}
+
+fn ninfer_speculation_wire(s: NinferSpeculation) -> NonEmptyStr {
+  match s {
+    NinferMtp { draft_tokens: n, lm_head_draft: h } =>
+      join(["ninfer-mtp-", to_string(n), if h { "-lmhead" } else { "" }], "") as NonEmptyStr
+  }
+}
+
 type NinferServeLaunch {
   model_id: NonEmptyStr
   max_concurrency: Nat
