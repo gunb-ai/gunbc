@@ -442,12 +442,9 @@ test fn w_a_dissolved_covering_drop_with_a_live_typed_population_still_covers() 
           ) {
             Absent => false
             Present { value: m } =>
-              match m.arm {
-                ManagedHostFoundUnderDeclaredDrop { host: _, control: _, drop: d, standing_subject: _, current_subject: _ } =>
-                  match d {
-                    Present { value: dv } => dv.identity == mtcollins1_bmc_secure_standing_predates_reflash.identity
-                    Absent => false
-                  }
+              match m {
+                MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: _ } =>
+                  d.identity == mtcollins1_bmc_secure_standing_predates_reflash.identity
                 _ => false
               }
           }
