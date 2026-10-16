@@ -276,7 +276,6 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, BuildCacheIn
 import gunbc.runner.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_dispatch_json_artifact }
 import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_dispatch_url_path }
 import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import gunbc.cli_invoke { gunbc_run_transport_argv }
@@ -568,7 +567,7 @@ type ResolvedHostEffectCell =
   | LiveDeployApprovalBrokerDarkInstallOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
-  | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
+  | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int, expected_digest: Fnv1a64Structural }
   | LiveDeployServeRouteOnHost { node: ComputeHost, endpoint: TailscaleServeEndpoint, enabled: Bool }
   | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
   | EnsureRunnerSlotDirectoryOnHost {
@@ -659,8 +658,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
     LiveDeployEnsureDependency { dep: d } =>
       LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-    LiveDeployDigestReadback { port: p } =>
-      LiveDeployDigestReadbackOnHost { node: n, port: p }
+    LiveDeployDigestReadback { port: p, expected_digest: d } =>
+      LiveDeployDigestReadbackOnHost { node: n, port: p, expected_digest: d }
     LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
       LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
     EnsureActionsRunnerRelease { runner_release: r } =>
@@ -743,7 +742,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: LiveDeployMicrovmControllerInstall is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     LiveDeployEnsureDependency { dep: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    LiveDeployDigestReadback { port: _ } =>
+    LiveDeployDigestReadback { port: _, expected_digest: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     LiveDeployServeRoute { endpoint: _, enabled: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployServeRoute is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -804,7 +803,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployMicrovmControllerInstall { candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployEnsureDependency { dep: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        LiveDeployDigestReadback { port: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployDigestReadback { port: _, expected_digest: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployServeRoute { endpoint: _, enabled: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -848,8 +847,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployMicrovmControllerInstallOnHost { node: n, candidate: c }
         LiveDeployEnsureDependency { dep: d } =>
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
-        LiveDeployDigestReadback { port: p } =>
-          LiveDeployDigestReadbackOnHost { node: n, port: p }
+        LiveDeployDigestReadback { port: p, expected_digest: d } =>
+          LiveDeployDigestReadbackOnHost { node: n, port: p, expected_digest: d }
         LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
           LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
         ProbeToolchainHomeInterference {} =>
@@ -910,7 +909,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployMicrovmControllerInstall { candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployEnsureDependency { dep: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        LiveDeployDigestReadback { port: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployDigestReadback { port: _, expected_digest: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployServeRoute { endpoint: _, enabled: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1755,7 +1754,7 @@ fn realize_provision_codex_runtime(
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployEnsureDependency { dep: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    LiveDeployDigestReadback { port: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _, expected_digest: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3576,7 +3575,7 @@ fn realize_provision_build_cache(
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployEnsureDependency { dep: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    LiveDeployDigestReadback { port: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployDigestReadback { port: _, expected_digest: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -5516,11 +5515,12 @@ fn live_deploy_digest_readback_argv(port: Int) -> List<String> {
 //     refusal, now in the per-effect template's words.
 fn realize_live_deploy_digest_readback_on_host(
   port: Int,
+  expected_digest: Fnv1a64Structural,
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let url = live_deploy_digest_readback_url(port: port)
-  let expected = roadmap_site_dispatch_json_artifact().digest
+  let expected = expected_digest
   match transport {
     LocalShell => {
       let got = http.Client.GetWithin(
@@ -5630,8 +5630,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
     LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
-    LiveDeployDigestReadbackOnHost { node: _, port: p } =>
-      realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+    LiveDeployDigestReadbackOnHost { node: _, port: p, expected_digest: d } =>
+      realize_live_deploy_digest_readback_on_host(port: p, expected_digest: d, transport: transport, intent: intent)
     LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
       realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
     EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
@@ -5809,7 +5809,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
     LiveDeployMicrovmControllerInstall { candidate: _ } => access
     LiveDeployEnsureDependency { dep: _ } => access
-    LiveDeployDigestReadback { port: _ } => access
+    LiveDeployDigestReadback { port: _, expected_digest: _ } => access
     LiveDeployServeRoute { endpoint: _, enabled: _ } => access
     DeployAccessPreflight {} => access
     EnsureActionsRunnerRelease { runner_release: _ } => access
@@ -5890,8 +5890,8 @@ fn host_effect_apply_gated(
           realize_microvm_controller_install_on_host(candidate: c, transport: transport, intent: intent)
         LiveDeployEnsureDependencyOnHost { node: _, dep: d } =>
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
-        LiveDeployDigestReadbackOnHost { node: _, port: p } =>
-          realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+        LiveDeployDigestReadbackOnHost { node: _, port: p, expected_digest: d } =>
+          realize_live_deploy_digest_readback_on_host(port: p, expected_digest: d, transport: transport, intent: intent)
         LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
           realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
         EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
@@ -5976,7 +5976,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployApprovalBrokerDarkInstallOnHost { node: _, spec: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeployDigestReadbackOnHost { node: _, port: _, expected_digest: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
