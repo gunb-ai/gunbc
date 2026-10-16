@@ -1,0 +1,131 @@
+50	//
+51	// `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
+52	// rather than accepting it -- so the producing stage's status is captured directly and the rows
+53	// travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
+54	data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks.githooks_pre_push_emit precedent. DISSOLVES WHEN [C7 producer-status-pipeline] (an extdeps shell transport cannot declare a producer-then-consumer argv pair whose realization reports the PRODUCING stage's exit status; dash has no pipefail) lands and these operations declare that argv pair in place of an sh -c program.")
+55	
+56	service shell.Find {
+57	  operation ListDirs {
+58	    requires none
+59	    input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
+60	    output { dirs: List<FilePath> from "stdout_lines" }
+61	    readonly
+62	    transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
+63	    exit {
+64	      0 => Unit
+65	      nonzero => String "Find command failed"
+66	    }
+67	  }
+68	
+69	  operation FilesAndSymlinksWithMode {
+70	    requires none
+71	    input { root: FilePath }
+72	    output {
+73	      success: Bool from "exit_success"
+74	      stdout: String from "stdout"
+75	      stderr: String from "stderr"
+76	    }
+77	    readonly
+78	    transport shell {
+79	      argv: [
+80	        "sh", "-c",
+81	        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\t%s\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+82	        "sh", "{root}",
+83	      ]
+84	    }
+85	    exit {
+86	      0 => Unit
+87	      nonzero => String "Find command failed"
+88	    }
+89	  }
+90	
+91	  operation Files {
+92	    requires none
+93	    input { workdir: FilePath, root: FilePath, name_glob: String }
+94	    output {
+95	      success: Bool from "exit_success"
+96	      stdout: String from "stdout"
+97	      stderr: String from "stderr"
+98	    }
+99	    readonly
+100	    transport shell { argv: ["env", "-C", "{workdir}", "find", "{root}", "-name", "{name_glob}"] }
+101	    exit {
+102	      0 => Unit
+103	      nonzero => String "Find command failed"
+104	    }
+105	  }
+106	
+107	  operation SocketInodeHolders {
+108	    requires none
+109	    input { inode: NonEmptyStr }
+110	    output {
+111	      success: Bool from "exit_success"
+112	      stdout: String from "stdout"
+113	      stderr: String from "stderr"
+114	    }
+115	    readonly
+116	    transport shell {
+117	      argv: ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", "socket:?{inode}?"]
+118	    }
+119	    exit {
+120	      0 => Unit
+121	      nonzero => String "find over /proc fd links failed"
+122	    }
+123	  }
+124	
+125	  operation FilesByNameSorted {
+126	    requires none
+127	    input { root: FilePath, name_glob: NonEmptyStr }
+128	    output {
+129	      success: Bool from "exit_success"
+130	      stdout: String from "stdout"
+131	      stderr: String from "stderr"
+132	    }
+133	    readonly
+134	    transport shell {
+135	      argv: [
+136	        "sh", "-c",
+137	        "d=$(mktemp -d) || exit 1; find \"$1\" -type f -name \"$2\" > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
+138	        "sh", "{root}", "{name_glob}",
+139	      ]
+140	    }
+141	    exit {
+142	      0 => Unit
+143	      nonzero => String "Find command failed"
+144	    }
+145	  }
+146	}
+147	
+148	service shell.Env {
+149	  operation Get {
+150	    requires none
+151	    input { name: NonEmptyStr }
+152	    output { value: String? from "stdout" }
+153	    readonly
+154	    transport shell { argv: ["printenv", "{name}"] }
+155	    exit {
+156	      0 => Unit
+157	      1 => Unit "Variable not set"
+158	    }
+159	
+160	  }
+161	}
+162	
+163	// `command -v` is a POSIX shell builtin (IEEE 1003.1-2017 section 2.9.1.1, Command Search and
+164	// Execution, invoked here through `sh -c` rather than by name), present wherever a POSIX-conforming
+165	// shell is -- unlike `which`, an EXTERNAL BINARY (part of debianutils on Debian/Ubuntu, not part of
+166	// POSIX or a base busybox install) that may be absent on stripped appliance images, BMC firmware
+167	// shells (Dropbear), or minimal containers. This operation's own assumption is not unconditional
+168	// either: it still requires a POSIX shell at `sh` on the target's PATH. gunbc.fleet.fleet_intent's srv1-4
+169	// ComputeHost, and gunbc.ci.ci_fleet's own CI/falsifier runner, both carry an `OperatingSystemSurface
+170	// { distro_or_product: none, ... }` -- no distro or package-set authority anywhere in this fleet,
+171	// our own runner included (crisp-wren-896 finding, PR #8590; the modeling gap is named at
+172	// std.os.types operating_system_surface_package_authority_gap_note). This operation's assumption
+173	// strictly dominates `which`'s -- every target that can run `which` can run `command -v`, and the
+174	// converse fails on busybox and stripped images -- which is why the former shell.Which.Check
+175	// operation was deleted rather than kept as a second, narrower-scope choice (crisp-wren-896, PR
+176	// #8590): a selection rule between two operations is only worth its cost when each is right
+177	// somewhere the other is wrong, and here nothing was. If even the POSIX-shell assumption cannot be
+178	// established for a target, the honest realization is a typed refusal, not a silent fall-through
+179	// inheriting this operation's result as ground truth.
+180	

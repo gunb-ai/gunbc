@@ -1,0 +1,35 @@
+### approval_device_store_directory -> dag/gunbc/auth/approval_device_redemption.dag:532:fn approval_device_store_directory() -> ManagedDirectory {
+532	fn approval_device_store_directory() -> ManagedDirectory {
+533	  ManagedDirectory {
+534	    member: "approval-device-store" as NonEmptyStr,
+535	    path: approval_device_store_root as String as FilePath,
+536	    owner: fleet_posix_operator_user,
+537	    group_principal: fleet_posix_operator_user,
+538	    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+539	    ownership: Ensured,
+540	    entries: EntriesUnmanaged,
+541	  }
+542	}
+### ensure_managed_directory_command -> dag/gunbc/live_deploy/emit.dag:1782:fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> String {
+1782	fn ensure_managed_directory_command(admission: ManagedDirectoryAdmission) -> String {
+1783	  match admission {
+1784	    ManagedDirectoryAdmitted { dir } => install_d_managed_command(dir: dir)
+1785	    ManagedDirectoryRefused { member, path, writer } =>
+1786	      join([managed_directory_writer_uncovered_poison, member as String, " path=", path as String, " writer=", writer as String], "")
+1787	  }
+1788	}
+### managed_directory_admit -> dag/gunbc/managed_directory.dag:314:fn managed_directory_admit(d: ManagedDirectory) -> ManagedDirectoryAdmission {
+314	fn managed_directory_admit(d: ManagedDirectory) -> ManagedDirectoryAdmission {
+315	  let g = d.group_principal.gid
+316	  let stray = filter(
+317	    xs: d.dependents,
+318	    predicate: dep => needs_verb(needs: dep.needs, v: Write) && dependent_class_eq(
+319	      a: dependent_class_of(owner: d.owner, group_gid: g, who: dep.who),
+320	      b: OtherClass,
+321	    ),
+322	  )
+323	  match first(stray) {
+324	    Absent => ManagedDirectoryAdmitted { dir: d }
+325	    Present { value: dep } => ManagedDirectoryRefused { member: d.member, path: d.path, writer: dep.who.name }
+326	  }
+327	}

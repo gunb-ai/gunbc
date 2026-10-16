@@ -1,0 +1,88 @@
+2097	fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+2098	  if deployment_owns_the_host_approval_broker(spec: spec) {
+2099	    [
+2100	      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+2101	      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+2102	    ]
+2103	  } else {
+2104	    []
+2105	  }
+2106	}
+2107	
+2108	// ── THE BROKER'S TREE, COPIED FROM THE CANDIDATE ────────────────────────────────────────────
+2109	// STAGE A INSTALLED A UNIT WITH NO TREE BEHIND IT. WorkingDirectory pointed at the roadmap's
+2110	// deployed tree, which is frozen at a release predating this module, so `gunbc serve --entry
+2111	// dag/gunbc/auth/approval_broker_serve.dag` could not resolve its own entry and systemd
+2112	// restart-looped the unit. The unit was correct; the bytes it was pointed at were not there.
+2113	//
+2114	// SCOPED DELIBERATELY NARROW (operator ruling 2026-09-20: "do not generalize it into a second
+2115	// tree-sync"). This is not a sync: no unit, no timer, no reconciliation, no drift detection. It is
+2116	// two source directories and one binary copied once, at install, from the checkout the dark install
+2117	// is running in -- the same $PWD the existing tree-publication step already names as GUNBC_TREE_SRC.
+2118	// What the broker needs to serve four routes is the .dag corpus, the v2 sources its closure reaches,
+2119	// and a binary that can interpret them.
+2120	//
+2121	// THE BINARY IS COPIED INTO A PER-CANDIDATE RELEASE LOCUS, AND THE PREVIOUS TWO NOTES HERE WERE
+2122	// BOTH WRONG IN OPPOSITE DIRECTIONS. The first asserted a copy the diff did not contain; the second
+2123	// corrected it to "shared, and that is a real open hazard" and left the hazard standing. The hazard
+2124	// was real: ExecStart took spec.approval_broker.serve_binary -- the instance's /opt/gunbc/bin/gunbc,
+2125	// which is the ROADMAP's binary, frozen at its release by operator ruling. A seed binary older than
+2126	// the sources it is handed refuses to parse constructs those sources use, and the broker's modules
+2127	// are newer than that binary by construction, so the unit would have started, refused at parse and
+2128	// restart-looped: the same symptom as the missing tree, from the other half of the pair.
+2129	//
+2130	// THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
+2131	// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci.ci_spec
+2132	// ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
+2133	// gunbc.fleet.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
+2134	// the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
+2135	// put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier
+2136	// one. That is what makes the copy source a verified artifact rather than a file that happens to be
+2137	// on disk: the verification and the copy are two steps of one job, and a failed verify stops the
+2138	// job before the install step runs.
+2139	//
+2140	// THE COPY IS LOCAL, AND THAT IS A PROPERTY OF THE TRANSPORT RATHER THAN A HOPE. The job runs on a
+2141	// self-hosted runner labelled with the dispatch's own host input, and the DeployAccess the gated
+2142	// dispatch hands this emitter binds LocalShell (gunbc.ci.ci_deploy_access ci_deploy_srv1_access for the
+2143	// CI entry, ci_deploy_srv1_operator_local_access for the operator-local one) -- so the script executes ON the target host,
+2144	// and "$PWD" is that job's checkout. The same fact is what makes the rsync above work; the binary
+2145	// copy is not reaching any further than the tree copy already does. Were the transport ever remote,
+2146	// both would break together and loudly, rather than this one silently copying a file that is not
+2147	// there.
+2148	// The copy source is that artifact; gunbc.ci.ci_release_bins gunbc_release_bin_name is the row both
+2149	// the pack verification and this copy read, so the two spellings cannot drift.
+2150	//
+2151	// THE LOCUS IS PER-CANDIDATE AND IMMUTABLE, which is what makes the readback mean anything. Under a
+2152	// single mutable root, "the tree is the candidate" is a claim about what the last rsync did, and a
+2153	// redeploy of an older revision overwrites the evidence of the newer one in place. Under
+2154	// releases/<sha>/ the installed digest, the binary and the sources are one directory that either
+2155	// exists for this sha or does not, ExecStart names that directory, and /livez reporting the sha is
+2156	// a statement about a locus a reader can go and hash. Requested-equals-installed becomes decidable
+2157	// rather than asserted.
+2158	//
+2159	// WHAT THIS DELIBERATELY DOES NOT ADD: retention, garbage collection, a `current` symlink, or any
+2160	// reconciliation between release directories. Each is a real obligation and none is needed to
+2161	// observe one dark install; inventing a release-manager here would be the second tree-sync the
+2162	// operator ruled out, arriving under a different name. The unbounded growth is named rather than
+2163	// papered over -- see approval_broker_release_retention_note.
+2164	//
+2165	// UNBOUND REVISIONS REFUSE RATHER THAN NAMING A PATH. RevisionNotInstalled has no sha, so there is
+2166	// no directory it could mean; the path folds emit a poison marker that is not a valid path, which
+2167	// fails the stage loudly instead of installing a release into a directory literally named after a
+2168	// diagnostic (DESIGN section 5: refuse, never widen).
+2169	data approval_broker_release_retention_note: String = "The broker's release locus grows one directory per deployed candidate and nothing prunes it. Each holds the .dag corpus, the v2 sources and a gunbc binary. This is ACCEPTED for the cutover and is not a background obligation to be discovered later: retention is a policy question (how many releases must stay rollback-able, and against what) that has no answer until the broker has a rollback story, which it does not have while it is being stood up dark. It is bounded in practice by the number of dark installs the cutover performs. DISSOLVES WHEN the broker has a declared rollback target: at that point the number of releases that must survive is derivable from it, and a prune step belongs beside the install step reading that number -- never a timer reconciling the directory against a guess."
+2170	
+2171	// EVERY UNIT THAT EXECS A gunbc BINARY FROM A RELEASE LOCUS SETS THE CHECKOUT ROOT AT SPAWN
+2172	// (gunbc.cli_run_workspace_root_scaffold gunbc_workspace_root_env_name): the seed refuses to run
+2173	// from a directory that is not a git checkout, and a locus is not one -- measured on srv1
+2174	// 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
+2175	// workspace_root before any stage ran. One row feeds both units.
+2176	// THE BROKER IS GIVEN ITS PUBLIC BASE URL, built from the holder token the spec carries
+2177	// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder), so the serving broker
+2178	// reads where it runs instead of resolving it. A spec holding no role never reaches a broker unit
+2179	// write (apply_approval_broker_unit_write_steps is empty for it); if one is rendered anyway the
+2180	// binding is a refusal marker the broker's address read rejects as a non-URL, never a guessed host.
+2181	data approval_broker_base_url_unbound_marker: String = "__GUNBC_DEPLOY_REFUSED__no-prod-role-holder"
+2182	
+2183	fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {
+2183	fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {

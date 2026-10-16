@@ -1,0 +1,153 @@
+### definitions ###
+dag/extdeps/tools/gnu_coreutils.dag:368:fn coreutils_install_directory_owned_arguments(
+dag/extdeps/tools/gnu_coreutils.dag:520:fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+dag/extdeps/sudo/elevation.dag:76:fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
+dag/extdeps/sudo/elevation.dag:89:fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocation {
+dag/extdeps/sudo/elevation.dag:99:fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+dag/extdeps/sudo/elevation.dag:105:fn sudo_elevate_command(command: List<String>) -> ArgvCommand {
+dag/extdeps/sudo/elevation.dag:114:fn sudo_elevate_argv(command: List<String>) -> List<String> {
+===== [dag/extdeps/tools/gnu_coreutils.dag:520] install_file_owned_command =====
+520	fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+521	  argv_command(program: install_program(), arguments: [
+522	    coreutils_install_mode_flag as String, mode as String,
+523	    coreutils_install_owner_flag as String, to_string(uid),
+524	    coreutils_install_group_flag as String, to_string(gid), source, destination,
+525	  ])
+526	}
+===== [dag/extdeps/tools/gnu_coreutils.dag:368] coreutils_install_directory_owned_arguments =====
+368	fn coreutils_install_directory_owned_arguments(
+369	  mode: FileMode,
+370	  owner: NonEmptyStr,
+371	  group: NonEmptyStr,
+372	  path: String,
+373	) -> List<String> {
+374	  [
+375	    coreutils_install_directory_flag as String,
+376	    coreutils_install_mode_flag as String,
+377	    coreutils_directory_mode_operand(mode: mode),
+378	    coreutils_install_owner_flag as String,
+379	    owner as String,
+380	    coreutils_install_group_flag as String,
+381	    group as String,
+382	    path,
+383	  ]
+384	}
+===== [dag/extdeps/sudo/elevation.dag:] fn =====
+1	module extdeps.sudo.elevation
+2	
+3	import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+4	
+5	import std.types { String, NonEmptyStr, List }
+6	import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+7	import std.decl_ref { DeclarationRef, WholeDeclaration }
+8	import extdeps.uri { Uri, Https }
+9	import std.algebra { list_append }
+10	import extdeps.exec.command { ArgvCommand, argv_command }
+11	
+12	data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+13	  uri: Uri {
+14	    scheme: Https
+15	    locator: "www.sudo.ws/docs/man/sudo.man/"
+16	  }
+17	}
+===== [dag/extdeps/sudo/elevation.dag:76] sudo_elevate(command =====
+76	fn sudo_elevate(command: List<String>) -> ElevatedInvocation {
+77	  ElevatedInvocation {
+78	    bin_path: sudo_program().invocation as String,
+79	    args: list_append(left: [sudo_non_interactive_flag as String], right: command),
+80	  }
+81	}
+===== [dag/extdeps/sudo/elevation.dag:] fn =====
+1	module extdeps.sudo.elevation
+2	
+3	import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+4	
+5	import std.types { String, NonEmptyStr, List }
+6	import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+7	import std.decl_ref { DeclarationRef, WholeDeclaration }
+8	import extdeps.uri { Uri, Https }
+9	import std.algebra { list_append }
+10	import extdeps.exec.command { ArgvCommand, argv_command }
+11	
+12	data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+13	  uri: Uri {
+14	    scheme: Https
+15	    locator: "www.sudo.ws/docs/man/sudo.man/"
+16	  }
+17	}
+===== [dag/extdeps/sudo/elevation.dag:89] sudo_elevate_as(user =====
+89	fn sudo_elevate_as(user: NonEmptyStr, command: List<String>) -> ElevatedInvocation {
+90	  ElevatedInvocation {
+91	    bin_path: sudo_program().invocation as String,
+92	    args: list_append(left: [sudo_non_interactive_flag as String, sudo_run_as_user_flag as String, user as String], right: command),
+93	  }
+94	}
+===== [dag/extdeps/sudo/elevation.dag:] fn =====
+1	module extdeps.sudo.elevation
+2	
+3	import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+4	
+5	import std.types { String, NonEmptyStr, List }
+6	import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+7	import std.decl_ref { DeclarationRef, WholeDeclaration }
+8	import extdeps.uri { Uri, Https }
+9	import std.algebra { list_append }
+10	import extdeps.exec.command { ArgvCommand, argv_command }
+11	
+12	data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+13	  uri: Uri {
+14	    scheme: Https
+15	    locator: "www.sudo.ws/docs/man/sudo.man/"
+16	  }
+17	}
+===== [dag/extdeps/sudo/elevation.dag:99] sudo_elevate_as_command(user =====
+99	fn sudo_elevate_as_command(user: NonEmptyStr, command: List<String>) -> ArgvCommand {
+100	  let elevated = sudo_elevate_as(user: user, command: command)
+101	  argv_command(program: sudo_program(), arguments: elevated.args)
+102	}
+===== [dag/extdeps/sudo/elevation.dag:] fn =====
+1	module extdeps.sudo.elevation
+2	
+3	import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+4	
+5	import std.types { String, NonEmptyStr, List }
+6	import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+7	import std.decl_ref { DeclarationRef, WholeDeclaration }
+8	import extdeps.uri { Uri, Https }
+9	import std.algebra { list_append }
+10	import extdeps.exec.command { ArgvCommand, argv_command }
+11	
+12	data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+13	  uri: Uri {
+14	    scheme: Https
+15	    locator: "www.sudo.ws/docs/man/sudo.man/"
+16	  }
+17	}
+===== [dag/extdeps/sudo/elevation.dag:105] sudo_elevate_command(command =====
+105	fn sudo_elevate_command(command: List<String>) -> ArgvCommand {
+106	  let elevated = sudo_elevate(command: command)
+107	  argv_command(program: sudo_program(), arguments: elevated.args)
+108	}
+===== [dag/extdeps/sudo/elevation.dag:] fn =====
+1	module extdeps.sudo.elevation
+2	
+3	import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+4	
+5	import std.types { String, NonEmptyStr, List }
+6	import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+7	import std.decl_ref { DeclarationRef, WholeDeclaration }
+8	import extdeps.uri { Uri, Https }
+9	import std.algebra { list_append }
+10	import extdeps.exec.command { ArgvCommand, argv_command }
+11	
+12	data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+13	  uri: Uri {
+14	    scheme: Https
+15	    locator: "www.sudo.ws/docs/man/sudo.man/"
+16	  }
+17	}
+===== [dag/extdeps/sudo/elevation.dag:114] sudo_elevate_argv(command =====
+114	fn sudo_elevate_argv(command: List<String>) -> List<String> {
+115	  let elevated = sudo_elevate(command: command)
+116	  list_append(left: [elevated.bin_path], right: elevated.args)
+117	}

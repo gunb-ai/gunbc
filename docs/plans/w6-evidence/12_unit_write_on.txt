@@ -1,0 +1,26 @@
+2954	fn approval_broker_unit_write_steps_on(
+2955	  spec: DeploymentSpec,
+2956	  revision: ReleaseRevisionBinding,
+2957	  port: Port,
+2958	) -> List<PipelineStep> {
+2959	  [
+2960	    deploy_raw(command: deploy_stage_write_command(
+2961	      stage_name: gunbc_approval_broker_slice_unit_name as String,
+2962	      content: render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol),
+2963	    )),
+2964	    deploy_raw(command: deploy_stage_install_command(
+2965	      stage_name: gunbc_approval_broker_slice_unit_name as String,
+2966	      mode: install_file_shared_mode,
+2967	      dest: gunbc_approval_broker_slice_unit_path() as String,
+2968	    )),
+2969	    deploy_raw(command: deploy_stage_write_command(
+2970	      stage_name: gunbc_approval_broker_unit_name as String,
+2971	      content: render(doc: emit_approval_broker_unit_doc_on(spec: spec, revision: revision, port: port), proto: live_deploy_protocol),
+2972	    )),
+2973	    deploy_raw(command: deploy_stage_install_command(
+2974	      stage_name: gunbc_approval_broker_unit_name as String,
+2975	      mode: install_file_shared_mode,
+2976	      dest: gunbc_approval_broker_unit_path() as String,
+2977	    )),
+2978	  ]
+2979	}

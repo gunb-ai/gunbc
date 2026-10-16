@@ -1,0 +1,123 @@
+########## 12989 success arm (the fold, from CompilePoolInstallReady) ##########
+@5692
+    CompilePoolInstallReady { stage_write: write, install: install, daemon_reload: reload, start: start, discard_stage: discard } => {
+      let written = run_argv_stdin_over_host_effect_transport(
+        command: write,
+        stdin_payload: serialize_systemd_unit_file(file: slice_unit_file),
+        transport: transport,
+      )
+      if !run_argv_transport_succeeded(outcome: written) {
+        let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+        compile_pool_install_failed_step_result(
+          failed_step: "stage write",
+          slice_unit: slice_unit,
+          observed: written,
+          discarded: discarded,
+          effect_intent: effect_intent,
+        )
+      } else {
+        let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
+        if !run_argv_transport_succeeded(outcome: installed) {
+          let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+          compile_pool_install_failed_step_result(
+            failed_step: "install",
+            slice_unit: slice_unit,
+            observed: installed,
+            discarded: discarded,
+            effect_intent: effect_intent,
+          )
+        } else {
+          let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
+          if !run_argv_transport_succeeded(outcome: reloaded) {
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            compile_pool_install_failed_step_result(
+              failed_step: "daemon-reload",
+              slice_unit: slice_unit,
+              observed: reloaded,
+              discarded: discarded,
+              effect_intent: effect_intent,
+            )
+          } else {
+            let started = run_argv_over_host_effect_transport(command: start, transport: transport)
+            let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
+            match started {
+              RunArgvTransportRefused { reason: _ } =>
+                compile_pool_install_failed_step_result(
+                  failed_step: "start",
+                  slice_unit: slice_unit,
+                  observed: started,
+                  discarded: discarded,
+                  effect_intent: effect_intent,
+                )
+              RunArgvTransportObserved { observed: s } =>
+                if !s.success {
+                  compile_pool_install_failed_step_result(
+                    failed_step: "start",
+                    slice_unit: slice_unit,
+                    observed: started,
+                    discarded: discarded,
+                    effect_intent: effect_intent,
+                  )
+                } else {
+                  let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+                  if compile_pool_ensure_is_converged(admission: after) {
+                    Converged {
+                      evidence: ShellEffectApplied {
+                        exit_code: s.exit_code,
+                        stdout: join(
+                          [
+                            "CompilePoolSliceReceipt: converged unit=",
+                            slice_unit as String,
+                            " memory.max=memory.high=",
+                            to_string(byte_size_count(b: sized)),
+                            " (re-observed after install; the admission answered already-converged)",
+                          ],
+                          "",
+                        ),
+                        stderr: s.stderr,
+                      },
+                      applied: effect_intent,
+                    }
+                  } else {
+                    NotConverged {
+                      reason: join(
+                        [
+                          "host_effect_apply: EnsureCompilePoolSlice installed ",
+                          slice_unit as String,
+                          " and the read-back did not converge -- ",
+                          compile_pool_admission_diagnostic(admission: after),
+                        ],
+                        "",
+                      ),
+                      applied: effect_intent,
+                    }
+                  }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE STEP-LEVEL FAILURE LINE, one per op so a failed fold names the op that failed rather than
+// leaving five exit codes to disambiguate. The old text said "the shell exited"; there is no shell
+// on this edge anymore, so the line says the OPERATION exited and which one.
+fn compile_pool_install_stage_failure(step: String, slice_unit: NonEmptyStr, observed: ShellExecObserved) -> String {
+  join(
+    [
+      "host_effect_apply: EnsureCompilePoolSlice ran its ",
+      step,
+      " over ",
+      slice_unit as String,
+      " and the operation exited ",
+      to_string(observed.exit_code),
+      ": ",
+      if observed.stderr == "" { observed.stdout } else { observed.stderr },
+    ],
+    "",
+  )
+}
+
+// THE STEP-LEVEL FAILURE LINE, one per op so a failed fold names the op that failed rather than

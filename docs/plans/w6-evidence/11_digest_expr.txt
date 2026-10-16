@@ -1,0 +1,21 @@
+2226-// Returning the pipeline and substituting at the use site also puts the quoting where a reader can
+2227-// see it: one "$( ... )" at the caller rather than parentheses buried in a join.
+2228:fn approval_broker_tree_digest_expr(root: String) -> String {
+2229-  join([
+2230-    "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
+2231-    " -type f -print0 | ", sort_program().invocation as String, " -z | ",
+2232-    xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
+2233-    sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
+2234-  ], "")
+2235-}
+2236-
+2237-fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+2238-  release_locus_install_steps(
+2239-    owner: spec.service.service_user,
+2240-    base_root: spec.approval_broker.repo_root as String,
+2241-    revision: revision,
+2242-  )
+2243-}
+2244-
+2245-// EVERY RELEASE LOCUS IS POPULATED BY THE PRIVILEGED PER-FILE MOVER, BECAUSE THE PRINCIPAL THAT
+2246-// RUNS THE COPY IS NEVER THE PRINCIPAL THAT OWNS THE LOCUS. The deploy job runs as the ci-runner

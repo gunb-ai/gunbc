@@ -1,0 +1,13 @@
+2883	fn approval_broker_helper_grant_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+2884	  match approval_broker_helper_grant_admission(revision: revision) {
+2885	    HelperGrantAdmitted => concat(
+2886	      approval_broker_helper_snapshot_steps(revision: revision),
+2887	      concat(
+2888	        approval_broker_helper_grant_admitted_steps(principal: principal, revision: revision),
+2889	        [deploy_raw(command: approval_broker_helper_snapshot_retire_command(revision: revision))],
+2890	      ),
+2891	    )
+2892	    HelperGrantWordRefused { word: w } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantWordRefused { word: w })))]
+2893	    HelperGrantLocusWritableByGrantee { owner: o } => [deploy_raw(command: concat(approval_broker_helper_grant_refused_poison, approval_broker_helper_grant_refusal_text(a: HelperGrantLocusWritableByGrantee { owner: o })))]
+2894	  }
+2895	}

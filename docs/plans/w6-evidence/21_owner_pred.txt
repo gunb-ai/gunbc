@@ -1,0 +1,41 @@
+445	      if holder.instance.deployment == instance.deployment { HoldsProdRoleSingletons { holder: holder } } else { HoldsNoRoleSingleton }
+446	    ProdRoleRealizationRefused { cause: _ } => HoldsNoRoleSingleton
+447	  }
+448	}
+449	
+450	// A SPEC THAT DOES NOT HOLD THE ROLE EMITS NO BROKER STEP. This is the predicate the emitter
+451	// consults; the steps are CONSTRUCTED from it -- a non-holding apply produces an empty list, so there
+452	// is nothing to skip and nothing to get wrong.
+453	fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
+454	  match spec.role_singletons {
+455	    HoldsProdRoleSingletons { holder: _ } => true
+456	    HoldsNoRoleSingleton => false
+457	  }
+458	}
+459	
+460	fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
+461	  join(["/etc/systemd/system/", gunbc_approval_broker_unit_name as String], "") as NonEmptyStr
+462	}
+463	
+464	fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
+465	  join(["/etc/systemd/system/", gunbc_approval_broker_slice_unit_name as String], "") as NonEmptyStr
+466	}
+467	
+468	// THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process
+469	// needs -- a unit name, a binary, an entry, a function, a root to run in, a principal, an address
+470	// and a pair of evaluation caps -- does not differ by which routes it serves, and minting a second
+471	// record for the second server would be one concept in two shapes (DESIGN section 2, horizontal).
+472	// What differs is the VALUES, and every one of them that differs is a value this function supplies.
+473	//
+474	// IT REUSES THE INSTANCE'S ROOTS DELIBERATELY. The broker runs the same admitted binary out of the
+475	// same published tree as the roadmap server on that host; sharing the tree is not co-tenancy,
+476	// because a tree is read and a heap is not. What it does NOT share is the cgroup, the process, the
+477	// restart lifecycle or the port -- which is the entire content of the split.
+478	//
+479	// ONE PORT, FOR THE PROCESS'S WHOLE LIFE (side-chat HOLD item 1). An earlier cut derived this from
+480	// the cutover's routing row so the broker sat on a second "dark" port until the front door moved;
+481	// that made the repoint stage name a port nothing was bound to, and it never delivered the property
+482	// it was reaching for, because a loopback client reaches a process whatever the front door says.
+483	// What actually keeps a second writer off the store is gunbc.auth.approval_writer_authority,
+484	// consulted by both serving processes before any store effect, and this address stays put so that
+485	// every stage's release readback, MainPID and measured demand describe the same process.

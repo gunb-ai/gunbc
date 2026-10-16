@@ -1,0 +1,174 @@
+######## release_locus_tree_copy_steps ########
+### release_locus_tree_copy_steps (@2648)
+2648: fn release_locus_tree_copy_steps(owner: NonEmptyStr, root: String) -> List<PipelineStep> {
+2649:   flat_map(approval_broker_tree_subdirs, sub => [
+2650:     deploy_raw(command: privileged_tree_directories_install_command(src_sub: sub, root: root, owner: owner)),
+2651:     deploy_raw(command: privileged_tree_files_install_command(src_sub: sub, root: root, owner: owner)),
+2652:   ])
+2653: }
+2654: 
+2655: // 🟡 dissolve-on: the two commands below assemble a find | xargs pipeline as a string, the same
+2656: // medium-as-string shape approval_broker_tree_digest_expr names, and dissolve with it.
+2657: fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+
+######## privileged_tree_directories_install_command ########
+### privileged_tree_directories_install_command (@2657)
+2657: fn privileged_tree_directories_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+2658:   join([
+2659:     "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type d -print0) | ",
+2660:     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: concat(
+2661:       [install_program().invocation as String],
+2662:       coreutils_install_directory_owned_arguments(mode: install_d_shared_mode, owner: owner, group: owner, path: join([root, "/{}"], "")),
+2663:     )), " "),
+2664:   ], "")
+2665: }
+2666: 
+2667: fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+
+######## privileged_tree_files_install_command ########
+### privileged_tree_files_install_command (@2667)
+2667: fn privileged_tree_files_install_command(src_sub: String, root: String, owner: NonEmptyStr) -> String {
+2668:   join([
+2669:     "(cd \"$PWD\" && ", find_program().invocation as String, " ", src_sub, " -type f -print0 | ", sort_program().invocation as String, " -z) | ",
+2670:     xargs_program as String, " -0 -I{} ", join(sudo_elevate_argv(command: [
+2671:       install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String,
+2672:     ]), " "), " \"$PWD\"/{} ", root, "/{}",
+2673:   ], "")
+2674: }
+2675: 
+2676: // THE BINARY IS INSTALLED BEFORE THE RECEIPT AND AFTER THE SOURCES, and the order is the only thing
+2677: // that makes a partially-installed locus distinguishable from a complete one. The receipt is the
+2678: // last write, so a locus carrying a receipt carries everything the receipt describes; a locus
+2679: // without one was interrupted. install with an executable mode rather than cp because the mode is
+2680: // part of what is being installed -- a binary copied without it starts nothing and the failure surfaces as a unit
+2681: // that will not exec, several steps from the copy that caused it.
+2682: //
+2683: // THE PROGRAM NAME IS CONSUMED, AND THIS FORK ARRIVED BY MERGE RATHER THAN BY AUTHORING. main
+2684: // minted extdeps.tools.gnu_coreutils install_program while this branch spelled "install" as a bare
+2685: // literal in two commands; neither side was wrong when written, and the moment they composed there
+2686: // were two spellings of one concept with only one of them reachable from the module that owns it.
+2687: // That is the same defect review 68927 raised against find/sort/xargs/cut here, arriving through a
+2688: // merge -- so it is repaired in the merge that creates it rather than left for the next reader to
+2689: // find, which is the whole reason a merge is a place to look for defects and not only a place to
+2690: // reconcile text.
+2691: //
+2692: // THE DIGEST COVERS THE SOURCES, NOT THE BINARY, and that is honest rather than an oversight: the
+2693: // binary's identity is established upstream by claim_executor --verify-build-artifacts in the same
+2694: // job, against the pack this deploy unpacked. Re-hashing it here would add a second authority for a
+2695: // fact already verified, while the sources -- which nothing else in the job checks -- are exactly
+2696: // what the receipt exists to pin.
+2697: //
+2698: // THE PRIVILEGED BINARY SOURCE IS RELATIVE TO THE JOB'S WORKING DIRECTORY, not "$PWD": the argv
+2699: // renderer single-quotes every word, so a variable there is a literal (run 35657588530: install
+2700: // cannot stat '"$PWD"/target/release/gunbc').
+2701: fn release_locus_binary_install_step(owner: NonEmptyStr, root: String) -> PipelineStep {
+
+######## release_locus_binary_install_step ########
+### release_locus_binary_install_step (@2701)
+2701: fn release_locus_binary_install_step(owner: NonEmptyStr, root: String) -> PipelineStep {
+2702:   deploy_raw(command: install_file_owned_command(
+2703:     mode: install_executable_shared_mode,
+2704:     owner: owner,
+2705:     group: owner,
+2706:     source: join(["target/release/", gunbc_release_bin_name], ""),
+2707:     dest: join([root, "/", gunbc_release_bin_name], ""),
+2708:   ))
+2709: }
+2710: 
+2711: // THE RELEASE LOCUS INSTALL, PARAMETERIZED BY OWNER AND BY ROOT AND BY NOTHING ELSE. The approval
+2712: // broker's per-candidate locus (releases/<sha>/ holding binary + sources + digest receipt, ExecStart
+2713: // pinned to it, requested-equals-installed decidable) and the microVM slot controller's are ONE
+2714: // concept -- the same download -> verify -> copy pair feeds both from the same verified artifact in
+2715: // the same job -- so the second consumer reuses these steps rather than mirroring them (parent
+2716: // ruling on the microVM lane, 2026-09-21: a second locus with the same shape is the section 3
+2717: // fork; 'the controller is root' is a difference in OWNER and CONSUMER, not in the locus). What
+2718: // differs is exactly the two parameters: who owns the directories, and which root they hang under.
+2719: // approval_broker_release_retention_note applies to every root this installs under; the microVM
+2720: // controller inherits that named obligation rather than re-declaring it.
+2721: fn release_locus_install_steps(owner: NonEmptyStr, base_root: String, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+
+######## locus_tree_receipt_step_at ########
+### locus_tree_receipt_step_at (@2790)
+2790: fn locus_tree_receipt_step_at(owner: NonEmptyStr, dir: String, revision: ReleaseRevisionBinding) -> PipelineStep {
+2791:   deploy_raw(command: join([
+2792:     printf_program().invocation as String, " 'candidate_revision=", release_revision_execstart_text(binding: revision),
+2793:     "\\ninstalled_digest=%s\\n' ",
+2794:     "\"$(", approval_broker_tree_digest_expr(root: dir), ")\"",
+2795:     " | ", join(sudo_elevate_argv(command: [install_program().invocation as String, "-m", "0644", "-o", owner as String, "-g", owner as String, "/dev/stdin",
+2796:       join([dir, "/", release_locus_tree_receipt_name], "")]), " "),
+2797:   ], ""))
+2798: }
+2799: 
+2800: // ── THE microVM SLOT CONTROLLER'S RELEASE LOCUS AND UNIT ──────────────────────────────────────
+2801: //
+2802: // THE SAME LOCUS, OWNED BY root, PLUS THE VMM AND THE JAILER. gunbc.runner.runner_microvm_slot_unit owns
+2803: // the root, the owner and the unit's shape; this module owns the install because the locus is the
+2804: // live_deploy one. The two binaries the controller execs beside gunbc -- Firecracker and its jailer
+2805: // -- are installed INTO the locus from the upstream release tarball, digest-verified against
+2806: // extdeps.virtualization.firecracker's cited sha256 before extraction, as root-owned 0755 files.
+2807: // They were previously installed under the job user's HOME by gunbc.runner.runner_microvm_host_ready
+2808: // (firecracker only; the jailer was never copied out of the archive), which is a job-user-writable
+2809: // binary that a root controller would exec -- the same class the slot-network frontier names for
+2810: // staged sources -- so the controller reads them from here and from nowhere else.
+2811: //
+2812: // THE RECEIPT NAMES BOTH DIGESTS beside the tree digest, so requested-equals-installed is decidable
+2813: // for the VMM as it is for the sources: a locus whose firecracker hashes differently from the
+2814: // cited release is not the release, whatever `--version` prints.
+2815: fn microvm_controller_release_dir(revision: ReleaseRevisionBinding) -> String {
+
+######## approval_broker_tree_digest_expr ########
+### approval_broker_tree_digest_expr (@2592)
+2592: fn approval_broker_tree_digest_expr(root: String) -> String {
+2593:   join([
+2594:     "cd ", root, " && ", find_program().invocation as String, " ", join(approval_broker_tree_subdirs, " "),
+2595:     " -type f -print0 | ", sort_program().invocation as String, " -z | ",
+2596:     xargs_program as String, " -0 ", sha256sum_program().invocation as String, " | ",
+2597:     sha256sum_program().invocation as String, " | ", cut_program as String, " -d' ' -f1",
+2598:   ], "")
+2599: }
+2600: 
+2601: fn approval_broker_tree_copy_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+
+######## install_directory_command ########
+### install_directory_command (@)
+
+######## install_d_owned_for_user ########
+### install_d_owned_for_user (@1814)
+1814: fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
+1815:   install_directory_owned_command(
+1816:     mode: install_d_shared_mode,
+1817:     owner: user,
+1818:     group: user,
+1819:     path: path,
+1820:   )
+1821: }
+1822: 
+1823: // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
+1824: // irreducible part. The principal itself is not stated here: gunbc.fleet.fleet_posix_accounts owns it —
+1825: // FleetAccountCiRunner is the deploy principal (unit_user=root is NOT the authorization principal)
+1826: // and fleet_posix_ci_runner_sudo_grants() enumerates its NOPASSWD roster. Reading it from there is
+1827: // the point of this paragraph; an earlier revision spelled the roster and its size inline and went
+1828: // stale twice.
+1829: //
+1830: // AN EARLIER NOTE HERE CLAIMED ROOT, on the strength of a hand ssh verification (parent lane,
+1831: // 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed
+1832: // 2026-07-02). That is a §3 fork of the principal fact, and reality sided with the authority: the
+1833: // first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES and chgrp EPERM into
+1834: // the service-user-owned tree. So the corrected realization stays INSIDE the granted set, and each
+1835: // arm is shaped by which grant it has rather than by what would be convenient: directories and the
+1836: // binary install with -o/-g service-user through the granted install, which puts ownership at
+1837: // CREATION and dissolves the root-writes-then-chown two-step — the wrongly-owned intermediate state
+1838: // is unwritable rather than merely repaired; the tree sync runs AS the service user through a
+1839: // oneshot unit, because the owner writing its own tree is what install+systemctl compose into when
+1840: // no `sudo -u` form is granted; teardown rm goes through the granted rm.
+1841: //
+1842: // RESIDUE, NAMED: emit-construction refusal of bare rsync/chown outside the granted set is not
+1843: // built here and rides the effect-namespace-grants lane. And the former
+1844: // install_d_shared_setup_latent_coupling marker fired as designed — /opt/gunbc now has MULTIPLE
+1845: // owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply
+1846: // order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer.
+1847: fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+
+######## install_file_owned_command ########
+### install_file_owned_command (@)
+

@@ -1,0 +1,9 @@
+2337	fn release_locus_binary_install_step(owner: NonEmptyStr, root: String) -> PipelineStep {
+2338	  deploy_raw(command: install_file_owned_command(
+2339	    mode: install_executable_shared_mode,
+2340	    owner: owner,
+2341	    group: owner,
+2342	    source: join(["target/release/", gunbc_release_bin_name], ""),
+2343	    dest: join([root, "/", gunbc_release_bin_name], ""),
+2344	  ))
+2345	}

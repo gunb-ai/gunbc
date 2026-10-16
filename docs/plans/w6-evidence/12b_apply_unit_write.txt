@@ -1,0 +1,16 @@
+2083	fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding, principal: GroundedPosixPrincipal) -> List<PipelineStep> {
+2084	  if deployment_owns_the_host_approval_broker(spec: spec) {
+2085	    concat(
+2086	      approval_broker_dark_install_release_steps(principal: principal, spec: spec, revision: revision),
+2087	      approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port),
+2088	    )
+2089	  } else {
+2090	    []
+2091	  }
+2092	}
+2093	
+2094	// THE LIFECYCLE STEPS FOLLOW THE SAME OWNERSHIP, and they are separate because a restart is the
+2095	// half that actually killed the other instance's process: writing an identical unit is idempotent,
+2096	// restarting one is not. Both are empty for a non-owner.
+2097	fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+2097	fn approval_broker_lifecycle_steps(spec: DeploymentSpec) -> List<PipelineStep> {

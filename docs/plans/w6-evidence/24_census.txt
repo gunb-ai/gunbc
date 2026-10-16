@@ -1,0 +1,23 @@
+741-  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_run",decl_name:"observe"),effect:recurring_credential_read(subject:"Read an existing printer credential version; no print effect"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+742-  PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_report",decl_name:"run"),effect:recurring_credential_read(subject:"Read pinned printer credential and request printer telemetry; no print start"),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
+743-
+744-  PrivilegedEffectSite {
+745:    site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
+746-    effect: PrivilegedEffect {
+747-      subject: "on every broker release, install one exact NOPASSWD grant letting the operator's account run that release's root-owned ntfy runtime-observe helper as gunbc-ntfy, replacing the previous release's grant" as NonEmptyStr,
+748-      frequency: EveryProvision,
+749-      reversibility: ReversibleByReapply,
+750-      surface: ApiSurface,
+751-      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched dark-install run's host principal (gunbc.ci.ci_deploy_access ci_deploy_srv1_local_access)" as NonEmptyStr },
+752-      minted_reach: MintsResourceScopedCredential,
+753-      billing: NoBillingConsequence,
+754-      witness_discharge: NoWitnessDischarge,
+755-    },
+756-    realized: RealizedFederatedGrant,
+757-    divergence_reason: none,
+758-  },
+759-  PrivilegedEffectSite {
+760-    site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
+761-    effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),
+762-    realized: RealizedFederatedGrant,
+763-    divergence_reason: none,

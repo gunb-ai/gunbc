@@ -1,0 +1,35 @@
+456:fn deploy_stage_directory_let_step() -> PipelineStep {
+457-  Let {
+458-    name: deploy_stage_dir_var,
+459-    value: ExprCmdSubst { callee: "mktemp", args: ["-d"] },
+460-  }
+461-}
+462-
+463-// The end-of-fold receipt line, named once for both folds. Its fields are argv elements rather
+464-// than a sentence assembled by concat, so a host identity carrying a space cannot split
+465-// `host=` from its value and turn one field into two.
+466-fn deploy_receipt_command(host: NonEmptyStr, fold: String) -> String {
+467-  shell_command_text_of_argv(argv: [
+468-    "echo",
+469-    "live-deploy-receipt",
+470-    concat("host=", host as String),
+336-// per-claim ceiling refuses. Naming it makes the apply's own shell contract readable at its
+337-// producer, and keeps the two folds from drifting apart on the option set they set.
+338:data deploy_shell_strict_options_command: String = "set -euo pipefail"
+339-
+340-fn deploy_raw(command: String) -> PipelineStep {
+341-  Do {
+342-    run: Run {
+--
+2216-// "(cd ... | cut -d' ' -f1)" -- a BARE parenthesised group with no `$` -- and spliced it into
+2217-// printf's argument position, where `(` is a bash SYNTAX ERROR. With
+2218:// deploy_shell_strict_options_command at the head of the same script, that aborts the entire dark
+2219-// install before any step runs: not a wrong digest, no install at all (review 69066).
+2220-//
+2221-// It shipped because nothing ever rendered it. The only witness over this script asked
+2222-// string_contains for "rsync -a --delete" and the receipt path -- a SHAPE check over bytes nobody
+--
+2568-    steps: concat(
+2569-      concat(
+2570:        [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
+2571-        concat(

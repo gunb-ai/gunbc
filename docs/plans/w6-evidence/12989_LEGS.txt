@@ -1,0 +1,98 @@
+########## compile_pool_slice_install_staging — the leg construction ##########
+@5602
+fn compile_pool_slice_install_staging(slice_unit: NonEmptyStr) -> CompilePoolInstallStaging {
+  if string_contains(s: slice_unit as String, pattern: "/") {
+    CompilePoolInstallRefused {
+      reason: "the slice unit name carries '/', which would place the unit outside /etc/systemd/system/; systemd unit names never contain one (systemd.unit(5)), so this is a malformed name rather than a path",
+    }
+  } else {
+    let dest = compile_pool_slice_system_path(slice_unit: slice_unit)
+    let staged = concat(dest, compile_pool_slice_stage_suffix)
+    CompilePoolInstallReady {
+      stage_write: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
+      install: sudo_elevate_command(command: coreutils_install_file_argv(mode: compile_pool_slice_file_mode, source: staged, dest: dest)),
+      daemon_reload: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
+      start: systemctl_start_command(unit: slice_unit),
+      discard_stage: sudo_elevate_command(command: argv_words(command: rm_force_command(path: staged))),
+    }
+  }
+}
+
+fn compile_pool_ensure_admission_for(
+  node: ComputeHost,
+  transport: HostEffectTransport,
+) -> EnsureCompilePoolAdmission {
+  let placement = gunbc_compile_pool_placement
+  let instance = ci_cache_instance(host: node.identity)
+  let survey = survey_build_cache_endpoint(
+    instance: instance,
+    reads: build_cache_endpoint_reads(instance: instance, transport: transport),
+  )
+  admit_ensure_compile_pool_slice(
+    topology: placement,
+    sizing: compile_pool_sizing_for_host(node: node, placement: placement),
+    cache_placement: survey.placement,
+    observed: observe_compile_pool_slice(
+      transport: transport,
+      slice_unit: compile_pool_observation_subject(placement: placement),
+    ),
+  )
+}
+
+// The size is DERIVED here from the target host's own facts rather than travelling on the effect, through the
+// same compile_pool_bytes_for gunbc.ci.ci_runner_placement uses to shrink the runner pool. The two must agree or
+// the host stops conserving, and they agree because there is one derivation, not because two call sites were
+// kept in step.
+fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
+  match compute_host_primary_cpu(host: node) {
+    Absent =>
+      CompilePoolUnresolved {
+        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
+      }
+    Present { value: cpu } =>
+      compile_pool_bytes_for(
+        placement: placement,
+        nproc: cpu_facts_threads(cpu: cpu),
+        host: compute_host_ram_bytes_total(host: node),
+        citation: jobserver_config,
+      )
+  }
+}
+
+// The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
+// FRESH observation of the host rather than from the state we just wrote. A read-back that reused the
+// preflight observation would green on evidence it produced -- the exact defect
+// provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
+// the post-state can differ. Convergence is claimed only when the second admission answers
+// EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+// The write arm is the one arm whose failure can leave PARTIAL state behind: dd receiving unit bytes
+// on stdin can write some bytes and still exit nonzero, and the staged sibling then survives until
+// some later install moves it. So the write-failure arm is not an exception to the discard pair the
+// other failure arms run -- cleanup is attempted before reporting, and the discard's own exit status
+// rides in the reason, so a failed discard is visible rather than silent.
+fn compile_pool_slice_install_step(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  slice_unit_file: SystemdUnitFile,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match compile_pool_slice_install_staging(slice_unit: slice_unit) {
+    CompilePoolInstallRefused { reason: r } =>
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: EnsureCompilePoolSlice refused at staging before any operation ran -- ",
+            r as String,
+          ],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    CompilePoolInstallReady { stage_write: write, install: install, daemon_reload: reload, start: start, discard_stage: discard } => {
+      let written = run_argv_stdin_over_host_effect_transport(
+        command: write,
+        stdin_payload: serialize_systemd_unit_file(file: slice_unit_file),
+        transport: transport,
+      )
