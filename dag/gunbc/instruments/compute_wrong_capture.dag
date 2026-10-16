@@ -240,7 +240,6 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
             }
           }
             }
-            }
         }
       }
   }
