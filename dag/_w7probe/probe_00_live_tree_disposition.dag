@@ -1,0 +1,25 @@
+module probe.live_tree_disposition
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS FOR THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT
+// (gunbc.host.verified_binary_install) AND ITS SCCACHE ADAPTER
+// (gunbc.host.sccache_verified_install).
+//
+// WHY A FILE OF ITS OWN RATHER THAN MORE CLAIMS IN THE TWO WITNESSES THAT ALREADY TOUCH sccache:
+// those two prove their own narrow thing -- the elevation witness proves the non-interactive sudo
+// refusal survived the migration, and test.claim.runner.runner_host_deploy_witness proves the pinned
+// url and digest are named. Neither proves the two claims this migration rests on: that the effect is
+// GENERIC (sccache's values arrive as PARAMETERS, so a second product can bind its own), and that a
+// digest mismatch REFUSES rather than installing something anyway. A "generic" effect with one
+// consumer and no second set of boundary values is a sccache-shaped string wearing a parameter list.
+//
+// THE BOUNDARY VALUES ARE SUPPLIED, NOT ASSUMED (DESIGN 3's witness rule). Every claim that needs a
+// url, a digest, a member path or a destination reads them off the cited row (`sccache_release_0_15_0`,
+// `sccache_installed_binary_path`) instead of re-typing a literal. A witness that hard-coded the
+// digest it checks would keep passing after someone rotated the release and forgot the adapter --
+// which is the exact failure mode this migration exists to remove.
+
+// THE LINE THE GATE WOULD READ for a file whose bytes hash to `hex`: digest, TWO spaces, path. One
+// space would parse as a different field and the gate would refuse for the wrong reason, which is the
+// bug the two-space contract exists to prevent.

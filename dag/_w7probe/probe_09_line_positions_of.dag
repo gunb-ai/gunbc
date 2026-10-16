@@ -1,0 +1,21 @@
+module probe.line_positions_of
+
+fn line_positions_of(script: String) -> RenderedLinePositions {
+  fold(
+    split(s: script, delimiter: "\n"),
+    init: RenderedLinePositions { index: 0, verify_line_seen: false, verify_before_move: false, set_e_is_first: false },
+    f: (acc, line) => RenderedLinePositions {
+      index: acc.index + 1,
+      verify_line_seen: acc.verify_line_seen || string_contains(s: line, pattern: "sha256sum -c -"),
+      verify_before_move:
+        acc.verify_before_move
+          || (acc.verify_line_seen && string_contains(s: line, pattern: sccache_installed_binary_path)),
+      set_e_is_first: acc.set_e_is_first || (acc.index == 0 && line == "set -e"),
+    },
+  )
+}
+
+// THE SHELL REALIZATION IS THE TYPED ONE, LINE FOR LINE. The shell form is a transport, not a second
+// implementation: `set -e` first, the digest check before the first move, and the two-space contract
+// present in the verify line. The ORDER is the property -- a script that checked the digest after
+// installing would pass every other claim in this file and still install an unverified binary.

@@ -1,0 +1,16 @@
+module probe.the_privilege_parameter_puts_the_cited_sudo_in_front
+
+test fn the_privilege_parameter_puts_the_cited_sudo_in_front() -> Bool {
+  let script = sccache_verified_install_script(
+    rel: sccache_release_0_15_0,
+    arch: "aarch64",
+    digest: sccache_release_0_15_0.digest_aarch64,
+  )
+  let params = sccache_params()
+  string_contains(s: script, pattern: join(["'/usr/bin/sudo' '-n' 'mv' '", params.staged_binary_path, "' '", params.dest_path, "'"], ""))
+    && string_contains(s: script, pattern: join(["'/usr/bin/sudo' '-n' 'chmod' '+x' '", params.dest_path, "'"], ""))
+}
+
+// THE CLEANUP IS PART OF THE EFFECT, NOT A COURTESY. An install that leaves a world-readable copy of
+// its own archive and its own extracted member in /tmp has left a second, unverified copy of the
+// binary reachable -- the thing the digest check was for. Both staging paths are removed by the plan.

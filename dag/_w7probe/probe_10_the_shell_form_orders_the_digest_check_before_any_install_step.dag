@@ -1,0 +1,20 @@
+module probe.the_shell_form_orders_the_digest_check_before_any_install_step
+
+test fn the_shell_form_orders_the_digest_check_before_any_install_step() -> Bool {
+  let script = sccache_verified_install_script(
+    rel: sccache_release_0_15_0,
+    arch: "aarch64",
+    digest: sccache_release_0_15_0.digest_aarch64,
+  )
+  let positions = line_positions_of(script: script)
+  positions.verify_line_seen && positions.verify_before_move && positions.set_e_is_first
+    && string_contains(s: script, pattern: sccache_release_0_15_0.digest_aarch64.hex as String)
+    && string_contains(s: script, pattern: "'  /tmp/sccache.tar.gz' | sha256sum -c -")
+}
+
+// THE PRESENCE PRECONDITION SURVIVED AS AN OBSERVATION, not as a shell guard. The site this effect was
+// lifted out of guarded its install with `if [ ! -x <dest> ]`; the gate is now a typed observation over
+// the cited `test -x` op, so it cannot be dropped when the transport changes. Both arms keep the old
+// refusal: an executable destination means no install, anything else -- including a non-executable file
+// sitting at that path -- means install. The if-absent render still carries the guard line, because a
+// consumer whose transport is a host shell needs it and it must be the same words the observation uses.

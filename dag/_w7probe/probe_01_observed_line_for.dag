@@ -1,0 +1,6 @@
+module probe.observed_line_for
+
+fn observed_line_for(hex: NonEmptyStr, path: String) -> String {
+  join([hex as String, "  ", path], "")
+}
+
