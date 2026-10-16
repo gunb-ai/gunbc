@@ -37,7 +37,7 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, Bmc
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_refused_prefix, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_refused_prefix, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged, FanObservePolicy,
   fan_observe_admission, fan_observe_authority, fan_observe_refusal_text, fan_write_boot_phase_observation,
@@ -332,7 +332,7 @@ test fn a_modeled_refusal_makes_the_boot_ineligible_by_execution() -> Bool {
   refused.exit_code != 0
     && string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))
     && !string_contains(s: refused.output, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
-    && string_contains(s: fleet_converge_mtcollins1_boot_step_if_observed, pattern: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))
+    && string_contains(s: fleet_converge_mtcollins1_boot_step_if_observed, pattern: join(["steps.fan_policy_phase.outputs.", mtcollins1_fan_boot_phase_outcome_output, " == '", mtcollins1_fan_boot_phase_outcome_observed, "'"], ""))
 }
 
 // POSITIVE CONTROL: an observed reading (a receipt not opening with the refusal prefix) exits 0 and
