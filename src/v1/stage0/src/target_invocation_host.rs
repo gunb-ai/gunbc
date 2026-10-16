@@ -472,6 +472,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("brand-mark-assets"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
