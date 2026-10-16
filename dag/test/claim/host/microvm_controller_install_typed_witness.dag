@@ -186,6 +186,9 @@ test fn microvm_w5_vmm_receipt_observes_both_binaries() -> Bool {
 // `echo '<hex>  <path>' | sha256sum -c -`, where the expected value WAS a word;
 // here it is a plan field, so a step can never claim a digest by spelling one.
 test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
+  // "digest" is matched on the STEP NAME only -- deliberately not on the
+  // command text, because an installed image path embeds the demo image's
+  // identity, which is itself a 64-hex value that belongs in the words.
   let checks = microvm_w5_named("digest")
   list_length(items: checks) >= 3
     && all(checks, s => !any(microvm_controller_step_words(step: s), w =>
