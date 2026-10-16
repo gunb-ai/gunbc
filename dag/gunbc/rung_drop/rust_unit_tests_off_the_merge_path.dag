@@ -3,11 +3,6 @@ module gunbc.rung_drop.rust_unit_tests_off_the_merge_path
 import std.types { NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Superseded, AuthoredProse, RustUnitTestsOffTheMergePath }
 
-// HISTORY, NOT CURRENT STATE. This row was Retired on gunbc#12951 (operator-signed 2026-10-05) when the
-// rust-unit-tests job returned to the required path. THE JOB LEFT AGAIN IN gunbc#13641 (2026-10-10); no
-// workflow runs the v1 unit tests now, and the loss is held by v1_required_lanes_withdrawn. The receipt
-// as originally written: by gunbc#12951 (carrying gunbc#12753), on the trigger this row names: RUNNER SUPPLY SUFFICIENT to run the v1-compiler --lib population concurrently with the build and floor lanes without displacing either. Receipt, by instrument rather than transcription (DESIGN section 6): the per-job start and completion times of #12951's own required runs (gh run view <run> --json jobs, for runs 37250818101, 37243093317 and 37248171722) show the rust-unit-tests job starting with floor, generated and emit-build (no queueing) and completing before floor in every run, so the required context's wall, set by floor, did not rise. The population is green on that head (cargo test --release -p v1-compiler --lib exits zero; the job carries no continue_on_error, and a failing test turns the required context red, observed on 37245704754). Adding the job to the closed roster was signed off by the operator (escalation msg_273ce60f, decided 2026-10-05). The job's presence is not the evidence; the supply receipt is.
-
 data rust_unit_tests_off_the_merge_path: RungDrop = RungDrop {
   identity: "rust_unit_tests_off_the_merge_path" as NonEmptyStr,
 
@@ -16,7 +11,7 @@ data rust_unit_tests_off_the_merge_path: RungDrop = RungDrop {
   declared: "2026-09-04",
 
   standing: Superseded {
-    ruling: "the operator ruling of 2026-10-09 (the v1 withdrawal): the rust-unit-tests job left the required path again in gunbc#13641 (v1 closeout, 2026-10-10), so the restoration receipt recorded in the comment above no longer describes CI" as NonEmptyStr,
+    ruling: "the operator ruling of 2026-10-09 (the v1 withdrawal): the rust-unit-tests job left the required path again in gunbc#13641 (v1 closeout, 2026-10-10), so no CI step executes the v1-compiler --lib population; the restoration receipt of gunbc#12951 is history in git and no longer describes CI" as NonEmptyStr,
     decision_record: "gunbc#13641, which declares gunbc.rung_drop v1_required_lanes_withdrawn" as NonEmptyStr,
     loss_holder: "v1_required_lanes_withdrawn" as NonEmptyStr
   },
