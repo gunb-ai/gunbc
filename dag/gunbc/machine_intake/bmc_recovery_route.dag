@@ -33,6 +33,12 @@ import extdeps.units.iso8601_calendar {
 import extdeps.network.ipv4 {
   Ipv4Address,
 }
+// THE PORT IS NOT RE-INVENTED HERE. extdeps.ssh.known_hosts already models what port sshd answers on
+// and why (openssh_standard_port, with the sshd(8)/ssh(1) bracketing rule that makes the port part of
+// whose key a line pins). The capture's own bytes agree: 03_host_identity.txt records port 22. Naming
+// that row is §2's "model a concept once and derive every use"; a second `22` here would be a second
+// home for the same upstream fact, and the one nobody looks at is the one that goes stale.
+import extdeps.ssh.known_hosts { openssh_standard_port }
 import gunbc.machine_intake.subject {
   MachineIntakeSubject, QualificationSubject, UnitKey,
 }
@@ -1254,7 +1260,7 @@ data recovery_post_reset_readback_capture_ref: EvidenceRef = EvidenceRef {
 test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_module_is_missing() -> Bool {
   let reached = rescue_host_reachable(
     address: recovery_rescue_host_address(),
-    ssh_port: 22,
+    ssh_port: openssh_standard_port,
     ipmi: InBandIpmiPresence {
       device_node: recovery_ipmi_device_node,
       kernel_modules: ["ipmi_devintf", "ipmi_msghandler", "acpi_ipmi"],
@@ -1276,7 +1282,7 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
 test fn a_declared_netboot_provider_never_satisfies_the_precondition_and_is_not_the_same_refusal_as_no_host() -> Bool {
   let via_netboot = rescue_host_reachable(
     address: recovery_rescue_host_address(),
-    ssh_port: 22,
+    ssh_port: openssh_standard_port,
     ipmi: recovery_complete_ipmi_presence(),
     medium: NetbootRescueMediumDeclared,
     evidence: recovery_inband_channel_capture_ref,
@@ -1297,7 +1303,7 @@ test fn a_declared_netboot_provider_never_satisfies_the_precondition_and_is_not_
 test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
   let reached = rescue_host_reachable(
     address: recovery_rescue_host_address(),
-    ssh_port: 22,
+    ssh_port: openssh_standard_port,
     ipmi: recovery_complete_ipmi_presence(),
     medium: recovery_usb_medium(),
     evidence: recovery_inband_channel_capture_ref,
@@ -1739,7 +1745,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
     subject: recovery_test_subject(),
     rescue_host: rescue_host_reachable(
       address: recovery_rescue_host_address(),
-      ssh_port: 22,
+      ssh_port: openssh_standard_port,
       ipmi: recovery_complete_ipmi_presence(),
       medium: recovery_usb_medium(),
       evidence: recovery_inband_channel_capture_ref,
