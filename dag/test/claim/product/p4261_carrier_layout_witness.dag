@@ -109,6 +109,14 @@ import product.p4261_carrier_layout {
   k1_design,
   input_polarity,
   polarity_grade,
+  CarrierFinding,
+  J20ContactInventory,
+  J20Polarity,
+  ComponentAcrossInput,
+  ComponentIdentified,
+  InputUpperBound,
+  carrier_finding,
+  is_finding_established,
   input_bound,
   across_input,
   shared_withstand,
@@ -626,6 +634,24 @@ test fn population_statements_infer_their_endpoints() -> Bool {
   count(named) == 4 && all(named, r => r)
     && count(population) > 0 && all(population, r => !r)
     && all(filter(e1_measured.continuity, o => terminal_ref_equal(a: o.first, b: e1_f300_one)), o => is_inferred(o: o))
+}
+
+// A NARROW FINDING STANDS OR FALLS ALONE. On the E1 every finding a consumer cites is established; on the
+// K1 the polarity and the bound are not, and its J20 is only counted. Removing D2's tab readings from the
+// E1 unestablishes D2's placement while J20's inventory and C10's identification stand untouched, so a
+// consumer citing one finding is reopened by that finding and no other.
+test fn a_narrow_finding_stands_or_falls_alone() -> Bool {
+  let e1_findings = [J20ContactInventory, J20Polarity, ComponentAcrossInput { component: e1_d2 }, ComponentAcrossInput { component: e1_d5 }, ComponentIdentified { component: e1_c10 }, ComponentIdentified { component: e1_d2 }, InputUpperBound]
+  let e1_all = all(e1_findings, f => is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: f)))
+  let k1_open = !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20Polarity))
+    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: InputUpperBound))
+    && !is_finding_established(s: carrier_finding(layout: p4261_k1_layout, f: J20ContactInventory))
+  let without_d2 = e1_with_continuity(cs: filter(e1_measured.continuity, o => !terminal_ref_equal(a: o.first, b: e1_d2_near) && !terminal_ref_equal(a: o.first, b: e1_d2_far)))
+  let only_d2_falls = !is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentAcrossInput { component: e1_d2 }))
+    && is_finding_established(s: carrier_finding(layout: without_d2, f: J20ContactInventory))
+    && is_finding_established(s: carrier_finding(layout: without_d2, f: ComponentIdentified { component: e1_c10 }))
+  let unresolved = !is_finding_established(s: carrier_finding(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_third_can }))
+  e1_all && k1_open && only_d2_falls && unresolved
 }
 
 // ── IDENTIFICATION AND COUNTS ─────────────────────────────────────────────────────────────────

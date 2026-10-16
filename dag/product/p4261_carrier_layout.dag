@@ -1116,6 +1116,91 @@ fn j20_text(layout: CarrierLayoutObservation) -> String {
   }
 }
 
+// ── NARROW FINDINGS, for consumers that cite one fact ─────────────────────────────────────────
+//
+// A consumer that records "this was established" cites ONE finding, not the whole carrier report, so
+// that removing or contradicting that fact in this model reopens the consumer and nothing else. Each
+// finding's standing is derived here from the typed model; its text is this module's own rendering.
+type CarrierFinding
+  = J20ContactInventory
+  | J20Polarity
+  | ComponentAcrossInput { component: ComponentInstanceIdentity }
+  | ComponentIdentified { component: ComponentInstanceIdentity }
+  | InputUpperBound
+
+type FindingStanding
+  = FindingEstablished { text: String }
+  | FindingNotEstablished { reason: String }
+
+fn identification_text(i: ComponentIdentification) -> String? {
+  match i {
+    IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking.text as String, "'"], "") }
+    MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking.text as String, "'"], "") }
+    RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking.text as String, "'"], "") }
+    ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
+    MarkingUnresolved { marking: _, discriminator: _ } => Absent
+    FootprintUnpopulated { evidence: _ } => Absent
+  }
+}
+
+fn installed(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> InstalledComponent? {
+  (filter(layout.components, x => component_identity_eq(a: x.component, b: c))).first()
+}
+
+fn not_a_component(c: ComponentInstanceIdentity) -> FindingStanding {
+  FindingNotEstablished { reason: join([component_text(c: c), " is not a component of this carrier's observation"], "") }
+}
+
+fn across_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match across_input(layout: layout, c: x) {
+      AcrossInput { component, on_fused, on_return, fused_path, return_path } =>
+        FindingEstablished { text: across_text(s: AcrossInput { component: component, on_fused: on_fused, on_return: on_return, fused_path: fused_path, return_path: return_path }) }
+      AcrossInputContradicted { component, readings } => FindingNotEstablished { reason: across_text(s: AcrossInputContradicted { component: component, readings: readings }) }
+      AcrossInputUnestablished { component, gap } => FindingNotEstablished { reason: across_text(s: AcrossInputUnestablished { component: component, gap: gap }) }
+    }
+  }
+}
+
+fn identified_finding(layout: CarrierLayoutObservation, c: ComponentInstanceIdentity) -> FindingStanding {
+  match installed(layout: layout, c: c) {
+    Absent => not_a_component(c: c)
+    Present { value: x } => match identification_text(i: x.identification) {
+      Present { value: t } => FindingEstablished { text: join([component_text(c: c), " is ", t], "") }
+      Absent => FindingNotEstablished { reason: join([component_text(c: c), "'s marking is not resolved"], "") }
+    }
+  }
+}
+
+fn carrier_finding(layout: CarrierLayoutObservation, f: CarrierFinding) -> FindingStanding {
+  match f {
+    J20ContactInventory => match layout.j20 {
+      MappedOnHousing { housing: _ } => FindingEstablished { text: join(["J20: ", j20_text(layout: layout)], "") }
+      CountedFromPhotograph { positions: _, evidence: _ } => FindingNotEstablished { reason: join(["J20 is only counted from a photograph: ", j20_text(layout: layout)], "") }
+    }
+    J20Polarity => match input_polarity(layout: layout) {
+      PolarityEstablished { fused_side: _, return_side: _, fused: _, returns: _, isolation: _ } => FindingEstablished { text: join(["J20 ", polarity_text(p: input_polarity(layout: layout))], "") }
+      PolarityContradicted { readings: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+      PolarityUnestablished { gaps: _ } => FindingNotEstablished { reason: polarity_text(p: input_polarity(layout: layout)) }
+    }
+    ComponentAcrossInput { component } => across_finding(layout: layout, c: component)
+    ComponentIdentified { component } => identified_finding(layout: layout, c: component)
+    InputUpperBound => match input_bound(layout: layout) {
+      BoundEstablished { bound: _, equally_limiting: _, observed: _ } => FindingEstablished { text: join(["J20 input ", bound_text(b: input_bound(layout: layout))], "") }
+      BoundContradicted { contradicted: _, observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+      BoundUnestablished { observed: _ } => FindingNotEstablished { reason: bound_text(b: input_bound(layout: layout)) }
+    }
+  }
+}
+
+fn is_finding_established(s: FindingStanding) -> Bool {
+  match s {
+    FindingEstablished { text: _ } => true
+    FindingNotEstablished { reason: _ } => false
+  }
+}
+
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
   join([
     "J20 (", j20_text(layout: layout), "; ", polarity_text(p: input_polarity(layout: layout)), "): ", bound_text(b: input_bound(layout: layout)),
