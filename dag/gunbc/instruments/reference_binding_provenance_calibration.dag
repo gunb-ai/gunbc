@@ -70,6 +70,7 @@ import gunbc.namespace_cut.namespace_reference_derived_closure_admission {
   P2aStructuralCandidateProducer7515,
   P2aReferenceDependencyProjection7515,
   P2aPoolIndependentDependencyProjection7515,
+  NoDagReachableNativeOccurrenceTransportProducer,
   assess_reference_binding_observation,
 }
 
@@ -439,6 +440,7 @@ fn trigger_word(t: ReferenceDerivedClosureTrigger) -> String {
     P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515"
     P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515"
     P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515"
+    NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer"
   }
 }
 
