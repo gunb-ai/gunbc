@@ -491,6 +491,10 @@ type ValidationRefusalCause
       program: String,
       reason: String,
     }
+  | ValidationComputeInfrastructureRefused {
+      program: String,
+      reason: String,
+    }
   | ValidationChangeWindowRefused {
       cause: ChangeWindowPreparationRefusal,
     }
@@ -783,6 +787,7 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
     ValidationCommandUnrealized => "command-unrealized"
     ValidationCommandRefused { program: _, reason: _ } => "command-refused"
+    ValidationComputeInfrastructureRefused { program: _, reason: _ } => "compute-infrastructure-refused"
     ValidationChangeWindowRefused { cause: _ } => "change-window-refused"
   }
 }
@@ -848,6 +853,8 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
       "the declared validation has no host capability realization, so no command exists to run"
     ValidationCommandRefused { program, reason } =>
       join([program, ": ", reason], "")
+    ValidationComputeInfrastructureRefused { program, reason } =>
+      join([program, ": ", reason], "")
     ValidationChangeWindowRefused { cause } =>
       change_window_preparation_refusal_detail(cause: cause)
   }
@@ -875,6 +882,13 @@ fn validation_refusal_cause_decode(
         } else if cause_kind == "command-refused" {
           Present {
             value: ValidationCommandRefused {
+              program: "unknown",
+              reason: cause_detail,
+            },
+          }
+        } else if cause_kind == "compute-infrastructure-refused" {
+          Present {
+            value: ValidationComputeInfrastructureRefused {
               program: "unknown",
               reason: cause_detail,
             },

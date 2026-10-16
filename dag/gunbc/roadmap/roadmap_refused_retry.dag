@@ -1,7 +1,14 @@
 module gunbc.roadmap.roadmap_refused_retry
 
 import std.types { String, Int, Bool, List }
-import gunbc.roadmap.roadmap_validation_oracle { ValidationRefusalCause, validation_refusal_cause_detail }
+import gunbc.compute.work_request { WorkEnding, work_ending_wire, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.roadmap.roadmap_validation_oracle {
+  ValidationRefusalCause, validation_refusal_cause_detail,
+  ValidationContractUnspecified, ValidationContractClosesNothing, ValidationNotAgentWork, ValidationOracleUnpinnable, ValidationOracleMissing,
+  ValidationOracleAmbiguous, ValidationOracleUnpinnedDependency, ValidationOracleMoved, ValidationOracleCrossFamilyIdentityIncomparable,
+  ValidationOraclePinUnrecorded, ValidationPinReceiptUnreadable, ValidationCommandUnrealized, ValidationCommandRefused,
+  ValidationComputeInfrastructureRefused, ValidationChangeWindowRefused,
+}
 import gunbc.roadmap.roadmap_verification_receipt {
   BeltVerificationDecision, BeltVerificationDefer, BeltVerificationRun, BeltVerificationRefuse, BeltVerificationEvidenceUnreadable,
   ExactVerificationReceiptSource, belt_verification_refused_cause,
@@ -16,8 +23,8 @@ data refused_retry_ruling: DesignRuling = infrastructure_refusal_is_retried_to_a
 // which amends the 2026-10-03 manual-resume ruling for INFRASTRUCTURE refusals only). A refusal about the
 // candidate keeps the operator's manual resume; a FAILED stage is a verdict and is never retried here.
 //
-// The class is read from ONE authority shared with the producer: the reason the compute refusal builds
-// is made by compute_refusal_reason below, and the classifier tests the same prefix, so the two cannot drift.
+// The class is the VARIANT of the typed cause (ValidationComputeInfrastructureRefused), built from the
+// compute layer's WorkEnding by compute_refusal_cause; it is never recovered from rendered text.
 
 type RefusalCauseClass
   = RefusalCauseInfrastructure
@@ -32,31 +39,47 @@ data refused_retry_bound: Int = 3
 
 data compute_refusal_program: String = "gunbc-compute"
 
-fn compute_refusal_reason_prefix(ending: String) -> String {
-  join(["the claim run ended ", ending], "")
-}
-
 fn compute_refusal_reason(ending: String, document: String) -> String {
-  join([compute_refusal_reason_prefix(ending: ending), ": ", document], "")
+  join(["the claim run ended ", ending, ": ", document], "")
 }
 
-// Only the compute layer's refused_by_infrastructure ending is an environment fact; every other
-// refusal cause is about the candidate or its subject and stays with the operator. The class is read off
-// the cause's rendered detail, which is also what a refused verification SEGMENT carries, so the receipt's
-// cause and the segment the belt's pure obligations see classify identically.
-fn refusal_detail_class(detail: String) -> RefusalCauseClass {
-  if string_contains(
-    s: detail,
-    pattern: join([compute_refusal_program, ": ", compute_refusal_reason_prefix(ending: "refused_by_infrastructure")], ""),
-  ) {
-    RefusalCauseInfrastructure
-  } else {
-    RefusalCauseCandidate
+// The compute layer's ending is a closed sum (WorkEnding); the producer builds the cause from it here, so
+// the class is the VARIANT of the cause and is never recovered from its rendered text. Only the
+// refused_by_infrastructure ending is an environment fact; every other refusal cause is about the
+// candidate or its subject and stays with the operator.
+fn compute_refusal_cause(ending: WorkEnding, document: String) -> ValidationRefusalCause {
+  match ending {
+    WorkEndedRefusedByInfrastructure =>
+      ValidationComputeInfrastructureRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
+    WorkEndedSucceeded =>
+      ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
+    WorkEndedFailed =>
+      ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
+    WorkEndedCancelled =>
+      ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
+    WorkEndedOutputMismatch =>
+      ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
   }
 }
 
 fn refusal_cause_class(cause: ValidationRefusalCause) -> RefusalCauseClass {
-  refusal_detail_class(detail: validation_refusal_cause_detail(cause: cause))
+  match cause {
+    ValidationComputeInfrastructureRefused { program: _, reason: _ } => RefusalCauseInfrastructure
+    ValidationContractUnspecified => RefusalCauseCandidate
+    ValidationContractClosesNothing => RefusalCauseCandidate
+    ValidationNotAgentWork { mode: _ } => RefusalCauseCandidate
+    ValidationOracleUnpinnable { validation_label: _, reason: _ } => RefusalCauseCandidate
+    ValidationOracleMissing { entry: _, function: _, detail: _ } => RefusalCauseCandidate
+    ValidationOracleAmbiguous { entry: _, function: _, declaration_count: _ } => RefusalCauseCandidate
+    ValidationOracleUnpinnedDependency { entry: _, imports: _ } => RefusalCauseCandidate
+    ValidationOracleMoved { expected: _, observed: _ } => RefusalCauseCandidate
+    ValidationOracleCrossFamilyIdentityIncomparable { expected: _, observed: _ } => RefusalCauseCandidate
+    ValidationOraclePinUnrecorded { channel: _ } => RefusalCauseCandidate
+    ValidationPinReceiptUnreadable { detail: _ } => RefusalCauseCandidate
+    ValidationCommandUnrealized => RefusalCauseCandidate
+    ValidationCommandRefused { program: _, reason: _ } => RefusalCauseCandidate
+    ValidationChangeWindowRefused { cause: _ } => RefusalCauseCandidate
+  }
 }
 
 fn refused_retry_standing(class: RefusalCauseClass, retries_recorded: Int) -> RefusedRetryStanding {
