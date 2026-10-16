@@ -253,31 +253,43 @@ fn serving_operands(command: ArgvCommand) -> List<String> {
   filter(serving_operand_words(command: command), a => starts_with(s: a, prefix: "/"))
 }
 
-fn serving_destination(command: ArgvCommand) -> String {
-  match last(serving_operands(command: command)) { Present { value: d } => d  Absent => "" }
-}
-
-fn serving_source(command: ArgvCommand) -> String {
-  match get(xs: serving_operands(command: command), index: 0) { Present { value: s } => s  Absent => "" }
-}
-
 fn serving_destination_forbidden(destination: String, protected: ServingProtectedPaths) -> Bool {
   serving_names_protected(argument: destination, protected: protected) || destination == protected.model_link
 }
 
+// A command with no absolute operand where one is required has no destination to judge: it is endangering
+// (fail closed), never a fabricated empty path.
 fn serving_mutating_endangers(invocation: String, command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
-  let destination = serving_destination(command: command)
-  let source = serving_source(command: command)
-  if invocation == "mv" {
-    let is_switch = source == protected.model_link_next && destination == protected.model_link
-    if is_switch { false } else { serving_destination_forbidden(destination: destination, protected: protected) || serving_names_protected(argument: source, protected: protected) }
-  } else {
-    if invocation == "ln" {
-      serving_destination_forbidden(destination: destination, protected: protected)
-    } else {
-      any(xs: serving_operands(command: command), predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
-    }
+  let operands = serving_operands(command: command)
+  match last(operands) {
+    Absent => true
+    Present { value: destination } =>
+      if invocation == "mv" {
+        match get(xs: operands, index: 0) {
+          Absent => true
+          Present { value: source } =>
+            if source == protected.model_link_next && destination == protected.model_link {
+              false
+            } else {
+              serving_destination_forbidden(destination: destination, protected: protected) || serving_names_protected(argument: source, protected: protected)
+            }
+        }
+      } else {
+        if invocation == "ln" {
+          serving_destination_forbidden(destination: destination, protected: protected)
+        } else {
+          any(xs: operands, predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
+        }
+      }
   }
+}
+
+// An operand with a `.` or `..` segment or a doubled slash names a path by a spelling the string comparison
+// cannot place (`<root>/partial/../sha256/<digest>` is neither equal to nor inside the protected path), so it
+// refuses with the relative operands. Symlinked directories are not followed: the layout creates none.
+fn serving_unplaceable_spelling(argument: String) -> Bool {
+  string_contains(s: argument, pattern: "/../") || string_contains(s: argument, pattern: "/./") || string_contains(s: argument, pattern: "//")
+    || ends_with(s: argument, suffix: "/..") || ends_with(s: argument, suffix: "/.")
 }
 
 // A relative operand cannot be placed against the absolute protected set, so every program off the read-only
@@ -287,7 +299,7 @@ fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPa
   if serving_read_only_program(invocation: invocation) {
     false
   } else {
-    any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) })
+    any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) || serving_unplaceable_spelling(argument: a) })
       || serving_mutating_endangers(invocation: invocation, command: command, protected: protected)
   }
 }

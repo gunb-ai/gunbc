@@ -204,3 +204,10 @@ test fn moving_the_live_link_or_removing_its_parent_is_refused() -> Bool {
   serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/model/model.ninfer", destination: "/tmp/x")], protected: w_protected)
     && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/model")], protected: w_protected)
 }
+
+// REVIEW 81003: a dot-dot spelling of a digest path is refused for rm and mv, and a doubled slash with it.
+test fn a_dot_dot_spelling_of_a_digest_path_is_refused() -> Bool {
+  serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "/root/serve/store/partial/../sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [rm_force_command(path: "/root/serve/store//sha256/d")], protected: w_protected)
+}
