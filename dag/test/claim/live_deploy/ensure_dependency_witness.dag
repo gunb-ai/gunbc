@@ -348,11 +348,12 @@ test fn the_plan_elevates_only_the_install_and_params_carry_policy() -> Bool {
 }
 
 // THE PACKAGE ARM'S TWO COMMANDS, DERIVED FROM THEIR ROWS. The probe and the install arrive through
-// extdeps.package_managers' builders, which materialize the dpkg.Package Status and
-// apt.PackageManager Install rows through shell_materialize_operation_argv rather than repeating any
-// argv -- so these words exist once, in the service declarations, and what this claim pins is the
-// RESULT of that derivation at the boundary values the route supplies (the two packages a live
-// deploy asks for, the mode/owner/group the marker spec declares). The install carries NO elevation
+// extdeps.package_managers' thin builders, which hand their row coordinates to the ONE repartition --
+// extdeps.exec.command's operation_row_argv_command, materializing the dpkg.Package Status and
+// apt.PackageManager Install rows through shell_materialize_operation_argv -- rather than repeating
+// any argv, or repeating the row-to-sealed-command match, anywhere. So these words exist once, in the
+// service declarations, and what this claim pins is the RESULT of that derivation at the boundary
+// values the route supplies (the two packages a live deploy asks for). The install carries NO elevation
 // word: the ensure-dependency route is the unprivileged one and `sudo -n` belongs to the marker's
 // install leg alone. A hand-rolled argv beside either row would keep a second authority alive -- and
 // so would a literal program WORD checked beside it: the builders carry no binary literal anywhere,
