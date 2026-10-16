@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.rational { NonzeroNatFraction }
 import std.measure {
-  MoneyAmountMicro, MoneyPerHour, ByteSize,
+  MoneyAmountMicro, MoneyPerHour, MoneyRate, ByteSize, money_rate_micros,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
   mebibyte, mebibyte_to_byte_size,
@@ -329,9 +329,14 @@ fn serving_recipe_accepts_card(recipe: ServingRecipe, card: ServingCardFacts) ->
 }
 
 // ── card supply: rented and owned are one concept ────────────────────────────────────────────
+// Storage and VRAM are both money per GiB-hour: one rate carrier (MoneyRate over this period marker),
+// shared with product.fabric.flex_market's VRAM ranking, which imports it from here.
+type PerGibibyteHour
+
+type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
+
 type ServingDiskRate {
-  micro_per_gibibyte_hour: Nat
-  currency: CurrencyCode
+  rate: MoneyPerGibibyteHour
 }
 
 type ServingCardSupply
@@ -349,12 +354,12 @@ type ServingHourlyCost
 fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> ServingHourlyCost {
   match supply {
     RentedCardSupply { dph: dph, disk_rate: disk } =>
-      if currency_code_eq(a: dph.currency, b: disk.currency) {
+      if currency_code_eq(a: dph.currency, b: disk.rate.currency) {
         HourlyCostQuoted {
           rate: MoneyPerHour {
             amount: money_amount_micro(
               count: money_per_hour_micros(q: dph)
-                + disk.micro_per_gibibyte_hour * gibibyte_count(g: gibibyte_ceiling(b: recipe.disk)),
+                + money_rate_micros(q: disk.rate) * gibibyte_count(g: gibibyte_ceiling(b: recipe.disk)),
             ),
             currency: dph.currency,
           },

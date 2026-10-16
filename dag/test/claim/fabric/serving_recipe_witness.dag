@@ -255,7 +255,7 @@ test fn the_27b_recipe_names_the_existing_catalog_unit_and_flash_next_names_none
 
 // 400 GiB at 375 micro-dollars per GiB-hour is 150000 micro per hour (the operator's ~0.15/h).
 fn t_disk_rate() -> ServingDiskRate {
-  ServingDiskRate { micro_per_gibibyte_hour: 375, currency: Usd }
+  ServingDiskRate { rate: MoneyRate { amount: money_amount_micro(count: 375), currency: Usd } }
 }
 
 fn hourly_micro(h: ServingHourlyCost) -> Int {
@@ -286,7 +286,7 @@ test fn a_disk_rate_in_another_currency_is_refused_not_added() -> Bool {
     recipe: serving_recipe_flash_next_lab_vllm,
     supply: RentedCardSupply {
       dph: usd_hour(micro: 900000),
-      disk_rate: ServingDiskRate { micro_per_gibibyte_hour: 375, currency: Eur },
+      disk_rate: ServingDiskRate { rate: MoneyRate { amount: money_amount_micro(count: 375), currency: Eur } },
     },
   ) {
     HourlyCostCurrencyMismatch => true

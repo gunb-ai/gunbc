@@ -40,7 +40,9 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
   PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
-import product.fabric.serving_recipe { serving_recipe_qwen3_8_27b_nvfp4_ninfer }
+import product.fabric.serving_recipe {
+  serving_recipe_qwen3_8_27b_nvfp4_ninfer, PerGibibyteHour, MoneyPerGibibyteHour,
+}
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
   vast_ai_ingest_search_offer_driver,
@@ -663,10 +665,6 @@ fn flex_held_effective_rate(rate: MoneyPerHour, held: Bool) -> MoneyPerHour {
     }
   }
 }
-
-type PerGibibyteHour
-
-type MoneyPerGibibyteHour = MoneyRate<PerGibibyteHour>
 
 type FlexVramHourly
   = FlexVramHourlyQuoted { rate: MoneyPerGibibyteHour }
