@@ -1,0 +1,75 @@
+module v2.test.claim.sorted_floor_search
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_at_optional }
+import std.types { Bool, List }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.integer { Int }
+import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BINARY-LIFTING SEARCH AGREES WITH A LINEAR SCAN, at every key from below the first to past the
+// last, over key lists whose sizes straddle powers of two (the strides grow exactly at 1, 2, 4, 8).
+// The linear scan is the reference: the last position whose key is at or before the query.
+
+fn sfs_strides_for(keys: List<Int>) -> SortedFloorStrides {
+  fold_list(xs: keys, empty: sorted_floor_strides_empty(), cons: fn(acc, _) { sorted_floor_strides_grown(s: acc) })
+}
+
+type SfsScan {
+  at: Int
+  found: Optional<Int>
+}
+
+fn sfs_linear(keys: List<Int>, key: Int) -> Optional<Int> {
+  fold_list(xs: keys, empty: SfsScan { at: 0, found: optional_absent() }, cons: fn(acc, k) {
+    SfsScan { at: acc.at + 1, found: if k <= key { optional_present(value: acc.at) } else { acc.found } }
+  }).found
+}
+
+fn sfs_same(a: Optional<Int>, b: Optional<Int>) -> Bool {
+  match a {
+    Absent =>
+      match b {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => x == y
+      }
+  }
+}
+
+fn sfs_agrees_everywhere(keys: List<Int>, lo: Int, hi: Int) -> Bool {
+  let strides = sfs_strides_for(keys: keys)
+  let probes = fold_list(xs: keys, empty: [lo, hi], cons: fn(acc, k) { Cons { head: k - 1, tail: Cons { head: k, tail: Cons { head: k + 1, tail: acc } } } })
+  fold_list(xs: probes, empty: true, cons: fn(ok, key) {
+    ok && sfs_same(
+      a: sorted_floor_position(strides: strides, key: key, key_at: fn(i) { list_at_optional(xs: keys, index: i) }),
+      b: sfs_linear(keys: keys, key: key)
+    )
+  })
+}
+
+test fn sorted_floor_agrees_with_a_linear_scan_across_power_of_two_sizes() -> Bool {
+  sfs_agrees_everywhere(keys: [], lo: 0 - 5, hi: 5)
+    && sfs_agrees_everywhere(keys: [3], lo: 0 - 5, hi: 9)
+    && sfs_agrees_everywhere(keys: [0, 4], lo: 0 - 5, hi: 9)
+    && sfs_agrees_everywhere(keys: [0, 4, 9], lo: 0 - 5, hi: 20)
+    && sfs_agrees_everywhere(keys: [0, 4, 9, 10], lo: 0 - 5, hi: 20)
+    && sfs_agrees_everywhere(keys: [0, 4, 9, 10, 17], lo: 0 - 5, hi: 30)
+    && sfs_agrees_everywhere(keys: [1, 2, 3, 5, 8, 13, 21, 34], lo: 0 - 5, hi: 40)
+    && sfs_agrees_everywhere(keys: [1, 2, 3, 5, 8, 13, 21, 34, 55], lo: 0 - 5, hi: 60)
+}
+
+// THE STRIDES ARE EVERY POWER OF TWO NOT ABOVE THE COUNT, LARGEST FIRST, grown one key at a time.
+test fn sorted_floor_strides_grow_at_each_power_of_two() -> Bool {
+  let nine = sfs_strides_for(keys: [1, 2, 3, 4, 5, 6, 7, 8, 9])
+  let eight = sfs_strides_for(keys: [1, 2, 3, 4, 5, 6, 7, 8])
+  nine.count == 9 && nine.next_power == 16 && nine.strides == [8, 4, 2, 1]
+    && eight.count == 8 && eight.strides == [8, 4, 2, 1]
+    && sfs_strides_for(keys: [1, 2, 3]).strides == [2, 1]
+}

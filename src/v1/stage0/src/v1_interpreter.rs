@@ -15783,6 +15783,7 @@ fn reference_derived_closure_admission_value(
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
             T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+            T::NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer",
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };

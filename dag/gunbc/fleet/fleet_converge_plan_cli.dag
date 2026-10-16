@@ -66,8 +66,6 @@ import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidence,
   SlotRetirementEvidenceAbsent,
-  SlotRetirementEvidencePresent,
-  transition_retirement_admission,
   observe_transition_retirement_evidence,
   interruption_authorization_for_host,
   HostInterruptionAuthorizationPresent,
@@ -207,6 +205,7 @@ import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_prod_role_operator_local_wet }
 import gunbc.live_deploy.spec { deployment_plan_host_identity }
 import gunbc.live_deploy.desired { prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, desired_roster_refusal_detail, prod_role_deployment_mismatch_detail, selected_deployment_spec }
+import gunbc.live_deploy.pre_swap_admission { observe_checkout_branch }
 import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
@@ -485,10 +484,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
 // was still being built, which is why the actuator drafted in `gunbc.runner.runner_slot_retirement` was
 // deleted rather than called from this function.
 //
-// PERMISSION IS DECIDED BEFORE ANY READ. A transition whose required retirees are not fully covered by
-// the operator's interruption authorization yields evidence-absent with the uncovered units named, so
-// the plan renders refusals rather than masks. Reading standings first and checking coverage later
-// would make the refusal a property of what the host happened to report.
+// COVERAGE IS DECIDED OVER THIS RUN'S READBACK. observe_transition_retirement_evidence reads
+// standings for the durable required set, then admits only if every unit that is not already
+// RetirementComplete is inside the grant. A completed standing discharges interruption demand for
+// this plan; it does not edit the obligation. A stored run id is not that standing.
 //
 // AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
 // a host with no deploy row has no transition and nothing here may speak for it.
@@ -508,18 +507,11 @@ fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvid
         HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
           SlotRetirementEvidenceAbsent { cause: c }
         HostInterruptionAuthorizationPresent { authorization: host_auth } =>
-          match transition_retirement_admission(
+          observe_transition_retirement_evidence(
+            transport: LocalShell,
             host: host as HostIdentity,
             auth: host_auth,
-          ) {
-            SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
-            SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
-              observe_transition_retirement_evidence(
-                transport: LocalShell,
-                host: host as HostIdentity,
-                auth: auth,
-              )
-          }
+          )
       }
   }
 }
@@ -1327,6 +1319,10 @@ data fleet_converge_operator_mode_deploy: String = "deploy"
 // THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. Operator 2026-10-09: fleet-converge
 // must support an arbitrary branch. An empty --candidate-branch therefore admits the observed
 // branch. A named requirement still has to equal the checkout. An empty observed branch never admits.
+// Operator 2026-10-13 (gunbc.design_ruling production_is_main_only_lab_admits_integration) NARROWED
+// that for the target: each desired row carries the branch it admits. The empty-flag helper still
+// exists for naming the checkout; it does not widen the row. Apply enforces target_branch_admission
+// on the selected deployment; this CLI does not re-answer that fact with a production literal.
 fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
   trim(s: observed) != "" && (trim(s: required) == "" || trim(s: observed) == trim(s: required))
 }
@@ -1406,7 +1402,7 @@ fn fleet_converge_operator_cli_dispatch(
             if trim(s: host) != deploy_host {
               exit_failure(reason: join(["gunbc converge: DeployHostMismatch — the dashboard deployment is homed on ", deploy_host, " and this process runs on ", trim(s: host), "; run the deploy there"], ""))
             } else {
-              let branch = trim(s: git.Core.CurrentBranch().branch)
+              let branch = trim(s: observe_checkout_branch())
               if !fleet_converge_deploy_branch_admits(observed: branch, required: candidate_branch) {
                 exit_failure(reason: join(["gunbc converge: DeployBranchRefused — the checkout is on '", branch, "' and --candidate-branch requires '", trim(s: candidate_branch), "'; the candidate is HEAD of this checkout, so switch branches or name this one explicitly"], ""))
               } else {

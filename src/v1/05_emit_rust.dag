@@ -261,7 +261,7 @@ import v1.compiler.emit {
   emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
-  module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
+  empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport,
@@ -14738,6 +14738,7 @@ type RcGroupedArmPlan {
   inner_pat_str: String
   plain_bindings: List<RcPlainFieldBinding>
   plain_refutable: Bool
+  deeper_rc: Bool
 }
 
 // A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
@@ -14760,7 +14761,7 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false, deeper_rc: false }
 }
 
 fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
@@ -14841,7 +14842,7 @@ fn variant_pattern_bare_name(pattern: MatchPattern) -> String {
   }
 }
 
-fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> RcGroupedArmPlan {
+fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool) -> RcGroupedArmPlan {
   let si = scope.type_env.source_indices
   let arm_pat = arm_pattern(n: arm)
   let rc_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
@@ -14865,10 +14866,10 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           Present { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
             let inner_rc = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: si)
-            if inner_rc.needs_rc_pattern {
+            if inner_rc.needs_rc_pattern && !allow_deeper {
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
-              let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
+              let inner_pat_str = if inner_rc.needs_rc_pattern { "" } else { emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info) }
               RcGroupedArmPlan {
                 groupable: true,
                 variant: variant,
@@ -14876,7 +14877,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
                 ref_field: field_name,
                 inner_pat_str: inner_pat_str,
                 plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
-                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                deeper_rc: inner_rc.needs_rc_pattern
               }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
@@ -14893,7 +14895,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           ref_field: "",
           inner_pat_str: "_",
           plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: "", source_indices: si),
-          plain_refutable: false
+          plain_refutable: false,
+          deeper_rc: false
         }
       }
   }
@@ -14922,10 +14925,41 @@ fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<R
 
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
-  let inner_arms = members |> map(e =>
-    concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
-  ) |> join(separator: "\n")
-  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
+  let inner_arms = if members |> any(e => e.plan.deeper_rc) {
+    emit_rc_deeper_inner_arm_strs(members: members, field: plan.ref_field, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  } else {
+    members |> map(e =>
+      concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
+    )
+  }
+  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms |> join(separator: "\n"), "\n} },")
+}
+
+// A DEEPER Rc LEVEL INSIDE THE DISCRIMINATED FIELD'S PATTERN IS THE SAME PROBLEM ONE LEVEL DOWN, so
+// it is the same construction: the inner match's arms are the members re-posed with the field's own
+// pattern as their pattern and grouped again, and an arm that discriminates nothing below the outer
+// variant is the inner match's wildcard. Without it the inner arms kept the #8570 guards, which rustc
+// ignores when checking exhaustiveness, so an enumerated nested arm set was E0004 one level in
+// (gunbc.recurring_failure_mode an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded).
+fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> List<String> {
+  let si = scope.type_env.source_indices
+  let posed = members |> map(e =>
+    let inner_pattern = match variant_pattern_field_binding_named(pattern: arm_pattern(n: e.arm), field_name: field, source_indices: si) {
+      Present { value: fb } => field_binding_pattern(n: fb)
+      Absent => Wildcard
+    }
+    field_binding_with_pattern(field_binding: e.arm, pattern: inner_pattern)
+  )
+  // A wildcard arm is the inner match's only fallthrough for the refutable arms before it, and grouping
+  // would fold those into one inner match without it (E0004 over CoreEdgeLabel in v2.std.node
+  // resolved_reference_kind_of_label); the ordinary lowering likewise skips grouping then.
+  if posed |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a))) {
+    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  } else {
+  rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
+    emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
+    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  }
 }
 
 // AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
@@ -14946,7 +14980,7 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
-    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type,
+    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: true,
       emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
       emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
   }
@@ -14959,10 +14993,10 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
 // exhaustiveness, so an enumerated nested arm set in a tail-recursive fold was E0004
 // (gunbc.recurring_failure_mode tail_call_match_lowering_skips_rc_arm_grouping). `emit_single`
 // receives the arm's source index so a renderer can decide which arm sees an optional's value.
-fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
+fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
   let entries = arms |> map(arm => RcGroupedArmEntry {
     arm: arm,
-    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
+    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: allow_deeper)
   })
   let folded = entries |> enumerate |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, pair) =>
     let e = pair.second
@@ -16771,7 +16805,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       } else {
-        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, allow_deeper: false,
           emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
           emit_single: (index, arm) =>
           emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
@@ -17086,7 +17120,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     _ => false
   }
   let ret_type = if is_rest { concat("std::rc::Rc<", rust_rest_result_path(), "<", output_type, ">>") } else { output_type }
-  let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
+  let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env, emit_info: emit_info)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
   let mock_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
   let dry_run_body = if is_rest { emit_rust_rest_answered_mock(mock_body: mock_body, output_type: output_type) } else { mock_body }
@@ -17185,10 +17219,10 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 // Target selection, and ONLY target selection. The transport was classified and
 // its meaning bound once, target-neutrally, by `bind_operation_transport`; this
 // function no longer asks what the operation IS, only how Rust spells it.
-fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String {
+fn emit_transport_call(bound: BoundOperation, op_name: String, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   match bound {
     RestBound { transport: t } => emit_rest_call(op_name: op_name, transport: t, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
-    ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env)
+    ShellBound { transport: t, result_fields: rsf } => emit_shell_call(op_name: op_name, transport: t, registry: registry, depth: depth, result_fields: rsf, op_node: op_node, source_indices: source_indices, env: env, shared_types: shared_types, emit_info: emit_info)
     FileBound { verb: v, path_template: pt, result_fields: fs } =>
       emit_file_call(verb: v, path_template: pt, result_fields: fs, source_indices: source_indices)
     LocalBound => emit_local_call(op_name: op_name)
@@ -17743,21 +17777,19 @@ fn emit_exit_arm(prop: Node, result_fields: List<ShellResultField>, source_indic
 
 // argv[0] NAMES ONE PROGRAM AND IS LEFT ALONE, DELIBERATELY. `Command::new` takes one program, so a
 // List-typed input spliced into the head of an argv literal is already refused loudly -- rustc E0277
-// on the same trait bound the later elements used to earn -- and an emitted refusal in its place would
-// replace one loud stop with another whose red this route cannot adjudicate (an emitted panic
-// COMPILES, so the fixture pairs beside this change would report it green). Only the LATER elements
-// admit both shapes; see shell_argv_element_is_word_list.
+// on the same trait bound the later elements used to earn. Later non-string elements emit
+// compile_error!, which rustc refuses; argv[0] is not on that arm because Command::new's argument
+// is a different trait obligation. Only the LATER elements admit both .arg and .args; see
+// shell_argv_element_is_word_list.
 // Capture order: bind/validate the authored policy BEFORE spawn; start both drains
 // immediately; write stdin concurrently; join; then project BoundedTail or refuse
 // Complete overflow.
-fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, result_fields: List<ShellResultField>, op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let argv = transport.children
   let optional_params = op_node.params
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
     |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
-  let list_params = op_node.params
-    |> filter(p => shell_argv_param_is_word_list(param: p, source_indices: source_indices))
-    |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_indices: source_indices), true))
+  let argv_scope = shell_argv_emit_scope(env: env, registry: registry)
   let has_stdin = match transport_stdin(t: transport, source_indices: source_indices) {
     Present { value: _ } => true
     Absent => false
@@ -17767,7 +17799,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   let cmd_line = if argv |> count > 0 {
     match argv |> first {
       Present { value: first_arg } => concat(let_kw, " = std::process::Command::new(",
-        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, source_indices: source_indices), ")")
+        emit_shell_argv_element(arg: first_arg, optional_params: optional_params, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), ")")
       Absent => concat(let_kw, " = std::process::Command::new(\"",
         emit_ident(name: op_name, target: Rust), "\")")
     }
@@ -17777,10 +17809,12 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
   let arg_lines = if argv |> count > 1 {
     argv |> skip(1) |> map(arg =>
-      if shell_argv_element_is_word_list(arg: arg, list_params: list_params, source_indices: source_indices) {
-        concat("    .args(", emit_shell_argv_word_list_element(arg: arg, source_indices: source_indices), ".iter())")
+      if shell_argv_element_is_word_list(arg: arg, scope: argv_scope, emit_info: emit_info, source_indices: source_indices) {
+        concat("    .args(", emit_shell_argv_word_list_element(arg: arg, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, emit_info: emit_info), ".iter())")
+      } else if shell_argv_element_is_string_word(arg: arg, scope: argv_scope, emit_info: emit_info, source_indices: source_indices) {
+        concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, registry: registry, scope: argv_scope, depth: depth, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info), ")")
       } else {
-        concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_indices: source_indices), ")")
+        concat("    .arg(", emit_rust_compile_error_expr(message: concat("argv element is not String or List<String> at ", arg.span.file, ":", to_string(arg.span.start))), ")")
       }
     )
   } else { [] }
@@ -17825,55 +17859,111 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
   }
 }
 
-// AN ARGV ELEMENT CAN BE ONE WORD OR A RUN OF WORDS, AND THE DECLARED INPUT SAYS WHICH. A
-// `List<String>` input spliced into an argv literal -- `argv: ["cargo", "clippy", extra_args, "--",
-// lint_args]` in `extdeps.rust.cargo_build` `Clippy` -- was emitted as `Command::arg(extra_args)`,
-// one argument holding a list, which rustc refuses as E0277 `Rc<im::Vector<String>>: AsRef<OsStr>`
-// (seventeen sites on the 00_compile closure). `Command::args` is the shape that was always meant:
-// the run of words is spliced into the argv where the literal put it, with no argument of the
-// transport's own invented to carry the list.
+// AN ARGV ELEMENT IS ONE WORD OR A RUN OF WORDS ACCORDING TO ITS INFERRED TYPE
+// (v1.compiler.infer infer_transport_node stamps shell argv children). Alias hop
+// uses rust_operand_alias_or_refinement_continue and resolve_type_decl_reference
+// (declaration identity), never a leaf-name first-match.
 //
-// The operation's OWN input declaration answers the question, not the element's inferred node: that
-// is the same authority `optional_params` beside this already reads, and it is the one the author
-// wrote. An element that is not a bare variable naming an input -- a literal, an interpolation -- is
-// one word by construction and never reaches the splice arm.
+// A string-like element (including aliases of String / NonEmptyStr) is one word. Anything else
+// refuses at emit, located, and never falls through emit_simple_expr.
 //
-// THE TWO ARMS ARE COUPLED THROUGH A FUNCTION ONLY ONE OF THEM CALLS, and that is worth stating
-// because the coupling is invisible at the site that would break it (review 64440 on gunbc#11154).
+// THE TWO ARMS ARE COUPLED THROUGH A FUNCTION ONLY ONE OF THEM CALLS (review 64440 on gunbc#11154).
 // The one-word arm routes each element through emit_rust_dag_string_to_host_via_seam; the word-list
-// arm emits the binding and lets Command::args iterate it. Those agree only while that seam is the
-// identity it is today. If it ever becomes a real dag-String-to-host-String conversion, every word
-// spliced through the list arm silently skips the conversion every word through the one-word arm
-// receives -- silently, because both arms still compile and the splice still produces the right
-// NUMBER of words. A lane changing the seam has no reason to read this function, and this function
-// does not name the seam. TRIGGER: the first change that makes that seam non-identity routes this
-// arm's elements through it too, per element, or states why a spliced run of words is exempt.
+// arm emits the binding or emit_typed_expr and lets Command::args iterate it. Those agree only while
+// that seam is the identity it is today. If it ever becomes a real dag-String-to-host-String
+// conversion, every word spliced through the list arm silently skips the conversion every word
+// through the one-word arm receives. TRIGGER: the first change that makes that seam non-identity
+// routes this arm's elements through it too, per element, or states why a spliced run of words is
+// exempt.
 //
 // AN OPTIONAL WORD LIST IS OUT OF SCOPE AND STAYS LOUD. `List<String>?` is excluded by the
-// cardinality conjunct in type_node_is_ordered_element_run, so such an element keeps the one-word arm and keeps earning rustc's
+// cardinality conjunct in type_node_is_ordered_element_run, so such an element keeps the located
 // refusal; no site in the corpus declares one, and admitting it would mean deciding what an absent
 // run of words splices to -- zero words or a refusal -- which is a modelling question this change
 // does not answer. The trigger is the first operation that declares one.
-fn shell_argv_param_is_word_list(param: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  type_node_is_ordered_element_run(n: param_node_type_expr(n: param), source_indices: source_indices)
-}
-
-fn shell_argv_element_is_word_list(arg: Node, list_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match arg.expr_data {
-    ExprVar { binding_kind: _ } =>
-      match map_get(list_params, expr_var_name_at(texpr: arg, source_indices: source_indices)) {
-        Present { value: _ } => true
-        Absent => false
-      }
-    _ => false
+fn shell_argv_emit_scope(env: TypeEnv, registry: Map<String, ItemInfo>) -> InferScope {
+  let empty = empty_emit_scope()
+  InferScope {
+    type_env: env,
+    func_env: empty.func_env,
+    locals: empty.locals,
+    body_locals: empty.body_locals,
+    match_bound_names: empty.match_bound_names,
+    module_name: env.module_path,
+    service_registry: empty.service_registry,
+    item_registry: registry,
+    lambda_param_provenance: empty.lambda_param_provenance,
+    caller_decl_name: empty.caller_decl_name,
+    in_flight_lambda_param_names: empty.in_flight_lambda_param_names,
+    enclosing_declared_type_param_names: empty.enclosing_declared_type_param_names
   }
 }
 
-fn emit_shell_argv_word_list_element(arg: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  emit_ident(name: expr_var_name_at(texpr: arg, source_indices: source_indices), target: Rust)
+fn argv_follow_inferred(n: Node) -> Node {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => rt
+    _ =>
+      match n.type_annotation {
+        Present { value: t } => t
+        Absent => n
+      }
+  }
 }
 
-fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
+fn argv_element_type_after_alias_hop(arg: Node, scope: InferScope, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Node? {
+  match arg.inferred {
+    Present { value: Resolved { node: rt } } =>
+      Present { value: hop_argv_element_type(rt: rt, scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel) }
+    _ => none
+  }
+}
+
+fn hop_argv_element_type(rt: Node, scope: InferScope, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, fuel: Int) -> Node {
+  if fuel <= 0 {
+    rt
+  } else if (type_node_is_ordered_element_run(n: rt, source_indices: source_indices) || is_rust_string_like(n: rt, source_indices: source_indices)) {
+    rt
+  } else if rust_type_node_is_arrow(n: rt) {
+    hop_argv_element_type(rt: argv_follow_inferred(n: rt), scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel - 1)
+  } else {
+    match rust_operand_alias_or_refinement_continue(rt: rt, scope: scope, fuel: fuel) {
+      Present { value: next } => hop_argv_element_type(rt: next, scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel - 1)
+      Absent =>
+        match resolve_type_decl_reference(index: emit_info.type_decl_items, type_expr: rt, source_indices: source_indices) {
+          TypeDeclResolved { identity: _, decl: d } =>
+            hop_argv_element_type(rt: argv_follow_inferred(n: d), scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: fuel - 1)
+          TypeDeclLeafAmbiguous { leaf: _ } => rt
+          TypeDeclKernelSpellingUndecided { leaf: _ } => rt
+          TypeDeclNotDeclared => rt
+        }
+    }
+  }
+}
+
+fn shell_argv_element_is_word_list(arg: Node, scope: InferScope, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match argv_element_type_after_alias_hop(arg: arg, scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: 8) {
+    Present { value: t } => type_node_is_ordered_element_run(n: t, source_indices: source_indices)
+    Absent => false
+  }
+}
+
+fn shell_argv_element_is_string_word(arg: Node, scope: InferScope, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match arg.expr_data {
+    ExprLiteral { value: LitStr { value: _ } } => true
+    ExprStringInterp => true
+    _ =>
+      match argv_element_type_after_alias_hop(arg: arg, scope: scope, emit_info: emit_info, source_indices: source_indices, fuel: 8) {
+        Present { value: t } => is_rust_string_like(n: t, source_indices: source_indices)
+        Absent => false
+      }
+  }
+}
+
+fn emit_shell_argv_word_list_element(arg: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+}
+
+fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match arg.expr_data {
     ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", escape_string_literal_body(s: s), "\"")
@@ -17919,7 +18009,8 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
         emit_rust_dag_string_to_host_via_seam(dag_expr: var_name)
       }
     }
-    _ => emit_simple_expr(expr: arg, target: Rust, source_indices: source_indices)
+    _ =>
+      emit_typed_expr(texpr: arg, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   }
 }
 
@@ -20394,7 +20485,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "// blocks (v2.compiler.compile native_lane_census_scoped_ingest): acquisition's own reads, never a", "\n",
       "// second walk of the roots. The scope line says whether that population is closed or blocked, and", "\n",
       "// where. The walk is census-infer's, without the type-declaration census and without the subject", "\n",
-      "// annotation: every member is in the subject's closure by construction (gunbc.plans.census_scoped_run).", "\n",
+      "// annotation: every member is in the subject's closure by construction.", "\n",
       "// WHAT A SCOPED WALK CARRIES BESIDE ITS READS: the label it was given, the scope acquisition decided,", "\n",
       "// the member digests it printed (the record's revision is read off them), and the baseline record it", "\n",
       "// compares itself against, when one was named.", "\n",
@@ -20423,7 +20514,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let scoped = read_census_scoped_ingest(subject, source_roots);", "\n",
       "    println!(\"\{\}\", serde_json::json!(\{ \"census_scope\": scoped.scope.clone() \}));", "\n",
-      "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM (gunbc.plans.census_scoped_run section 6): one", "\n",
+      "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM: one", "\n",
       "    // member line per acquired read, its bytes digested (v1_rt bytes_identity_hash) from the string every stage consumes,", "\n",
       "    // so the run record's identity is the content that was censused and never a second read of the roots.", "\n",
       "    let mut digests: Vec<String> = Vec::new();", "\n",
