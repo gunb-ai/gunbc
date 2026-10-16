@@ -5,22 +5,10 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // rust_type_arg_identity_spelling used to render a width Nat literal and a Word8–128 type-arg
-// token as `()`, collapsing every such argument to one Rust type. The floor is a located
-// compile_error! (same shape as UnitVariantPhantomEvidenceUnavailable). PointerWidth stays a
+// token as `()`, collapsing every such argument to one Rust type. A literal is now the
+// StaticWidthIndex<N> const-generic marker; a Word token is a located compile_error! (same shape
+// as UnitVariantPhantomEvidenceUnavailable); a negative literal is refused at parse. PointerWidth stays a
 // unit-variant marker, not this arm.
-
-fn w_width_nat_literal_type_arg_is_located_refusal() -> Bool {
-  compile_dag_rust_emit_check(
-    "module width_nat_literal_type_arg\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Held = MachineWidth<8>\n",
-    "src/width_nat_literal_type_arg.rs",
-    ["width type argument has no Rust type identity at", "compile_error!"],
-    ["MachineWidth<()>"]
-  )
-}
-
-test fn width_nat_literal_type_arg_refuses_rather_than_erasing_to_unit() -> Bool {
-  w_width_nat_literal_type_arg_is_located_refusal()
-}
 
 fn w_word_token_type_arg_is_located_refusal() -> Bool {
   compile_dag_rust_emit_check(
@@ -50,26 +38,13 @@ test fn pointer_width_type_arg_is_not_the_width_nat_refusal() -> Bool {
 
 fn w_width_nat_literals_are_distinct_const_generic_types() -> Bool {
   compile_dag_rust_emit_check(
-    "module width_nat_literals\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Narrow = MachineWidth<8>\n\ntype Wide = MachineWidth<16>\n",
+    "module width_nat_literals\n\nimport std.machine_constraints { MachineWidth }\n\ntype Narrow = MachineWidth<8>\n\ntype Wide = MachineWidth<16>\n",
     "src/width_nat_literals.rs",
-    ["MachineWidth<StaticWidthIndex<8>>", "MachineWidth<StaticWidthIndex<16>>", "struct StaticWidthIndex<const N: u128>"],
+    ["MachineWidth<crate::std_machine_constraints::StaticWidthIndex<8>>", "MachineWidth<crate::std_machine_constraints::StaticWidthIndex<16>>"],
     ["MachineWidth<()>", "width type argument has no Rust type identity at"]
   )
 }
 
 test fn machine_width_8_and_16_are_distinct_types() -> Bool {
   w_width_nat_literals_are_distinct_const_generic_types()
-}
-
-fn w_negative_width_literal_is_located_refusal() -> Bool {
-  compile_dag_rust_emit_check(
-    "module negative_width_literal\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Held = MachineWidth<-8>\n",
-    "src/negative_width_literal.rs",
-    ["width type argument has no Rust type identity at", "compile_error!"],
-    ["MachineWidth<()>", "StaticWidthIndex<-"]
-  )
-}
-
-test fn negative_width_literal_refuses_located() -> Bool {
-  w_negative_width_literal_is_located_refusal()
 }

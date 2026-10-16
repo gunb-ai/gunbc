@@ -1522,7 +1522,7 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
           match expr_literal_int_optional(expr: n) {
             Present { value: v } =>
               if v < 0 { Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) } }
-              else { Present { value: concat("StaticWidthIndex<", to_string(v), ">") } }
+              else { Present { value: concat("crate::", module_to_filename(name: "std.machine_constraints"), "::StaticWidthIndex<", to_string(v), ">") } }
             Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
           }
         } else if is_machine_width_phantom_token(name: name) {
