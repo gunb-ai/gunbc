@@ -22,22 +22,19 @@ type ServingServeReading
   | ServingServeAnswering { healthy: Bool, models: NinferModelsList }
   | ServingServeUnreadable { cause: NonEmptyStr }
 
-fn serving_serves_model(models: NinferModelsList, model_id: NonEmptyStr) -> Bool {
-  match models {
-    NinferModelsAdvertised { ids: ids } => any(xs: ids, predicate: fn(i) { i == (model_id as String) })
-    NinferModelsUnreadable { cause: _ } => false
-  }
-}
-
 fn serving_serve_decision(launch: NinferServeLaunch, reading: ServingServeReading) -> UpsertDecision<NinferServeLaunch> {
   match reading {
     ServingServeNotListening => Apply { plan: launch }
     ServingServeUnreadable { cause: c } => Refuse { reason: join(["serve readback unreadable: ", c as String], "") as NonEmptyStr }
     ServingServeAnswering { healthy: h, models: m } =>
-      if h && serving_serves_model(models: m, model_id: launch.model_id) {
-        Noop
-      } else {
-        Refuse { reason: "something answers on the port but is unhealthy or does not serve the pinned model id; refusing a second launch" as NonEmptyStr }
+      match m {
+        NinferModelsUnreadable { cause: c } => Refuse { reason: join(["served model ids unreadable: ", c as String], "") as NonEmptyStr }
+        NinferModelsAdvertised { ids: ids } =>
+          if h && any(xs: ids, predicate: fn(i) { i == (launch.model_id as String) }) {
+            Noop
+          } else {
+            Refuse { reason: "something answers on the port but is unhealthy or does not serve the pinned model id; refusing a second launch" as NonEmptyStr }
+          }
       }
   }
 }

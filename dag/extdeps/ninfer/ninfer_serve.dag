@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Bool, List, Int, Port }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_max }
 import std.algebra { list_append }
-import std.measure { Millisecond, TokenCount, Mebibyte, mebibyte_count, token_count, token_count_value }
+import std.measure { TokenCount, Mebibyte, mebibyte_count, token_count, token_count_value }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
@@ -72,8 +72,6 @@ type NinferServeLaunch {
   model_id: NonEmptyStr
   max_concurrency: Nat
   max_context: TokenCount
-  max_pending_requests: Nat
-  pending_timeout: Millisecond
   default_max_tokens: TokenCount
   kv_dtype: NinferKvDtype
   speculation: NinferSpeculation
@@ -89,9 +87,8 @@ type NinferServeLaunch {
 // --kv-capacity N|auto (ONLY auto is modeled: a numeric capacity has no field, so a launch cannot ask for one and nothing is dropped) --max-concurrency --kv-dtype bf16|int8|fp8|nvfp4|k8v4 --device-state-slots
 // --spec mtp --draft-tokens N --lm-head-draft --preserve-thinking --host-context-mib N.
 //
-// THREE FIELDS ARE DELIBERATELY NOT RENDERED. max_pending_requests and pending_timeout are unread for the
-// launch the card runs (its line omits --max-pending-requests and --pending-timeout-ms), so no flag carries
-// their figures. default_max_tokens is rendered only when it differs from the help's stated default, 8192,
+// max-pending-requests and pending-timeout-ms are unread for the launch the card runs (its line omits both),
+// so the launch record has no field for them and no flag carries a figure. default_max_tokens is rendered only when it differs from the help's stated default, 8192,
 // which makes the row's 8192 the cited default and not a passed flag. --api-key is a credential and is not
 // an argument of this renderer: a launch leg binds it as a grant or refuses.
 data ninfer_default_max_tokens_help_default: TokenCount = token_count(count: 8192)

@@ -6,7 +6,7 @@ import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { rm_force_command, cp_command, mv_exact_destination_command, ln_symbolic_force_command }
-import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, ninfer_serve_launch_argv }
+import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, NinferModelsUnreadable, ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import gunbc.serving.rented_ninfer_source {
@@ -124,6 +124,7 @@ test fn a_mismatch_or_unreadable_readback_refuses() -> Bool {
   (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsAdvertised { ids: ["other"] } }) { Refuse { reason: _ } => true  _ => false })
     && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: false, models: NinferModelsAdvertised { ids: ["qwen"] } }) { Refuse { reason: _ } => true  _ => false })
     && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeUnreadable { cause: "timeout" as NonEmptyStr }) { Refuse { reason: _ } => true  _ => false })
+    && (match serving_serve_decision(launch: operator_pod_ninfer_launch, reading: ServingServeAnswering { healthy: true, models: NinferModelsUnreadable { cause: "not json" as NonEmptyStr } }) { Refuse { reason: _ } => true  _ => false })
 }
 
 fn argv_has(argv: List<String>, flag: String) -> Bool {

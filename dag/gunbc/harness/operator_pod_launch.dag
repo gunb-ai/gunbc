@@ -1,7 +1,7 @@
 module gunbc.harness.operator_pod_launch
 
 import std.types { NonEmptyStr, Port }
-import std.measure { millisecond, token_count, mebibyte }
+import std.measure { token_count, mebibyte }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferKvNvfp4, NinferMtp }
 
@@ -23,8 +23,6 @@ data operator_pod_ninfer_launch: NinferServeLaunch = NinferServeLaunch {
   model_id: "qwen" as NonEmptyStr,
   max_concurrency: 8,
   max_context: token_count(count: 262144),
-  max_pending_requests: 64,
-  pending_timeout: millisecond(count: 900000),
   default_max_tokens: token_count(count: 8192),
   kv_dtype: NinferKvNvfp4,
   speculation: NinferMtp { draft_tokens: 3, lm_head_draft: true },
