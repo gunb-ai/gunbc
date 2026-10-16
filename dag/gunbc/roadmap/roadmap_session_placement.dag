@@ -11,14 +11,14 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_record_with_state, attempt_transition_wire, attempt_state_wire,
   compute_pre_launch_ceiling_seconds,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
   unit_lifecycle_wire,
-  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
   recovery_trigger, recovery_trigger_wire,
 }
 import gunbc.compute.host_capacity {
@@ -256,6 +256,7 @@ fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyt
     opened_at: now,
     launch_deadline: now + compute_pre_launch_ceiling_seconds,
     state: AttemptReserved,
+    owner: DispatchOwned { node_id: node_id, attempt_key: attempt_key },
   }
 }
 
@@ -992,7 +993,7 @@ fn session_settle_by_trigger(record: AttemptRecord, generation: CasGeneration, a
     RecoveryMayTerminate { reason } => SettleTerminateAndRelease { record: record, generation: generation, attempt: attempt, reason: reason }
     RecoveryTooEarly { deadline: d, now: n } => SettleKeep { why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }), explain: false }
     RecoveryUnitNotEnded { lifecycle: u } => SettleKeep { why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }), explain: false }
-    RecoveryStateNotRecoverable { state: s } => SettleDone { why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: s }) }
+    RecoveryTerminalRecordMayRelease { state: s } => SettleDone { why: recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: s }) }
   }
 }
 
