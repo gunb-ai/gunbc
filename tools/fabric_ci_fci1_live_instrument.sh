@@ -23,10 +23,10 @@ if [[ ${FCI1_BOUNDED_INNER-0} != 1 ]]; then
   [[ -x $repo_root/target/release/gunbc ]] || { echo 'InstrumentRefused: exact-tree gunbc absent' >&2; exit 2; }
   outer_status=0
   fci1_install_controls_slice || exit 2
-  trap fci1_remove_controls_slice EXIT
+  trap 'fci1_remove_controls_slice || exit 1' EXIT
   fci1_run_bounded_driver "$repo_root" env FCI1_BOUNDED_INNER=1 \
     FCI1_CHECKPOINT="${FCI1_CHECKPOINT-__empty__}" "$repo_root/tools/fabric_ci_fci1_live_instrument.sh" || outer_status=$?
-  fci1_remove_controls_slice
+  fci1_remove_controls_slice || { echo 'InstrumentRefused: controls slice teardown failed' >&2; outer_status=1; }
   driver_terminal=$(systemctl show "$FCI1_DRIVER_UNIT" --property=LoadState --property=ActiveState 2>&1 || true)
   [[ $driver_terminal == *'LoadState=not-found'* && $driver_terminal == *'ActiveState=inactive'* ]] || {
     echo "InstrumentRefused: bounded driver was not positively collected: $driver_terminal" >&2
