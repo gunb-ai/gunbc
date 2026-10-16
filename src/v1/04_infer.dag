@@ -3580,24 +3580,18 @@ fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan
 // distinct nominal products, or a product against a coproduct, are never equal, so the site answers false for every input
 // (gunbc.recurring_failure_mode cross_type_comparison_answers_instead_of_refusing; specimen
 // extdeps.cpu.types soc_family_architecture `m.architecture == lead`). It reuses the product-versus-coproduct head judgment
-// that declared_type_conformance_diags_core consults and adds only the product-versus-product case. A head that is not a
+// that declared_type_conformance_diags_core consults and consumes nominal_product_inhabitance_refusal for the product-versus-product case, so == and a declared-type position give one answer about one product pair. A head that is not a
 // nominal product or coproduct (a parameter, a kernel type, an unresolved operand) yields "" and is not judged here, so a
 // generic or unresolved operand behaves as before.
 fn equality_operands_never_inhabit_together(left: Node, right: Node, scope: InferScope) -> Bool {
-  let left_product = nominal_product_head_name(n: left, scope: scope)
-  let right_product = nominal_product_head_name(n: right, scope: scope)
   if product_versus_coproduct_head_mismatch(declared: left, produced: right, scope: scope) {
     true
-  } else if left_product != "" && right_product != "" {
-    let left_name = authored_name_at(source_indices: scope.type_env.source_indices, node: left)
-    let right_name = authored_name_at(source_indices: scope.type_env.source_indices, node: right)
-    !(application_type_names_compatible(
-        formal_name: left_name, lit_name: right_name,
-        type_env: scope.type_env, module_name: scope.module_name,
-        source_indices: scope.type_env.source_indices)
-      || transparent_alias_identity_agrees(
-        index: scope.type_env.symbol_index, left: left_name, right: right_name))
-  } else { false }
+  } else {
+    match nominal_product_inhabitance_refusal(declared: left, produced: right, scope: scope) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
 }
 
 fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scope: InferScope, span: SourceSpan) -> List<ErrorNode> {
