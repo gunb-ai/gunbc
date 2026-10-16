@@ -3778,7 +3778,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
-      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed) || (native_effects |> count) > 0
+      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed) || (native_effects.admissions |> count) > 0
     }
   }
   let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
