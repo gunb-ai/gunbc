@@ -12050,7 +12050,10 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
     Present { value: field_child } =>
       let field_ty = resolved_type(n: field_child)
       let field_ty_name = authored_name_at(source_indices: scope.type_env.source_indices, node: field_ty)
-      let grounds_to_host_scalar = realization_host_numeric_spelling(decision: type_reference_realization(n: field_ty, dag_name: field_ty_name, target: Rust)) != none
+      // The env-consulting mint: a generic argument written at the use site (Measure<Q, S, Nat>) is a
+      // node whose own-span fallback names the REFERENCING file, not std.nat, so the env-less read
+      // never saw the native row and the field access refused (16 sites in std.measure, run 3).
+      let grounds_to_host_scalar = realization_host_numeric_spelling(decision: type_reference_realization_in_env(n: field_ty, dag_name: field_ty_name, env: scope.type_env, source_indices: scope.type_env.source_indices)) != none
       if grounds_to_host_scalar { NeedsNoBox }
       else {
         needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices, type_decl_items: emit_info.type_decl_items, generic_param_names: emit_info.fn_generic_param_names)
