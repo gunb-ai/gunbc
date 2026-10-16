@@ -107,6 +107,10 @@ fn unit_name() -> NonEmptyStr { "gunbc-roadmap.service" as NonEmptyStr }
 data unhealthy_status: HttpStatus = 503
 data principal_failure_status: HttpStatus = 403
 
+// THE CLASS, NOT THE CODE: the row's NEXT TRIGGER names a 500 and the incident answered 503, so the
+// fold must key on http_status_class_of's ServerError rather than on one literal.
+data server_error_status: HttpStatus = 500
+
 test fn the_supplied_statuses_are_the_ones_the_incident_showed() -> Bool {
   match http_status_of(n: 503) { Present { value: s } => s == unhealthy_status  Absent => false }
     && match http_status_of(n: 403) { Present { value: s } => s == principal_failure_status  Absent => false }
@@ -287,6 +291,34 @@ test fn an_answered_503_is_never_refused_as_unobservable() -> Bool {
     EffectsDerived { plan: _ } => true
     EffectsRefused { refusals: _ } => !string_list_contains(xs: refusal_texts(d: d), wanted: "could not observe the host")
   }
+}
+
+// THE NEXT TRIGGER'S OWN WORDS ASK FOR "a fixture with a 500-answering /healthz that plans", beside
+// the existing refusal for an unreachable host -- and the incident answered 503. Both are claimed,
+// because the fold asks http_status_class_of about the status rather than matching a literal: the
+// replacement is planned over the SERVER-ERROR CLASS. Same fixture, one digit changed, still plans.
+test fn a_500_answering_healthz_plans_the_replacement_too() -> Bool {
+  let at_500 = MemberObserved {
+    identity: ProcessAt {
+      process: ProcessObservedUnhealthy {
+        active: Active,
+        status: server_error_status(),
+        detail: status_said_server_error(),
+      },
+    },
+  }
+  string_list_contains(
+    xs: labels(d: plan_with(observed: m => match m {
+      ServiceProcess => at_500
+      _ => incident_observed(m: m)
+    })),
+    wanted: join(["restart ", unit_name() as String], ""),
+  )
+    && match healthz_effective_read_from_status_body(status: server_error_status(), body: identity_free_body()) {
+      HealthzAnsweredUnhealthy { status, detail: _ } => status == server_error_status()
+      HealthzBodyRead { body: _ } => false
+      HealthzProbeRefused { probe_error: _ } => false
+    }
 }
 
 // ---------------------------------------------------------------- the guards
