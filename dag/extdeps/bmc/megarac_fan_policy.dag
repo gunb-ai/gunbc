@@ -74,7 +74,7 @@ fn megarac_fan_policy_read_obligation() -> NonEmptyStr? {
 // Ipmi here would type a false protocol. SDR tach still uses the family IPMI floor
 // (megarac_fan_sdr_protocol_floor).
 type MegaRacFanControlTransport
-  = MegaRacSpxRest
+  = MegaRacSpxRest {}
 
 type MegaRacFanModeSurface
   = MegaRacFanModeSurfaceUnbound { read_obligation: NonEmptyStr }
@@ -89,7 +89,7 @@ type MegaRacFanModeSurface
   }
 
 data megarac_fan_mode_surface: MegaRacFanModeSurface = MegaRacFanModeSurfaceReadsBound {
-  transport: MegaRacSpxRest,
+  transport: MegaRacSpxRest {},
   write_obligation: "wet write/readback fold that POSTs set_fan_speed fan_pwm_all and set_manager_status and reads get_fan_info pwm echo plus thermal-guard dwell; catalog rows megarac_op_fan_set_fan_speed and megarac_op_session_login are shape, not that fold",
   contract_note: "Foxconn Mt. Collins MegaRAC 0.32, served UI source.min.js gzip sha256 prefix ee9b14cbf7141b78 (AMI copyright, off-tree). GET /api/fan_control/get_manager_status manager_disabled 0 or 1, and GET /api/fan_control/get_fan_info rows id, fan_number, fan_speed, fan_pwm (UI labels speed as PWM percentage). Instance values of those GETs live in gunbc.machine_intake.megarac_fan_mode_observation.",
 }

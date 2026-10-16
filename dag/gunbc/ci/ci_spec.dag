@@ -1076,6 +1076,11 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+  function: "mtcollins1_fan_observe_boot_phase_wet",
+}
+
 data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
   function: "mtcollins1_kvm_observer_observe_wet",
@@ -1367,6 +1372,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_fan_observe_boot_phase_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
@@ -1913,6 +1919,20 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
       source_roots: witness_layer_roots,
       entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
       function: gunbc_ci_mtcollins1_fan_observe_target.function,
+      claim_run: false,
+      receipt_rel: mtcollins1_fan_observation_receipt_path
+    )
+  )
+}
+
+fn gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_fan_observe_boot_phase_target.entry,
+      function: gunbc_ci_mtcollins1_fan_observe_boot_phase_target.function,
       claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )

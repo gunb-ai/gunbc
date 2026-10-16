@@ -28,6 +28,7 @@ import gunbc.machine_intake.megarac_fan_mode_observation {
   MegaRacDutyConvergedTachMoved,
   MegaRacDutyNotConvergedEchoMismatch,
   MegaRacDutyNotConvergedGuardOpen,
+  MegaRacDutyNotConvergedTachPopulationMismatch,
   MegaRacDutyNotConvergedTachUnmoved,
   MegaRacTachFidelityEstablished,
   MegaRacTachFidelityUnestablished,
@@ -192,6 +193,7 @@ test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
             MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
             MegaRacDutyNotConvergedEchoMismatch => false
             MegaRacDutyNotConvergedGuardOpen => false
+            MegaRacDutyNotConvergedTachPopulationMismatch => false
           }
         MegaRacTachFidelityEstablished => false
       }
@@ -199,6 +201,7 @@ test fn unestablished_tach_fidelity_admits_echo_converge() -> Bool {
     MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
     MegaRacDutyNotConvergedEchoMismatch => false
     MegaRacDutyNotConvergedGuardOpen => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
   }
 }
 
@@ -223,11 +226,44 @@ test fn open_dwell_guard_refuses_converge_on_both_fidelity_arms() -> Bool {
         MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
         MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
         MegaRacDutyNotConvergedEchoMismatch => false
+        MegaRacDutyNotConvergedTachPopulationMismatch => false
       }
     MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
     MegaRacDutyConvergedTachMoved => false
     MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
     MegaRacDutyNotConvergedEchoMismatch => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
+  }
+}
+
+test fn established_echo_mismatch_and_tach_population_mismatch_refuse() -> Bool {
+  match megarac_duty_converge_verdict(
+    fidelity: MegaRacTachFidelityEstablished,
+    pwm_echo_matches_desired: false,
+    guard_holds_over_dwell: true,
+    tach_before_rpm: [rpm(5700)],
+    tach_after_rpm: [rpm(6000), rpm(6000)],
+  ) {
+    MegaRacDutyNotConvergedEchoMismatch =>
+      match megarac_duty_converge_verdict(
+        fidelity: MegaRacTachFidelityEstablished,
+        pwm_echo_matches_desired: true,
+        guard_holds_over_dwell: true,
+        tach_before_rpm: [rpm(5700)],
+        tach_after_rpm: [rpm(6000), rpm(6000)],
+      ) {
+        MegaRacDutyNotConvergedTachPopulationMismatch => true
+        MegaRacDutyConvergedTachMoved => false
+        MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+        MegaRacDutyNotConvergedEchoMismatch => false
+        MegaRacDutyNotConvergedGuardOpen => false
+      }
+    MegaRacDutyConvergedTachMoved => false
+    MegaRacDutyConvergedEchoTachUnfaithful { fidelity: _ } => false
+    MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: _ } => false
+    MegaRacDutyNotConvergedGuardOpen => false
+    MegaRacDutyNotConvergedTachPopulationMismatch => false
   }
 }
 

@@ -75,16 +75,28 @@ type MegaRacGuardSensorClass
   | ChassisOutlet
 
 fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> MegaRacGuardSensorClass? {
-  if (sensor as String) == "CPU0_SOC_Temp" {
-    Present { value: SocJunction }
-  } else if (sensor as String) == "CPU0_DIMMG0_Temp" || (sensor as String) == "CPU0_DIMMG1_Temp" {
-    Present { value: DimmChannel }
-  } else if (sensor as String) == "CPU0_SOC_VRDTemp" || (sensor as String) == "CPU0_DIMMVRDTemp" {
-    Present { value: VoltageRegulator }
-  } else if (sensor as String) == "Outlet_1_Temp" || (sensor as String) == "Outlet_2_Temp" {
-    Present { value: ChassisOutlet }
-  } else {
-    Absent
+  let s = sensor as String
+  match (s == "CPU0_SOC_Temp") {
+    true => Present { value: SocJunction }
+    false => match (s == "CPU0_DIMMG0_Temp") {
+      true => Present { value: DimmChannel }
+      false => match (s == "CPU0_DIMMG1_Temp") {
+        true => Present { value: DimmChannel }
+        false => match (s == "CPU0_SOC_VRDTemp") {
+          true => Present { value: VoltageRegulator }
+          false => match (s == "CPU0_DIMMVRDTemp") {
+            true => Present { value: VoltageRegulator }
+            false => match (s == "Outlet_1_Temp") {
+              true => Present { value: ChassisOutlet }
+              false => match (s == "Outlet_2_Temp") {
+                true => Present { value: ChassisOutlet }
+                false => Absent
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 

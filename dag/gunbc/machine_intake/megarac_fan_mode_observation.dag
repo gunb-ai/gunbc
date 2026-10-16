@@ -218,8 +218,14 @@ type MegaRacDutyConvergeVerdict
   = MegaRacDutyConvergedTachMoved
   | MegaRacDutyConvergedEchoTachUnfaithful { fidelity: MegaRacFanTachFidelity }
   | MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: Bool }
+  | MegaRacDutyNotConvergedTachPopulationMismatch
   | MegaRacDutyNotConvergedEchoMismatch
   | MegaRacDutyNotConvergedGuardOpen
+
+type MegaRacTachMotion
+  = MegaRacTachPopulationMismatch
+  | MegaRacTachUnmoved
+  | MegaRacTachMoved
 
 fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Nat {
   let ac = rpm_count(r: a)
@@ -231,19 +237,19 @@ fn megarac_rpm_abs_delta(a: RevolutionsPerMinute, b: RevolutionsPerMinute) -> Na
   }
 }
 
-fn megarac_tach_rpm_unmoved(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> Bool {
+fn megarac_tach_rpm_motion(before: List<RevolutionsPerMinute>, after: List<RevolutionsPerMinute>, floor: RevolutionsPerMinute) -> MegaRacTachMotion {
   if (before.length() != after.length()) {
-    false
+    MegaRacTachPopulationMismatch
   } else {
     match before.first() {
-      Absent => true
+      Absent => MegaRacTachUnmoved
       Present { value: b } => match after.first() {
-        Absent => false
+        Absent => MegaRacTachPopulationMismatch
         Present { value: a } =>
           if (megarac_rpm_abs_delta(a: b, b: a) >= rpm_count(r: floor)) {
-            false
+            MegaRacTachMoved
           } else {
-            megarac_tach_rpm_unmoved(
+            megarac_tach_rpm_motion(
               before: before.skip(n: 1),
               after: after.skip(n: 1),
               floor: floor,
@@ -271,16 +277,24 @@ fn megarac_duty_converge_verdict(
         MegaRacDutyConvergedEchoTachUnfaithful { fidelity: fidelity }
       }
     MegaRacTachFidelityEstablished =>
-      if (megarac_tach_rpm_unmoved(
-        before: tach_before_rpm,
-        after: tach_after_rpm,
-        floor: megarac_duty_tach_move_floor,
-      )) {
-        MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
-      } else if (!guard_holds_over_dwell) {
-        MegaRacDutyNotConvergedGuardOpen
+      if (!pwm_echo_matches_desired) {
+        MegaRacDutyNotConvergedEchoMismatch
       } else {
-        MegaRacDutyConvergedTachMoved
+        match megarac_tach_rpm_motion(
+          before: tach_before_rpm,
+          after: tach_after_rpm,
+          floor: megarac_duty_tach_move_floor,
+        ) {
+          MegaRacTachPopulationMismatch => MegaRacDutyNotConvergedTachPopulationMismatch
+          MegaRacTachUnmoved =>
+            MegaRacDutyNotConvergedTachUnmoved { pwm_echo_matches_command: pwm_echo_matches_desired }
+          MegaRacTachMoved =>
+            if (!guard_holds_over_dwell) {
+              MegaRacDutyNotConvergedGuardOpen
+            } else {
+              MegaRacDutyConvergedTachMoved
+            }
+        }
       }
   }
 }

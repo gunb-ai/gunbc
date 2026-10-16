@@ -8,7 +8,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
 }
-import gunbc.ci.ci_spec { gunbc_ci_mtcollins1_fan_observe_invoke }
+import gunbc.ci.ci_spec { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { OpenBmc }
@@ -149,6 +149,8 @@ test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
     && fan_policy_phase_step_name(s: fleet_converge_mtcollins1_fan_observe_step())
       == fleet_converge_fan_observe_ipmi_series_step_name
     && fan_policy_phase_step_run_text(s: fleet_converge_fan_policy_phase_step())
+      == gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+    && fan_policy_phase_step_run_text(s: fleet_converge_mtcollins1_fan_observe_step())
       == gunbc_ci_mtcollins1_fan_observe_invoke()
 }
 
@@ -162,7 +164,37 @@ test fn fan_policy_phase_runs_before_the_power_cycle_and_not_inside_it() -> Bool
     ),
     s => fan_policy_phase_step_run_text(s: s),
   )
-  let fan = gunbc_ci_mtcollins1_fan_observe_invoke()
+  let fan = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
   filter(runs, r => r == fan_policy_phase_supplied_fleet_key || r == fan || r == fan_policy_phase_supplied_boot)
     == [fan_policy_phase_supplied_fleet_key, fan, fan_policy_phase_supplied_boot]
+}
+
+fn fan_policy_phase_continue_on_error(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: c, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+fn fan_policy_phase_timeout_present(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: _ } => true
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// CONTROL: the boot step stays in the job after the phase even if the phase is continue-on-error
+// (nonzero or step timeout). GitHub still schedules later steps when continue-on-error is true.
+test fn fan_policy_phase_nonzero_or_timeout_leaves_boot_scheduled() -> Bool {
+  fan_policy_phase_continue_on_error(s: fleet_converge_fan_policy_phase_step())
+    && fan_policy_phase_timeout_present(s: fleet_converge_fan_policy_phase_step())
+    && !fan_policy_phase_continue_on_error(s: fleet_converge_mtcollins1_fan_observe_step())
 }

@@ -196,7 +196,7 @@ test fn witness_megarac_fan_mode_surface_is_reads_bound_spx_rest() -> Bool {
         Absent => false
         Present { value: _ } =>
           match megarac_fan_mode_transport(surface: megarac_fan_mode_surface) {
-            Present { value: MegaRacSpxRest } =>
+            Present { value: MegaRacSpxRest {} } =>
               match megarac_fan_sdr_protocol_floor() {
                 Ipmi => true
                 _ => false
