@@ -195,6 +195,31 @@ test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
       content_hash_validate_lower_hex_length(text: w, expected_hex_digits: microvm_w5_digest_width)))
 }
 
+// GREEN (3h) / THE INHABITANCE CLAIM ON THE REAL ROUTE: every leg this module
+// runs has a CATALOGED external binary as its program -- install, mkdir, curl,
+// tar, sha256sum, dd, mv, visudo, systemctl, and sudo for the elevated legs.
+// That is what "the step inhabits the argv route" means concretely: the fold
+// hands these words to run_argv_over_host_effect_transport, and nothing on this
+// edge can be a shell interpreter. `sh`/`bash`/`dash` appearing as a program
+// would mean the shell carrier had crept back onto the edge, and this claim
+// goes red the moment that happens.
+// Each entry is the invocation a real op declares: `install`
+// (gnu_coreutils install_program), `/usr/bin/mkdir` (mkdir_binary_path), `curl`,
+// `tar`, `sha256sum`, `dd`, `mv`, and `/usr/bin/sudo` (elevation.sudo_program --
+// the elevated legs, and the visudo / daemon-reload ops, whose PROGRAM is sudo
+// with the tool named as an argument).
+data microvm_w5_cataloged_programs: List<String> = [
+  "install", "/usr/bin/mkdir", "curl", "tar", "sha256sum", "dd", "mv", "/usr/bin/sudo",
+]
+
+test fn microvm_w5_every_leg_inhabits_a_cataloged_argv_program() -> Bool {
+  let legs = filter(microvm_w5_steps(), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
+  let programs = map(legs, s => nth_text(items: microvm_controller_step_words(step: s), index: 0))
+  list_length(items: legs) >= 20
+    && all(programs, pr => any(microvm_w5_cataloged_programs, c => c == pr))
+    && !any(programs, pr => pr == "sh" || pr == "bash" || pr == "dash" || pr == "env")
+}
+
 // A bounded positional read: an out-of-range index yields "" so a claim fails on
 // the text rather than stopping the run.
 fn nth_text(items: List<String>, index: Int) -> String {
