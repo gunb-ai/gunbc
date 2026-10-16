@@ -148,9 +148,10 @@ fn arc_reason(row: NativeCensusResidualRow) -> Symbol {
 // never ignores them. The discriminator test is deliberately NOT filtered: it demands zero rows.
 fn arc_group_rows(rows: List<NativeCensusResidualRow>) -> List<NativeCensusResidualRow> {
   fold(rows, init: Empty, f: fn(acc, row) {
-    match arc_reason(row) == ^resolve_anonymous_record_no_expected_type {
-      true => list_snoc_item(xs: acc, item: row)
-      false => acc
+    if arc_reason(row) == ^resolve_anonymous_record_no_expected_type {
+      list_snoc_item(xs: acc, item: row)
+    } else {
+      acc
     }
   })
 }
