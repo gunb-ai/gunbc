@@ -494,7 +494,7 @@ fn compute_path_virtualization_properties(layout: ComputeLayout, path_virtualiza
   match path_virtualization {
     NoPathVirtualization => []
     CheckoutAndTargetAtStablePaths { checkout_at, target_at } =>
-      [SystemdRunProperty { property: BindPathsProperty, value: join([layout.checkout, ":", checkout_at, " ", layout.target_dir, ":", target_at], "") as NonEmptyStr }]
+      [NamedUnitSetting { property: BindPathsProperty, value: join([layout.checkout, ":", checkout_at, " ", layout.target_dir, ":", target_at], "") as NonEmptyStr }]
   }
 }
 
