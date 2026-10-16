@@ -53,6 +53,8 @@ import gunbc.roadmap.roadmap_validation_oracle {
   ValidationFailed,
   ValidationRefused,
   ValidationNotRun,
+  ValidationPassed,
+  ValidationFailed,
   ValidationRefusalCause,
   ValidationContractUnspecified,
   ValidationOracleUnpinnable,
@@ -728,10 +730,11 @@ fn belt_verification_resume_decision(
         ExactVerificationReceiptPresent { text } =>
           match verification_receipt_text_classify(receipt: text) {
             VerificationReceiptTextV2 { receipt } =>
-              if validation_verdict_key(verdict: receipt.verdict) == "refused" {
-                BeltVerificationRun
-              } else {
-                BeltVerificationDefer { reason: reason }
+              match receipt.verdict {
+                ValidationRefused { cause: _ } => BeltVerificationRun
+                ValidationNotRun => BeltVerificationDefer { reason: reason }
+                ValidationPassed { command: _, oracle_identity: _ } => BeltVerificationDefer { reason: reason }
+                ValidationFailed { command: _, exit_code: _, detail: _ } => BeltVerificationDefer { reason: reason }
               }
             VerificationReceiptTextUndecodable { reason: _ } => BeltVerificationDefer { reason: reason }
             VerificationReceiptTextLegacyAttempt { verdict_key: _ } => BeltVerificationDefer { reason: reason }

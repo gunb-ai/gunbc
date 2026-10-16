@@ -3,10 +3,10 @@ module test.claim.verification_evidence_addressing_witness
 import gunbc.roadmap.roadmap_refused_retry {
   RefusalCauseInfrastructure, RefusalCauseCandidate, RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop,
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
-  belt_verification_retry_verdict, refusal_cause_class, refusal_detail_class, refused_retry_standing, refused_retry_bound,
-  compute_refusal_program, compute_refusal_reason,
+  belt_verification_retry_verdict, refusal_cause_class, refused_retry_standing, refused_retry_bound,
+  compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
 }
-import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed }
+import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed, WorkEndedCancelled }
 import gunbc.roadmap.roadmap_validation_oracle { validation_verdict_detail }
 import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
@@ -870,13 +870,10 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
 // THE REAL COMPUTE REFUSAL, built by the producer's own builder: a failed dependency under a
 // refused_by_infrastructure ending (the receipt of attempt a1c9b5bec8253061b).
 fn infra_refusal_verdict() -> ValidationVerdict {
-  ValidationRefused { cause: ValidationCommandRefused {
-    program: compute_refusal_program,
-    reason: compute_refusal_reason(
-      ending: work_ending_wire(e: WorkEndedRefusedByInfrastructure),
-      document: "gunbc-compute: dependency <build:release:gunbc,claim_batch> ended failed",
-    ),
-  } }
+  ValidationRefused { cause: compute_refusal_cause(
+    ending: WorkEndedRefusedByInfrastructure,
+    document: "gunbc-compute: dependency <build:release:gunbc,claim_batch> ended failed",
+  ) }
 }
 
 fn decision_for(verdict: ValidationVerdict) -> BeltVerificationDecision {
@@ -932,15 +929,19 @@ test fn c4_a_candidate_refusal_still_holds_without_a_retry() -> Bool {
     })
 }
 
-// CLAIM C5 (inhabitance): the refusal the REAL producer builds (the shared builder over the real compute
-// ending wire) classifies as infrastructure from the recorded receipt AND from the segment detail the
-// belt's pure wake reads, while a failed ending does not. Deleting the shared builder breaks both.
+// CLAIM C5 (inhabitance): the cause the REAL producer builds from the real compute ending
+// (compute_refusal_cause over WorkEndedRefusedByInfrastructure) is the typed infrastructure variant,
+// survives the receipt wire round trip as that variant, and classifies as infrastructure; every other
+// ending classifies as candidate. A command refusal whose TEXT merely contains the infrastructure
+// wording is NOT infrastructure: the class is the variant, never the text.
 test fn c5_the_real_compute_refusal_inhabits_the_shape() -> Bool {
   let source = resume_receipt_source(verdict: infra_refusal_verdict())
+  let lookalike = ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: WorkEndedRefusedByInfrastructure), document: "x") }
   (match belt_verification_refused_cause(source: source) {
     Present { value: cause } => match refusal_cause_class(cause: cause) { RefusalCauseInfrastructure => true  RefusalCauseCandidate => false }
     Absent => false
   })
-    && (match refusal_detail_class(detail: validation_verdict_detail(verdict: infra_refusal_verdict())) { RefusalCauseInfrastructure => true  RefusalCauseCandidate => false })
-    && (match refusal_detail_class(detail: compute_refusal_reason(ending: work_ending_wire(e: WorkEndedFailed), document: "x")) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
+    && (match refusal_cause_class(cause: compute_refusal_cause(ending: WorkEndedFailed, document: "x")) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
+    && (match refusal_cause_class(cause: compute_refusal_cause(ending: WorkEndedCancelled, document: "x")) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
+    && (match refusal_cause_class(cause: lookalike) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
 }

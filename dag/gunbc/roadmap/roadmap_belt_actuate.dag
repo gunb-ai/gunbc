@@ -350,7 +350,7 @@ import gunbc.compute.work_provider_local {
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
   RefusalCauseInfrastructure, RefusalCauseCandidate,
-  compute_refusal_program, compute_refusal_reason, refusal_detail_class,
+  compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
   refused_retry_standing, refused_retry_owed, refused_retry_ledger_entry_name, refused_retry_ledger_count,
   refused_retry_exhausted_reason, refused_retry_bound,
   RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop, belt_verification_retry_verdict,
@@ -8523,12 +8523,20 @@ fn belt_run_claim_through_compute(
                 executions: acc.executions |> append(execution),
                 verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
               }
-            _ =>
+            WorkEndedRefusedByInfrastructure =>
               BeltValidationRun {
                 executions: acc.executions |> append(execution),
-                verdict: ValidationRefused {
-                  cause: ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: ending, document: document) },
-                },
+                verdict: ValidationRefused { cause: compute_refusal_cause(ending: e, document: document) },
+              }
+            WorkEndedCancelled =>
+              BeltValidationRun {
+                executions: acc.executions |> append(execution),
+                verdict: ValidationRefused { cause: compute_refusal_cause(ending: e, document: document) },
+              }
+            WorkEndedOutputMismatch =>
+              BeltValidationRun {
+                executions: acc.executions |> append(execution),
+                verdict: ValidationRefused { cause: compute_refusal_cause(ending: e, document: document) },
               }
           }
         Absent =>
@@ -8630,6 +8638,27 @@ fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapN
   }
 }
 
+// THE REFUSED SEGMENT'S STANDING is read from the receipt's typed cause, not from the segment's detail text.
+fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
+  let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+  match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
+    Absent => RefusedRetryOperatorOnly
+    Present { value: basename } =>
+      match belt_verification_refused_cause(source: exact_verification_receipt_source_read(
+        attempt_dir: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+        verification_dir: belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+        receipt_basename: basename,
+      )) {
+        Absent => RefusedRetryOperatorOnly
+        Present { value: cause } =>
+          match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
+            Absent => RefusedRetryOperatorOnly
+            Present { value: n } => refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: n)
+          }
+      }
+  }
+}
+
 // WHERE THE ATTEMPT'S VERIFICATION STANDS against the bound, from the segment the belt already read and
 // the ledger. Anything that cannot be established is OperatorOnly: no retry is fabricated.
 fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
@@ -8638,20 +8667,7 @@ fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: Workflo
     Present { value: seg } =>
       match seg.state {
         WorkflowSegmentRefused =>
-          match refusal_detail_class(detail: seg.detail) {
-            RefusalCauseCandidate => RefusedRetryOperatorOnly
-            RefusalCauseInfrastructure => {
-              let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-              match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
-                Absent => RefusedRetryOperatorOnly
-                Present { value: basename } =>
-                  match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
-                    Absent => RefusedRetryOperatorOnly
-                    Present { value: n } => refused_retry_standing(class: RefusalCauseInfrastructure, retries_recorded: n)
-                  }
-              }
-            }
-          }
+          belt_verify_retry_standing_of_refused(instance: instance, progress: progress)
         WorkflowSegmentPending => RefusedRetryOperatorOnly
         WorkflowSegmentActive => RefusedRetryOperatorOnly
         WorkflowSegmentComplete => RefusedRetryOperatorOnly
