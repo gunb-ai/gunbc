@@ -6460,7 +6460,7 @@ fn microvm_controller_staged_write_steps(name: String, dest: String, mode: NonEm
   [
     microvm_controller_stdin_step(
       name: join([name, " (stage)"], ""),
-      command: sudo_elevate_command(command: dd_overwrite_path_command(path: staged)),
+      command: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: staged))),
       stdin_payload: content,
     ),
     microvm_controller_argv_step(
@@ -6562,8 +6562,11 @@ fn microvm_controller_kernel_pinned_digest() -> Digest {
 fn microvm_controller_guest_kernel_pinned_digest() -> Digest {
   match runner_guest_kernel_artifact.integrity {
     ArtifactDigestPinned { digest: digest, provenance: _ } => digest
-    ArtifactDigestUnpinned { cause: _ } => sha256_digest(hex: "" as NonEmptyStr)
-    ArtifactDigestNotPinnable { cause: _ } => sha256_digest(hex: "" as NonEmptyStr)
+    // Unreachable at any use site: microvm_controller_install_staging refuses the
+    // plan when this row is unpinned, so no VerifyStep ever carries these values.
+    // The release pin is returned rather than a fabricated digest.
+    ArtifactDigestUnpinned { cause: _ } => microvm_controller_kernel_pinned_digest()
+    ArtifactDigestNotPinnable { cause: _ } => microvm_controller_kernel_pinned_digest()
   }
 }
 
@@ -6855,7 +6858,7 @@ fn microvm_controller_install_steps(
             [
               microvm_controller_stdin_step(
                 name: "dispatch grant (stage)",
-                command: sudo_elevate_command(command: dd_overwrite_path_command(path: grant_stage)),
+                command: sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: grant_stage))),
                 stdin_payload: concat(workspace_dispatch_grant_content(
                   release_dir: release_dir as NonEmptyStr,
                 ), "\n"),
@@ -6880,10 +6883,10 @@ fn microvm_controller_install_steps(
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant rename",
-                command: sudo_elevate_command(command: mv_exact_destination_command(
+                command: sudo_elevate_command(command: argv_words(command: mv_exact_destination_command(
                   source: grant_pending,
                   destination: workspace_dispatch_grant_path,
-                )),
+                ))),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant policy check (live)",
