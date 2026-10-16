@@ -26,6 +26,9 @@ import extdeps.bmc.redfish {
   RedfishResetToDefaultsType, ResetAll, ResetNetwork, ResetRestore, redfish_message_id_is_password_change_required,
 }
 import extdeps.linux.kernel { LinuxKernelModuleName }
+import extdeps.units.iso8601_calendar {
+  iso8601_days_from_civil, iso8601_seconds_per_day, iso8601_utc_text,
+}
 import extdeps.network.ipv4 {
   Ipv4Address,
 }
@@ -706,7 +709,7 @@ fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?)
 // AUTHENTICATED (so it is the active password again) and the service then refused the request until
 // that password is changed. Both shapes are committed bytes:
 //   artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00-factory-login-403.json
-//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.json
+//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.txt
 // The verdict comes from the Redfish message predicate rather than a literal equality here, because
 // the registry version travels with the service (Base.1.16.0 on these units today) and a hard
 // equality would stop matching silently the day a firmware bumps it.
@@ -1135,8 +1138,11 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
 //     openssh-server: the HOST OS and not the BMC), /dev/ipmi0 crw------- 235,0, the four ipmi
 //     modules, `mc info` (Firmware Revision 3.22, ASRock Rack), `channel 1 info`, `user list 1`
 //     (id 1 root ADMINISTRATOR), `lan print 1`, and the two refused `user set password` calls.
-//   04_post_reset_readback.json -- the post-reset login with the published factory credential,
-//     answered HTTP 403 with Base.1.16.0.PasswordChangeRequired.
+//   04_post_reset_readback.txt -- the post-reset login with the published factory credential,
+//     answered HTTP 403 with Base.1.16.0.PasswordChangeRequired. Named .txt because it is an
+//     annotated capture (### request/status lines around the body), not a JSON document, and it
+//     holds NO firmware/version context -- the 3.22 attribution comes from `mc info` in 02, and the
+//     authenticated GET that reported FirmwareVersion 3.22.00 saved no body. The README says so.
 //
 // NOT cited, because it was not captured: the in-band temporary-password write, and the ResetToDefaults
 // request/response bodies. The capture README records both as in-session-observed; the temporary
@@ -1148,7 +1154,7 @@ data recovery_inband_channel_capture: Sha256Digest = Sha256Digest {
 }
 
 data recovery_post_reset_readback_capture: Sha256Digest = Sha256Digest {
-  hex: "898fef2cf2d57fcca4564b11b3630c050a34d85804e32cfd827fc22fa6da6ce1",
+  hex: "9837b3a8e47ff2ec59ecc3ddd41b81c7f3757b3d47082bec969d1fb75be5751c",
 }
 
 data recovery_inband_channel_capture_ref: EvidenceRef = EvidenceRef {
@@ -1157,7 +1163,7 @@ data recovery_inband_channel_capture_ref: EvidenceRef = EvidenceRef {
 }
 
 data recovery_post_reset_readback_capture_ref: EvidenceRef = EvidenceRef {
-  label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.json",
+  label: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/04_post_reset_readback.txt",
   digest: Sha256Hash(recovery_post_reset_readback_capture),
 }
 
@@ -1179,7 +1185,7 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
     },
     medium: recovery_usb_medium(),
     evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   )
   match reached {
     RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
@@ -1197,7 +1203,7 @@ test fn a_declared_netboot_provider_never_satisfies_the_precondition_and_is_not_
     ipmi: recovery_complete_ipmi_presence(),
     medium: NetbootRescueMediumDeclared,
     evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   )
   match recovery_host_refusal(reachability: via_netboot) {
     Present { value: RescueMediumNotExecuted { medium: NetbootRescueMediumDeclared } } =>
@@ -1218,7 +1224,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     ipmi: recovery_complete_ipmi_presence(),
     medium: recovery_usb_medium(),
     evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   )
   let observation = InBandChannelObservation {
     subject: recovery_test_subject(),
@@ -1228,7 +1234,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   }
   in_band_channel_admits(observation: observation, reachability: reached) == false
     // and a declared medium never reaches the reachable arm at all -- matched as the coproduct it is
@@ -1335,26 +1341,26 @@ test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> 
     readback: FactoryCredentialActiveAwaitingChange {
       message_id: "Base.1.16.0.NoResource",
       evidence: recovery_post_reset_readback_capture_ref,
-      observed_at: recovery_capture_instant,
+      observed_at: recovery_capture_instant(),
     },
   ) == false
     && recovery_readback_proves_reset(
       readback: FactoryCredentialActiveAwaitingChange {
         message_id: "Base.1.16.0.PasswordChangeRequired",
         evidence: recovery_post_reset_readback_capture_ref,
-        observed_at: recovery_capture_instant,
+        observed_at: recovery_capture_instant(),
       },
     )
     && recovery_readback_proves_reset(
       readback: CredentialNotAccepted {
         evidence: recovery_post_reset_readback_capture_ref,
-        observed_at: recovery_capture_instant,
+        observed_at: recovery_capture_instant(),
       },
     ) == false
     && recovery_readback_of(
       body: "{\"error\":{\"@Message.ExtendedInfo\":[{\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\"}]}}",
       evidence: recovery_post_reset_readback_capture_ref,
-      observed_at: recovery_capture_instant,
+      observed_at: recovery_capture_instant(),
     ) == recovery_factory_credential_readback()
 }
 
@@ -1509,7 +1515,18 @@ fn matches_the_readback_inconclusive(cause: RecoveryRouteUnavailable?, detail: N
 // ── FIXTURES ────────────────────────────────────────────────────────────────────────────────────
 // The capture's own numbers, through the mints only.
 
-data recovery_capture_instant: EpochMs = 1760000000000
+// A point INSIDE the band the capture itself records -- not a stopwatch reading.
+// 00_README.txt dates the checksummed bytes "Fresh re-capture taken 2026-10-16 ~06:5xZ, AFTER the
+// reset", and 01_summary.txt carries `Date: 2026-10-16`. So the artifact supports the day exactly,
+// the hour exactly, and the minute only to its tens digit. The seconds and unit minute here are a
+// chosen point within that band because a field of this type needs one value; nothing in the model
+// claims more precision, and the claim below asserts only the day and the recorded band. Derived
+// through extdeps.units.iso8601_calendar rather than typed as a round number, so it cannot silently
+// name a different day than the artifact does -- and the previous value of this row did exactly that,
+// reading as 2025-10-09.
+fn recovery_capture_instant() -> EpochMs {
+  (iso8601_days_from_civil(y: 2026, m: 10, d: 16) * iso8601_seconds_per_day() + 6 * 3600 + 53 * 60) * 1000
+}
 
 fn recovery_rescue_host_address() -> Ipv4Address {
   Ipv4Address { octet1: 192, octet2: 168, octet3: 1, octet4: 251 }
@@ -1564,7 +1581,7 @@ fn recovery_test_release() -> BmcFirmwareReleaseIdentity {
 }
 
 fn recovery_usb_medium() -> RescueHostMedium {
-  UsbRescueMediumObserved { evidence: recovery_inband_channel_capture_ref, observed_at: recovery_capture_instant }
+  UsbRescueMediumObserved { evidence: recovery_inband_channel_capture_ref, observed_at: recovery_capture_instant() }
 }
 
 fn recovery_complete_ipmi_presence() -> InBandIpmiPresence {
@@ -1609,7 +1626,7 @@ fn recovery_test_controller_observation() -> BmcAccessObservation {
     successful_read_surfaces: [],
     successful_write_surfaces: [],
     raw_response: content_hash_of_value(value: "in-band-recovery-fixture-raw-response"),
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   }
 }
 
@@ -1622,7 +1639,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       ipmi: recovery_complete_ipmi_presence(),
       medium: recovery_usb_medium(),
       evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_capture_instant,
+      observed_at: recovery_capture_instant(),
     ),
     in_band: InBandChannelObservation {
       subject: recovery_test_subject(),
@@ -1632,7 +1649,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_capture_instant,
+      observed_at: recovery_capture_instant(),
     },
     controller: recovery_test_controller_observation(),
     in_band_device_identity: reading,
@@ -1677,6 +1694,20 @@ fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
   FactoryCredentialActiveAwaitingChange {
     message_id: "Base.1.16.0.PasswordChangeRequired",
     evidence: recovery_post_reset_readback_capture_ref,
-    observed_at: recovery_capture_instant,
+    observed_at: recovery_capture_instant(),
   }
+}
+
+// THE CAPTURE'S INSTANT HAS A REFERENT OUTSIDE THIS FILE. Every capture-backed field carries
+// recovery_capture_instant(), so if that row were a plausible-looking number for the wrong day, every
+// fixture would still be self-consistent and nothing here would notice. The referent is 00_README.txt
+// ("Fresh re-capture taken 2026-10-16 ~06:5xZ") and 01_summary.txt ("Date: 2026-10-16"), read back
+// through extdeps.units.iso8601_calendar's own civil_from_days -- a different function than the one
+// that built the instant, so the two have to agree rather than one restating the other. The day is
+// asserted exactly; the hour and minute are asserted only to the README's "~06:5x" band, because that
+// is the resolution the artifact actually records and a tighter claim would be a fabrication.
+test fn the_capture_instant_reads_back_as_the_date_the_artifact_records() -> Bool {
+  let text = iso8601_utc_text(unix: recovery_capture_instant() as Int / 1000)
+  // "2026-10-16T06:53:00Z": the date prefix is the artifact's, "06:5" is the README's stated band.
+  starts_with(s: text, prefix: "2026-10-16T06:5")
 }

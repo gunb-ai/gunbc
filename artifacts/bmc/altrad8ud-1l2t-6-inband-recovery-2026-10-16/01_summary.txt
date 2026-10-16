@@ -4,7 +4,9 @@ Firmware: OpenBMC 3.22.00
 Date: 2026-10-16, executed by session royal-seal-46, LAN reached via jump host srv2.
 
 AUTHORITY: this file is the route narrative. 00_README.txt is the provenance record (captured vs
-observed) and 04_post_reset_readback.json is the captured terminal state; where this summary restates
+observed) and 04_post_reset_readback.txt is the captured terminal state (an annotated capture, not a
+JSON document, and it carries no firmware/version context -- the 3.22 figures below come from mc info in
+02_inband_channel.txt and from an authenticated GET whose body was not saved); where this summary restates
 either, those files govern. Response bodies for the privileged writes were not saved as bytes.
 
 PRECONDITION (the load-bearing fact): a reachable host OS with an in-band IPMI system interface (SSIF on this board).
@@ -34,7 +36,7 @@ PRIVILEGED WRITE 2 — destructive factory reset (needs explicit operator approv
 
 POST-RESET READBACK (the recovery's terminal observation):
   BMC went unreachable ~2.5 min, returned at 192.168.1.250, and root/0penBmc now returns
-  HTTP 403 Base.1.16.0.PasswordChangeRequired (captured in 04) — the factory-credential-active first-contact state
+  HTTP 403 Base.1.16.0.PasswordChangeRequired (captured in 04, which holds no version context) — the factory-credential-active first-contact state
   (same as srv13 at onboarding). This re-enters gunbc.tools.bmc_onboard factory-login -> rotate.
   The temp password set in WRITE 1 was wiped by the reset; no loose credential remains.
 
