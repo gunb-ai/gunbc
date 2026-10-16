@@ -37,7 +37,7 @@ data dr_user_source: String = "module v2.test.dr.user\n\nimport v2.test.dr.decl 
 
 data dr_ctor_user_source: String = "module v2.test.dr.ctor_user\n\nimport v2.test.dr.decl { Rec }\nfn g() -> Rec { Rec { value: L } }\n"
 
-data dr_rec_source: String = "module v2.test.dr.rec\n\ntype Rec { value: Unit }\ntype Unit = U\n"
+data dr_rec_source: String = "module v2.test.dr.rec\n\ntype Rec { value: Unit }\ntype Unit = | U\n"
 
 data dr_rec_user_source: String = "module v2.test.dr.rec_user\n\nimport v2.test.dr.rec\nimport v2.test.dr.rec { Rec }\nfn f(x: Rec) -> Rec { x }\n"
 
