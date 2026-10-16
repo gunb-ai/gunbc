@@ -1,6 +1,6 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Port, String, list_length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash {
   Sha256Digest, content_hash_of_value,
@@ -163,14 +163,14 @@ fn missing_recovery_kernel_modules(presence: InBandIpmiPresence) -> List<LinuxKe
 // "the rescue host is up but has no in-band IPMI -- this unit needs different hands" from "the only
 // provider we model is a declared one".
 type RecoveryRequiresReachableHostOS
-  = NoRescueHostAddressResponded { address: Ipv4Address, ssh_port: Int }
+  = NoRescueHostAddressResponded { address: Ipv4Address, ssh_port: Port }
   | RescueHostReachedWithoutInBandIpmi { address: Ipv4Address, missing_modules: List<LinuxKernelModuleName> }
   | RescueMediumNotExecuted { medium: RescueHostMedium }
 
 type RescueHostReachability
   = RescueHostReachable {
       address: Ipv4Address
-      ssh_port: Int
+      ssh_port: Port
       ipmi: InBandIpmiPresence
       medium: RescueHostMedium
       evidence: EvidenceRef
@@ -194,13 +194,18 @@ fn recovery_host_refusal(reachability: RescueHostReachability) -> RecoveryRequir
 // THE ONLY WAY A REACHABLE RESCUE HOST ENTERS THE MODEL. A rescue host that is "reachable" because a
 // caller typed an address is the assertion this whole step exists to refuse, so nothing constructs
 // RescueHostReachable except here -- and here the constructor checks its own inputs: the medium must
-// be an executed one, the port must be a port, and the driver stack must actually be the one claimed.
+// be an executed one and the driver stack must actually be the one claimed. The port is NOT range-checked
+// here (review 81294): its type is std.types.Port, `Int where range(min: 1, max: 65535)`, which the tree
+// already declares and this module already imports. Checking it here would have been a second
+// representation of a constraint the model carries (DESIGN 5), and it also misreported: a value outside
+// the range became RescueHostUnreachable/NoRescueHostAddressResponded, telling an operator a host "did not
+// respond" for an address that was never dialed -- a fabricated observation about a network.
 // The executed check happens twice by design (here, and again in recovery_host_refusal) because the
 // second is the one the standing reads, and a reader of the standing must not have to know how the
 // value was built.
 fn rescue_host_reachable(
   address: Ipv4Address,
-  ssh_port: Int,
+  ssh_port: Port,
   ipmi: InBandIpmiPresence,
   medium: RescueHostMedium,
   evidence: EvidenceRef,
@@ -211,8 +216,6 @@ fn rescue_host_reachable(
     NetbootRescueMediumDeclared => true
   } {
     RescueHostUnreachable { cause: RescueMediumNotExecuted { medium: medium } }
-  } else if ssh_port < 1 || ssh_port > 65535 {
-    RescueHostUnreachable { cause: NoRescueHostAddressResponded { address: address, ssh_port: ssh_port } }
   } else if in_band_ipmi_presence_is_complete(presence: ipmi) == false {
     RescueHostUnreachable {
       cause: RescueHostReachedWithoutInBandIpmi {
