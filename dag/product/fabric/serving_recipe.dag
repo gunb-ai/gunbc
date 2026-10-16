@@ -316,13 +316,13 @@ fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> Serv
         HourlyCostCurrencyMismatch
       }
     OwnedCardSupply { capital: capital, currency: currency, amortization: amortization } =>
-      let hours = second_count(s: amortization) / 3600
-      if hours == 0 {
+      let seconds = second_count(s: amortization)
+      if seconds == 0 {
         HourlyCostUnamortizable
       } else {
         HourlyCostQuoted {
           rate: MoneyPerHour {
-            amount: money_amount_micro(count: (money_amount_micro_count(m: capital) + (hours - 1)) / hours),
+            amount: money_amount_micro(count: (money_amount_micro_count(m: capital) * 3600 + (seconds - 1)) / seconds),
             currency: currency,
           },
         }

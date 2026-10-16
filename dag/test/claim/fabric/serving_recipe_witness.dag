@@ -401,3 +401,22 @@ test fn cache_sizes_follow_the_host() -> Bool {
     && (byte_size_count(b: serving_cache_bytes(sizing: half, host: gib(n: 128))) == byte_size_count(b: gib(n: 64)))
     && byte_size_count(b: serving_cache_bytes(sizing: CacheNone, host: gib(n: 512))) == 0
 }
+
+// 5400 s is 1.5 h: capital 3000000 micro over it is 2000000 micro/h, not the 3000000 a whole-hour floor gives;
+// and a horizon under one hour is amortizable, not refused.
+test fn an_owned_cards_horizon_is_not_rounded_to_whole_hours() -> Bool {
+  (match serving_card_hourly(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    supply: OwnedCardSupply { capital: money_amount_micro(count: 3000000), currency: Usd, amortization: second(count: 5400) },
+  ) {
+    HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 2000000
+    _ => false
+  })
+    && (match serving_card_hourly(
+      recipe: serving_recipe_flash_next_lab_vllm,
+      supply: OwnedCardSupply { capital: money_amount_micro(count: 1000000), currency: Usd, amortization: second(count: 1800) },
+    ) {
+      HourlyCostQuoted { rate: r } => (money_amount_micro_count(m: r.amount) as Int) == 2000000
+      _ => false
+    })
+}
