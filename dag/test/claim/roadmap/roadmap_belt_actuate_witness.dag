@@ -7,7 +7,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
+  belt_seat_discharge_pass_outcome_from,
 }
+import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -294,6 +296,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_lau
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
+import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
 import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { fx_prepared_launch, sized_derivable, fixture_ready_resolution }
 
@@ -607,19 +610,19 @@ fn uuid_char(u: String, i: Int) -> String {
 }
 
 test fn witness_uuid_deterministic() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   a == b
 }
 
 test fn witness_uuid_distinct_nodes() -> Bool {
-  let a = belt_spawn_session_uuid(node_id: "node-a", probed_at: "2026-07-25T20:00:00Z")
-  let b = belt_spawn_session_uuid(node_id: "node-b", probed_at: "2026-07-25T20:00:00Z")
+  let a = belt_spawn_session_uuid(node_id: "node-a", attempt_key: "feedfacefeedface")
+  let b = belt_spawn_session_uuid(node_id: "node-b", attempt_key: "feedfacefeedface")
   !(a == b)
 }
 
 test fn witness_uuid_rfc4122_shape() -> Bool {
-  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", probed_at: "2026-07-25T20:00:00Z")
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover", attempt_key: "feedfacefeedface")
   string_length(s: u) == 36
     && uuid_char(u: u, i: 8) == "-"
     && uuid_char(u: u, i: 13) == "-"
@@ -1423,6 +1426,7 @@ test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
+    seat_discharge: SeatDischargeSkipped { why: "witness" },
     discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
   }
   let receipt = belt_tick_receipt_from_result(
@@ -1442,6 +1446,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
     },
     observed_at: "2026-08-02T02:00:00Z",
@@ -1454,6 +1459,7 @@ test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() 
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 2, enqueues: [
         BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
         BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
@@ -1504,6 +1510,7 @@ test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
+    seat_discharge_pass: BeltPassRecorded,
     discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
   }
   let blocked = belt_verification_presentation_detail(
@@ -1596,6 +1603,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
+    "\"seat_discharge_pass\":{\"outcome\":\"recorded\"},",
     "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
@@ -2410,6 +2418,7 @@ test fn transition_halted_tick_refuses_every_pass() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
     },
     observed_at: "2026-08-30T02:00:00Z",
@@ -2426,6 +2435,7 @@ test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
+      seat_discharge: SeatDischargeSkipped { why: "witness" },
       discovery: BeltDiscovered { owed: 0, enqueues: [] },
     },
     observed_at: "2026-08-30T02:00:00Z",
@@ -3560,4 +3570,17 @@ test fn an_overlong_node_id_is_an_unreadable_worker_process_observation() -> Boo
     WorkerProcessExited { exit_code: _, last_command: _ } => false
     WorkerProcessSignaled { signal: _, last_command: _ } => false
   }
+}
+
+// A SEAT DISCHARGE REACHES THE DURABLE TICK RECEIPT TYPED AND COUNTED: a red is Failed (and outranks a refusal),
+// a kept charge is Refused with its cause, a clean pass is Recorded, a refused pass is Refused. None is dropped.
+test fn the_seat_discharge_pass_reaches_the_tick_receipt_typed_and_counted() -> Bool {
+  let noop = SeatEnsureNoop { reference: "r1", why: "live" }
+  let refused = SeatEnsureRefused { reference: "r2", reason: "unit lifecycle unknown" }
+  let red = SeatEnsureRed { reference: "r3", reason: "settled but still charged" }
+  (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop] }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeSkipped { why: "none" }) { BeltPassRecorded => true  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [noop, refused] }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "r2") && string_contains(s: r, pattern: "charge kept")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRan { outcomes: [refused, red, noop] }) { BeltPassFailed { reason: r } => string_contains(s: r, pattern: "r3")  _ => false })
+    && (match belt_seat_discharge_pass_outcome_from(pass: SeatDischargeRefused { reason: "stage unreadable" }) { BeltPassRefused { reason: r } => string_contains(s: r, pattern: "stage unreadable")  _ => false })
 }
