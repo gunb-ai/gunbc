@@ -4,6 +4,7 @@ import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_reso
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
 import v1.compiler.infer { param_is_generic_decl, type_node_label, unify_generics, substitute_generics_apply }
+import v1.compiler.infer_types { TextNotAsked, TextNotAskedForSyntheticWitnessNodes }
 import v1.compiler.infer_env { node_with_children }
 import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
 import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
@@ -557,8 +558,8 @@ fn gi_supplied_node_reading_lines(xs: ResolvedFormal, renamed_xs: ResolvedFormal
     Present { value: c } => gi_declaration_label(d: c.declaration)
     Absent => "no child"
   }
-  let bound_from_basis = unify_generics(formal: xs.substitution_basis, actual: list_of_int, generic_names: ["T"], source_indices: si, acc: empty_map())
-  let bound_by_name_alone = unify_generics(formal: renamed_xs.substitution_basis, actual: list_of_int, generic_names: ["M"], source_indices: si, acc: empty_map())
+  let bound_from_basis = unify_generics(formal: xs.substitution_basis, actual: list_of_int, generic_names: ["T"], source_indices: si, acc: empty_map(), text: TextNotAsked { reason: TextNotAskedForSyntheticWitnessNodes }, module_name: "v1.tests.claim.generic_identity_census").subst
+  let bound_by_name_alone = unify_generics(formal: renamed_xs.substitution_basis, actual: list_of_int, generic_names: ["M"], source_indices: si, acc: empty_map(), text: TextNotAsked { reason: TextNotAskedForSyntheticWitnessNodes }, module_name: "v1.tests.claim.generic_identity_census").subst
   let renamed_child_key = match gi_first_child(n: renamed_xs.substitution_basis) {
     Present { value: c } => gi_declaration_label(d: c.declaration)
     Absent => "no child"

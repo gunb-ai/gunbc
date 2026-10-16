@@ -18,6 +18,9 @@ use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
 };
 pub use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncSig};
+use crate::v1_compiler_infer_types::TextJudgment::TextNotAsked;
+use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes;
+pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
@@ -1040,14 +1043,26 @@ pub fn gi_supplied_node_reading_lines(
             Rc::new(vec!["T".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        );
+            Rc::new(TextJudgment::TextNotAsked {
+                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
+            }),
+            "v1.tests.claim.generic_identity_census".to_string(),
+        )
+        .subst
+        .clone();
         let bound_by_name_alone = crate::v1_compiler_infer::unify_generics(
             renamed_xs.substitution_basis.clone(),
             list_of_int.clone(),
             Rc::new(vec!["M".to_string()]),
             si.clone(),
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        );
+            Rc::new(TextJudgment::TextNotAsked {
+                reason: TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes,
+            }),
+            "v1.tests.claim.generic_identity_census".to_string(),
+        )
+        .subst
+        .clone();
         let renamed_child_key = match gi_first_child(renamed_xs.substitution_basis.clone()) {
             Some(c) => gi_declaration_label(c.declaration.clone()),
             std::option::Option::None => "no child".to_string(),
@@ -1125,18 +1140,13 @@ pub fn gi_supplied_node_reading_lines(
 }
 
 pub fn gi_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
-    {
-        let tally_seed = v1_rt::rc_empty_map::<String, i64>();
-        keys.iter().cloned().fold(
-            tally_seed.clone(),
-            |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
-                Some(n) => {
-                    v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1))
-                }
-                std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
-            },
-        )
-    }
+    keys.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
+            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+        },
+    )
 }
 
 pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {

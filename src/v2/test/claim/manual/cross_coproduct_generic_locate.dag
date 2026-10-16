@@ -1,0 +1,53 @@
+module v2.test.claim.manual.cross_coproduct_generic_locate
+
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol, symbol_lexeme }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn eqj_src(body: String) -> String {
+  join(["module p\n\n", body], "")
+}
+
+fn eqj_reason(body: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: eqj_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => ^eqj_assembly_refused
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+fn coproduct_body(rest: String) -> String {
+  join([
+    "type P = P1 { x: Int } | P2 { y: Int }\n",
+    "type Q = Q1 { x: Int } | Q2 { y: Int }\n\n",
+    rest
+  ], "")
+}
+
+test fn locate_v2_infer_print() -> String {
+  join([
+    "cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: Q1 { x: 1 })\n}\n"))),
+    "\nsame=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: P2 { y: 2 })\n}\n"))),
+    "\nint_bool=", symbol_lexeme(sym: eqj_reason(body: "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: true)\n}\n")),
+    "\nint_int=", symbol_lexeme(sym: eqj_reason(body: "fn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool {\n  same_arm(a: 1, b: 2)\n}\n")),
+    "\nnongeneric_P_Q1=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn f(a: P) -> Bool { true }\nfn probe() -> Bool {\n  f(a: Q1 { x: 1 })\n}\n"))),
+    "\nnongeneric_P1_Q1=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn f(a: P1) -> Bool { true }\nfn probe() -> Bool {\n  f(a: Q1 { x: 1 })\n}\n"))),
+    "\nnongeneric_P_Q=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn f(a: P) -> Bool { true }\nfn probe(q: Q) -> Bool {\n  f(a: q)\n}\n"))),
+    "\nreturn_Q1_as_P=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> P {\n  Q1 { x: 1 }\n}\n"))),
+    "\nreturn_P1_as_P=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> P {\n  P1 { x: 1 }\n}\n"))),
+    "\nphantom_eq=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T>\nfn probe() -> Bool {\n  ConstructorTag<P> {} == ConstructorTag<Q> {}\n}\n"))),
+    "\nvalue_eq_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> Bool {\n  P1 { x: 1 } == Q1 { x: 1 }\n}\n"))),
+    "\ndisc_eq_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "fn probe() -> Bool {\n  discriminant(v: P1 { x: 1 }) == discriminant(v: Q1 { x: 1 })\n}\n"))),
+    "\ntag_cross=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T> = ConstructorTag { name: String }\nfn tag_of<T>(v: T) -> ConstructorTag<T> {\n  ConstructorTag { name: discriminant(v: v) }\n}\nfn same_arm<T>(a: T, b: T) -> Bool {\n  tag_of(v: a) == tag_of(v: b)\n}\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: Q1 { x: 1 })\n}\n"))),
+    "\ntag_same=", symbol_lexeme(sym: eqj_reason(body: coproduct_body(rest: "type ConstructorTag<T> = ConstructorTag { name: String }\nfn tag_of<T>(v: T) -> ConstructorTag<T> {\n  ConstructorTag { name: discriminant(v: v) }\n}\nfn same_arm<T>(a: T, b: T) -> Bool {\n  tag_of(v: a) == tag_of(v: b)\n}\nfn probe() -> Bool {\n  same_arm(a: P1 { x: 1 }, b: P2 { y: 2 })\n}\n"))),
+    "\n"
+  ], "")
+}

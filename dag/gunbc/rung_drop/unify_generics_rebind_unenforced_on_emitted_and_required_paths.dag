@@ -1,0 +1,107 @@
+module gunbc.rung_drop.unify_generics_rebind_unenforced_on_emitted_and_required_paths
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
+
+// THE DECLARED RUNG DROP for v1 infer's generic actuals (DESIGN 4b meta-obligation 3), landed
+// with #14152 because review 81093 found the drop declared only as a String inside the
+// recurring-failure-mode row's receipts. Every other drop in this directory is a row; a receipt
+// string is not a roster entry, and DESIGN 4c puts a restoration condition in a typed carrier.
+//
+// WHAT THIS ROW DECLARES: the fold's rebind refusal was ESTABLISHED ONCE BY EXECUTION and its
+// REGRESSION IS UNENFORCED. Both halves are load-bearing. The measurement (four reject rows false
+// at the pre-regen seed fa06f6b45ca and true at the regenerated 2751b200, with every accept
+// control green on both sides) is recorded in
+// gunbc.recurring_failure_mode.one_type_variable_bound_to_two_distinct_coproducts and in PR #14152.
+// What this row adds is the reason that measurement does NOT license a standing rung: nothing
+// would run those controls again.
+//
+// TWO ARMS, EACH WITH ITS OWN CITATION, CHECKED AGAINST THE ARTIFACT RATHER THAN INFERRED.
+//
+// (A) THE MIRROR-GATE ARM. The seed mirrors are the emitter's own output, so a hand edit to
+// src/v1/stage0/src/v1_compiler_infer.rs -- deleting the rebind refusal, say -- is not caught by
+// any job. That gap is already declared, in this tree's own words, by
+// gunbc.rung_drop v1_required_lanes_withdrawn: its population names the mirror-equality gate
+// `claim_executor --required-ci --required-lane build` as "run by no job". This row does not
+// re-derive that finding and does not claim a new one; it inherits it, because the class this row
+// covers is guarded by exactly that gate.
+//
+// (B) THE REQUIRED-TEST ARM, WHICH NEEDS CARE BECAUSE THE LEDGER READS AS A SEQUENCE, NOT A
+// CONTRADICTION. Three rows touch Rust tests and a reader who stops at any one of them gets a
+// different answer, so all three are named here with their dates:
+//   * rust_unit_tests_off_the_merge_path -- declared 2026-09-04, standing Retired: it was retired
+//     by #12951 on a runner-supply receipt, which added a required rust-unit-tests job running
+//     `cargo test --release -p v1-compiler --lib` (operator-signed 2026-10-05).
+//   * rust_unit_tests_off_pull_requests -- standing Superseded, trigger fired "by the 2026-10-06
+//     operator ruling that took ALL PR-triggered CI off push": Rust tests kept, required check
+//     removed. Note its own restoration trigger says a restored job must run
+//     `cargo test --release -p v1-compiler --lib` and MUST NOT be widened to
+//     `--workspace --all-targets`.
+//   * v1_required_lanes_withdrawn -- standing, 2026-10-09: the rust-unit-tests job deleted with
+//     the other v1-judged required lanes.
+//   The sequence is restore, then per-push removal, then deletion; the last row is the live state,
+//   and it is Standing. So there is no conflict for this row to adjudicate, and this row takes no
+//   position on it -- another session owns that audit.
+//   THE DECISIVE OBSERVATION IS SIMPLER THAN ANY OF THE THREE, AND IS ABOUT MY OWN TESTS. They live
+//   in the v1-compiler-tests crate (src/v1/tests), not the v1-compiler crate. The command the
+//   rust-unit-tests rows name is `-p v1-compiler --lib`, which does not reach them at all. The
+//   gate that DID run them is named by gunbc.ci.ci_spec.dag ci_v1_compiler_tests_compile_gate_note:
+//   `cargo test -p v1-compiler-tests --release`, whose own text ends "The step no longer runs: the
+//   rust-unit-tests job was cut on 2026-09-04 ... and its unconsumed emitter ... was deleted on
+//   2026-09-28. A restored lane is authored fresh against the route that exists then." Observed
+//   directly: no workflow under .github/workflows contains a `cargo test` step, and no step in the
+//   emitted gate workflow authority references v1-compiler-tests.
+//   CONSEQUENCE, STATED NARROWLY. My controls execute only when someone runs cargo. A future edit
+//   that removes the rebind refusal -- from the .dag fold, from the seed, or from what the emitter
+//   produces -- turns no required check red. That is the whole of what this row declares, and it is
+//   NOT a claim that the fold is wrong today: the measurement says it refuses today.
+data unify_generics_rebind_unenforced_on_emitted_and_required_paths: RungDrop = RungDrop {
+  identity: "unify_generics_rebind_unenforced_on_emitted_and_required_paths" as NonEmptyStr,
+
+  // RECEIPT FOR THE NEW HAND-WRITTEN RUST (ctrl review policy, review 81163 advisory: the
+  // row must name the lane that will own the tests, not just say they run on none).
+  //   (i)   src/v1/tests/src/cross_coproduct_probe_discharge_test.rs is the RE-ENROLMENT of a
+  //         deleted scaffold: it compiles, verbatim, the source of the probe file it replaces
+  //         (src/v2/test/claim/manual/constructor_tag_route_probe_red.dag, whose v1 twin
+  //         dag/test/claim/constructor_tag_route_probe_red.dag this PR deletes), and asserts
+  //         the refusal is the fold's message -- which the seedred side of the measurement
+  //         shows the controls cannot pass without the fold.
+  //   (ii)  src/v1/tests/src/cross_coproduct_generic_locate_test.rs is covered by the seed
+  //         census the fold ships with: src/v1/stage0/src/v1_tests_claim_generic_identity_census.rs,
+  //         regenerated with the fold (both are the 4-mirror regen product).
+  //   (iii) NAMED DEFERRAL for the lane: the owner is a newly authored required lane for the
+  //         v1-compiler-tests package -- the route gunbc.ci ci_v1_compiler_tests_compile_gate_note
+  //         already anticipates ("A restored lane is authored fresh against the route that
+  //         exists then"). The old rust-unit-tests lane cannot adopt them as-is, because its own
+  //         restoration trigger forbids widening `cargo test --release -p v1-compiler --lib`, and
+  //         these tests live in the separate v1-compiler-tests package. Until that lane exists,
+  //         this row's arm (B) IS the deferral record, and this row does not retire without it.
+
+  subject: "v1 infer's unify_generics refusing one generic bound by two distinct types: the refusal executes today, but neither the gate that would catch a hand edit to its shipped mirror nor a required lane that would run the controls exists, so a regression to first-wins binding is silent",
+
+  declared: "2026-10-16",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    // NO DROP HAPPENED HERE, and the row says so rather than recording a rung the class never
+    // held (review 81163 finding 2; DESIGN section 4b meta-obligation 1, "rung inflation is
+    // worse than sitting low"). On main the class sat BELOW the ladder: the deleted row this
+    // one replaces recorded that the probe's assertion RAN AND ANSWERED FALSE -- one type
+    // variable bound to two distinct coproducts was ACCEPTED, so there was no guarantee at
+    // any rung to fall from. What #14152 adds is not a rung the class held and lost: it is
+    // one executed refusal, established once, with the regression unenforced -- which is why
+    // standing is Standing and temporary is Mitigatable, the same rung it sits on now.
+    previous: Mitigatable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "two arms, both needed, and neither alone retires this row. (A) THE MIRROR GATE ON A JOB: run the already-authored `claim_executor --required-ci --required-lane build` on a required lane, so a hand edit to the shipped unify_generics mirror is caught by execution rather than by a session choosing to regenerate. (B) THE CONTROLS ON A REQUIRED LANE: the discriminating controls moved onto a lane the required aggregate actually runs. Two candidate routes, and the choice is not free -- the .dag claim rows in dag/test/claim/cross_coproduct_generic_locate.dag are the enrolled kind and the floor's own claim execution can reach them, but they must first be made discriminating: they assert a census count, and the census module warns that its row set is the whole compile's (imported closure included), so a bare blocking count is satisfied by any unrelated blocking row and is not evidence the fixture refused for the claimed reason; the exact form that same module prescribes is a count scoped on class AND subject_name. The Rust controls cannot be restored as-is into the old lane either, because that lane's own restoration trigger forbids widening `cargo test --release -p v1-compiler --lib` to the whole workspace, and my tests are in a different package (v1-compiler-tests) which needs its own newly authored lane, as ci_v1_compiler_tests_compile_gate_note already anticipates."
+    },
+    population: [
+      "the shipped mirror of the fold: src/v1/stage0/src/v1_compiler_infer.rs, which is the emitter's output and is compared by no job (inherited from gunbc.rung_drop v1_required_lanes_withdrawn, whose population names the mirror-equality gate as run by nothing)",
+      "the controls that discriminate the fold: src/v1/tests/src/cross_coproduct_generic_locate_test.rs and src/v1/tests/src/cross_coproduct_probe_discharge_test.rs, in the v1-compiler-tests package, which no workflow under .github/workflows builds or runs -- the gate that used to run them says so itself, in gunbc.ci ci_v1_compiler_tests_compile_gate_note",
+    ],
+    restoration_trigger: "THE CAPABILITY, not an artifact, and per arm. (A) The mirror-equality gate runs on a required lane and a hand-edited mirror turns it red, so regeneration is no longer the only thing standing between an edited seed and a green merge. (B) A red in the rebind controls turns a required check red on the change that introduced it, by execution rather than by a session running cargo on a runner; for the .dag route this requires the claim rows to be scoped on diagnostic_class AND subject_name rather than on a bare blocking count, because until they discriminate they cannot serve as the enrolled control even once the gate runs them."
+  },
+}
