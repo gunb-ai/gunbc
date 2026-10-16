@@ -26,7 +26,7 @@ import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import std.algebra { empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
-import gunbc.roadmap.roadmap_lineage_retire { LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
@@ -2407,6 +2407,9 @@ fn issue_lineage_retire_panel_nodes(node_id: String, panel: LineageRetirePanel, 
           attr(name: "type", value: "submit"),
         ]), [ txt("Retire lineage") ]),
       ])
+    ]
+    LineageRetirePanelUnreadable { reason } => [
+      el_class("p", "issue-lineage-retire-note issue-lineage-retire-unreadable", [ txt(join(["This lineage's retire record exists but cannot be read, so dispatch refuses it until an operator resolves the file: ", reason], "")) ])
     ]
     LineageRetirePanelRecorded { record } => [
       el_class("div", "issue-lineage-retired", [
