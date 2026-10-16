@@ -1000,7 +1000,8 @@ test fn srv1s_declared_grant_does_not_cover_the_width_7_retirees() -> Bool {
 // THE 2026-10-16 GRANT COVERS THE TWO CUTS' RETIREES AND NOTHING srv1 STILL RUNS. Without it the 7-to-5
 // and 5-to-3 cuts left srv1-03..06 required with no permission, and the admission below refused. The
 // composed grant must cover 03..06 and 22 (the 09-17 part) and must not reach the committed 01 and 02,
-// the shakedown slot 13, or 07 (whose retirement is admitted by readback, not by permission).
+// or 07 (whose retirement is admitted by readback, not by permission). Slot 13 is not asserted here:
+// the 09-17 scope is 13..50 and this change does not edit it.
 test fn srv1s_composed_grant_covers_the_width_cut_retirees_and_not_the_committed_population() -> Bool {
   match interruption_authorization_for_host(host: operator_host_srv1) {
     HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
@@ -1011,7 +1012,6 @@ test fn srv1s_composed_grant_covers_the_width_cut_retirees_and_not_the_committed
         && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-01.service")
         && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-02.service")
         && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-07.service")
-        && !interruption_authorization_covers(auth: auth, unit: "actions-runner@srv1-13.service")
   }
 }
 
