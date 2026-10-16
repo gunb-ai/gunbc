@@ -6841,6 +6841,20 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
 // declared structure (Bool's True|False Disj, Optional) realizes THROUGH the cited declaration,
 // so its use-line is the path to that realization and stays -- measured in the seed mirror, whose
 // bodies consume the structural Bool enum by bare spelling.
+// A DECLARED RESOURCE IS NOT A HOST-REALIZED KERNEL SCALAR. A resource has no type node of its own, so
+// the env resolves its name to a bare leaf carrying a kernel identity span, which is exactly the shape
+// import_name_resolves_to_host_realized_kernel_scalar reads as a kernel scalar; the resource's use-line
+// was dropped and the `uses` parameter type then named nothing in the emitted module (E0425, measured by
+// dumping the filter state of gunbc.instruments.native_allocation_observation). The declaration is
+// decided on the imported module's item kind, by name, not on the resolved node's provenance.
+fn imported_name_is_resource_declaration(name: String, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+    Absent => false
+    Present { value: tm } =>
+      tm.items |> any(item => item.module_item_kind == ModuleItemResource && authored_name_at(source_indices: source_indices, node: item) == name)
+  }
+}
+
 fn import_name_resolves_to_host_realized_kernel_scalar(name: String, module_env: TypeEnv?) -> Bool {
   match module_env {
     Absent => false
@@ -6966,7 +6980,8 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names
     |> filter(n => local_names |> all(ln => ln != n))
-    |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env))
+    |> filter(n => !import_name_resolves_to_host_realized_kernel_scalar(name: n, module_env: module_env)
+      || imported_name_is_resource_declaration(name: n, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index))
     |> filter(n => !import_name_is_kernel_grounded_constructor(name: n, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)))
   let marker_type_names = unique_strings(items: deduped_names |> filter(n =>
     (type_position_names |> any(name => name == n)) &&
