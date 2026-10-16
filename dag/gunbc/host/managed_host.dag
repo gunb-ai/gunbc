@@ -626,8 +626,7 @@ type SmproPassLicensing
 fn managed_host_smpro_pass_licensing(facility: SmproFacilityStanding) -> SmproPassLicensing {
   match facility {
     SmproFacilityCarried { family: _ } => SmproPassLicensed
-    SmproFacilityNotCarried { family: _ } =>
-      SmproPassNotLicensed { reason: "the bound board's SoC family does not carry SMpro" }
+    SmproFacilityNotCarried { family: _ } => SmproPassNotLicensed { reason: "the bound board's SoC family does not carry SMpro" }
     SmproFacilityUnestablished { reason: r } => SmproPassNotLicensed { reason: r }
   }
 }
