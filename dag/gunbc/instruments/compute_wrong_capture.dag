@@ -5,6 +5,8 @@ import std.algebra { trim }
 import std.process { ExitSuccess, ExitFailure }
 import std.optional { Present, Absent }
 import extdeps.systemd.systemd_run { SystemdSetenvBinding }
+import extdeps.tools.sed { sed_program, sed_script_expression_flag }
+import extdeps.tools.grep { grep_program }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboard_instance_at, HostDashboardInstance, IsolatedJobToolchainHomes }
 import gunbc.compute.host_capacity { compute_root }
@@ -49,9 +51,9 @@ fn wrong_capture_mark_tree(instance: HostDashboardInstance, layout: ComputeLayou
   fold(wrong_capture_marked_sources, init: "", f: (acc, rel) =>
     if acc != "" { acc } else {
       match compute_exec(
-        program: "/usr/bin/sed",
+        program: sed_program().invocation as String,
         workdir: layout.checkout,
-        args: ["-i", "-e", join(["$a#[used] static C1_MARKER: &str = \"", marker, "\";"], ""), join([layout.checkout, "/", rel], "")],
+        args: ["-i", sed_script_expression_flag, join(["$a#[used] static C1_MARKER: &str = \"", marker, "\";"], ""), join([layout.checkout, "/", rel], "")],
       ) {
         ComputeExecOk { stdout: _, stderr: _ } => ""
         ComputeExecFailed { exit_code: _, stdout: _, stderr } => join(["could not mark ", rel, ": ", stderr], "")
@@ -68,7 +70,7 @@ fn wrong_capture_unit_env(runtime_dir: FilePath, homes: IsolatedJobToolchainHome
 
 // grep -c prints the count and exits 1 on zero matches; any other failure (exit 2, unreadable file) is "unreadable".
 fn wrong_capture_marker_count(path: String, marker: String) -> String {
-  match compute_exec(program: "/usr/bin/grep", workdir: ".", args: ["-a", "-c", marker, path]) {
+  match compute_exec(program: grep_program().invocation as String, workdir: ".", args: ["-a", "-c", marker, path]) {
     ComputeExecOk { stdout, stderr: _ } => trim(s: stdout)
     ComputeExecFailed { exit_code, stdout, stderr: _ } => if (exit_code == 1) && (trim(s: stdout) == "0") { "0" } else { "unreadable" }
   }
