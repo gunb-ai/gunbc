@@ -32,8 +32,10 @@ import gunbc.machine_intake.bmc_recovery_route {
   RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
   recovery_reset_actuation, InBandTemporaryAdministratorPassword,
   RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree,
+  NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive,
   recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity,
   recovery_measured_refusal_policy, converge_in_band_recovery,
+  recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action,
   recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback,
   recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
@@ -429,4 +431,52 @@ test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route
         locked: Present { value: recovery_locked_standing_on_a_release_nobody_measured() },
       ),
     ) == false
+}
+
+// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS (DESIGN §3: "a stale symbol
+// is decidable from the `Node` tree"; review 81115 #1 was exactly this defect on the census rows). Each
+// step is a DeclarationRef, and a ref naming nothing is indistinguishable from one naming a function until
+// somebody calls it. So every ref in BOTH rosters is asked of the live tree, one at a time -- a single miss
+// fails the claim. The rosters were rewritten to name the module's actual decision points
+// (recovery_host_refusal, in_band_channel_admits, the two gates, recovery_readback_proves_reset,
+// recovery_standing_handed_off) after the original six named only themselves, with no declaration behind
+// them: the same class of defect the census rows had.
+test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() -> Bool {
+  all(recovery_convergence_steps(), fn(step) {
+    any(xs: recovery_live_decl_facts, predicate: fn(d) {
+      d.qualified_name == concat(step.module_path as String, concat(".", step.decl_name as String))
+    })
+  })
+    // the handoff's precondition list is a roster too: a step that stopped existing would silently remove
+    // a precondition from the fold
+    && all(recovery_handoff_requires(), fn(step) {
+         any(xs: recovery_live_decl_facts, predicate: fn(d) {
+           d.qualified_name == concat(step.module_path as String, concat(".", step.decl_name as String))
+         })
+       })
+    // and the two are genuinely different lists -- the handoff requires a subset of the six the route runs.
+    // Equal lengths would mean the ordering law had collapsed into one list.
+    && list_length(items: recovery_convergence_steps()) != list_length(items: recovery_handoff_requires())
+}
+
+// EVERY REFUSAL TELLS SOMEONE WHAT TO DO NEXT, AND NO TWO SAY THE SAME THING. A cause with no
+// operator-facing action is a dead end wearing a name; two causes sharing one sentence is the same dead end
+// for a different reason (it means one of them was never thought about). Both are checked rather than
+// asserted in prose, and the refusals are built with the same constructors the route builds them with -- so
+// renaming an arm, or copying one string into two arms, fails here.
+test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
+  let actions = [
+    recovery_route_next_action(unavailable: NoReachableRescueHost { cause: NoRescueHostAddressResponded }),
+    recovery_route_next_action(unavailable: RecoveryControllerNeverMeasured { observed: recovery_measured_identity() }),
+    recovery_route_next_action(unavailable: RecoveryCatalogIndexesDisagree {
+      firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+      observed: recovery_measured_identity(),
+    }),
+    recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { detail: "no body was saved" }),
+  ]
+  // each refusal yields advice
+  && all(actions, fn(a) { string_length(a) > 0 })
+  // and all four differ: "go measure this controller" cannot be the sentence you give someone whose own
+  // filing is broken -- different people, different work
+  && all(actions, fn(a) { count(filter(actions, x => x == a)) == 1 })
 }
