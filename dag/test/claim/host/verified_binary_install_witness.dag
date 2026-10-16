@@ -82,54 +82,57 @@ fn other_product_params() -> VerifiedBinaryInstallParams {
   }
 }
 
-// WHY THESE COMBINATORS EXIST. `get` returns an OPTIONAL -- an index can be out of range -- so a step
-// read is `T?`, and every read has to be matched. What matters is what the absent arm does: rendering
-// a missing step as "" would make a NEGATIVE assertion (`this step carries no sudo`) pass on a plan
-// that has no step at all, which is a silent default wearing a test's clothes. So every combinator
-// here treats a missing step or line as a FAILURE, positive or negative assertion alike.
-fn rendered_step_contains(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
+// WHY THESE COMBINATORS EXIST, AND WHY THEIR NAMES SAY "EXISTS_AND". `get` returns an OPTIONAL -- an
+// index can be out of range -- so reading a step or a line yields `T?` and every read has to be
+// matched. What matters is what the absent arm does. Rendering a missing step as "" would make a
+// NEGATIVE assertion (`this step carries no sudo`) pass on a plan that has no step at all, which is a
+// silent default wearing a test's clothes. So each combinator here asserts TWO things and is named for
+// both: the step at that index EXISTS, and it MATCHES. There is deliberately no get-or-default among
+// them -- a name like `rendered_step_contains` reads as if it could supply a missing step, and a
+// reader skimming the tests must not be able to mistake a failed existence check for a passing match.
+fn rendered_step_at_exists_and_contains(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
   match get(xs: steps, index: index) {
     Absent => false
     Present { value: step } => string_contains(s: shell_command_render(command: step), pattern: pattern)
   }
 }
 
-fn rendered_step_lacks(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
+fn rendered_step_at_exists_and_lacks(steps: List<ArgvCommand>, index: Int, pattern: String) -> Bool {
   match get(xs: steps, index: index) {
     Absent => false
     Present { value: step } => !string_contains(s: shell_command_render(command: step), pattern: pattern)
   }
 }
 
-fn rendered_step_is(steps: List<ArgvCommand>, index: Int, expect: String) -> Bool {
+fn rendered_step_at_exists_and_equals(steps: List<ArgvCommand>, index: Int, expect: String) -> Bool {
   match get(xs: steps, index: index) {
     Absent => false
     Present { value: step } => shell_command_render(command: step) == expect
   }
 }
 
-fn rendered_step_starts_with(steps: List<ArgvCommand>, index: Int, prefix: String) -> Bool {
+fn rendered_step_at_exists_and_starts_with(steps: List<ArgvCommand>, index: Int, prefix: String) -> Bool {
   match get(xs: steps, index: index) {
     Absent => false
     Present { value: step } => starts_with(s: shell_command_render(command: step), prefix: prefix)
   }
 }
 
-fn line_is(lines: List<String>, index: Int, expect: String) -> Bool {
+fn line_at_exists_and_equals(lines: List<String>, index: Int, expect: String) -> Bool {
   match get(xs: lines, index: index) {
     Absent => false
     Present { value: one } => one == expect
   }
 }
 
-fn line_starts_with(lines: List<String>, index: Int, prefix: String) -> Bool {
+fn line_at_exists_and_starts_with(lines: List<String>, index: Int, prefix: String) -> Bool {
   match get(xs: lines, index: index) {
     Absent => false
     Present { value: one } => starts_with(s: one, prefix: prefix)
   }
 }
 
-fn line_contains(lines: List<String>, index: Int, pattern: String) -> Bool {
+fn line_at_exists_and_contains(lines: List<String>, index: Int, pattern: String) -> Bool {
   match get(xs: lines, index: index) {
     Absent => false
     Present { value: one } => string_contains(s: one, pattern: pattern)
@@ -157,7 +160,7 @@ test fn positive_control_a_matching_digest_admits_the_install() -> Bool {
          Absent => true
        }
     // The install body really is the install body: step 1 is the elevated move into place.
-    && rendered_step_starts_with(steps: steps, index: 1, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
+    && rendered_step_at_exists_and_starts_with(steps: steps, index: 1, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
 }
 
 // THE RED. The expected digest is x86_64's published value while the observed line carries the aarch64
@@ -252,11 +255,11 @@ test fn the_rendered_body_checks_before_it_moves_and_set_e_gates_everything() ->
   )
   let lines = split(s: script, delimiter: "\n")
   count(lines) == 8
-    && line_is(lines: lines, index: 0, expect: "set -e")
-    && line_starts_with(lines: lines, index: 1, prefix: "'curl' ")
-    && line_starts_with(lines: lines, index: 2, prefix: "echo '")
-    && line_contains(lines: lines, index: 2, pattern: "| sha256sum -c -")
-    && line_starts_with(lines: lines, index: 4, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
+    && line_at_exists_and_equals(lines: lines, index: 0, expect: "set -e")
+    && line_at_exists_and_starts_with(lines: lines, index: 1, prefix: "'curl' ")
+    && line_at_exists_and_starts_with(lines: lines, index: 2, prefix: "echo '")
+    && line_at_exists_and_contains(lines: lines, index: 2, pattern: "| sha256sum -c -")
+    && line_at_exists_and_starts_with(lines: lines, index: 4, prefix: "'/usr/bin/sudo' '-n' 'mv' ")
 }
 
 // THE PRECONDITION IS AN OBSERVATION OVER THE CITED test -x OP, with two arms a caller can act on: an
@@ -307,9 +310,9 @@ test fn a_second_products_own_values_produce_a_privilege_free_install() -> Bool 
   let p = other_product_params()
   let steps = verified_binary_install_install_steps(p: p)
   count(steps) == 5
-    && rendered_step_lacks(steps: steps, index: 1, pattern: "/usr/bin/sudo")
-    && rendered_step_is(steps: steps, index: 1, expect: "'mv' '-T' '/tmp/thing-9.9.9/bin/thing' '/opt/tools/bin/thing'")
-    && rendered_step_is(steps: steps, index: 2, expect: "'/bin/chmod' '0755' '/opt/tools/bin/thing'")
+    && rendered_step_at_exists_and_lacks(steps: steps, index: 1, pattern: "/usr/bin/sudo")
+    && rendered_step_at_exists_and_equals(steps: steps, index: 1, expect: "'mv' '-T' '/tmp/thing-9.9.9/bin/thing' '/opt/tools/bin/thing'")
+    && rendered_step_at_exists_and_equals(steps: steps, index: 2, expect: "'/bin/chmod' '0755' '/opt/tools/bin/thing'")
     && !string_contains(s: verified_binary_install_shell(p: p), pattern: "sccache")
     && starts_with(s: verified_binary_install_shell(p: p), prefix: "set -e")
     && string_contains(s: verified_binary_install_verify_line(p: p), pattern: "| sha256sum -c -")
@@ -319,12 +322,12 @@ test fn a_second_products_own_values_produce_a_privilege_free_install() -> Bool 
 // contract the elevation witness pins, asserted here too so the two cannot drift apart.
 test fn the_privilege_lever_puts_sudo_in_front_of_the_move_and_mode() -> Bool {
   let steps = verified_binary_install_install_steps(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64))
-  rendered_step_is(
+  rendered_step_at_exists_and_equals(
     steps: steps,
     index: 1,
     expect: "'/usr/bin/sudo' '-n' 'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'",
   )
-    && rendered_step_starts_with(steps: steps, index: 2, prefix: "'/usr/bin/sudo' '-n' 'chmod' '+x' ")
+    && rendered_step_at_exists_and_starts_with(steps: steps, index: 2, prefix: "'/usr/bin/sudo' '-n' 'chmod' '+x' ")
 }
 
 // THE STAGING IS CLEANED UP. An install that leaves a world-writable archive and an extracted tree in
@@ -332,8 +335,8 @@ test fn the_privilege_lever_puts_sudo_in_front_of_the_move_and_mode() -> Bool {
 // path, and neither is the destination.
 test fn the_plan_removes_the_download_and_the_extracted_tree() -> Bool {
   let steps = verified_binary_install_install_steps(p: sccache_params(digest: sccache_release_0_15_0.digest_aarch64))
-  rendered_step_contains(steps: steps, index: 3, pattern: "'/tmp/sccache.tar.gz'")
-    && rendered_step_contains(steps: steps, index: 4, pattern: "'/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl'")
-    && rendered_step_lacks(steps: steps, index: 3, pattern: sccache_installed_binary_path)
-    && rendered_step_lacks(steps: steps, index: 4, pattern: sccache_installed_binary_path)
+  rendered_step_at_exists_and_contains(steps: steps, index: 3, pattern: "'/tmp/sccache.tar.gz'")
+    && rendered_step_at_exists_and_contains(steps: steps, index: 4, pattern: "'/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl'")
+    && rendered_step_at_exists_and_lacks(steps: steps, index: 3, pattern: sccache_installed_binary_path)
+    && rendered_step_at_exists_and_lacks(steps: steps, index: 4, pattern: sccache_installed_binary_path)
 }
