@@ -1,6 +1,9 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
+}
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
@@ -31,6 +34,7 @@ type PriorAttemptFacts {
   verification: WorkflowSegment?
   review: WorkflowSegment?
   goal_audit: WorkflowSegment?
+  verification_retry: RefusedRetryStanding
 }
 
 // THE VOCABULARY NAMES WHAT THE BELT MAY DO, and Fresh means exactly one fact (branch review
@@ -127,7 +131,15 @@ fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision 
         WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending => ContinuationHold { reason: "the prior attempt's verification is owed and still pending; the belt owes it, not a spawn" }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's verification is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
+        WorkflowSegmentRefused =>
+          match prior.verification_retry {
+            RefusedRetryOwed { ordinal } =>
+              ContinuationHold { reason: join(["the prior attempt's verification was refused by its infrastructure, an environment fact rather than a verdict: the belt re-runs it on its next wake (retry ", to_string(ordinal), " of its bound), so no spawn"], "") }
+            RefusedRetryExhausted { attempts } =>
+              ContinuationRefused { reason: refused_retry_exhausted_reason(attempts: attempts) }
+            RefusedRetryOperatorOnly =>
+              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
+          }
       }
   }
 }

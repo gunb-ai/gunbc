@@ -179,6 +179,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap.roadmap_belt { ManualReady }
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   continuation_decision,
@@ -2757,6 +2758,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       verification: none,
       review: none,
       goal_audit: none,
+      verification_retry: RefusedRetryOperatorOnly,
     } },
   )
   live_refusal

@@ -203,9 +203,17 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data infrastructure_refusal_is_retried_to_a_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "infrastructure_refusal_is_retried_to_a_bound"),
+  decided: "2026-10-16",
+  section: "5",
+  provenance: "Operator escalation msg_a35bb568-294c-4ad6-88d7-5cfa0a5fad05, approved by default (option A). An acceptance stage refused because its ENVIRONMENT failed (compute refused_by_infrastructure) is retried by the belt on its existing wake events, to a bound, each retry a recorded event with its cause; past the bound the lineage reaches a typed RetryExhausted terminal the operator sees and resumes. This amends the 2026-10-03 manual-resume ruling for infrastructure refusals only: a refusal about the candidate keeps manual resume, and a FAILED stage is a verdict and is never retried.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     job_roster_closed_to_growth,
+    infrastructure_refusal_is_retried_to_a_bound,
     conformance_needs_attention,
     consumption_interrogated_separately,
     epistemic_humility_is_symmetric,

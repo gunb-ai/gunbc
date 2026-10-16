@@ -746,6 +746,28 @@ fn belt_verification_resume_decision(
   }
 }
 
+// THE CAUSE A RECORDED REFUSED VERDICT CARRIES, read from the exact receipt: the belt's bounded retry
+// classifies it (gunbc.roadmap.roadmap_refused_retry), and any other source or verdict carries none.
+fn belt_verification_refused_cause(source: ExactVerificationReceiptSource) -> ValidationRefusalCause? {
+  match source {
+    ExactVerificationReceiptPresent { text } =>
+      match verification_receipt_text_classify(receipt: text) {
+        VerificationReceiptTextV2 { receipt } =>
+          match receipt.verdict {
+            ValidationRefused { cause } => Present { value: cause }
+            ValidationNotRun => none
+            ValidationPassed { command: _, oracle_identity: _ } => none
+            ValidationFailed { command: _, exit_code: _, detail: _ } => none
+          }
+        VerificationReceiptTextUndecodable { reason: _ } => none
+        VerificationReceiptTextLegacyAttempt { verdict_key: _ } => none
+        VerificationReceiptTextV1ExactHead { legacy: _ } => none
+      }
+    ExactVerificationReceiptAbsent => none
+    ExactVerificationReceiptUnreadable { detail: _ } => none
+  }
+}
+
 // AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them.
 type ValidationExecution {
   validation: ValidationOperation

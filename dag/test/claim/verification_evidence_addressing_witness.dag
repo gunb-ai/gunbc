@@ -1,5 +1,14 @@
 module test.claim.verification_evidence_addressing_witness
 
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusalCauseInfrastructure, RefusalCauseCandidate, RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop,
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
+  belt_verification_retry_verdict, refusal_cause_class, refusal_detail_class, refused_retry_standing, refused_retry_bound,
+  compute_refusal_program, compute_refusal_reason,
+}
+import gunbc.compute.work_request { work_ending_wire, WorkEndedRefusedByInfrastructure, WorkEndedFailed }
+import gunbc.roadmap.roadmap_validation_oracle { validation_verdict_detail }
+import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -856,4 +865,82 @@ test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
       BeltVerificationDefer { reason: _ } => true
       _ => false
     })
+}
+
+// THE REAL COMPUTE REFUSAL, built by the producer's own builder: a failed dependency under a
+// refused_by_infrastructure ending (the receipt of attempt a1c9b5bec8253061b).
+fn infra_refusal_verdict() -> ValidationVerdict {
+  ValidationRefused { cause: ValidationCommandRefused {
+    program: compute_refusal_program,
+    reason: compute_refusal_reason(
+      ending: work_ending_wire(e: WorkEndedRefusedByInfrastructure),
+      document: "gunbc-compute: dependency <build:release:gunbc,claim_batch> ended failed",
+    ),
+  } }
+}
+
+fn decision_for(verdict: ValidationVerdict) -> BeltVerificationDecision {
+  belt_verification_decision(expected: fixture_subject(window: fixture_window_w1), source: resume_receipt_source(verdict: verdict))
+}
+
+// CLAIM C1: an infrastructure-refused verification with retries left RE-RUNS instead of holding.
+test fn c1_infra_refused_with_retries_left_re_runs() -> Bool {
+  match belt_verification_retry_verdict(decision: decision_for(verdict: infra_refusal_verdict()), source: resume_receipt_source(verdict: infra_refusal_verdict()), retries_recorded: 0) {
+    RefusedRetryRun { ordinal, cause } => ordinal == 1 && cause.contains("refused_by_infrastructure")
+    RefusedRetryPassThrough => false
+    RefusedRetryStop { reason: _ } => false
+  }
+}
+
+// CLAIM C2: past the bound the lineage reaches the typed RetryExhausted terminal, not a hold.
+test fn c2_infra_refused_past_the_bound_reaches_the_typed_terminal() -> Bool {
+  match belt_verification_retry_verdict(decision: decision_for(verdict: infra_refusal_verdict()), source: resume_receipt_source(verdict: infra_refusal_verdict()), retries_recorded: refused_retry_bound) {
+    RefusedRetryStop { reason } => reason.contains("RetryExhausted")
+    RefusedRetryRun { ordinal: _, cause: _ } => false
+    RefusedRetryPassThrough => false
+  }
+}
+
+// CLAIM C3 (control): a FAILED verdict is a judgment and is never retried, at any count.
+test fn c3_a_failed_verdict_is_never_retried() -> Bool {
+  let failed = ValidationFailed { command: "fixture-command", exit_code: 1, detail: "refused_by_infrastructure" }
+  (match belt_verification_retry_verdict(decision: decision_for(verdict: failed), source: resume_receipt_source(verdict: failed), retries_recorded: 0) {
+    RefusedRetryPassThrough => true
+    RefusedRetryRun { ordinal: _, cause: _ } => false
+    RefusedRetryStop { reason: _ } => false
+  })
+    && (match belt_verification_retry_verdict(decision: decision_for(verdict: failed), source: resume_receipt_source(verdict: failed), retries_recorded: refused_retry_bound) {
+      RefusedRetryPassThrough => true
+      RefusedRetryRun { ordinal: _, cause: _ } => false
+      RefusedRetryStop { reason: _ } => false
+    })
+}
+
+// CLAIM C4 (control): a refusal about the candidate, not the environment, keeps manual resume: it holds
+// with no spawn of a retry, and the standing is operator-only.
+test fn c4_a_candidate_refusal_still_holds_without_a_retry() -> Bool {
+  let candidate = ValidationRefused { cause: ValidationCommandRefused { program: "gunbc", reason: "the oracle moved" } }
+  (match belt_verification_retry_verdict(decision: decision_for(verdict: candidate), source: resume_receipt_source(verdict: candidate), retries_recorded: 0) {
+    RefusedRetryPassThrough => true
+    RefusedRetryRun { ordinal: _, cause: _ } => false
+    RefusedRetryStop { reason: _ } => false
+  })
+    && (match refused_retry_standing(class: RefusalCauseCandidate, retries_recorded: 0) {
+      RefusedRetryOperatorOnly => true
+      RefusedRetryOwed { ordinal: _ } => false
+      RefusedRetryExhausted { attempts: _ } => false
+    })
+}
+
+// CLAIM C5 (inhabitance): the refusal the REAL producer builds (the shared builder over the real compute
+// ending wire) classifies as infrastructure from the recorded receipt AND from the segment detail the
+// belt's pure wake reads, while a failed ending does not. Deleting the shared builder breaks both.
+test fn c5_the_real_compute_refusal_inhabits_the_shape() -> Bool {
+  let source = resume_receipt_source(verdict: infra_refusal_verdict())
+  (match belt_verification_refused_cause(source: source) {
+    Present { value: cause } => match refusal_cause_class(cause: cause) { RefusalCauseInfrastructure => true  RefusalCauseCandidate => false }
+    Absent => false
+  })
+    && (match refusal_detail_class(detail: validation_verdict_detail(verdict: infra_refusal_verdict())) { RefusalCauseInfrastructure => true  RefusalCauseCandidate => false })
+    && (match refusal_detail_class(detail: compute_refusal_reason(ending: work_ending_wire(e: WorkEndedFailed), document: "x")) { RefusalCauseInfrastructure => false  RefusalCauseCandidate => true })
 }

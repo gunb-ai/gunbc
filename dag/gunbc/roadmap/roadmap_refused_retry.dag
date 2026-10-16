@@ -1,0 +1,135 @@
+module gunbc.roadmap.roadmap_refused_retry
+
+import std.types { String, Int, Bool, List }
+import gunbc.roadmap.roadmap_validation_oracle { ValidationRefusalCause, validation_refusal_cause_detail }
+import gunbc.roadmap.roadmap_verification_receipt {
+  BeltVerificationDecision, BeltVerificationDefer, BeltVerificationRun, BeltVerificationRefuse, BeltVerificationEvidenceUnreadable,
+  ExactVerificationReceiptSource, belt_verification_refused_cause,
+}
+import gunbc.design_ruling { DesignRuling, infrastructure_refusal_is_retried_to_a_bound }
+
+// The ruling that governs this module, cited as a typed row so a rename or deletion fails to resolve.
+data refused_retry_ruling: DesignRuling = infrastructure_refusal_is_retried_to_a_bound
+
+// A REFUSED ACCEPTANCE STAGE IS RETRIED WHEN ITS CAUSE CAN HAVE CLEARED, TO A BOUND, AND PAST THE BOUND
+// THE LINEAGE REACHES A TYPED TERMINAL (ruling gunbc.design_ruling infrastructure_refusal_is_retried_to_a_bound,
+// which amends the 2026-10-03 manual-resume ruling for INFRASTRUCTURE refusals only). A refusal about the
+// candidate keeps the operator's manual resume; a FAILED stage is a verdict and is never retried here.
+//
+// The class is read from ONE authority shared with the producer: the reason the compute refusal builds
+// is made by compute_refusal_reason below, and the classifier tests the same prefix, so the two cannot drift.
+
+type RefusalCauseClass
+  = RefusalCauseInfrastructure
+  | RefusalCauseCandidate
+
+type RefusedRetryStanding
+  = RefusedRetryOwed { ordinal: Int }
+  | RefusedRetryExhausted { attempts: Int }
+  | RefusedRetryOperatorOnly
+
+data refused_retry_bound: Int = 3
+
+data compute_refusal_program: String = "gunbc-compute"
+
+fn compute_refusal_reason_prefix(ending: String) -> String {
+  join(["the claim run ended ", ending], "")
+}
+
+fn compute_refusal_reason(ending: String, document: String) -> String {
+  join([compute_refusal_reason_prefix(ending: ending), ": ", document], "")
+}
+
+// Only the compute layer's refused_by_infrastructure ending is an environment fact; every other
+// refusal cause is about the candidate or its subject and stays with the operator. The class is read off
+// the cause's rendered detail, which is also what a refused verification SEGMENT carries, so the receipt's
+// cause and the segment the belt's pure obligations see classify identically.
+fn refusal_detail_class(detail: String) -> RefusalCauseClass {
+  if string_contains(
+    s: detail,
+    pattern: join([compute_refusal_program, ": ", compute_refusal_reason_prefix(ending: "refused_by_infrastructure")], ""),
+  ) {
+    RefusalCauseInfrastructure
+  } else {
+    RefusalCauseCandidate
+  }
+}
+
+fn refusal_cause_class(cause: ValidationRefusalCause) -> RefusalCauseClass {
+  refusal_detail_class(detail: validation_refusal_cause_detail(cause: cause))
+}
+
+fn refused_retry_standing(class: RefusalCauseClass, retries_recorded: Int) -> RefusedRetryStanding {
+  match class {
+    RefusalCauseCandidate => RefusedRetryOperatorOnly
+    RefusalCauseInfrastructure =>
+      if retries_recorded >= refused_retry_bound {
+        RefusedRetryExhausted { attempts: retries_recorded }
+      } else {
+        RefusedRetryOwed { ordinal: retries_recorded + 1 }
+      }
+  }
+}
+
+fn refused_retry_owed(standing: RefusedRetryStanding) -> Bool {
+  match standing {
+    RefusedRetryOwed { ordinal: _ } => true
+    RefusedRetryExhausted { attempts: _ } => false
+    RefusedRetryOperatorOnly => false
+  }
+}
+
+// ONE LEDGER FILE PER RETRY beside the receipt it retries: the count is the number of entries, so no
+// wall clock and no append are needed and a flapping cause is a visible run of files, never absorbed.
+fn refused_retry_ledger_prefix(receipt_basename: String) -> String {
+  join([receipt_basename, ".refused-retry-"], "")
+}
+
+fn refused_retry_ledger_entry_name(receipt_basename: String, ordinal: Int) -> String {
+  join([refused_retry_ledger_prefix(receipt_basename: receipt_basename), to_string(ordinal)], "")
+}
+
+fn refused_retry_ledger_count(entries: String, receipt_basename: String) -> Int {
+  count(
+    split(s: entries, delimiter: "\n")
+      |> filter(e => starts_with(s: e, prefix: refused_retry_ledger_prefix(receipt_basename: receipt_basename)))
+  )
+}
+
+fn refused_retry_exhausted_reason(attempts: Int) -> String {
+  join([
+    "RetryExhausted: the verification was refused by its infrastructure ", to_string(attempts),
+    " time(s) and the belt's bound of ", to_string(refused_retry_bound),
+    " retries is spent; the operator decides (belt_verify_resume_cli re-runs it)",
+  ], "")
+}
+
+// THE BELT'S RETRY VERDICT OVER ONE DECISION, PURE: given the decision the belt reached, the receipt it read
+// and the count of ledger entries recorded, what the belt does. Run carries the ordinal and the cause the
+// ledger entry records; Stop is the typed RetryExhausted terminal; PassThrough leaves the decision alone.
+type RefusedRetryVerdict
+  = RefusedRetryPassThrough
+  | RefusedRetryRun { ordinal: Int, cause: String }
+  | RefusedRetryStop { reason: String }
+
+fn belt_verification_retry_verdict(
+  decision: BeltVerificationDecision,
+  source: ExactVerificationReceiptSource,
+  retries_recorded: Int,
+) -> RefusedRetryVerdict {
+  match decision {
+    BeltVerificationDefer { reason: _ } =>
+      match belt_verification_refused_cause(source: source) {
+        Absent => RefusedRetryPassThrough
+        Present { value: cause } =>
+          match refused_retry_standing(class: refusal_cause_class(cause: cause), retries_recorded: retries_recorded) {
+            RefusedRetryOwed { ordinal } => RefusedRetryRun { ordinal: ordinal, cause: validation_refusal_cause_detail(cause: cause) }
+            RefusedRetryExhausted { attempts } => RefusedRetryStop { reason: refused_retry_exhausted_reason(attempts: attempts) }
+            RefusedRetryOperatorOnly => RefusedRetryPassThrough
+          }
+      }
+    BeltVerificationRun => RefusedRetryPassThrough
+    BeltVerificationRefuse { reason: _ } => RefusedRetryPassThrough
+    BeltVerificationEvidenceUnreadable { reason: _ } => RefusedRetryPassThrough
+  }
+}

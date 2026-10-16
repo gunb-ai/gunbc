@@ -347,6 +347,14 @@ import gunbc.compute.work_provider_local {
   provide_result_host_record, host_record_was_written, host_record_wire,
   compute_attempts_root, compute_leases_root, ObserveUnitLifecycle,
 }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly,
+  RefusalCauseInfrastructure, RefusalCauseCandidate,
+  compute_refusal_program, compute_refusal_reason, refusal_detail_class,
+  refused_retry_standing, refused_retry_owed, refused_retry_ledger_entry_name, refused_retry_ledger_count,
+  refused_retry_exhausted_reason, refused_retry_bound,
+  RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop, belt_verification_retry_verdict,
+}
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
   VerificationEvidence, VerificationEvidenceForSubject,
@@ -2471,6 +2479,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
+      verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
     } },
   )
 }
@@ -8518,7 +8527,7 @@ fn belt_run_claim_through_compute(
               BeltValidationRun {
                 executions: acc.executions |> append(execution),
                 verdict: ValidationRefused {
-                  cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
+                  cause: ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: ending, document: document) },
                 },
               }
           }
@@ -8526,7 +8535,7 @@ fn belt_run_claim_through_compute(
           BeltValidationRun {
             executions: acc.executions |> append(execution),
             verdict: ValidationRefused {
-              cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
+              cause: ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: ending, document: document) },
             },
           }
       }
@@ -8585,6 +8594,117 @@ fn belt_verify_attempt_for_instance(
   progress: WorkflowAttemptProgress,
 ) -> BeltVerifyOutcome {
   belt_verify_attempt_in_mode(instance: instance, progress: progress, mode: VerifyAsBelt)
+}
+
+// THE BELT'S BOUNDED RETRY OF AN INFRASTRUCTURE-REFUSED VERIFICATION (ruling gunbc.design_ruling
+// infrastructure_refusal_is_retried_to_a_bound). The refused verdict stays recorded as refused; what
+// changes is that the belt, on its existing wake events, runs the stage again while the ledger beside
+// the receipt has fewer than the bound's entries, writes one ledger entry per retry carrying its cause,
+// and past the bound refuses with RetryExhausted instead of holding. A refusal about the candidate and
+// every recorded verdict pass through unchanged, and the operator resume bypasses the ledger.
+fn belt_verify_retry_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  dispatch_attempt_verification_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+}
+
+fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, receipt_basename: String) -> Int? {
+  let listing = Filesystem.List(path: belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: attempt_key))
+  if listing.success {
+    Present { value: refused_retry_ledger_count(entries: listing.entries, receipt_basename: receipt_basename) }
+  } else {
+    none
+  }
+}
+
+fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
+  match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+    WorktreeHeadUnobserved { reason: _ } => none
+    WorktreeHeadObserved { revision } =>
+      match belt_verification_selection_observe(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
+        SelectionObserved { head, window_identity } =>
+          Present { value: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)) }
+        SelectionUnaddressable { cause: _ } => none
+        SelectionAbsent => none
+        SelectionUnreadable { cause: _ } => none
+        SelectionMalformed { cause: _ } => none
+      }
+  }
+}
+
+// WHERE THE ATTEMPT'S VERIFICATION STANDS against the bound, from the segment the belt already read and
+// the ledger. Anything that cannot be established is OperatorOnly: no retry is fabricated.
+fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
+  match workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment) {
+    Absent => RefusedRetryOperatorOnly
+    Present { value: seg } =>
+      match seg.state {
+        WorkflowSegmentRefused =>
+          match refusal_detail_class(detail: seg.detail) {
+            RefusalCauseCandidate => RefusedRetryOperatorOnly
+            RefusalCauseInfrastructure => {
+              let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+              match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
+                Absent => RefusedRetryOperatorOnly
+                Present { value: basename } =>
+                  match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: basename) {
+                    Absent => RefusedRetryOperatorOnly
+                    Present { value: n } => refused_retry_standing(class: RefusalCauseInfrastructure, retries_recorded: n)
+                  }
+              }
+            }
+          }
+        WorkflowSegmentPending => RefusedRetryOperatorOnly
+        WorkflowSegmentActive => RefusedRetryOperatorOnly
+        WorkflowSegmentComplete => RefusedRetryOperatorOnly
+        WorkflowSegmentFailed => RefusedRetryOperatorOnly
+        WorkflowSegmentStopped => RefusedRetryOperatorOnly
+      }
+  }
+}
+
+fn belt_verify_retry_gate(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+  mode: BeltVerifyMode,
+  receipt_basename: String,
+  source: ExactVerificationReceiptSource,
+  decision: BeltVerificationDecision,
+) -> BeltVerificationDecision {
+  match mode {
+    VerifyAsOperatorResume => decision
+    VerifyAsBelt =>
+      match decision {
+        BeltVerificationDefer { reason: _ } => {
+          let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
+          match belt_verify_retry_ledger_count(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, receipt_basename: receipt_basename) {
+            Absent => decision
+            Present { value: n } =>
+              match belt_verification_retry_verdict(decision: decision, source: source, retries_recorded: n) {
+                RefusedRetryPassThrough => decision
+                RefusedRetryStop { reason } => BeltVerificationRefuse { reason: reason }
+                RefusedRetryRun { ordinal, cause } => {
+                  let write = Filesystem.Write(
+                    path: join([belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: progress.attempt_key), "/", refused_retry_ledger_entry_name(receipt_basename: receipt_basename, ordinal: ordinal)], ""),
+                    content: serialize_json(v: json_object(members: [
+                      json_kv(key: "schema", value: json_string(s: "roadmap-refused-retry/v1")),
+                      json_kv(key: "ordinal", value: json_int(n: ordinal)),
+                      json_kv(key: "bound", value: json_int(n: refused_retry_bound)),
+                      json_kv(key: "cause", value: json_string(s: cause)),
+                    ])),
+                  )
+                  if write.success {
+                    BeltVerificationRun
+                  } else {
+                    BeltVerificationEvidenceUnreadable { reason: join(["the refused-retry ledger entry could not be written, so the retry is not made unrecorded: ", write.error], "") }
+                  }
+                }
+              }
+          }
+        }
+        BeltVerificationRun => decision
+        BeltVerificationRefuse { reason: _ } => decision
+        BeltVerificationEvidenceUnreadable { reason: _ } => decision
+      }
+  }
 }
 
 fn belt_verification_decision_in_mode(mode: BeltVerifyMode, expected: VerificationSubject, source: ExactVerificationReceiptSource) -> BeltVerificationDecision {
@@ -8729,10 +8849,17 @@ fn belt_verify_attempt_in_mode(
                           verification_dir: address.verification_dir,
                           receipt_basename: address.receipt_basename,
                         )
-                        match belt_verification_decision_in_mode(
+                        match belt_verify_retry_gate(
+                          instance: instance,
+                          progress: progress,
                           mode: mode,
-                          expected: subject,
+                          receipt_basename: address.receipt_basename,
                           source: exact_source,
+                          decision: belt_verification_decision_in_mode(
+                            mode: mode,
+                            expected: subject,
+                            source: exact_source,
+                          ),
                         ) {
                           BeltVerificationEvidenceUnreadable { reason } =>
                             VerifyEvidenceUnreadable {
@@ -13953,11 +14080,25 @@ type BeltAttemptObligationRun
 // for the next kind reads what the previous one wrote. Each kind is visited once, so the run is
 // bounded by the number of kinds and never re-runs a kind it already ran (the strictly-downstream
 // rule of gunbc.roadmap.roadmap_belt_obligation belt_attempt_next_after, by construction here).
+// A refused verification whose cause is the environment's wakes the verify obligation while the bound
+// leaves a retry; the obligation then runs belt_verify_retry_gate, which records it.
+fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAttemptProgress, kind: BeltAttemptObligationKind) -> Bool {
+  match kind {
+    VerifyObligation => refused_retry_owed(standing: belt_verify_retry_standing(instance: instance, progress: progress))
+    CaptureObligation => false
+    ReviewObligation => false
+    AuditObligation => false
+    AcceptanceOutcomeObligation => false
+    PublishObligation => false
+  }
+}
+
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
-        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments) {
+        if belt_attempt_obligation_outstanding(kind: kind, provider: progress.provider, segments: progress.segments)
+          || belt_verify_retry_wakes(instance: instance, progress: progress, kind: kind) {
           let step = belt_attempt_obligation_step(instance: instance, progress: progress, kind: kind)
           BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: concat(acc.steps, [step]) }
         } else {
@@ -14223,15 +14364,16 @@ type BeltDiscovery
   | BeltDiscoveryRefused { reason: String }
 
 // PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
-fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
+fn belt_discovery_owed(instance: HostDashboardInstance, attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
+  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0
+    || refused_retry_owed(standing: belt_verify_retry_standing(instance: instance, progress: p)))
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let owed = belt_discovery_owed(attempts: attempts)
+      let owed = belt_discovery_owed(instance: instance, attempts: attempts)
       BeltDiscovered {
         owed: count(owed),
         enqueues: concat(
