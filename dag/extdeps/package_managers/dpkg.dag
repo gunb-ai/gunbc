@@ -53,12 +53,6 @@ service dpkg.Package {
 // 36375956111, srv1: "remote words are not portable under the far-side shell re-parse"), because the
 // word carries shell metacharacters. The Status line of the plain record is the same fact.
 data dpkg_query_program: NonEmptyStr = "dpkg-query"
-// THE dpkg BINARY ITSELF, a different program from dpkg-query above. dpkg(1) and dpkg-query(1) are
-// two executables with two calling conventions: the Status row runs `dpkg -s`, the Query row runs
-// `dpkg-query -s`. Naming both here keeps each program identity in the module that owns dpkg, so a
-// caller never carries a bare binary word and never spells one as the other.
-data dpkg_status_program: NonEmptyStr = "dpkg"
-
 fn dpkg_query_identity() -> ProgramIdentity = uncataloged_program(invocation: dpkg_query_program)
 
 fn dpkg_query_status_argv(package: NonEmptyStr) -> List<String> {
@@ -162,13 +156,15 @@ fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
 // consume the materializer directly, the comparison witness is not needed at all.
 // WHY A SEALED COMMAND AND NOT THE MATERIALIZED TEXT AS IS. The row materializes to argv TEXT for the
 // Bash emitter; the host-effect lane runs commands over an argument-vector transport with no shell in
-// it, and that seam takes a sealed `ArgvCommand` -- a program identity beside its argument tail. So
-// the materialized words are REPARTITIONED here, never re-spelled: token[0] is CHECKED to be the
-// program identity this module's program.dag row names (an execve parameter per extdeps.exec.command),
-// and the tail passes through untouched. A MATERIALIZATION REFUSAL STAYS A REFUSAL and is reported,
-// not swallowed: the answer is a typed Refused naming the cause, so a caller that cannot tell refuses
-// before its leg runs rather than execing a plausible-looking probe (the marker-not-empty-argv
-// discipline src/v2/extdeps/languages/rust_fixtures.dag records, and DESIGN 5: refuse, never widen).
+// it, and that seam takes a sealed `ArgvCommand` -- a program identity beside its argument tail. So the
+// materialized words are REPARTITIONED here, never re-spelled, and the program identity IS the
+// materialized head: the row's executable position is the one authority for which binary runs, so a
+// row that changes its head changes this command instead of meeting a stale literal checked beside it
+// (an execve parameter per extdeps.exec.command), and the tail passes through untouched. Only two
+// shapes are refused: an argv that materialized nothing, and an empty executable token -- both
+// reported as a typed Refused naming the cause, so a caller that cannot tell refuses before its leg
+// runs rather than execing a plausible-looking probe (the marker-not-empty-argv discipline
+// src/v2/extdeps/languages/rust_fixtures.dag records, and DESIGN 5: refuse, never widen).
 data dpkg_status_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
 data dpkg_status_operation_service: String = "dpkg.Package"
 data dpkg_status_operation_name: String = "Status"
@@ -188,17 +184,16 @@ fn dpkg_status_command(package: NonEmptyStr) -> DpkgStatusCommand {
     ArgvMaterialized { argv: materialized } =>
       match materialized {
         Cons { head: head, tail: tail } =>
-          let expected = dpkg_status_program as String
-          if head == expected {
-            DpkgStatusCommandReady {
-              command: argv_command(
-                program: uncataloged_program(invocation: dpkg_status_program),
-                arguments: tail,
-              ),
+          if head == "" {
+            DpkgStatusCommandRefused {
+              cause: "the dpkg.Package Status row materialized an empty token in its executable position",
             }
           } else {
-            DpkgStatusCommandRefused {
-              cause: concat("the dpkg.Package Status row materialized a token in its executable position that is not ", dpkg_status_program as String),
+            DpkgStatusCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: head as NonEmptyStr),
+                arguments: tail,
+              ),
             }
           }
         Empty =>

@@ -354,9 +354,12 @@ test fn the_plan_elevates_only_the_install_and_params_carry_policy() -> Bool {
 // RESULT of that derivation at the boundary values the route supplies (the two packages a live
 // deploy asks for, the mode/owner/group the marker spec declares). The install carries NO elevation
 // word: the ensure-dependency route is the unprivileged one and `sudo -n` belongs to the marker's
-// install leg alone. A hand-rolled argv beside either row would keep a second authority alive; the
-// builder refuses typed (a named cause, no process) if its row ever materializes something other
-// than its own program in the executable position, and a fold claim above carries that refusal.
+// install leg alone. A hand-rolled argv beside either row would keep a second authority alive -- and
+// so would a literal program WORD checked beside it: the builders carry no binary literal anywhere,
+// the sealed command's program identity IS the row's materialized executable token, so this pin
+// follows the row's head wherever it goes (changing the row's head changes these words; see the RED
+// evidence on the PR). The builders refuse typed -- a named cause, no process -- only when the row
+// materializes no argv or an empty executable token, and a fold claim above carries that refusal.
 test fn the_package_commands_derive_from_their_operation_rows() -> Bool {
   match dpkg_status_command(package: package_tmux) {
     DpkgStatusCommandRefused { cause: _ } => false

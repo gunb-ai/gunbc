@@ -129,12 +129,13 @@ service apt.PackageManager {
 // WHY A SEALED COMMAND AND NOT THE MATERIALIZED TEXT AS IS. The row materializes to argv TEXT for the
 // Bash emitter; the host-effect lane runs commands over an argument-vector transport with no shell in
 // it, and that seam takes a sealed `ArgvCommand` -- a program identity beside its argument tail. So the
-// materialized words are REPARTITIONED here, never re-spelled: token[0] is CHECKED to be the word the
-// row spells in the executable position (an execve parameter per extdeps.exec.command), and the tail
-// passes through untouched -- an "apt" or "/usr/bin/apt-get" materialization is refused rather than
-// execed. A MATERIALIZATION REFUSAL STAYS A REFUSAL and is reported, not swallowed: the answer is a
-// typed Refused naming the cause, so a caller that cannot tell refuses before its leg runs rather than
-// running a plausible-looking install (DESIGN 5: refuse, never widen).
+// materialized words are REPARTITIONED here, never re-spelled, and the program identity IS the
+// materialized head: the row's executable position is the one authority for which binary runs, so a row
+// that changes its head changes this command instead of meeting a stale literal checked beside it (an
+// execve parameter per extdeps.exec.command), and the tail passes through untouched. Only two shapes are
+// refused: an argv that materialized nothing, and an empty executable token -- both reported as a typed
+// Refused naming the cause, so a caller that cannot tell refuses before its leg runs rather than running
+// a plausible-looking install (DESIGN 5: refuse, never widen).
 data apt_get_install_operation_path: String = "dag/extdeps/package_managers/apt.dag"
 data apt_get_install_operation_service: String = "apt.PackageManager"
 data apt_get_install_operation_name: String = "Install"
@@ -154,17 +155,16 @@ fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
     ArgvMaterialized { argv: materialized } =>
       match materialized {
         Cons { head: head, tail: tail } =>
-          let expected = apt_get_install_program_word
-          if head == expected {
-            AptGetInstallCommandReady {
-              command: argv_command(
-                program: uncataloged_program(invocation: apt_get_install_program_word as NonEmptyStr),
-                arguments: tail,
-              ),
+          if head == "" {
+            AptGetInstallCommandRefused {
+              cause: "the apt.PackageManager Install row materialized an empty token in its executable position",
             }
           } else {
-            AptGetInstallCommandRefused {
-              cause: concat("the apt.PackageManager Install row materialized a token in its executable position that is not ", apt_get_install_program_word),
+            AptGetInstallCommandReady {
+              command: argv_command(
+                program: uncataloged_program(invocation: head as NonEmptyStr),
+                arguments: tail,
+              ),
             }
           }
         Empty =>
@@ -174,9 +174,3 @@ fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
       AptGetInstallCommandRefused { cause: operation_argv_cause_label(cause: c) }
   }
 }
-
-// The word the Install row above puts in the executable position, spelled on its own line ONLY so the
-// repartition above has something to check the materializer against. The row stays the authority for
-// the argv; a drift between this word and the row fails the site's legs (the probe/install builders
-// refuse), which is a refusal at the seam rather than a silent default.
-data apt_get_install_program_word: String = "apt-get"
