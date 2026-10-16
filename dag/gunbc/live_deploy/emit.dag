@@ -4291,10 +4291,6 @@ fn apply_object_source_serve_fragments(object_source_serve: ObjectSourceServeAdm
   }
 }
 
-fn apply_complete_object_source_serve() -> ObjectSourceServeAdmission {
-  ObjectSourceCanServe { source: "/home/ghrunner/work/gunbc/gunbc" }
-}
-
 fn apply_intent_fragments(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
