@@ -29,6 +29,7 @@ test fn the_broker_is_triggered_by_a_requested_fleet_converge_run() -> Bool {
     && y.contains("runs-on: ubuntu-24.04-arm")
     && branch_run_grant_broker_job_condition().contains("github.event.workflow_run.event == 'workflow_dispatch'")
     && branch_run_grant_broker_job_condition().contains("contains(github.event.workflow_run.display_title, ' hetzner_cloud_server_read ')")
+    && branch_run_grant_broker_job_condition().contains("contains(github.event.workflow_run.display_title, ' mtcollins1_boot ')")
     && y.contains("${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}")
 }
 

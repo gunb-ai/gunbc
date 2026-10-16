@@ -1,6 +1,8 @@
 module fixture.closure.rustc_argv_word_list_splice_probe
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, NonEmptyStr }
+
+type GitRemoteName = NonEmptyStr
 
 // A WORD LIST SPLICED INTO AN ARGV LITERAL, POSED TO RUSTC. The subject is v1.compiler.emit_rust
 // emit_shell_call: an argv element naming a `List<String>` input is a RUN OF WORDS at that position,
@@ -93,4 +95,54 @@ service fixture.WordListTransport {
       1 => String "echo failed"
     }
   }
+
+  operation CallProducedList {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", range_words()] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
+  operation NamedCallProducedList {
+    input { base: String, head: String, range: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", range_words_named(base: base, head: head, range: range)] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+
+  operation RemoteNameWord {
+    input { remote: GitRemoteName }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "remote", "get-url", remote] }
+    exit {
+      0 => Unit
+      1 => String "git failed"
+    }
+  }
+}
+
+fn range_words() -> List<String> {
+  ["--", "HEAD"]
+}
+
+fn range_words_named(base: String, head: String, range: String) -> List<String> {
+  [base, head, range]
 }
