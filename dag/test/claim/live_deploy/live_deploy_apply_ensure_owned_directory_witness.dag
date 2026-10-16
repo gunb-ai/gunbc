@@ -1,0 +1,403 @@
+module test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.realization_reconcile { Converged, NotConverged, Reconciliation }
+import std.algebra { join, string_contains }
+import extdeps.exec.command { argv_words }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan, OwnedDirectoryEnsureOutcome,
+  OwnedDirectoryDeclared,
+  owned_directory_observe, owned_directory_ensure,
+  owned_directory_outcome_detail, owned_directory_outcome_converged, owned_directory_path,
+  ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverTransportRefused, ObserverExited,
+  EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible,
+}
+import gunbc.ensure { EnsureMayApply }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation, EnsureOwnedDirectory,
+  executor_privileged_operation_elevated_command,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.host.host_effect { HostEffectIntent, HostEffectEvidence, HostEffectTransport, HostOs, ShellEffectApplied }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
+  live_deploy_apply_observer_read_verdict, live_deploy_apply_install_verdict,
+  live_deploy_apply_ensure_reconciliation, live_deploy_apply_install_op,
+  live_deploy_apply_ensure_owned_directory_on_host, live_deploy_apply_ensure_directories_on_host,
+}
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1, deployment_directory_demands }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURES, SUPPLIED -- DESIGN §3: the witness hands the pure boundary its values and names the
+// outcome it must produce. Nothing here runs a host command; the only real-route claim passes a
+// transport that refuses deterministically before any exec (see the inhabitation test).
+//
+// The demanded directory: the service account's own, mode 0700. The stat lines below are the exact
+// shape `stat -c "%F|%U|%G|%a"` produces, so the provider's parser -- not a fixture of my own
+// invention -- decides whether they are readings.
+
+fn w_path() -> FilePath = "/srv/gunbc/artifacts" as NonEmptyStr
+
+fn w_target() -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "witness-demanded-directory" as NonEmptyStr,
+    path: w_path(),
+    owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr },
+    mode: DirectoryOwnerAllEveryoneTraverse,
+  }
+}
+
+fn w_dir_line(owner: String, mode: String) -> ObserverRead {
+  ObserverReadOut { stdout: join(["directory|", owner, "|", owner, "|", mode, "\n"], "") }
+}
+
+fn w_parent_listing(entry: String) -> ObserverRead {
+  ObserverReadOut { stdout: join([entry, "\n"], "") }
+}
+
+// The mode the demand declares, as the provider spells it for `install -d` (leading zero, octal).
+fn w_mode_operand() -> String = "0755"
+
+fn w_observed_present() -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: w_path(),
+    list: _ => w_parent_listing("artifacts"),
+    stat: _ => w_dir_line(owner: "gunbc", mode: "755"),
+  )
+}
+
+fn w_observed_absent() -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: w_path(),
+    list: _ => w_parent_listing("something-else"),
+    stat: _ => w_dir_line(owner: "gunbc", mode: "755"),
+  )
+}
+
+fn w_observed_foreign_owner() -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: w_path(),
+    list: _ => w_parent_listing("artifacts"),
+    stat: _ => w_dir_line(owner: "root", mode: "755"),
+  )
+}
+
+fn w_observed_transport_refused() -> EnsureObservation<OwnedDirectoryReading> {
+  owned_directory_observe(
+    path: w_path(),
+    list: _ => ObserverReadFailed { origin: ObserverTransportRefused { cause: "fleet session closed" } },
+    stat: _ => ObserverReadFailed { origin: ObserverTransportRefused { cause: "fleet session closed" } },
+  )
+}
+
+fn w_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+    privilege_denial: none,
+  }
+}
+
+fn w_fleet_transport() -> HostEffectTransport {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => LocalShell
+    Present { value: ctx } =>
+      FleetSsh {
+        target: SshTarget {
+          address: socket_address(
+            host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2, octet3: 113, octet4: 7)),
+            port: 22,
+          ),
+          principal: "gunbc" as NonEmptyStr,
+        },
+        context: ctx,
+      }
+  }
+}
+
+fn reason_of(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String {
+  match r {
+    NotConverged { reason } => reason
+    Converged { evidence: _ } => ""
+  }
+}
+
+fn is_refusal(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> Bool {
+  match r {
+    NotConverged { reason: _, applied: _ } => true
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+fn converged_receipt(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String {
+  match r {
+    Converged { evidence: ShellEffectApplied { stdout } } => stdout
+    Converged { evidence: _ } => ""
+    NotConverged { reason: _, applied: _ } => ""
+  }
+}
+
+// ── THE OBSERVER VERDICT: a transport refusal is NOT an absent directory ────────────────────────
+// THE DISCRIMINATING RED OF THIS LEAF. The script this leaf replaces ran `test -d ... || exit` and
+// could not tell "the directory is not there" from "the host was never reached" -- both were a
+// non-zero exit, and the apply treated the first as work to do. Under the leaf, a refused transport
+// becomes EnsureInaccessible, which the provider refuses outright rather than deciding to install:
+// the privileged `install -d` never reaches a host that was never read. Absence and refusal are the
+// same shape upstream (a non-zero test) and must NOT be the same shape here.
+test fn a_refused_transport_is_inaccessible_never_an_absence() -> Bool {
+  match live_deploy_apply_observer_read_verdict(
+    outcome: RunArgvTransportRefused { reason: "ssh: connect to host timed out" },
+  ) {
+    ObserverReadFailed { origin: ObserverTransportRefused { cause } } =>
+      string_contains(s: cause, pattern: "timed out")
+    _ => false
+  }
+  && match live_deploy_apply_observer_read_verdict(
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved { exit_code: 1, success: false, stdout: "", stderr: "No such file or directory" },
+    },
+  ) {
+    ObserverReadFailed { origin: ObserverExited { exit_code, stderr } } =>
+      (exit_code == 1) && string_contains(s: stderr, pattern: "No such file")
+    _ => false
+  }
+  // The two are distinguishable at the provider: absence can lead to an install, refusal cannot.
+  && match owned_directory_decide_of(o: w_observed_absent()) {
+    "apply" => true
+    _ => false
+  }
+  && match owned_directory_decide_of(o: w_observed_transport_refused()) {
+    "refuse" => true
+    _ => false
+  }
+}
+
+fn owned_directory_decide_of(o: EnsureObservation<OwnedDirectoryReading>) -> String {
+  match gunbc.owned_directory.owned_directory_decide(
+    policy: EnsureMayApply,
+    target: w_target(),
+    observation: o,
+  ) {
+    gunbc.owned_directory.Noop => "noop"
+    gunbc.owned_directory.Apply { plan: _ } => "apply"
+    gunbc.owned_directory.Refuse { reason: _ } => "refuse"
+  }
+}
+
+// ── THE APPLICATION VERDICT: a refused or failed install means "not applied", never "nothing to do" ─
+test fn a_refused_or_failed_install_is_not_applied() -> Bool {
+  (!live_deploy_apply_install_verdict(
+    outcome: RunArgvTransportRefused { reason: "transport refused" },
+  ))
+  && (!live_deploy_apply_install_verdict(
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved { exit_code: 1, success: false, stdout: "", stderr: "install: cannot create directory" },
+    },
+  ))
+  && live_deploy_apply_install_verdict(
+    outcome: RunArgvTransportObserved {
+      observed: ShellExecObserved { exit_code: 0, success: true, stdout: "", stderr: "" },
+    },
+  )
+}
+
+// ── CONVERGED, ON THE REAL PROVIDER LAW, WITH THE READBACK IN THE RECEIPT ───────────────────────
+// Both observations supplied as the SAME satisfying reading: the directory was already what the
+// demand declares, so the provider decides Noop, the run closure is never needed, and the law
+// converges on the readback -- not on an exit status. `live_deploy_apply_ensure_reconciliation` is
+// the pure seam, so this is the leaf's converged arm with no host in sight.
+test fn a_satisfied_directory_converges_with_its_readback_in_the_receipt() -> Bool {
+  let outcome = owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: w_target(),
+    observe: _ => w_observed_present(),
+    run: _ => false,
+  )
+  match live_deploy_apply_ensure_reconciliation(outcome: outcome, intent: w_intent()) {
+    Converged { evidence: ShellEffectApplied { exit_code, stdout, stderr } } =>
+      (exit_code == 0)
+        && (stderr == "")
+        && string_contains(s: stdout, pattern: "converged")
+        && string_contains(s: stdout, pattern: "/srv/gunbc/artifacts")
+    _ => false
+  }
+  && owned_directory_outcome_converged(o: outcome)
+}
+
+// ── THE RED: an install that did not run does NOT converge, and the reason survives ─────────────
+// The old script's `install -d ... || exit 1` failed loudly; the failure mode a re-implementation
+// reintroduces is the opposite -- a step that reports success because it did not error. Here the
+// provider decides Apply, the run closure reports that the install did NOT happen, and the
+// reconciliation refuses: `applied` is still the intent (nothing was silently dropped), and the
+// reason names the demand rather than defaulting to "no change needed".
+test fn an_install_that_did_not_run_refuses_rather_than_reporting_no_change() -> Bool {
+  let outcome = owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: w_target(),
+    observe: _ => w_observed_absent(),
+    run: _ => false,
+  )
+  let r = live_deploy_apply_ensure_reconciliation(outcome: outcome, intent: w_intent())
+  is_refusal(r: r)
+    && string_contains(s: reason_of(r: r), pattern: "live_deploy apply:")
+    && (!owned_directory_outcome_converged(o: outcome))
+    && match r {
+      NotConverged { applied } => applied == w_intent()
+      Converged { evidence: _, applied: _ } => false
+    }
+}
+
+// ── THE RED: a foreign-owned directory is never adopted ─────────────────────────────────────────
+// Same seam, other refusal source: the path exists, is a directory, but is owned by someone else.
+// The provider refuses (adoption is not this leaf's authority) and the refusal reaches the apply as
+// a NotConverged, not as a silent success and not as a chown.
+test fn a_foreign_owned_directory_refuses_and_is_never_adopted() -> Bool {
+  let outcome = owned_directory_ensure(
+    policy: EnsureMayApply,
+    target: w_target(),
+    observe: _ => w_observed_foreign_owner(),
+    run: _ => true,
+  )
+  let r = live_deploy_apply_ensure_reconciliation(outcome: outcome, intent: w_intent())
+  is_refusal(r: r)
+    && string_contains(s: reason_of(r: r), pattern: "live_deploy apply:")
+    && string_contains(s: reason_of(r: r), pattern: "root")
+}
+
+// ── EVERY REFUSAL NAMES THE PATH IT REFUSED ────────────────────────────────────────────────────
+// The old script's failure line was `install: cannot create ...` on stderr of a pooled script --
+// with several directories in one body, it did not survive as a per-directory fact. Each leaf
+// refusal must name its own directory.
+test fn each_refusal_names_the_directory_it_refused() -> Bool {
+  let absent_run = live_deploy_apply_ensure_reconciliation(
+    outcome: owned_directory_ensure(
+      policy: EnsureMayApply,
+      target: w_target(),
+      observe: _ => w_observed_absent(),
+      run: _ => false,
+    ),
+    intent: w_intent(),
+  )
+  let refused_host = live_deploy_apply_ensure_reconciliation(
+    outcome: owned_directory_ensure(
+      policy: EnsureMayApply,
+      target: w_target(),
+      observe: _ => w_observed_transport_refused(),
+      run: _ => true,
+    ),
+    intent: w_intent(),
+  )
+  string_contains(s: reason_of(r: absent_run), pattern: "/srv/gunbc/artifacts")
+    && string_contains(s: reason_of(r: refused_host), pattern: "/srv/gunbc/artifacts")
+    && string_contains(s: reason_of(r: refused_host), pattern: "fleet session closed")
+}
+
+// ── WHAT THE LEAF PUTS ON THE WIRE (no policy literal, one elevation, no re-joined string) ──────
+// The privileged write is the sealed operation, so the argv is the provider's, not this module's.
+// Pinned byte-for-byte against what the deleted script emitted, so the dissolution cannot quietly
+// change the command: same program, same `-d -m -o -g <path>` order, one leading `sudo -n`, and the
+// mode/owner arriving as separate words (nothing is quoted, because nothing is re-joined).
+test fn the_install_argv_is_the_sealed_operation_word_for_word() -> Bool {
+  let plan = OwnedDirectoryInstallPlan {
+    path: w_path(),
+    owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr },
+    mode: w_mode(),
+  }
+  let words = argv_words(command: executor_privileged_operation_elevated_command(op: live_deploy_apply_install_op(plan: plan)))
+  let line = join([" ", join(words, " "), " "], "")
+  string_contains(s: line, pattern: " /usr/bin/sudo -n ")
+    && string_contains(s: line, pattern: " /usr/bin/install -d ")
+    && string_contains(s: line, pattern: " -m 0755 -o gunbc -g gunbc /srv/gunbc/artifacts ")
+    // Exactly one elevation word: the leaf adds no second sudo, and never a shell wrapper.
+    && (count_equal(words: words, wanted: "-n") == 1)
+    && (!contains_bash(words: words))
+}
+
+fn w_mode() -> extdeps.access.posix.FileMode {
+  match gunbc.owned_directory.owned_directory_declared_mode(m: DirectoryOwnerAllEveryoneTraverse) {
+    Present { value: m } => m
+    Absent => gunbc.owned_directory.owned_directory_owner_only_mode()
+  }
+}
+
+fn count_equal(words: List<String>, wanted: String) -> Int {
+  fold(words, init: 0, f: (acc, word) => if word == wanted { acc + 1 } else { acc })
+}
+
+fn contains_bash(words: List<String>) -> Bool {
+  fold(words, init: false, f: (acc, word) => acc || string_contains(s: word, pattern: "bash"))
+}
+
+// ── INHABITANCE ON THE REAL ROUTE (DESIGN §3: at least one claim where the effect actually runs) ─
+// The leaf's caller chain, over the REAL srv1 deployment spec -- not a fixture target -- driving the
+// real provider and the real transport runner. The transport is the fleet arm, which the host-effect
+// runner refuses deterministically BEFORE any exec (its own authority is not yet admitted; see
+// run_argv_over_host_effect_transport). So this is the real route end to end and stays hermetic:
+// nothing privileged is spawned in CI, and what is asserted is that a demanded-directory apply
+// reaches the leaf and comes back a typed refusal that names the endpoint -- never a panic, never a
+// silent convergence, never a fabricated receipt. A test that only fed closures could pass while the
+// leaf were unreachable from the apply, and this is the claim that cannot.
+test fn the_apply_route_ensures_the_srv1_demanded_directories_and_refuses_without_a_transport() -> Bool {
+  let demands = deployment_directory_demands(spec: deployment_spec_srv1())
+  (!is_empty(demands))
+    && match live_deploy_apply_ensure_directories_on_host(
+      demands: demands,
+      transport: w_fleet_transport(),
+      intent: w_intent(),
+    ) {
+      NotConverged { reason, applied } =>
+        string_contains(s: reason, pattern: "live_deploy apply:")
+          && string_contains(s: reason, pattern: "host_effect_apply:")
+          && (applied == w_intent())
+      Converged { evidence: _, applied: _ } => false
+    }
+}
+
+fn is_empty(demands: List<OwnedDirectoryTarget>) -> Bool {
+  match demands {
+    [] => true
+    _ => false
+  }
+}
+
+// ── THE FOLD HALTS ON THE FIRST REFUSAL (it does not run on past a refused directory) ───────────
+// Every demand here demands the same path but the observation says absent-and-not-listed with the
+// install refusing: the first directory halts the fold, and the reason returned is the FIRST one's.
+// The old script had `set -e`, so this preserves a real refusal rather than weakening it.
+test fn the_fold_halts_at_the_first_refused_directory() -> Bool {
+  let first = w_target_named(member: "first-directory")
+  let second = w_target_named(member: "second-directory")
+  let r = live_deploy_apply_ensure_directories_on_host(
+    demands: [first, second],
+    transport: w_never_reached_transport(),
+    intent: w_intent(),
+  )
+  is_refusal(r: r)
+    && string_contains(s: reason_of(r: r), pattern: "live_deploy apply:")
+}
+
+fn w_target_named(member: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member as NonEmptyStr,
+    path: w_path(),
+    owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr },
+    mode: DirectoryOwnerAllEveryoneTraverse,
+  }
+}
+
+// A transport whose every leg refuses, so the fold's halt is decided by the leaf's own refusal and
+// not by a host. (FleetSsh, per run_argv_over_host_effect_transport.)
+fn w_never_reached_transport() -> HostEffectTransport = w_fleet_transport()

@@ -4582,10 +4582,22 @@ fn live_deploy_apply_observer_read(
   op: ExecutorPrivilegedOperation,
   transport: HostEffectTransport,
 ) -> ObserverRead {
-  match run_argv_over_host_effect_transport(
-    command: executor_privileged_operation_elevated_command(op: op),
-    transport: transport,
-  ) {
+  live_deploy_apply_observer_read_verdict(
+    outcome: run_argv_over_host_effect_transport(
+      command: executor_privileged_operation_elevated_command(op: op),
+      transport: transport,
+    ),
+  )
+}
+
+// THE OBSERVER VERDICT, PURE -- the boundary the witness supplies values at (DESIGN 3), exactly as
+// the sibling C2 leaf exposes host_remove_verdict. Nothing runs here: a supplied
+// RunArgvTransportOutcome becomes the provider's ObserverRead, and the discrimination the old bash
+// collapsed ("any non-zero looked like an absent directory") is decided by this mapping alone.
+fn live_deploy_apply_observer_read_verdict(
+  outcome: RunArgvTransportOutcome,
+) -> ObserverRead {
+  match outcome {
     RunArgvTransportRefused { reason } =>
       ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
     RunArgvTransportObserved { observed } =>
@@ -4607,17 +4619,32 @@ fn live_deploy_apply_ensure_install(
   plan: OwnedDirectoryInstallPlan,
   transport: HostEffectTransport,
 ) -> Bool {
-  match run_argv_over_host_effect_transport(
-    command: executor_privileged_operation_elevated_command(
-      op: EnsureOwnedDirectory {
-        path: plan.path as String as NonEmptyStr,
-        owner: plan.owner.user,
-        group: plan.owner.group,
-        mode: plan.mode,
-      },
+  live_deploy_apply_install_verdict(
+    outcome: run_argv_over_host_effect_transport(
+      command: executor_privileged_operation_elevated_command(op: live_deploy_apply_install_op(plan: plan)),
+      transport: transport,
     ),
-    transport: transport,
-  ) {
+  )
+}
+
+// THE ONE PRIVILEGED WRITE, AS A SEALED OPERATION. Named apart so the argv this leaf is willing to
+// put on the wire is inspectable at the witness (and, being sealed, is elevated by the provider's
+// own single `sudo -n` -- never by a policy literal this module writes into argv).
+fn live_deploy_apply_install_op(plan: OwnedDirectoryInstallPlan) -> ExecutorPrivilegedOperation {
+  EnsureOwnedDirectory {
+    path: plan.path as String as NonEmptyStr,
+    owner: plan.owner.user,
+    group: plan.owner.group,
+    mode: plan.mode,
+  }
+}
+
+// THE APPLICATION VERDICT, PURE AND WITNESS-SUPPLIED. A refused dispatch is `false` -- which the
+// provider turns into a refusal, never into a no-op success. The transport's own reason is NOT
+// dropped here either: the leg above keeps it in the trace by way of the observation leg, which
+// runs first and is what refuses the host as unreachable.
+fn live_deploy_apply_install_verdict(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
     RunArgvTransportRefused { reason: _ } => false
     RunArgvTransportObserved { observed } => observed.success
   }
