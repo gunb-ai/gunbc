@@ -15,7 +15,8 @@ import extdeps.bmc.ipmi {
   IpmiCommandInterfaceParsed, IpmiCommandInterfaceUnrecognized, ipmi_command_interface_from_wire,
   InBandHostTransportChannel, NotInBandHostTransport, InBandHostTransport,
   OpenIpmiDriver, BmcKernelDriver, LanPlusTransport, LanTransport,
-  IpmiDeviceIdentity,
+  IpmiDeviceIdentity, IpmiDeviceNode, IpmiDevIpmiNode, IpmiImbDeviceNode,
+  ipmi_device_nodes_are_same_device, ipmi_device_node_canonical_text,
 }
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
@@ -133,16 +134,21 @@ data recovery_ipmi_kernel_modules: List<LinuxKernelModuleName> = [
   "acpi_ipmi",
 ]
 
-data recovery_ipmi_device_node: NonEmptyStr = "/dev/ipmi0"
+// The device the in-band channel is read through, as the TYPE the upstream plugins imply: open.c builds
+// "/dev/ipmi%d" from a device NUMBER, so this is the closed set extdeps.bmc.ipmi owns. It used to be a
+// NonEmptyStr compared against a copy of itself -- safe (a wrong spelling failed closed) but a second,
+// string-shaped home for a fact ipmi already carries (review 81285, DESIGN 2 "a String leaf hiding named
+// parts"). The arm is named, and the comparison below is on arms.
+data recovery_ipmi_device_node: IpmiDeviceNode = IpmiDevIpmiNode { device_number: 0 }
 
 type InBandIpmiPresence {
-  device_node: NonEmptyStr
+  device_node: IpmiDeviceNode
   kernel_modules: List<LinuxKernelModuleName>
   evidence: EvidenceRef
 }
 
 fn in_band_ipmi_presence_is_complete(presence: InBandIpmiPresence) -> Bool {
-  (presence.device_node as String) == (recovery_ipmi_device_node as String)
+  ipmi_device_nodes_are_same_device(a: presence.device_node, b: recovery_ipmi_device_node)
     && recovery_ipmi_kernel_modules |> all(m => presence.kernel_modules |> any(h => h == m))
 }
 
@@ -234,29 +240,82 @@ fn rescue_host_reachable(
 // board with an unknown password is reachable: the host-to-BMC interface inside the chassis
 // authenticates by PHYSICAL POSITION, not by a secret. So the fact is not a comment beside a
 // function -- it is a type, and it is the type the route admits on.
+// WHY THE CREDENTIAL QUESTION IS IN THE ARMS AND NOT IN A CHECK (review 81285). The previous shape put
+// `argv_credential_words: List<String>` INSIDE the passwordless arm and asked a Bool, on every call site,
+// whether the list happened to be empty. That is a type that can hold "passwordless, with -P 0penBmc on
+// the argv", and the destructive ResetAll gate trusted whoever remembered to call the check -- exactly the
+// failure this module already removed for the transport, where the note in extdeps/bmc/ipmi.dag says a
+// consumer that forgot to ask "failed OPEN". DESIGN 5: "Stronger than catching a wrong state is making it
+// UNWRITABLE -- correctness by construction, not validation."
+//
+// So the credential-bearing command line is now its OWN arm, and the argv is decided ONCE by
+// in_band_channel_from_argv: words containing -U/-P (ipmitool's user-name and password options,
+// src/ipmitool.c) route to the credential-bearing arm, an argv without them routes to the passwordless
+// arm, which therefore has NO field a credential could be written into. The refused arms are not widened
+// into the admitted one anywhere: there is no function in this module that turns a
+// CredentialCarriedOnArgv into an InBandChannelPasswordless, so a consumer cannot forget.
 type InBandAccessWithoutCredential
-  = InBandChannelPasswordless {
+  = InBandChannelPasswordless { transport: InBandHostTransport }
+  | InBandChannelCredentialCarriedOnArgv {
       transport: InBandHostTransport
-      argv_credential_words: List<String>
+      credential_option: IpmiArgvCredentialOption
     }
   | InBandChannelNotObserved { detail: NonEmptyStr }
 
-// WHAT IS LEFT TO CHECK, once the transport is a type rather than a tag. In-band-ness is no longer a
-// question this function asks: the field's TYPE is extdeps.bmc.ipmi's InBandHostTransport, and the parse
-// that produces it is the only place the in-band line is drawn -- so this arm cannot be built holding
-// "lanplus", a misspelling, or a transport nobody declared. Review 81235 found the previous shape (one
-// undivided 12-arm interface plus a Bool answering "is this in-band?") put that decision outside the data,
-// where a consumer that forgot to ask failed open, with a destructive ResetAll downstream.
-//
-// So the only remaining claim is the one no type can carry: that no credential appeared on the command
-// line. That is made checkable rather than asserted -- the argv words must be empty, and an empty list is
-// not nothing, it is the recorded fact that the argv was read and carried no -U, no -P, no password. A
-// caller who passed a credential has to fill the list, and then this is false and the channel admits
-// nothing.
-fn in_band_channel_is_passwordless(channel: InBandAccessWithoutCredential) -> Bool {
-  match channel {
-    InBandChannelPasswordless { transport: _, argv_credential_words: words } => list_length(items: words) == 0
-    InBandChannelNotObserved { detail: _ } => false
+// THE OPTIONS THAT PUT A CREDENTIAL IN REACH OF THE WRITE. Declared rather than matched as strings at each
+// call site, for the same reason the transport names are: an in-band tag compared by string equality is a
+// sum with one member nobody wrote down, and a call site that mistypes "-P" as "-p" admits the write.
+type IpmiArgvCredentialOption
+  = IpmiArgvUserName            // -U <user>       lib/ipmi_main.c OPTION_STRING "U:", case 'U' at :540
+  | IpmiArgvPassword            // -P <password>   OPTION_STRING "P:", case 'P' at :645
+  | IpmiArgvPasswordFromEnv     // -E, no argument: the password comes from IPMITOOL_PASSWORD, case 'E' at :660
+
+// WHY ONLY THESE THREE, AND WHY NO LONG OPTIONS. ipmitool parses its arguments with plain getopt against
+// OPTION_STRING (lib/ipmi_main.c:371, defined at :82 under ENABLE_ALL_OPTIONS) -- there is no getopt_long
+// anywhere in the tree, so --username and --password are not ipmitool options and are not modelled here;
+// a word like "--password" on the argv is just a word, exactly as upstream treats it. -E is a separate arm
+// rather than folded into -P because it is a different fact about the invocation: the secret is not on the
+// command line at all, so it does not appear in a captured argv or in shell history, and a reader of the
+// capture cannot see it. All three still leave the admitted arm, because all three mean the write is not
+// being performed through the passwordless in-band channel. -A (cipher suite) is NOT here: it names an
+// authentication algorithm and carries no secret.
+
+// THE PARSE THAT DECIDES THE ARM, ONCE. The in-band transport itself comes from ipmi_command_interface_from_wire,
+// so an unrecognised -I name never reaches here. This decides only the credential half, from the argv words
+// as they were actually passed.
+fn in_band_channel_from_argv(
+  interface_name: NonEmptyStr,
+  argv_words: List<String>,
+) -> InBandAccessWithoutCredential {
+  match ipmi_command_interface_from_wire(name: interface_name) {
+    // Not a wire name ipmitool knows: there is no transport to stand on, so nothing is admitted. Refused,
+    // never defaulted -- the reason review 81235 gave for the same rule on the transport side.
+    IpmiCommandInterfaceUnrecognized { wire: _ } =>
+      InBandChannelNotObserved { detail: "the -I name is not one ipmitool implements" }
+    IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: _, why_not_in_band: why } } =>
+      // the parse already knows WHY this transport is not a host transport; the refusal carries it rather
+      // than re-deriving a reason, so the reader sees the upstream fact and not a restatement
+      InBandChannelNotObserved { detail: why }
+    IpmiCommandInterfaceParsed { wire: _, transport: InBandHostTransportChannel { transport: in_band } } =>
+      match in_band_argv_credential_option(words: argv_words) {
+        Absent => InBandChannelPasswordless { transport: in_band }
+        Present { value: opt } =>
+          InBandChannelCredentialCarriedOnArgv { transport: in_band, credential_option: opt }
+      }
+  }
+}
+
+// The first credential-bearing option on the line, if any. Order matters only for WHICH option gets named
+// in the refusal, not for whether one is refused: any of them routes out of the admitted arm.
+fn in_band_argv_credential_option(words: List<String>) -> IpmiArgvCredentialOption? {
+  if (any(xs: words, predicate: w => w == "-U")) {
+    Present { value: IpmiArgvUserName }
+  } else if (any(xs: words, predicate: w => w == "-P")) {
+    Present { value: IpmiArgvPassword }
+  } else if (any(xs: words, predicate: w => w == "-E")) {
+    Present { value: IpmiArgvPasswordFromEnv }
+  } else {
+    Absent
   }
 }
 
@@ -294,7 +353,7 @@ fn in_band_administrator_account_reads_back(account: InBandAdministratorAccount)
 type InBandChannelObservation {
   subject: MachineIntakeSubject
   rescue_host_address: Ipv4Address
-  device_node: NonEmptyStr
+  device_node: IpmiDeviceNode
   kernel_modules: List<LinuxKernelModuleName>
   channel: InBandAccessWithoutCredential
   administrator: InBandAdministratorAccount
@@ -311,10 +370,18 @@ fn in_band_channel_admits(
 ) -> Bool {
   match reachability {
     RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
-      in_band_channel_is_passwordless(channel: observation.channel)
+      // THE CHANNEL IS MATCHED, NOT ASKED A QUESTION. Only the credential-free arm can carry an
+      // observation forward; the other two arms each name why they cannot, and there is no Bool in
+      // between that a call site could forget (review 81285). The arm that is matched here has no field a
+      // credential could have been written into, so nothing has to be re-checked about it.
+      (match observation.channel {
+        InBandChannelPasswordless { transport: _ } => true
+        InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => false
+        InBandChannelNotObserved { detail: _ } => false
+      })
         && in_band_administrator_account_reads_back(account: observation.administrator)
         && observation.rescue_host_address == a
-        && (observation.device_node as String) == (ipmi.device_node as String)
+        && ipmi_device_nodes_are_same_device(a: observation.device_node, b: ipmi.device_node)
         && observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m))
         && ipmi.kernel_modules |> all(m => observation.kernel_modules |> any(h => h == m))
     RescueHostUnreachable { cause: _ } => false
@@ -361,13 +428,14 @@ type RecoveryActuationKind
   = InBandTemporaryAdministratorPassword
   | RedfishManagerResetToDefaults { reset_type: RedfishResetToDefaultsType }
 
-fn recovery_actuation_is_destructive(kind: RecoveryActuationKind) -> Bool {
-  match kind {
-    InBandTemporaryAdministratorPassword => false
-    RedfishManagerResetToDefaults { reset_type: r } => reset_to_defaults_clears_unknown_credential(kind: r)
-  }
-}
-
+// WHY THERE IS NO `is_destructive` HERE (review 81285). A Bool over this sum would be a second
+// representation of a fact the arms already carry: the DMTF arm names which ResetToDefaultsType was sent,
+// and extdeps.bmc.redfish's own predicate over THAT upstream enum is the single place clearing-the-user-
+// table is defined -- which is the question the reset gate actually asks, asked of the arm it read off the
+// write record. The password arm needs no such answer because its gate never consults destructiveness: the
+// two writes have separate gates and separate authorization types, so "is this one destructive?" is never
+// posed at a call site. A true/false-per-variant helper here would be reachable only from a test, which is
+// how it read as "used".
 fn recovery_reset_actuation() -> RecoveryActuationKind {
   RedfishManagerResetToDefaults { reset_type: ResetAll }
 }
@@ -579,8 +647,14 @@ fn admit_recovery_in_band_password_write(
   let kind = recovery_in_band_password_actuation()
   if recovery_ledger_conforms(site_ref: recovery_in_band_password_write_site()) == false {
     PasswordWriteRefused { cause: "the census verdict at this site does not select a pattern that conforms to what the effect's classification forces" as NonEmptyStr }
-  } else if in_band_channel_is_passwordless(channel: route.in_band.channel) == false {
-    PasswordWriteRefused { cause: "the in-band channel is not admitted as passwordless, so this is not the write the census row classifies" as NonEmptyStr }
+  } else if match route.in_band.channel {
+    // Matched, not queried: a channel that carried its credential on the argv, or was never read, has an
+    // arm and that arm refuses. Review 81285 -- the check used to be a Bool a call site had to remember.
+    InBandChannelPasswordless { transport: _ } => false
+    InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => true
+    InBandChannelNotObserved { detail: _ } => true
+  } {
+    PasswordWriteRefused { cause: "the in-band channel is not the credential-free arm, so this is not the write the census row classifies" as NonEmptyStr }
   } else if recovery_write_record_names_kind(record: write, kind: kind) == false {
     PasswordWriteRefused { cause: "the write handed over does not name the in-band password actuation this gate classifies" as NonEmptyStr }
   } else {
@@ -1231,7 +1305,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     rescue_host_address: recovery_controller_address(),
     device_node: recovery_ipmi_device_node,
     kernel_modules: recovery_ipmi_kernel_modules,
-    channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
+    channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
     administrator: recovery_administrator_account(),
     evidence: recovery_inband_channel_capture_ref,
     observed_at: recovery_capture_instant(),
@@ -1244,18 +1318,43 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
       }
 }
 
+// THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. This is
+// review 81285's fix made executable. Three parts, each a different way the old type could be wrong:
+//   - an argv that passed -P lands on the credential-bearing arm, naming WHICH option, and the same argv
+//     with no credential option lands on the admitted arm -- both through in_band_channel_from_argv, so
+//     the side is decided once, at the parse, not at each consumer;
+//   - the admitted arm has NO field that could hold a credential, which makes the old broken value
+//     (passwordless + ["-P","0penBmc"]) unconstructible: this claim no longer needs a case for it, and
+//     neither does any gate;
+//   - an out-of-band -I name cannot reach either arm, so there is no channel value to hand the password
+//     gate that would admit a write over a transport requiring a secret.
 test fn a_channel_that_passed_a_credential_on_the_command_line_is_not_passwordless() -> Bool {
-  in_band_channel_is_passwordless(
-    channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: ["-P", "0penBmc"] },
-  ) == false
-    // the second way this used to be tested -- building a channel holding "lanplus" and asking whether it
-    // read as passwordless -- is now IMPOSSIBLE to write, which is the point: the field's type is
-    // InBandHostTransport and the out-of-band arms are a different sum. The refusal is asserted where it
-    // can still be expressed, at the parse (see
-    // the_transport_sums_place_every_wire_name_on_exactly_one_side).
-    && in_band_channel_is_passwordless(
-      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
-    )
+  (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "-P", "0penBmc", "user", "set", "password", "1", "0penBmc"]) {
+    // refused, and it says which option did it: -P is ipmitool's password option (src/ipmitool.c)
+    InBandChannelCredentialCarriedOnArgv { transport: t, credential_option: opt } =>
+      t == OpenIpmiDriver && opt == IpmiArgvPassword
+    _ => false
+  })
+    // -U alone is enough to leave the admitted arm: naming the user is a credential-bearing invocation
+    && (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "-U", "root", "user", "list", "1"]) {
+      InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: opt } => opt == IpmiArgvUserName
+      _ => false
+    })
+    // the argv the capture actually used: no credential option, so the credential-free arm
+    && (match in_band_channel_from_argv(interface_name: "open", argv_words: ["-I", "open", "user", "list", "1"]) {
+      InBandChannelPasswordless { transport: t } => t == OpenIpmiDriver
+      _ => false
+    })
+    // a name ipmitool does not implement is refused at the parse and reaches no arm
+    && (match in_band_channel_from_argv(interface_name: "ssif", argv_words: ["user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_length(d) > 0
+      _ => false
+    })
+    // and an out-of-band name cannot produce a channel at all: no value exists for the gate to be fooled by
+    && (match in_band_channel_from_argv(interface_name: "lanplus", argv_words: ["user", "list", "1"]) {
+      InBandChannelNotObserved { detail: d } => string_length(d) > 0
+      _ => false
+    })
 }
 
 // THE TRANSPORT IS CLOSED IN BOTH DIRECTIONS, AND THE SIDE IS DECIDED ONCE, BY THE PARSE. Review
@@ -1298,22 +1397,24 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
     && match ipmi_command_interface_from_wire(wire: "LANPLUS") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
     && match ipmi_command_interface_from_wire(wire: "lanplus ") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
     && match ipmi_command_interface_from_wire(wire: "") { IpmiCommandInterfaceUnrecognized { wire: _ } => true _ => false }
-    // THE CONSEQUENCE THAT MAKES THIS MORE THAN A RENAME: a channel observation cannot be built holding
-    // an out-of-band transport, so there is no value to hand the passwordless check that would make it
-    // admit a write over a transport requiring a secret. The only way an unobserved channel lands is the
-    // arm that says so.
-    && in_band_channel_is_passwordless(
-      channel: InBandChannelNotObserved { detail: "ipmitool reported a transport this model has no in-band arm for" },
-    ) == false
-    && in_band_channel_is_passwordless(
-      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: ["-P", "0penBmc"] },
-    ) == false
+    // THE CONSEQUENCE THAT MAKES THIS MORE THAN A RENAME: the only channel values that exist are the
+    // credential-free arm, the arm naming a credential option, and the arm saying the channel was never
+    // read. There is no value in between for a gate to be fooled by, and no Bool a consumer can skip.
+    && (match in_band_channel_from_argv(interface_name: "open", argv_words: []) {
+      InBandChannelPasswordless { transport: _ } => true
+      _ => false
+    })
 }
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
   reset_to_defaults_clears_unknown_credential(kind: ResetAll)
     && reset_to_defaults_clears_unknown_credential(kind: ResetNetwork) == false
     && reset_to_defaults_clears_unknown_credential(kind: ResetRestore) == false
-    && recovery_actuation_is_destructive(kind: RedfishManagerResetToDefaults { reset_type: ResetRestore }) == false
+    // AND the kind carries the arm rather than answering a question about it: a ResetRestore inside the
+    // Redfish arm is matched as the arm it is, so nothing can read that actuation as one that wipes.
+    && (match RedfishManagerResetToDefaults { reset_type: ResetRestore } {
+         RedfishManagerResetToDefaults { reset_type: rt } => reset_to_defaults_clears_unknown_credential(kind: rt) == false
+         InBandTemporaryAdministratorPassword => false
+       })
     // THE ADMITTED RESET ARM IS MATCHED ONCE, and everything it must carry is read out of that match: the
     // arm it cleared, the gate that issued it, and the ruling it stands under. There is no Bool asked first
     // and no `_ => false` standing in for "impossible" -- with one type per write, the only arms that exist
@@ -1646,7 +1747,7 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       rescue_host_address: recovery_rescue_host_address(),
       device_node: recovery_ipmi_device_node,
       kernel_modules: recovery_ipmi_kernel_modules,
-      channel: InBandChannelPasswordless { transport: OpenIpmiDriver, argv_credential_words: [] },
+      channel: InBandChannelPasswordless { transport: OpenIpmiDriver },
       administrator: recovery_administrator_account(),
       evidence: recovery_inband_channel_capture_ref,
       observed_at: recovery_capture_instant(),
@@ -1710,4 +1811,24 @@ test fn the_capture_instant_reads_back_as_the_date_the_artifact_records() -> Boo
   let text = iso8601_utc_text(unix: recovery_capture_instant() as Int / 1000)
   // "2026-10-16T06:53:00Z": the date prefix is the artifact's, "06:5" is the README's stated band.
   starts_with(s: text, prefix: "2026-10-16T06:5")
+    // ...and NOT a day anyone would have guessed: the value this row replaced decoded to 2025-10-09, so
+    // a claim that only checked "some 2026 date" would have passed the fabrication too.
+    && starts_with(s: text, prefix: "2026-10-16") == true
+    && starts_with(s: text, prefix: "2025-") == false
+}
+
+// THE DEVICE NODE IS COMPARED AS AN ARM, AND THE TEXT A CAPTURE SHOWS IS DERIVED FROM THE ARM (review
+// 81285). Before this, the route held a NonEmptyStr and checked it against a copy of itself, so "same
+// controller's queue" was a string fact. Now a second controller's queue is a DIFFERENT ARM OR A DIFFERENT
+// NUMBER and nothing about it is textual. The two canonical texts are asserted against what the capture
+// shows (02_inband_channel.txt: `crw------- 1 root root 235, 0 ... /dev/ipmi0`), so the derivation has an
+// outside referent rather than being the definition of itself.
+test fn a_device_node_is_the_same_device_only_when_the_arm_and_the_number_match() -> Bool {
+  ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiDevIpmiNode { device_number: 0 })
+    // /dev/ipmi1 is a different controller's queue on a multi-controller host
+    && ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiDevIpmiNode { device_number: 1 }) == false
+    // and the IMB device is not an IPMI queue at all
+    && ipmi_device_nodes_are_same_device(a: IpmiDevIpmiNode { device_number: 0 }, b: IpmiImbDeviceNode) == false
+    && ipmi_device_node_canonical_text(node: recovery_ipmi_device_node) == "/dev/ipmi0"
+    && ipmi_device_node_canonical_text(node: IpmiImbDeviceNode) == "/dev/imb"
 }

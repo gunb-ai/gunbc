@@ -589,6 +589,50 @@ fn ipmi_command_interface_from_wire(wire: String) -> IpmiCommandInterfaceParse {
   else { IpmiCommandInterfaceUnrecognized { wire: wire } }
 }
 
+// WHICH DEVICE A NAME ADDRESSES, AND THE ONLY SPELLING THAT MEANS IT (review 81285, DESIGN 2: "A
+// String leaf hiding named parts is anemic modeling"). The in-band plugins do not open a path someone
+// chooses: src/plugins/open/open.c builds "/dev/ipmi%d" from the device NUMBER it was handed, and
+// src/plugins/imb/imb.c hardcodes IPMI_IMB_DEV "/dev/imb". So the addressable set is closed and belongs
+// here, beside the transports that open them, rather than as a NonEmptyStr in a gunbc route compared
+// against a copy of itself.
+//
+// WHY AN ARMS-OF-ONE TYPE AND NOT A Refinement. extdeps.container.oci.reference.dag shows the repo's two
+// admitted spellings for a constrained String, and the refinement form
+// (`type X = String where pred`) buys nothing here: the predicate would have to re-express what the arms
+// already are. Naming an arm is the construction, so there is no state to be unwritable from.
+type IpmiDeviceNode
+  = IpmiDevIpmiNode { device_number: Int }   // "/dev/ipmi<N>"  src/plugins/open/open.c:102
+  | IpmiImbDeviceNode                          // "/dev/imb"     src/plugins/imb/imb.c:52 IPMI_IMB_DEV
+
+// THE SPELLING A CAPTURE WOULD SHOW, derived from the arm. Nothing in this repo compares two of these by
+// text: two nodes are the same device when the arms and the numbers agree, which is what the canonical
+// equality surface does for free. This function exists so a reader holding the bytes ("crw------- 1 root
+// root 235, 0 Oct 16 06:52 /dev/ipmi0") can see which arm that line is, not so a gate can string-match.
+fn ipmi_device_node_canonical_text(node: IpmiDeviceNode) -> String {
+  match node {
+    IpmiDevIpmiNode { device_number: n } => join(["/dev/ipmi", to_string(n)], "")
+    IpmiImbDeviceNode => "/dev/imb"
+  }
+}
+
+// THE ONE THING A DEVICE NODE CAN BE WRONG ABOUT WITHOUT FABRICATING A PATH: which number. /dev/ipmi1
+// exists on a multi-controller host and is a different controller's queue, so equality on this sum is
+// total and cheap; there is no arm for "a path someone typed", which is the spelling this replaces.
+fn ipmi_device_nodes_are_same_device(a: IpmiDeviceNode, b: IpmiDeviceNode) -> Bool {
+  match a {
+    IpmiDevIpmiNode { device_number: an } =>
+      match b {
+        IpmiDevIpmiNode { device_number: bn } => an == bn
+        IpmiImbDeviceNode => false
+      }
+    IpmiImbDeviceNode =>
+      match b {
+        IpmiDevIpmiNode { device_number: _ } => false
+        IpmiImbDeviceNode => true
+      }
+  }
+}
+
 // THE ANSWER TO `ipmitool mc info`, TYPED ─────────────────────────────────────────────────────
 //
 // WHY THIS EXISTS ALONGSIDE extdeps.bmc.capability's BmcFirmwareVersion RATHER THAN REPLACING IT.
