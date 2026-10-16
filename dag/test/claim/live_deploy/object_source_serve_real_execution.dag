@@ -14,16 +14,16 @@ import extdeps.git.partial_clone {
   PartialCloneFilter,
   ShallowClone,
   observe_partial_clone_observations,
-  partial_clone_standing_of,
+  partial_clone_standing_of_observations,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Inhabitance of partial_clone_standing_of: a throwaway git repository observed through git.Inspect.ConfigGetInRepo / ConfigGetRegexpInRepo / IsShallowRepository. A complete init is ObjectStoreComplete; setting git's own extensions.partialClone and remote.origin.promisor is PartialClonePromisor. Excluded from hermetic discovery (those inspect operations have no mock_response) and enrolled on the local-repo wet lane."
+data real_execution_home_doc: String = "Inhabitance of partial_clone_standing_of_observations: a throwaway git repository observed through git.Inspect.ConfigGetInRepo / ConfigGetRegexpInRepo / IsShallowRepository. A complete init is ObjectStoreComplete; setting git's own extensions.partialClone and remote.origin.promisor is PartialClonePromisor. Excluded from hermetic discovery (those inspect operations have no mock_response) and enrolled on the local-repo wet lane."
 
 fn standing_tag_at(repo: FilePath) -> String {
-  match partial_clone_standing_of(observations: observe_partial_clone_observations(repository_path: repo)) {
+  match partial_clone_standing_of_observations(observations: observe_partial_clone_observations(repository_path: repo)) {
     ObjectStoreComplete => "complete"
     PartialClonePromisor { detail: _ } => "promisor"
     PartialCloneFilter { detail: _ } => "filter"

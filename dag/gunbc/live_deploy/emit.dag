@@ -101,8 +101,8 @@ import extdeps.git.partial_clone {
   object_source_serve_probe_set_standing,
   object_source_serve_probe_unreadable_detail,
   object_source_serve_refusal_text,
-  object_source_cannot_serve_cause,
   object_source_serve_refusal_printf_format,
+  object_source_serve_admission,
 }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -4443,7 +4443,7 @@ fn object_source_cannot_serve_command(source: String, cause: String) -> String {
 // deploy_stage_write_expansion_command. Decide inspects that same expansion, not the
 // emitting process's git toplevel. Wet names ObjectSourceServeDecideAtApplyPwd, not
 // CanServe: the host walks object_source_serve_probes, the same table as
-// partial_clone_standing_of.
+// partial_clone_standing_of_observations.
 data apply_tree_src_expansion_var: String = "PWD"
 
 fn apply_object_source_serve_deferred_to_pwd() -> ObjectSourceServeAdmission {
@@ -4473,8 +4473,14 @@ fn apply_object_source_pwd_refuse_stmts(cause: String) -> List<Node> {
   ]
 }
 
+// THE EMITTED REFUSAL IS THE ADMISSION'S: a standing that cannot serve refuses with the admission's own
+// cause; a standing that can serve emits no refusal.
 fn apply_object_source_pwd_refuse_standing(standing: PartialCloneStanding) -> List<Node> {
-  apply_object_source_pwd_refuse_stmts(cause: object_source_cannot_serve_cause(standing: standing))
+  match object_source_serve_admission(source: apply_tree_src_expansion_var, standing: standing) {
+    ObjectSourceCannotServe { source: _, cause: c } => apply_object_source_pwd_refuse_stmts(cause: c)
+    ObjectSourceCanServe { source: _ } => [] as List<Node>
+    ObjectSourceServeDecideAtApplyPwd => [] as List<Node>
+  }
 }
 
 fn apply_object_source_pwd_config_classify(tail: List<String>, set_standing: PartialCloneStanding, unreadable_detail: String) -> Node {
