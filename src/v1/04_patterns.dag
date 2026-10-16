@@ -554,8 +554,10 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 
 // An uninhabited SUM: a coproduct with zero arms, or the std.error_primitives Never
 // declaration keyed by DeclarationRef (never_type_declaration) via indexed occurrence.
-// When that index is absent the sum is not uninhabited: an empty match refuses. There is
-// no authored-name fallback (operator 2026-10-15: never an identity->spelling fallback).
+// When the index is absent outside Never's home module, the sum is not uninhabited
+// (empty match refuses). In the home module, occurrence vs the bound declaration
+// decides. There is no authored-name fallback (operator 2026-10-15: never an
+// identity->spelling fallback).
 fn env_binds_never_declaration(env: TypeEnv) -> Bool {
   if env.module_path == (never_type_declaration.module_path as String) {
     true
@@ -580,7 +582,16 @@ fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
     match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
       Present { value: indexed } =>
         resolved.occurrence_identity == indexed.occurrence_identity
-      Absent => false
+      Absent =>
+        if env.module_path != (never_type_declaration.module_path as String) {
+          false
+        } else {
+          match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
+            Absent => false
+            Present { value: bound } =>
+              resolved.occurrence_identity == bound.occurrence_identity
+          }
+        }
     }
   }
 }

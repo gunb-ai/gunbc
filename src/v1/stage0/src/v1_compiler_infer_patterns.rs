@@ -1005,7 +1005,22 @@ pub fn is_uninhabited_sum(resolved: Rc<Node>, env: Rc<TypeEnv>) -> bool {
             Some(indexed) => {
                 (resolved.occurrence_identity.clone() == indexed.occurrence_identity.clone())
             }
-            std::option::Option::None => false,
+            std::option::Option::None => {
+                if (env.module_path.clone() != never_type_declaration().module_path.clone()) {
+                    false
+                } else {
+                    match crate::v1_compiler_infer_env::lookup_type_by_name(
+                        env.clone(),
+                        never_type_declaration().decl_name.clone(),
+                    ) {
+                        std::option::Option::None => false,
+                        Some(bound) => {
+                            (resolved.occurrence_identity.clone()
+                                == bound.occurrence_identity.clone())
+                        }
+                    }
+                }
+            }
         }
     }
 }
