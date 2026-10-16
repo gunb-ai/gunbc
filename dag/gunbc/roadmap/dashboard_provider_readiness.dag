@@ -2,7 +2,7 @@ module gunbc.roadmap.dashboard_provider_readiness
 
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, FilePath }
-import v2.std.collection { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.json.emit {
   serialize_json,
   json_string,

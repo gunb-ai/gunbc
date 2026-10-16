@@ -39,19 +39,21 @@ import gunbc.machine_intake.host_capture_historical_binding {
 }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.machine_intake.mtcollins1_census_image {
-  mtcollins1_census_capture_program,
+  census_capture_program,
   mtcollins1_census_console_device,
   mtcollins1_census_console_tty,
+  mtcollins1_census_halt_command,
   mtcollins1_census_image,
-  Mtcollins1CensusImage,
-  Mtcollins1CensusImageDerived,
-  Mtcollins1CensusImageRefused,
+  CensusImage,
+  CensusImageDerived,
+  CensusImageRefused,
   mtcollins1_census_live_commands,
   mtcollins1_census_machine,
+  mtcollins1_census_nocloud_dir,
   mtcollins1_census_image_stem,
   mtcollins1_census_program_file,
   mtcollins1_census_volume_id,
-  mtcollins1_seeded_image_input,
+  census_seeded_image_input,
   mtcollins1_census_pinned_image,
   mtcollins1_census_pinned_grub_cmdline,
   mtcollins1_census_grub_cmdline,
@@ -271,14 +273,14 @@ test fn the_census_roster_is_the_brief_order() -> Bool {
 }
 
 fn census_program_index(needle: String) -> Int {
-  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages) as String
+  let program = census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages) as String
   split(s: program, delimiter: needle).first().length()
 }
 
 // HALT ONLY AFTER END. END is echoed after the last section, `sync` after END, and the power-off is
 // the program's last line; nothing the census reads can follow the halt.
 test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Bool {
-  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages) as String
+  let program = census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages) as String
   let end_at = census_program_index(needle: concat(host_capture_run_token, "$GUNBC_BOOT_ID end"))
   let last_section_at = census_program_index(needle: concat(host_capture_section_open, "edac-after", host_capture_line_close))
   let sync_at = census_program_index(needle: "\nsync\n")
@@ -297,8 +299,8 @@ test fn the_program_writes_every_section_then_end_then_syncs_then_halts() -> Boo
 // renderer emitted for the census live commands, and a refusal from the YAML writer is a red here.
 test fn the_seed_runs_the_census_early_and_leaves_every_section_interactive() -> Bool {
   match mtcollins1_census_image {
-    Mtcollins1CensusImageRefused { reason: _ } => false
-    Mtcollins1CensusImageDerived { input: i } => {
+    CensusImageRefused { reason: _ } => false
+    CensusImageDerived { input: i } => {
       let ud = i.user_data_body as String
       string_contains(s: ud, pattern: "#cloud-config")
         && string_contains(s: ud, pattern: "early-commands:")
@@ -332,11 +334,14 @@ test fn the_boot_configuration_seeds_from_the_medium_on_the_serial_console() -> 
 data census_user_data_fixture: NonEmptyStr = "#cloud-config\nautoinstall:\n  version: 1\n  interactive-sections:\n    - \"*\"\n  early-commands:\n    - sh /cdrom/gunbc-census/capture.sh\n" as NonEmptyStr
 
 fn census_input_supplied() -> UbuntuSeededInstallMediaBuildInput {
-  mtcollins1_seeded_image_input(
-    stages: mtcollins1_census_stages,
+  census_seeded_image_input(
     image_stem: mtcollins1_census_image_stem,
     volume_id: mtcollins1_census_volume_id,
     user_data_body: census_user_data_fixture,
+    grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+    nocloud_dir: mtcollins1_census_nocloud_dir,
+    program_file: mtcollins1_census_program_file,
+    program_content: census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages),
   )
 }
 
@@ -386,7 +391,7 @@ fn census_key_varying(
 // is varied too: it is the one rendered input, and the key must move when the document does.
 test fn every_build_input_reaches_the_derivation_key() -> Bool {
   let base = census_input_supplied()
-  let program = mtcollins1_census_capture_program(stages: mtcollins1_census_stages)
+  let program = census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages)
   let cmdline = base.grub_kernel_cmdline
   let volid = base.volume_id
   let dates = base.pinned_dates
@@ -399,17 +404,23 @@ test fn every_build_input_reaches_the_derivation_key() -> Bool {
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: "2025080615525001", file_date: dates.file_date }, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: SeededInstallMediaPinnedDates { volume_uuid: dates.volume_uuid, file_date: "2025.08.06.155251" }, builder_revision: revision)
     && key != census_key_varying(program: program, grub_kernel_cmdline: cmdline, volume_id: volid, pinned_dates: dates, builder_revision: "xorriso-replay-pinned-dates/2")
-    && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
-      stages: append(mtcollins1_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }]),
+    && key != seeded_install_media_build_key(input: census_seeded_image_input(
       image_stem: mtcollins1_census_image_stem,
       volume_id: mtcollins1_census_volume_id,
       user_data_body: census_user_data_fixture,
+      grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+      nocloud_dir: mtcollins1_census_nocloud_dir,
+      program_file: mtcollins1_census_program_file,
+      program_content: census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: append(mtcollins1_census_stages, items: [HostCaptureStage { name: "after-end", command: "true" }])),
     ))
-    && key != seeded_install_media_build_key(input: mtcollins1_seeded_image_input(
-      stages: mtcollins1_census_stages,
+    && key != seeded_install_media_build_key(input: census_seeded_image_input(
       image_stem: mtcollins1_census_image_stem,
       volume_id: mtcollins1_census_volume_id,
       user_data_body: concat(census_user_data_fixture as String, "\n") as NonEmptyStr,
+      grub_kernel_cmdline: mtcollins1_census_grub_cmdline,
+      nocloud_dir: mtcollins1_census_nocloud_dir,
+      program_file: mtcollins1_census_program_file,
+      program_content: census_capture_program(machine: mtcollins1_census_machine, console_device: mtcollins1_census_console_device, halt_command: mtcollins1_census_halt_command, stages: mtcollins1_census_stages),
     ))
 }
 
@@ -435,11 +446,11 @@ test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
 // its key differs. The srv2-side regression rebuilds the first before the second is published.
 test fn the_pinned_and_current_derivations_differ_only_by_the_instrument() -> Bool {
   match mtcollins1_census_pinned_image {
-    Mtcollins1CensusImageRefused { reason: _ } => false
-    Mtcollins1CensusImageDerived { input: pinned } =>
+    CensusImageRefused { reason: _ } => false
+    CensusImageDerived { input: pinned } =>
       match mtcollins1_census_image {
-        Mtcollins1CensusImageRefused { reason: _ } => false
-        Mtcollins1CensusImageDerived { input: current } =>
+        CensusImageRefused { reason: _ } => false
+        CensusImageDerived { input: current } =>
           (seeded_install_media_build_key(input: pinned) as String) == "bf916c060d072e72"
             && (seeded_install_media_build_key(input: current) as String) == "c001ac127d718e72"
             && (pinned.grub_kernel_cmdline as String) == (mtcollins1_census_pinned_grub_cmdline as String)

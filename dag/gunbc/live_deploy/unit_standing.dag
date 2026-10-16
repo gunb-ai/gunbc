@@ -159,6 +159,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })
@@ -195,6 +196,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })
@@ -231,6 +233,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })

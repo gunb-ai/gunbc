@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { fold_list, list_flat_map }
 import std.list { distinct_by_key }
 import extdeps.sudo.elevation { sudo_elevate_argv }
+import extdeps.exec.command { argv_words }
+import extdeps.sudo.visudo { visudo_check_command }
 import v2.extdeps.languages.bash_build {
   bash_build_command_from_lits,
   bash_build_command_with_words,
@@ -185,7 +187,7 @@ fn deploy_sudoers_install_stmts(access: DeployAccess) -> List<Node> {
     [
       deploy_sudoers_elevated(command: [visudo, "-cf"], tail: [deploy_sudoers_stage_word()]),
       deploy_sudoers_elevated(command: [install, "-m", "0440"], tail: [deploy_sudoers_stage_word(), bash_build_word_lit(text: dropin)]),
-      deploy_sudoers_elevated(command: [visudo, "-cf", dropin], tail: []),
+      bash_build_command_from_lits(lits: argv_words(command: visudo_check_command(file: dropin))),
     ],
     deploy_sudoers_post_install_roster_probe_stmts(access: access)
   )

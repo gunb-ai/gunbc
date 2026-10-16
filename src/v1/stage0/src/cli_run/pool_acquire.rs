@@ -120,7 +120,7 @@ thread_local! {
 /// the import-edge facts, so `graph_facts_import_edges` carried the whole pool's acquisition and
 /// heads parse while its own work is a line scan.
 fn attribute(row: &'static str, elapsed: std::time::Duration) {
-    super::pre_entry_phase::record(row, super::pre_entry_phase::PhaseScale::Tree, elapsed);
+    super::pre_entry_phase::record(row, super::pre_entry_phase::index_scale(), elapsed);
     ATTRIBUTED.with(|a| a.set(a.get() + elapsed));
 }
 

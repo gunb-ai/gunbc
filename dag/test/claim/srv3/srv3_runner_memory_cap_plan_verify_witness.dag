@@ -142,3 +142,82 @@ test fn witness_verify_swap_only_drift_32_gib_is_not_converged() -> Bool {
     Absent => false
   }
 }
+
+fn srv3_memory_cap_converged_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLiveRead {
+  let desired = gunbc_runner_slot_desired()
+  runner_unit_live_read_typed(
+    row: RunnerUnitLiveReadRow {
+      unit: unit,
+      memory_max_raw: to_string(byte_size_count(b: desired.memory_max)),
+      memory_swap_max_raw: to_string(byte_size_count(b: desired.memory_swap_max)),
+      memory_high_raw: to_string(byte_size_count(b: desired.memory_high)),
+      memory_current_raw: "",
+      probed_at: "2026-10-14",
+    }
+  )
+}
+
+fn srv3_memory_cap_swap_drift_read_unit(unit: NonEmptyStr) -> RunnerUnitMemoryLiveRead {
+  let desired = gunbc_runner_slot_desired()
+  runner_unit_live_read_typed(
+    row: RunnerUnitLiveReadRow {
+      unit: unit,
+      memory_max_raw: to_string(byte_size_count(b: desired.memory_max)),
+      memory_swap_max_raw: "34359738368",
+      memory_high_raw: to_string(byte_size_count(b: desired.memory_high)),
+      memory_current_raw: "",
+      probed_at: "2026-10-14",
+    }
+  )
+}
+
+// THE HOST IS NOT CONVERGED WHEN ONLY A SLOT THE OLD PROXY DID NOT SAMPLE DIFFERS.
+// Slot 01 matches runner_slot_desired on all three knobs; slot 02 carries the 32 GiB swap the fleet
+// actually had. The host fold must report Drifted, not hide behind -01.
+test fn witness_verify_nonsampled_slot_drift_is_not_host_converged() -> Bool {
+  match runner_memory_cap_verify_result_from_unit_reads(
+    host: operator_host_srv3,
+    reads: Present {
+      value: [
+        srv3_memory_cap_converged_read_unit(unit: "actions-runner@srv3-01.service"),
+        srv3_memory_cap_swap_drift_read_unit(unit: "actions-runner@srv3-02.service"),
+      ]
+    },
+  ) {
+    RunnerMemoryCapVerifyObserved { receipt: receipt } =>
+      !runner_memory_cap_verify_receipt_converged(receipt: receipt)
+        && receipt.tally.drifted == 1
+        && receipt.tally.converged == 5
+        && receipt.knob_count == 6
+    RunnerMemoryCapVerifyRefused { host: _, reason: _ } => false
+  }
+}
+
+test fn witness_verify_every_enumerated_slot_converged_is_host_converged() -> Bool {
+  match runner_memory_cap_verify_result_from_unit_reads(
+    host: operator_host_srv3,
+    reads: Present {
+      value: [
+        srv3_memory_cap_converged_read_unit(unit: "actions-runner@srv3-01.service"),
+        srv3_memory_cap_converged_read_unit(unit: "actions-runner@srv3-02.service"),
+      ]
+    },
+  ) {
+    RunnerMemoryCapVerifyObserved { receipt: receipt } =>
+      runner_memory_cap_verify_receipt_converged(receipt: receipt)
+        && receipt.tally.converged == 6
+        && receipt.tally.drifted == 0
+        && receipt.knob_count == 6
+    RunnerMemoryCapVerifyRefused { host: _, reason: _ } => false
+  }
+}
+
+test fn witness_verify_absent_unit_enumeration_refuses_not_widens() -> Bool {
+  match runner_memory_cap_verify_result_from_unit_reads(host: operator_host_srv3, reads: Absent) {
+    RunnerMemoryCapVerifyObserved { receipt: _ } => false
+    RunnerMemoryCapVerifyRefused { host: h, reason: why } =>
+      h == operator_host_srv3
+        && string_contains(s: why, pattern: "enumeration")
+        && string_contains(s: why, pattern: "fail-closed")
+  }
+}

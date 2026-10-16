@@ -27,6 +27,7 @@ pub use crate::std_occurrence_identity::{
     OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
     ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
+pub use crate::std_optional::Optional;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

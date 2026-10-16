@@ -226,12 +226,16 @@ fn observe_fan_round(
     username: username,
     password_file: password_file,
     sensor_type: "Temperature",
+    deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
   )
   fans = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
     sensor_type: "Fan",
+    deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
   )
   let temp_results = sdr_decode_lines(stdout: temps.stdout)
   let fan_results = sdr_decode_lines(stdout: fans.stdout)

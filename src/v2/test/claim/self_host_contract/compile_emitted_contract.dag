@@ -3,11 +3,20 @@ module v2.test.claim.self_host_contract.compile_emitted_contract
 import std.logic { Bool }
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.compiler.compile {
-  CompileLens, CompileLensRoot, CompileLensSubtree, LensGateWitness,
-  RequiredLensCoverageClosed, RequiredLensCoverageRefused,
-  RequiredLensRosterEmpty, RegistrationDuplicated, RegistrationUnobserved, ObservationUnregistered,
-  ObservedAtWrongGrain, RootLensObservedMoreThanOnce,
-  required_compile_lens_roster, join_required_lens_coverage
+  CompileLens,
+  LensGateWitness,
+  required_compile_lens_roster,
+  join_required_lens_coverage,
+  CompileLensRoot,
+  CompileLensSubtree,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused,
+  RequiredLensRosterEmpty,
+  RegistrationDuplicated,
+  RegistrationUnobserved,
+  ObservationUnregistered,
+  ObservedAtWrongGrain,
+  RootLensObservedMoreThanOnce
 }
 import v2.std.node { ComputationNode, Value, node_synthetic }
 import v2.std.witness { Holds }

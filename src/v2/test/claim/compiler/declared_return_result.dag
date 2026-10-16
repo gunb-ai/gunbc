@@ -112,7 +112,7 @@ fn drr_is_absent(o: Optional<Node>) -> Bool {
 test fn drr_a_declared_return_is_the_call_result() -> Bool {
   let arrow = drr_arrow(params: [], ret: drr_atom(sym: ^drr_tally))
   drr_is_absent(o: infer_arrow_declared_return_type(arrow: arrow))
-    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()), expected: drr_atom(sym: ^drr_tally))
+    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index(), bindings: empty_symbol_index()), expected: drr_atom(sym: ^drr_tally))
 }
 
 // KERNEL FIRST: a kernel return answers exactly what the replaced reader answers.
@@ -121,7 +121,7 @@ test fn drr_a_kernel_return_is_unchanged() -> Bool {
   match infer_arrow_declared_return_type(arrow: arrow) {
     Absent => false
     Present { value: kernel } =>
-      drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()), expected: kernel)
+      drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index(), bindings: empty_symbol_index()), expected: kernel)
   }
 }
 
@@ -130,13 +130,13 @@ test fn drr_a_generic_return_is_instantiated_at_the_call() -> Bool {
   let arrow = drr_arrow(params: [^drr_t], ret: drr_box_of(arg: drr_atom(sym: ^drr_t)))
   let instances = [TypeVariableInstance { binder: ^drr_t, instance: drr_atom(sym: ^drr_tally) }]
   drr_is_absent(o: infer_arrow_declared_return_type(arrow: arrow))
-    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: instances, declarations: empty_symbol_index()), expected: drr_box_of(arg: drr_atom(sym: ^drr_tally)))
+    && drr_present_equals(o: infer_application_result_type(arrow: arrow, instances: instances, declarations: empty_symbol_index(), bindings: empty_symbol_index()), expected: drr_box_of(arg: drr_atom(sym: ^drr_tally)))
 }
 
 // FRONTIER: the same callee with T bound by no argument stays NOT derived -- never typed as Box<T>.
 test fn drr_a_return_mentioning_an_unbound_type_parameter_is_not_derived() -> Bool {
   let arrow = drr_arrow(params: [^drr_t], ret: drr_box_of(arg: drr_atom(sym: ^drr_t)))
-  drr_is_absent(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index()))
+  drr_is_absent(o: infer_application_result_type(arrow: arrow, instances: [], declarations: empty_symbol_index(), bindings: empty_symbol_index()))
 }
 
 // PROJECTED FIELD: `item: T` read off a Box<Tally> receiver is Tally (the replaced reader kept T as
@@ -253,7 +253,7 @@ fn drr_reason_is(src: String, wanted: Symbol) -> Bool {
 
 data drr_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\n\nfn mk() -> Nat {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 
-data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport v2.std.collection { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
+data drr_generic_nat_at_bool_source: String = "module p\n\nimport std.nat { Nat }\nimport std.types { List }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs)\n}\n"
 
 data drr_int_at_bool_source: String = "module p\n\nfn mk() -> Int {\n  0\n}\n\nfn f() -> Bool {\n  mk()\n}\n"
 

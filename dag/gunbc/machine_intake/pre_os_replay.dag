@@ -2,7 +2,7 @@ module gunbc.machine_intake.pre_os_replay
 
 import gunbc.machine_intake.pre_os_refusal { PreOsSourceChanged, PreOsRefusal, PreOsOwnershipRefusal, PreOsSubjectRefusal, PreOsCommitRefusal, PreOsContinuityRefusal, PreOsSourceRefusal, PreOsPositionRefusal, pre_os_text_refusal, pre_os_refusal_at }
 import std.types { Bool, List, Map, NonEmptyStr, String }
-import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.content_hash { ContentHash }
 import std.decl_ref { declaration_ref_eq }

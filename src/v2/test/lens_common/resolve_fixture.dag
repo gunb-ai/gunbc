@@ -1,6 +1,13 @@
 module v2.test.lens_common.resolve_fixture
 
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve {
+  DeclarationAvailable,
+  DeclarationRefused,
+  ModuleObserved,
+  ModuleOutcome,
+  ModuleUnavailable,
+  ResolvedTree
+}
 import v2.compiler.name_resolve { Admission, ClosureDeclarations, ResolutionSubject, closure_declarations_demand, resolution_context, resolve_with_admission_grounded }
 import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, ScopeRoot, empty_namespace }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
@@ -18,12 +25,12 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_with_occurrence_id, fold_list_node }
-import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
+import std.occurrence_identity { LexicalValueOccurrence, NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
-import std.optional { optional_present }
-import v2.std.collection { List }
+import std.optional { Absent, Present, Optional, optional_absent, optional_present }
+import std.types { List }
 import v2.std.integer { Int }
-import std.algebra { Cons, Empty, FreeMonoid, list_map }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_map, list_snoc_item }
 
 // A SUPPLIED LOWERED MODULE, INTO REAL RESOLVE (DESIGN section 3's witness rule at resolve's boundary).
 // A row whose subject is what v2.compiler.resolve decides -- which declaration a dotted path names, which
@@ -135,6 +142,7 @@ fn claim_lowered_tree(m: ClaimLoweredModule) -> Outcome<NormalizedTree> {
     root: claim_lowered_allocated(root: claim_lowered_root(m: m)),
     test_markers: test_marker_channel_empty(),
     import_bindings: m.imports,
+    imported_modules: Empty,
     type_declaration_kinds: list_map(xs: m.records, f: fn(r) { DeclaredRecord { name: r } }),
     type_declaration_modifiers: Empty,
     diagnostics: None
@@ -181,8 +189,9 @@ fn claim_lowered_symbol_index(modules: List<ClaimLoweredModule>) -> Outcome<Symb
 }
 
 // A RESOLVE CONTEXT FOR ONE NARROW RESOLVE FUNCTION: module `module`, its namespace's index the one above, a
-// root scope over that namespace, the dag language model and the default policy.
-fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveContext {
+// root scope over that namespace, the dag language model and the default policy. `category` is the reference
+// position the path is read in: a record type is a TypeOccurrence declaration, inadmissible to a value reference.
+fn claim_resolve_context(module: QualifiedName, index: SymbolIndex, category: OccurrenceCategory) -> ResolveContext {
   let empty = empty_namespace()
   let namespace = Namespace {
     bindings: empty.bindings,
@@ -192,7 +201,7 @@ fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveCo
     test_code: empty.test_code,
     declared_in: module,
     imported_origins: empty.imported_origins,
-    unavailable_providers: empty.unavailable_providers
+    module_outcomes: empty.module_outcomes
   }
   ResolveContext {
     scope: ScopeRoot { module: namespace },
@@ -203,7 +212,7 @@ fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveCo
     lm: dag_language_model(),
     under_module_root: false,
     declaring: NotDeclaring,
-    reference_category: LexicalValueOccurrence
+    reference_category: category
   }
 }
 
@@ -224,15 +233,39 @@ fn claim_closure_declarations(modules: List<ClaimLoweredModule>) -> Outcome<Symb
   bind_outcome(o: claim_closure(modules: modules), f: fn(c) { outcome_accepted(value: c.declarations) })
 }
 
-// The roots the closure REFUSED, as the roster resolve hands infer (v2.compiler.resolve ResolvedTree
-// unavailable_providers): each module with the reason its own resolve refused at the head of its chain.
+// Unavailability derived from the closure's module_outcomes roster: each module with a
+// ModuleUnavailable or DeclarationRefused row, reason at the head of its chain.
 type ClaimRefusedProvider {
   module: QualifiedName
   reason: Symbol
 }
 
+fn claim_refused_provider_of(o: ModuleOutcome) -> Optional<ClaimRefusedProvider> {
+  match o {
+    ModuleUnavailable { module: m, refusal: r } =>
+      optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+    ModuleObserved { module: m, declarations: ds } =>
+      fold_list(xs: ds, empty: optional_absent(), cons: fn(acc, d) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match d {
+              DeclarationAvailable { path: _ } => acc
+              DeclarationRefused { path: _, refusal: r } =>
+                optional_present(value: ClaimRefusedProvider { module: m, reason: r.head.reason })
+            }
+        }
+      })
+  }
+}
+
 fn claim_closure_refused(modules: List<ClaimLoweredModule>) -> Outcome<List<ClaimRefusedProvider>> {
   bind_outcome(o: claim_closure(modules: modules), f: fn(c) {
-    outcome_accepted(value: list_map(xs: c.refused, f: fn(r) { ClaimRefusedProvider { module: r.module, reason: r.refusal.head.reason } }))
+    outcome_accepted(value: fold_list(xs: c.module_outcomes, empty: [], cons: fn(acc, o) {
+      match claim_refused_provider_of(o: o) {
+        Absent => acc
+        Present { value: p } => list_snoc_item(xs: acc, item: p)
+      }
+    }))
   })
 }

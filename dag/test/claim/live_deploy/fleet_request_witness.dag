@@ -290,6 +290,7 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
       target: live.target,
       names: live.names,
       selected_identity: srv1_lab_selected_identity(),
+      admitted_branch: live.admitted_branch,
     },
     candidate: candidate(),
     observed: matching_obs_for(unit: live.names.unit_name),

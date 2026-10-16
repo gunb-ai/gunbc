@@ -14,7 +14,7 @@ import std.algebra {
   Ring,
   Semigroup
 }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, fold_list_node }
 import v2.std.machine {

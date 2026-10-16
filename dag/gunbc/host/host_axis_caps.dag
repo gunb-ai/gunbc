@@ -26,6 +26,9 @@ import gunbc.host.host_converge {
   slice_control_caps_for,
   SliceControlCaps,
   SliceControlNotOwed, SliceControlDerived, SliceControlRefused,
+  SliceControlUnit, SessionsSliceControl, UncappedSliceControl,
+  SliceControlPlan, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  slice_control_plan_for,
 }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -38,7 +41,9 @@ import extdeps.systemd {
   systemd_memory_max_property,
   systemd_memory_high_property,
   systemd_memory_swap_max_property,
+  systemd_cpu_quota_property,
 }
+import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
 import extdeps.systemd.systemctl {
   systemctl_daemon_reload_argv,
   systemctl_revert_memory_caps_argv,
@@ -644,41 +649,52 @@ fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
   shell_command_text_of_stmts(stmts: deploy_memory_cap_shadow_revert_stmts(units: units))
 }
 
-fn slice_control_set_property_stmt(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> Node {
-  shell_privileged_command_intent(
-    argv: systemctl_set_property_argv(
-      unit: unit,
-      property: property,
-      value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
-    )
+fn slice_control_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, bytes: ByteSize) -> List<String> {
+  systemctl_set_property_argv(
+    unit: unit,
+    property: property,
+    value: to_string(byte_size_count(b: bytes)) as NonEmptyStr,
   )
 }
 
 // Revert once per unit (clears /run/systemd/system.control AND /etc/systemd/system.control
 // set-property drop-ins), then persistent set-property so the model owns system.control.
 // Two properties cannot each revert: the second revert would undo the first set-property.
-fn slice_control_converge_stmts_for_caps(caps: SliceControlCaps) -> List<Node> {
+// THE ARGV LIST IS THE AUTHORITY; the shell statements and the typed realization both project it.
+fn slice_control_converge_argvs_for_caps(caps: SliceControlCaps) -> List<List<String>> {
   [
-    deploy_control_shadow_revert_stmt(u: control_shadow_unit(unit: caps.unit)),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_max_property as NonEmptyStr,
-      bytes: caps.memory_max,
-    ),
-    slice_control_set_property_stmt(
-      unit: caps.unit,
-      property: systemd_memory_high_property as NonEmptyStr,
-      bytes: caps.memory_high,
-    ),
+    systemctl_revert_memory_caps_argv(unit: caps.unit),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_max_property as NonEmptyStr, bytes: caps.memory_max),
+    slice_control_set_property_argv(unit: caps.unit, property: systemd_memory_high_property as NonEmptyStr, bytes: caps.memory_high),
   ]
 }
 
+// The sessions CPU cap is appended after MemoryHigh, inside the same single revert: a second revert
+// would undo the memory set-properties.
+fn slice_control_converge_argvs_for_unit(u: SliceControlUnit) -> List<List<String>> {
+  match u {
+    UncappedSliceControl { caps: c } => slice_control_converge_argvs_for_caps(caps: c)
+    SessionsSliceControl { caps: c, cpu_quota: t } =>
+      concat(slice_control_converge_argvs_for_caps(caps: c), [
+        systemctl_set_property_argv(
+          unit: c.unit,
+          property: systemd_cpu_quota_property as NonEmptyStr,
+          value: systemd_directive_value_wire(value: DirectiveCpuTime { threads: t }) as NonEmptyStr,
+        ),
+      ])
+  }
+}
+
+fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
+  map(slice_control_converge_argvs_for_unit(u: u), argv => shell_privileged_command_intent(argv: argv))
+}
+
 fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  match slice_control_caps_for(host: host) {
-    SliceControlNotOwed => []
-    SliceControlRefused { cause: _ } => []
-    SliceControlDerived { caps } =>
-      fold(caps, init: [], f: (acc, c) => concat(acc, slice_control_converge_stmts_for_caps(caps: c)))
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanNotOwed => []
+    SliceControlPlanRefused { cause: _ } => []
+    SliceControlPlanDerived { units } =>
+      fold(units, init: [], f: (acc, u) => concat(acc, slice_control_converge_stmts_for_unit(u: u)))
   }
 }
 

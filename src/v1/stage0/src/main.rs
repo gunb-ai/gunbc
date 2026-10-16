@@ -588,10 +588,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     }
                     cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            "resolved {} sources ({})",
                             run.closure_modules,
                             run.subject.scope_receipt().render(),
-                            run.census_modules
                         );
                         // The tree is NOT written on a refusal: writing a partial tree the
                         // compiler has disowned is a fabricated plausible output (DESIGN §5).
@@ -603,10 +602,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                     }
                     cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            "resolved {} sources ({})",
                             run.closure_modules,
                             run.subject.scope_receipt().render(),
-                            run.census_modules
                         );
                         // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
                         // disposition above is over the whole emission set, so reaching here
@@ -690,7 +688,6 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 Some(dir) => format!("compile of {dir}"),
                 None => "compile".to_string(),
             };
-            let census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
                 let mut dag_paths = Vec::new();
@@ -719,10 +716,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 std::process::exit(1);
             };
 
-            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-                analyze_complexity: false,
-                census_only_sources: Rc::new(census_only_sources.into()),
-            });
+            let pipeline_options = v1_compiler_compile::default_compile_pipeline_options();
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),
@@ -1277,7 +1271,9 @@ fn run_verb(
     }
 
     let resolve_started = std::time::Instant::now();
-    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    // Demand-acquired layout closure is the only `gunbc run` resolve. Whole-tree
+    // `resolve_entry_graph` stays the compile / floor consumer, not a run fallback.
+    let resolved = cli_run::resolve_entry_graph_demand_acquired(source_roots, entry_file);
     report_pre_entry_phases(
         resolve_started.elapsed(),
         source_roots,
@@ -1401,20 +1397,19 @@ fn report_pre_entry_phases(
     ] {
         record(name, PhaseScale::Closure, ns(nanos));
     }
-    // Three reconcile sub-rows whose INPUT is the pool, not the closure: the whole-pool
-    // qualified fill, and per source root the same-tree bare underlay and its variant base.
-    // They sit inside reconcile but outside every closure row above, so without these lines a
-    // small-closure run reported seconds of tree-scale work as an unexplained gap between the
-    // phase sum and `resolve_entry_graph_inclusive`.
+    // Reconcile sub-rows whose INPUT is the pool, not the closure: per source root
+    // the same-tree bare underlay and its variant base. They sit inside reconcile but
+    // outside every closure row above, so without these lines a small-closure run
+    // reported seconds of tree-scale work as an unexplained gap between the phase sum
+    // and `resolve_entry_graph_inclusive`.
     for (name, nanos) in [
-        ("reconcile_pool_qualified_fill", st.assembly_pool_fill),
         (
             "reconcile_root_bare_underlay",
             st.assembly_root_symbol_index,
         ),
         ("reconcile_root_variant_base", st.assembly_root_variant_base),
     ] {
-        record(name, PhaseScale::Tree, ns(nanos));
+        record(name, cli_run::pre_entry_phase::index_scale(), ns(nanos));
     }
     record(
         "resolve_entry_graph_inclusive",
@@ -1424,13 +1419,18 @@ fn report_pre_entry_phases(
     for line in take_lines() {
         eprintln!("{line}");
     }
-    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
-    // grew or because its work per input changed: the indexed pool (every module under every
-    // --source-root) against the files of the entry's resolved closure.
+    // POPULATIONS beside the times: `pool_modules` is the whole-tree indexed pool
+    // (or `refused` when that index was never built — demand-acquired `gunbc run`
+    // does not walk it). `demand_acquired_modules` is the layout-closure set.
+    // `closure_files` is the resolved graph's source-index size.
     let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
         .map_or("refused".to_string(), |n| n.to_string());
+    let demand = cli_run::pre_entry_phase::demand_acquired_modules()
+        .map_or("refused".to_string(), |n| n.to_string());
     let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
-    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    eprintln!(
+        "[pre-entry] population pool_modules={pool_modules} closure_files={closure} demand_acquired_modules={demand}"
+    );
     // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
     // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
