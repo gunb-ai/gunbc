@@ -1,7 +1,6 @@
 module extdeps.package_managers.apt
 
 import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
-import std.optional { Present, Absent }
 import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
@@ -153,13 +152,14 @@ fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
     [operation_argv_bind_text(name: apt_get_install_input_name, text: package as String)],
   ) {
     ArgvMaterialized { argv: materialized } =>
-      match materialized.first() {
-        Present { value: head } =>
-          if head == apt_get_install_program_word {
+      match materialized {
+        Cons { head: head, tail: tail } =>
+          let expected = apt_get_install_program_word
+          if head == expected {
             AptGetInstallCommandReady {
               command: argv_command(
                 program: uncataloged_program(invocation: apt_get_install_program_word as NonEmptyStr),
-                arguments: materialized.skip(n: 1),
+                arguments: tail,
               ),
             }
           } else {
@@ -167,7 +167,7 @@ fn apt_get_install_command(package: NonEmptyStr) -> AptGetInstallCommand {
               cause: concat("the apt.PackageManager Install row materialized a token in its executable position that is not ", apt_get_install_program_word),
             }
           }
-        Absent =>
+        Empty =>
           AptGetInstallCommandRefused { cause: "the apt.PackageManager Install row materialized an empty argv" }
       }
     ArgvMaterializationRefused { at: _, cause: c } =>

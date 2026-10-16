@@ -4,7 +4,6 @@ import extdeps.exec.program {ProgramIdentity, uncataloged_program}
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.algebra { Cons, Empty, trim }
-import std.optional { Present, Absent }
 import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvMaterializationRefused,
@@ -187,13 +186,14 @@ fn dpkg_status_command(package: NonEmptyStr) -> DpkgStatusCommand {
     [operation_argv_bind_text(name: dpkg_status_input_name, text: package as String)],
   ) {
     ArgvMaterialized { argv: materialized } =>
-      match materialized.first() {
-        Present { value: head } =>
-          if head == dpkg_status_program as String {
+      match materialized {
+        Cons { head: head, tail: tail } =>
+          let expected = dpkg_status_program as String
+          if head == expected {
             DpkgStatusCommandReady {
               command: argv_command(
                 program: uncataloged_program(invocation: dpkg_status_program),
-                arguments: materialized.skip(n: 1),
+                arguments: tail,
               ),
             }
           } else {
@@ -201,7 +201,7 @@ fn dpkg_status_command(package: NonEmptyStr) -> DpkgStatusCommand {
               cause: concat("the dpkg.Package Status row materialized a token in its executable position that is not ", dpkg_status_program as String),
             }
           }
-        Absent =>
+        Empty =>
           DpkgStatusCommandRefused { cause: "the dpkg.Package Status row materialized an empty argv" }
       }
     ArgvMaterializationRefused { at: _, cause: c } =>
