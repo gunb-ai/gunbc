@@ -23,6 +23,7 @@ import extdeps.cache.sccache {
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.tools.stat { stat_program }
+import extdeps.tools.grep { grep_program }
 import extdeps.tools.hostname { hostname_program }
 import extdeps.procps.ps { ps_program, ps_user_uid_pid_args_listing_args }
 import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
@@ -437,6 +438,14 @@ fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
   }
 }
 
+// The crates the unit's own sccache server logged a cache miss for ("[<crate>]: Cache miss in ...").
+fn missed_crates(path: String) -> String {
+  match compute_exec(program: grep_program().invocation as String, workdir: ".", args: ["-h", "Cache miss in", path]) {
+    ComputeExecOk { stdout, stderr: _ } => stdout
+    ComputeExecFailed { exit_code, stdout: _, stderr } => join(["none read (grep exit ", to_string(value: exit_code), "): ", stderr], "")
+  }
+}
+
 fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
@@ -498,6 +507,7 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                   CliWirePrintable { bytes: wt, exit: ExitFailure { code: 1, reason: wt } }
                 } else {
                   let op = work_default_build()
+                  let server_log_path = join([layout.work_dir, "/sccache-server.log"], "")
                   match compute_run_unit(
                     instance: instance,
                     layout: layout,
@@ -508,7 +518,7 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                         concat(compute_operation_env(op: op), hermetic_user_session_unit_setenv(runtime_dir: runtime_dir)),
                         hermetic_toolchain_unit_setenv(homes: toolchain_homes),
                       ),
-                      [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }],
+                      [SystemdSetenvBinding { name: "SCCACHE_LOG", value: "debug" as NonEmptyStr }, SystemdSetenvBinding { name: "SCCACHE_ERROR_LOG", value: server_log_path as NonEmptyStr }],
                     ),
                     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
                     granted: compute_run_unit_cold_unit_grant(),
@@ -538,6 +548,7 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                         "unit_invoked=", if invoked { "true" } else { "false" }, "\n",
                         "unit result: ", compute_summary_result_wire(summary: unit_run.summary), "\n",
                         "unit peak: ", compute_summary_peak_wire(summary: unit_run.summary), "\n",
+                        "sccache missed (server log):\n", missed_crates(path: server_log_path), "\n",
                         match unit_run.exec {
                           ComputeExecOk { stdout, stderr } => join(["exec=ok\n", stdout, stderr], "")
                           ComputeExecFailed { exit_code, stdout, stderr } =>
@@ -852,10 +863,10 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                                         match arm_rust_hits(text: te) {
                                           Absent => no_observation(bytes: bytes, reason: "no observation: E Rust stats unreadable")
                                           Present { value: h_e } =>
-                                        if h_a2 > 0 && h_d > 0 && h_e == 0 && h_b == 0 && h_c == 0 {
+                                        if h_a2 > 0 && h_b == h_a2 && h_c == h_a2 && h_d == h_a2 && h_e == h_a2 {
                                           CliWirePrintable { bytes: bytes, exit: ExitSuccess }
                                         } else {
-                                          arm_failed(bytes: bytes, reason: "target-dir causation does not hold: want A2>0, D>0, E=0, B=0, C=0")
+                                          arm_failed(bytes: bytes, reason: "cross-identity Rust reuse is incomplete: want every arm to reuse as many Rust compiles as A2 (B, C, D, E == A2 > 0)")
                                         }
                                         }
                                         }
