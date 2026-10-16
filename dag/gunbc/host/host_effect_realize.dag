@@ -6492,6 +6492,7 @@ fn microvm_controller_step_name(step: MicrovmControllerInstallStep) -> String {
     MicrovmControllerArgvStep { name: n } => n
     MicrovmControllerVerifyStep { name: n } => n
     MicrovmControllerReceiptStep { name: n } => n
+    MicrovmControllerTreeStep { name: n } => n
   }
 }
 
