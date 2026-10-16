@@ -308,6 +308,11 @@ fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let dbg_inner = render_rust_type_dbginner(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  if rust_fn_sig_leaf_name(source_indices: source_indices, n: n) == "FreeMonoid" { concat("DBGT(", dbg_inner, ")") } else { dbg_inner }
+}
+
+fn render_rust_type_dbginner(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: emit_info.fn_type_env) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env, type_decl_items: emit_info.type_decl_items)
@@ -438,6 +443,11 @@ fn rust_overlayless_alias_leaf_requires_peel(env: TypeEnv, n: Node) -> Bool {
 }
 
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let dbg_inner = render_rust_type_without_applied_binding_dbginner(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  if rust_fn_sig_leaf_name(source_indices: source_indices, n: n) == "FreeMonoid" { concat("DBGW(", dbg_inner, ")") } else { dbg_inner }
+}
+
+fn render_rust_type_without_applied_binding_dbginner(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: emit_info.fn_type_env) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env, type_decl_items: emit_info.type_decl_items)
@@ -1564,6 +1574,11 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
 }
 
 fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
+  let dbg_inner = render_rust_applied_type_dbginner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
+  if rust_fn_sig_leaf_name(source_indices: source_indices, n: n) == "FreeMonoid" { concat("DBGC(", dbg_inner, ")") } else { dbg_inner }
+}
+
+fn render_rust_applied_type_dbginner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: env) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
@@ -1898,6 +1913,11 @@ fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
 }
 
 fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
+  let dbg_inner = render_rust_fn_sig_type_dbginner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
+  if rust_fn_sig_leaf_name(source_indices: source_indices, n: n) == "FreeMonoid" { concat("DBGS(", dbg_inner, ")") } else { dbg_inner }
+}
+
+fn render_rust_fn_sig_type_dbginner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices, env: env) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
@@ -8602,6 +8622,11 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
 }
 
 fn render_rust_type_with_applied_binding_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
+  let dbg_inner = render_rust_type_with_applied_binding_in_scope_dbginner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, env: env, type_decl_items: type_decl_items)
+  if rust_fn_sig_leaf_name(source_indices: source_indices, n: n) == "FreeMonoid" { concat("DBGB(", dbg_inner, ")") } else { dbg_inner }
+}
+
+fn render_rust_type_with_applied_binding_in_scope_dbginner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, type_decl_items: TypeDeclIndex) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
