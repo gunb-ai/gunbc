@@ -37,6 +37,7 @@ import gunbc.host.host_software_surface {
 }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name,
+  attempt_worker_slice_unit_name,
   repository_convergence_slice_unit_name,
   approval_broker_slice_unit_name,
 }
@@ -391,6 +392,11 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // fact about WHICH SERVER this config describes, so it sits beside serve_function, which is the
 // other half of the same fact.
 
+// THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
+// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// this one value rather than each spelling the flags.
+data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
+
 data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
 
 data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"
@@ -498,6 +504,10 @@ fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
 
 fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", gunbc_approval_broker_slice_unit_name as String], "") as NonEmptyStr
+}
+
+fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", attempt_worker_slice_unit_name as String], "") as NonEmptyStr
 }
 
 // THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process

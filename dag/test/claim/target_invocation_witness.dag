@@ -100,6 +100,9 @@ import gunbc.instrument_targets {
   compute_run_unit_cold_label,
   compute_run_unit_cold_entry,
   compute_run_unit_cold_function,
+  compute_wrong_capture_label,
+  compute_wrong_capture_entry,
+  compute_wrong_capture_function,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -130,6 +133,8 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// Importing the C1 control makes a resolve failure in it refuse this corpus; the instrument sits outside the required gate closure.
+import gunbc.instruments.compute_wrong_capture { compute_wrong_capture_exit }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
@@ -1074,6 +1079,15 @@ test fn the_cardinality_realization_operand_routes_to_its_own_producer() -> Bool
       label_eq(a: b.target, b: cardinality_realization_label())
         && (b.producer == CardinalityRealizationProducer {})
         && !(b.producer == RegenRoundCostProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_compute_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-wrong-capture") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_wrong_capture_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

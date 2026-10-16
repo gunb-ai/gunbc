@@ -362,20 +362,21 @@ pub use crate::v1_std_core::{
     has_inferred, if_condition, if_else_branch, if_then_branch, import_is_all,
     import_specific_names_at, index_base, index_expr, int_type, intern, intern_str,
     is_child_accessor_in_model, is_compiler_error, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, is_property_contraction, is_tree_size_reducing,
-    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_text_part_node, make_transport_node, map_children,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
-    module_items, module_node, no_span, node_name_span, none_type, param_node_default_value,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
-    record_lit_type_name_at, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
-    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
-    slice_end, slice_start, string_type, type_name_compatible, type_reference_provenance,
-    type_variable_binder_name, unaryop_operand, unit_type, variant_node_fields,
-    with_optional_cardinality, with_required_cardinality,
+    is_interpreter_blocking_diagnostic, is_property_contraction, is_shell_transport,
+    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_text_part_node,
+    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
+    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    param_node_default_value, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
+    record_lit_named_field_value_optional, record_lit_type_name_at,
+    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
+    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
+    string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
+    unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic,
@@ -12273,13 +12274,6 @@ pub fn spine_root_is_shadowed(scope: Rc<InferScope>, root: String) -> bool {
     }
 }
 
-pub fn spine_is_declared_module_path(index: Rc<SymbolIndex>, dotted: String) -> bool {
-    match v1_rt::map_get(&index.module_named_imports.clone(), dotted.clone()) {
-        Some(_) => true,
-        std::option::Option::None => false,
-    }
-}
-
 pub fn qualified_value_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -14606,25 +14600,19 @@ Rc::new(InferResult {
                     match spine_root_is_shadowed(scope.clone(), recv_spine.root.clone()) {
                         true => std::option::Option::None,
                         false => {
-                            if spine_is_declared_module_path(
-                                scope.type_env.clone().symbol_index.clone(),
-                                recv_spine.dotted.clone(),
-                            ) {
-                                {
-                                    let dotted = v1_rt::concat(
-                                        v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
-                                        method_name.clone(),
-                                    );
-                                    Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
+                            let dotted = v1_rt::concat(
+                                v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
+                                method_name.clone(),
+                            );
+                            match crate::v1_compiler_infer_env::symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), dotted.clone()) {
+    std::option::Option::None => std::option::Option::None,
+    Some(_) => Some(infer_expr(crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), dotted.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
 })),
     descent_evidence: std::option::Option::None,
-}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone()))
-                                }
-                            } else {
-                                std::option::Option::None
-                            }
+}), mc_args.clone(), std::option::Option::None, span.clone(), kernel_span(dotted.clone())), scope.clone(), expected.clone())),
+}
                         }
                     }
                 }
@@ -24002,13 +23990,39 @@ pub fn infer_transport_node(
         }),
         Some(t) => {
             let prop_result = infer_property_values(t.properties.clone(), scope.clone());
+            let argv_results = if crate::v1_std_core::is_shell_transport(t.clone()) {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in t.children.clone().iter().cloned() {
+                        __result.push(infer_expr(
+                            c.clone(),
+                            scope.clone(),
+                            std::option::Option::None,
+                        ));
+                    }
+                    __result
+                })
+            } else {
+                Rc::new(vec![])
+            };
+            let typed_children = if crate::v1_std_core::is_shell_transport(t.clone()) {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for r in argv_results.iter().cloned() {
+                        __result.push(r.typed.clone());
+                    }
+                    __result
+                })
+            } else {
+                t.children.clone()
+            };
             Rc::new(InferTransportResult {
                 transport: Some(Rc::new(Node {
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: t.name.clone(),
                     span: t.span.clone(),
                     ident_span: t.ident_span.clone(),
-                    children: t.children.clone(),
+                    children: typed_children.clone(),
                     connective: t.connective.clone(),
                     params: t.params.clone(),
                     inferred: t.inferred.clone(),
@@ -24027,7 +24041,16 @@ pub fn infer_transport_node(
                     expr_data: t.expr_data.clone(),
                     ident: None,
                 })),
-                diagnostics: prop_result.diagnostics.clone(),
+                diagnostics: v1_rt::concat(
+                    prop_result.diagnostics.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for r in argv_results.iter().cloned() {
+                            __result.extend((*r.diagnostics.clone()).iter().cloned());
+                        }
+                        __result
+                    }),
+                ),
             })
         }
     }

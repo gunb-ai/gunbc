@@ -2,7 +2,7 @@ module gunbc.rung_drop.shared_capability
 
 import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.rung_drop {
-  RungDrop, Standing, Retired, Superseded, TypedDeclaration, AuthoredProse,
+  RungDrop, Standing, Retired, Superseded, Dissolved, TypedDeclaration, AuthoredProse, dissolved_is_admissible,
 }
 
 // ONE CAPABILITY, N DROPS, AND THE JOIN THAT MAKES PARTIAL RETIREMENT UNWRITEABLE AS A QUIET STATE.
@@ -101,11 +101,13 @@ fn shared_capability_verdict(cap: SharedCapability, ds: List<RungDrop>) -> Share
             Standing => true
             Retired { trigger_fired: _ } => false
             Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+            Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d) == false
           }), d => d.identity as String)
           let retired_ids = map(filter(rows, d => match d.standing {
             Standing => false
             Retired { trigger_fired: _ } => true
             Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+            Dissolved { ruling: _, decision_record: _, population_gone: _ } => dissolved_is_admissible(drop: d)
           }), d => d.identity as String)
           if length(xs: standing_ids) > 0 && length(xs: retired_ids) > 0 {
             SplitRetirement { standing_identities: standing_ids, retired_identities: retired_ids }

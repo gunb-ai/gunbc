@@ -297,26 +297,6 @@ fn roadmap_site_deploy_receipt_line(host: String, port: Int, dispatch_digest: Fn
   )
 }
 
-fn roadmap_site_digest_readback_script(port: Int, expected_digest: Fnv1a64Structural) -> String {
-  let base = concat("http://127.0.0.1:", to_string(port))
-  concat(
-    concat("set -euo pipefail\n", "# live-route digest read-back: expected digest is the candidate's observed dispatch body, not a re-derived static artifact\n"),
-    concat(
-      concat(roadmap_site_readback_curl_digest_check(url: concat(base, roadmap_site_dispatch_url_path as String), expected: expected_digest), "\n"),
-      concat(
-        concat(
-          concat(curl_localhost_bounded_get_argv_prefix(), " ", sh_single_quote(s: concat(base, roadmap_site_dispatch_url_path as String))),
-          " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
-        ),
-        concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port, dispatch_digest: expected_digest), "\n")
-      )
-    )
-  )
-}
-
-// STATIC-SITE PROBE: healthz parse plus the static dispatch artifact. Remaining consumer:
-// test.claim.roadmap.roadmap_static_site_witness. Live deploy uses
-// roadmap_site_digest_readback_script with the candidate digest instead.
 fn roadmap_site_readback_script(port: Int) -> String {
   let base = concat("http://127.0.0.1:", to_string(port))
   let health_url = concat(base, roadmap_site_health_path)
