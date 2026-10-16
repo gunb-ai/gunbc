@@ -500,12 +500,13 @@ test fn an_attempt_worker_under_its_declared_slice_is_wrap_exempt() -> Bool {
     Present { value: max } =>
       byte_size_count(b: max) == byte_size_count(b: attempt_worker_slice_memory_max)
         && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
-          ExemptSystemUnit { unit, slice } =>
+          ExemptSystemUnit { unit, slice, bound } =>
             unit == worker
               && slice == (attempt_worker_slice_unit_name as String)
-              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice }) {
-                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es } } =>
-                  eu == unit && es == slice
+              && byte_size_count(b: bound) == byte_size_count(b: max)
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: bound }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es, bound: eb } } =>
+                  eu == unit && es == slice && byte_size_count(b: eb) == byte_size_count(b: bound)
                 _ => false
               }
           _ => false
