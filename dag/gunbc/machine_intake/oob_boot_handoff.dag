@@ -78,6 +78,10 @@ type OobBootHandoffAdmission
   | OobHandoffPowerControlUnavailable
   | OobHandoffRowUncatalogued { firmware: BmcFirmwareReleaseIdentity }
   | OobHandoffRowAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
+  // The release IS catalogued but its entry's own evidence does not support its version standing, so
+  // the row it would hand back is not trustworthy. Refused HERE, before any effect, rather than
+  // admitted on a row whose provenance is broken: the repair is to fix or withdraw the catalog entry.
+  | OobHandoffRowIncoherent { firmware: BmcFirmwareReleaseIdentity }
 
 // The first boot-control route the observation carries, as an Option. The list is folded rather than
 // pattern-matched because the surface grammar admits no list patterns — measured, not assumed: a
@@ -125,13 +129,18 @@ fn oob_boot_handoff_admission_for_row(
 // The public admission: the row is RESOLVED from the release the controller REPORTED, never handed in.
 // The old OobHandoffFirmwareMismatch arm existed because a per-unit row could describe a build other
 // than the one observed -- the reflash-staleness defect. Resolving the row from this same observation
-// makes that drift structurally impossible, so the arm is gone; a build the catalog has not read is a
-// typed unresolved refusal, never a default row.
+// removes the HAND-IN path for that drift; it does not by itself make drift impossible, because a
+// catalog entry could still be keyed to one build while its row describes another. What closes that
+// hole is the catalog itself (gunbc.host.bmc_release_capability_catalog): an entry has ONE release key,
+// its row's own identity, and the lookup refuses an entry whose evidence does not support its version
+// standing. The refusal surfaces here as OobHandoffRowIncoherent, before any effect is taken. A build
+// the catalog has not read is a typed unresolved refusal, never a default row.
 fn oob_boot_handoff_admission(observation: BmcAccessObservation) -> OobBootHandoffAdmission {
   match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
     MegaRacReleaseCapabilityKnown { row: row } => oob_boot_handoff_admission_for_row(observation: observation, capability_row: row)
     MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => OobHandoffRowUncatalogued { firmware: firmware }
     MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => OobHandoffRowAmbiguous { firmware: firmware, count: count }
+    MegaRacReleaseCapabilityIncoherent { firmware: firmware } => OobHandoffRowIncoherent { firmware: firmware }
   }
 }
 
@@ -145,6 +154,7 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
     OobHandoffPowerControlUnavailable => false
     OobHandoffRowUncatalogued { firmware: _ } => false
     OobHandoffRowAmbiguous { firmware: _, count: _ } => false
+    OobHandoffRowIncoherent { firmware: _ } => false
   }
 }
 

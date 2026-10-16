@@ -85,8 +85,7 @@ import gunbc.machine_intake.sol_hold {
   mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line,
 }
 import gunbc.machine_intake.ampere_smpro_observation {
-  smpro_pass_probes, smpro_site_probe_bound, smpro_pass_subject_refusal_text,
-  SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
+  smpro_pass_probes, smpro_site_probe_bound,
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -107,7 +106,11 @@ import gunbc.host.host_boot_attempt_admission {
   attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
 }
 import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
-import gunbc.host.smpro_platform_capability { SmproProbed, SmproNotTaken }
+import gunbc.host.smpro_platform_capability {
+  SmproProbed, SmproNotTaken, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
+  smpro_subject_absence_reason,
+}
 import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, mtcollins1_kvm_observer_dir, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
@@ -1906,13 +1909,15 @@ fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, passwor
     BmcControlAccessUnobserved { endpoint: _ } => SmproNotTaken { reason: "mtcollins1's controller access is unobserved, so no SMpro subject binds" }
     BmcControlNotSecured { cause: _ } => SmproNotTaken { reason: "mtcollins1's controller is not secured, so no SMpro subject binds" }
     BmcControlEndpointMismatch { observed: _, secured: _ } => SmproNotTaken { reason: "mtcollins1's access and secure standings name different controllers, so no SMpro subject binds" }
+    // Every refusal here quotes the OUTCOME's own cause. In particular a platform that does not carry
+    // SMpro used to be rendered 'mtcollins1 has no bound controller to read SMpro through' -- false: the
+    // controller IS bound, the silicon simply has no such interface (or we do not know that it does).
     BmcControlBound { route: _ } => match managed_host_smpro_subject(host: h, control: control) {
-      Absent => SmproNotTaken { reason: "mtcollins1 has no bound controller to read SMpro through" }
-      Present { value: standing } => match standing {
-        SmproPassSubjectBound { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-        SmproPassSiteRefused { cause: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: standing) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site is not admitted" } }
-        SmproPassEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: standing) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site names another controller" } }
-      }
+      SmproSubjectMinted { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+      SmproSubjectSiteRefused { cause: _ } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectSiteRefused { cause: cause }) }
+      SmproSubjectEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectEndpointMismatch { bound: bound, site: site }) }
+      SmproSubjectNotCarried { family: family } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectNotCarried { family: family }) }
+      SmproSubjectUnestablished { reason: reason } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectUnestablished { reason: reason }) }
     }
   }
 }

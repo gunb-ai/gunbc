@@ -42,6 +42,10 @@ type HostCapabilityRowStanding
   | HostCapabilityRowUncatalogued { firmware: BmcFirmwareReleaseIdentity }
   | HostCapabilityRowAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
   | HostCapabilityRowUnobserved { endpoint: BmcControllerEndpoint }
+  // The build the controller reported IS catalogued, but that catalog entry's own evidence does not
+  // support its version standing. Not the same as Uncatalogued: there the repair is to read the build,
+  // here the row itself is wrongly asserted and must be fixed or withdrawn.
+  | HostCapabilityRowIncoherent { firmware: BmcFirmwareReleaseIdentity }
 
 // THE LOOKUP. Read the firmware release identity the controller reported (the per-unit reading on the
 // access observation) and resolve the per-release catalog row for that build. An unobserved controller
@@ -54,6 +58,7 @@ fn host_capability_row(access: BmcAccessObservationStanding) -> HostCapabilityRo
         MegaRacReleaseCapabilityKnown { row: row } => HostCapabilityRowKnown { row: row }
         MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => HostCapabilityRowUncatalogued { firmware: firmware }
         MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => HostCapabilityRowAmbiguous { firmware: firmware, count: count }
+        MegaRacReleaseCapabilityIncoherent { firmware: firmware } => HostCapabilityRowIncoherent { firmware: firmware }
       }
   }
 }

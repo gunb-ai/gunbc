@@ -81,3 +81,4 @@ fn board_soc_edges_for(authority: BoardAuthorityRef) -> BoardSocEdge? {
     Present { value: e } => e
   }
 }
+
