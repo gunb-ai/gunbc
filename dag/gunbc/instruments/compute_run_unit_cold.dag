@@ -528,11 +528,10 @@ fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHom
 }
 
 // WHAT THIS INSTRUMENT OBSERVES ABOUT REUSE. sccache hits, read from the SAME server the unit's
-// cargo used (endpoint compute_user_sccache_server_uds, set on the unit by compute_run_unit), and a
-// bare `sccache --show-stats` from the launcher asks a different server (the baseline reading on main e7f987be7e8, runs 38846203914 and 38846213026, was 0/0/0 from
-// the wrong server while the unit compiled 34 crates). Result-store reuse and the VerifiedBuildBinaries
-// handoff are NOT observed here: each identity gets a fresh target and checkout, so the only reuse
-// this fold can see is sccache's.
+// cargo used (endpoint compute_user_sccache_server_uds, set on the unit by compute_run_unit); a bare
+// `sccache --show-stats` from the launcher asks a different server. Result-store reuse and the
+// VerifiedBuildBinaries handoff are NOT observed here: each identity gets a fresh target and
+// checkout, so the only reuse this fold can see is sccache's.
 type SccacheUnitReading
   = SccacheUnitServed { executed: Int, hits: Int, misses: Int }
   | SccacheUnitUnobserved { reason: String }
