@@ -1722,8 +1722,10 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         Err(cause) => return unreached(format!("ambient_census_subjects: {cause}")),
     };
     let base_ref = match call("ambient_census_base_ref") {
-        Ok(crate::v1_interpreter::Value::Str(s)) => s.to_string(),
-        Ok(_) => return unreached("ambient_census_base_ref did not return a string".to_string()),
+        Ok(value) => match &value {
+            crate::v1_interpreter::Value::Str(s) => s.to_string(),
+            _ => return unreached("ambient_census_base_ref did not return a string".to_string()),
+        },
         Err(cause) => return unreached(format!("ambient_census_base_ref failed: {cause}")),
     };
     let rewritten = match census_head_commit()
