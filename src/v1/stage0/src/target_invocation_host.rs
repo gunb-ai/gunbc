@@ -577,6 +577,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("compute-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-sccache-probe"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",

@@ -85,7 +85,7 @@ fn stage0_boundary_emitted_source_for(target: TargetModel) -> Stage0BoundaryEmis
       match infer_and_discharge(tree: resolved) {
         Rejected { diagnostics: _ } => Stage0EmissionRefused
         Accepted { value: inferred, diagnostics: _ } =>
-          match generate_rust_module_emission_candidate(inferred: inferred, target: target) {
+          match generate_rust_module_emission_candidate(inferred: inferred, target: target, declarations: resolved.resolved_declarations) {
             Rejected { diagnostics: _ } => Stage0EmissionRefused
             Accepted { value: candidate, diagnostics: _ } =>
               Stage0EmissionProduced { source: candidate.source.carried }

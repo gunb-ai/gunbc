@@ -128,8 +128,8 @@ fn served_deployment_placement() -> ServedDeploymentPlacement {
 // touches gunbc.fleet.fleet_host_budget, gunbc.ci.ci_runner_placement and their witnesses for no arithmetic, so
 // it is left to the change that next edits that verdict chain, and stated here so the sum is not read
 // as served processes alone.
-// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-14, option C maximized):
-// two 22 GiB slots, MemoryMax 44 GiB. Charging it into served_deployment_slice_allowance
+// THE USER-WORK APPROPRIATION IS CHARGED (operator ruling 2026-10-16, superseding 2026-10-14):
+// four 22 GiB slots, MemoryMax 88 GiB (gunbc.live_deploy.user_work_pool_slots). Charging it into served_deployment_slice_allowance
 // subtracts it from the runner memory envelope; runner_host_deploy_of writes the derived
 // gunbc_runner_committed_width as runner_count.
 fn user_work_charged_in_served_allowance() -> ByteSize {
