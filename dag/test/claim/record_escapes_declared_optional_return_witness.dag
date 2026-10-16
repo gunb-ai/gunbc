@@ -1,0 +1,69 @@
+module test.claim.record_escapes_declared_optional_return_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// Class: gunbc.recurring_failure_mode.record_value_escapes_declared_optional_return. Specimen: snappy-seal-211,
+// extdeps.cpu.types soc_family_architecture at e5d277c5c42 (declared Architecture?, returned a
+// CpuModelCatalogRow; compared a field against the row). Measured on a seed built from the tree under test:
+// each source below is ACCEPTED with zero blocking diagnostics, its positive control is accepted too, and
+// the liveness control proves the census refuses something. The oracle is the total blocking count, as in
+// test.claim.declared_type_expected_type_path_witness.
+fn refusing_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data liveness_source: String = "module probe_liveness\nimport std.types { Int }\nfn probe() -> Int { \"not an int\" }\n"
+
+test fn w_the_census_refuses_a_blatant_mismatch() -> Bool {
+  refusing_count(source: liveness_source) > 0
+}
+
+// Positive control: the correctly typed shape (payload of the Optional is the Arch, not the row).
+data admitted_source: String = "module probe_ok\nimport std.types { String, Bool }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch? { Present { value: r.arch } }\nfn same(r: Row, a: Arch) -> Bool { r.arch == a }\n"
+
+test fn w_the_correctly_typed_shape_is_admitted() -> Bool {
+  refusing_count(source: admitted_source) == 0
+}
+
+// HOLE A: Present { value: <record> } at a declared Arch?. A bare record at Arch? IS refused (declared
+// Optional<Arch>, produced Row), so the Optional wrapper is what hides the payload from the judgment:
+// declared_type_inhabitance answers UndecidableOptionalCarrier whenever either side is optional.
+data present_record_at_optional_coproduct_source: String = "module probe_present_record\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch? { Present { value: r } }\n"
+
+test fn w_a_record_inside_present_at_a_declared_optional_coproduct_is_refused() -> Bool {
+  refusing_count(source: present_record_at_optional_coproduct_source) > 0
+}
+
+// HOLE B: a bare record at a declared (non-optional) coproduct return. product_versus_coproduct_head_mismatch
+// exists but is reached only from declared_type_inhabitance, not from declared_type_conformance_diags_core.
+data record_at_coproduct_return_source: String = "module probe_record_at_coproduct\nimport std.types { String }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Arch { r }\n"
+
+test fn w_a_record_at_a_declared_coproduct_return_is_refused() -> Bool {
+  refusing_count(source: record_at_coproduct_return_source) > 0
+}
+
+// HOLE C: == between unrelated types. A coproduct field against its own row, and two unrelated records.
+data coproduct_equals_record_source: String = "module probe_eq_cross\nimport std.types { String, Bool }\ntype Arch = X86 | Arm\ntype Row { name: String, arch: Arch }\nfn probe(r: Row) -> Bool { r.arch == r }\n"
+
+test fn w_an_equality_between_a_coproduct_and_a_record_is_refused() -> Bool {
+  refusing_count(source: coproduct_equals_record_source) > 0
+}
+
+data record_equals_unrelated_record_source: String = "module probe_eq_records\nimport std.types { String, Bool, Int }\ntype Row { name: String }\ntype Other { x: Int }\nfn probe(r: Row, o: Other) -> Bool { r == o }\n"
+
+test fn w_an_equality_between_unrelated_records_is_refused() -> Bool {
+  refusing_count(source: record_equals_unrelated_record_source) > 0
+}
