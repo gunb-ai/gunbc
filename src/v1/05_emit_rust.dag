@@ -2044,6 +2044,16 @@ fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String,
 // The root alias renderer below never calls rust_type_arg_identity_spelling: a bare
 // alias RHS is a declaration-level type reference, not an argument merely because
 // recursive applied children share the rest of its rendering machinery.
+// An alias right-hand side is a declaration-level reference to a type; whether the Rust alias holds the
+// shared layer is that declaration's SharedLayerAnswer, not whether its spelling is a container. A
+// container-only guard left `type Gigabyte = Measure<..>` bare while its constructor wrapped Rc.
+fn alias_rhs_reference_at_shared_layer(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> Bool {
+  match shared_layer_of_type_expr(shared_types: shared_types, type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names) {
+    SharedLayerAtShared => true
+    _ => false
+  }
+}
+
 fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, type_decl_items: TypeDeclIndex) -> String {
   match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
     Present { value: identity } => identity
@@ -2105,11 +2115,11 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     match closed_alias_peel_verdict(env: scope.type_env, n: n) {
       ClosedAliasPeelZeroParam =>
-        if is_container_type(name: leaf) && set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+        if alias_rhs_reference_at_shared_layer(n: n, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
       ClosedAliasBindingAbsent =>
         match alias_decl_arity_verdict(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, env: scope.type_env) {
           AliasDeclArityZeroParam =>
-            if is_container_type(name: leaf) && set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+            if alias_rhs_reference_at_shared_layer(n: n, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
           AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let arg_list = n.children |> map(arg =>
@@ -2121,7 +2131,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     )
     let args = arg_list |> join(separator: ", ")
     let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
-    if is_container_type(name: leaf) && set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if alias_rhs_reference_at_shared_layer(n: n, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
       applied_ty
@@ -2140,7 +2150,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     )
     let args = arg_list |> join(separator: ", ")
     let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
-    if is_container_type(name: leaf) && set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if alias_rhs_reference_at_shared_layer(n: n, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
       applied_ty
