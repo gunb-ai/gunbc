@@ -256,6 +256,39 @@ data repository_convergence_slice_unit_name: NonEmptyStr = "gunbc-repository-con
 // MemoryMax, a located failure the restart step's diagnosis arm prints.
 data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 
+// ── THE FCI-1 BOUNDED CONTROLS' OWN SLICE ───────────────────────────────────────────────────
+// WHY A DECLARED SLICE AT ALL. The FCI-1 bounded controls start `gunbc run` inside transient SYSTEM
+// units (systemd-run, root, srv3). The wrap policy (gunbc.compute.unit_bounds user_work_scope_standing)
+// classifies a system .service whose slice is not a declared, live-capped row as UncappedSystemSlice
+// and refuses; in a root ssh shell with no user manager it refuses UserSessionAbsent; and the
+// user-work slice is a --user slice that srv3 does not provision. So the controls had NO admissible
+// placement, and borrowing another row's slice (repository convergence, approval broker) would charge
+// their budget for work that is not theirs (DESIGN section 3: a slice named for one workload is that
+// workload's fact). They get their own row.
+//
+// THE CAP IS DERIVED, NOT AUTHORED: it is the envelope gunbc.fabric.fci1_bounded_execution_context
+// already projects for the bounded driver (gunbc_runner_slot_desired memory_max/high), so the slice
+// the units sit in is exactly as large as the single unit the controls run at a time. The rows run
+// sequentially, each its own `--wait` transient unit, so one unit's envelope is the demand and the
+// slice adds no headroom for a second concurrent unit. A witness joins this row to that context.
+// The unbounded negative controls are deliberately NOT placed here (their MemoryMax=infinity unit
+// would be bounded by this ancestor and stop being the control); they stay in system.slice and must
+// refuse UncappedSystemSlice, which is the RED this row's positive control is paired with.
+//
+// THE NAME has the dash-parent edge gunbc.slice, the same as gunbc-repository-convergence.slice;
+// swap is denied for the reason the convergence slice states (an overrun kills at MemoryMax, located).
+data fci1_controls_slice_unit_name: NonEmptyStr = "gunbc-fci1-controls.slice"
+
+fn fci1_controls_slice_memory_max() -> ByteSize {
+  gunbc_runner_slot_desired().memory_max
+}
+
+fn fci1_controls_slice_memory_high() -> ByteSize {
+  gunbc_runner_slot_desired().memory_high
+}
+
+data fci1_controls_slice_memory_swap_max: ByteSize = byte_size(0)
+
 // ── USER-MANAGER WORK (--user transients: gunbc test/run scopes, gunbc-compute-*,
 // gunbc-review-*, gunbc-audit-*, gunbc-supervisor-*) ─
 // THESE UNITS LEAVE EVERY SYSTEM SLICE. systemd-run --user starts them under
@@ -347,6 +380,10 @@ fn declared_system_slice_memory_maxes() -> List<DeclaredSliceMemoryMax> {
     DeclaredSliceMemoryMax {
       unit: attempt_worker_slice_unit_name,
       memory_max: attempt_worker_slice_memory_max,
+    },
+    DeclaredSliceMemoryMax {
+      unit: fci1_controls_slice_unit_name,
+      memory_max: fci1_controls_slice_memory_max(),
     },
   ]
 }

@@ -41,6 +41,7 @@ const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[
     "gunbc-repository-convergence.slice",
     "gunbc-approval-broker.slice",
     "gunbc-attempt-worker.slice",
+    "gunbc-fci1-controls.slice",
     "sessions.slice",
 ];
 

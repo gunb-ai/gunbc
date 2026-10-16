@@ -29,6 +29,9 @@ import gunbc.auth.managed_host_boot_federation {
   BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_service_account_member,
 }
+import gunbc.auth.branch_dispatch_federation {
+  boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
+}
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -901,6 +904,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.fleet.hetzner_cloud_server_control", decl_name: "read"),
     effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run attempt (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's Read-only API token (Hetzner refuses it any write) and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
     realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "boot_credential_effect_on_reviewed_main"),
+    effect: boot_credential_effect_on_reviewed_main(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "boot_credential_effect_off_reviewed_main"),
+    effect: boot_credential_effect_off_reviewed_main(),
+    realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
