@@ -272,6 +272,51 @@ fn drop_with_standing(standing: RungDropStanding) -> RungDrop {
 // A DECLARED DROP QUALIFIES ONLY WHILE IT STANDS, and the check is now a read of the record's own
 // value -- no roster, no citation. Superseded is the honest shape of the 2026-10-04 ruling (its
 // trigger never fired); Retired would CLAIM the trigger fired. Neither may default to membership.
+// THE ARM CARRIES THE RECORD'S OWN VALUE -- identity included -- with no roster lookup and prose
+// unread. The covering decision reads ONLY drop.standing (covering_drop_is_standing); neither the
+// identity nor the population sentence is consulted to DECIDE coverage, so the drop that qualifies a
+// stale subject is the one the record cites, verbatim. This is the honest inverse of the citation-era
+// claim (a foreign-identity standing value DOES still cover -- coverage is the record's cited fact,
+// not a lookup): what is guaranteed is that no substitution and no prose search can happen. A future
+// "look the drop up by host name" regression turns this red.
+test fn w_the_membership_carries_the_record_value_identity_and_ignores_prose() -> Bool {
+  match mtcollins1_managed_host_admission() {
+    Absent => false
+    Present { value: r } =>
+      match managed_host_admission(
+        host: r.host,
+        binding: r.binding,
+        access: r.access,
+        secure: r.secure,
+        hold: r.hold,
+        smpro: r.smpro,
+        receipt: r.receipt,
+        current_subject: r.current_subject,
+        covering_drop: Present {
+          value: drop_with_identity_and_population(
+            identity: "a_drop_belonging_to_another_unit_entirely",
+            population: ["mtcollins1 and every unit at all"],
+          ),
+        },
+      ) {
+        carried =>
+          match project_managed_host_admission(
+            record: carried,
+            current_subject: mtcollins1_current_intake_subject(),
+            allocations: gunbc_fleet_hostname_allocations,
+          ) {
+            Absent => false
+            Present { value: m } => match m {
+              OrdinaryMember { host: _ } => false
+              MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
+                (d.identity as String) == "a_drop_belonging_to_another_unit_entirely"
+                  && (h.host as String) == (operator_host_mtcollins1 as String)
+            }
+          }
+      }
+  }
+}
+
 test fn w_a_superseded_covering_drop_is_absent() -> Bool {
   match mtcollins1_managed_host_admission() {
     Absent => false
