@@ -398,7 +398,7 @@ fn compute_run_unit_sccache_probe_exit() -> CliWireResponse {
 
 
 fn cold_unit_run(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
-  cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, identity: to_string(value: frame), checkout_at: none, stop_observation: stop_observation)
+  cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: toolchain_homes, frame: frame, identity: to_string(value: frame), checkout_at: none, target_at: none, stop_observation: stop_observation)
 }
 
 // The layout with its checkout placed at a caller-chosen absolute path; every other piece (target,
@@ -419,7 +419,25 @@ fn layout_with_checkout(layout: ComputeLayout, checkout: String) -> ComputeLayou
   }
 }
 
-fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
+// Likewise for the cargo target directory (the CARGO_TARGET_DIR the unit is given): a control only,
+// run sequentially after the original owner's target is moved aside, never a shared writable target.
+fn layout_with_target(layout: ComputeLayout, target: String) -> ComputeLayout {
+  ComputeLayout {
+    root: layout.root,
+    work_dir: layout.work_dir,
+    checkout: layout.checkout,
+    out_dir: layout.out_dir,
+    leases_dir: layout.leases_dir,
+    lease_path: layout.lease_path,
+    staging_dir: layout.staging_dir,
+    target_dir: target,
+    log_path: layout.log_path,
+    consumption_path: layout.consumption_path,
+    attempts_dir: layout.attempts_dir,
+  }
+}
+
+fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
       let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
       let workspace = observe_workspace(instance: probe)
       if workspace == "" {
@@ -442,7 +460,8 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
               exit: ExitFailure { code: 1, reason: "no materialization store declared" },
             }
           Present { value: placed } => {
-        let layout = match checkout_at { Present { value: at } => layout_with_checkout(layout: placed, checkout: at)  Absent => placed }
+        let checkout_placed = match checkout_at { Present { value: at } => layout_with_checkout(layout: placed, checkout: at)  Absent => placed }
+        let layout = match target_at { Present { value: at } => layout_with_target(layout: checkout_placed, target: at)  Absent => checkout_placed }
         let root = compute_root(instance: instance) as String
         if path_is_under_production_instance_root(path: instance.instance_root as String) || path_is_under_production_instance_root(path: root) {
           CliWirePrintable {
@@ -691,14 +710,24 @@ fn checkout_path_of(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, iden
   }
 }
 
-fn same_path_target_aside(toolchain_homes: IsolatedJobToolchainHomes, frame: Int) -> String {
+fn target_path_of(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String) -> String {
+  let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  let workspace = observe_workspace(instance: probe)
+  let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
+  match compute_layout(instance: instance, identity_hex: identity) {
+    Absent => ""
+    Present { value: layout } => layout.target_dir
+  }
+}
+
+fn same_path_target_aside(toolchain_homes: IsolatedJobToolchainHomes, frame: Int, suffix: String) -> String {
   let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: toolchain_homes)
   let workspace = observe_workspace(instance: probe)
   let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: toolchain_homes)
   match compute_layout(instance: instance, identity_hex: to_string(value: frame)) {
     Absent => "no materialization store declared"
     Present { value: layout } => {
-      let aside = mv_exact_destination_command(source: layout.target_dir, destination: join([layout.target_dir, ".run1"], ""))
+      let aside = mv_exact_destination_command(source: layout.target_dir, destination: join([layout.target_dir, suffix], ""))
       match compute_exec(program: aside.program.invocation as String, workdir: ".", args: aside.arguments) {
         ComputeExecFailed { exit_code, stdout: _, stderr } => join(["target move exited ", to_string(value: exit_code), ": ", stderr], "")
         ComputeExecOk { stdout: _, stderr: _ } => ""
@@ -751,12 +780,13 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
             Present { value: frame_a } => {
               let id_a = to_string(value: frame_a)
               let path_a = checkout_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
+              let target_a = target_path_of(toolchain_homes: homes, frame: frame_a, identity: id_a)
               let a1 = cold_unit_run(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_a, stop_observation: SccacheStatsAtStop)
               if !cold_run_succeeded(r: a1) {
                 a1
               } else {
                 let reset_a = drop_checkout(toolchain_homes: homes, frame: frame_a, path: path_a)
-                let aside_a = same_path_target_aside(toolchain_homes: homes, frame: frame_a)
+                let aside_a = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run1")
                 if reset_a != "" || aside_a != "" {
                   arm_failed(bytes: join([cold_run_bytes(r: a1), "\nreset after A1 failed: ", reset_a, aside_a], ""), reason: "reset after A1 failed")
                 } else {
@@ -765,28 +795,38 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                   match observe_run_frame() {
                     Absent => no_observation(bytes: cold_run_bytes(r: a2), reason: "arm B frame unreadable")
                     Present { value: frame_b } => {
-                      let b = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_b, identity: to_string(value: frame_b), checkout_at: Present { value: path_a }, stop_observation: SccacheStatsAtStop)
+                      let b = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_b, identity: to_string(value: frame_b), checkout_at: Present { value: path_a }, target_at: none, stop_observation: SccacheStatsAtStop)
                       let reset_b = drop_checkout(toolchain_homes: homes, frame: frame_b, path: path_a)
                       match observe_run_frame() {
                         Absent => no_observation(bytes: cold_run_bytes(r: b), reason: "arm C frame unreadable")
                         Present { value: frame_c } => {
-                          let c = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_c, identity: id_a, checkout_at: none, stop_observation: SccacheStatsAtStop)
+                          let c = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_c, identity: id_a, checkout_at: none, target_at: none, stop_observation: SccacheStatsAtStop)
+                          let aside_d = same_path_target_aside(toolchain_homes: homes, frame: frame_a, suffix: ".run2")
+                          match observe_run_frame() {
+                            Absent => no_observation(bytes: cold_run_bytes(r: c), reason: "arm D frame unreadable")
+                            Present { value: frame_d } => {
+                          let d = cold_unit_run_at(runtime_dir: runtime_dir, toolchain_homes: homes, frame: frame_d, identity: to_string(value: frame_d), checkout_at: Present { value: path_a }, target_at: Present { value: target_a }, stop_observation: SccacheStatsAtStop)
+                          let reset_d = drop_checkout(toolchain_homes: homes, frame: frame_d, path: path_a)
                           let ta1 = cold_run_bytes(r: a1)
                           let ta2 = cold_run_bytes(r: a2)
                           let tb = cold_run_bytes(r: b)
                           let tc = cold_run_bytes(r: c)
+                          let td = cold_run_bytes(r: d)
                           let bytes = join([
                             ta1, "\n=== A2: identity A at path PA ===\n", ta2,
                             "\n=== B: identity B at path PA ===\n", tb,
-                            "\n=== C: identity A at path PC ===\n", tc, "\n",
+                            "\n=== C: identity A at path PC ===\n", tc,
+                            "\n=== D: identity B at path PA with identity A's target dir ===\n", td, "\n",
                             "path PA: ", path_a, "\n",
                             arm_rust_wire(label: "A1 (identity A, PA, cold fill)", text: ta1),
                             arm_rust_wire(label: "A2 (identity A, PA)", text: ta2),
                             arm_rust_wire(label: "B  (identity B, PA)", text: tb),
                             arm_rust_wire(label: "C  (identity A, PC)", text: tc),
-                            "cleanup: ", reset_a2, reset_b, "\n",
+                            arm_rust_wire(label: "D  (identity B, PA, A's target dir)", text: td),
+                            "target dir of A: ", target_a, " aside: ", aside_d, "\n",
+                            "cleanup: ", reset_a2, reset_b, reset_d, "\n",
                           ], "")
-                          if !cold_run_succeeded(r: a2) || !cold_run_succeeded(r: b) || !cold_run_succeeded(r: c) {
+                          if !cold_run_succeeded(r: a2) || !cold_run_succeeded(r: b) || !cold_run_succeeded(r: c) || !cold_run_succeeded(r: d) {
                             arm_failed(bytes: bytes, reason: "an arm's build failed")
                           } else {
                             match arm_rust_hits(text: ta2) {
@@ -798,13 +838,19 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                                     match arm_rust_hits(text: tc) {
                                       Absent => no_observation(bytes: bytes, reason: "no observation: C Rust stats unreadable")
                                       Present { value: h_c } =>
-                                        if h_a2 > 0 && h_b > 0 && h_c == 0 {
+                                        match arm_rust_hits(text: td) {
+                                          Absent => no_observation(bytes: bytes, reason: "no observation: D Rust stats unreadable")
+                                          Present { value: h_d } =>
+                                        if h_a2 > 0 && h_d > 0 && h_b == 0 && h_c == 0 {
                                           CliWirePrintable { bytes: bytes, exit: ExitSuccess }
                                         } else {
-                                          arm_failed(bytes: bytes, reason: "path-only causation does not hold: want A2>0, B>0, C=0")
+                                          arm_failed(bytes: bytes, reason: "target-dir causation does not hold: want A2>0, D>0, B=0, C=0")
+                                        }
                                         }
                                     }
                                 }
+                            }
+                          }
                             }
                           }
                         }
