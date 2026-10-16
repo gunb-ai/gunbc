@@ -152,6 +152,9 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_spawn_commands_for_launch,
   dispatch_capability_program,
   dispatch_attempt_key,
+  dispatch_attempt_identity_mint,
+  DispatchAttemptMinted,
+  DispatchAttemptIdentityRefused,
   dispatch_attempt_key_path_for_instance,
   dispatch_attempt_admission_path_for_instance,
   dispatch_attempt_launch_path_for_instance,
@@ -253,7 +256,7 @@ import gunbc.host.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var
 import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, kibibyte }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -334,9 +337,16 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.compute.attempt_lifecycle { DispatchOwned }
+import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
+import gunbc.compute.compute_seat_ensure {
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargeStanding, SeatDischargeClean, SeatDischargePassRefused, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
+}
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
+  compute_attempts_root, compute_leases_root, ObserveUnitLifecycle,
 }
 import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
@@ -1574,6 +1584,23 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
   }
 }
 
+// A COMPUTE SEAT OPENED FOR A DISPATCH ATTEMPT THAT HAS ENDED IS DISCHARGED, EVERY TICK. The belt is only the
+// executor: the ownership authority is the location the seat was recorded at (the dispatch attempt's own directory), the trigger is the
+// attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
+// which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
+fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
+  match compute_capacity_subject(instance: instance, request: kibibyte(count: 0)) {
+    ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subj } =>
+      compute_seat_discharge_all(
+        instance_root: instance.instance_root as String,
+        attempts_dir: compute_attempts_root(instance: instance) as String,
+        leases_dir: compute_leases_root(instance: instance),
+        subject: subj,
+        source: ObserveUnitLifecycle)
+  }
+}
+
 // A GRANT TAKEN FOR A SPAWN THAT DID NOT HAPPEN IS RETURNED AT ONCE, whatever step failed: the slot is
 // closed, the seat released and the release recorded (session_placement_abandon), and that sentence
 // is carried into the failure detail. A SpawnNotAdmitted cannot carry it (LaunchRefusal has no slot
@@ -2262,10 +2289,20 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
+      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+        DispatchAttemptIdentityRefused { detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "attempt-identity",
+            detail: detail,
+            provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: launch,
+          }
+        DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => {
       let attempt = DispatchAttempt {
         instance: instance,
         node: node,
-        attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+        attempt_key: minted_key,
       }
       match dispatch_actuator_selection_for_request(
         attempt: attempt,
@@ -2316,6 +2353,8 @@ fn belt_actuate_spawn_for_instance(
             outcome: post_selection,
           )
         }
+      }
+            }
       }
     }
   }
@@ -3061,7 +3100,7 @@ fn belt_actuate_spawn_with_origin(
       }
     BeltAlignmentBindingOk =>
   match belt_resolved_spawn_plan(
-    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
+    session_uuid: belt_spawn_session_uuid(node_id: node.node as String, attempt_key: attempt_key),
     origin: origin,
     prepared: prepared,
     resolution: resolution,
@@ -3315,11 +3354,21 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
+      match dispatch_attempt_identity_mint(instance: instance, node_id: node.node, minted_at: probed_at) {
+        DispatchAttemptIdentityRefused { detail } =>
+          SpawnFailed {
+            node_id: node.node as String,
+            step: "attempt-identity",
+            detail: detail,
+            provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: launch,
+          }
+        DispatchAttemptMinted { attempt_key: minted_key, ordinal: _ } => {
       match dispatch_harness_attempt_selection(
         attempt: DispatchAttempt {
           instance: instance,
           node: node,
-          attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+          attempt_key: minted_key,
         },
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       ) {
@@ -3358,6 +3407,8 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, lau
               )
           }
         }
+      }
+            }
       }
     }
   }
@@ -3539,15 +3590,15 @@ data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
 // redispatch fix 2026-07-25): (node_id x the spawn's clock observation) reshaped to RFC-4122 v4;
 // the earlier node-deterministic derivation made every node one-shot at the Claude layer. Reconcile
 // idempotency never keys on it — the node-grain tmux session name is the observation key.
-fn belt_uuid_stamped_id(node_id: String, probed_at: String) -> NonEmptyStr {
-  join([node_id, "\n", probed_at], "") as NonEmptyStr
+fn belt_uuid_stamped_id(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join([node_id, "\n", attempt_key], "") as NonEmptyStr
 }
 
-fn belt_uuid_hex32(node_id: String, probed_at: String) -> String {
+fn belt_uuid_hex32(node_id: String, attempt_key: String) -> String {
   concat(
-    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)).digest as String,
+    content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, attempt_key: attempt_key)).digest as String,
     content_hash_combine_structural(
-      left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, probed_at: probed_at)),
+      left: content_hash_atom(value: belt_uuid_stamped_id(node_id: node_id, attempt_key: attempt_key)),
       right: content_hash_atom(value: belt_session_uuid_salt),
     ).digest as String,
   )
@@ -3600,8 +3651,8 @@ fn belt_resolved_spawn_plan(
   )
 }
 
-fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
-  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
+fn belt_spawn_session_uuid(node_id: String, attempt_key: String) -> String {
+  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, attempt_key: attempt_key)))
 }
 
 fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
@@ -3751,6 +3802,7 @@ type BeltTickReceipt {
   launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
+  seat_discharge_pass: BeltPassOutcome,
   discovery_pass: BeltPassOutcome,
 }
 
@@ -3778,7 +3830,7 @@ type BeltTickReceiptRead
 // longer reports those passes. It reports the passes it still runs -- spawn and teardown -- and the
 // discovery pass that hands outstanding obligations to their units. What each attempt's obligations
 // did is that attempt's own receipt (belt_attempt_obligation_receipt_path).
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v7"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v8"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -3930,6 +3982,9 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
       match belt_pass_outcome_from_member(doc: doc, key: "teardown_pass") {
         BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
         BeltPassOutcomeDecoded { outcome: teardown_pass } =>
+         match belt_pass_outcome_from_member(doc: doc, key: "seat_discharge_pass") {
+          BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+          BeltPassOutcomeDecoded { outcome: seat_discharge_pass } =>
           match belt_pass_outcome_from_member(doc: doc, key: "discovery_pass") {
             BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
             BeltPassOutcomeDecoded { outcome: discovery_pass } =>
@@ -3945,11 +4000,13 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
                         launches: launches,
                         spawn_pass: spawn_pass,
                         teardown_pass: teardown_pass,
+                        seat_discharge_pass: seat_discharge_pass,
                         discovery_pass: discovery_pass,
                       })
                   }
               }
           }
+         }
       }
   }
 }
@@ -4079,6 +4136,7 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     join(receipt.launches |> map(l => serialize_json(v: launch_identity_json(id: l))), ","), "|",
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
+    belt_pass_outcome_key(o: receipt.seat_discharge_pass), "|",
     belt_pass_outcome_key(o: receipt.discovery_pass),
   ], "")
 }
@@ -4160,6 +4218,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
+    json_kv(key: "seat_discharge_pass", value: belt_pass_outcome_json(o: receipt.seat_discharge_pass)),
     json_kv(key: "discovery_pass", value: belt_pass_outcome_json(o: receipt.discovery_pass)),
   ])
 }
@@ -4233,6 +4292,17 @@ fn belt_teardown_pass_outcome_from(
   }
 }
 
+// A SEAT-DISCHARGE PASS REACHES THE DURABLE RECEIPT TYPED AND COUNTED: a red is Failed, a kept charge with a
+// named cause is Refused, a clean pass is Recorded. Nothing is dropped between the driver and the receipt.
+fn belt_seat_discharge_pass_outcome_from(pass: SeatDischargePass) -> BeltPassOutcome {
+  match seat_discharge_pass_standing(p: pass) {
+    SeatDischargeHasReds { reds: n, first: why } => BeltPassFailed { reason: join([to_string(value: n), " seat discharge red(s); first: ", why], "") }
+    SeatDischargeHasRefusals { refused: n, first: why } => BeltPassRefused { reason: join([to_string(value: n), " seat discharge refusal(s), charge kept; first: ", why], "") }
+    SeatDischargePassRefused { reason: why } => BeltPassRefused { reason: join(["the seat discharge pass could not run, every charge kept: ", why], "") }
+    SeatDischargeClean => BeltPassRecorded
+  }
+}
+
 fn belt_tick_observed_at() -> String {
   match clock_now_probed_at() {
     Present { value: probed_at } => probed_at as String
@@ -4293,6 +4363,7 @@ type BeltTickResult {
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
   discovery: BeltDiscovery,
+  seat_discharge: SeatDischargePass,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4595,6 +4666,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
       }
     TickPassesRun =>
@@ -4604,6 +4676,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
       }
   }
@@ -4840,6 +4913,7 @@ fn belt_run_once_in(
         reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
         spawn_outcomes: [],
         teardown_outcomes: [],
+        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -8984,7 +9058,7 @@ fn belt_run_claim_through_compute(
       args: ["--entry", entry as String, "--functions", function as String],
     }
     let wire = modeled_validation_command_wire(command: command)
-    let result = compute_provide(instance: instance, commit: subject.head_sha as String, op: op)
+    let result = compute_provide(instance: instance, owner: DispatchOwned { node_id: subject.node_identity as String, attempt_key: subject.attempt_key }, commit: subject.head_sha as String, op: op)
     let document = provide_result_document(r: result)
     let citation = match stored_outcome_subject_tree(document: document) {
       Present { value: tree } =>
@@ -14143,6 +14217,7 @@ fn belt_tick_receipt_from_result(
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_teardown_pass_outcome_from(host_refusal: result.host_refusal, teardown_outcomes: result.teardown_outcomes)
     }),
+    seat_discharge_pass: belt_seat_discharge_pass_outcome_from(pass: result.seat_discharge),
     discovery_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_discovery_pass_outcome(discovery: result.discovery)
