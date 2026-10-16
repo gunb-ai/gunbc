@@ -6135,15 +6135,13 @@ type BuildCacheReadResult
   | BuildCacheReadRefused { reason: String }
 
 // EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface
-// is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink
-// and must not grow, so an observation added as a concat-built bash body would have grown precisely
-// the surface that build_cache_provision_shell_script's dissolution trigger existed to retire -- a
-// trigger now DISCHARGED, with the builder, its script body and its retained_srvn call deleted
-// alongside it, and the whole ensure moved to the typed shape in gunbc.host.build_cache_daemon_ensure.
-// Routing the reads through the typed argv seam is what made that reachable rather than merely
-// adjacent: an observation that arrives as a captured argv result can be classified by a typed
-// function, whereas one that arrives as printf receipts had to be re-parsed by the shell that
-// printed them. No concat-built bash body remains anywhere in this effect.
+// is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and
+// must not grow -- the reason none of these reads is a concat-built bash body, and no reason to add
+// one now that the surface has none. The whole ensure is typed operations in
+// gunbc.host.build_cache_daemon_ensure. Routing the reads through the typed argv seam is what made
+// that reachable rather than merely adjacent: an observation that arrives as a captured argv result
+// can be classified by a typed function, whereas one that arrives as printf receipts had to be
+// re-parsed by the shell that printed them.
 
 // IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason gunbc.bmc.bmc_netboot_serve's
 // executor does: a
