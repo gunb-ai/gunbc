@@ -125,7 +125,10 @@ test fn microvm_w5_invariant_check_reports_an_injected_start() -> Bool {
 // GREEN (3a): elevation matches the retired builder leg for leg -- installs were
 // shell_privileged_command_text_of_argv, the download/extract were not.
 test fn microvm_w5_installs_are_elevated_and_the_download_is_not() -> Bool {
-  let installs = microvm_w5_named("install")
+  // Only legs whose words THIS module spells: the tree leg is named "…tree
+  // install" too, but its argv belongs to W6's vertical and it spells no words
+  // of ours, so it is out of scope for an elevation claim about this module.
+  let installs = filter(microvm_w5_named("install"), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
   let downloads = filter(microvm_w5_steps(), s => microvm_controller_step_name(step: s) == "vmm tarball download")
   list_length(items: installs) >= 6
     && list_length(items: downloads) == 1
