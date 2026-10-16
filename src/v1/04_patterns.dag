@@ -1,6 +1,6 @@
 module v1.compiler.infer_patterns
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 
 import std.types { SourceSpan }
 import std.primitive_projection { never_type_declaration, never_type_qualified_path }
@@ -553,11 +553,12 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 }
 
 // An uninhabited SUM: a coproduct with zero arms, or the std.error_primitives Never
-// declaration keyed by DeclarationRef (never_type_declaration) via indexed occurrence.
-// When the index is absent outside Never's home module, the sum is not uninhabited
-// (empty match refuses). In the home module, occurrence vs the bound declaration
-// decides. There is no authored-name fallback (operator 2026-10-15: never an
-// identity->spelling fallback).
+// declaration keyed by DeclarationRef (never_type_declaration). Identity is the
+// declaration's occurrence (indexed, or the bound decl in Never's home module when the
+// index is absent). A type-use node of Never has a different occurrence than the
+// declaration; lookup_type_for peels it to the decl. The node's authored spelling is
+// never consulted (operator 2026-10-15: never an identity->spelling fallback). Missing
+// index outside the home module => not uninhabited (empty match refuses).
 fn env_binds_never_declaration(env: TypeEnv) -> Bool {
   if env.module_path == (never_type_declaration.module_path as String) {
     true
@@ -573,26 +574,77 @@ fn env_binds_never_declaration(env: TypeEnv) -> Bool {
   }
 }
 
+fn never_declaration_occurrence(env: TypeEnv) -> Optional<NodeOccurrenceIdentity> {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
+    Present { value: indexed } => Present { value: indexed.occurrence_identity }
+    Absent =>
+      if env.module_path != (never_type_declaration.module_path as String) {
+        Absent
+      } else {
+        match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
+          Absent => Absent
+          Present { value: bound } => Present { value: bound.occurrence_identity }
+        }
+      }
+  }
+}
+
+fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: def } => def
+    Absent =>
+      match n.inferred {
+        Present { value: Resolved { node: target } } => target
+        _ => n
+      }
+  }
+}
+
+fn node_ident_is_never_binding(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
+    Absent => false
+    Present { value: bound } =>
+      match n.ident {
+        Absent => false
+        Present { value: id } =>
+          match bound.ident {
+            Absent => false
+            Present { value: bid } => id == bid
+          }
+      }
+  }
+}
+
+fn candidate_is_never_declaration(n: Node, env: TypeEnv, never_occ: NodeOccurrenceIdentity) -> Bool {
+  n.occurrence_identity == never_occ || node_ident_is_never_binding(n: n, env: env)
+}
+
+fn node_is_never_declaration(resolved: Node, env: TypeEnv) -> Bool {
+  match never_declaration_occurrence(env: env) {
+    Absent => false
+    Present { value: never_occ } =>
+      let peeled = peel_never_identity_candidate(n: resolved, env: env)
+      let peeled2 = peel_never_identity_candidate(n: peeled, env: env)
+      candidate_is_never_declaration(n: resolved, env: env, never_occ: never_occ)
+        || candidate_is_never_declaration(n: peeled, env: env, never_occ: never_occ)
+        || candidate_is_never_declaration(n: peeled2, env: env, never_occ: never_occ)
+        || match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
+             Absent => false
+             Present { value: bound } =>
+               resolved.occurrence_identity == bound.occurrence_identity
+                 || peeled.occurrence_identity == bound.occurrence_identity
+                 || peeled2.occurrence_identity == bound.occurrence_identity
+           }
+  }
+}
+
 fn is_uninhabited_sum(resolved: Node, env: TypeEnv) -> Bool {
   if resolved.connective == Disj {
     (resolved.children |> count) == 0
   } else if resolved.connective != NoConnective || (resolved.children |> count) != 0 {
     false
   } else {
-    match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
-      Present { value: indexed } =>
-        resolved.occurrence_identity == indexed.occurrence_identity
-      Absent =>
-        if env.module_path != (never_type_declaration.module_path as String) {
-          false
-        } else {
-          match lookup_type_by_name(env: env, name: never_type_declaration.decl_name as String) {
-            Absent => false
-            Present { value: bound } =>
-              resolved.occurrence_identity == bound.occurrence_identity
-          }
-        }
-    }
+    node_is_never_declaration(resolved: resolved, env: env)
   }
 }
 
