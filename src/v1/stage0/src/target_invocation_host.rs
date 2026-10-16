@@ -568,6 +568,15 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            // C5: the dependency-only arm of the C1 instrument. Same entry file, its own entry
+            // function -- one body of logic (wrong_capture_run) behind both labels.
+            instrument_label("compute-dependency-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_dependency_wrong_capture_exit",
+            },
+        ),
+        (
             instrument_label("compute-run-unit-sccache-probe"),
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
