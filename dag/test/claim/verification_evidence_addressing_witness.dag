@@ -62,6 +62,9 @@ import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_validation_oracle {
   ValidationVerdict,
   ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationCommandRefused,
   ValidationNotRun,
   validation_verdict_key,
 }
@@ -76,6 +79,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
   VerificationReceiptUnreadable,
   ExactVerificationReceiptAbsent,
   ExactVerificationReceiptPresent,
+  ExactVerificationReceiptSource,
   ExactVerificationReceiptUnreadable,
   CurrentVerificationSelectionObservation,
   CurrentVerificationSelection,
@@ -85,6 +89,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
   SelectionMalformed,
   SelectionObserved,
   belt_verification_decision,
+  belt_verification_resume_decision,
   BeltVerificationRun,
   BeltVerificationDefer,
   BeltVerificationRefuse,
@@ -817,4 +822,38 @@ test fn belt_verification_evidence_unreadable_projects_belt_pass_failed() -> Boo
     BeltPassRecorded => false
     BeltPassDeferred { reason: _ } => false
   }
+}
+
+fn resume_receipt_source(verdict: ValidationVerdict) -> ExactVerificationReceiptSource {
+  ExactVerificationReceiptPresent {
+    text: verification_receipt_json(receipt: fixture_receipt(window: fixture_window_w1, verdict: verdict)),
+  }
+}
+
+// THE OPERATOR RESUME RE-RUNS ONLY A RECORDED REFUSED VERDICT. A supplied refused receipt for the exact
+// subject runs (RED against belt_verification_decision, which defers it); a passed or a failed verdict
+// stays recorded (controls: a verdict is a judgment of the candidate, never re-run by a resume).
+test fn resume_runs_a_recorded_refused_verdict() -> Bool {
+  let refused = ValidationRefused { cause: ValidationCommandRefused { program: "gunbc-compute", reason: "the claim run ended refused_by_infrastructure" } }
+  (match belt_verification_decision(expected: fixture_subject(window: fixture_window_w1), source: resume_receipt_source(verdict: refused)) {
+    BeltVerificationDefer { reason: _ } => true
+    _ => false
+  })
+    && (match belt_verification_resume_decision(expected: fixture_subject(window: fixture_window_w1), source: resume_receipt_source(verdict: refused)) {
+      BeltVerificationRun => true
+      _ => false
+    })
+}
+
+test fn resume_never_re_runs_a_passed_or_failed_verdict() -> Bool {
+  let passed = ValidationPassed { command: "fixture-command", oracle_identity: content_hash_of_value(value: "oracle-fixture") }
+  let failed = ValidationFailed { command: "fixture-command", exit_code: 1, detail: "assertion failed" }
+  (match belt_verification_resume_decision(expected: fixture_subject(window: fixture_window_w1), source: resume_receipt_source(verdict: passed)) {
+    BeltVerificationDefer { reason: _ } => true
+    _ => false
+  })
+    && (match belt_verification_resume_decision(expected: fixture_subject(window: fixture_window_w1), source: resume_receipt_source(verdict: failed)) {
+      BeltVerificationDefer { reason: _ } => true
+      _ => false
+    })
 }
