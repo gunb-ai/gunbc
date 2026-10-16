@@ -8,7 +8,7 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.algebra { trim }
+import std.algebra { FreeSemigroup, non_empty_to_list, trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.tools.coreutils_stat
@@ -282,9 +282,10 @@ fn bmc_read_cause_kind(cause: BmcReadCause) -> String {
 // THE AGGREGATE OVER BMC READS THAT ALL FAILED. "The BMC did not answer" is said only when EVERY
 // cause is a definitive no-answer; otherwise each distinct kind is named, so an ambiguous IPMI
 // session failure beside a Redfish timeout reads as exactly that and not as a verdict on the BMC.
-fn bmc_all_failed_text(failed: List<BmcChannelRead>) -> String {
-  let causes = flat_map(failed, r => match channel_cause(r: r) { Present { value: c } => [c] Absent => [] })
-  let channels = concat("; failed channels: ", join(map(failed, r => r.channel as String), ", "))
+fn bmc_all_failed_text(failed: FreeSemigroup<BmcChannelRead>) -> String {
+  let failed_list = non_empty_to_list(xs: failed)
+  let causes = flat_map(failed_list, r => match channel_cause(r: r) { Present { value: c } => [c] Absent => [] })
+  let channels = concat("; failed channels: ", join(map(failed_list, r => r.channel as String), ", "))
   let empty: List<String> = []
   let kinds = fold(map(causes, c => bmc_read_cause_kind(cause: c)), init: empty, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
   let first = match causes.first() { Absent => "" Present { value: c } => bmc_read_cause_text(cause: c) }
@@ -609,9 +610,16 @@ fn megarac_override_consumption(o: MegaRacOverride) -> BootOverrideConsumption {
 // megarac_boot_run_record. A derived arm cannot be written into the record at all -- its type has no arm
 // for it -- so the agreement between the harness and the derivation is checked by the witness against
 // `run_record_findings` itself, not by a second translation of the same list.
+// The channel names are mapped across the nonempty carrier as a nonempty carrier: the head is already
+// there, so this cannot produce the empty value the List version allowed.
+fn non_empty_failed_names(failed: FreeSemigroup<BmcChannelRead>) -> FreeSemigroup<NonEmptyStr> {
+  FreeSemigroup { head: failed.head.channel, tail: map(failed.tail, c => c.channel) }
+}
+
 fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding> {
   flat_map(raw, f => match f {
-    MegaRacEveryReadFailed { failed: ch } => [EveryReadFailed { count: count(ch), channels: map(ch, c => c.channel) }]
+    MegaRacEveryReadFailed { failed: ch } => [EveryReadFailed {
+      channels: non_empty_failed_names(failed: ch) }]
     MegaRacCredentialMayRemain => [CredentialMayRemain]
     MegaRacMediaAttachNotReady { record: _ } => []
     MegaRacMediaAttachSessionHeld { record: _ } => []
@@ -942,8 +950,12 @@ fn megarac_media_attach_text(record: MegaRacMediaAttach) -> String {
 // they were decided from. These are facts about the observation, not about the machine: the
 // machine's side is the power-on account (gunbc.machine_intake.mtcollins1_power_on_account). Each is decided by
 // the *_harness function beside its record and rendered once, by harness_finding_text.
+// The failed reads are a FreeSemigroup, not a List: an "every read failed" finding that names no read is
+// not a fact, and the producer below decides nonemptiness by CONSTRUCTION (it builds the arm only when a
+// head exists) instead of guarding on count(failed) == 0. The standing arm in gunbc.host.boot_attempt
+// carries the channel names for the same reason; this is the raw record the mapping reads from.
 type HarnessFinding
-  = MegaRacEveryReadFailed { failed: List<BmcChannelRead> }
+  = MegaRacEveryReadFailed { failed: FreeSemigroup<BmcChannelRead> }
   | MegaRacMediaAttachNotReady { record: MegaRacMediaAttach }
   | MegaRacMediaAttachSessionHeld { record: MegaRacMediaAttach }
   | MegaRacHandoffWithheld { handoff: MegaRacHandoff }
@@ -1661,11 +1673,27 @@ fn channel_cause(r: BmcChannelRead) -> BmcReadCause? {
 // EVERY BMC READ THAT WAS ATTEMPTED FAILED, AND NONE ANSWERED: the failed channels, in read order.
 // Empty when any channel answered, and empty when nothing was attempted (an attempt that refused
 // before reading the credential says so in every section separately).
-fn bmc_all_reads_failed(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> List<BmcChannelRead> {
+// THE CARRIER IS THE DECISION: none of the channel reads answered -> the failed reads, as a
+// FreeSemigroup, which cannot be empty. When some channel did answer, or when nothing answered but no
+// read carries a cause either, this is `none` and no finding is raised -- the absence of a head is what
+// "there is nothing to report" means, so no separate count check can disagree with it.
+fn bmc_all_reads_failed(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> FreeSemigroup<BmcChannelRead>? {
   let reads = bmc_channel_reads(row: row, bundle: bundle)
-  let empty: List<BmcChannelRead> = []
-  if any(reads, r => channel_answered(r: r)) { empty } else {
-    filter(reads, r => match channel_cause(r: r) { Present { value: _ } => true Absent => false })
+  if any(reads, r => channel_answered(r: r)) {
+    none
+  } else {
+    non_empty_failed_reads(failed: filter(reads, r => match channel_cause(r: r) { Present { value: _ } => true Absent => false }))
+  }
+}
+
+// A List to a FreeSemigroup, total only where a head exists. Cited shape:
+// gunbc.source_admission_selection.nonempty_source_keys_from_list, which does the same by first/skip.
+// Kept local rather than minted in std.algebra because std.algebra already has the constructors
+// (non_empty_singleton, non_empty_to_list) and this is the only place in the tree needing this direction.
+fn non_empty_failed_reads(failed: List<BmcChannelRead>) -> FreeSemigroup<BmcChannelRead>? {
+  match first(failed) {
+    Absent => none
+    Present { value: h } => Present { value: FreeSemigroup { head: h, tail: skip(failed, 1) } }
   }
 }
 
@@ -1853,7 +1881,7 @@ type MegaRacBootFindings {
 
 fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> List<HarnessFinding> {
   let failed = bmc_all_reads_failed(row: row, bundle: bundle)
-  concat(if count(failed) == 0 { [] } else { [MegaRacEveryReadFailed { failed: failed }] },
+  concat(match failed { Absent => []  Present { value: xs } => [MegaRacEveryReadFailed { failed: xs }] },
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
     concat(override_harness(c: bundle.run.override),

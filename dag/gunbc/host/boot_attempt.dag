@@ -33,7 +33,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
-import std.algebra { trim }
+import std.algebra { FreeSemigroup, trim }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, DissolutionStatus, dissolution_status, retires_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -409,8 +409,20 @@ fn diagnostic_ref_text(d: DiagnosticRef) -> String {
 //
 
 
+// A fact observed BESIDE the attempt, that none of its fields can state.
+//
+// EveryReadFailed carries the failed channel NAMES and nothing else. It used to carry a `count: Int`
+// beside them, which was the same fact with two writers: a value could say count: 3 while naming one
+// channel, and the only thing that could have caught it was a witness asserting the two agreed --
+// validation standing in for construction, which §5 rules out ("a check restating a constraint the model
+// already carries is a second representation of it") and which this module already refuses for the
+// stored `ready` (correction 2). count is `length(channels)`; anyone who needs the number asks the list.
+//
+// `channels` is a FreeSemigroup, not a List (§3b Cardinality: nonemptiness belongs on
+// std.algebra::FreeSemigroup). "Every read failed" with no channel named is not a fact anyone could act
+// on, yet List permitted it; here the head exists by construction, so there is no empty value to refuse.
 type StandingFinding
-  = EveryReadFailed { count: Int, channels: List<NonEmptyStr> }
+  = EveryReadFailed { channels: FreeSemigroup<NonEmptyStr> }
   | CredentialMayRemain
 
 type DerivedFinding

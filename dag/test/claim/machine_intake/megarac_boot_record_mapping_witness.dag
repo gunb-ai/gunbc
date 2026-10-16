@@ -18,7 +18,7 @@ module test.claim.machine_intake.megarac_boot_record_mapping_witness
 // own inputs -- so a failure means the classification is wrong, not the read.
 
 import std.types { NonEmptyStr }
-import std.algebra { string_contains }
+import std.algebra { FreeSemigroup, length, non_empty_to_list, string_contains }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionPending, DissolutionFired }
 import std.measure { byte_size }
@@ -485,17 +485,40 @@ test fn an_override_read_that_failed_says_so() -> Bool {
 // beside the attempt, which no field of the record can state: which BMC channels all failed, and whether
 // the per-attempt credential was removed. Those two are the whole of what the narrowing may produce.
 
-fn every_read() -> List<HarnessFinding> {
-  [MegaRacEveryReadFailed { failed: [BmcChannelRead { channel: "ipmi", standing: BmcChannelFailed { cause: BmcTimeout { endpoint: "bmc", at: "90000000001", detail: "timeout" } } }] }]
+// A failed BMC channel read, as the transport reports it. The raw finding carries its failed reads as a
+// FreeSemigroup, so the fixture builds one the way the producer does -- a head plus a (here empty) tail.
+fn an_ipmi_failure() -> BmcChannelRead {
+  BmcChannelRead { channel: "ipmi", standing: BmcChannelFailed { cause: BmcTimeout { endpoint: "bmc", at: "90000000001", detail: "timeout" } } }
 }
 
-// One failed channel in the raw finding becomes a count and the channel's own name, both derived from
-// what the transport reported rather than restated at the call site.
-test fn an_all_channels_failed_finding_counts_and_names_the_channels() -> Bool {
+fn every_read() -> List<HarnessFinding> {
+  [MegaRacEveryReadFailed { failed: FreeSemigroup { head: an_ipmi_failure(), tail: [] } }]
+}
+
+// ONE HOME (review 81215): the standing finding carries the failed channel NAMES and nothing else. It
+// used to carry a `count` beside them, and this claim used to assert the two agreed -- validation
+// standing in for construction. Now there is no count to agree with: a reader who wants the number takes
+// it from the carrier, and this claim says the names survive the mapping and the number is DERIVED from
+// them, from the single place the fact lives.
+test fn an_all_channels_failed_finding_names_the_channels_and_nothing_else() -> Bool {
   let mapped = megarac_standing_findings(raw: every_read())
   count(mapped) == 1 && any(mapped, f => match f {
-    EveryReadFailed { count: c, channels: ch } => c == 1 && count(ch) == 1 && any(ch, n => n == "ipmi")
+    EveryReadFailed { channels: ch } =>
+      ch.head == "ipmi" && length(xs: ch.tail) == 0
+        && length(xs: non_empty_to_list(xs: ch)) == count([an_ipmi_failure()])
     CredentialMayRemain => false
+  })
+}
+
+// THE EMPTY VALUE IS UNWRITABLE, at both layers, by type rather than by check: the raw arm's carrier has
+// a head (an_ipmi_failure), and the mapping maps across that head, so no call can build an
+// "every read failed" that names no channel. This claim states what the TYPES already guarantee -- it
+// cannot fail for a fixture reason, which is the point.
+test fn an_every_read_failed_always_names_at_least_one_channel() -> Bool {
+  let mapped = megarac_standing_findings(raw: every_read())
+  all(mapped, f => match f {
+    EveryReadFailed { channels: ch } => length(xs: non_empty_to_list(xs: ch)) >= 1
+    CredentialMayRemain => true
   })
 }
 
@@ -503,7 +526,7 @@ test fn a_credential_may_remain_finding_is_standing() -> Bool {
   let mapped = megarac_standing_findings(raw: [MegaRacCredentialMayRemain])
   count(mapped) == 1 && any(mapped, f => match f {
     CredentialMayRemain => true
-    EveryReadFailed { count: _, channels: _ } => false
+    EveryReadFailed { channels: _ } => false
   })
 }
 
@@ -538,8 +561,8 @@ test fn a_mixed_harness_list_yields_only_the_standing_ones() -> Bool {
     + [MegaRacCredentialMayRemain]
   let mapped = megarac_standing_findings(raw: mixed)
   count(mapped) == 2
-    && any(mapped, f => match f { EveryReadFailed { count: _, channels: _ } => true  CredentialMayRemain => false })
-    && any(mapped, f => match f { CredentialMayRemain => true  EveryReadFailed { count: _, channels: _ } => false })
+    && any(mapped, f => match f { EveryReadFailed { channels: _ } => true  CredentialMayRemain => false })
+    && any(mapped, f => match f { CredentialMayRemain => true  EveryReadFailed { channels: _ } => false })
 }
 
 // No finding is invented by the mapping: an empty harness list stores nothing.
@@ -735,7 +758,7 @@ test fn harness_findings_come_through_the_same_call() -> Bool {
   count(r.standing) == 1
     && any(r.standing, f => match f {
          CredentialMayRemain => true
-         EveryReadFailed { count: _, channels: _ } => false
+         EveryReadFailed { channels: _ } => false
        })
 }
 
