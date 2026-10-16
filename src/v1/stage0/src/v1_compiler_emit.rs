@@ -2776,7 +2776,11 @@ pub fn bind_file_verb(
                             if (v.clone() == file_transport_verb_link_create_new()) {
                                 FileVerb::FileLinkCreateNew
                             } else {
-                                FileVerb::FileWriteOwnerOnly
+                                if (v.clone() == file_transport_verb_write_bytes()) {
+                                    FileVerb::FileWrite
+                                } else {
+                                    FileVerb::FileWriteOwnerOnly
+                                }
                             }
                         }
                     }
@@ -5957,6 +5961,15 @@ pub fn file_transport_verb_write_create_new_with_mode() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn file_transport_verb_write_bytes() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "write_bytes".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn file_transport_declared_verb(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -6142,8 +6155,9 @@ pub fn file_emission_verb_refusal(
             {
                 std::option::Option::None
             } else {
-                if ((v.clone() == file_transport_verb_write_owner_only())
+                if (((v.clone() == file_transport_verb_write_owner_only())
                     || (v.clone() == file_transport_verb_write_create_new()))
+                    || (v.clone() == file_transport_verb_write_bytes()))
                 {
                     if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
                         std::option::Option::None
