@@ -78,10 +78,25 @@ witness; no conversion exists because there is one carrier declaration.**
 
 ## 2. The principle
 
-> **External mathematics names structures; Dag names data.** `extdeps` owns accepted mathematical
-> definitions, structures and laws. `std` owns the concrete data types exposed to ordinary programs and
-> their ordinary operations. A concrete type may inhabit an external mathematical structure, but that fact
-> never gives it a second source-language name.
+> **External concepts name interfaces and structures; Dag names carriers.** `extdeps` owns externally
+> grounded abstract-data-type interfaces (thin: characteristic operations and laws over an unknown carrier),
+> mathematical structures, laws, standards and upstream specifications. `std` owns Dag's concrete carrier
+> declarations and ordinary operations. The realization layer owns host/target storage. A std carrier may
+> implement an external interface, inhabit a structure, denote a mathematical object, convert to another
+> carrier and realize as a host representation. These are distinct relations, and none gives the carrier a
+> second source-level name.
+
+Three levels, not two:
+
+| Level | Owns | List example |
+|---|---|---|
+| `extdeps.adt` | abstract interface and laws | finite ordered sequence: `empty`, `cons`, `head`, `tail` |
+| `std` | Dag carrier and semantic implementation | `std.list.List<T> = Empty \| Cons`, `list_fold`, `list_skip` |
+| realization | host storage | Rust `im::Vector` / `Vec` |
+
+An `extdeps.adt` interface is **not a carrier**. There is no `extdeps.adt.list.List<T>` type; ordinary code
+never names the interface as a type. It stays thin: `sort`, indexed access, slicing and performance guarantees
+are not essential List semantics just because `std.list` offers them.
 
 The end state **deletes `std.algebra`**. It is not relocated: each concern goes to its own home (§5.3).
 
@@ -95,9 +110,10 @@ The r1 draft used "inhabitance" for several materially different facts. Each is 
 |---|---|---|
 | What values can exist? | **Carrier declaration** | `List<T> = Empty \| Cons { head, tail }` |
 | What computation exists? | **Operation declaration** | `list_append`, `map_get` |
+| What behaviour defines an abstract data concept? | **External interface** (`extdeps.adt`) | `extdeps.adt.list`, `extdeps.adt.map` |
 | What operations and laws define a structure? | **External structure** (`extdeps.math`) | `Monoid`, `FreeMonoid`, `Ring` |
 | How does a carrier satisfy a structure? | **`Inhabits`** | `List<T>` inhabits the free monoid on `T` |
-| How does a concrete carrier satisfy an external interface (an ADT contract, not a mathematical structure)? | **`Implements`** | `std.map.Map` implements a thin `extdeps` finite-map interface |
+| How does a concrete carrier satisfy an external interface (an ADT contract, not a mathematical structure)? | **`Implements`** | `std.list.List` implements `extdeps.adt.list`, binding `empty`/`cons`/`head`/`tail` to `Empty`/`Cons`/`list_head`/`list_tail` |
 | What mathematical object does a value represent? | **`Denotes`** | `Map<K,V>` denotes a finite partial function `K ⇀ V` |
 | How do two distinct carriers cross? | **`ConvertsTo`** | `String ↔ List<Char>` |
 | How is a carrier stored or emitted? | **`RealizesAs`** | `String` realized as host text |
@@ -167,6 +183,15 @@ mixed 496-line module (carriers beside workflow ids, `MimeType`, branded strings
 - A **structure module** may import only the base carriers its signatures mention (`Bool`, `Ordering`,
   perhaps `Optional`), never a carrier's operations or witnesses.
 - The **inhabitance / denotation module** is the intentional join, and the only place both meet.
+
+Each carrier can take part in several independent joins, each its own module:
+
+| Carrier | `Implements` (`.conformance`) | `Inhabits` (`.inhabitance`) | `Denotes` (`.denotation`) | Other |
+|---|---|---|---|---|
+| `std.list.List` | `extdeps.adt.list` | `extdeps.math.free` (free monoid on `T`) | none | `RealizesAs` target sequence |
+| `std.text.String` | `extdeps.adt.string`: observed as a finite sequence of Unicode scalar values, storage hidden | free monoid on `Char` | none | `ConvertsTo` `List<Char>`; `RealizesAs` host text |
+| `std.map.Map` | `extdeps.adt.map` | only structures it really carries | finite partial function | none |
+| `std.set.Set` | `extdeps.adt.set` | join semilattice | finite subset | none |
 
 This breaks the current cycle (`std.types → std.algebra → Bool in std.types`) without a global direction rule
 across all of `std` and `extdeps`.
@@ -358,7 +383,7 @@ where a namespace is declared semantic.
 
 ### 8.1 Dependency-role gate
 
-Modules carry a declared role: `Carrier`, `CarrierOperations`, `ExternalStructure`, `StructureInhabitance`,
+Modules carry a declared role: `Carrier`, `CarrierOperations`, `ExternalInterface`, `InterfaceImplementation`, `ExternalStructure`, `StructureInhabitance`,
 `Denotation`, `Conversion`, `Realization`, `ProductOrWorkflow`. A small dependency matrix is checked.
 
 **Imports are going away** (operator, 2026-10-16). The gate is therefore stated over *resolved declaration
@@ -368,6 +393,11 @@ retirement of imports unchanged; where this doc says "imports" it means "depends
 - carrier declarations do not import their inhabitance or denotation modules;
 - external structures do not import carrier operations, and import only the base carriers their signatures
   need;
+- external interfaces depend only on the foundational carriers needed to spell signatures, never on std
+  implementation operations, and never name a host realization;
+- implementation (conformance) modules join an external interface with concrete carrier operations; a
+  carrier does not depend on its own conformance witness;
+- a realization cannot define or amend an external interface;
 - inhabitance and denotation modules may join carrier operations with structures;
 - realization modules define no source semantics;
 - product/workflow modules declare no carrier for a std concept.
@@ -387,7 +417,12 @@ Over the **whole** source-layout population (not only what required CI happens t
 - every alternative representation carries a relation; no plain carrier alias; no compatibility re-export
   after a migration;
 - structure projections are generated from the canonical declaration;
-- target representations are `RealizesAs`, never source aliases.
+- target representations are `RealizesAs`, never source aliases;
+- an external interface and its std implementation are **not** duplicates; the gate requires the
+  `Implements` edge between them. It refuses: an extdeps carrier alias; a std carrier that claims an external
+  ADT but has no `Implements` edge; two std carriers each claiming to be canonical for one concept; two
+  external interfaces with one concept identity; a copied interface inside `std`; interface operation slots
+  restated rather than bound by identity.
 
 Arbitrary semantic equivalence is not mechanically discoverable; what is enforceable is that every authored
 derivation or shared-concept claim carries a relation, and uniqueness over those claims. The existing
@@ -450,17 +485,19 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 
 ## 11. Proposed N3 ruling text
 
-> **N3 — Concrete carriers and external structures.** `List`, `NonEmptyList`, `String`, `Map` and `Set` are the
-> sole source-level carrier declarations for their programming concepts. Accepted mathematical structures are
-> declared under `extdeps.math`; they never serve as alternate source spellings for concrete carriers. A
-> carrier satisfies a structure only through one declaration-identity inhabitance instance that binds the
-> structure's operations to existing carrier operations and carries its law standing. Mathematical denotation,
-> carrier conversion, target realization and whole-to-component action are distinct typed relations and may
-> not be encoded as inhabitance. Ordinary carrier operations are declarations in the carrier's std module;
-> generic structural operations consume an inhabitance witness. Containment alone grants no lifted operation.
+> **N3 — External interfaces, concrete carriers and mathematical structures.** Externally grounded abstract
+> data concepts (List, String, Map, Set) have thin interface-and-law authorities under `extdeps.adt`.
+> Accepted mathematical structures such as FreeMonoid have their own authorities under `extdeps.math`.
+> `std.list.List`, `std.list.NonEmptyList`, `std.text.String`, `std.map.Map` and `std.set.Set` are the sole
+> source-level Dag carrier declarations for those concepts. A carrier implements an interface only through a
+> declaration-identity implementation instance binding interface operations to existing carrier operations.
+> It inhabits a structure only through a separate declaration-identity inhabitance instance carrying the
+> operation bindings and law standing. Implementation, inhabitance, denotation, conversion, target
+> realization and whole-to-component action are distinct typed relations. Ordinary code names std carriers
+> and their operations, not extdeps interfaces or structures. Containment alone grants no lifted operation.
 > `String` is one host-text-realized carrier; `List<Char>` is a distinct scalar-sequence carrier, and every
 > crossing uses its declared conversion. No plain carrier alias, compatibility re-export, spelling table or
-> independently authored structure projection may create a second live form.
+> independently authored projection may create a second live form.
 
 ---
 
@@ -521,6 +558,7 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 | I5 | `Map` key equality: on the carrier or on the operations | On the operations |
 | I6 | `map_keys` result | `Set<K>`; ordered list only with an ordering witness |
 | O1 | Run the call-site classification to validate D1 before the rewrite? | Yes, as validation, not as a prerequisite |
+| D4 | **Settled 2026-10-16 (operator, via side chat).** List/String/Map/Set keep a thin externally grounded interface in `extdeps.adt`; `std` owns the carrier and its operations; realization owns storage | Recorded |
 | I7 | `Implements` vs `Inhabits`: external ADT interfaces (thin contracts in `extdeps`: operations plus behavioural laws, no carrier) are not mathematical structures, and must not be modelled as either a structure or a second carrier. Which current `extdeps` declarations are interfaces rather than structures? | Keep `Implements` distinct; classify `extdeps` declarations as part of the §5.4 disposition pass |
 | B1 | **Scope beyond math and lists (operator concern).** How far did these patterns (second carriers, structure names standing in for data, per-layer synonyms for one operation, string-keyed identity) percolate into higher-level code: business logic, product types, workflows? | Survey before sizing the roadmap; the cleanup is likely broader than `std` (see §15) |
 | S1 | `src/v2/std` duplicates (logic, nat, integer, …) de-forked in these terms | Yes |
