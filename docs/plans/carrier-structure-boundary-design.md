@@ -11,7 +11,7 @@ of one overloaded "inhabitance"; the linear L0/L1/L2 layering is replaced by a *
 the canonical form; Map/Set **denotation** is separated from algebraic inhabitance; the operations question has
 a recommended rule; the second-form check is strengthened from name detection to typed authority uniqueness.
 
-**Decisions still needed from the operator** are in §12, at the top of that table.
+**Decisions still needed from the operator** are D1–D3 at the top of §14.
 
 ---
 
