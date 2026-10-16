@@ -7,6 +7,16 @@ import extdeps.bazel.label {
   LabelCanonicality, LabelCanonical, LabelNonCanonical, label_canonicality,
   LabelCanonicalityCause, RenderedLabelRefused, RenderedLabelStructureMismatch,
 }
+import gunbc.instruments.compute_wrong_capture {
+  // IMPORTING THE INSTRUMENT MODULE IS THE POINT OF THESE ROWS. No witness imported this module
+  // before C5, so an unparseable instrument file routed fine here, resolve-failed only at dispatch
+  // time on the fleet, and the run still printed a plausible verdict line. These rows make a parse
+  // refusal in that file refuse THIS corpus instead.
+  WrongCaptureArm,
+  wrong_capture_top_crate_arm,
+  wrong_capture_dependency_arm,
+}
+
 import gunbc.target_binding {
   TargetBinding,
   TargetBindingIndex,
@@ -1095,6 +1105,37 @@ test fn the_compute_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
 
 // C5: the dependency arm routes to the SAME entry file as C1 with its own entry function; a
 // binding that silently reused C1's function would let the dependency arm pass on top-crate marks.
+// The two arms must differ in EXACTLY the thing C5 is about: which file carries the marker. If the
+// dependency arm ever marked a top-crate source, the top crate would rebuild and a wrong capture
+// could look correct -- the masking C5 exists to remove. C1's arm must also stay as C1 left it (no
+// preamble, no extra per-output row), which is what keeps the bytes C1 prints unchanged.
+test fn the_dependency_arm_marks_only_the_in_repo_dependency_of_the_built_binaries() -> Bool {
+  let dep = wrong_capture_dependency_arm
+  let top = wrong_capture_top_crate_arm
+  let dep_marks_the_dependency = any(dep.marked_sources, p => p == "src/v1/stage0_v1_infer/src/lib.rs")
+    && (length(xs: dep.marked_sources) == 1)
+    && !any(dep.marked_sources, p => contains(p, "src/v1/stage0/src/"))
+  let top_marks_its_two_bins = any(top.marked_sources, p => p == "src/v1/stage0/src/main.rs")
+    && any(top.marked_sources, p => p == "src/v1/stage0/src/bin/claim_batch.rs")
+    && (length(xs: top.marked_sources) == 2)
+  dep_marks_the_dependency && top_marks_its_two_bins
+    && (top.name != dep.name)
+    && (top.marker_a != dep.marker_a) && (top.marker_b != dep.marker_b)
+    && (length(xs: top.preamble) == 0)
+    && (!top.per_output_verbose) && dep.per_output_verbose
+}
+
+// A marker must be able to reach a binary at all: a blank marker makes every contains_* false, and
+// both arms would then read a wrong capture as a clean exit 0.
+test fn both_arms_carry_distinct_non_blank_markers() -> Bool {
+  let arms = [wrong_capture_top_crate_arm, wrong_capture_dependency_arm]
+  (length(xs: arms) == 2)
+    && !any(arms, a => a.marker_a == a.marker_b
+    || !contains(a.marker_a, "MARKER") || !contains(a.marker_b, "MARKER")
+    || contains(a.marker_a, " ") || contains(a.marker_b, " ")
+    || contains(a.marker_a, "\n") || contains(a.marker_b, "\n"))
+}
+
 test fn the_compute_dependency_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
   match invoke_target(operand: "//gunbc/instruments:compute-dependency-wrong-capture") {
     TargetInvocationRouted { binding: b } =>

@@ -202,7 +202,7 @@ fn wrong_capture_report(instance: HostDashboardInstance, layout_a: ComputeLayout
       "output=", rel, "\n",
       "  A blob=", blob_a, " contains_A_marker=", if a_has_a { "true" } else { "false" }, " contains_B_marker=", if a_has_b { "true" } else { "false" }, "\n",
       "  B blob=", blob_b, " contains_B_marker=", if b_has_b { "true" } else { "false" }, "\n",
-      if arm.per_output_verbose { "  B contains_A_marker=", if b_has_a { "true" } else { "false" }, " (dependency arm: A's marker must never reach B)\n" } else { "" },
+      if arm.per_output_verbose { join(["  B contains_A_marker=", if b_has_a { "true" } else { "false" }, " (dependency arm: A's marker must never reach B)\n"], "") } else { "" },
       "  A_blob_equals_B_blob=", if (blob_a == blob_b) && (blob_a != "") { "true" } else { "false" }, "\n",
       "  staged_a=", staged_a, "\n  staged_b=", staged_b, "\n",
       "  staging_collides_across_identities=", if staged_a == staged_b { "true" } else { "false" }, "\n",
