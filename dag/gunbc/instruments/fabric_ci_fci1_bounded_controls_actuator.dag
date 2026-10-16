@@ -6,22 +6,10 @@ import std.optional { Present, Absent }
 import std.measure { finite_byte_size_count }
 import extdeps.shell
 import extdeps.shell.exec
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  FilesystemCreated,
-  FilesystemCreateTargetOccupied,
-  FilesystemCreateRefused,
-  FilesystemCreateKindUnrecognized,
-  FilesystemDeleted,
-  FilesystemDeleteTargetAbsent,
-  FilesystemDeleteRefused,
-  FilesystemDeleteKindUnrecognized,
-  filesystem_create_new,
-  filesystem_delete,
-}
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd { SystemdUnitProperty, LoadState, ActiveState, MemoryMax, MemoryHigh, WorkingDirectoryProperty, SliceProperty }
-import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command, systemctl_daemon_reload_argv, systemctl_stop_argv }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value, systemctl_version_command }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty,
   SystemdRunOption,
@@ -53,9 +41,7 @@ import gunbc.fabric.fci1_bounded_execution_context {
   Fci1MemoryHighExceedsMax,
   fci1_bounded_execution_context,
 }
-import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name, fci1_controls_slice_memory_max }
-import gunbc.fabric.fci1_controls_slice { fci1_controls_slice_unit_text, fci1_controls_slice_unit_path }
-import std.measure { byte_size_count }
+import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
 import gunbc.instruments.fabric_ci_calibration_actuator { fabric_ci_calibration_argv, fabric_ci_env_required }
 import gunbc.instruments.fabric_control_plane_live_probe { fci1_assert_checkpoint_token }
 
@@ -111,6 +97,9 @@ fn fci1_diagnostics(observed: Fci1Observed) -> String {
   concat(observed.stdout, observed.stderr)
 }
 
+// The controls slice is installed, verified and removed by the caller (the emitted fci1_install_controls_slice /
+// fci1_remove_controls_slice, self-rolling-back): this process is itself a gunbc run and needs the slice's
+// standing before it can start, so it cannot be the one to install it. Bounded rows join that slice.
 // ── THE BOUNDED UNIT'S COMMAND ──────────────────────────────────────────────────────────────────
 
 type Fci1UnitBound
@@ -126,7 +115,7 @@ fn fci1_unit_properties(working_directory: String, bound: Fci1UnitBound) -> List
     [SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr }],
     match bound {
       Fci1UnitBounded { max, high } => [
-        SystemdRunProperty { property: SliceProperty, value: fci1_controls_slice_unit_name as String as NonEmptyStr },
+        SystemdRunProperty { property: SliceProperty, value: fci1_controls_slice_unit_name },
         SystemdRunProperty { property: MemoryMax, value: to_string(max) as NonEmptyStr },
         SystemdRunProperty { property: MemoryHigh, value: to_string(high) as NonEmptyStr },
       ]
@@ -411,69 +400,6 @@ fn fci1_refused(reason: String) -> ProcessExit {
   ExitFailure { code: 2, reason: reason }
 }
 
-// ── THE CONTROLS SLICE: INSTALLED FROM THE MODEL ROW, SELF-ROLLING-BACK, REMOVED WITH A TYPED RESULT ──
-// Success means installed AND verified (unit file created, daemon-reload ok, live MemoryMax equals the
-// row). Any post-create failure removes what was written and refuses; the removal itself reports.
-fn fci1_slice_removed() -> String? {
-  let unit = fci1_controls_slice_unit_name as String as NonEmptyStr
-  let stopped = fci1_run_words(words: systemctl_stop_argv(unit: unit))
-  let shown = fci1_diagnostics(observed: fci1_run_command(command: systemctl_show_properties_command(unit: unit, properties: [LoadState])))
-  let stop_problem = if stopped.exit_code == 0 { none } else {
-    match systemctl_show_property_value(text: shown, key: "LoadState") {
-      Present { value: "not-found" } => none
-      _ => Present { value: join(["ControlRefused: slice stop failed: ", fci1_diagnostics(observed: stopped)], "") }
-    }
-  }
-  let path = fci1_controls_slice_unit_path()
-  let deleted = Filesystem.Delete(path: path)
-  let delete_problem = match filesystem_delete(path: path, success: deleted.success, error: deleted.error, error_kind: deleted.error_kind) {
-    FilesystemDeleted { path: _ } => none
-    FilesystemDeleteTargetAbsent { path: _ } => none
-    FilesystemDeleteRefused { path: _, kind: _, error: e } => Present { value: concat("ControlRefused: slice unit delete refused: ", e) }
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: e } => Present { value: concat("ControlRefused: slice unit delete refused: ", e) }
-  }
-  let reloaded = fci1_run_words(words: systemctl_daemon_reload_argv())
-  let reload_problem = if reloaded.exit_code == 0 { none } else { Present { value: concat("ControlRefused: daemon-reload after slice removal failed: ", fci1_diagnostics(observed: reloaded)) } }
-  match stop_problem {
-    Present { value: s } => Present { value: s }
-    Absent => match delete_problem {
-      Present { value: d } => Present { value: d }
-      Absent => reload_problem
-    }
-  }
-}
-
-fn fci1_slice_install_rolled_back(reason: String) -> String? {
-  match fci1_slice_removed() {
-    Present { value: r } => Present { value: join([reason, "; rollback also failed: ", r], "") }
-    Absent => Present { value: reason }
-  }
-}
-
-fn fci1_slice_installed() -> String? {
-  let path = fci1_controls_slice_unit_path()
-  let created = Filesystem.WriteCreateNew(path: path, content: fci1_controls_slice_unit_text())
-  match filesystem_create_new(path: path, success: created.success, error: created.error, error_kind: created.error_kind) {
-    FilesystemCreateTargetOccupied { path: _ } => Present { value: "ControlRefused: controls slice unit already exists" }
-    FilesystemCreateRefused { path: _, kind: _, error: e } => fci1_slice_install_rolled_back(reason: concat("ControlRefused: slice unit write refused: ", e))
-    FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => fci1_slice_install_rolled_back(reason: concat("ControlRefused: slice unit write refused: ", e))
-    FilesystemCreated { path: _ } =>
-      let reloaded = fci1_run_words(words: systemctl_daemon_reload_argv())
-      if reloaded.exit_code != 0 {
-        fci1_slice_install_rolled_back(reason: concat("ControlRefused: daemon-reload failed: ", fci1_diagnostics(observed: reloaded)))
-      } else {
-        let unit = fci1_controls_slice_unit_name as String as NonEmptyStr
-        let live = fci1_diagnostics(observed: fci1_run_command(command: systemctl_show_properties_command(unit: unit, properties: [MemoryMax])))
-        match systemctl_show_property_value(text: live, key: "MemoryMax") {
-          Present { value: v } =>
-            if v == to_string(byte_size_count(b: fci1_controls_slice_memory_max())) { none }
-            else { fci1_slice_install_rolled_back(reason: concat("ControlRefused: slice cap not live: ", v)) }
-          Absent => fci1_slice_install_rolled_back(reason: "ControlRefused: slice cap not live: unreadable")
-        }
-      }
-  }
-}
-
 fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
   let before_store = fci1_store_state()
   let before_runtime = fci1_runtime_state()
@@ -502,18 +428,6 @@ fn fci1_bounded_controls_after(gunbc_bin: String, checkout_root: String, context
   }
 }
 
-fn fci1_bounded_controls_in_slice(gunbc_bin: String, checkout_root: String, context: Fci1BoundedExecutionContext) -> ProcessExit {
-  match fci1_slice_installed() {
-    Present { value: reason } => exit_failure(reason: reason)
-    Absent =>
-      let outcome = fci1_bounded_controls_after(gunbc_bin: gunbc_bin, checkout_root: checkout_root, context: context)
-      match fci1_slice_removed() {
-        Present { value: teardown } => exit_failure(reason: teardown)
-        Absent => outcome
-      }
-  }
-}
-
 fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String) -> ProcessExit {
   let executable = fci1_run_words(words: shell_test_is_executable_argv(path: gunbc_bin as FilePath))
   if executable.exit_code != 0 {
@@ -524,7 +438,7 @@ fn fci1_bounded_controls_on_srv3(gunbc_bin: String, checkout_root: String) -> Pr
       Fci1MemoryHighNonPositive { observed } => exit_failure(reason: concat("ControlRefused: MemoryHigh not finite-positive: ", to_string(observed)))
       Fci1MemoryHighExceedsMax { high: _, max: _ } => exit_failure(reason: "ControlRefused: MemoryHigh exceeds MemoryMax")
       Fci1BoundedExecutionContextBuilt { context } =>
-        fci1_bounded_controls_in_slice(gunbc_bin: gunbc_bin, checkout_root: checkout_root, context: context)
+        fci1_bounded_controls_after(gunbc_bin: gunbc_bin, checkout_root: checkout_root, context: context)
     }
   }
 }
