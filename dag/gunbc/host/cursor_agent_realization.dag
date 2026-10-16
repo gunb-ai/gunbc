@@ -4,6 +4,8 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.uri { Uri }
+import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
+import std.types { path_segment_is_safe }
 import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.llm.cursor_agent_distribution {
   cursor_agent_linux_arm64_tarball_uri,
@@ -77,39 +79,39 @@ fn cursor_agent_sandbox_helper_path(version: NonEmptyStr) -> String {
 
 type CursorAgentPathRefusal
   = PathHasWildcard
-  | PathHasParentTraversal
-  | PathUnderUserWritableRoot
+  | PathHasUnsafeSegment
   | PathOutsidePinnedRoot
 
 type CursorAgentPathAdmission
   = CursorAgentPathAdmitted { path: String }
   | CursorAgentPathRefused { path: String, refusal: CursorAgentPathRefusal }
 
-fn path_has_wildcard(path: String) -> Bool {
+// AppArmor path globbing metacharacters. This is the one predicate here with no corpus authority: the
+// vendor profile's defect is exactly that its attachment is a glob, and std.types path_segment_is_safe
+// is about directory-name hostility (/ \ . .. control bytes), not about what AppArmor reads as a pattern.
+fn path_has_apparmor_glob(path: String) -> Bool {
   string_contains(s: path, pattern: "*") || string_contains(s: path, pattern: "?")
     || string_contains(s: path, pattern: "[") || string_contains(s: path, pattern: "{")
 }
 
-fn path_under_user_writable_root(path: String) -> Bool {
-  starts_with(s: path, prefix: "/home/") || starts_with(s: path, prefix: "/root/")
-    || starts_with(s: path, prefix: "/tmp/") || starts_with(s: path, prefix: "/var/tmp/")
-    || starts_with(s: path, prefix: "/dev/shm/")
+fn segments_all_safe(path_below_root: String) -> Bool {
+  fold(split(s: path_below_root, delimiter: "/"), init: true, f: (acc, seg) => acc && path_segment_is_safe(raw: seg))
 }
 
-// A PROFILE ATTACHMENT OR EXEC PATH IS EXACT, UNDER THE PINNED ROOT, AND NAMES NO PRINCIPAL-WRITABLE
-// LOCATION. Each refusal is its own cause so a rejected path says which wall it hit; the order puts the
-// wildcard first because it is the vendor profile's defect.
+// A PROFILE ATTACHMENT OR EXEC PATH IS EXACT AND UNDER THE PINNED ROOT, WHICH IS ROOT-OWNED. Being
+// under that root is what excludes every principal-writable location (/home, /tmp, ...), so there is no
+// second list of such places to keep. Segment safety is the corpus's path_segment_is_safe, so `..`, `.`
+// and empty segments (`//`) refuse through the same law every branded directory id uses.
 fn admit_cursor_agent_path(path: String) -> CursorAgentPathAdmission {
-  if path_has_wildcard(path: path) {
+  let root_prefix = join([cursor_agent_realization_root, "/"], "")
+  if path_has_apparmor_glob(path: path) {
     CursorAgentPathRefused { path: path, refusal: PathHasWildcard }
-  } else if string_contains(s: path, pattern: "..") {
-    CursorAgentPathRefused { path: path, refusal: PathHasParentTraversal }
-  } else if path_under_user_writable_root(path: path) {
-    CursorAgentPathRefused { path: path, refusal: PathUnderUserWritableRoot }
-  } else if starts_with(s: path, prefix: join([cursor_agent_realization_root, "/"], "")) {
-    CursorAgentPathAdmitted { path: path }
-  } else {
+  } else if starts_with(s: path, prefix: root_prefix) == false {
     CursorAgentPathRefused { path: path, refusal: PathOutsidePinnedRoot }
+  } else if segments_all_safe(path_below_root: substring(s: path, start: string_length(s: root_prefix), end: string_length(s: path))) == false {
+    CursorAgentPathRefused { path: path, refusal: PathHasUnsafeSegment }
+  } else {
+    CursorAgentPathAdmitted { path: path }
   }
 }
 
@@ -119,9 +121,12 @@ data cursor_agent_profile_name: NonEmptyStr = "gunbc_cursor_sandbox_agent_cli" a
 
 data cursor_agent_profile_file_path: String = "/etc/apparmor.d/gunbc-cursor-sandbox-agent-cli"
 
-data cursor_agent_profile_owner: String = "root:root"
+data cursor_agent_root_uid: Int = 0
 
-data cursor_agent_profile_mode: String = "644"
+data cursor_agent_root_gid: Int = 0
+
+// The mode is compared as the corpus's own FileMode, rendered by extdeps.access.posix file_mode_octal.
+data cursor_agent_profile_mode_octal: String = "0644"
 
 fn render_profile_rule(rule: CursorSandboxProfileRule) -> String {
   match rule {
@@ -168,10 +173,8 @@ data cursor_agent_pinned_profile_sha256: Sha256Digest = Sha256Digest {
 // OBSERVATIONS ARE SUPPLIED; the converge's observe step produces them (stat, sha256sum, find, the
 // kernel's profiles file). A missing observation is Unobserved, never a pass.
 
-type ModeBits { owner: Int, group: Int, other: Int }
-
 type ProfileFileObservation
-  = ProfileFileObserved { owner: String, mode: String, sha256sum_line: String }
+  = ProfileFileObserved { ownership: FileOwnership, mode: FileMode, sha256sum_line: String }
   | ProfileFileUnobserved { reason: String }
 
 // `profiles` is the text of /sys/kernel/security/apparmor/profiles, one `name (mode)` per line.
@@ -209,25 +212,26 @@ type CursorAgentReadback
   | CursorAgentReadbackFails { cause: CursorAgentReadbackFailure }
   | CursorAgentReadbackUnobserved { reason: String }
 
-fn mode_digit_grants_write(digit: Int) -> Bool {
-  digit == 2 || digit == 3 || digit == 6 || digit == 7
-}
-
-fn mode_bits_group_or_other_writable(bits: ModeBits) -> Bool {
-  mode_digit_grants_write(digit: bits.group) || mode_digit_grants_write(digit: bits.other)
-}
-
 fn loaded_profile_line_enforcing() -> String {
   join([cursor_agent_profile_name as String, " (enforce)"], "")
+}
+
+// WHOLE-LINE MATCH: a longer name that merely ends in ours must not read as ours.
+fn profiles_have_line(profiles: String, line: String) -> Bool {
+  fold(split(s: profiles, delimiter: "\n"), init: false, f: (acc, l) => acc || l == line)
+}
+
+fn profiles_have_line_starting(profiles: String, prefix: String) -> Bool {
+  fold(split(s: profiles, delimiter: "\n"), init: false, f: (acc, l) => acc || starts_with(s: l, prefix: prefix))
 }
 
 fn readback_profile_file(observed: ProfileFileObservation) -> CursorAgentReadback {
   match observed {
     ProfileFileUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
-    ProfileFileObserved { owner: o, mode: m, sha256sum_line: line } =>
-      if o != cursor_agent_profile_owner {
+    ProfileFileObserved { ownership: o, mode: m, sha256sum_line: line } =>
+      if o.uid != cursor_agent_root_uid || o.gid != cursor_agent_root_gid {
         CursorAgentReadbackFails { cause: ProfileNotRootOwned }
-      } else if m != cursor_agent_profile_mode {
+      } else if file_mode_octal(mode: m) != cursor_agent_profile_mode_octal {
         CursorAgentReadbackFails { cause: ProfileModeNotPinned }
       } else {
         match sha256sum_line_digest(line: line) {
@@ -249,9 +253,9 @@ fn readback_loaded_profile(observed: LoadedProfilesObservation) -> CursorAgentRe
   match observed {
     LoadedProfilesUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
     LoadedProfilesObserved { profiles: p } =>
-      if string_contains(s: p, pattern: loaded_profile_line_enforcing()) {
+      if profiles_have_line(profiles: p, line: loaded_profile_line_enforcing()) {
         CursorAgentReadbackHolds
-      } else if string_contains(s: p, pattern: cursor_agent_profile_name as String) {
+      } else if profiles_have_line_starting(profiles: p, prefix: join([cursor_agent_profile_name as String, " ("], "")) {
         CursorAgentReadbackFails { cause: ProfileLoadedNotEnforcing }
       } else {
         CursorAgentReadbackFails { cause: ProfileNotLoaded }

@@ -9,12 +9,12 @@ import gunbc.host.cursor_agent_realization {
   CursorAgentPathAdmitted,
   CursorAgentPathRefused,
   PathHasWildcard,
-  PathHasParentTraversal,
-  PathUnderUserWritableRoot,
+  PathHasUnsafeSegment,
   PathOutsidePinnedRoot,
   render_cursor_agent_profile,
   CursorAgentProfileRendered,
   CursorAgentProfileUnrenderable,
+  ProfileFileObservation,
   ProfileFileObserved,
   ProfileFileUnobserved,
   LoadedProfilesObserved,
@@ -37,9 +37,8 @@ import gunbc.host.cursor_agent_realization {
   InstallSymlinkEscapes,
   cursor_agent_realization_readback,
   readback_install_tree,
-  ModeBits,
-  mode_bits_group_or_other_writable,
 }
+import extdeps.access.posix { FileOwnership, file_mode_of_octal_text }
 
 // SUPPLIED VALUES AT ONE INTERFACE. The expected profile below is typed out, not derived, so a renderer
 // that leaks the vendor glob, drops `userns,`, or attaches a different path fails here.
@@ -75,11 +74,15 @@ test fn the_vendor_attachment_glob_is_refused_as_a_wildcard() -> Bool {
 
 test fn user_writable_traversing_and_foreign_paths_are_refused_with_their_own_cause() -> Bool {
   (match admit_cursor_agent_path(path: "/home/briansrls/.local/share/cursor-agent/versions/2026.09.15-d2fe57e/cursorsandbox") {
-    CursorAgentPathRefused { path: _, refusal: PathUnderUserWritableRoot } => true
+    CursorAgentPathRefused { path: _, refusal: PathOutsidePinnedRoot } => true
     _ => false
   })
     && (match admit_cursor_agent_path(path: "/opt/gunbc/cursor-agent/../../../home/x/cursorsandbox") {
-      CursorAgentPathRefused { path: _, refusal: PathHasParentTraversal } => true
+      CursorAgentPathRefused { path: _, refusal: PathHasUnsafeSegment } => true
+      _ => false
+    })
+    && (match admit_cursor_agent_path(path: "/opt/gunbc/cursor-agent//x/cursorsandbox") {
+      CursorAgentPathRefused { path: _, refusal: PathHasUnsafeSegment } => true
       _ => false
     })
     && (match admit_cursor_agent_path(path: "/usr/local/bin/cursor-agent") {
@@ -107,8 +110,15 @@ test fn the_pinned_helper_path_is_admitted_and_a_wildcard_is_never_rendered() ->
 
 data good_line: String = "1daecb56016b61b8651631ab196a114613ac5ff71deae46fafd0c5ee4da9c98d  /etc/apparmor.d/gunbc-cursor-sandbox-agent-cli"
 
-fn good_file() -> ProfileFileObserved {
-  ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: good_line }
+fn file_of(uid: Int, gid: Int, mode_text: String, line: String) -> ProfileFileObservation {
+  match file_mode_of_octal_text(text: mode_text) {
+    Present { value: m } => ProfileFileObserved { ownership: FileOwnership { uid: uid, gid: gid }, mode: m, sha256sum_line: line }
+    Absent => ProfileFileUnobserved { reason: "witness mode text unreadable" }
+  }
+}
+
+fn good_file() -> ProfileFileObservation {
+  file_of(uid: 0, gid: 0, mode_text: "644", line: good_line)
 }
 
 data good_profiles: String = "unconfined\ngunbc_cursor_sandbox_agent_cli (enforce)\nsnap.x (enforce)\n"
@@ -123,7 +133,7 @@ fn good_tree() -> InstallTreeObserved {
   }
 }
 
-fn read_back(file: ProfileFileObserved, profiles: String, tree: InstallTreeObserved) -> Bool {
+fn read_back(file: ProfileFileObservation, profiles: String, tree: InstallTreeObserved) -> Bool {
   match cursor_agent_realization_readback(
     profile_file: file,
     loaded: LoadedProfilesObserved { profiles: profiles },
@@ -140,22 +150,22 @@ test fn a_root_owned_pinned_loaded_enforcing_complete_tree_holds() -> Bool {
 
 test fn each_wrong_leg_fails_with_its_own_cause() -> Bool {
   (match cursor_agent_realization_readback(
-    profile_file: ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: "0000000000000000000000000000000000000000000000000000000000000000  x" },
+    profile_file: file_of(uid: 0, gid: 0, mode_text: "644", line: "0000000000000000000000000000000000000000000000000000000000000000  x"),
     loaded: LoadedProfilesObserved { profiles: good_profiles },
     tree: good_tree(),
   ) { CursorAgentReadbackFails { cause: ProfileDigestMismatch } => true, _ => false })
     && (match cursor_agent_realization_readback(
-      profile_file: ProfileFileObserved { owner: "briansrls:briansrls", mode: "644", sha256sum_line: good_line },
+      profile_file: file_of(uid: 1000, gid: 1000, mode_text: "644", line: good_line),
       loaded: LoadedProfilesObserved { profiles: good_profiles },
       tree: good_tree(),
     ) { CursorAgentReadbackFails { cause: ProfileNotRootOwned } => true, _ => false })
     && (match cursor_agent_realization_readback(
-      profile_file: ProfileFileObserved { owner: "root:root", mode: "664", sha256sum_line: good_line },
+      profile_file: file_of(uid: 0, gid: 0, mode_text: "664", line: good_line),
       loaded: LoadedProfilesObserved { profiles: good_profiles },
       tree: good_tree(),
     ) { CursorAgentReadbackFails { cause: ProfileModeNotPinned } => true, _ => false })
     && (match cursor_agent_realization_readback(
-      profile_file: ProfileFileObserved { owner: "root:root", mode: "644", sha256sum_line: "not a digest" },
+      profile_file: file_of(uid: 0, gid: 0, mode_text: "644", line: "not a digest"),
       loaded: LoadedProfilesObserved { profiles: good_profiles },
       tree: good_tree(),
     ) { CursorAgentReadbackFails { cause: ProfileDigestUnreadable } => true, _ => false })
@@ -193,8 +203,16 @@ test fn unobserved_never_holds_and_failure_dominates_it() -> Bool {
     ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
 }
 
-test fn only_group_or_other_write_bits_count_as_writable() -> Bool {
-  !mode_bits_group_or_other_writable(bits: ModeBits { owner: 7, group: 5, other: 5 })
-    && mode_bits_group_or_other_writable(bits: ModeBits { owner: 7, group: 7, other: 5 })
-    && mode_bits_group_or_other_writable(bits: ModeBits { owner: 6, group: 4, other: 2 })
+// A longer name that merely ends in ours, or a different profile that merely contains it, is not ours.
+test fn a_lookalike_profile_name_is_not_the_pinned_profile() -> Bool {
+  (match cursor_agent_realization_readback(
+    profile_file: good_file(),
+    loaded: LoadedProfilesObserved { profiles: "x_gunbc_cursor_sandbox_agent_cli (enforce)\n" },
+    tree: good_tree(),
+  ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
+    && (match cursor_agent_realization_readback(
+      profile_file: good_file(),
+      loaded: LoadedProfilesObserved { profiles: "gunbc_cursor_sandbox_agent_cli_old (enforce)\n" },
+      tree: good_tree(),
+    ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
 }
