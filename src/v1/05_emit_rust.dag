@@ -3778,7 +3778,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
-      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed) || (native_effects.admissions |> count) > 0
+      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed) || native_entry_has_effects(effects: native_effects)
     }
   }
   let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
@@ -18630,6 +18630,13 @@ fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemIn
         admissions: concat(resource_admissions, service_admissions)
       } }
     }
+  }
+}
+
+fn native_entry_has_effects(effects: NativeEntryEffects?) -> Bool {
+  match effects {
+    Absent => false
+    Present { value: e } => (e.admissions |> count) > 0
   }
 }
 
