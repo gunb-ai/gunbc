@@ -20,7 +20,12 @@ import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
-import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
+import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
+  mtcollins1_bmc_secure_standing, mtcollins1_intake_subject, mtcollins1_unit_key_standing,
+}
+import gunbc.host.physical_machine_binding {
+  PhysicalMachineAdmitted, physical_machine_admission,
+}
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
 import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
@@ -113,7 +118,12 @@ type ManagedHostAdmissionHold
 
 type ManagedHostAdmission sole_constructor {
   host: HostIdentity
-  subject: MachineIntakeSubject
+  // The SEALED SUBJECT (cut 1): the three-axis join of physical identity (unit + current intake
+  // subject), optional fleet binding, and control standing, forged only by physical_machine_admission.
+  // A host label alone is insufficient: a host identity can outlive a board swap, arrival boots before
+  // a host identity exists, and a receipt taken before a DIMM or firmware change must not apply to the
+  // repaired assembly. Effects take THIS, never the host name.
+  binding: gunbc.host.physical_machine_binding.PhysicalMachineBinding
   access: BmcAccessObservationStanding
   secure: BmcSecureStanding
   hold: ManagedHostAdmissionHold
@@ -125,7 +135,7 @@ type ManagedHostAdmission sole_constructor {
 
 fn managed_host_admission(
   host: HostIdentity,
-  subject: MachineIntakeSubject,
+  binding: gunbc.host.physical_machine_binding.PhysicalMachineBinding,
   access: BmcAccessObservationStanding,
   secure: BmcSecureStanding,
   hold: ManagedHostAdmissionHold,
@@ -152,7 +162,7 @@ fn managed_host_admission(
 {
   ManagedHostAdmission {
     host: host,
-    subject: subject,
+    binding: binding,
     access: access,
     secure: secure,
     hold: hold,
@@ -218,16 +228,21 @@ fn smpro_controller_host(smpro: SmproSiteStanding) -> NonEmptyStr? {
 
 fn receipt_matches_record(record: ManagedHostAdmission) -> Bool {
   (record.receipt.host as String) == (record.host as String)
-    && (record.receipt.secure_attempt as NonEmptyStr) == (record.subject.attempt_id as NonEmptyStr)
+    && (record.receipt.secure_attempt as NonEmptyStr) == (record.binding.subject.attempt_id as NonEmptyStr)
     && match access_controller_host(access: record.access) {
       Absent => false
       Present { value: h } => (record.receipt.access_host as String) == (h as String)
     }
 }
 
+// The ad-hoc UNIT-KEY JOIN (secure.subject.unit_key == record.subject.unit_key) is DELETED, not kept
+// as a tautology: the ONLY mint for PhysicalMachineBinding (gunbc.host.physical_machine_binding
+// physical_machine_admission) refuses a subject whose unit differs from the key and a control route
+// whose unit differs from axis-1's, so no record can exist in which the two disagree (snappy-seal-211,
+// delete-first, 2026-10-16). What REMAINS is the endpoint agreement across access/secure/smpro, which
+// the binding mint does NOT enforce -- a different fact, judged in exactly one place.
 fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
-  (record.secure.subject.subject.unit_key as NonEmptyStr) == (record.subject.subject.unit_key as NonEmptyStr)
-    && match access_controller_host(access: record.access) {
+  match access_controller_host(access: record.access) {
       Absent => false
       Present { value: access_host } =>
         match secure_controller_host(secure: record.secure) {
@@ -316,7 +331,7 @@ fn project_managed_host_admission(
           Absent => none
           Present { value: current } => {
             let row = row_from_admission(record: record, hold: hold)
-            match compare_qualification_subject(admitted: record.subject.subject, observed: current.subject) {
+            match compare_qualification_subject(admitted: record.binding.subject.subject, observed: current.subject) {
               SubjectCurrent => Present { value: ordinary_member(host: row) }
               SubjectStale { axes: _ } =>
                 match record.covering_drop {
@@ -328,7 +343,7 @@ fn project_managed_host_admission(
                       Present {
                         value: member_under_declared_drop(
                           drop: drop,
-                          standing_subject: record.subject,
+                          standing_subject: record.binding.subject,
                           current_subject: current,
                           host: row,
                         ),
@@ -370,22 +385,36 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
           match access_controller_host(access: mtcollins1_access_standing) {
             Absent => none
             Present { value: access_host } =>
-              Present {
-                value: managed_host_admission(
-                  host: operator_host_mtcollins1,
-                  subject: subject,
-                  access: mtcollins1_access_standing,
-                  secure: secure,
-                  hold: AdmissionHoldDecided { hold: mtcollins1_unit_hold() },
-                  smpro: mtcollins1_smpro_site(),
-                  receipt: managed_host_admission_receipt(
-                    host: operator_host_mtcollins1,
-                    access_host: access_host,
-                    secure_attempt: subject.attempt_id,
-                  ),
-                  current_subject: mtcollins1_current_intake_subject(),
-                  covering_drop: Present { value: mtcollins1_bmc_secure_standing_predates_reflash },
-                ),
+              // The record's effect subject is SEALED by the three-axis admission, not assembled by
+              // hand: axis 1 the unit key + this intake subject; axis 2 ABSENT (mtcollins1 is
+              // unenrolled -- a valid subject with an absent host, RED3's positive path); axis 3 the
+              // control binding keyed by endpoint+unit. A Refused seal means NO record exists.
+              match physical_machine_admission(
+                host: operator_host_mtcollins1,
+                unit_standing: mtcollins1_unit_key_standing,
+                current_subject: Present { value: subject },
+                fleet: Absent,
+                control: Present { value: bmc_control_binding(observed: mtcollins1_access_standing, secured: secure) },
+              ) {
+                PhysicalMachineAdmitted { binding } =>
+                  Present {
+                    value: managed_host_admission(
+                      host: operator_host_mtcollins1,
+                      binding: binding,
+                      access: mtcollins1_access_standing,
+                      secure: secure,
+                      hold: AdmissionHoldDecided { hold: mtcollins1_unit_hold() },
+                      smpro: mtcollins1_smpro_site(),
+                      receipt: managed_host_admission_receipt(
+                        host: operator_host_mtcollins1,
+                        access_host: access_host,
+                        secure_attempt: subject.attempt_id,
+                      ),
+                      current_subject: mtcollins1_current_intake_subject(),
+                      covering_drop: Present { value: mtcollins1_bmc_secure_standing_predates_reflash },
+                    ),
+                  }
+                gunbc.host.physical_machine_binding.PhysicalMachineRefused { cause: _ } => none
               }
           }
       }
