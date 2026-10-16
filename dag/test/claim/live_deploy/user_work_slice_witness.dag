@@ -1,5 +1,6 @@
 module test.claim.live_deploy.user_work_slice_witness
 
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.measure { byte_size_count, kibibyte, byte_size }
@@ -10,6 +11,7 @@ import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_user_scope_command,
   SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused, systemd_summary_printing_wait_argv,
+  systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
 }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
@@ -20,6 +22,7 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_unit_name,
   fci1_controls_slice_unit_name, fci1_controls_slice_memory_max, fci1_controls_slice_memory_high, fci1_controls_slice_memory_swap_max,
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
+  attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
@@ -58,6 +61,7 @@ import gunbc.compute.unit_bounds {
   UserWorkScopeStanding,
   BuildBuddyRunIdPresent, BuildBuddyRunIdAbsent,
   UserSessionAbsent,
+  BoundedByObservedCgroup, CgroupBoundObservation, CgroupChainUnbounded, CgroupChainNotObserved, cgroup_bound_fallthrough_wire, CgroupChainRead, CgroupChainUnread,
   UserManagerOwed, CgroupUnreadable, UserManagerProbeFailed,
   WrapIntoUserWorkSlice, SkipUserWorkScope, RefuseUserWorkScope,
 }
@@ -83,7 +87,10 @@ data seed_user_work_scope_path: String = "src/v1/stage0/src/cli_run/user_work_sc
 data claim_batch_bin_path: String = "src/v1/stage0/src/bin/claim_batch.rs"
 
 fn property_words(props: List<SystemdRunProperty>) -> List<String> {
-  props |> map(p => concat(systemd_unit_property_wire(property: p.property) as String, concat("=", p.value as String)))
+  props |> map(p => match systemd_run_property_assignment(property: p) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => a
+    SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+  })
 }
 
 fn has_property(props: List<SystemdRunProperty>, needle: String) -> Bool {
@@ -103,7 +110,7 @@ test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
     UserWorkPoolSlotsDerived { slots } =>
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
+          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 4
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
   }
@@ -211,25 +218,25 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_prefix() -> Bool {
 }
 
 test fn user_work_scope_standing_selects_from_supplied_observations() -> Bool {
-  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+  match user_work_scope_standing(unit_test: true, github_actions: true, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
     UnitTestExempt =>
-      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+      match user_work_scope_standing(unit_test: false, github_actions: true, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
         CiExempt =>
-          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+          match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
             CgroupUnreadable =>
-              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+              match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: user_work_slice_unit_name as String }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                 AlreadyInSlice =>
-                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+                  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: runner_unit_prefix }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                     RunnerSlotExempt =>
-                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+                      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: join(["0::/system.slice/", gunbc_tree_sync_unit_name as String], "") }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                         UncappedSystemSlice { unit, slice } =>
                           unit == (gunbc_tree_sync_unit_name as String)
                             && slice == "system.slice"
-                            && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: true, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+                            && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                               UserManagerOwed =>
-                                match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+                                match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
                                   UserManagerProbeFailed =>
-                                    match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+                                    match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: "" }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
                                       UserSessionAbsent => true
                                       _ => false
                                     }
@@ -312,6 +319,11 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "ExemptSystemUnit")
     && string_contains(s: seed, pattern: "UncappedSystemSlice")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds observed_cgroup_bound`")
+    && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`")
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainUnbounded), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: CgroupChainNotObserved { detail: "" }), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_standing_wire(s: BoundedByObservedCgroup { cgroup: "", memory_max: byte_size(count: 0) }), "\"")))
     && string_contains(s: seed, pattern: "std::process::exit(2)")
     && string_contains(s: seed, pattern: "UserWorkSliceAbsent")
     && string_contains(s: seed, pattern: "UserWorkSliceUncapped")
@@ -344,7 +356,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     s: user_work_scope_standing(
       unit_test: false,
       github_actions: false,
-      cgroup: CgroupText { text: sessions },
+      cgroup: CgroupText { text: sessions }, bound: CgroupChainUnread { detail: "fixture" },
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       slice_memory: RootMemoryUnreadable,
@@ -354,7 +366,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     s: user_work_scope_standing(
       unit_test: false,
       github_actions: false,
-      cgroup: CgroupText { text: system_svc },
+      cgroup: CgroupText { text: system_svc }, bound: CgroupChainUnread { detail: "fixture" },
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       slice_memory: RootMemoryUnreadable,
@@ -364,7 +376,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     s: user_work_scope_standing_with_root_memory(
       unit_test: false,
       github_actions: false,
-      cgroup: CgroupText { text: "0::/" },
+      cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
       systemd_manager_present: false,
       user_manager_reachable: false,
       xdg_runtime_dir: false,
@@ -377,7 +389,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     s: user_work_scope_standing_with_root_memory(
       unit_test: false,
       github_actions: false,
-      cgroup: CgroupText { text: "0::/" },
+      cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
       systemd_manager_present: false,
       user_manager_reachable: false,
       xdg_runtime_dir: false,
@@ -396,7 +408,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
     s: user_work_scope_standing(
       unit_test: false,
       github_actions: false,
-      cgroup: CgroupText { text: modeled },
+      cgroup: CgroupText { text: modeled }, bound: CgroupChainUnread { detail: "fixture" },
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       slice_memory: RootMemoryCapped { bytes: byte_size(1) },
@@ -407,6 +419,7 @@ test fn the_seed_classifies_the_same_fixture_cgroups_as_the_fold() -> Bool {
       unit_test: false,
       github_actions: false,
       cgroup: CgroupText { text: modeled },
+      bound: CgroupChainUnread { detail: "fixture" },
       user_manager_reachable: false,
       xdg_runtime_dir: false,
       slice_memory: RootMemoryCapped { bytes: byte_size(0) },
@@ -447,7 +460,7 @@ test fn a_system_slice_named_service_cgroup_refuses_uncapped() -> Bool {
     SystemServiceNamed { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == "system.slice"
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
           UncappedSystemSlice { unit: u, slice: sl } =>
             u == unit
               && sl == "system.slice"
@@ -472,10 +485,32 @@ test fn tree_sync_under_its_declared_slice_is_exempt() -> Bool {
     Absent => false
     Present { value: max } =>
       byte_size_count(b: max) == byte_size_count(b: repository_convergence_slice_memory_max)
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
           ExemptSystemUnit { unit, slice, bound } =>
             unit == (gunbc_tree_sync_unit_name as String)
               && slice == (gunbc_repository_convergence_slice_unit_name as String)
+              && byte_size_count(b: bound) == byte_size_count(b: max)
+              && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: bound }) {
+                SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es, bound: eb } } =>
+                  eu == unit && es == slice && byte_size_count(b: eb) == byte_size_count(b: bound)
+                _ => false
+              }
+          _ => false
+        }
+  }
+}
+
+test fn an_attempt_worker_under_its_declared_slice_is_wrap_exempt() -> Bool {
+  let worker = "gunbc-attempt-n-k.service"
+  let cg = join(["0::/", attempt_worker_slice_unit_name as String, "/", worker], "")
+  match modeled_system_slice_memory_max(unit: attempt_worker_slice_unit_name as String) {
+    Absent => false
+    Present { value: max } =>
+      byte_size_count(b: max) == byte_size_count(b: attempt_worker_slice_memory_max)
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: max }) {
+          ExemptSystemUnit { unit, slice, bound } =>
+            unit == worker
+              && slice == (attempt_worker_slice_unit_name as String)
               && byte_size_count(b: bound) == byte_size_count(b: max)
               && match user_work_scope_standing_effect(s: ExemptSystemUnit { unit: unit, slice: slice, bound: bound }) {
                 SkipUserWorkScope { standing: ExemptSystemUnit { unit: eu, slice: es, bound: eb } } =>
@@ -494,7 +529,7 @@ test fn a_modeled_slice_without_a_live_memory_max_refuses() -> Bool {
     "/",
     gunbc_tree_sync_unit_name as String,
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
     UncappedSystemSlice { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == (gunbc_repository_convergence_slice_unit_name as String)
@@ -514,7 +549,7 @@ test fn a_modeled_slice_with_unbounded_memory_max_refuses() -> Bool {
     "/",
     gunbc_tree_sync_unit_name as String,
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnbounded) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnbounded) {
     UncappedSystemSlice { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == (gunbc_repository_convergence_slice_unit_name as String)
@@ -529,7 +564,7 @@ test fn a_modeled_slice_with_zero_memory_max_refuses() -> Bool {
     "/",
     gunbc_tree_sync_unit_name as String,
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: byte_size(0) }) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: byte_size(0) }) {
     UncappedSystemSlice { unit, slice } =>
       unit == (gunbc_tree_sync_unit_name as String)
         && slice == (gunbc_repository_convergence_slice_unit_name as String)
@@ -542,6 +577,8 @@ test fn declared_system_slice_caps_are_the_slice_bound_rows() -> Bool {
   any(rows, r => (r.unit as String) == (repository_convergence_slice_unit_name as String)
     && byte_size_count(b: r.memory_max) == byte_size_count(b: repository_convergence_slice_memory_max))
     && any(rows, r => byte_size_count(b: r.memory_max) == byte_size_count(b: approval_broker_slice_memory_max))
+    && any(rows, r => (r.unit as String) == (attempt_worker_slice_unit_name as String)
+      && byte_size_count(b: r.memory_max) == byte_size_count(b: attempt_worker_slice_memory_max))
 }
 
 test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
@@ -552,7 +589,7 @@ test fn a_user_session_cgroup_still_owes_the_wrap() -> Bool {
   ], "")
   match system_service_unit_from_cgroup(text: cg) {
     NotSystemService =>
-      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+      match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
         UserManagerOwed =>
           match user_work_scope_standing_effect(s: UserManagerOwed) {
             WrapIntoUserWorkSlice => true
@@ -576,7 +613,7 @@ test fn sessions_slice_is_not_a_fleet_wide_wrap_exempt() -> Bool {
     Present { value: _ } => false
     Absent =>
       recognized_system_slice(unit: gunbc_oomd_sessions_slice as String)
-        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+        && match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
           UncappedSystemSlice { unit, slice } =>
             unit == "docker-deadbeef.scope" && slice == (gunbc_oomd_sessions_slice as String)
           _ => false
@@ -596,7 +633,7 @@ fn sessions_scope_cgroup() -> String {
 
 test fn sessions_slice_with_a_finite_local_memory_max_exempts() -> Bool {
   let bound = byte_size(137438953472)
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: bound }) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryCapped { bytes: bound }) {
     ExemptSystemUnit { unit, slice, bound: b } =>
       unit == "docker-deadbeef.scope"
         && slice == (gunbc_oomd_sessions_slice as String)
@@ -610,7 +647,7 @@ test fn sessions_slice_with_a_finite_local_memory_max_exempts() -> Bool {
 }
 
 test fn sessions_slice_with_an_unbounded_local_memory_max_refuses() -> Bool {
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnbounded) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: sessions_scope_cgroup() }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnbounded) {
     UncappedSystemSlice { unit, slice } =>
       unit == "docker-deadbeef.scope" && slice == (gunbc_oomd_sessions_slice as String)
     _ => false
@@ -625,7 +662,7 @@ test fn a_user_manager_sessions_slice_path_with_unreadable_local_memory_max_refu
     gunbc_oomd_sessions_slice as String,
     "/run-u.scope",
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
     UncappedSystemSlice { unit, slice } =>
       unit == "run-u.scope" && slice == (gunbc_oomd_sessions_slice as String)
     _ => false
@@ -637,7 +674,7 @@ test fn a_root_cgroup_with_finite_memory_max_skips_wrap() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: false,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -660,7 +697,7 @@ test fn a_root_cgroup_with_unbounded_memory_max_refuses() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: false,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -681,7 +718,7 @@ test fn a_root_cgroup_with_unreadable_memory_max_refuses() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: false,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -708,7 +745,7 @@ test fn an_unidentified_namespaced_root_without_memory_max_refuses_despite_githu
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: true,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -729,7 +766,7 @@ test fn a_buildbuddy_namespaced_root_without_memory_max_is_externally_bounded() 
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: true,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -754,7 +791,7 @@ test fn an_unbounded_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> 
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: true,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -776,6 +813,7 @@ test fn a_zero_root_memory_max_refuses_even_with_a_buildbuddy_run_id() -> Bool {
     unit_test: false,
     github_actions: true,
     cgroup: CgroupText { text: "0::/" },
+    bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: false,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -796,7 +834,7 @@ test fn a_namespaced_root_with_a_systemd_manager_still_wraps() -> Bool {
   match user_work_scope_standing_with_root_memory(
     unit_test: false,
     github_actions: false,
-    cgroup: CgroupText { text: "0::/" },
+    cgroup: CgroupText { text: "0::/" }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: true,
     user_manager_reachable: true,
     xdg_runtime_dir: true,
@@ -819,7 +857,7 @@ test fn a_session_cgroup_without_a_modeled_cap_refuses() -> Bool {
     user_work_scope_user_slice_cgroup_needle,
     "user-1000.slice/user@1000.service/app.slice/run-u.scope",
   ], "")
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupText { text: cg }, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable) {
     UserSessionAbsent =>
       match user_work_scope_standing_effect(s: UserSessionAbsent) {
         RefuseUserWorkScope { standing: UserSessionAbsent } => true
@@ -830,7 +868,7 @@ test fn a_session_cgroup_without_a_modeled_cap_refuses() -> Bool {
 }
 
 test fn unreadable_cgroup_still_refuses() -> Bool {
-  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
+  match user_work_scope_standing(unit_test: false, github_actions: false, cgroup: CgroupReadFailed, bound: CgroupChainUnread { detail: "fixture" }, user_manager_reachable: true, xdg_runtime_dir: true, slice_memory: RootMemoryUnreadable) {
     CgroupUnreadable =>
       match user_work_scope_standing_effect(s: CgroupUnreadable) {
         RefuseUserWorkScope { standing: CgroupUnreadable } => true
@@ -914,6 +952,38 @@ test fn slice_control_refuses_when_session_reservation_is_unestablished() -> Boo
     SliceControlNotOwed => false
     SliceControlDerived { caps: _ } => false
   }
+}
+
+// THE OBSERVED-BOUND ARM: a process whose cgroup chain carries a binding memory.max and forbids swap
+// is bounded whatever its unit is called; no binding limit, swap allowed everywhere, or no reading
+// never admits. Levels and swap values are parsed by extdeps.linux.cgroup_v2_memory's own parser.
+fn level(dir: NonEmptyStr, max: String) -> CgroupMemoryLevel {
+  CgroupMemoryLevelRead { dir: dir, max: parse_cgroup_memory_limit(body: max), high: CgroupMemoryUnlimited }
+}
+
+fn bound_standing(levels: List<CgroupMemoryLevel>, swap: List<String>) -> String {
+  user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
+    cgroup: CgroupText { text: "0::/system.slice/gunbc-revision-job.service" },
+    bound: CgroupChainRead { levels: levels, swap_max: map(swap, w => parse_cgroup_memory_limit(body: w)) },
+    user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable
+  ))
+}
+
+test fn a_binding_memory_max_with_swap_forbidden_bounds_the_process_whatever_its_unit_is_called() -> Bool {
+  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]) == "BoundedByObservedCgroup"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max"), level(dir: "/sys/fs/cgroup/system.slice", max: "8589934592")], swap: ["max", "0"]) == "BoundedByObservedCgroup"
+}
+
+test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
+  bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [], swap: []) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "0")], swap: ["0"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "0")], swap: ["0", "max"]) == "UncappedSystemSlice:system.slice:gunbc-revision-job.service"
+    && user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
+         cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
+         user_manager_reachable: false, xdg_runtime_dir: false, slice_memory: RootMemoryUnreadable
+  )) == "UncappedSystemSlice:system.slice:x.service"
 }
 
 test fn wrap_keeps_the_tighter_of_caller_and_slice() -> Bool {
@@ -1022,7 +1092,7 @@ fn composed_modeled_slice_standing(slice_memory: RootCgroupMemoryRead) -> UserWo
         "/",
         gunbc_tree_sync_unit_name as String,
       ], ""),
-    },
+    }, bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: true,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -1054,6 +1124,7 @@ fn fci1_control_standing(path: String, slice_memory: RootCgroupMemoryRead) -> Us
     unit_test: false,
     github_actions: false,
     cgroup: CgroupText { text: join(["0::/", path], "") },
+    bound: CgroupChainUnread { detail: "fixture" },
     systemd_manager_present: true,
     user_manager_reachable: false,
     xdg_runtime_dir: false,
@@ -1157,4 +1228,23 @@ test fn every_emitted_fci1_runner_pipes_the_unit_output_to_the_caller() -> Bool 
         && !string_contains(s: c, pattern: "--wait --collect")
     _ => false
   }
+}
+
+// THE SEED'S LIST IS THE DECLARED ROWS, IN BOTH DIRECTIONS. `RECOGNIZED_SYSTEM_SLICES` in the
+// hand-retained seed (a declared seed-retained row of v2.compiler.self_host.seed_retention_frontier,
+// so no stage0 regen rewrites it) must equal the capped rows of `declared_system_slice_memory_maxes`
+// followed by the sessions slice, byte for byte. The older mirror claim checks that each declared
+// capped unit appears in the seed; this one also refuses a seed literal no row declares, and any
+// reordering, so the two sources cannot drift apart in either direction.
+test fn the_seed_slice_list_equals_the_declared_capped_rows_plus_sessions() -> Bool {
+  let seed = filesystem_read(path: seed_user_work_scope_path).content
+  let capped = declared_system_slice_memory_maxes() |> filter(row => byte_size_count(b: row.memory_max) > 0)
+  let rendered = join(
+    concat(
+      map(capped, row => join(["    \"", row.unit as String, "\",\n"], "")),
+      [join(["    \"", gunbc_oomd_sessions_slice as String, "\",\n"], "")],
+    ),
+    "",
+  )
+  string_contains(s: seed, pattern: join(["const RECOGNIZED_SYSTEM_SLICES: &[&str] = &[\n", rendered, "];"], ""))
 }

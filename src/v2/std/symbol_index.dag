@@ -805,25 +805,41 @@ fn symbol_index_candidate_category(index: SymbolIndex, candidate: LexicalBinding
   }
 }
 
-// Inadmissible kind is excluded, then none/one/many. An excluded-only set is Unbound, not a
-// distinct wrong-kind refusal (std.occurrence_binding_resolve Inadmissible arm, refusal: none;
-// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds). WrongOccurrenceRole
+// Inadmissible kind is excluded, then none/one/many. LexicalLookup still answers an excluded-only
+// set as Unbound (std.occurrence_binding_resolve Inadmissible arm carries no refusal, and
+// occurrence_binding_resolve_category_inadmissible_candidate_is_excluded_holds pins the exclusion);
+// the distinct "exists but wrong kind" fact is symbol_index_lexical_eligibility's ExcludedByCategory,
+// which a caller that must name it reads from this same eligibility step. WrongOccurrenceRole
 // is the wrong *role* (declaration vs reference), not the wrong occurrence category.
 fn symbol_index_lexical_eligible(
   index: SymbolIndex,
   required: OccurrenceCategory,
   candidates: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
+  symbol_index_eligibility_partition(index: index, required: required, candidates: candidates).eligible
+}
+
+// THE ONE ELIGIBILITY FOLD: every candidate is either admissible at the required category or excluded with
+// the category it is declared as. symbol_index_lexical_eligible and symbol_index_lexical_eligibility both
+// read this partition, so what is eligible and what is excluded cannot drift apart.
+fn symbol_index_eligibility_partition(
+  index: SymbolIndex,
+  required: OccurrenceCategory,
+  candidates: FreeMonoid<LexicalBindingCandidate>
+) -> EligibilityPartition {
   fold_list(
     xs: candidates,
-    empty: Empty,
+    empty: EligibilityPartition { eligible: Empty, excluded: Empty },
     cons: fn(acc, candidate) {
-      match occurrence_category_binding_verdict(
-        reference: required,
-        declaration: symbol_index_candidate_category(index: index, candidate: candidate)
-      ) {
-        OccurrenceCategoryBindingAdmissible => list_snoc_item(xs: acc, item: candidate)
-        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => acc
+      let declared = symbol_index_candidate_category(index: index, candidate: candidate)
+      match occurrence_category_binding_verdict(reference: required, declaration: declared) {
+        OccurrenceCategoryBindingAdmissible =>
+          EligibilityPartition { eligible: list_snoc_item(xs: acc.eligible, item: candidate), excluded: acc.excluded }
+        OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } =>
+          EligibilityPartition {
+            eligible: acc.eligible,
+            excluded: list_snoc_item(xs: acc.excluded, item: ExcludedCandidate { candidate: candidate, category: declared })
+          }
       }
     }
   )
@@ -851,24 +867,58 @@ fn symbol_index_lexical_eligible_declared_payload(
   )
 }
 
+// ONE ELIGIBILITY VERDICT, SAYING WHAT IT EXCLUDED. A candidate set the required kind excludes
+// ENTIRELY is not the same fact as a name with no candidates: the first is a name that exists and
+// is the wrong kind of declaration (a variant where a type is required), the second binds nothing.
+// Both were LexicalUnbound, so a caller that wanted to tell the author which it was had to
+// re-lookup the name under another category -- a second derivation of what this step already knew
+// (DESIGN section 2). The excluded candidates and the category each was excluded for are carried
+// here, once; symbol_index_lexical_lookup_for is this verdict's projection onto LexicalLookup, so a
+// caller that does not ask the question sees the answer it always had. A genuinely empty set stays
+// EligibleLookup { LexicalUnbound }. Nothing here admits an excluded candidate: exclusion is
+// eligibility before none/one/many (#13832), and this arm only reports it.
+type ExcludedCandidate {
+  candidate: LexicalBindingCandidate
+  category: OccurrenceCategory
+}
+
+type EligibilityPartition {
+  eligible: FreeMonoid<LexicalBindingCandidate>
+  excluded: FreeMonoid<ExcludedCandidate>
+}
+
+type LexicalEligibility
+  = EligibleLookup { lookup: LexicalLookup }
+  | ExcludedByCategory { required: OccurrenceCategory, excluded: FreeMonoid<ExcludedCandidate> }
+
+fn symbol_index_lexical_eligibility(
+  index: SymbolIndex,
+  position: QualifiedName,
+  name: Symbol,
+  required: OccurrenceCategory
+) -> LexicalEligibility {
+  let part = symbol_index_eligibility_partition(index: index, required: required, candidates: symbol_index_lexical_collect(index: index, position: position, name: name, acc: Empty))
+  match length(xs: part.eligible) {
+    0 =>
+      if is_empty(xs: part.excluded) {
+        EligibleLookup { lookup: LexicalUnbound }
+      } else {
+        ExcludedByCategory { required: required, excluded: part.excluded }
+      }
+    _ => EligibleLookup { lookup: symbol_index_lexical_selection(candidates: part.eligible) }
+  }
+}
+
 fn symbol_index_lexical_lookup_for(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol,
   required: OccurrenceCategory
 ) -> LexicalLookup {
-  symbol_index_lexical_selection(
-    candidates: symbol_index_lexical_eligible(
-      index: index,
-      required: required,
-      candidates: symbol_index_lexical_collect(
-        index: index,
-        position: position,
-        name: name,
-        acc: Empty
-      )
-    )
-  )
+  match symbol_index_lexical_eligibility(index: index, position: position, name: name, required: required) {
+    EligibleLookup { lookup: lookup } => lookup
+    ExcludedByCategory { required: _, excluded: _ } => LexicalUnbound
+  }
 }
 
 fn symbol_index_lexical_lookup_for_declared_payload(
