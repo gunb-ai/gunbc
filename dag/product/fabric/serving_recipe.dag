@@ -9,14 +9,14 @@ import std.measure {
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
-import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, rented_qwen3_8_27b_nvfp4_weights_placement }
+import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifactSource, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_source }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
-import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
@@ -35,15 +35,8 @@ import gunbc.harness.harness_reasoning_wire {
 // Figures this repository has not read from an upstream are TranscribedUncited (DESIGN 4d): the
 // operator's readings carry that standing and say so, and nothing here promotes them.
 
-// A RECIPE IS KEYED BY DECLARATION IDENTITY (as the vendor rows are): a new recipe is a new row, not an
-// edit to a closed enum or to an equality function.
-fn serving_recipe_ref(decl_name: NonEmptyStr) -> DeclarationRef {
-  DeclarationRef {
-    module_path: "product.fabric.serving_recipe" as NonEmptyStr,
-    decl_name: decl_name,
-    field: WholeDeclaration,
-  }
-}
+// A RECIPE IS KEYED BY DECLARATION IDENTITY (std.decl_ref decl_ref / declaration_ref_eq), as the vendor rows are:
+// a new recipe is a new row, not an edit to a closed enum or to an equality function.
 
 // ── model artifact ───────────────────────────────────────────────────────────────────────────
 // WHICH BYTES A CARD RUNS HAS ONE AUTHORITY: a placed model REFERENCES gunbc.serving.rented_ninfer_source
@@ -88,9 +81,40 @@ type ServingCacheTiers {
 }
 
 // ── start route ──────────────────────────────────────────────────────────────────────────────
+// A recipe whose weights are PLACED starts from that placement: the route is derived from
+// ServingWeightsSource (serving_start_source), so a placed source and its start route cannot disagree.
+// A recipe whose weights are unpinned carries an observed route with its own standing.
 type ServingStartRoute
-  = StartFromObjectStoreOnly { store: NonEmptyStr, hub_fallback: Bool }
+  = StartFromPlacedWeights
+  | StartFromObjectStoreObserved { store: NonEmptyStr, hub_fallback: Bool, standing: CitedFigureStanding }
   | StartRouteUnread { read_obligation: NonEmptyStr }
+
+type ServingStartSource
+  = StartSourcePlaced { source: RentedArtifactSource }
+  | StartSourceObserved { store: NonEmptyStr, hub_fallback: Bool, standing: CitedFigureStanding }
+  | StartSourcePlacementMissing
+  | StartSourceUnread
+
+fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
+  match recipe.start {
+    StartFromPlacedWeights =>
+      match recipe.model.source {
+        WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
+        WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+      }
+    StartFromObjectStoreObserved { store: st, hub_fallback: fb, standing: sd } =>
+      StartSourceObserved { store: st, hub_fallback: fb, standing: sd }
+    StartRouteUnread { read_obligation: _ } => StartSourceUnread
+  }
+}
+
+// Chosen or observed settings of a recipe carry their standing (DESIGN 4d): none of these is a measured
+// compatibility fact, and a consumer reads the standing instead of assuming one.
+type ServingSettingStandings {
+  disk: CitedFigureStanding
+  cache: CitedFigureStanding
+  port: CitedFigureStanding
+}
 
 // ── throughput: an operator reading, never a constant ────────────────────────────────────────
 type ServingThroughput
@@ -109,10 +133,16 @@ type ServingRecipe {
   cache: ServingCacheTiers
   start: ServingStartRoute
   throughput: ServingThroughput
+  settings: ServingSettingStandings
 }
 
 fn gib(n: Nat) -> ByteSize {
   gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+data serving_card_class_rtx_pro_5000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
+  identity: "rtx-pro-5000-blackwell",
+  products: [nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog],
 }
 
 data serving_card_class_rtx_pro_6000_blackwell: ServingCardRequirement = CardIsAnyCatalogProduct {
@@ -123,19 +153,15 @@ data serving_card_class_rtx_pro_6000_blackwell: ServingCardRequirement = CardIsA
 // Recipe (a). The 580 floor moved here from product.fabric.flex_market flex_ninfer_min_driver: the
 // floor is the recipe's fact, not a market constant. It stays a transcribed flex screen.
 data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
-  id: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
+  id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
   model: ServingModelArtifact {
     source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
     served_model_id: Present { value: operator_pod_ninfer_launch.model_id },
   },
-  engine: DeclarationRef {
-    module_path: "gunbc.serving.rented_ninfer_source" as NonEmptyStr,
-    decl_name: "ninfer_serve_81c8ce09_sm120_release" as NonEmptyStr,
-    field: WholeDeclaration,
-  },
+  engine: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "ninfer_serve_81c8ce09_sm120_release"),
   catalog_unit: Present { value: Qwen3_8_27bOnNinfer },
   published_tcp_port: operator_pod_listen_port,
-  cards: [serving_card_class_rtx_pro_6000_blackwell],
+  cards: [serving_card_class_rtx_pro_5000_blackwell, serving_card_class_rtx_pro_6000_blackwell],
   driver_floor: ServingDriverFloor {
     major: 580,
     standing: TranscribedUncited {
@@ -144,24 +170,25 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   },
   disk: gib(n: 32),
   cache: ServingCacheTiers { ram: CacheNone, disk: CacheNone },
-  start: StartFromObjectStoreOnly { store: "R2", hub_fallback: false },
+  start: StartFromPlacedWeights,
   throughput: ThroughputUnread,
+  settings: ServingSettingStandings {
+    disk: TranscribedUncited { read_obligation: "32 GiB is the retired flex_qwen_* disk figure; read the ninfer launch image plus weights container size" as NonEmptyStr },
+    cache: TranscribedUncited { read_obligation: "no cache tier is declared for ninfer; read whether ninfer has a host cache tier" as NonEmptyStr },
+    port: TranscribedUncited { read_obligation: "operator_pod_listen_port is the --port of one observed operator launch; read the engine's own default" as NonEmptyStr },
+  },
 }
 
 // Recipe (b). Every figure below that is not structural is an operator reading: drivers at or above
 // 580 work (tested on a 595 host); about 900 tokens per second at 16 concurrent; 400 GiB disk;
 // weights and saved kernel tuning started from the object store with no Hugging Face fallback.
 data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
-  id: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
+  id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
   model: ServingModelArtifact {
     source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
     served_model_id: none,
   },
-  engine: DeclarationRef {
-    module_path: "extdeps.vllm.local_inference_lab_build" as NonEmptyStr,
-    decl_name: "local_inference_lab_vllm_release" as NonEmptyStr,
-    field: WholeDeclaration,
-  },
+  engine: decl_ref(module_path: "extdeps.vllm.local_inference_lab_build", decl_name: "local_inference_lab_vllm_release"),
   catalog_unit: none,
   published_tcp_port: 8000,
   cards: [serving_card_class_rtx_pro_6000_blackwell],
@@ -176,13 +203,22 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
     ram: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
     disk: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
   },
-  start: StartFromObjectStoreOnly { store: "R2", hub_fallback: false },
+  start: StartFromObjectStoreObserved {
+    store: "R2",
+    hub_fallback: false,
+    standing: TranscribedUncited { read_obligation: "operator reading: weights and saved kernel tuning start from the object store with no Hugging Face fallback; no placement row pins them yet" as NonEmptyStr },
+  },
   throughput: ThroughputOperatorReading {
     tokens_per_second: tokens_per_second(count: 900),
     at_concurrency: 16,
     standing: TranscribedUncited {
       read_obligation: "operator reading: about 900 tokens per second at 16 concurrent on one RTX PRO 6000; measure on the lab build before relying on it" as NonEmptyStr,
     },
+  },
+  settings: ServingSettingStandings {
+    disk: TranscribedUncited { read_obligation: "operator reading: 400 GiB disk; read the weights, kernel-tuning and session-cache sizes" as NonEmptyStr },
+    cache: TranscribedUncited { read_obligation: "operator reading: half of host RAM and half of disk as cache tiers; read the lab build's tier configuration" as NonEmptyStr },
+    port: TranscribedUncited { read_obligation: "operator reading: the lab build answers on 8000; read its launch flags" as NonEmptyStr },
   },
 }
 
@@ -222,6 +258,7 @@ type ServingCardVerdict
   | CardRefusedWrongCard
   | CardRefusedDriverBelowFloor { required: Nat, observed: Nat }
   | CardRefusedDriverUnread
+  | CardScreenedOnUncitedFloor { class: NonEmptyStr, required: Nat, observed: Nat, floor_met: Bool }
 
 fn serving_requirement_identity(r: ServingCardRequirement) -> NonEmptyStr {
   match r {
@@ -256,10 +293,15 @@ fn serving_driver_verdict(recipe: ServingRecipe, card: ServingCardFacts, identit
   match card.driver_major {
     Absent => CardRefusedDriverUnread
     Present { value: observed } =>
-      if observed < recipe.driver_floor.major {
-        CardRefusedDriverBelowFloor { required: recipe.driver_floor.major, observed: observed }
-      } else {
-        CardAccepted { class: identity }
+      match recipe.driver_floor.standing {
+        TranscribedUncited { read_obligation: _ } =>
+          CardScreenedOnUncitedFloor { class: identity, required: recipe.driver_floor.major, observed: observed, floor_met: observed >= recipe.driver_floor.major }
+        _ =>
+          if observed < recipe.driver_floor.major {
+            CardRefusedDriverBelowFloor { required: recipe.driver_floor.major, observed: observed }
+          } else {
+            CardAccepted { class: identity }
+          }
       }
   }
 }
@@ -331,19 +373,21 @@ fn serving_card_hourly(recipe: ServingRecipe, supply: ServingCardSupply) -> Serv
 // recipe without one has no unit cost rather than a made-up one.
 type ServingUnitCost
   = UnitCostQuoted { amount: MoneyAmountMicro, currency: CurrencyCode }
+  | UnitCostEstimated { amount: MoneyAmountMicro, currency: CurrencyCode, standing: CitedFigureStanding }
   | UnitCostThroughputUnread
 
 fn serving_cost_per_million_tokens(recipe: ServingRecipe, hourly: MoneyPerHour) -> ServingUnitCost {
   match recipe.throughput {
     ThroughputUnread => UnitCostThroughputUnread
-    ThroughputOperatorReading { tokens_per_second: rate, at_concurrency: _, standing: _ } =>
+    ThroughputOperatorReading { tokens_per_second: rate, at_concurrency: _, standing: sd } =>
       let tps = tokens_per_second_count(r: rate)
       if tps == 0 {
         UnitCostThroughputUnread
       } else {
-        UnitCostQuoted {
-          amount: money_amount_micro(count: money_per_hour_micros(q: hourly) * 1000000 / (tps * 3600)),
-          currency: hourly.currency,
+        let amount = money_amount_micro(count: (money_per_hour_micros(q: hourly) * 1000000 + (tps * 3600 - 1)) / (tps * 3600))
+        match sd {
+          TranscribedUncited { read_obligation: _ } => UnitCostEstimated { amount: amount, currency: hourly.currency, standing: sd }
+          _ => UnitCostQuoted { amount: amount, currency: hourly.currency }
         }
       }
   }
@@ -361,17 +405,22 @@ fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
 // ── declared frontiers ───────────────────────────────────────────────────────────────────────
 data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
-    ref: serving_recipe_ref(decl_name: "serving_recipe_flash_next_lab_vllm" as NonEmptyStr),
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
     reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
     dissolution: unbound_dissolution(description: "(1) an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it; (2) an extdeps.lmcache module citing tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
-    ref: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
-    reason: "(1) FAIL-CLOSED NARROWING of the retired flex_qwen_* screen: its 48 GB (RTX 5000) and 72 GB classes cannot be named by catalog row because extdeps.gpu.nvidia has no such rows, and a VRAM-only class would admit pre-sm120 cards the ninfer sm120 build cannot run, so the recipe admits only the catalogued RTX PRO 6000 rows until they exist. (2) throughput and cache tiers are unread; unit cost is UnitCostThroughputUnread rather than a guess.",
-    dissolution: unbound_dissolution(description: "(1) extdeps.gpu.nvidia catalog rows for the RTX 5000 and the 72 GB card, added to the recipe's cards; (2) an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are TranscribedUncited. The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The recipe's model placement, engine release (ninfer_serve_81c8ce09_sm120_release), port, start source (serving_start_source) and settings have no production reader: the S3 InferenceServingProvision phase (deep-bear-539) has not landed.",
+    dissolution: unbound_dissolution(description: "feature:inference-serving-provision — the S3 provision phase derives the model placement, engine release, published port, start source (serving_start_source) and cache sizes (serving_cache_bytes) from the ServingRecipe it is handed; plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
-    ref: serving_recipe_ref(decl_name: "serving_card_hourly" as NonEmptyStr),
+    ref: decl_ref(module_path: "extdeps.vllm.local_inference_lab_build", decl_name: "local_inference_lab_vllm_release"),
+    reason: "The lab vLLM release row is read only by test.claim.fabric.serving_recipe_witness (flash_next_engine_ref_names_the_lab_release_row) through the Flash-Next recipe's engine reference; no production code resolves an engine reference to its release.",
+    dissolution: unbound_dissolution(description: "feature:inference-serving-provision — the S3 provision phase resolves ServingRecipe.engine to the release row and installs it; its source and flags stay TranscribedUncited until read. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_card_hourly"),
     reason: "serving_card_hourly, serving_cost_per_million_tokens, serving_cache_bytes and serving_recipes_interchangeable are called only by test.claim.fabric.serving_recipe_witness. The Vast shadow field (flex_offer_in_shadow_field) screens by recipe but does not yet price a card's disk or quote it to select_supply, and nothing yet reads cache sizes or recipe interchangeability. Disk-in-cost is therefore a witnessed model, not an executing route.",
     dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_wet_create_release_consumer_frontier), and the host-convergence provision phase reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
   ),

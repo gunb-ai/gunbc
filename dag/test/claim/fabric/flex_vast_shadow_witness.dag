@@ -3,7 +3,8 @@ module test.claim.fabric.flex_vast_shadow_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool, Int, String }
 import std.nat { Nat }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import gunbc.design_ruling { design_rulings }
 import std.decimal { ExactDecimal }
 import std.measure {
   MoneyRate, MoneyPerHour, MoneyAmountMicro,   money_amount_micro, money_amount_micro_count,
@@ -65,7 +66,7 @@ import product.fabric.flex_vast_shadow {
   FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable,
   flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
   flex_m3_pass_stops_at_first_failure,
-  flex_wet_create_release_consumer_frontier, flex_rented_serving_allocation_join,
+  flex_wet_create_release_consumer_frontier, flex_wet_create_template_consumer_frontier, flex_trial_fleet_rate_cap_authority, flex_rented_serving_allocation_join,
   flex_record_pass,
 }
 import std.rational { NonzeroNatFraction }
@@ -344,6 +345,25 @@ fn machine_key_follows_offer_id() -> Bool {
 
 fn money_per_hour_cap_is_three_dollars() -> Bool {
   money_amount_micro_count(m: flex_trial_fleet_rate_cap.amount) == 3000000
+    && fold(
+      design_rulings(),
+      init: false,
+      f: (acc, r) =>
+        acc || (declaration_ref_eq(a: r.reference, b: flex_trial_fleet_rate_cap_authority)
+          && r.decided == "2026-10-16"
+          && string_contains(s: r.provenance, pattern: "$3.00/h")),
+    )
+}
+
+test fn the_cap_authority_discriminates_the_old_ruling() -> Bool {
+  fold(
+    design_rulings(),
+    init: false,
+    f: (acc, r) =>
+      acc || (declaration_ref_eq(a: r.reference, b: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"))
+        && string_contains(s: r.provenance, pattern: "raised by flex_fleet_cap_raised_to_three_dollars")),
+  )
+    && money_per_hour_cap_is_three_dollars()
 }
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
@@ -468,6 +488,10 @@ fn frontiers_are_unbound() -> Bool {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
+    && match flex_wet_create_template_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
     && match flex_rented_serving_allocation_join {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
@@ -479,6 +503,33 @@ fn objective_is_cost_per_accepted_unit() -> Bool {
     CostPerAcceptedUnit { unit: _ } => true
     NetValue => false
   }
+}
+
+test fn pro_5000_spellings_are_admitted_and_a_name_vram_disagreement_is_refused() -> Bool {
+  flex_offer_accepted_by_recipe(
+    offer: wire_offer(name: "RTX PRO 5000", ram: 49140, bid: true, rentable: true),
+    recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+  )
+    && flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 5000 72GB", ram: 73700, bid: true, rentable: true),
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    )
+    && !flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 5000", ram: 49140, bid: true, rentable: true),
+      recipe: serving_recipe_flash_next_lab_vllm,
+    )
+    && flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 6000 S", ram: 97887, bid: true, rentable: true),
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    )
+    && !flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 6000 S", ram: 49140, bid: true, rentable: true),
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    )
+    && !flex_offer_accepted_by_recipe(
+      offer: wire_offer(name: "RTX PRO 5000", ram: 98304, bid: true, rentable: true),
+      recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
+    )
 }
 
 test fn supported_gpu_classes_screen_offers() -> Bool {

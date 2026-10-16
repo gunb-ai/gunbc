@@ -1,10 +1,9 @@
 module product.fabric.flex_vast_shadow
 
 import std.types { NonEmptyStr, String, Bool, Int, List, Port }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
-import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
-import std.decl_ref { decl_ref }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import std.integer { int_to_decimal_string }
 import std.measure {
   MoneyPerHour, MoneyAmountMicro, MoneyPerSecond, MoneyRate, ByteSize,
@@ -34,9 +33,9 @@ import product.fabric.flex_market {
   FlexCapRateUnconverted, FlexCapCurrencyMismatch,
 }
 import product.fabric.serving_recipe {
-  ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_ref,
+  ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer,
   ServingCardFacts, serving_recipe_accepts_card, CardAccepted,
-  CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread,
+  CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
@@ -60,6 +59,8 @@ data flex_m3_rent_cooldown_starts_at_ask: DissolutionCondition = unbound_dissolu
 data flex_m3_pass_stops_at_first_failure: DissolutionCondition = unbound_dissolution(description: "M3: stop the observation/plan pass at the first failure so the next pass plans from what really happened. TRIGGER: the wet loop refuses to continue after the first typed failure. SUFFICIENT FOR deleting this row.")
 
 data flex_wet_create_release_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create/destroy loop consumes FlexCreateStanding, flex_reconcile_acquisition, flex_trial_total (reservation ceiling), flex_objective, and flex_delay_unvalued. TRIGGER: that loop is the remaining executing route if test.claim.fabric.flex_vast_shadow_witness is deleted. SUFFICIENT FOR deleting this row.")
+
+data flex_wet_create_template_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "M3 wet create path builds the Vast create body from flex_serving_template(flex_serving_recipe), which reads flex_host_images and the recipe's published port, served model id and disk. TRIGGER: that wet create executes the template (flex_serving_template and flex_host_image have no production caller today; only test.claim.fabric.flex_vast_shadow_witness calls them). SUFFICIENT FOR deleting this row. The later InferenceServingProvision path reading model placement, engine release, start source and cache from the ServingRecipe is the separate serving_recipe_frontier row for serving_recipe_qwen3_8_27b_nvfp4_ninfer.")
 
 data flex_rented_serving_allocation_join: DissolutionCondition = unbound_dissolution(description: "Wet create-answered constructs gunbc.serving.rented_allocation RentedServingAllocation keyed by rented_allocation_identity(provider: decl_ref(extdeps.cloud.vast_ai, extdeps_external_authority_anchor), contract: FlexCreateAnswered.instance_id) and hands enrollment via rented_allocation_enrollment. Origin is RentedAllocationAcquired { owner: NonEmptyStr, asked_at: EpochMs, asked_rate: MoneyPerHour, provider_ask: product.supplier.vast_ai VastAiAskReceipt { ask_id, machine_id } } with no contract id on the origin (deep-bear-539 #13915). Release and settlement standings are later slices keyed by RentedAllocationIdentity. TRIGGER: #13915 is on main and the wet loop's remaining executing route for hold/enrollment is rented_allocation_identity plus RentedServingAllocation. SUFFICIENT FOR deleting this row. NOT satisfied by FlexCreateStanding or flex_reconcile_acquisition. Release/settlement symbols are not this trigger.")
 
@@ -375,6 +376,10 @@ data flex_trial_fleet_rate_cap: MoneyPerHour = MoneyPerHour {
   currency: Usd,
 }
 
+// The ruling the cap's amount is read from; test.claim.fabric.flex_vast_shadow_witness resolves it in
+// gunbc.design_ruling design_rulings and judges its text against the amount.
+data flex_trial_fleet_rate_cap_authority: DeclarationRef = decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars")
+
 data flex_trial_total: MoneyAmountMicro = money_amount_micro(count: 50000000)
 
 data flex_trial_policy: FlexPolicy = FlexPolicy {
@@ -407,7 +412,7 @@ type FlexHostImageRow {
 
 data flex_host_images: List<FlexHostImageRow> = [
   FlexHostImageRow {
-    recipe: serving_recipe_ref(decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer" as NonEmptyStr),
+    recipe: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
     image: "vastai/vllm:v0.30.0-cuda-13.0" as NonEmptyStr,
   },
 ]
@@ -438,7 +443,7 @@ type FlexTemplateRealization
 
 // The Vast create body for a recipe. A recipe whose host image or served model id is unread refuses
 // to realize rather than defaulting one. Consumer: the wet create path
-// (flex_wet_create_release_consumer_frontier).
+// (flex_wet_create_template_consumer_frontier).
 fn flex_serving_template(recipe: ServingRecipe) -> FlexTemplateRealization {
   match flex_host_image(recipe: recipe) {
     Absent => FlexTemplateImageUnread
@@ -480,8 +485,31 @@ fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuModelCatalogRow? {
     } else {
       none
     }
+  } else if string_contains(s: gpu_name, pattern: "RTX PRO 5000") {
+    if string_contains(s: gpu_name, pattern: "72GB") {
+      Present { value: nvidia_rtx_pro_5000_72gb_catalog }
+    } else {
+      Present { value: nvidia_rtx_pro_5000_48gb_catalog }
+    }
   } else {
     none
+  }
+}
+
+// THE WIRE-TO-CATALOG EDGE: an offer's card is the catalog product its name selects only when the
+// observed VRAM is that row's memory capacity less at most 1 GiB (Vast reports usable VRAM in MB, a little under
+// the physical figure; the 1 GiB tolerance is TranscribedUncited, read it from Vast's offer vocabulary); a name/VRAM disagreement is no card (refused, never
+// guessed), because one of the two observations is wrong.
+fn flex_offer_card_product(gpu_name: String, vram: ByteSize) -> GpuModelCatalogRow? {
+  match flex_vast_gpu_catalog_row(gpu_name: gpu_name) {
+    Absent => none
+    Present { value: row } =>
+      if byte_size_count(b: vram) <= byte_size_count(b: row.memory.capacity)
+        && byte_size_count(b: row.memory.capacity) - byte_size_count(b: vram) < 1073741824 {
+        Present { value: row }
+      } else {
+        none
+      }
   }
 }
 
@@ -491,7 +519,7 @@ fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
     Present { value: vram } =>
       Present {
         value: ServingCardFacts {
-          product: flex_vast_gpu_catalog_row(gpu_name: offer.gpu_name),
+          product: flex_offer_card_product(gpu_name: offer.gpu_name, vram: vram),
           vram: vram,
           driver_major: flex_offer_driver_major(offer: offer),
         },
@@ -508,6 +536,7 @@ fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> B
         CardRefusedWrongCard => false
         CardRefusedDriverBelowFloor { required: _, observed: _ } => false
         CardRefusedDriverUnread => false
+        CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } => met
       }
   }
 }

@@ -30,21 +30,23 @@ import product.fabric.selection {
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
 }
 import product.fabric.serving_recipe {
-  ServingRecipe, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
+  ServingRecipe, ThroughputUnread, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
   serving_recipe_frontier, ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedWrongCard,
-  CardRefusedDriverBelowFloor, CardRefusedDriverUnread, serving_recipe_accepts_card,
+  CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor, serving_recipe_accepts_card,
   ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
   ServingHourlyCost, HourlyCostQuoted, HourlyCostUnamortizable, HourlyCostCurrencyMismatch,
   serving_card_hourly,
-  ServingUnitCost, UnitCostQuoted, UnitCostThroughputUnread, serving_cost_per_million_tokens,
-  ServingStartRoute, StartFromObjectStoreOnly, StartRouteUnread,
+  ServingUnitCost, UnitCostQuoted, UnitCostEstimated, UnitCostThroughputUnread, serving_cost_per_million_tokens,
+  ServingStartRoute, StartFromPlacedWeights, StartFromObjectStoreObserved, StartRouteUnread,
+  ServingStartSource, StartSourcePlaced, StartSourceObserved, StartSourcePlacementMissing, StartSourceUnread, serving_start_source,
   ServingCacheSizing, CacheNone, CacheFractionOfHost, serving_cache_bytes,
 }
 import test.claim.fabric.provider_use_fixture {
   fixture_admitted_for_offer, fixture_demand_for, fixture_work_for, fixture_route,
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
-import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog, nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog }
+import gunbc.serving.rented_ninfer_source { rented_qwen3_8_27b_nvfp4_weights_placement }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_release }
 import extdeps.external_authority { TranscribedUncited }
 import std.roster_frontier { frontier_rows_keyed_roster_build }
@@ -152,7 +154,15 @@ fn gib(n: Nat) -> ByteSize {
 
 fn card(name: String, vram_gib: Nat, driver: Nat?) -> ServingCardFacts {
   ServingCardFacts {
-    product: if string_contains(s: name, pattern: "PRO 6000") { Present { value: nvidia_rtx_pro_6000_server_catalog } } else { none },
+    product: if string_contains(s: name, pattern: "PRO 6000") {
+      Present { value: nvidia_rtx_pro_6000_server_catalog }
+    } else if string_contains(s: name, pattern: "PRO 5000 72") {
+      Present { value: nvidia_rtx_pro_5000_72gb_catalog }
+    } else if string_contains(s: name, pattern: "PRO 5000") {
+      Present { value: nvidia_rtx_pro_5000_48gb_catalog }
+    } else {
+      none
+    },
     vram: gib(n: vram_gib),
     driver_major: driver,
   }
@@ -164,6 +174,7 @@ fn verdict_is_accepted(v: ServingCardVerdict) -> Bool {
     CardRefusedWrongCard => false
     CardRefusedDriverBelowFloor { required: _, observed: _ } => false
     CardRefusedDriverUnread => false
+    CardScreenedOnUncitedFloor { class: _, required: _, observed: _, floor_met: met } => met
   }
 }
 
@@ -175,6 +186,21 @@ fn accepts(recipe: ServingRecipe, c: ServingCardFacts) -> Bool {
 
 test fn qwen_recipe_resolves_to_the_catalogued_pro_6000_class() -> Bool {
   accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 595 }))
+}
+
+test fn qwen_recipe_admits_the_48gb_and_72gb_pro_5000_catalog_rows() -> Bool {
+  accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 5000", vram_gib: 48, driver: Present { value: 595 }))
+    && accepts(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, c: card(name: "RTX PRO 5000 72", vram_gib: 72, driver: Present { value: 595 }))
+}
+
+test fn flash_next_refuses_the_pro_5000_rows() -> Bool {
+  match serving_recipe_accepts_card(
+    recipe: serving_recipe_flash_next_lab_vllm,
+    card: card(name: "RTX PRO 5000", vram_gib: 48, driver: Present { value: 595 }),
+  ) {
+    CardRefusedWrongCard => true
+    _ => false
+  }
 }
 
 test fn flash_next_recipe_resolves_to_pro_6000_only() -> Bool {
@@ -230,14 +256,14 @@ test fn a_driver_below_the_floor_is_refused_and_an_unread_driver_is_refused() ->
     recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer,
     card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 570 }),
   ) {
-    CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 570
+    CardScreenedOnUncitedFloor { class: _, required: r, observed: o, floor_met: met } => r == 580 && o == 570 && !met
     _ => false
   })
     && (match serving_recipe_accepts_card(
       recipe: serving_recipe_flash_next_lab_vllm,
       card: card(name: "RTX PRO 6000", vram_gib: 96, driver: Present { value: 575 }),
     ) {
-      CardRefusedDriverBelowFloor { required: r, observed: o } => r == 580 && o == 575
+      CardScreenedOnUncitedFloor { class: _, required: r, observed: o, floor_met: met } => r == 580 && o == 575 && !met
       _ => false
     })
     && (match serving_recipe_accepts_card(
@@ -376,10 +402,17 @@ test fn disk_cost_flips_the_selection_that_dph_alone_would_make() -> Bool {
 test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unread_where_not() -> Bool {
   // Flash-Next: operator reading ~900 tok/s. 1.05/h -> 1050000 * 1e6 / (900 * 3600) = 324074 micro per Mtok.
   (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: usd_hour(micro: 1050000)) {
-    UnitCostQuoted { amount: a, currency: _ } => (money_amount_micro_count(m: a) as Int) == 324074
+    UnitCostEstimated { amount: a, currency: _, standing: _ } => (money_amount_micro_count(m: a) as Int) == 324075
+    UnitCostQuoted { amount: _, currency: _ } => false
     UnitCostThroughputUnread => false
   })
+    && (match serving_cost_per_million_tokens(recipe: serving_recipe_flash_next_lab_vllm, hourly: usd_hour(micro: 3240000)) {
+      UnitCostEstimated { amount: a, currency: _, standing: _ } => (money_amount_micro_count(m: a) as Int) == 1000000
+      UnitCostQuoted { amount: _, currency: _ } => false
+      UnitCostThroughputUnread => false
+    })
     && (match serving_cost_per_million_tokens(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer, hourly: usd_hour(micro: 1050000)) {
+      UnitCostEstimated { amount: _, currency: _, standing: _ } => false
       UnitCostQuoted { amount: _, currency: _ } => false
       UnitCostThroughputUnread => true
     })
@@ -388,9 +421,47 @@ test fn cost_per_million_tokens_is_computable_where_throughput_is_read_and_unrea
 // ── start route and cache adapt ──────────────────────────────────────────────────────────────
 
 test fn flash_next_starts_from_the_object_store_only_with_no_hub_fallback() -> Bool {
-  match serving_recipe_flash_next_lab_vllm.start {
-    StartFromObjectStoreOnly { store: _, hub_fallback: fb } => !fb
-    StartRouteUnread { read_obligation: _ } => false
+  match serving_start_source(recipe: serving_recipe_flash_next_lab_vllm) {
+    StartSourceObserved { store: _, hub_fallback: fb, standing: sd } =>
+      !fb && (match sd {
+        TranscribedUncited { read_obligation: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+
+test fn the_qwen_start_source_is_derived_from_its_placement() -> Bool {
+  (match serving_start_source(recipe: serving_recipe_qwen3_8_27b_nvfp4_ninfer) {
+    StartSourcePlaced { source: src } =>
+      (src.locator.key as String) == (rented_qwen3_8_27b_nvfp4_weights_placement.object_key as String)
+    _ => false
+  })
+    && (match serving_start_source(
+      recipe: ServingRecipe {
+        id: serving_recipe_flash_next_lab_vllm.id,
+        model: serving_recipe_flash_next_lab_vllm.model,
+        engine: serving_recipe_flash_next_lab_vllm.engine,
+        catalog_unit: none,
+        published_tcp_port: 8000,
+        cards: [],
+        driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+        disk: serving_recipe_flash_next_lab_vllm.disk,
+        cache: serving_recipe_flash_next_lab_vllm.cache,
+        start: StartFromPlacedWeights,
+        throughput: ThroughputUnread,
+        settings: serving_recipe_flash_next_lab_vllm.settings,
+      },
+    ) {
+      StartSourcePlacementMissing => true
+      _ => false
+    })
+}
+
+test fn bare_flash_settings_carry_standing() -> Bool {
+  match serving_recipe_flash_next_lab_vllm.settings.disk {
+    TranscribedUncited { read_obligation: _ } => true
+    _ => false
   }
 }
 
