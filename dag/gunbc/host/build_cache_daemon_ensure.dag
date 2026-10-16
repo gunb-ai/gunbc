@@ -213,7 +213,12 @@ fn build_cache_matched_stats_fragment(capture: String) -> Optional<String> {
     init: Absent,
     f: (acc, frag) => match acc {
       Present { value: _ } => acc
-      Absent => if string_contains(s: capture, pattern: frag) { Present { value: frag } } else { acc }
+      // match on the predicate rather than if/else: the two arms must be the SAME type (one Optional),
+      // and an if here makes the compiler infer a bare String on one side and an Optional on the other.
+      Absent => match string_contains(s: capture, pattern: frag) {
+        true => Present { value: frag }
+        false => acc
+      }
     },
   )
 }

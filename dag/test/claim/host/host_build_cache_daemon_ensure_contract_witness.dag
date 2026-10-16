@@ -268,7 +268,10 @@ fn build_cache_op_takes_stdin(index: Int, steps: List<BuildCacheEnsureOp>) -> Bo
 fn build_cache_args_contain(args: List<String>, want: String) -> Bool {
   match fold(args, init: Absent, f: (acc, a) => match acc {
     Present { value: _ } => acc
-    Absent => if string_contains(s: a, pattern: want) { Present { value: a } } else { acc }
+    Absent => match string_contains(s: a, pattern: want) {
+      true => Present { value: a }
+      false => acc
+    }
   }) {
     Present { value: _ } => true
     Absent => false
