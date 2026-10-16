@@ -22,7 +22,7 @@ module gunbc.machine_intake.mtcollins1_boot_row
 import std.types { NonEmptyStr, String }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.sha256 { Sha256FileDigest }
+import extdeps.tools.sha256sum { Sha256FileDigest }
 import gunbc.host.boot_attempt { ConsoleReading, ReferenceCaptureRead, console, console_reading }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,
