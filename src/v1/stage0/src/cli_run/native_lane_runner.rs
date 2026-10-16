@@ -4331,10 +4331,19 @@ pub struct NativeCensusScopedRun {
 }
 
 /// `gunbc test //gunbc/instruments:v2-native-census-scoped`: the emitted compiler's `census-scoped`
-/// verb over the bound subject's acquired closure (gunbc.plans.census_scoped_run). The rows are
+/// verb over the bound subject's acquired closure. The rows are
 /// relayed whole, as `run_v2_native_census` relays them; the terminal is decoded and its
 /// `subject_label` must be the label this instrument bound, so a run is never reported as another
 /// subject's.
+///
+/// COLD AND WARM COST ARE NOT YET REPORTED APART -- A DECLARED FRONTIER (DESIGN §4b). Current
+/// ceiling: a scoped run can be timed by hand, and native-product reuse records hit/miss standing
+/// separately (`native_product_cache::record_outcome`), but no one receipt binds this run's
+/// preparation disposition to its whole-command wall time, so a measured wall mixes the driver
+/// build in. Next rung: each scoped-run receipt names cold build versus verified hit, restored or
+/// refused preparation, and carries whole-command wall time, enough to compare an eligible
+/// same-input warm run against a cold one. Trigger: the next planning decision that needs a warm
+/// census figure.
 pub fn run_v2_native_census_scoped(
     subject_label: &str,
     source_roots: &[String],
@@ -4343,8 +4352,7 @@ pub fn run_v2_native_census_scoped(
         "{}",
         host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
     );
-    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED (gunbc.plans.census_scoped_run
-    // section 6): every way this run can end short of a decoded terminal -- a refused preparation,
+    // THE RECORD EXISTS, INCOMPLETE, BEFORE ANYTHING IS PREPARED: every way this run can end short of a decoded terminal -- a refused preparation,
     // a killed driver, a malformed terminal -- leaves this run's own file reading incomplete.
     // THE BASELINE IS THE SUBJECT'S MOST RECENT COMPLETED RECORD, chosen before this run's own record
     // exists so it can never be this run; the driver compares against it (census_run_diff) and the
@@ -4414,7 +4422,7 @@ fn census_run_record_root() -> PathBuf {
         .join("census-runs")
 }
 
-/// ONE SCOPED RUN'S RECORD FILE (gunbc.plans.census_scoped_run section 6). It is opened incomplete,
+/// ONE SCOPED RUN'S RECORD FILE. It is opened incomplete,
 /// naming the run, its subject, its roots and the revision as CLAIMED (`GITHUB_SHA`, or null when no
 /// one claimed one -- the identity rests on the members' content digests, not on the claim), and
 /// `complete` replaces it atomically with the producer's identity and every JSON row the run printed:
