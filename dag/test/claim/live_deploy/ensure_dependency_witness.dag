@@ -116,24 +116,65 @@ fn fold_intent(dep: DeploymentDependencyStep) -> HostEffectIntent {
   }
 }
 
-// THE PACKAGE FOLD, PROBE ANSWERS INSTALLED. Exit 0 from the probe converges with the fold's OWN
-// observation -- the probe's exit code, stdout and stderr -- while the install is supplied as
+// THE PACKAGE FOLD, THE VERDICT ANSWERS INSTALLED. The fold decides with the dpkg module's own
+// verdict procedure -- a `Status: install ok installed` stanza converges -- reporting the fold's OWN
+// observation, the probe's exit code, stdout and stderr, while the install is supplied as
 // never-run; the distinct stdout is what proves the convergence is the probe's and not a replayed
 // or imagined install. This is the idempotence evidence the retired script's
-// `if ! dpkg -s ... then apt-get install ... fi` carried, stated where the decision now lives.
+// `if ! dpkg -s ... then apt-get install ... fi` carried, stated where the decision now lives --
+// decided on the stanza, not the exit code (the module's own comment says exit 0 cannot answer
+// "installed": it also covers config-files leftovers).
 test fn probe_answered_installed_converges_with_the_probes_own_observation() -> Bool {
   match live_deploy_ensure_package_fold(
     package: package_tmux,
-    probe: observed(exit_code: 0, stdout: "tmux install ok", stderr: ""),
+    probe: observed(exit_code: 0, stdout: "Package: tmux\nStatus: install ok installed\n", stderr: ""),
     install: refused("must never be consulted on this path"),
     intent: fold_intent(dep: tmux_dep()),
   ) {
     Converged { evidence: e } =>
       match e {
-        ShellEffectApplied { exit_code: c, stdout: out, stderr: err } => c == 0 && out == "tmux install ok" && err == ""
+        ShellEffectApplied { exit_code: c, stdout: out, stderr: err } => c == 0 && string_contains(s: out, pattern: "Status: install ok installed") && err == ""
         _ => false
       }
     NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+// THE PACKAGE FOLD, A CONFIG-FILES LEFTOVER IS NOT INSTALLED. dpkg exits 0 for a package REMOVED
+// with its configuration files kept (`Status: deinstall ok config-files`) -- exactly the case the
+// retired `if ! dpkg -s` and any exit-code read answer WRONG, silently skipping the install while
+// the dependency is missing. The verdict says not-installed, so this route does NOT converge on
+// the probe; the install arm decides (supplied refused: not run, so the route refuses).
+test fn a_config_files_leftover_exits_zero_and_is_not_read_as_installed() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tailscale,
+    probe: observed(exit_code: 0, stdout: "Package: tailscale\nStatus: deinstall ok config-files\n", stderr: ""),
+    install: refused("supplied not-run for this claim"),
+    intent: fold_intent(dep: tailscale_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "apt-get install")
+        && !string_contains(s: r, pattern: "never read as absent")
+  }
+}
+
+// THE PACKAGE FOLD, AN UNREADABLE STATE REFUSES. Exit 0 with no Status line (or a corrupt one)
+// decodes to Undecidable, and Undecidable is NEVER read as absent: absent would authorize an
+// install and nothing was established, so the route refuses, names the probe, and says the install
+// was not attempted. This is where an exit-code read would have converged silently.
+test fn an_unreadable_probe_state_refuses_and_never_authorizes_an_install() -> Bool {
+  match live_deploy_ensure_package_fold(
+    package: package_tmux,
+    probe: observed(exit_code: 0, stdout: "Package: tmux\n", stderr: ""),
+    install: refused("must never run on this path"),
+    intent: fold_intent(dep: tmux_dep()),
+  ) {
+    Converged { evidence: _ } => false
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "state could not be read")
+        && string_contains(s: r, pattern: "never read as absent")
+        && string_contains(s: r, pattern: "the install was not attempted")
   }
 }
 
@@ -145,7 +186,7 @@ test fn probe_answered_installed_converges_with_the_probes_own_observation() -> 
 test fn probe_answered_absent_installs_and_the_install_outcome_wins() -> Bool {
   match live_deploy_ensure_package_fold(
     package: package_tmux,
-    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: no packages found matching tmux"),
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tmux' is not installed and no information is available"),
     install: observed(exit_code: 0, stdout: "installing tmux", stderr: ""),
     intent: fold_intent(dep: tmux_dep()),
   ) {
@@ -164,7 +205,7 @@ test fn probe_answered_absent_installs_and_the_install_outcome_wins() -> Bool {
 test fn a_failing_install_refuses_with_the_installs_status() -> Bool {
   match live_deploy_ensure_package_fold(
     package: package_tailscale,
-    probe: observed(exit_code: 1, stdout: "", stderr: ""),
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tailscale' is not installed and no information is available"),
     install: observed(exit_code: 100, stdout: "", stderr: "E: Unable to locate package tailscale"),
     intent: fold_intent(dep: tailscale_dep()),
   ) {
@@ -182,7 +223,7 @@ test fn a_failing_install_refuses_with_the_installs_status() -> Bool {
 test fn install_refusal_refuses_without_claiming_an_exit_status() -> Bool {
   match live_deploy_ensure_package_fold(
     package: package_tmux,
-    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: no packages found matching tmux"),
+    probe: observed(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'tmux' is not installed and no information is available"),
     install: refused("the typed transport declined to start apt-get"),
     intent: fold_intent(dep: tmux_dep()),
   ) {
