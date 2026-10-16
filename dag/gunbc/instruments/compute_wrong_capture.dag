@@ -166,13 +166,14 @@ fn wrong_capture_build(
     launcher_env: hermetic_user_session_launcher_env(runtime_dir: runtime_dir),
     granted: compute_run_unit_cold_unit_grant(),
     user_runtime_dir: runtime_dir,
-    // #14149 (cc4f50f6ba5) made this a required 9th parameter (ComputeUnitStopObservation). C4's head
-    // carries the same line at the call site my refactor MOVED into wrong_capture_build, so merging
-    // the two without it leaves an 8-of-9 call that fails only at dispatch resolve -- for BOTH
-    // labels. Carried here so neither side can lose it. The witness that IMPORTS this module
-    // (test/claim/target_invocation_witness) resolves it, so dropping the argument now refuses that
-    // corpus at resolve with the same "missing required argument 'stop_observation'" the fleet
-    // reported, instead of costing a fleet slot to discover.
+    // #14149 (cc4f50f6ba5) made this a required 9th parameter (ComputeUnitStopObservation), and my
+    // refactor MOVED this call into wrong_capture_build -- so the fix landed on main (#14165) and on
+    // C4 at the OLD location, and C4 has since held that commit out of its branch (2bf428a9d46),
+    // deferring it to main. This is therefore the only copy at the moved site: drop it and both
+    // labels fail at dispatch resolve as an 8-of-9 call, not at compile. The witness that IMPORTS
+    // this module (test/claim/target_invocation_witness) resolves it, so dropping the argument
+    // refuses that corpus at resolve with the same error the fleet reported, instead of costing a
+    // fleet slot to discover.
     stop_observation: NoStopObservation,
   ) {
     ComputeUnitRunRefused { cause: _ } => "unit launch refused"
