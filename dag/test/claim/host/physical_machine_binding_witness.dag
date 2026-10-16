@@ -155,13 +155,13 @@ test fn red4_bound_control_route_other_unit_refuses() -> Bool {
   match mtcollins1_bmc_secure_standing() {
     Present { value: secured_b } =>
       match bmc_control_binding(observed: mtcollins1_access_standing, secured: secured_b) {
-        BmcControlBound { binding: route } =>
+        BmcControlBound { route } =>
           match physical_machine_admission(
             host: operator_host_mtcollins1,
             unit_standing: UnitKeyBound { key: unit_a },
             current_subject: Present { value: subject_for(unit_a) },
             fleet: Absent,
-            control: Present { value: BmcControlBound { binding: route } },
+            control: Present { value: BmcControlBound { route } },
           ) {
             PhysicalMachineRefused { cause: PhysicalMachineControlSubjectMismatch { physical_unit: p, control_unit: c } } =>
               p == unit_a && (c == secured_b.subject.subject.unit_key)
@@ -180,7 +180,7 @@ test fn positive_mtcollins1_seals_with_bound_control_route() -> Bool {
   match mtcollins1_bmc_secure_standing() {
     Present { value: secured } =>
       match bmc_control_binding(observed: mtcollins1_access_standing, secured: secured) {
-        BmcControlBound { binding: route } =>
+        BmcControlBound { route } =>
           let current = mtcollins1_current_intake_subject()
           match current {
             Present { value: cs } =>
@@ -193,7 +193,7 @@ test fn positive_mtcollins1_seals_with_bound_control_route() -> Bool {
               ) {
                 PhysicalMachineAdmitted { binding } =>
                   match binding.control {
-                    Present { value: BmcControlBound { binding: sealed_route } } => sealed_route.unit == route.unit
+                    Present { value: BmcControlBound { route: sealed_route } } => sealed_route.binding.unit == route.binding.unit
                     _ => false
                   }
                 _ => false

@@ -179,8 +179,8 @@ fn physical_machine_axis3(
       PhysicalMachineAdmitted {
         binding: PhysicalMachineBinding { unit_key: unit, subject, fleet, control: Absent }
       }
-    Present { value: BmcControlBound { binding: route } } =>
-      match (route.unit == unit) {
+    Present { value: BmcControlBound { route } } =>
+      match (route.binding.unit == unit) {
         true =>
           PhysicalMachineAdmitted {
             binding: PhysicalMachineBinding {
@@ -194,7 +194,7 @@ fn physical_machine_axis3(
           PhysicalMachineRefused {
             cause: PhysicalMachineControlSubjectMismatch {
               physical_unit: unit,
-              control_unit: route.unit,
+              control_unit: route.binding.unit,
             }
           }
       }
