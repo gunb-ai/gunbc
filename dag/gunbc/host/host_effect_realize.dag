@@ -3,7 +3,7 @@ module gunbc.host.host_effect_realize
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text, admitted_scratch_path }
 
 import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map, string_concat_join }
-import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, dpkg_status_command, DpkgStatusCommandReady, DpkgStatusCommandRefused, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_command, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_in_list }
@@ -5463,7 +5463,7 @@ fn live_deploy_ensure_package_fold(
       NotConverged {
         reason: join(
           [
-            "host_effect_apply: live-deploy ensure-dependency refused before the dpkg -s probe for package ",
+            "host_effect_apply: live-deploy ensure-dependency refused before the install-state probe for package ",
             package as String,
             " ran -- ",
             r,
@@ -5535,21 +5535,17 @@ fn live_deploy_ensure_package_leg(
   transport: HostEffectTransport,
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match dpkg_status_command(package: package) {
-    // A row that will not materialize stops the route BEFORE any process: the probe never ran and
-    // the install is not attempted, so the fold reports the pair as not-run with the materializer's
-    // cause as the reason (a refusal stays a refusal; DESIGN 5).
-    DpkgStatusCommandRefused { cause: cause } =>
-      live_deploy_ensure_package_fold(
-        package: package,
-        probe: RunArgvTransportRefused {
-          reason: concat("the dpkg -s probe command could not be built from the dpkg.Package Status row: ", cause),
-        },
-        install: live_deploy_leg_not_run_outcome(),
-        intent: intent,
-      )
-    DpkgStatusCommandReady { command: probe_command } =>
-      match run_argv_over_host_effect_transport(command: probe_command, transport: transport) {
+  // THE PROBE IS THE DPKG MODULE'S OWN QUERY, the builder already PAIRED with the verdict
+    // procedure below (dpkg_query_status_command runs the Query row's `dpkg-query -s` and its
+    // comment names the verdict as its consumer). Minting a second probe command beside it -- even
+    // one derived from this module's Status row -- would be two builders with different program
+    // words for one fact, joined only by the unmodelled accident that `dpkg -s` forwards to
+    // `dpkg-query -s` (DESIGN §3: each fact lives in exactly one place; the Status row's own
+    // comment says its exit-success reading cannot answer "installed"). The command builds
+    // unconditionally, so no build-refusal arm exists; a transport refusal still arrives from the
+    // run itself.
+    let probe_command = dpkg_query_status_command(package: package)
+    match run_argv_over_host_effect_transport(command: probe_command, transport: transport) {
         RunArgvTransportRefused { reason: r } =>
           live_deploy_ensure_package_fold(
             package: package,
@@ -5584,15 +5580,14 @@ fn live_deploy_ensure_package_leg(
               live_deploy_ensure_install_leg(package: package, probe: p, transport: transport, intent: intent)
           }
       }
-  }
 }
 
+// THE INSTALL LAUNCH, shared by the verdict's two absent answers. A row that will not materialize
+// is a refusal carried to the fold typed, never a silently skipped leg.
 // An outcome for a leg that did not run. It is a Refused, because nothing ran and Refused is the
 // only arm that does not claim an observation: a refusal never started a process and this must
 // not be able to masquerade as either. The folds only consult it on paths that report it as
 // "did not run".
-// THE INSTALL LAUNCH, shared by the verdict's two absent answers. A row that will not materialize
-// is a refusal carried to the fold typed, never a silently skipped leg.
 fn live_deploy_ensure_install_leg(
   package: NonEmptyStr,
   probe: ShellExecObserved,

@@ -1,10 +1,9 @@
 module extdeps.package_managers.dpkg
-import extdeps.exec.command {ArgvCommand,argv_command,operation_row_argv_command,OperationRowArgvCommandReady,OperationRowArgvCommandRefused}
+import extdeps.exec.command {ArgvCommand,argv_command}
 import extdeps.exec.program {ProgramIdentity, uncataloged_program}
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.algebra { Cons, Empty, trim }
-import v2.std.operation_argv { operation_argv_bind_text }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -139,32 +138,3 @@ fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
  argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
 }
 
-// THE INSTALL-STATE PROBE AS A TYPED COMMAND, the `dpkg -s` a caller asks before installing anything.
-// A THIN CALL INTO THE ONE REPARTITION: extdeps.exec.command's operation_row_argv_command materializes
-// the Operation Row `Package.Status` declared above in THIS module (whose transport shell argv is the
-// only place these tokens are spelled) and seals the result; the row's executable token IS the sealed
-// program identity, so this builder carries no program word and no match of its own. It exists to
-// bind this row's coordinates and this row's input name -- and to answer with the domain's own
-// refusal shape so a row that will not materialize stops its route before any process (DESIGN §5).
-data dpkg_status_operation_path: String = "dag/extdeps/package_managers/dpkg.dag"
-data dpkg_status_operation_service: String = "dpkg.Package"
-data dpkg_status_operation_name: String = "Status"
-data dpkg_status_input_name: String = "package"
-
-type DpkgStatusCommand
-  = DpkgStatusCommandReady { command: ArgvCommand }
-  | DpkgStatusCommandRefused { cause: String }
-
-fn dpkg_status_command(package: NonEmptyStr) -> DpkgStatusCommand {
-  match operation_row_argv_command(
-    path: dpkg_status_operation_path,
-    service: dpkg_status_operation_service,
-    operation: dpkg_status_operation_name,
-    binds: [operation_argv_bind_text(name: dpkg_status_input_name, text: package as String)],
-  ) {
-    OperationRowArgvCommandReady { command: command } =>
-      DpkgStatusCommandReady { command: command }
-    OperationRowArgvCommandRefused { cause: cause } =>
-      DpkgStatusCommandRefused { cause: cause }
-  }
-}

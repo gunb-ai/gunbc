@@ -59,11 +59,7 @@ import extdeps.package_managers.apt {
   AptGetInstallCommandReady,
   AptGetInstallCommandRefused,
 }
-import extdeps.package_managers.dpkg {
-  dpkg_status_command,
-  DpkgStatusCommandReady,
-  DpkgStatusCommandRefused,
-}
+import extdeps.package_managers.dpkg { dpkg_query_status_command }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { openssh_standard_port }
@@ -246,7 +242,7 @@ test fn probe_refusal_refuses_before_either_leg_ran() -> Bool {
   ) {
     Converged { evidence: _ } => false
     NotConverged { reason: r, applied: _ } =>
-      string_contains(s: r, pattern: "refused before the dpkg -s probe for package tailscale ran")
+      string_contains(s: r, pattern: "refused before the install-state probe for package tailscale ran")
         && string_contains(s: r, pattern: "the install was not attempted either")
         && !string_contains(s: r, pattern: "exited")
   }
@@ -388,10 +384,11 @@ test fn the_plan_elevates_only_the_install_and_params_carry_policy() -> Bool {
     && !string_contains(s: join(write_words, " "), pattern: marker.content as String)
 }
 
-// THE PACKAGE ARM'S TWO COMMANDS, DERIVED FROM THEIR ROWS. The probe and the install arrive through
-// extdeps.package_managers' thin builders, which hand their row coordinates to the ONE repartition --
-// extdeps.exec.command's operation_row_argv_command, materializing the dpkg.Package Status and
-// apt.PackageManager Install rows through shell_materialize_operation_argv -- rather than repeating
+// THE PACKAGE ARM'S TWO COMMANDS, DERIVED FROM THEIR ROWS. The probe is the dpkg module's own query
+// builder (dpkg_query_status_command, the one paired with the verdict procedure the fold reads), and
+// the install arrives through extdeps.package_managers' thin builder, which hands its row coordinates
+// to the ONE repartition -- extdeps.exec.command's operation_row_argv_command, materializing the
+// apt.PackageManager Install row through shell_materialize_operation_argv -- rather than repeating
 // any argv, or repeating the row-to-sealed-command match, anywhere. So these words exist once, in the
 // service declarations, and what this claim pins is the RESULT of that derivation at the boundary
 // values the route supplies (the two packages a live deploy asks for). The install carries NO elevation
@@ -403,16 +400,12 @@ test fn the_plan_elevates_only_the_install_and_params_carry_policy() -> Bool {
 // evidence on the PR). The builders refuse typed -- a named cause, no process -- only when the row
 // materializes no argv or an empty executable token, and a fold claim above carries that refusal.
 test fn the_package_commands_derive_from_their_operation_rows() -> Bool {
-  match dpkg_status_command(package: package_tmux) {
-    DpkgStatusCommandRefused { cause: _ } => false
-    DpkgStatusCommandReady { command: probe } =>
-      match apt_get_install_command(package: package_tailscale) {
-        AptGetInstallCommandRefused { cause: _ } => false
-        AptGetInstallCommandReady { command: install } =>
-          argv_words(command: probe) == ["dpkg", "-s", "tmux"]
-            && argv_words(command: install) == ["apt-get", "install", "--yes", "tailscale"]
-            && !string_contains(s: join(argv_words(command: install), " "), pattern: "sudo")
-      }
+  match apt_get_install_command(package: package_tailscale) {
+    AptGetInstallCommandRefused { cause: _ } => false
+    AptGetInstallCommandReady { command: install } =>
+      argv_words(command: dpkg_query_status_command(package: package_tmux)) == ["dpkg-query", "-s", "tmux"]
+        && argv_words(command: install) == ["apt-get", "install", "--yes", "tailscale"]
+        && !string_contains(s: join(argv_words(command: install), " "), pattern: "sudo")
   }
 }
 
