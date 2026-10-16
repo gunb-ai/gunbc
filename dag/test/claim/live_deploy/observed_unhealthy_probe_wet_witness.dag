@@ -1,0 +1,200 @@
+module test.claim.live_deploy.observed_unhealthy_probe_wet_witness
+
+// CLAIM 5 OF DEPLOY-UNHEALTHY-1 -- THE INHABITANCE. The dry claims
+// (test.claim.live_deploy.observed_unhealthy_deploy_witness) SUPPLY the probe reply at the fold's
+// interface, which is what makes the decision testable without a host. A supplied value proves the
+// decision; it does not prove the world. This file supplies nothing: it starts a REAL listener that
+// answers 503 over loopback, sends the REAL bounded GET (http.Client.GetWithinWithStatus -> the
+// curl argv extdeps.http.client http_client_get_with_status_argv owns), and shows the reply the dry
+// claims supply is the shape the real probe yields -- curl exits 0 on a 503, so the read is ANSWERED,
+// and the status line it appended splits into a real status and a real body.
+//
+// WHY IT IS WET AND WHERE IT RUNS. The operations here (extdeps.posix.process StartDetached and Reap)
+// deliberately carry no mock_response -- a replayed pid is a fabricated process -- so the hermetic
+// discovery envelope refuses the file by construction. It is classified LocalRepoWetLane in
+// gunbc.ci.ci_layer_roots witness_exclusion_frontier and enrolled, per fn, in
+// v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, exactly as the four
+// test.claim.process_lifecycle_wet_witness rows are: the only effects are spawning a local node
+// one-shot listener on a loopback port derived from the witness's own mktemp workdir, bounded
+// loopback GETs, one SIGTERM confirmed by reap, and removal of the workdir the witness created.
+//
+// IT FAILS LOUDLY, NOT VACUOUSLY, WHERE NODE IS ABSENT. If `node` cannot start the listener the poll
+// never sees an answer, the fold reads a refusal, and the 503 claim is DID NOT HOLD -- which is the
+// honest reading of "this host did not exhibit the shape", not a pass by absence.
+
+import std.types { Bool, String, Int, NonEmptyStr, HttpStatus, http_status_of }
+import std.optional { Present, Absent }
+import extdeps.posix.process
+import extdeps.posix.signal
+import extdeps.http.client
+import extdeps.tools.sleep
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.emit_host_transport {
+  node_http_serve_port_seed, node_http_await_reaped,
+}
+import extdeps.posix.process { Spawned, SpawnRefused, Signaled, StillRunning, Exited, ReapRefused }
+import gunbc.roadmap.roadmap_site_surface_types {
+  HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
+}
+import gunbc.live_deploy.readiness { healthz_effective_read_from_status_get }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE LISTENER, as a model value (no file template crosses a boundary: the bytes are written by
+// Filesystem.Write from this literal, the same shape the process-lifecycle wet witness uses). It
+// answers EVERY request with the status and body its environment names, so the same listener proves
+// both halves: a 503 that IS an answer, and -- with no listener at all -- the refusal that is not.
+data unhealthy_listener_source: String = "import http from 'node:http';\nconst port = Number.parseInt(process.env.PORT ?? '0', 10);\nconst host = process.env.HOST ?? '127.0.0.1';\nconst status = Number.parseInt(process.env.UNHEALTHY_STATUS ?? '503', 10);\nconst body = process.env.UNHEALTHY_BODY ?? '{\"status\":\"starting\"}';\nconst server = http.createServer((_req, res) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(body); });\nserver.listen(port, host, () => { console.log(JSON.stringify({ ready: true, port: server.address().port })); });\n"
+
+// WHAT THE SICK SERVE ANSWERED IN THE INCIDENT: a status line and a reply that names no release.
+data incident_healthz_body: String = "{\"status\":\"starting\"}"
+
+data unhealthy_probe_attempts: Int = 12
+
+// THE POLL, in the model rather than in a script: bounded attempts, each one a REAL bounded GET,
+// with the budget named at the call site. The first attempts may legitimately refuse while node
+// binds the port; the loop is what turns that race into an observation instead of a flake. An
+// answered attempt carries curl's whole stdout -- body plus the status line `-w` appended -- which
+// is exactly the value the fold under test consumes.
+type UnhealthyProbeAttempt {
+  answered: Bool
+  attempts_used: Int
+  body: String
+}
+
+fn unhealthy_probe_poll(url: NonEmptyStr, attempts_left: Int, attempts_used: Int) -> UnhealthyProbeAttempt {
+  if attempts_left <= 0 {
+    UnhealthyProbeAttempt { answered: false, attempts_used: attempts_used, body: "" }
+  } else {
+    let probe = http.Client.GetWithinWithStatus(url: url, max_seconds: "3")
+    if probe.success {
+      UnhealthyProbeAttempt { answered: true, attempts_used: attempts_used + 1, body: probe.body }
+    } else {
+      let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+      unhealthy_probe_poll(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1)
+    }
+  }
+}
+
+fn spawn_listener(dir: String, port: Int, status: Int, body: String) -> Int? {
+  let js = Filesystem.Write(path: concat(dir, "/unhealthy.js"), content: unhealthy_listener_source)
+  if !js.success {
+    none
+  } else {
+    let spawn = posix.Process.StartDetached(
+      program: "env" as NonEmptyStr,
+      arguments: [
+        "-C",
+        dir,
+        "HOST=127.0.0.1",
+        concat("PORT=", to_string(port)),
+        concat("UNHEALTHY_STATUS=", to_string(status)),
+        concat("UNHEALTHY_BODY=", body),
+        "node",
+        concat(dir, "/unhealthy.js"),
+      ],
+      stdout_file: concat(dir, "/unhealthy.stdout.log") as NonEmptyStr,
+      stderr_file: concat(dir, "/unhealthy.stderr.log") as NonEmptyStr
+    )
+    match spawn.spawn {
+      Spawned { pid: pid } => Present { value: pid }
+      SpawnRefused { program: _, cause: _ } => none
+    }
+  }
+}
+
+fn stop_listener(pid: Int, dir: String) -> Bool {
+  let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+  let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
+  let cleanup = shell.Remove.RecursiveForce(path: dir)
+  cleanup.success
+    && kill.success
+    && (match reaped {
+      Absent => false
+      Present { value: outcome } =>
+        match outcome {
+          Signaled { signal: signal } => signal == 15
+          StillRunning => false
+          Exited { code: _ } => false
+          ReapRefused { cause: _ } => false
+        }
+    })
+}
+
+// THE CLAIM, at the grain that matters: the real probe over a real 503 yields the SHAPE THE DRY
+// CLAIMS SUPPLY -- success true (curl received a response, so curl exited 0), the status 503 read
+// off the line curl appended, the body preserved -- and the fold reads that pair as
+// HealthzAnsweredUnhealthy. Not HealthzBodyRead (no release is named), not HealthzProbeRefused (an
+// answer was received). That is the distinction the model lacked on 2026-10-15, witnessed against a
+// socket rather than asserted.
+test fn the_real_probe_answers_a_503_as_answered_unhealthy() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } =>
+      match spawn_listener(dir: dir.path, port: port, status: 503, body: incident_healthz_body) {
+        Absent => false
+        Present { value: pid } => {
+          let attempt = unhealthy_probe_poll(
+            url: concat("http://127.0.0.1:", to_string(port), "/healthz") as NonEmptyStr,
+            attempts_left: unhealthy_probe_attempts,
+            attempts_used: 0
+          )
+          let read = healthz_effective_read_from_status_get(
+            success: attempt.answered,
+            stdout: attempt.body,
+            error: if attempt.answered { "" } else { "the listener never answered within the poll budget" }
+          )
+          let stopped = stop_listener(pid: pid, dir: dir.path)
+          stopped
+            && attempt.answered
+            && string_contains(s: attempt.body, pattern: incident_healthz_body)
+            && (match read {
+              HealthzAnsweredUnhealthy { status, detail } =>
+                match http_status_of(n: 503) {
+                  Present { value: expected } => status == expected
+                  Absent => false
+                }
+                  && string_contains(s: detail, pattern: "starting")
+              HealthzBodyRead { body: _ } => false
+              HealthzProbeRefused { probe_error: _ } => false
+            })
+        }
+      }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// THE CONTROL ON THE SAME SOCKET: with no listener at all, the SAME real op obtains no response --
+// curl exits nonzero -- and the fold keeps refusing. The 503 and the silence are distinguished by
+// the transport's own answer, on a real socket, not by parsing text. This is the pair that makes the
+// distinction inhabited on BOTH sides: answering-sick and never-answering are different observations.
+test fn the_real_probe_still_refuses_when_nothing_listens() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let attempt = unhealthy_probe_poll(
+        url: concat("http://127.0.0.1:", to_string(port), "/healthz") as NonEmptyStr,
+        attempts_left: 3,
+        attempts_used: 0
+      )
+      let read = healthz_effective_read_from_status_get(
+        success: attempt.answered,
+        stdout: attempt.body,
+        error: if attempt.answered { "" } else { "curl obtained no response" }
+      )
+      !attempt.answered
+        && (match read {
+          HealthzProbeRefused { probe_error } => string_contains(s: probe_error, pattern: "obtained no response")
+          HealthzAnsweredUnhealthy { status: _, detail: _ } => false
+          HealthzBodyRead { body: _ } => false
+        })
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
