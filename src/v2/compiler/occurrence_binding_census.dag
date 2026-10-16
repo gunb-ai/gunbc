@@ -54,6 +54,7 @@ type OccurrenceBindingContribution {
   duplicate_records: Int
   unreadable_spellings: Int
   unrecorded_references: Int
+  unrecorded_paths: List<String>
 }
 
 fn ambient_binding_table_label(table: AmbientBindingTable) -> String {
@@ -114,6 +115,7 @@ type BindingCensusFold {
 
 fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> OccurrenceBindingContribution {
   let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_bindings), key: fn(id) { id.value }, order: int_total_order())
+  let unrecorded = unrecorded_declaration_reference_paths(tree: tree)
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
     match map_lookup(m: tree.occurrence_bindings, key: id) {
       Absent => acc
@@ -125,7 +127,8 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> Occurr
     rows: folded.rows,
     duplicate_records: length(xs: tree.duplicate_binding_records),
     unreadable_spellings: folded.unreadable,
-    unrecorded_references: unrecorded_declaration_references(tree: tree)
+    unrecorded_references: length(xs: unrecorded),
+    unrecorded_paths: unrecorded
   }
 }
 
@@ -133,8 +136,18 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> Occurr
 // carrying a minted occurrence that the record does not hold. resolve_atom_bound is the one producer of
 // a resolved corpus reference and writes the record as it mints, so this is zero unless some other
 // door minted a reference without passing through it -- which is the defect it exists to name.
-fn unrecorded_declaration_references(tree: ResolvedTree) -> Int {
-  length(xs: node_subtree_nodes(root: tree.root) |> filter(n => declaration_reference_unrecorded(tree: tree, n: n)))
+// Each one is named by the path it references, so the refusal says which reference escaped the record.
+fn unrecorded_declaration_reference_paths(tree: ResolvedTree) -> List<String> {
+  fold_list(xs: node_subtree_nodes(root: tree.root), empty: [], cons: fn(acc, n) {
+    if declaration_reference_unrecorded(tree: tree, n: n) {
+      match declaration_reference_path_optional(node: n) {
+        Present { value: p } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: p))
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  })
 }
 
 fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
@@ -215,8 +228,9 @@ fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
 }
 
 fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
+  let rows = fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_binding_census_line(row: row)) })
   list_snoc_item(
-    xs: fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_binding_census_line(row: row)) }),
+    xs: fold_list(xs: c.unrecorded_paths, empty: rows, cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unrecorded\t" + c.module + "\t" + p) }),
     item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings) + "\t" + to_string(c.unrecorded_references)
   )
 }

@@ -138,7 +138,10 @@ fn duplicate_record_failure(stdout: String) -> Optional<String> {
     Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " recorded " + field_at(line: l, index: 3) + " occurrence(s) with two different bindings: each occurrence must carry exactly one binding source" }
     Absent =>
       match first(module_lines(stdout: stdout) |> filter(l => field_at(line: l, index: 5) != "0")) {
-        Present { value: l } => Present { value: "module " + field_at(line: l, index: 1) + " has " + field_at(line: l, index: 5) + " declaration reference(s) with no binding record: each occurrence must carry exactly one binding source" }
+        Present { value: l } =>
+          let m = field_at(line: l, index: 1)
+          let paths = split(s: stdout, delimiter: "\n") |> filter(u => starts_with(s: u, prefix: "binding_unrecorded\t" + m + "\t")) |> map(u => field_at(line: u, index: 2))
+          Present { value: "module " + m + " has " + field_at(line: l, index: 5) + " declaration reference(s) with no binding record (" + join(paths, separator: ", ") + "): each occurrence must carry exactly one binding source" }
         Absent => Absent
       }
   }
