@@ -14,6 +14,7 @@ import gunbc.compute.work_request { work_default_build, work_declared_outputs, W
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
   compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  NoStopObservation,
   NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
 }
 import gunbc.instruments.compute_run_unit_cold {
