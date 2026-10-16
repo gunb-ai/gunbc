@@ -1,0 +1,154 @@
+module test.claim.host.approval_broker_dark_install_witness
+
+import gunbc.host.host_effect_realize {
+  DarkInstallStep,
+  DarkInstallVerdict,
+  DarkInstallRefused,
+  DarkInstallConverged,
+  DarkStepOwner,
+  DarkStepSudoersCheck,
+  DarkStepSudoersCompare,
+  DarkStepSudoersStage,
+  DarkStepSudoersReadback,
+  DarkStepSnapshotReadback,
+  DarkStepSliceUnit,
+  DarkStepBrokerUnit,
+  DarkStepDaemonReload,
+  DarkStepEnable,
+  DarkStepRestart,
+  DarkStepSliceControl,
+  DarkState,
+  DarkOk,
+  DarkFailed,
+  DarkLeg,
+  DarkLegArgv,
+  DarkLegStdin,
+  DarkLegExpectEmpty,
+  DarkLegSameHash,
+  dark_run_legs,
+  dark_sudoers_legs,
+  dark_unit_legs,
+  dark_slice_control_legs,
+  dark_snapshot_readback_legs,
+  approval_broker_dark_install,
+}
+import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import gunbc.live_deploy.spec { gunbc_approval_broker_unit_name }
+import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.tools.findutils { find_untrusted_entries_command }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rev() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }
+}
+
+fn step_of(s: DarkState) -> DarkInstallStep? {
+  match s {
+    DarkOk => none
+    DarkFailed { step: st, reason: _ } => Present { value: st }
+  }
+}
+
+fn leg_step(l: DarkLeg) -> DarkInstallStep {
+  match l {
+    DarkLegArgv { step: s, command: _ } => s
+    DarkLegStdin { step: s, command: _, payload: _ } => s
+    DarkLegExpectEmpty { step: s, command: _ } => s
+    DarkLegSameHash { step: s, left: _, right: _ } => s
+  }
+}
+
+// SUPPLIED SCRATCH: the sudoers legs are pure over the scratch directory the caller acquired, so the
+// claim supplies it. Order is the contract: stage, visudo, install, policy, rename, policy, readback,
+// compare -- the compare is LAST, so convergence is the independent readback.
+test fn the_sudoers_legs_stage_check_install_and_end_with_the_readback_compare() -> Bool {
+  let legs = dark_sudoers_legs(revision: rev(), principal: fleet_posix_ci_runner_principal(), scratch: "/tmp/s")
+  count(legs) == 8
+    && match legs |> first { Present { value: l } => leg_step(l: l) == DarkStepSudoersStage
+      Absent => false }
+}
+
+test fn the_sudoers_legs_end_with_the_compare() -> Bool {
+  let legs = dark_sudoers_legs(revision: rev(), principal: fleet_posix_ci_runner_principal(), scratch: "/tmp/s")
+  match legs |> last {
+    Present { value: l } => match l {
+      DarkLegSameHash { step: s, left: a, right: b } => s == DarkStepSudoersCompare && a != b
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+test fn the_unit_legs_enable_and_restart_only_the_broker_unit_after_a_daemon_reload() -> Bool {
+  let steps = map(dark_unit_legs(spec: deployment_spec_srv1(), revision: rev()), l => leg_step(l: l))
+  steps == [DarkStepSliceUnit, DarkStepBrokerUnit, DarkStepDaemonReload, DarkStepEnable, DarkStepRestart]
+}
+
+// THE FREEZE RED (carried over from the deleted script-text claim): the enable and restart legs name the
+// broker unit and never the roadmap unit, so a stage that restarts gunbc-roadmap.service fails here.
+test fn the_unit_legs_never_name_the_roadmap_unit() -> Bool {
+  let legs = dark_unit_legs(spec: deployment_spec_srv1(), revision: rev())
+  let broker = gunbc_approval_broker_unit_name
+  let roadmap = deployment_spec_srv1().service.unit_name as NonEmptyStr
+  let enable_broker = DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: broker)) }
+  let restart_broker = DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: broker)) }
+  let enable_roadmap = DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: roadmap)) }
+  let restart_roadmap = DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: roadmap)) }
+  any(legs, l => l == enable_broker) && any(legs, l => l == restart_broker)
+    && !any(legs, l => l == enable_roadmap) && !any(legs, l => l == restart_roadmap)
+}
+
+test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
+  count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
+}
+
+// THE RED: the first leg fails (find on a root that does not exist), so the line stops there. The
+// later leg would itself fail at a DIFFERENT step, so the verdict naming the first step is the proof
+// that no later leg decided it.
+test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
+  let legs = [
+    DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root") },
+    DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" },
+  ]
+  step_of(s: dark_run_legs(legs: legs, transport: LocalShell)) == Present { value: DarkStepSnapshotReadback }
+}
+
+test fn an_unhashable_pair_fails_the_compare() -> Bool {
+  step_of(s: dark_run_legs(legs: [DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" }], transport: LocalShell))
+    == Present { value: DarkStepSudoersCompare }
+}
+
+test fn an_empty_leg_list_is_ok() -> Bool {
+  step_of(s: dark_run_legs(legs: [], transport: LocalShell)) == none
+}
+
+test fn slice_control_legs_follow_the_derived_plan() -> Bool {
+  match slice_control_plan_for(host: deployment_spec_srv1().target.host.identity) {
+    SliceControlPlanDerived { units: us } =>
+      count(dark_slice_control_legs(units: us)) >= count(us)
+        && all(dark_slice_control_legs(units: us), l => leg_step(l: l) == DarkStepSliceControl)
+    SliceControlPlanNotOwed => count(dark_slice_control_legs(units: [])) == 0
+    SliceControlPlanRefused { cause: _ } => false
+  }
+}
+
+// INHABITANCE ON THE REAL ROUTE: a spec that does not own the host's broker reaches the real function
+// and is refused at the OWNER step before any leg runs.
+test fn the_real_route_refuses_a_non_owning_spec_at_the_owner_step() -> Bool {
+  match approval_broker_dark_install(
+    spec: selected_deployment_spec(row: srv1_lab_desired_deployment()),
+    revision: rev(),
+    principal: fleet_posix_ci_runner_principal(),
+    source_root: "/nonexistent-w6b-source",
+    transport: LocalShell,
+  ) {
+    DarkInstallRefused { step: s, reason: _ } => s == DarkStepOwner
+    DarkInstallConverged { broker_tree_digest: _ } => false
+  }
+}

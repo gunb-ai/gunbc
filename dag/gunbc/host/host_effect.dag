@@ -2,7 +2,7 @@ module gunbc.host.host_effect
 
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -82,7 +82,7 @@ type HostEffect =
   | LiveDeployApprovalBrokerDarkInstall { spec: DeploymentSpec, candidate: CandidateRelease }
   | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
-  | LiveDeployDigestReadback { port: Int }
+  | LiveDeployDigestReadback { port: Int, expected_digest: Fnv1a64Structural }
   | LiveDeployServeRoute { endpoint: TailscaleServeEndpoint, enabled: Bool }
   | DeployAccessPreflight {}
   | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
@@ -91,6 +91,7 @@ type HostEffect =
   | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
   | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
   | ActivateRunnerSlot { slot: RunnerSlotIdentity }
+  | DrainAndMaskRunnerSlot { slot: RunnerSlotIdentity }
   | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
   | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }

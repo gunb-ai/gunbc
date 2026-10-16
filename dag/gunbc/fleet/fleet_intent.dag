@@ -266,6 +266,10 @@ data fleet_intent_os_surface: OperatingSystemSurface = OperatingSystemSurface {
   process_semantics: PosixProcess,
 }
 
+// PER-HOST SOFTWARE IS NOT THIS ROW. fleet_intent_os_surface stays the fleet-wide execution-surface
+// default (empty distro/version). srv1's OS, tools, sysctl and standing live on
+// gunbc.host.host_software_surface, keyed by the same HostIdentity ComputeHost already carries.
+
 data srv1_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.183", protocol: Redfish },
