@@ -17,7 +17,7 @@ import gunbc.compute.work_provider_local {
 import gunbc.instruments.compute_run_unit_cold {
   HermeticUserSessionRuntimeAbsent, HermeticUserSessionRuntimeBound,
   observe_hermetic_user_session_runtime, observe_isolated_job_toolchain_homes, observe_workspace,
-  observe_run_identity, observe_head, prepare_checkout, mkdir_ok, path_is_under_opt_gunbc,
+  observe_run_frame, observe_head, prepare_checkout, mkdir_ok, path_is_under_production_instance_root,
   hermetic_user_session_unit_setenv, hermetic_toolchain_unit_setenv, hermetic_user_session_launcher_env,
   compute_run_unit_cold_unit_grant,
 }
@@ -171,21 +171,39 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
             exit: ExitFailure { code: 1, reason: "ToolchainHomesNotIsolated" },
           }
         Present { value: homes } => {
-          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, toolchain_homes: homes)
+          match observe_run_frame() {
+            Absent =>
+              CliWirePrintable {
+                bytes: "compute-wrong-capture: no observation: clock unix millis unreadable, so this run has no frame",
+                exit: ExitFailure { code: 2, reason: "run frame unreadable" },
+              }
+            Present { value: frame } => {
+          let stamp = to_string(value: frame)
+          let probe = fleet_compute_hermetic_dashboard_instance_at(workspace: "." as FilePath, frame: frame, toolchain_homes: homes)
           let workspace = observe_workspace(instance: probe)
-          let stamp = observe_run_identity()
-          if (workspace == "") || (stamp == "") || path_is_under_opt_gunbc(path: workspace) {
+          if (workspace == "") || path_is_under_production_instance_root(path: workspace) {
             CliWirePrintable {
-              bytes: "compute-wrong-capture: no observation: workspace or run identity unusable",
-              exit: ExitFailure { code: 2, reason: "workspace or run identity unusable" },
+              bytes: "compute-wrong-capture: no observation: workspace unusable",
+              exit: ExitFailure { code: 2, reason: "workspace unusable" },
             }
           } else {
-            let run_root = join([workspace, "/.gunbc-compute-hermetic/", stamp], "")
-            let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: run_root as FilePath, toolchain_homes: homes)
+            let instance = fleet_compute_hermetic_dashboard_instance_at(workspace: workspace as FilePath, frame: frame, toolchain_homes: homes)
             let id_a = join([stamp, "a"], "")
             let id_b = join([stamp, "b"], "")
-            let layout_a = compute_layout(instance: instance, identity_hex: id_a)
-            let layout_b = compute_layout(instance: instance, identity_hex: id_b)
+            match compute_layout(instance: instance, identity_hex: id_a) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
+                  exit: ExitFailure { code: 1, reason: "no materialization store declared" },
+                }
+              Present { value: layout_a } =>
+            match compute_layout(instance: instance, identity_hex: id_b) {
+              Absent =>
+                CliWirePrintable {
+                  bytes: "compute-wrong-capture: the hermetic instance declares no materialization store",
+                  exit: ExitFailure { code: 1, reason: "no materialization store declared" },
+                }
+              Present { value: layout_b } => {
             let root = compute_root(instance: instance) as String
             let head = observe_head(instance: instance, workdir: workspace)
             let dirs_ok = mkdir_ok(instance: instance, path: instance.instance_root as String)
@@ -217,6 +235,12 @@ fn compute_wrong_capture_exit() -> CliWireResponse {
               }
             }
           }
+              }
+            }
+            }
+          }
+            }
+            }
         }
       }
   }
