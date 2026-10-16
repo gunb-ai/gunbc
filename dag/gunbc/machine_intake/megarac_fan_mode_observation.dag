@@ -41,7 +41,17 @@ type MegaRacSdrFanRow {
   presence: MegaRacSdrFanPresence
 }
 
+// HOW AN OBSERVATION WAS TAKEN. Every row here came from an operator session's curl/ipmitool, not
+// from a repository-executed read; the repository's own reads are the IPMI SDR series.
+type MegaRacObservationProvenance
+  = OperatorSessionProbe { executor: NonEmptyStr }
+
+data megarac_operator_session_probe_2026_10_14: MegaRacObservationProvenance = OperatorSessionProbe {
+  executor: "operator session curl against the BMC REST API, 2026-10-14; not executed by repository code",
+}
+
 type MegaRacFanModeObservation {
+  provenance: MegaRacObservationProvenance
   host: HostIdentity
   observed_at: NonEmptyStr
   manager: MegaRacFanManagerStanding
@@ -50,6 +60,7 @@ type MegaRacFanModeObservation {
 }
 
 data mtcollins1_megarac_fan_mode_observation_2026_10_14: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
   host: operator_host_mtcollins1,
   observed_at: "2026-10-14T21:50:00Z" as NonEmptyStr,
   manager: CoolingManagerAutomatic,
@@ -100,6 +111,7 @@ type MegaRacThermalSnapshot {
 }
 
 data mtcollins1_megarac_fan_mode_observation_2026_10_14_220918: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
   host: operator_host_mtcollins1,
   observed_at: "2026-10-14T22:09:18Z" as NonEmptyStr,
   manager: CoolingManagerDisabledManual,
@@ -156,6 +168,7 @@ data mtcollins1_megarac_thermal_snapshot_2026_10_14_220918: MegaRacThermalSnapsh
 }
 
 data mtcollins1_megarac_fan_mode_observation_2026_10_14_222352: MegaRacFanModeObservation = MegaRacFanModeObservation {
+  provenance: megarac_operator_session_probe_2026_10_14,
   host: operator_host_mtcollins1,
   observed_at: "2026-10-14T22:23:52Z" as NonEmptyStr,
   manager: CoolingManagerDisabledManual,

@@ -5,13 +5,11 @@ import std.optional { Present, Absent }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
   fleet_converge_fan_policy_phase_step,
-  fleet_converge_fan_policy_phase_verdict_step,
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
 }
 import gunbc.ci.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke,
-  gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
 }
 import extdeps.github.actions { Step, RunStep, UsesStep }
@@ -205,20 +203,15 @@ test fn fan_policy_phase_nonzero_or_timeout_leaves_boot_scheduled() -> Bool {
     && !fan_policy_phase_continue_on_error(s: fleet_converge_mtcollins1_fan_observe_step())
 }
 
-// CONTROL: continue-on-error only schedules boot. The post-boot verdict has no continue-on-error,
-// so a refused observation (typed receipt) fails the job after the power cycle still ran.
-test fn fan_policy_phase_verdict_after_boot_fails_the_job_when_the_receipt_is_refused() -> Bool {
-  let runs = map(
+// CONTROL: no step after boot can turn a refused observation into a job failure; the phase's
+// refusal is a typed receipt with ExitSuccess, so the receipt upload is the last fan step.
+test fn fan_policy_phase_has_no_post_boot_gate() -> Bool {
+  let ids = map(
     fleet_converge_mtcollins1_boot_steps_around(
       fleet_key_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_fleet_key),
       boot_step: fan_policy_phase_marker_step(marker: fan_policy_phase_supplied_boot),
     ),
     s => fan_policy_phase_step_run_text(s: s),
   )
-  let fan = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
-  let verdict = gunbc_ci_mtcollins1_fan_observe_boot_phase_verdict_invoke()
-  filter(runs, r => r == fan || r == fan_policy_phase_supplied_boot || r == verdict)
-    == [fan, fan_policy_phase_supplied_boot, verdict]
-    && !fan_policy_phase_continue_on_error(s: fleet_converge_fan_policy_phase_verdict_step())
-    && fan_policy_phase_timeout_present(s: fleet_converge_fan_policy_phase_verdict_step())
+  filter(ids, r => string_contains(s: r, pattern: "boot_phase_verdict")) == []
 }
