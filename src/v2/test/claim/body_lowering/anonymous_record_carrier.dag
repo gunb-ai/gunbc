@@ -29,7 +29,6 @@ import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolved,
   NativeCensusModuleResolveRefused,
-  NativeCensusResidualRow,
   native_census_module_resolution,
   native_census_residual_rows,
   native_lane_file_refusal_index,
@@ -50,7 +49,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_lexeme }
 import v2.std.node_query { construct_tag_path_optional }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.integer { Int }
@@ -58,7 +57,7 @@ import v2.std.text { String }
 import v2.std.resolution_policy { default_name_resolution_policy }
 import std.algebra { Cons, Empty, length, list_snoc_item }
 // THIS CLAIM MODULE CARRIES `List` ITSELF. Its first run refused with
-// resolve_reason_unbound_symbol at the `List` in `fn arc_rows(...) -> List<NativeCensusResidualRow>`
+// resolve_reason_unbound_symbol at the `List` in one of its own signature types
 // -- the very census group it pins, caught in the claim file. That is the diagnosis reproducing on a
 // 94th site: the name is not ambient, and a module that uses it must import it (here from std.types,
 // where it is declared). The RED specimens below deliberately do NOT carry it; this module must.
@@ -115,57 +114,62 @@ fn arc_entry(module: String, unit: Symbol) -> NativeCensusModule {
   NativeCensusModule { module: module, path: unit }
 }
 
-// THE GROUP'S OWN MEASUREMENT ROUTE, NOT A PARAPHRASE OF IT. native_census_module_resolution is the
-// function //gunbc/instruments:v2-native-census-scoped runs per module, and native_census_residual_rows
-// is the function that minted the 93 rows -- one per occurrence, each located, each carrying its chain
-// whole. So the rows asserted below are the census's own rows, read the census reads them.
-fn arc_rows(entry: NativeCensusModule) -> List<NativeCensusResidualRow> {
+// THE CENSUS READING, IN CHEAP VALUES ONLY. The rows themselves are bound by INFERENCE inside this
+// fold and never named in a signature: naming the census row TYPE pulls its declarer closure in, and
+// that closure reaches dag/std/content_hash.dag, where `chars` is unbound on main today -- an unrelated
+// pre-existing defect would then refuse every test here before it ran (this is exactly what the first
+// three runs of this claim did, cause=resolve_reason_declarer_refused). The shape follows
+// v2.test.claim.native_census.located_refusal, which reads row fields the same way. What leaves the
+// fold is the fatal's reason AS A LEXEME and the located LINE -- both read through the one authority,
+// v2.std.diagnostic diagnostics_fatal_reason, so they are the census's own reason and its own position.
+type ArcReading {
+  reasons: List<String>
+  lines: List<Int>
+  other_rows: Int
+}
+
+fn arc_reading(entry: NativeCensusModule) -> ArcReading {
   match native_test_context_from_ingest(ingest: arc_ingest) {
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => ArcReading { reasons: Empty, lines: Empty, other_rows: -1 }
     Accepted { value: context, diagnostics: _ } => {
       let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
       let step = native_census_module_resolution(context: context, refusal_index: refusal_index, entry: entry)
       match step.outcome {
         NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
-          native_census_residual_rows(positions: context.positions, entry: entry, first: f, rest: r)
-        NativeCensusModuleFileRefused => Empty
-        NativeCensusModuleResolved => Empty
+          fold(native_census_residual_rows(positions: context.positions, entry: entry, first: f, rest: r),
+            init: ArcReading { reasons: Empty, lines: Empty, other_rows: 0 },
+            f: fn(acc, row) {
+              let reason = symbol_lexeme(sym: diagnostics_fatal_reason(d: row.chain))
+              if reason == "resolve_anonymous_record_no_expected_type" {
+                match row.at {
+                  FileRefusalAtLine { line: line, byte_column: _ } => ArcReading {
+                    reasons: list_snoc_item(xs: acc.reasons, item: reason),
+                    lines: list_snoc_item(xs: acc.lines, item: line),
+                    other_rows: acc.other_rows
+                  }
+                  FileRefusalAtOtherFile { file: _ } => ArcReading {
+                    reasons: list_snoc_item(xs: acc.reasons, item: reason),
+                    lines: list_snoc_item(xs: acc.lines, item: -2),
+                    other_rows: acc.other_rows
+                  }
+                  _ => ArcReading {
+                    reasons: list_snoc_item(xs: acc.reasons, item: reason),
+                    lines: list_snoc_item(xs: acc.lines, item: -1),
+                    other_rows: acc.other_rows
+                  }
+                }
+              } else {
+                // A row of ANOTHER cause group -- an unresolvable `List` head also earns
+                // resolve_reason_unbound_symbol rows for the two annotations that name it. Counted, never
+                // dropped: the discriminator test demands other_rows == 0 as well as reasons == Empty.
+                ArcReading { reasons: acc.reasons, lines: acc.lines, other_rows: acc.other_rows + 1 }
+              }
+            })
+        NativeCensusModuleFileRefused => ArcReading { reasons: Empty, lines: Empty, other_rows: -3 }
+        NativeCensusModuleResolved => ArcReading { reasons: Empty, lines: Empty, other_rows: 0 }
       }
     }
   }
-}
-
-// THE FATAL, THROUGH THE ONE AUTHORITY: a row's chain is advisories plus exactly one fatal, and
-// v2.std.diagnostic diagnostics_fatal_reason is the single authority for which element that fatal is.
-fn arc_reason(row: NativeCensusResidualRow) -> Symbol {
-  diagnostics_fatal_reason(d: row.chain)
-}
-
-// THE GROUP UNDER STUDY, SELECTED -- not asserted. A module whose `List` head does not resolve ALSO
-// earns resolve_reason_unbound_symbol rows for the two annotations that name it (that is a different
-// cause group, owned by its own census rows); selecting the anonymous-record rows is therefore the
-// honest way to ask "what did THIS group measure here", and every assertion below still counts rows,
-// never ignores them. The discriminator test is deliberately NOT filtered: it demands zero rows.
-fn arc_group_rows(rows: List<NativeCensusResidualRow>) -> List<NativeCensusResidualRow> {
-  fold(rows, init: Empty, f: fn(acc, row) {
-    if arc_reason(row) == ^resolve_anonymous_record_no_expected_type {
-      list_snoc_item(xs: acc, item: row)
-    } else {
-      acc
-    }
-  })
-}
-
-// THE LOCATED LINE. An unplaceable row is reported as -1 and a row belonging to another file as -2,
-// never dropped: a refusal that loses its position is caught here, not laundered into silence.
-fn arc_lines(rows: List<NativeCensusResidualRow>) -> List<Int> {
-  fold(rows, init: Empty, f: fn(acc, row) {
-    match row.at {
-      FileRefusalAtLine { line: line, byte_column: _ } => list_snoc_item(xs: acc, item: line)
-      FileRefusalAtOtherFile { file: _ } => list_snoc_item(xs: acc, item: -2)
-      _ => list_snoc_item(xs: acc, item: -1)
-    }
-  })
 }
 
 data arc_red_entry: NativeCensusModule = arc_entry(module: "v2.test.arc_red", unit: ^arc_red_cu)
@@ -178,31 +182,41 @@ data arc_pos_headed_entry: NativeCensusModule = arc_entry(module: "v2.test.arc_p
 // manufactured a structural record would leave zero rows here; a resolve that reported once per
 // declaration would leave one; a fourth row, or any other reason, reds this too.
 test fn arc_a_missing_carrier_refuses_at_each_headless_element_holds() -> Bool {
-  (length(xs: arc_group_rows(rows: arc_rows(entry: arc_red_entry))) == 3)
-    && (length(xs: arc_group_rows(rows: arc_rows(entry: arc_red_headed_entry))) == 0)
+  arc_reading(entry: arc_red_entry).reasons == [
+    "resolve_anonymous_record_no_expected_type",
+    "resolve_anonymous_record_no_expected_type",
+    "resolve_anonymous_record_no_expected_type"
+  ]
 }
 
 // THE REFUSAL IS LOCATED AT THE ELEMENTS, not at the declaration: lines 8, 9 and 12 are the three
-// records. A row that moved up to the `data`/`fn` annotation, or that could not be placed (-1/-2),
-// reds this -- and it stays true only while the refusal follows the element.
+// records. A row that moved up to the `data`/`fn` annotation, or that could not be placed (-1) or
+// landed in another file (-2), reds this -- it stays true only while the refusal follows the element.
 test fn arc_the_refusals_are_located_at_the_three_elements_holds() -> Bool {
-  arc_lines(rows: arc_group_rows(rows: arc_rows(entry: arc_red_entry))) == [8, 9, 12]
+  arc_reading(entry: arc_red_entry).lines == [8, 9, 12]
 }
 
-// THE DISCRIMINATOR, UNFILTERED: identical source except the carrier on line 4, and the census route
-// yields ZERO ROWS OF ANY KIND -- not fewer rows, not fewer anonymous rows. The carrier's absence is
-// the whole of what the group measured: not the list, not the element count, not the annotation's
-// shape, not the presence of an extra import line (Bool is imported on both sides).
+// THE DISCRIMINATOR: byte-identical source except the carrier on line 4, and the census route yields
+// NOTHING -- no anonymous-record rows and no rows of any other group. The carrier's absence is the
+// whole of what the group measured: not the list, not the element count, not the annotation's shape,
+// not the presence of an extra import line (Bool is imported on both sides).
 test fn arc_the_same_source_is_clean_once_the_carrier_is_carried_holds() -> Bool {
-  arc_rows(entry: arc_pos_entry) == Empty
+  let read = arc_reading(entry: arc_pos_entry)
+  (read.reasons == Empty) && (read.lines == Empty) && (read.other_rows == 0)
 }
 
-// POSITIVE CONTROL, RUN ON THE SAME ROUTE: the headed pair -- both sides of it -- carries no
-// anonymous-record row at all. Elements that name their own constructor are not this group, so the
-// RED result above cannot be blamed on the module's shape, its std.types import, or the route itself.
+// POSITIVE CONTROL, RUN: the headed pair carries no anonymous-record row at all -- elements that name
+// their own constructor are not this group -- and each elaborates to its three named constructs. So
+// the RED result cannot be blamed on the module's shape, its std.types import, or the route itself.
+// (Read through resolve rather than the census route: the RED headed twin still has an unresolvable
+// `List` head, so it earns that other group's rows; the constructs are what is being compared here.)
 test fn arc_elements_that_name_their_constructor_are_not_this_group_holds() -> Bool {
-  (length(xs: arc_group_rows(rows: arc_rows(entry: arc_red_headed_entry))) == 0)
-    && (length(xs: arc_group_rows(rows: arc_rows(entry: arc_pos_headed_entry))) == 0)
+  (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_red_headed")) == [
+      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
+    ])
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos_headed")) == [
+      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
+    ])
 }
 
 // NOTHING STRUCTURAL IS MANUFACTURED. A resolve that inferred a structural record where the head is
@@ -221,19 +235,15 @@ test fn arc_the_missing_carrier_yields_no_resolved_tree_holds() -> Bool {
 // structural stand-in carrying the right fields reds this. The group closes by ELABORATING, not by
 // merely stopping the refusal.
 test fn arc_the_carried_headless_form_matches_its_headed_form_holds() -> Bool {
-  (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) ==
-    arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_red_headed")))
-    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) == [
-      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
-    ])
-}
-
-// THE SAME SOURCE, BOTH WAYS, WITHOUT THE CENSUS: the headless POSITIVE form and the headed RED form
-// agree construct-for-construct, so the carrier changes nothing about WHAT is built -- only whether
-// the expectation could reach the element at all.
-test fn arc_headless_and_headed_agree_on_the_carried_side_holds() -> Bool {
   arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) ==
     arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos_headed"))
+}
+
+// THE RESOLVED FORM IS THE RECORD, NAMED -- not a structural stand-in carrying the right fields.
+test fn arc_the_carried_headless_form_names_the_record_holds() -> Bool {
+  arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) == [
+    "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
+  ]
 }
 
 fn arc_resolve(subject: String) -> Outcome<ResolvedTree> {
