@@ -3484,7 +3484,7 @@ fn shared_layer_of_resolution(shared_types: Set<String>, leaf: String, resolutio
     } else {
       match resolution {
         TypeDeclResolved { identity: identity, decl: _ } =>
-          if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerAtValue }
+          if shared_types_contains_identity(shared_types: shared_types, identity: identity) { SharedLayerAtShared } else { SharedLayerRefuse { leaf: leaf, cause: concat("DEBUGresolved_not_shared identity=", identity) } }
         TypeDeclLeafAmbiguous { leaf: amb } => shared_layer_of_ambiguous_leaf(shared_types: shared_types, leaf: amb, type_decl_items: type_decl_items)
         _ => SharedLayerRefuse { leaf: leaf, cause: concat("DEBUGcontainer_not_in_set ids=", to_string(match map_get(type_decl_items.identities_by_leaf, leaf) { Present { value: ids } => ids |> count  Absent => -1 }), " indexed_idents=", match map_get(type_decl_items.identities_by_leaf, leaf) { Present { value: ids } => ids |> join(separator: ",")  Absent => "none" }) }
       }
