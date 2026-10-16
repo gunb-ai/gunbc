@@ -234,7 +234,7 @@ fn home_control_rows() -> List<AmbientNameHome> {
 }
 
 fn home_control_failure() -> Optional<String> {
-  let before = "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int\n"
+  let before = "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int\n"
   let moved = "binding\texamples.uses\tInt\t0\tdeclared\texamples.home.Int\n"
   let elsewhere = "binding\texamples.uses\tInt\t0\tdeclared\texamples.other.Int\n"
   let home = binding_diff(base_stdout: before, head_stdout: moved, rows: home_control_rows())

@@ -65,12 +65,12 @@ fn ambient_census_unindexed_files() -> List<AmbientCensusFixtureFile> {
 // The rows the fixture must produce, each as its whole printed line.
 fn ambient_census_fixture_expected() -> List<String> {
   [
-    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
-    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:Int",
+    "binding\texamples.decls\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
+    "binding\texamples.uses\tInt\t0\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
     "binding\texamples.uses\thelper\t0\tdeclared\texamples.decls.helper",
     "binding\texamples.uses\thelper\t1\tdeclared\texamples.decls.helper",
-    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:Bool",
-    "binding\texamples.uses\ttrue\t0\tambient:kernel_canonical_symbol\tkernel:true"
+    "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol",
+    "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true"
   ]
 }
 
