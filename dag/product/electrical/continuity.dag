@@ -171,8 +171,26 @@ fn opens_between(observations: List<ContinuityObservation>, asset: PhysicalAsset
     && ((terminal_in(ts: xs, t: o.first) && terminal_in(ts: ys, t: o.second)) || (terminal_in(ts: ys, t: o.first) && terminal_in(ts: xs, t: o.second))))
 }
 
+// THE CLASSES ARE BUILT ONCE PER BOARD. Every standing on one board reads the same classes, so a caller
+// asking several questions of one board builds the graph once and asks each through reach.
+type ReachabilityGraph {
+  asset: PhysicalAssetIdentity
+  observations: List<ContinuityObservation>
+  classes: List<ReachabilityClass>
+}
+
+fn reachability_graph(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity) -> ReachabilityGraph {
+  ReachabilityGraph { asset: asset, observations: observations, classes: reachability_classes(observations: observations, asset: asset) }
+}
+
 fn reachability(observations: List<ContinuityObservation>, asset: PhysicalAssetIdentity, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ReachabilityStanding {
-  let classes = reachability_classes(observations: observations, asset: asset)
+  reach(g: reachability_graph(observations: observations, asset: asset), a: a, b: b)
+}
+
+fn reach(g: ReachabilityGraph, a: ElectricalTerminalRef, b: ElectricalTerminalRef) -> ReachabilityStanding {
+  let observations = g.observations
+  let asset = g.asset
+  let classes = g.classes
   let reach_a = reach_of(classes: classes, t: a)
   let reach_b = reach_of(classes: classes, t: b)
   if terminal_in(ts: reach_a, t: b) {

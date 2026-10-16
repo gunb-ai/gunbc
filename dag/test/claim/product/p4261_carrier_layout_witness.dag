@@ -44,6 +44,7 @@ import product.electrical.continuity {
   ReverseReadOpen,
   reachability,
   is_reachable,
+  is_inferred,
   junction_between,
 }
 import product.p4261_carrier_layout {
@@ -102,6 +103,7 @@ import product.p4261_carrier_layout {
   e1_bench,
   k1_design,
   input_polarity,
+  polarity_grade,
   input_bound,
   across_input,
   shared_withstand,
@@ -334,6 +336,17 @@ fn placed_d2(s: AcrossInputStanding) -> Bool {
       terminal_ref_equal(a: on_fused, b: e1_d2_near) && terminal_ref_equal(a: on_return, b: e1_d2_far) && count(fused_path) > 0 && count(return_path) > 0
     AcrossInputContradicted { component: _, readings: _ } => false
     AcrossInputUnestablished { component: _, gap: _ } => false
+  }
+}
+
+// EACH READING IS COUNTED ONCE. Every contact on an established side reaches one class, so the polarity's
+// readings are that class's, taken once: the inferred readings it rests on can never outnumber the
+// board's own inferred readings, which they would if each contact carried the class again.
+test fn each_reading_is_counted_once() -> Bool {
+  let board = count(filter(e1_measured.continuity, o => is_inferred(o: o)))
+  match polarity_grade(p: input_polarity(layout: p4261_e1_layout)) {
+    IncludesInferredPoints { readings } => count(readings) > 0 && count(readings) <= board
+    RecordedPointsOnly => false
   }
 }
 

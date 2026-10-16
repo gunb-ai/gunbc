@@ -45,6 +45,9 @@ import product.electrical.connectivity {
   terminal_ref_equal,
 }
 import product.electrical.continuity {
+  ReachabilityGraph,
+  reachability_graph,
+  reach,
   BenchConditions,
   Unpowered,
   ModuleRemoved,
@@ -67,7 +70,6 @@ import product.electrical.continuity {
   ForwardMillivolts,
   ReachabilityStanding,
   JunctionStanding,
-  reachability,
   junction_between,
   is_reachable,
   is_read_open,
@@ -353,8 +355,12 @@ fn side_terminals(h: ConnectorHousing, side: RowSide) -> List<ElectricalTerminal
   map(filter(h.positions, p => row_side_code(s: p.side) == row_side_code(s: side)), p => terminal_ref(component: h.component, terminal: p.terminal))
 }
 
-fn standings_to(b: MeasuredBoard, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
-  map(ts, t => reachability(observations: b.continuity, asset: b.asset, a: t, b: target))
+fn board_graph(b: MeasuredBoard) -> ReachabilityGraph {
+  reachability_graph(observations: b.continuity, asset: b.asset)
+}
+
+fn standings_to(g: ReachabilityGraph, ts: List<ElectricalTerminalRef>, target: ElectricalTerminalRef) -> List<ReachabilityStanding> {
+  map(ts, t => reach(g: g, a: t, b: target))
 }
 
 fn all_reachable(ss: List<ReachabilityStanding>) -> Bool {
@@ -365,8 +371,18 @@ fn readings_of(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
   flat_map(ss, s => supporting_readings(s: s))
 }
 
-fn side_reaches_fuse(b: MeasuredBoard, input: InputConnector, side: RowSide) -> Bool {
-  all_reachable(ss: standings_to(b: b, ts: side_terminals(h: input.housing, side: side), target: input.fuse_terminal))
+// Every standing on an established side is reachability into ONE class, whose supporting readings each
+// standing carries whole; the first carries them once, where concatenating all would repeat them per
+// contact.
+fn class_readings(ss: List<ReachabilityStanding>) -> List<ContinuityObservation> {
+  match ss.first() {
+    Absent => []
+    Present { value: s } => supporting_readings(s: s)
+  }
+}
+
+fn side_reaches_fuse(g: ReachabilityGraph, input: InputConnector, side: RowSide) -> Bool {
+  all_reachable(ss: standings_to(g: g, ts: side_terminals(h: input.housing, side: side), target: input.fuse_terminal))
 }
 
 fn polarity_gaps(to_fuse: List<ReachabilityStanding>, to_return: List<ReachabilityStanding>, isolation: ReachabilityStanding) -> List<PolarityGap> {
@@ -379,40 +395,40 @@ fn polarity_gaps(to_fuse: List<ReachabilityStanding>, to_return: List<Reachabili
 // The polarity a fused side implies, if the readings establish it: every fused-side contact reaches the
 // fuse terminal, every return-side contact reaches the first return-side contact, and the first
 // fused-side contact is read open to the first return-side one. Any contradicted standing contradicts.
-fn polarity_from(b: MeasuredBoard, input: InputConnector, fused: RowSide, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> InputPolarity {
+fn polarity_from(g: ReachabilityGraph, input: InputConnector, fused: RowSide, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> InputPolarity {
   let ret = other_side(s: fused)
-  let to_fuse = standings_to(b: b, ts: side_terminals(h: input.housing, side: fused), target: input.fuse_terminal)
-  let to_return = standings_to(b: b, ts: side_terminals(h: input.housing, side: ret), target: r0)
-  let isolation = reachability(observations: b.continuity, asset: b.asset, a: f0, b: r0)
+  let to_fuse = standings_to(g: g, ts: side_terminals(h: input.housing, side: fused), target: input.fuse_terminal)
+  let to_return = standings_to(g: g, ts: side_terminals(h: input.housing, side: ret), target: r0)
+  let isolation = reach(g: g, a: f0, b: r0)
   let contradicted = filter(concat(concat(to_fuse, to_return), [isolation]), s => is_reachability_contradicted(s: s))
   let gaps = polarity_gaps(to_fuse: to_fuse, to_return: to_return, isolation: isolation)
   match contradicted.first() {
     Present { value: _ } => PolarityContradicted { readings: readings_of(ss: contradicted) }
     Absent => match gaps.first() {
       Present { value: _ } => PolarityUnestablished { gaps: gaps }
-      Absent => PolarityEstablished { fused_side: fused, return_side: ret, fused: readings_of(ss: to_fuse), returns: readings_of(ss: to_return), isolation: supporting_readings(s: isolation) }
+      Absent => PolarityEstablished { fused_side: fused, return_side: ret, fused: class_readings(ss: to_fuse), returns: class_readings(ss: to_return), isolation: supporting_readings(s: isolation) }
     }
   }
 }
 
-fn polarity_with(b: MeasuredBoard, input: InputConnector, fused: RowSide) -> InputPolarity {
+fn polarity_with(g: ReachabilityGraph, input: InputConnector, fused: RowSide) -> InputPolarity {
   match side_terminals(h: input.housing, side: fused).first() {
     Absent => PolarityUnestablished { gaps: [FusedSideNotReached] }
     Present { value: f0 } => match side_terminals(h: input.housing, side: other_side(s: fused)).first() {
       Absent => PolarityUnestablished { gaps: [ReturnSideNotJoined] }
-      Present { value: r0 } => polarity_from(b: b, input: input, fused: fused, f0: f0, r0: r0)
+      Present { value: r0 } => polarity_from(g: g, input: input, fused: fused, f0: f0, r0: r0)
     }
   }
 }
 
-fn measured_polarity(b: MeasuredBoard, input: InputConnector) -> InputPolarity {
+fn measured_polarity(g: ReachabilityGraph, input: InputConnector) -> InputPolarity {
   if any(input.housing.positions, p => row_side_code(s: p.side) == 0) {
     PolarityUnestablished { gaps: [SidesUnrecorded] }
   } else {
-    if side_reaches_fuse(b: b, input: input, side: LatchSide) && !side_reaches_fuse(b: b, input: input, side: AwayFromLatch) {
-      polarity_with(b: b, input: input, fused: LatchSide)
+    if side_reaches_fuse(g: g, input: input, side: LatchSide) && !side_reaches_fuse(g: g, input: input, side: AwayFromLatch) {
+      polarity_with(g: g, input: input, fused: LatchSide)
     } else {
-      polarity_with(b: b, input: input, fused: AwayFromLatch)
+      polarity_with(g: g, input: input, fused: AwayFromLatch)
     }
   }
 }
@@ -422,7 +438,7 @@ fn input_polarity(layout: CarrierLayoutObservation) -> InputPolarity {
     Absent => PolarityUnestablished { gaps: [NoMeasuredBoard] }
     Present { value: b } => match layout.input {
       Absent => PolarityUnestablished { gaps: [SidesUnrecorded] }
-      Present { value: input } => measured_polarity(b: b, input: input)
+      Present { value: input } => measured_polarity(g: board_graph(b: b), input: input)
     }
   }
 }
@@ -466,11 +482,11 @@ type AcrossInputStanding
   | AcrossInputContradicted { component: ComponentInstanceIdentity, readings: List<ContinuityObservation> }
   | AcrossInputUnestablished { component: ComponentInstanceIdentity, gap: AcrossGap }
 
-fn placed_pair(b: MeasuredBoard, comp: ComponentInstanceIdentity, p: TerminalPair, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> AcrossInputStanding {
-  let af = reachability(observations: b.continuity, asset: b.asset, a: p.a, b: f0)
-  let br = reachability(observations: b.continuity, asset: b.asset, a: p.b, b: r0)
-  let bf = reachability(observations: b.continuity, asset: b.asset, a: p.b, b: f0)
-  let ar = reachability(observations: b.continuity, asset: b.asset, a: p.a, b: r0)
+fn placed_pair(g: ReachabilityGraph, comp: ComponentInstanceIdentity, p: TerminalPair, f0: ElectricalTerminalRef, r0: ElectricalTerminalRef) -> AcrossInputStanding {
+  let af = reach(g: g, a: p.a, b: f0)
+  let br = reach(g: g, a: p.b, b: r0)
+  let bf = reach(g: g, a: p.b, b: f0)
+  let ar = reach(g: g, a: p.a, b: r0)
   let contradicted = filter([af, br, bf, ar], s => is_reachability_contradicted(s: s))
   match contradicted.first() {
     Present { value: _ } => AcrossInputContradicted { component: comp, readings: readings_of(ss: contradicted) }
@@ -487,14 +503,38 @@ fn placed_pair(b: MeasuredBoard, comp: ComponentInstanceIdentity, p: TerminalPai
   }
 }
 
-fn placed_under(b: MeasuredBoard, input: InputConnector, c: InstalledComponent, fused: RowSide, ret: RowSide) -> AcrossInputStanding {
+fn placed_under(g: ReachabilityGraph, input: InputConnector, c: InstalledComponent, fused: RowSide, ret: RowSide) -> AcrossInputStanding {
   match side_terminals(h: input.housing, side: fused).first() {
     Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
     Present { value: f0 } => match side_terminals(h: input.housing, side: ret).first() {
       Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
       Present { value: r0 } => match pairs_of(ts: component_terminal_refs(c: c)).first() {
         Absent => AcrossInputUnestablished { component: c.component, gap: NotTwoTerminals }
-        Present { value: p } => placed_pair(b: b, comp: c.component, p: p, f0: f0, r0: r0)
+        Present { value: p } => placed_pair(g: g, comp: c.component, p: p, f0: f0, r0: r0)
+      }
+    }
+  }
+}
+
+// WHAT EVERY PLACEMENT ON ONE BOARD READS: its reachability graph and its established polarity, derived
+// once per layout rather than once per component asked about.
+type PlacementBasis
+  = PlacementOnPolarity { graph: ReachabilityGraph, input: InputConnector, fused: RowSide, ret: RowSide, readings: List<ContinuityObservation> }
+  | NoPlacementBasis
+
+fn placement_basis(layout: CarrierLayoutObservation) -> PlacementBasis {
+  match layout.measured {
+    Absent => NoPlacementBasis
+    Present { value: b } => match layout.input {
+      Absent => NoPlacementBasis
+      Present { value: input } => {
+        let g = board_graph(b: b)
+        match measured_polarity(g: g, input: input) {
+          PolarityEstablished { fused_side, return_side, fused, returns, isolation } =>
+            PlacementOnPolarity { graph: g, input: input, fused: fused_side, ret: return_side, readings: concat(concat(fused, returns), isolation) }
+          PolarityContradicted { readings: _ } => NoPlacementBasis
+          PolarityUnestablished { gaps: _ } => NoPlacementBasis
+        }
       }
     }
   }
@@ -502,18 +542,15 @@ fn placed_under(b: MeasuredBoard, input: InputConnector, c: InstalledComponent, 
 
 // A two-terminal part is across the input when one terminal reaches a fused-side contact and the other a
 // return-side contact, under an established polarity. Which terminal is which is derived, not stated.
-fn across_input(layout: CarrierLayoutObservation, c: InstalledComponent) -> AcrossInputStanding {
-  match layout.measured {
-    Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
-    Present { value: b } => match layout.input {
-      Absent => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
-      Present { value: input } => match measured_polarity(b: b, input: input) {
-        PolarityEstablished { fused_side, return_side, fused: _, returns: _, isolation: _ } => placed_under(b: b, input: input, c: c, fused: fused_side, ret: return_side)
-        PolarityContradicted { readings: _ } => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
-        PolarityUnestablished { gaps: _ } => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
-      }
-    }
+fn placed_on(basis: PlacementBasis, c: InstalledComponent) -> AcrossInputStanding {
+  match basis {
+    PlacementOnPolarity { graph, input, fused, ret, readings: _ } => placed_under(g: graph, input: input, c: c, fused: fused, ret: ret)
+    NoPlacementBasis => AcrossInputUnestablished { component: c.component, gap: InputPolarityNotEstablished }
   }
+}
+
+fn across_input(layout: CarrierLayoutObservation, c: InstalledComponent) -> AcrossInputStanding {
+  placed_on(basis: placement_basis(layout: layout), c: c)
 }
 
 fn is_across(s: AcrossInputStanding) -> Bool {
@@ -571,19 +608,14 @@ type InputBoundStanding
   | BoundContradicted { contradicted: List<ObservedRating>, observed: List<ObservedRating> }
   | BoundUnestablished { observed: List<ObservedRating> }
 
-fn observed_ratings(layout: CarrierLayoutObservation) -> List<ObservedRating> {
+fn observed_ratings(layout: CarrierLayoutObservation, basis: PlacementBasis) -> List<ObservedRating> {
   flat_map(layout.components, c => match identified_withstand(i: c.identification) {
     Absent => []
-    Present { value: w } => [ObservedRating { component: c.component, identification: c.identification, rated: w, placement: across_input(layout: layout, c: c) }]
+    Present { value: w } => [ObservedRating { component: c.component, identification: c.identification, rated: w, placement: placed_on(basis: basis, c: c) }]
   })
 }
 
-fn bound_from(layout: CarrierLayoutObservation, input: InputConnector, o: ObservedRating) -> InputVoltageUpperBound {
-  let polarity_readings = match input_polarity(layout: layout) {
-    PolarityEstablished { fused_side: _, return_side: _, fused, returns, isolation } => concat(concat(fused, returns), isolation)
-    PolarityContradicted { readings } => readings
-    PolarityUnestablished { gaps: _ } => []
-  }
+fn bound_from(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, o: ObservedRating) -> InputVoltageUpperBound {
   InputVoltageUpperBound {
     asset: layout.asset,
     input_connector: input.housing.component,
@@ -599,23 +631,24 @@ fn lowest_rating(across: List<ObservedRating>, first: ObservedRating) -> Observe
   fold(across, init: first, f: (acc, x) => if volt_count(v: x.rated.maximum) < volt_count(v: acc.rated.maximum) { x } else { acc })
 }
 
-fn established_bound(layout: CarrierLayoutObservation, input: InputConnector, across: List<ObservedRating>, first: ObservedRating, observed: List<ObservedRating>) -> InputBoundStanding {
+fn established_bound(layout: CarrierLayoutObservation, input: InputConnector, polarity_readings: List<ContinuityObservation>, across: List<ObservedRating>, first: ObservedRating, observed: List<ObservedRating>) -> InputBoundStanding {
   let lowest = lowest_rating(across: across, first: first)
   let ties = filter(across, x => volt_count(v: x.rated.maximum) == volt_count(v: lowest.rated.maximum) && !component_identity_eq(a: x.component, b: lowest.component))
-  BoundEstablished { bound: bound_from(layout: layout, input: input, o: lowest), equally_limiting: map(ties, x => bound_from(layout: layout, input: input, o: x)), observed: observed }
+  BoundEstablished { bound: bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: lowest), equally_limiting: map(ties, x => bound_from(layout: layout, input: input, polarity_readings: polarity_readings, o: x)), observed: observed }
 }
 
 fn input_bound(layout: CarrierLayoutObservation) -> InputBoundStanding {
-  let observed = observed_ratings(layout: layout)
+  let basis = placement_basis(layout: layout)
+  let observed = observed_ratings(layout: layout, basis: basis)
   let contradicted = filter(observed, o => is_contradicted_placement(s: o.placement))
   let across = filter(observed, o => is_across(s: o.placement))
   match contradicted.first() {
     Present { value: _ } => BoundContradicted { contradicted: contradicted, observed: observed }
     Absent => match across.first() {
       Absent => BoundUnestablished { observed: observed }
-      Present { value: first } => match layout.input {
-        Absent => BoundUnestablished { observed: observed }
-        Present { value: input } => established_bound(layout: layout, input: input, across: across, first: first, observed: observed)
+      Present { value: first } => match basis {
+        NoPlacementBasis => BoundUnestablished { observed: observed }
+        PlacementOnPolarity { graph: _, input, fused: _, ret: _, readings } => established_bound(layout: layout, input: input, polarity_readings: readings, across: across, first: first, observed: observed)
       }
     }
   }
