@@ -429,7 +429,7 @@ data e1_j20_input_circuit: MeasuredCircuit = MeasuredCircuit {
   conditions: "unpowered, module removed, handheld multimeter in continuity and diode modes",
   nodes: [
     CircuitNode { name: j20_supply_node, terminals: ["J20 supply row (9 pins)", "F1 end nearer J20", "F1 end farther from J20", "D2 tab nearer J20"] },
-    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "mounting-hole copper ring", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
+    CircuitNode { name: board_ground_node, terminals: ["J20 ground row (9 pins)", "every copper-ringed mounting hole (operator, 2026-10-16: J20 ground beeps to all of them)", "D2 tab farther from J20", "C10_P5 negative", "C12_P5 negative"] },
     CircuitNode { name: capacitor_rail_node, terminals: ["C10_P5 positive", "C12_P5 positive"] },
   ],
   diode_readings: [
