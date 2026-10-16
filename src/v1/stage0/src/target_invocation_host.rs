@@ -314,6 +314,7 @@ pub enum TargetProducer {
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
+    CardinalityRealization,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry, deadline }`: the entry is carried so a second program
     /// of the same shape is a registry row, never another variant. The Millisecond deadline is
@@ -324,6 +325,12 @@ pub enum TargetProducer {
     /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
     NativeServeProgram {
         entry: &'static str,
+    },
+    /// `CliWireProgramProducer { entry, function }`: wet interpreter eval of a CliWireResponse
+    /// fold. Generic over entry and function so a second such instrument is a registry row.
+    CliWireProgram {
+        entry: &'static str,
+        function: &'static str,
     },
 }
 
@@ -477,6 +484,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("brand-mark-assets"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -545,8 +558,42 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::SharedTypeLeafCollisionCensus,
         ),
         (
+            instrument_label("cardinality-realization"),
+            TargetProducer::CardinalityRealization,
+        ),
+        (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("compute-run-unit-cold"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_exit",
+            },
+        ),
+        (
+            instrument_label("compute-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
+            // C5: the dependency-only arm of the C1 instrument. Same entry file, its own entry
+            // function -- one body of logic (wrong_capture_run) behind both labels.
+            instrument_label("compute-dependency-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_dependency_wrong_capture_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-sccache-probe"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_sccache_probe_exit",
+            },
         ),
     ]
 }
@@ -946,6 +993,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
+        TargetProducer::CliWireProgram { entry, function } => run_cli_wire_program(entry, function),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -984,6 +1032,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SharedTypeLeafCollisionCensus => {
             run_shared_type_leaf_collision_census(&self_host_source_roots())
         }
+        TargetProducer::CardinalityRealization => run_cardinality_realization(),
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
@@ -996,6 +1045,12 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "required_lane_resolution_census_exit",
         ),
     }
+}
+
+/// Generic CliWireProgramProducer realization: entry and function are the binding's, never a
+/// string-match inside NativeClaimProgram.
+fn run_cli_wire_program(entry: &'static str, function: &'static str) -> InvocationOutcome {
+    run_cli_wire_census(function, entry, function)
 }
 
 /// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
@@ -1265,7 +1320,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 }
 
 /// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
-/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// `v2.workflow.native_frontier_roster` records. The verdict is `v2.workflow.native_frontier_ratchet`'s, decided
 /// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
 /// an unknown word is a harness defect, never a pass.
 ///
@@ -1292,7 +1347,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                         termination: Termination::SubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
-                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                             v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
                         ),
                     }
                 }
@@ -1355,7 +1410,7 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
             message: format!(
                 "v2-native-census-scoped: subject={} scope={} modules={} file_refusals={} \
                  advised_files={} residual_rows={} inferred={} infer_refused={} cause_groups={} \
-                 roots={}; the population is the subject's acquired closure (census_scope line \
+                 roots={} diff={}; the population is the subject's acquired closure (census_scope line \
                  above), its rows grouped by fatal reason in the cause_group lines; run record {}",
                 run.subject,
                 match run.scope {
@@ -1371,6 +1426,7 @@ fn run_v2_native_census_scoped(subject: &str, source_roots: &[String]) -> Invoca
                 run.infer_refused,
                 run.cause_groups,
                 run.roots,
+                run.diff,
                 run.record.display()
             ),
         },
@@ -1894,6 +1950,278 @@ fn native_claim_child_deadline_from_binding(
     }
 }
 
+/// THE CARDINALITY REALIZATION INSTRUMENT (`gunbc.cardinality_realization_seed_growth`). The plan,
+/// the join to the coverage rows and the exit are `v2.test.claim.cardinality_realization_coverage`
+/// (`instrument_plan`, `cardinality_realization_standing`); this host only runs what the plan names
+/// and reports each outcome as a typed `ObservationKind` record: `ObservedRealized` (the program printed `tag=<n>`), `ObservedRefused`
+/// (the seed emit or the native entry module refused, with its cause), `ObservedRed` (the emitted program
+/// failed to build or run), `ObservedUnreached` (no observation could be taken). Emission is never read as
+/// execution: a native module that emitted is `ObservedEmitted`.
+fn run_cardinality_realization() -> InvocationOutcome {
+    use crate::v1_interpreter::{list_value, str_value, Value};
+    let label_name = "cardinality-realization";
+    const READER: &str = "src/v2/test/claim/cardinality_realization_coverage.dag";
+    let unreached = |message: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("{label_name}: {message}"),
+    };
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = v2_native_cli_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => return unreached(format!("resolve failed for {READER}: {cause}")),
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let plan_value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_plan", &[], true) {
+            Ok(value) => value,
+            Err(cause) => return unreached(format!("instrument_plan failed: {cause}")),
+        };
+    let Value::List(plan) = &plan_value else {
+        return unreached(format!(
+            "instrument_plan returned {plan_value:?}, not a list"
+        ));
+    };
+    // One planned pair: the route (read from the typed variant), and the target and specimen
+    // references, kept as the plan's own values so the outcome echoes them back unchanged.
+    struct Planned {
+        seed_entry: Option<String>,
+        native_module: Option<String>,
+        target: Value,
+        specimen: Value,
+    }
+    let field = |fields: &[(crate::v1_interpreter::Symbol, Value)], name: &str| {
+        let want = ctx.sym(name);
+        fields
+            .iter()
+            .find(|(k, _)| *k == want)
+            .map(|(_, v)| v.clone())
+    };
+    let mut planned: Vec<Planned> = Vec::new();
+    for item in plan.iter() {
+        let Value::Record { fields, .. } = item else {
+            return unreached(format!(
+                "instrument_plan row {item:?} is not a PlannedObservation"
+            ));
+        };
+        let (Some(route), Some(target), Some(specimen)) = (
+            field(fields, "route"),
+            field(fields, "target"),
+            field(fields, "specimen"),
+        ) else {
+            return unreached(format!(
+                "instrument_plan row {item:?} lacks route, target or specimen"
+            ));
+        };
+        let Value::Variant {
+            variant_name,
+            fields: route_fields,
+            ..
+        } = &route
+        else {
+            return unreached(format!(
+                "instrument_plan route {route:?} is not a PlannedRoute"
+            ));
+        };
+        let text = |name: &str| {
+            let found = field(route_fields, name);
+            match &found {
+                Some(Value::Str(s)) => Some(s.to_string()),
+                _ => None,
+            }
+        };
+        let (seed_entry, native_module) = if *variant_name == ctx.sym("SeedRoute") {
+            (text("entry"), None)
+        } else if *variant_name == ctx.sym("NativeRoute") {
+            (None, text("module"))
+        } else {
+            return unreached(format!(
+                "instrument_plan route {route:?} is neither SeedRoute nor NativeRoute"
+            ));
+        };
+        if seed_entry.is_none() && native_module.is_none() {
+            return unreached(format!(
+                "instrument_plan route {route:?} names no entry or module"
+            ));
+        }
+        planned.push(Planned {
+            seed_entry,
+            native_module,
+            target,
+            specimen,
+        });
+    }
+    let deadline = std::time::Duration::from_secs(1800);
+    // (planned index, ObservationKind variant name, its one field name, its text)
+    let mut outcomes: Vec<(usize, &'static str, &'static str, String)> = Vec::new();
+    for (i, p) in planned.iter().enumerate() {
+        let Some(entry) = &p.seed_entry else { continue };
+        let outcome = match cli_run::run_native_claim_program(&roots, entry, deadline) {
+            Ok(cli_run::NativeClaimProgramAttempt::Completed(run)) => {
+                let tag = run
+                    .stdout
+                    .lines()
+                    .find_map(|l| l.strip_prefix("tag="))
+                    .map(str::to_string);
+                match (run.status, tag) {
+                    (Some(0), Some(tag)) => ("ObservedRealized", "tag", tag),
+                    (status, _) => (
+                        "ObservedRed",
+                        "detail",
+                        format!("exit {status:?}: {}", run.stderr.trim_end()),
+                    ),
+                }
+            }
+            Ok(cli_run::NativeClaimProgramAttempt::DeadlineExceeded { .. }) => (
+                "ObservedUnreached",
+                "detail",
+                format!("{entry} exceeded its deadline"),
+            ),
+            Err(refusal) => match refusal.cause {
+                cli_run::PreparationCause::EmissionRefused => {
+                    ("ObservedRefused", "cause", "EmissionRefused".to_string())
+                }
+                cli_run::PreparationCause::EmittedCompilerBuildFailed => {
+                    ("ObservedRed", "detail", refusal.message)
+                }
+                cli_run::PreparationCause::Other => {
+                    ("ObservedUnreached", "detail", refusal.message)
+                }
+            },
+        };
+        outcomes.push((i, outcome.0, outcome.1, outcome.2));
+    }
+    let mut modules: Vec<String> = planned
+        .iter()
+        .filter_map(|p| p.native_module.clone())
+        .collect();
+    modules.sort();
+    modules.dedup();
+    let emitted = if modules.is_empty() {
+        Ok(Vec::new())
+    } else {
+        cli_run::run_v2_native_cli_emit(&roots, &modules)
+    };
+    for (i, p) in planned.iter().enumerate() {
+        let Some(entry) = &p.native_module else {
+            continue;
+        };
+        let outcome = match &emitted {
+            Err(cause) => ("ObservedUnreached", "detail", cause.clone()),
+            Ok(runs) => match runs.iter().find(|r| &r.0 == entry) {
+                None => (
+                    "ObservedUnreached",
+                    "detail",
+                    format!("no native emit run for {entry}"),
+                ),
+                Some((_, status, stdout, stderr)) => {
+                    let own = serde_json::from_str::<serde_json::Value>(stdout)
+                        .ok()
+                        .and_then(|doc| {
+                            doc.get("modules")?.as_array()?.iter().find_map(|m| {
+                                (m.get("module")?.as_str()? == entry.as_str()).then(|| {
+                                    m.get("refused")
+                                        .and_then(|r| r.as_str())
+                                        .map(str::to_string)
+                                })
+                            })
+                        });
+                    match (own, status) {
+                        (Some(Some(cause)), _) => ("ObservedRefused", "cause", cause),
+                        (Some(None), Some(0)) => ("ObservedEmitted", "", String::new()),
+                        _ => (
+                            "ObservedUnreached",
+                            "detail",
+                            format!(
+                                "native emit of {entry}: status {status:?} {}",
+                                stderr.lines().next().unwrap_or("")
+                            ),
+                        ),
+                    }
+                }
+            },
+        };
+        outcomes.push((i, outcome.0, outcome.1, outcome.2));
+    }
+    let rendered: Vec<String> = outcomes
+        .iter()
+        .map(|(i, variant, _, text)| {
+            let p = &planned[*i];
+            let entry = p.seed_entry.as_ref().or(p.native_module.as_ref());
+            format!(
+                "{} | {variant} | {}",
+                entry.map(String::as_str).unwrap_or(""),
+                text.lines().next().unwrap_or("")
+            )
+        })
+        .collect();
+    let observations = list_value(
+        outcomes
+            .iter()
+            .map(|(i, variant, field_name, text)| {
+                let p = &planned[*i];
+                let outcome_fields = if field_name.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![(ctx.sym(field_name), str_value(text))]
+                };
+                Value::Record {
+                    type_name: ctx.sym("ObservationRecord"),
+                    fields: std::rc::Rc::new(vec![
+                        (ctx.sym("target"), p.target.clone()),
+                        (ctx.sym("specimen"), p.specimen.clone()),
+                        (
+                            ctx.sym("outcome"),
+                            Value::Variant {
+                                type_name: ctx.sym("ObservationKind"),
+                                variant_name: ctx.sym(variant),
+                                fields: std::rc::Rc::new(outcome_fields),
+                            },
+                        ),
+                    ]),
+                }
+            })
+            .collect::<Vec<_>>(),
+    );
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "cardinality_realization_standing",
+        &[(Some("observations".to_string()), observations)],
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => return unreached(format!("the standing failed: {cause}")),
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the standing returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!("{}\n{label_name}: {verdict}", rendered.join("\n")),
+    }
+}
+
 fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-claim";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
@@ -1933,7 +2261,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: cause,
+                message: cause.message,
             }
         }
     };
@@ -2363,7 +2691,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// `gunbc.native_route_universe` `native_route_default_pattern`, READ from the file rendered from
 /// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
@@ -2376,7 +2704,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 /// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
 ///
 /// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
-/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// compiler (`v2.compiler.source_root_eval`, `adjudicate` without `--pattern`); the seed passes it a pattern
 /// only when the operator wrote one, so nothing here is handed to it as text.
 fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
     parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
@@ -2396,7 +2724,7 @@ fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal>
 /// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
 /// The route now folds the population it actually emitted through
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored in the runner, so this
 /// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
@@ -2454,7 +2782,7 @@ fn native_member_outcome(
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
     };
-    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
@@ -2946,6 +3274,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
             }
         }
     }
+    cli_run::user_work_scope::reexec_into_user_work_slice_if_owed();
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
     // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
@@ -3525,7 +3854,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
-                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_universe native_route_default_pattern by \
                      gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
                     crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
                     target_pattern_refusal_text(&cause)
@@ -3562,166 +3891,6 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         }
         Some((_, producer)) => run_producer(producer),
     }
-}
-
-/// THE MEASURED RUN BY PHASE: the child's seam beats, transcribed by the supervisor and folded by
-/// `gunbc.floor.floor_demand` `floor_phase_attribution`, one line per phase in the order the run entered
-/// them. `entry` is the held set the phase inherited, `peak` the largest over its own beats, and
-/// `left` what it left resident -- the next phase's entry, read from that row, so this renderer
-/// does no arithmetic of its own. A phase whose held set could not be represented prints the arm.
-///
-/// This is a reading beside the verdict, never a verdict: a run with no beats (a lane that owns no
-/// floor phase) or a transcription refusal says so here and leaves the qualification unchanged.
-fn floor_phase_attribution_rendered(
-    ctx: &crate::v1_interpreter::InterpContext,
-    beat_lines: &[String],
-) -> String {
-    use crate::v1_interpreter::Value;
-    use cli_run::floor_memory_supervisor as sup;
-    let beats = match sup::transcribe_floor_beats(beat_lines) {
-        Ok(beats) if beats.is_empty() => {
-            return "floor-phase-attribution: no seam beats were printed by the measured child"
-                .to_string();
-        }
-        Ok(beats) => beats,
-        Err(refusal) => return format!("floor-phase-attribution: refused: {refusal}"),
-    };
-    // A COUNTER PAST i64 REFUSES rather than clamping: a clamp would hand the fold a value nobody
-    // read. None of these can reach it on a real host, which is why a refusal costs nothing.
-    if let Some(b) = beats.iter().find(|b| {
-        std::iter::once(b.charge)
-            .chain(b.stall_per_min)
-            .chain(b.swap_bytes)
-            .chain(b.stat.iter().copied())
-            .any(|v| i64::try_from(v).is_err())
-    }) {
-        return format!(
-            "floor-phase-attribution: refused: beat {} carries a counter past the i64 the fold reads",
-            b.beat
-        );
-    }
-    let int = |v: u64| Value::Int(v as i64);
-    // AN UNREAD COUNTER CROSSES AS `Absent`, the fold's own optional, never as a zero beside a flag.
-    let optional = |v: Option<u64>| -> Value {
-        match v {
-            Some(n) => Value::Variant {
-                type_name: ctx.sym("Optional"),
-                variant_name: ctx.sym("Present"),
-                fields: std::rc::Rc::new(vec![(ctx.sym("value"), int(n))]),
-            },
-            None => Value::Variant {
-                type_name: ctx.sym("Optional"),
-                variant_name: ctx.sym("Absent"),
-                fields: std::rc::Rc::new(vec![]),
-            },
-        }
-    };
-    let readings: Vec<Value> = beats
-        .iter()
-        .map(|b| {
-            let mut fields = vec![
-                (ctx.sym("beat"), Value::Int(b.beat as i64)),
-                (ctx.sym("opens_phase"), Value::Bool(b.opens_phase)),
-                (
-                    ctx.sym("seam_before"),
-                    crate::v1_interpreter::str_value(&b.seam_before),
-                ),
-                (
-                    ctx.sym("seam_after"),
-                    crate::v1_interpreter::str_value(&b.seam_after),
-                ),
-                (ctx.sym("stall_per_min"), optional(b.stall_per_min)),
-                (ctx.sym("swap_bytes"), optional(b.swap_bytes)),
-                (ctx.sym("charge"), int(b.charge)),
-            ];
-            for (key, value) in sup::FLOOR_BEAT_STAT_KEYS.iter().zip(b.stat.iter()) {
-                fields.push((ctx.sym(key), int(*value)));
-            }
-            Value::Record {
-                type_name: ctx.sym("FloorBeatReading"),
-                fields: std::rc::Rc::new(fields),
-            }
-        })
-        .collect();
-    let args = vec![(
-        Some("readings".to_string()),
-        crate::v1_interpreter::list_value(readings),
-    )];
-    let attributed = match crate::v1_interpreter::run_in_context_with_args(
-        ctx,
-        "floor_phase_attribution_from_readings",
-        &args,
-        true,
-    ) {
-        Ok(v) => v,
-        Err(cause) => return format!("floor-phase-attribution: not reached: {cause}"),
-    };
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &attributed
-    else {
-        return format!(
-            "floor-phase-attribution: unrecognised result {}",
-            ctx.format_value(&attributed)
-        );
-    };
-    if !ctx.sym_eq(*variant_name, "FloorPhasesAttributed") {
-        return format!("floor-phase-attribution: {}", ctx.format_value(&attributed));
-    }
-    let Some(Value::List(rows)) = ctx.field(fields, "phases") else {
-        return format!(
-            "floor-phase-attribution: unrecognised result {}",
-            ctx.format_value(&attributed)
-        );
-    };
-    let held = |v: Option<&Value>| -> String {
-        match v {
-            Some(Value::Variant {
-                variant_name,
-                fields,
-                ..
-            }) if ctx.sym_eq(*variant_name, "HeldSetPeakAt") => match ctx.field(fields, "bytes") {
-                Some(Value::Record { fields, .. }) => match ctx.field(fields, "count") {
-                    Some(Value::Int(n)) => n.to_string(),
-                    other => format!("{other:?}"),
-                },
-                other => format!("{other:?}"),
-            },
-            Some(other) => ctx.format_value(other),
-            None => "<absent>".to_string(),
-        }
-    };
-    let rows: Vec<&Value> = rows.iter().collect();
-    let mut out = vec![format!(
-        "floor-phase-attribution: phases={} beats={} (held set per gunbc.floor.floor_demand beat_held_set, bytes)",
-        rows.len(),
-        beats.len()
-    )];
-    for (i, row) in rows.iter().enumerate() {
-        let Value::Record { fields, .. } = row else {
-            out.push(format!("  unrecognised row {}", ctx.format_value(row)));
-            continue;
-        };
-        let left = match rows.get(i + 1) {
-            Some(Value::Record { fields: next, .. }) => held(ctx.field(next, "entry")),
-            _ => "end-of-run".to_string(),
-        };
-        out.push(format!(
-            "  phase={} opened_at_beat={} entry={} peak={} left={}",
-            ctx.field(fields, "seam")
-                .map(|v| ctx.format_value(v))
-                .unwrap_or_default(),
-            ctx.field(fields, "opened_at")
-                .map(|v| ctx.format_value(v))
-                .unwrap_or_default(),
-            held(ctx.field(fields, "entry")),
-            held(ctx.field(fields, "peak")),
-            left,
-        ));
-    }
-    out.join("\n")
 }
 
 /// THE TYPED GRAPH'S BYTES BY CLASS, READ LEAVE-ONE-OUT. The floor's sequential byte attribution
@@ -4024,7 +4193,7 @@ mod native_route_termination_tests {
         assert!(!within("//gunbc/instruments:self-host"));
     }
 
-    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
     /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
@@ -4621,7 +4790,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the

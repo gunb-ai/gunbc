@@ -334,6 +334,17 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
+/// std.bytes octets_bytes: the Bytes carrier of a list of octets, refusing a member outside
+/// 0..=255 as the interpreter's free_call.octets_bytes arm does.
+pub fn octets_bytes(o: Rc<Vec<i64>>) -> Vec<u8> {
+    o.iter()
+        .map(|v| {
+            u8::try_from(*v)
+                .unwrap_or_else(|_| panic!("std.bytes octets_bytes: {} is not an octet", v))
+        })
+        .collect()
+}
+
 /// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
 pub fn pure_dag_seam_unreachable() -> i64 {
@@ -1657,67 +1668,6 @@ pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
     (ts.tv_sec as i64)
         .saturating_mul(1_000_000_000)
         .saturating_add(ts.tv_nsec as i64)
-}
-
-/// THE EMITTED REALIZATION OF std.realization_measurement ObserveAllocationAtSubject.
-///
-/// CountingAllocator is the global allocator of exactly the binaries whose entry `uses`
-/// AllocationCounter (v1.compiler.emit_rust native claim main); no other emitted binary installs it.
-/// It counts allocator OPERATIONS (alloc, alloc_zeroed, realloc) and the bytes they request, both
-/// monotone. It sees no Rc retain and no persistent-collection copy-on-write except as the
-/// allocation it causes. The reads below REFUSE in a process whose allocator is not this one:
-/// zero is a reading, absence is not.
-pub struct CountingAllocator;
-
-static ALLOCATION_OPERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static ALLOCATION_BYTES_REQUESTED: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-static ALLOCATION_COUNTING_LIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-fn allocation_counted(bytes: usize) {
-    ALLOCATION_OPERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    ALLOCATION_BYTES_REQUESTED.fetch_add(bytes as u64, std::sync::atomic::Ordering::Relaxed);
-    ALLOCATION_COUNTING_LIVE.store(true, std::sync::atomic::Ordering::Relaxed);
-}
-
-unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
-    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        allocation_counted(layout.size());
-        std::alloc::System.alloc(layout)
-    }
-    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        allocation_counted(layout.size());
-        std::alloc::System.alloc_zeroed(layout)
-    }
-    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
-        allocation_counted(new_size);
-        std::alloc::System.realloc(ptr, layout, new_size)
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
-        std::alloc::System.dealloc(ptr, layout)
-    }
-}
-
-fn allocation_counter_read(counter: &std::sync::atomic::AtomicU64, axis: &str) -> i64 {
-    if !ALLOCATION_COUNTING_LIVE.load(std::sync::atomic::Ordering::Relaxed) {
-        eprintln!("REFUSED: {} is unobservable: this process does not run the counting allocator (its entry does not use AllocationCounter)", axis);
-        std::process::exit(2);
-    }
-    let n = counter.load(std::sync::atomic::Ordering::Relaxed);
-    if n > i64::MAX as u64 {
-        i64::MAX
-    } else {
-        n as i64
-    }
-}
-
-pub fn observed_allocation_operations(_label: String) -> i64 {
-    allocation_counter_read(&ALLOCATION_OPERATIONS, "allocation operations")
-}
-
-pub fn observed_allocation_bytes(_label: String) -> i64 {
-    allocation_counter_read(&ALLOCATION_BYTES_REQUESTED, "allocation bytes")
 }
 
 fn int_relu(x: i64) -> i64 {

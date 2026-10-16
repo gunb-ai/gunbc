@@ -9,6 +9,7 @@ import gunbc.auth.standing_operator_grant {
 import gunbc.auth.mtjade1_arrival_federation {
   mtjade1_arrival_archive_effect, mtjade1_arrival_firmware_qualification_effect,
 }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -27,6 +28,9 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation {
   BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_service_account_member,
+}
+import gunbc.auth.branch_dispatch_federation {
+  boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
 }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
@@ -452,7 +456,7 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-    hold: runner_lifecycle_operator_ruling.interlock,
+    hold: privileged_effect_interlock_hold(interlock: runner_lifecycle_operator_ruling.interlock),
     refusal: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     premise: "the dispatch takes the slot host's unit hold proof and refuses DispatchHoldForAnotherHost unless the proof's admitted host is the slot's own; the root that acquires it is the route fold the dispatch leg owes (LegAuthorityImplemented wiring_owed), so no production root is rostered yet" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
@@ -676,6 +680,11 @@ data printer_approval_enforced_in_reviewed_code: DivergenceReason = DivergenceRe
  statement:"The dedicated WIF reader authenticates the printer workflow, while reviewed code enforces the signed ntfy approval, fresh IDLE observation and fixed durable claim before start. The provider credential itself does not require redemption of that print capability.",
  dissolution:unbound_dissolution(description:"A printer credential/effect broker that cryptographically requires the device-approved intent and consumes its durable claim before issuing the exact start, independent of caller code; owner: printer workflow lane.")
 }
+data publication_helper_host_key_mint: DivergenceReason = DivergenceReason {
+  statement: "select_authorization_pattern selects FederatedScopedGrant (EveryProvision, bindable identity, resource-scoped mint). The helper realizes a host-file mint: fleet-converge places agent-github-app-private-key on srv1, and gunbc-publication signs from that file. That is not in-process WIF. The host key can mint ANY permission the gunbai-bot installation holds, not only the narrowed token. Environments share the PROD App (gunbc.auth.github_apps publication_environments_share_prod_gunbai_bot)." as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the publication helper mints through a federated, per-environment App whose key never rests as a host file that can request the installation's full grant. SUFFICIENT FOR deleting this reason. NOT satisfied by narrowing the minted token while the host key remains, nor by keeping gunbai-bot for every environment. Owner: this publication-helper lane."),
+}
+
 data printer_operator_token_transition: DivergenceReason = DivergenceReason {
  statement:"The explicit operator compatibility entries bind an operator token file while the printer federation and guarded dispatch are unlanded. A local file is not evidence that the credential was never relayed. The physical start still requires the shared approval/IDLE/durable-claim gate; observation grants no start. This route is classified as operator session, not disguised as federation.",
  dissolution:unbound_dissolution(description:"Retire the operator-token printer entries after the main-pinned printer workflow and LAN host state are deployed and an approved print is observed under its dedicated WIF identity; owner: printer workflow lane.")
@@ -776,6 +785,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.roadmap_publication_helper", decl_name: "publication_helper_publish_if_unpublished"),
+    effect: PrivilegedEffect {
+      subject: "mint a gunbai-bot installation token down-scoped to contents:write and pull_requests:write on gunbc from the host-custodied App key, push the captured candidate SHA from a helper-owned bare mirror, and open the pull request" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "gunbc-publication on srv1, holding the App key fleet-converge placed from Secret Manager under WIF" as NonEmptyStr },
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: publication_helper_host_key_mint },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
@@ -880,6 +904,18 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.fleet.hetzner_cloud_server_control", decl_name: "read"),
     effect: recurring_credential_read(subject: "as the run-scoped hetzner-cloud-control account, after the operator approved this run attempt (gunbc.auth.branch_run_grant), read the Hetzner Cloud default project's Read-only API token (Hetzner refuses it any write) and GET /v1/servers/\{id\} for every acquired server; changes nothing" as NonEmptyStr),
     realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "boot_credential_effect_on_reviewed_main"),
+    effect: boot_credential_effect_on_reviewed_main(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "boot_credential_effect_off_reviewed_main"),
+    effect: boot_credential_effect_off_reviewed_main(),
+    realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
@@ -1307,6 +1343,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: rented_host_ssh_effect(),
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: rented_host_permit_unredeemed },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.roadmap.attempt_system_unit_launch", decl_name: "attempt_system_unit_launch_cli"),
+    effect: attempt_system_unit_privileged_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
   },
 ]
 

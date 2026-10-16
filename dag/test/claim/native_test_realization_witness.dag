@@ -1,0 +1,277 @@
+module test.claim.native_test_realization_witness
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.algebra { contains }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import std.materialization_provider {
+  EvaluationIdentity,
+  EvaluationResultBinding,
+  EvaluationResultConsistent,
+  EvaluationContentConflict,
+  ResultContentIdentity,
+  evaluation_identity_canonical,
+  result_content_identity
+}
+import std.native_test_realization {
+  RustNativeRealization,
+  NoAdmittedEmitterForTarget,
+  RustNative,
+  CUnavailable,
+  SwiftUnavailable,
+  RealizationProductIdentity,
+  RealizationProductFormed,
+  RealizationProductRefused,
+  RealizationProductFormation,
+  NativeTestEvaluationSubject,
+  CompositionEvidenceAdmission,
+  CompositionEvidenceAdmitted,
+  CompositionEvidenceRefused,
+  NoAdversarialControls,
+  EmptyDeclarationPopulation,
+  CompositionIndependenceUnadmitted,
+  CompositionIndependenceAdmitted,
+  SemanticVerdictKey,
+  ProductScopedVerdictKey,
+  NativeTestVerdictReceipt,
+  ReceiptsJudged,
+  ReceiptsJudgeDifferentEvaluations,
+  PerTestEvaluationResultBinding,
+  NativeModuleVerdictManifest,
+  admit_composition_independence_evidence,
+  native_test_evaluation_identity,
+  form_realization_product,
+  realization_product_identity_canonical,
+  verdict_lookup_key,
+  verdict_lookup_key_canonical,
+  join_native_test_verdict_receipts
+}
+
+// Supplied identities at the std.native_test_realization interface (DESIGN section 3: a witness
+// discriminates at one interface). The executing producer is the native verdict route's realization
+// step, which does not exist yet; its inhabitance claim lands with it (roadmap node
+// native-test-verdict-realization, B3/B4). The sealed records' walls are measured by
+// test.claim.native_test_realization_seal_witness.
+
+fn ntr_hash(v: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: v as NonEmptyStr))
+}
+
+fn ntr_result(text: String) -> ResultContentIdentity {
+  result_content_identity(bucket: ntr_hash(v: concat("result:", text)), canonical_preimage: text as NonEmptyStr)
+}
+
+fn ntr_rust(generator: String, toolchain: String) -> RustNativeRealization {
+  RustNativeRealization { generator: ntr_hash(v: generator), target_model: ntr_hash(v: "rust-target"), toolchain: ntr_hash(v: toolchain) }
+}
+
+fn ntr_subject(test: String, reached: String) -> NativeTestEvaluationSubject {
+  NativeTestEvaluationSubject {
+    test: test as NonEmptyStr,
+    context: ntr_hash(v: "module-context"),
+    reached_declarations: ntr_hash(v: reached),
+    read_set: ntr_hash(v: "read-set"),
+    semantics_version: ntr_hash(v: "semantics-v1")
+  }
+}
+
+fn ntr_eval(test: String, reached: String) -> EvaluationIdentity {
+  native_test_evaluation_identity(subject: ntr_subject(test: test, reached: reached))
+}
+
+fn ntr_canon(e: EvaluationIdentity) -> String {
+  evaluation_identity_canonical(evaluation: e) as String
+}
+
+fn ntr_decls(names: List<String>) -> List<ContentHash> {
+  names |> map(n => ntr_hash(v: n))
+}
+
+fn ntr_product(realization: RustNativeRealization, partition: String, decls: List<String>) -> RealizationProductFormation {
+  form_realization_product(handler: RustNative { realization: realization }, partition: ntr_hash(v: partition), build_configuration: ntr_hash(v: "release"), packaged_declarations: ntr_decls(names: decls))
+}
+
+// A refused formation satisfies no claim: every claim body runs only on a formed product.
+fn ntr_with(f: RealizationProductFormation, k: fn(RealizationProductIdentity) -> Bool) -> Bool {
+  match f {
+    RealizationProductFormed { product: p } => k(p)
+    RealizationProductRefused { cause: _ } => false
+  }
+}
+
+fn ntr_product_text(p: RealizationProductIdentity) -> String {
+  realization_product_identity_canonical(product: p) as String
+}
+
+fn ntr_evidence(realization: RustNativeRealization, decls: List<String>, controls: List<String>) -> CompositionEvidenceAdmission {
+  admit_composition_independence_evidence(
+    realization: realization,
+    partition: ntr_hash(v: "crate-a"),
+    build_configuration: ntr_hash(v: "release"),
+    population: ntr_decls(names: decls),
+    adversarial_controls: controls |> map(c => c as NonEmptyStr)
+  )
+}
+
+fn ntr_receipt(e: EvaluationIdentity, p: RealizationProductIdentity, result: String) -> NativeTestVerdictReceipt {
+  NativeTestVerdictReceipt { evaluation: e, product: p, result: ntr_result(text: result) }
+}
+
+// (1) REALIZATION FACTS KEY THE PRODUCT, NEVER THE EVALUATION. A different generator, toolchain or
+// partition is a different product; the test's EvaluationIdentity is formed from its subject alone. The
+// packaged declarations are canonically ordered, so their supplied order is not a product fact.
+test fn realization_facts_rekey_the_product_and_not_the_evaluation() -> Bool {
+  let base = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let reordered = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d2", "d1"])
+  let toolchain = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-2"), partition: "crate-a", decls: ["d1", "d2"])
+  let generator = ntr_product(realization: ntr_rust(generator: "seed-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let partition = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-b", decls: ["d1", "d2"])
+  (ntr_canon(e: ntr_eval(test: "t1", reached: "decls-a")) == ntr_canon(e: ntr_eval(test: "t1", reached: "decls-a")))
+    && ntr_with(f: base, k: b =>
+      ntr_with(f: reordered, k: r => ntr_product_text(p: b) == ntr_product_text(p: r))
+        && ntr_with(f: toolchain, k: t => ntr_product_text(p: b) != ntr_product_text(p: t))
+        && ntr_with(f: generator, k: g => ntr_product_text(p: b) != ntr_product_text(p: g))
+        && ntr_with(f: partition, k: q => ntr_product_text(p: b) != ntr_product_text(p: q)))
+}
+
+// (2) TWO PRODUCTS, ONE EVALUATION, ONE CONTENT: consistent.
+test fn two_receipts_with_one_content_under_one_evaluation_are_consistent() -> Bool {
+  let e = ntr_eval(test: "t1", reached: "decls-a")
+  ntr_with(f: ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1"]), k: p1 =>
+    ntr_with(f: ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-2"), partition: "crate-a", decls: ["d1"]), k: p2 =>
+      match join_native_test_verdict_receipts(first: ntr_receipt(e: e, p: p1, result: "pass"), second: ntr_receipt(e: e, p: p2, result: "pass")) {
+        ReceiptsJudged { outcome: EvaluationResultConsistent } => true
+        ReceiptsJudged { outcome: _ } => false
+        ReceiptsJudgeDifferentEvaluations => false
+      }))
+}
+
+// (3) ONE EVALUATION, DIFFERENT CONTENT: a conflict, never two answers. Receipts for different
+// evaluations are not compared at all.
+test fn different_content_under_one_evaluation_is_a_conflict() -> Bool {
+  let e = ntr_eval(test: "t1", reached: "decls-a")
+  let other = ntr_eval(test: "t2", reached: "decls-a")
+  ntr_with(f: ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1"]), k: p => {
+    let conflict = match join_native_test_verdict_receipts(first: ntr_receipt(e: e, p: p, result: "pass"), second: ntr_receipt(e: e, p: p, result: "fail")) {
+      ReceiptsJudged { outcome: EvaluationContentConflict { binding: _, observed: _ } } => true
+      ReceiptsJudged { outcome: _ } => false
+      ReceiptsJudgeDifferentEvaluations => false
+    }
+    let apart = match join_native_test_verdict_receipts(first: ntr_receipt(e: e, p: p, result: "pass"), second: ntr_receipt(e: other, p: p, result: "fail")) {
+      ReceiptsJudgeDifferentEvaluations => true
+      ReceiptsJudged { outcome: _ } => false
+    }
+    conflict && apart
+  })
+}
+
+// (4) C AND SWIFT REFUSE AT ADMISSION: no product identity forms, so emission never begins. Rust forms.
+test fn c_and_swift_refuse_before_any_product_forms() -> Bool {
+  let c = form_realization_product(handler: CUnavailable { cause: NoAdmittedEmitterForTarget }, partition: ntr_hash(v: "p"), build_configuration: ntr_hash(v: "release"), packaged_declarations: [])
+  let swift = form_realization_product(handler: SwiftUnavailable { cause: NoAdmittedEmitterForTarget }, partition: ntr_hash(v: "p"), build_configuration: ntr_hash(v: "release"), packaged_declarations: [])
+  let rust = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "p", decls: [])
+  let c_refused = match c {
+    RealizationProductRefused { cause: NoAdmittedEmitterForTarget } => true
+    RealizationProductFormed { product: _ } => false
+  }
+  let swift_refused = match swift {
+    RealizationProductRefused { cause: NoAdmittedEmitterForTarget } => true
+    RealizationProductFormed { product: _ } => false
+  }
+  c_refused && swift_refused && ntr_with(f: rust, k: p => true)
+}
+
+// (5) CHANGING ONE TEST'S REACHED DECLARATIONS REKEYS THAT TEST ONLY. Its binding and the module
+// manifest change; the other test's EvaluationIdentity and binding stay addressable as they were.
+test fn changing_one_test_rekeys_only_that_test_and_the_manifest() -> Bool {
+  let t1 = ntr_eval(test: "t1", reached: "decls-a")
+  let t1_edited = ntr_eval(test: "t1", reached: "decls-a-edited")
+  let t2_before = ntr_eval(test: "t2", reached: "decls-b")
+  let t2_after = ntr_eval(test: "t2", reached: "decls-b")
+  let t2_binding = PerTestEvaluationResultBinding { test: "t2" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t2_before, result_content_identity: ntr_result(text: "pass") } }
+  let before = NativeModuleVerdictManifest {
+    module: ntr_hash(v: "m"),
+    bindings: [PerTestEvaluationResultBinding { test: "t1" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t1, result_content_identity: ntr_result(text: "pass") } }, t2_binding],
+    preparation_diagnostics: ntr_hash(v: "no-diagnostics")
+  }
+  let after = NativeModuleVerdictManifest {
+    module: ntr_hash(v: "m"),
+    bindings: [PerTestEvaluationResultBinding { test: "t1" as NonEmptyStr, binding: EvaluationResultBinding { evaluation_identity: t1_edited, result_content_identity: ntr_result(text: "pass") } }, t2_binding],
+    preparation_diagnostics: ntr_hash(v: "no-diagnostics")
+  }
+  let manifest_keys_before = before.bindings |> map(b => ntr_canon(e: b.binding.evaluation_identity))
+  let manifest_keys_after = after.bindings |> map(b => ntr_canon(e: b.binding.evaluation_identity))
+  (ntr_canon(e: t1) != ntr_canon(e: t1_edited))
+    && (ntr_canon(e: t2_before) == ntr_canon(e: t2_after))
+    && (manifest_keys_before != manifest_keys_after)
+    && contains(xs: manifest_keys_after, item: ntr_canon(e: t2_before), eq: fn(a, b) { a == b })
+}
+
+// The product-scoped key's canonical text, or no claim at all: a semantic key here is itself a failure.
+fn ntr_unadmitted_key(e: EvaluationIdentity, f: RealizationProductFormation, k: fn(String) -> Bool) -> Bool {
+  ntr_with(f: f, k: p => match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceUnadmitted) {
+    ProductScopedVerdictKey { evaluation: _, product: _ } =>
+      k(verdict_lookup_key_canonical(key: verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceUnadmitted)) as String)
+    SemanticVerdictKey { evaluation: _ } => false
+  })
+}
+
+// (6) WITHOUT ADMITTED INDEPENDENCE THE LOOKUP KEY CARRIES THE COMPLETE PRODUCT. Two products with one
+// declaration set but different toolchains, generators or partitions are different keys, as is a
+// product with one more neighbour.
+test fn without_admitted_independence_the_key_carries_the_complete_product() -> Bool {
+  let e = ntr_eval(test: "t1", reached: "decls-a")
+  let base = ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"])
+  let others = [
+    ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-2"), partition: "crate-a", decls: ["d1", "d2"]),
+    ntr_product(realization: ntr_rust(generator: "seed-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2"]),
+    ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-b", decls: ["d1", "d2"]),
+    ntr_product(realization: ntr_rust(generator: "v2-gen", toolchain: "rustc-1"), partition: "crate-a", decls: ["d1", "d2", "neighbour"])
+  ]
+  ntr_unadmitted_key(e: e, f: base, k: b => others |> all(o => ntr_unadmitted_key(e: e, f: o, k: k2 => k2 != b)))
+}
+
+// (7) ADMITTED EVIDENCE NARROWS ONLY THE PRODUCT IT WAS ESTABLISHED UNDER. Evidence covering this
+// realization and declaration population lets the semantic key answer; the same population under a
+// different toolchain, or a product with a declaration outside the population, keeps the full key.
+test fn admitted_evidence_narrows_only_the_product_it_covers() -> Bool {
+  let e = ntr_eval(test: "t1", reached: "decls-a")
+  let rust1 = ntr_rust(generator: "v2-gen", toolchain: "rustc-1")
+  let rust2 = ntr_rust(generator: "v2-gen", toolchain: "rustc-2")
+  match ntr_evidence(realization: rust1, decls: ["d1", "d2", "d3"], controls: ["redirecting_trait_impl", "colliding_name", "glob_import"]) {
+    CompositionEvidenceRefused { cause: _ } => false
+    CompositionEvidenceAdmitted { evidence: ev } => {
+      let covered = ntr_with(f: ntr_product(realization: rust1, partition: "crate-a", decls: ["d1", "d2"]), k: p =>
+        match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceAdmitted { evidence: ev }) {
+          SemanticVerdictKey { evaluation: _ } => true
+          ProductScopedVerdictKey { evaluation: _, product: _ } => false
+        })
+      let other_toolchain = ntr_with(f: ntr_product(realization: rust2, partition: "crate-a", decls: ["d1", "d2"]), k: p =>
+        match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceAdmitted { evidence: ev }) {
+          ProductScopedVerdictKey { evaluation: _, product: _ } => true
+          SemanticVerdictKey { evaluation: _ } => false
+        })
+      let outside_population = ntr_with(f: ntr_product(realization: rust1, partition: "crate-a", decls: ["d1", "neighbour"]), k: p =>
+        match verdict_lookup_key(evaluation: e, product: p, standing: CompositionIndependenceAdmitted { evidence: ev }) {
+          ProductScopedVerdictKey { evaluation: _, product: _ } => true
+          SemanticVerdictKey { evaluation: _ } => false
+        })
+      covered && other_toolchain && outside_population
+    }
+  }
+}
+
+// (8) THE EVIDENCE MINT REFUSES WHAT CANNOT BE EVIDENCE: no adversarial control, or no population.
+test fn evidence_without_adversarial_controls_or_population_is_refused() -> Bool {
+  let rust1 = ntr_rust(generator: "v2-gen", toolchain: "rustc-1")
+  let no_controls = match ntr_evidence(realization: rust1, decls: ["d1"], controls: []) {
+    CompositionEvidenceRefused { cause: NoAdversarialControls } => true
+    CompositionEvidenceRefused { cause: _ } => false
+    CompositionEvidenceAdmitted { evidence: _ } => false
+  }
+  let no_population = match ntr_evidence(realization: rust1, decls: [], controls: ["glob_import"]) {
+    CompositionEvidenceRefused { cause: EmptyDeclarationPopulation } => true
+    CompositionEvidenceRefused { cause: _ } => false
+    CompositionEvidenceAdmitted { evidence: _ } => false
+  }
+  no_controls && no_population
+}

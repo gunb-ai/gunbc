@@ -31,17 +31,22 @@ import std.content_hash { Fnv1a64Structural }
 // ordering the ruling struck down, because the disk diverges from the running process whenever a
 // sync is interrupted or lands out of order. Observing the candidate here is safe for the same
 // reason that one is not: nothing has been mutated yet, and the checkout is the deploying job's own
-// workspace.\n\nTHE SURFACE HALF NEEDS NO OBSERVATION. expected_surface_identity is a pure function
-// of this tree, so it is computed rather than read.\n\nTHE SURFACE HALF IS CONSUMED, NOT MERELY
-// PUBLISHED. apply.dag carries this whole value — both members — into the readiness poll, and
-// readiness compares the process-reported surface_bundle_identity against expected_surface_identity
-// rather than re-materializing the bundle at comparison time. That distinction is the point: a
-// recomputed expectation would describe the tree AS IT IS WHEN COMPARED, so if the deploying
-// checkout changed after admission the expectation and the verdict would drift together and agree
-// with a process other than the one admitted. An earlier revision of this note said the member was
-// captured and dropped; that was true when written and is false now.
+// workspace.\n\nTHE SURFACE HALF IS OBSERVED ONCE, WITH THE REVISION. expected_surface_identity and
+// expected_dispatch_digest are taken from the one live surface bundle materialized at this
+// observation (tree plus the runtime task roster as it is then). They are not a pure function of
+// the tree alone: since the live route joined the roster, a roster change is a different surface.
+// A roster change between observation and readback is a loud mismatch that a retry resolves, never
+// an admission of a recomputed expectation.\n\nTHE SURFACE HALF IS CONSUMED, NOT MERELY
+// PUBLISHED. apply.dag carries this whole value into the readiness poll and the digest readback.
+// Readiness compares the process-reported surface_bundle_identity against expected_surface_identity;
+// the digest readback compares the served dispatch body against expected_dispatch_digest. Neither
+// re-materializes the bundle at comparison time. That distinction is the point: a recomputed
+// expectation would describe the tree (and roster) AS THEY ARE WHEN COMPARED, so if the deploying
+// checkout or roster changed after admission the expectation and the verdict would drift together
+// and agree with a process other than the one admitted.
 
 type CandidateRelease {
   revision: CommitSha
   expected_surface_identity: Fnv1a64Structural
+  expected_dispatch_digest: Fnv1a64Structural
 }

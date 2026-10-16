@@ -10,7 +10,7 @@ import v2.lens.interface_summary {
 }
 import v2.lens.module_graph { ImportResolutionFact }
 import std.algebra { Empty }
-import v2.std.collection { Present, Absent, optional_absent, optional_present }
+import std.optional { Present, Absent, optional_absent, optional_present }
 import v2.std.decl_index {
   DeclFact,
   export_signature_declared_arrow,

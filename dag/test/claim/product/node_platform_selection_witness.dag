@@ -16,7 +16,7 @@ import std.decision {
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, TranscribedUncited }
-import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling_at }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, IntegratedComputeSystemCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling_at }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
@@ -71,7 +71,7 @@ fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
 test fn live_selection_waits_on_each_route_by_its_own_evidence() -> Bool {
   match node_platform_selection() {
     SelectionNeedsEvidence { needs: ns } =>
-      any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a (P4261 dev carrier, as built) is not yet qualified: blocked at mechanically mated"))
+      any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-e1-b (P4261 dev carrier, as built) is not yet qualified: blocked at mechanically mated"))
         && any(ns, n => need_mentions(need: n, fragment: "the memory of gh200-dv5-a is unmeasured"))
         && any(ns, n => need_mentions(need: n, fragment: "no supply is chosen for the dev-carrier route"))
         && any(ns, n => need_mentions(need: n, fragment: "no MECAI-GH200 in its factory GH200 Hopper GPU (96GB HBM3) configuration has been delivered"))
@@ -173,7 +173,7 @@ test fn qualifying_one_route_does_not_satisfy_another() -> Bool {
   match node_platform_selection_given(evidence: ev) {
     SelectionNeedsEvidence { needs: ns } =>
       any(ns, n => need_mentions(need: n, fragment: "route MECAI-GH200 factory server (GH200 Hopper GPU (96GB HBM3)) is not yet qualified"))
-        && !any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a"))
+        && !any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-e1-b"))
     _ => false
   }
 }
@@ -226,6 +226,31 @@ test fn the_dev_carrier_candidate_follows_the_measured_inventory() -> Bool {
     && gaps_on(e: unmeasured, axis: gpu_local_capacity_axis) == 1
     && gaps_on(e: unmeasured, axis: gpu_local_bandwidth_axis) == 1
     && gaps_on(e: unmeasured, axis: coherent_capacity_axis) == 1
+}
+
+// ABSENT CATALOG BANDWIDTH IS NOT AN EMPTY AXIS. Spark's cited 273 GB/s still reads; a copy of the
+// same row with memory_bandwidth none must declare gpu_local_bandwidth missing (review 79123).
+test fn unstated_gpu_bandwidth_is_a_funded_axis_gap() -> Bool {
+  let row = nvidia_dgx_spark_4tb_catalog
+  let unread = IntegratedComputeSystemCatalogRow {
+    vendor: row.vendor,
+    model: row.model,
+    soc_model: row.soc_model,
+    cpu_architecture: row.cpu_architecture,
+    cpu_core_clusters: row.cpu_core_clusters,
+    gpu: row.gpu,
+    memory: row.memory,
+    memory_bus_width: row.memory_bus_width,
+    memory_data_rate: row.memory_data_rate,
+    memory_bandwidth: none,
+    storage_capacity: row.storage_capacity,
+    network_ports: row.network_ports,
+    external_power_supply: row.external_power_supply,
+    soc_thermal_design_power: row.soc_thermal_design_power,
+  }
+  let e = route_entry(r: RetainIncumbentSpark { candidate: candidate_dgx_spark_node, row: unread, standing: incumbent_spark_standing })
+  gaps_on(e: e, axis: gpu_local_bandwidth_axis) == 1
+    && gaps_on(e: route_entry(r: spark_route()), axis: gpu_local_bandwidth_axis) == 0
 }
 
 // The 480GB product's coherent memory is derived, not read off the name: 96 GiB HBM + 480 GiB LPDDR5X.

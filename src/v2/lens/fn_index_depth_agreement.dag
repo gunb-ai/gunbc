@@ -5,7 +5,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.algebra { list_snoc_item, contains, fold_list, length }
-import v2.std.collection { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node, node_subtree_count, symbol_eq }
 import v2.std.compilers.body_lowering {

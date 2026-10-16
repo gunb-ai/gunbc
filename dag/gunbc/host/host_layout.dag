@@ -365,6 +365,37 @@ fn attempt_exit_refused_dir(instance_root: String) -> String {
   join([attempt_exit_spool_root(instance_root: instance_root), "/refused"], "")
 }
 
+// THE ATTEMPT-SYSTEM-UNIT REQUEST SPOOL. The launcher argv is pinned to instance_root only, so the
+// request cannot travel on argv. The channel is this spool, not one instance-global file: a second
+// concurrent start must not share a body (DESIGN §5). Shape reused from two existing homes, not a
+// third: dispatch/publication staging-then-rename into `requests/` with per-entry `answers/<entry>`
+// (gunbc.roadmap.roadmap_dispatch_spool / publication_spool_* here); claim-by-rename of a directory
+// entry into a requester-unwritable stage, the exit spool's queued -> running move
+// (`mv -T` / shell.Move.NoReplaceDirectory — dest that already exists as a directory refuses).
+fn attempt_unit_spool_root(instance_root: String) -> String {
+  join([instance_root, "/attempt-unit-spool"], "")
+}
+
+fn attempt_unit_spool_staging_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/requests-staging"], "")
+}
+
+fn attempt_unit_spool_request_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/requests"], "")
+}
+
+fn attempt_unit_spool_claimed_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/claimed"], "")
+}
+
+fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
+fn attempt_unit_spool_drain_lock_path(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/drain.lock"], "")
+}
+
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on
 // opposite sides of a PRIVILEGE boundary, so neither may own the name. gunbc.roadmap.roadmap_belt_actuate
 // writes a request into it as the service principal; the publication helper reads that request and
@@ -415,6 +446,21 @@ fn publication_answer_dir(instance_root: String) -> String {
 // correct: its question was never understood, and its own gate re-asks while the question is open.
 fn publication_refused_dir(instance_root: String) -> String {
   join([publication_spool_root(instance_root: instance_root), "/requests-refused"], "")
+}
+
+// THE HELPER KEEPS ITS OWN BARE MIRROR UNDER THE SPOOL ROOT. A fresh mktemp mirror packs the whole
+// reachable history on every publish; this path persists so a later fetch is a delta. The spool
+// root is installed owned by the publication principal (apply_publication_spool_steps); the helper
+// cannot mkdir under /opt/gunbc (root:root 755) or a lab instance root owned by the worker.
+//
+// A MIRROR THE WORKER SWAPS IN IS REFUSED. The push runs in this directory with the netrc on disk.
+// GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1 do not null the repository's own config or
+// hooks (core.hooksPath, hooks/pre-push). What refuses a worker-owned substitute today is git's
+// ownership check: the push's nulled global config carries no safe.directory, and the worker cannot
+// create a directory owned by gunbc-publication. The install step therefore uses owner and group
+// publication_principal at mode 0700, and only requests/ is group-writable for the belt.
+fn publication_bare_mirror_path(instance_root: String) -> FilePath {
+  join([publication_spool_root(instance_root: instance_root), "/mirror.git"], "") as FilePath
 }
 
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;

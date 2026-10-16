@@ -1,5 +1,6 @@
 module v2.compiler.translate
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import std.occurrence_identity {
   OccurrenceSynthetic
@@ -173,9 +174,7 @@ import v2.std.compilers.target_model {
   WrapGateDecided,
   target_reference_layer_apply_value_expression
 }
-import v2.std.collection {
-  list_at_optional
-}
+
 import v2.std.arrow_signature {
   ArrowParameterOrderAbsent,
   ArrowParameterOrderDeclared,
@@ -201,7 +200,8 @@ import std.algebra {
   list_snoc_item,
   fold_list,
   is_empty,
-  length
+  length,
+  list_at_optional
 }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.text {
@@ -257,6 +257,8 @@ import v2.compiler.target_serialize {
   translate_type_expression_shape_missing_diagnostic,
   type_expr_atom_binding
 }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 fn token_list_node_budget(tokens: List<Node>) -> Int {
   fold_list(
@@ -2744,3 +2746,7 @@ fn translate_diagnostic_reason_head(
 ) -> Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_from_symbol(sym: diagnostics_fatal_reason(d: diagnostics))
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "translate_edge_is_arrow_contract" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

@@ -245,6 +245,15 @@ pub fn primitive_utf8_encode_bytes() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_octets_bytes() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("octets_bytes".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_pure_dag_seam_unreachable() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -340,25 +349,25 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_primitive_delegate".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
@@ -393,6 +402,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_octets_bytes(),
+            "std.bytes".to_string(),
+            "octets_bytes".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_pure_dag_seam_unreachable(),
             "std.error_primitives".to_string(),
             "pure_dag_seam_unreachable".to_string(),
@@ -412,31 +427,31 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
         ),
         primitive_projection_row(
             primitive_map_insert(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_insert".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_lookup(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "map_lookup".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_get(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "list_at_optional".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_empty_map(),
-            "v2.std.collection".to_string(),
+            "std.algebra".to_string(),
             "empty_map".to_string(),
             Rc::new(ProjectionFidelity::ModeledProjection),
         ),
         primitive_projection_row(
             primitive_map_get(),
-            "v2.std.collection".to_string(),
+            "v2.std.witness".to_string(),
             "map_get_checked".to_string(),
             Rc::new(ProjectionFidelity::DivergentProjection {
                 divergence:

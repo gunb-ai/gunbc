@@ -1,6 +1,7 @@
 module product.node_platform_selection
 
 import std.types { List, NonEmptyStr, String }
+import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.interval { degenerate_interval }
@@ -66,10 +67,11 @@ import extdeps.systems.types {
 }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
-import std.measure { Watt, ByteSize, byte_size, byte_size_count, watt_count, millimeter_count, celsius_count }
+import std.measure { Watt, ByteSize, Bandwidth, byte_size, byte_size_count, watt_count, millimeter_count, celsius_count }
 import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog, dgx_spark_system_overview_authority }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog, extdeps_external_authority_anchor }
+import product.p4261_carrier_layout { carrier_model_text }
 import product.superchip_assembly_qualification {
   SuperchipAssembly,
   AssemblyWorkloadQualified,
@@ -281,7 +283,7 @@ fn route_label(r: NodeRoute) -> NonEmptyStr {
   match r {
     RetainIncumbentSpark { candidate: _, row: _, standing: _ } => "retain DGX Spark" as NonEmptyStr
     ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } =>
-      join([a.unit.asset as String, " on ", a.carrier.asset as String, " (", a.carrier.carrier_designation as String, " dev carrier, as built)"], "") as NonEmptyStr
+      join([a.unit.asset as String, " on ", a.carrier.asset as String, " (", carrier_model_text(layout: a.carrier.layout), " dev carrier, as built)"], "") as NonEmptyStr
     FactoryServer { candidate: _, server: srv, configuration: cfg, standing: _ } =>
       join([srv.model as String, " factory server (", cfg.gpu.model as String, ")"], "") as NonEmptyStr
   }
@@ -349,17 +351,39 @@ fn gh200_memory_gaps(row: CoherentSuperchipCatalogRow) -> List<AxisGap> {
   }
 }
 
-fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReading> {
-  [
-    bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
-    to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.gpu.memory_bandwidth } }),
-    bytes_reading(axis: coherent_capacity_axis, b: coherent_superchip_coherent_capacity(row: row)),
-  ]
-}
-
 type MemoryReadings {
   readings: List<AxisReading>
   gaps: List<AxisGap>
+}
+
+// ABSENT BANDWIDTH IS A FUNDED-AXIS GAP, not an empty reading list. gpu_local_bandwidth is on the
+// subject; returning [] with gaps: [] declared the inputs complete while the axis had no reading
+// (DESIGN §3d / §5). Unread power already pairs the same way.
+fn gpu_local_bandwidth(gpu_bandwidth: Bandwidth?) -> MemoryReadings {
+  match gpu_bandwidth {
+    Present { value: b } => MemoryReadings {
+      readings: [to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: b } })],
+      gaps: [],
+    }
+    Absent => MemoryReadings {
+      readings: [],
+      gaps: [AxisGap {
+        axis: gpu_local_bandwidth_axis,
+        cause: "catalog GPU memory bandwidth is unstated; a funded gpu_local_bandwidth reading cannot be fabricated" as NonEmptyStr,
+      }],
+    }
+  }
+}
+
+fn superchip_memory(row: CoherentSuperchipCatalogRow) -> MemoryReadings {
+  let bw = gpu_local_bandwidth(gpu_bandwidth: row.gpu.memory_bandwidth)
+  MemoryReadings {
+    readings: concat(
+      [bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity)],
+      concat(bw.readings, [bytes_reading(axis: coherent_capacity_axis, b: coherent_superchip_coherent_capacity(row: row))]),
+    ),
+    gaps: concat(gh200_memory_gaps(row: row), bw.gaps),
+  }
 }
 
 // THE AS-BUILT CANDIDATE (GH200-5, review). A dev-carrier route is ranked on what its unit MEASURED,
@@ -386,9 +410,10 @@ fn assembly_memory(a: SuperchipAssembly) -> MemoryReadings {
         bytes_reading(axis: coherent_capacity_axis, b: byte_size(count: byte_size_count(b: g) + byte_size_count(b: c))),
       ]
       if byte_size_count(b: g) == byte_size_count(b: a.row.gpu.memory.capacity) {
+        let bw = gpu_local_bandwidth(gpu_bandwidth: a.row.gpu.memory_bandwidth)
         MemoryReadings {
-          readings: concat(capacities, [to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: a.row.gpu.memory_bandwidth } })]),
-          gaps: [],
+          readings: concat(capacities, bw.readings),
+          gaps: bw.gaps,
         }
       } else {
         MemoryReadings {
@@ -402,17 +427,19 @@ fn assembly_memory(a: SuperchipAssembly) -> MemoryReadings {
 
 fn route_memory(r: NodeRoute) -> MemoryReadings {
   match r {
-    RetainIncumbentSpark { candidate: _, row: row, standing: _ } => MemoryReadings {
-      readings: [
-        bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity),
-        to_axis_reading(r: BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.memory_bandwidth } }),
-        bytes_reading(axis: coherent_capacity_axis, b: row.memory.capacity),
-      ],
-      gaps: [],
+    RetainIncumbentSpark { candidate: _, row: row, standing: _ } => {
+      let bw = gpu_local_bandwidth(gpu_bandwidth: row.memory_bandwidth)
+      MemoryReadings {
+        readings: concat(
+          [bytes_reading(axis: gpu_local_capacity_axis, b: row.gpu.memory.capacity)],
+          concat(bw.readings, [bytes_reading(axis: coherent_capacity_axis, b: row.memory.capacity)]),
+        ),
+        gaps: bw.gaps,
+      }
     }
     ModuleOnDevCarrier { candidate: _, assembly: a, supply: _ } => assembly_memory(a: a)
     FactoryServer { candidate: _, server: _, configuration: cfg, standing: _ } =>
-      MemoryReadings { readings: superchip_memory_readings(row: cfg), gaps: gh200_memory_gaps(row: cfg) }
+      superchip_memory(row: cfg)
   }
 }
 

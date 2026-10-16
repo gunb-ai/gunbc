@@ -1,5 +1,4 @@
 module extdeps.git
-
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -7,8 +6,43 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
-import std.algebra { length, skip }
+import std.algebra { length, skip, trim }
 import std.resources { Network }
+
+// HOME AND GIT CONFIG ARE ARGV `env` WORDS, not a Map the seed spawn never applies (review 79196).
+// The token stays out of argv: only the private HOME path is named, and netrc lives under that HOME.
+//
+// THE PUSH CONTRACT, measured on srv1 git 2.43 (parent, 2026-10-13): that git DOES read $HOME/.netrc
+// for an https push. GIT_CONFIG_NOSYSTEM=1 and a HOME that holds no .gitconfig are therefore part of
+// the operation, so host and worker config never reach the publication principal.
+// GIT_CONFIG_GLOBAL=/dev/null is git's override of ~/.gitconfig and $XDG_CONFIG_HOME/git/config.
+// GIT_TERMINAL_PROMPT=0 refuses a prompt if the netrc is missing instead of hanging.
+data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
+data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
+data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+data git_worktree_commondir_relative: String = "../.."
+data git_dir_flag_prefix: String = "--git-dir="
+data git_work_tree_flag_prefix: String = "--work-tree="
+
+fn git_untrusted_config_env_words() -> List<String> {
+  [git_config_global_null_env, git_config_nosystem_env]
+}
+
+fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
+  concat(home as String, "/.netrc") as FilePath
+}
+
+fn git_isolated_home_env_argv(home: FilePath) -> List<String> {
+  ["env", concat("HOME=", home as String), git_config_global_null_env, git_config_nosystem_env, git_terminal_prompt_disabled_env]
+}
+
+fn git_push_ref_in_repo_argv(repo: FilePath, remote: String, refspec: String, home: FilePath) -> List<String> {
+  concat(
+    git_isolated_home_env_argv(home: home),
+    ["git", "-C", repo as String, "push", "--quiet", remote, refspec],
+  )
+}
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -844,6 +878,35 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
   argv_command(program: git_program(), arguments: git_checkout_revision_args(repository_dir: repository_dir, revision: revision))
 }
 
+// A STAGED TREE, PROVEN EQUAL TO A NAMED TREE OBJECT, WITHOUT HISTORY OR NETWORK. A tree delivered
+// as an archive carries its content but no object store; these four steps make one and ask git
+// itself whether the named tree is the content. `init` creates the store; `add -A -f` stages every
+// file including ones a .gitignore in the archive would hide (the archive is exactly the tracked set,
+// so nothing is ignored on purpose); `commit` writes the content's tree object; and
+// `diff-tree --quiet <tree> HEAD` exits 0 only when <tree> exists in the store AND equals HEAD's
+// tree -- an absent object exits 128 and a different one exits 1. In a fresh store the named root
+// tree exists only if this content produced it, so a pass is the content-equality fact and nothing
+// weaker. The identity is set per command (`-c user.name/-c user.email`) because a fresh guest has
+// none and the commit's metadata is not part of the tree.
+fn git_init_quiet_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "init", "-q"])
+}
+
+fn git_add_all_force_command(repository_dir: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "add", "-A", "-f"])
+}
+
+fn git_commit_snapshot_command(repository_dir: String, identity_name: String, identity_email: String, message: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: [
+    "-c", concat("user.name=", identity_name), "-c", concat("user.email=", identity_email),
+    "-C", repository_dir, "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
+  ])
+}
+
+fn git_diff_tree_equal_command(repository_dir: String, tree: String, revision: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "diff-tree", "--quiet", tree, revision])
+}
+
 // THE READBACK. A checkout that reported success is not the same fact as a working tree whose HEAD
 // is the requested commit, and only the second one licenses a claim about what was built. `--verify`
 // makes git refuse an ambiguous or absent object rather than echoing the argument back.
@@ -980,6 +1043,38 @@ fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
   join([worktree as String, "/", git_non_bare_git_dir_name], "") as NonEmptyStr
 }
 
+// gitrepository-layout(5): a linked worktree's `.git` is a file whose first line is `gitdir: <path>`.
+// Reading that file as data finds the private git dir without running git inside the worktree (so
+// the worktree owner's config and dubious-ownership check never enter). A main checkout's `.git` is
+// a directory and is the git dir itself.
+data git_dir_file_prefix: String = "gitdir:"
+
+fn git_dir_path_from_gitfile(contents: String) -> String? {
+  match first(split(s: contents, delimiter: "\n")) {
+    Absent => none
+    Present { value: raw } =>
+      let line = trim(s: raw)
+      if !starts_with(s: line, prefix: git_dir_file_prefix) {
+        none
+      } else {
+        let rest = trim(s: substring(s: line, start: string_length(s: git_dir_file_prefix), end: string_length(s: line)))
+        if rest == "" {
+          none
+        } else {
+          Present { value: rest }
+        }
+      }
+  }
+}
+
+fn resolve_git_dir_pointer(worktree: FilePath, pointer: String) -> NonEmptyStr {
+  if starts_with(s: pointer, prefix: "/") {
+    pointer as NonEmptyStr
+  } else {
+    join([worktree as String, "/", pointer], "") as NonEmptyStr
+  }
+}
+
 // A LOCAL FETCH SOURCE IS TRUSTED AT ITS GIT DIR, NOT ITS WORKTREE. `git fetch <path>` spawns
 // git-upload-pack(1) on <path>, and upload-pack enters the repository through enter_repo() (git
 // path.c), which probes `<path>/.git` before `<path>` and -- with the CVE-2024-32004 fix, present in srv1's
@@ -993,6 +1088,10 @@ fn git_non_bare_git_dir(worktree: NonEmptyStr) -> NonEmptyStr {
 // checkout; a bare source would refuse loudly with the same typed cause, never pass silently.
 fn git_local_fetch_source_grant(source: NonEmptyStr) -> SafeDirectoryGrant {
   SafeDirectoryGrant { path: git_non_bare_git_dir(worktree: source) }
+}
+
+fn git_dir_fetch_source_grant(git_dir: NonEmptyStr) -> SafeDirectoryGrant {
+  SafeDirectoryGrant { path: git_dir }
 }
 
 // THE SOURCE TRUST RIDES INSIDE --upload-pack, BECAUSE A `-c` ON THE FETCH NEVER REACHES UPLOAD-PACK.
@@ -1043,6 +1142,20 @@ fn shape_git_add_all_args() -> List<String> {
 
 fn shape_git_commit_message_args(message: String) -> List<String> {
   ["commit", "-q", "-m", message]
+}
+
+// COMMAND-LINE `-c` WINS OVER REPOSITORY AND WORKTREE CONFIG for these keys (git-config(1)).
+// A worker that can write objects/refs must not be able to make the controller's later git
+// invoke hooks, fsmonitor, sshCommand, or diff.external. This is not a complete filter
+// table; pairing it with not carving out .git/config and .git/hooks is what closes planting.
+fn git_command_config_inert_args() -> List<String> {
+  [
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.fsmonitor=false",
+    "-c", "core.useBuiltinFSMonitor=false",
+    "-c", "core.sshCommand=/bin/true",
+    "-c", "diff.external=/bin/true",
+  ]
 }
 
 fn git_observe_meta_shell_fragment() -> String {
@@ -1182,6 +1295,18 @@ service git.Core {
     readonly
     transport shell {
       argv: ["git", "-C", "{repository_path}", "worktree", "list", "--porcelain", "-z"]
+    }
+  }
+
+  operation WorktreeAddInRepo {
+    requires opaque
+    input { repo: FilePath, path: FilePath, start_point: String }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", "-C", "{repo}", "worktree", "add", "--quiet", "{path}", "{start_point}"]
     }
   }
 
@@ -1671,13 +1796,13 @@ service git.Core {
 
   operation PushRefInRepo {
     requires opaque
-    input { repo: FilePath, remote: String, refspec: String }
+    input { repo: FilePath, remote: String, refspec: String, home: FilePath }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["git", "-C", "{repo}", "push", "--quiet", "{remote}", "{refspec}"] }
+    transport shell { argv: [git_push_ref_in_repo_argv(repo: repo, remote: remote, refspec: refspec, home: home)] }
   }
   operation PushRefWithLeaseInRepo {
     requires opaque

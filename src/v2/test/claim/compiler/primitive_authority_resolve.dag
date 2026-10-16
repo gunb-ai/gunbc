@@ -6,11 +6,11 @@ import v2.compiler.primitive_authority { primitive_authority_path }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.collection { List }
+
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.node { symbol_intern_lexeme }
-import std.types { Bool }
+import std.types { Bool, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

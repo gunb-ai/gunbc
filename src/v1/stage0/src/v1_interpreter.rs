@@ -11080,7 +11080,7 @@ macro_rules! v1_map_grounding_dispatch {
     };
 }
 
-const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
+const V2_STD_COLLECTION_MODULE: &str = "std.algebra";
 
 pub fn std_node_reflection_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_REFLECTION_BRIDGE_FNS
@@ -15783,6 +15783,7 @@ fn reference_derived_closure_admission_value(
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
             T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+            T::NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer",
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };
@@ -25040,20 +25041,8 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.class_b_import_closure_gate_not_affected_skip" { "class_b_import_closure_gate_not_affected_skip" } => Ok(Some(Value::Bool(
-                crate::cli_run::class_b_import_closure_gate_not_affected_skip_for_ci(),
-            ))),
-
             arm "free_call.witness_layer_roots_compile_clean_check" { "witness_layer_roots_compile_clean_check" } => Ok(Some(Value::Bool(
                 crate::cli_run::witness_layer_roots_compile_clean_check(),
-            ))),
-
-            arm "free_call.witness_layer_roots_compile_clean_emit_check" { "witness_layer_roots_compile_clean_emit_check" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
-            ))),
-            arm "free_call.install_or_consume_floor_compile_clean_gate_receipt" { "install_or_consume_floor_compile_clean_gate_receipt" } => Ok(Some(gate_receipt_value(
-                crate::cli_run::install_or_consume_floor_compile_clean_gate_receipt(),
-                $ctx,
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
@@ -25071,10 +25060,6 @@ macro_rules! v1_builtin_arms {
             arm "free_call.consume_generated_artifact_drift_gate_receipt" { "consume_generated_artifact_drift_gate_receipt" } => Ok(Some(gate_receipt_value(
                 crate::cli_run::consume_generated_artifact_drift_gate_receipt(),
                 $ctx,
-            ))),
-
-            arm "free_call.witness_compile_clean_cli_floor_verdicts_agree" { "witness_compile_clean_cli_floor_verdicts_agree" } => Ok(Some(Value::Bool(
-                crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
 
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
@@ -25125,7 +25110,8 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),
             ))),
             arm "free_call.complexity_linearity_wildcard_facts" { "complexity_linearity_wildcard_facts" } => {
-                let facts = crate::cli_run::complexity_linearity_wildcard_facts();
+                let facts = crate::cli_run::complexity_linearity_wildcard_facts()
+                    .map_err(|msg| InterpError::TypeError { msg })?;
                 let mut items: Vec<Value> = Vec::new();
                 for f in facts {
                     items.push(Value::Record {

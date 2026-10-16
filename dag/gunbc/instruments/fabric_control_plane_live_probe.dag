@@ -123,7 +123,7 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_observation_refusal_identity,
 }
 import gunbc.fabric.fabric_witness_run {
-  RequiredBuildWorkBinding, RequiredBuildWorkBound, RequiredBuildWorkRefused, RequiredBuildCoordinateMissing,
+  FabricCiWorkBinding, FabricCiWorkBound, FabricCiWorkRefused, FabricCiCoordinateMissing,
   ExactGitSource, GitCommitTreeVerified, GitCommitTreeMismatch,
   required_witnesses_build_work, verify_git_commit_tree,
 }
@@ -152,6 +152,8 @@ import gunbc.host.host_operation_exec {
   host_operation_exec_local,
 }
 import gunbc.systemctl_list_units { systemctl_list_units_all_states }
+import std.roster_frontier { FrontierRow, PathSubject }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type Fci1Checkpoint
   = Fci1CheckpointNone
@@ -407,22 +409,22 @@ fn fci1_assert_host_preconditions() -> ProcessExit {
   }
 }
 
-fn fci1_required_build_work() -> RequiredBuildWorkBinding {
+fn fci1_required_build_work() -> FabricCiWorkBinding {
   match git_sha1_object_id(hex: fci1_work_source_commit) {
-    Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
+    Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "source-commit" } }
     Present { value: commit } => match git_sha1_object_id(hex: fci1_work_source_tree) {
-      Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-tree" } }
+      Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "source-tree" } }
       Present { value: tree } => {
         let repo = git.Inspect.Toplevel()
         let observed = git.Core.CommitTreeInRepo(repository_path: repo.path as String, commit: fci1_work_source_commit as GitRef)
         if observed.exit_code != 0 {
-          RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+          FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "observed-commit-tree" } }
         } else {
           match git_sha1_object_id(hex: trim(s: observed.tree)) {
-            Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+            Absent => FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "observed-commit-tree" } }
             Present { value: observed_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_tree) {
               GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } =>
-                RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+                FabricCiWorkRefused { cause: FabricCiCoordinateMissing { coordinate: "commit-tree-verification" } }
               GitCommitTreeVerified { subject } => required_witnesses_build_work(source: ExactGitSource { subject: subject })
             }
           }
@@ -435,8 +437,8 @@ fn fci1_required_build_work() -> RequiredBuildWorkBinding {
 // The frozen FCI-0 handoff is an assertion over the producer's result, never an input replacing it.
 fn fci1_assert_frozen_work_key() -> ProcessExit {
   match fci1_required_build_work() {
-    RequiredBuildWorkRefused { cause: _ } => exit_failure(reason: "FCI-0 Work producer refused")
-    RequiredBuildWorkBound { work: work } =>
+    FabricCiWorkRefused { cause: _ } => exit_failure(reason: "FCI-0 Work producer refused")
+    FabricCiWorkBound { work: work } =>
       if work.id.key == "ab8f7e2ca026301b" { ExitSuccess }
       else { exit_failure(reason: join(["FCI-0 frozen WorkKey changed; observed=", work.id.key as String], "")) }
   }
@@ -448,8 +450,8 @@ type Fci1DemandBinding
 
 fn fci1_probe_demand() -> Fci1DemandBinding {
   match fci1_required_build_work() {
-    RequiredBuildWorkRefused { cause: _ } => Fci1DemandRefused
-    RequiredBuildWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } =>
+    FabricCiWorkRefused { cause: _ } => Fci1DemandRefused
+    FabricCiWorkBound { work: work, source_tree_digest: _, environment_materialization_digest: _ } =>
       Fci1DemandBound { demand: floor_demand(
         id: cp_probe_demand_id(key: "demand-floor-1"),
         work: work.id,
@@ -2174,3 +2176,11 @@ fn probe_route() -> ProviderRoute {
     region: decl_ref(module_path: "gunbc.instruments.fabric_control_plane_live_probe", decl_name: "probe_region"),
   }
 }
+
+data nfr_reason_fci1_prestate_equal: String = "FCI-1 prestate equality retains inner cross-product wildcard arms for unequal constructors; declared so the non-fold ratchet covers the live instrument site"
+
+data nfr_dissolve_fci1_prestate_equal: DissolutionCondition = unbound_dissolution(description: "a typed equality capability becomes sufficient to compare every AllocationSlotPrestate constructor without duplicated cross-product arms, then this row deletes")
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "fci1_slot_prestate_equal" }, reason: nfr_reason_fci1_prestate_equal, dissolution: nfr_dissolve_fci1_prestate_equal },
+]

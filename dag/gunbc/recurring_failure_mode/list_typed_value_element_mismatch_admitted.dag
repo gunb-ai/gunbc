@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.list_typed_value_element_mismatch_admitted
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data list_typed_value_element_mismatch_admitted: RecurringFailureMode = RecurringFailureMode {
+  identity: "list_typed_value_element_mismatch_admitted" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a value whose type is List<T> reaches a position declared List<U> with T and U established and distinct, and the program is Accepted. HARM: silent wrongness at the compiler floor. DESIGN section 4b names `values inhabit declared types` as ordinary floor, so this sits below it until the pair is refused before execution. The value fails later inside a String primitive or a persisted record that expected assignment text.",
+
+    "HOW IT SURFACED (srv1 workspace bring-up, ledger F19/F36, operator plan 2026-10-13 restore trust in compiler and emitter boundaries). Confirmed production path: gunbc.roadmap.roadmap_dispatch_actuator dispatch_worker_unit_properties_for_plan returns List<SystemdRunProperty>; a caller of gunbc.roadmap.roadmap_session_placement session_placement_record_write declared unit_properties: List<String>. The typecheck reported 0 blocking errors; it failed at runtime. The live caller on current main already maps through extdeps.systemd.systemd_run systemd_run_property_assignment; that conversion is the accepted positive control, not a license for the raw list.",
+
+    "DISTINGUISHING FACTS. This is NOT a list LITERAL whose element fails (that position was already judged; test.claim.declared_type_inhabitance_direct_call_witness w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused). It is NOT product-at-a-bare-scalar-formal (gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted): both sides are List applications. The F19/F36 receipt on that class said list element types were not established as unchecked because v1.compiler.infer direct_call_generic_type_argument_inhabitance_diags exists; this class is the missing execution of that arm on the production pair. It is NOT Wrapper<KindA> versus Wrapper<KindB> (already refused): the production pair is a kernel String type argument against a nominal product.",
+
+    "THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN section 6b). The seed already constructs PositionGenericTypeArgument obligations for aligned List applications whose type-argument identities are known (direct_call_generic_type_argument_inhabitance_diags) and hands each child pair to declared_type_obligation_diags. After gunbc#13391, product_at_scalar_declared_type refuses a product at a kernel String. Measured on main bd509bb84e7 by `gunbc compile` of a one-module fixture matching the production shape (`fn write(unit_properties: List<String>)`, `fn props() -> List<RunProp>`, `write(unit_properties: props())`): exit 1, blocking `value does not inhabit its declared type at the generic type argument: declared 'Primitive(String)', produced 'Product(RunProp)'`. The mapped conversion fixture exits 0. So the seed judgement is justified. The remaining deficit was EVIDENCE: the list-typed-value case was declared unmeasured in the list-literal witness, and no recurring_failure_mode row owned this pair. v2 owns the same judgement in v2.std.inhabitance declared_type_inhabitance (exact structural equality of Instantiation nodes). The seed is not edited: a second wall in frozen seed semantics would not serve v2 self-host. The v2 relation claim is the self-host consumer.",
+
+    "RUNG FOUND AT: structurally guaranteed on the seed compile / compile_dag_diagnostic_census path (blocking DeclaredTypeNotInhabited at PositionGenericTypeArgument). NOT MEASURED on the emitted v2-native compiler judging authored source; that path is outside this change, so the class's reported rung as a whole is the minimum and stays structurally guaranteed only where measured. CEILING: structurally guaranteed. Both List applications and both element identities are established; a product never inhabits String; the invalid program is authorable, so impossibility is not available. NEXT-RUNG TRIGGER, named as a capability: the emitted v2-native compiler refuses this same authored pair on its acceptance path, sufficient for the enrolled RED in test.claim.declared_type_inhabitance_list_typed_value_witness to stay green when run through that binary, and for this row to name native as covered rather than residual.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Enrolled controls: test.claim.declared_type_inhabitance_list_typed_value_witness a_list_of_product_at_a_list_of_string_argument_is_refused (RED, compile_dag_diagnostic_census) and mapping_each_product_to_a_string_at_a_list_of_string_argument_is_accepted (GREEN). v2 relation: v2.test.claim.compiler.infer_application_argument_inhabitance_witness inhabitance_list_of_product_at_list_of_int_refuses_holds.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "direct_call_generic_type_argument_inhabitance_diags", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.inhabitance", decl_name: "declared_type_inhabitance", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.declared_type_inhabitance_list_typed_value_witness", decl_name: "a_list_of_product_at_a_list_of_string_argument_is_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.declared_type_inhabitance_list_typed_value_witness", decl_name: "mapping_each_product_to_a_string_at_a_list_of_string_argument_is_accepted", field: WholeDeclaration },
+  ],
+}

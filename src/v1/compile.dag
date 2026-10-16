@@ -65,7 +65,7 @@ import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
-import v1.compiler.infer { reconcile, reconcile_with_census_extra }
+import v1.compiler.infer { reconcile }
 
 import v1.compiler.infer_types { algebra_field_kind_name }
 
@@ -219,15 +219,8 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 }
 
 type CompilePipelineOptions {
-  analyze_complexity: Bool,
-  census_only_sources: List<SourceFile>
+  analyze_complexity: Bool
 }
-
-// Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup,
-// never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the
-// compile closure resolve against these; compiling them here instead would subject them to this
-// invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344
-// diagnostics, the Empty/Cons poisoning class).
 
 // TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
 // segregates test code from serving code, and any reference that reaches a TestMarked declaration
@@ -464,7 +457,7 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
-  CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
+  CompilePipelineOptions { analyze_complexity: false }
 }
 
 fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
@@ -1456,53 +1449,29 @@ fn census_heads_module_node(module: Node) -> Node {
   )
 }
 
-type CensusFillParse {
+type ParsedRevisionDeclarations {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
 }
 
-type CensusModuleRetention
-  = RetainParsedModules
-  | RetainDeclarationHeads
+// Parse-grade reader of one revision's sources under THAT revision's grammar: tokenize + parse,
+// NEVER resolve. Consumers reconstruct declaration records and occurrence transport from the
+// modules; they are not an entry-compile verdict. Named consumers:
+//   - `namespace_baseline::base_records` — another revision, caller-supplied environment
+//   - `run_dag_parse_sweep` — the running corpus, `dag_parse_environment` named at the call site
+// The sweep moves onto this reader rather than keeping a census-named entry: it is the same
+// declaration reconstruction, under the head grammar. Whole-corpus body grammaticality is the
+// sweep's refusal of this reader's diagnostics, not a second parse.
 
-fn census_retain_module(module: Node, retention: CensusModuleRetention) -> Node {
-  match retention {
-    RetainParsedModules => module
-    RetainDeclarationHeads => census_heads_module_node(module: module)
-  }
-}
-
-fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetention) -> ParseResult {
-  ParseResult {
-    module: match result.module {
-      Present { value: module_node } => Present { value: census_retain_module(module: module_node, retention: retention) }
-      Absent => none
-    },
-    error: result.error
-  }
-}
-
-// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
-// imports live in the compile closure or a different tree view; resolving against a fill-only pool
-// fabricates unresolved-import diagnostics about the view, not the modules). Fill diagnostics are
-// not an entry-compile verdict: whole-corpus body grammaticality belongs to `run_dag_parse_sweep`.
-
-// TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The census fill's population is the
-// WHOLE indexed pool minus the compile closure, so for an `--entry` compile it is ~5.4k modules
-// the entry never references. Materializing `prepared` first held every one of those modules'
-// token streams resident simultaneously, for a fold that consumes each exactly once and in order
-// — the token stream for module N was alive for the entire parse of modules N+1..5400 with no
-// consumer. Fusing the tokenize into the fold frees each module's tokens before the next is read,
-// which is DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape:
-// the same work, the same order, the same results, held for the interval it is actually used.
-// The instrument that re-derives the size of this term, rather than a number copied out of it
-// (DESIGN §6): `gunbc compile --source-root dag --source-root src/v2 --entry
-// src/v2/workflow/floor2_prepared_subject.dag --output-dir <dir> --target dag`, reading VmHWM
-// from /proc/<pid>/status while it runs. The entry is chosen because its reference-derived
-// closure is a handful of files while the census population is the whole pool, so peak RSS there
-// is dominated by this fold rather than by the closure being compiled.
+// TOKENIZE INSIDE THE FOLD, NOT INTO A LIST AHEAD OF IT. The sweep's population is the walked
+// `.dag` corpus (~5.4k modules). Materializing `prepared` first held every module's token stream
+// resident simultaneously, for a fold that consumes each exactly once and in order — the token
+// stream for module N was alive for the entire parse of modules N+1..5400 with no consumer.
+// Fusing the tokenize into the fold frees each module's tokens before the next is read, which is
+// DESIGN §2's "minimise the demand before materialising" applied to a RETENTION shape: the same
+// work, the same order, the same results, held for the interval it is actually used.
 //
 // THE PRE-INTERN PASS DISSOLVES WITH `prepared`, and that is a consequence rather than a
 // separate decision: it existed only because the token lists were already all in hand. Interning
@@ -1512,24 +1481,14 @@ fn census_retain_parse_result(result: ParseResult, retention: CensusModuleRetent
 // ORDER ids are assigned in, which no consumer reads: names are resolved positionally through
 // `authored_name_at` against the newline index, never by intern id.
 //
-// Out-of-closure body grammaticality is owned by the corpus parse sweep, not by this fill.
-// A planted `fn body_probe(x: Int) -> Int { let = = = 9 }` outside an entry's closure must
-// leave that entry compile unchanged and refuse only at `run_dag_parse_sweep` with
-// `expected name, found Eq`.
-// ONE CENSUS FOLD, TWO AXES. Main parameterized this fold on RETENTION while this branch
-// parameterized it on the parse ENVIRONMENT; keeping both variants would fork one fold into two
-// bodies that drift (section 3), so the axes meet in a single core and the named wrappers delegate
-// to it. A caller says only what it means to vary.
-//
 // THE ENVIRONMENT AXIS EXISTS because reading one revision's sources means reading them under THAT
-// revision's grammar. `dag_parse_environment` is named in the wrappers and nowhere in the core, so a
-// base-reading caller cannot pick up head rules by omission -- the defect
+// revision's grammar. There is no defaulting wrapper: a forgetful base-side caller cannot pick up
+// head rules by omission -- the defect
 // gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change names.
-fn parse_census_fill_sources_with(
+fn parse_revision_declarations_with_environment(
   sources: List<SourceFile>,
-  retention: CensusModuleRetention,
   environment: ParseEnvironment
-) -> CensusFillParse {
+) -> ParsedRevisionDeclarations {
   let parsed = sources |> fold(init: FrontendAccum {
     parse_results: [],
     module_inputs: [],
@@ -1555,10 +1514,10 @@ fn parse_census_fill_sources_with(
       occurrence_allocator: acc.occurrence_allocator,
       env: environment
     )
-    let retained_result = census_retain_parse_result(result: parsed.result, retention: retention)
+    let parsed_result = parsed.result
     FrontendAccum {
-      parse_results: list_push(acc.parse_results, retained_result),
-      module_inputs: match retained_result.module {
+      parse_results: list_push(acc.parse_results, parsed_result),
+      module_inputs: match parsed_result.module {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
@@ -1574,7 +1533,7 @@ fn parse_census_fill_sources_with(
   )
   let parse_results = parsed.parse_results
   let module_inputs = parsed.module_inputs
-  CensusFillParse {
+  ParsedRevisionDeclarations {
     modules: module_inputs |> map(input =>
       module_occurrence_input_node(input: input)
     ),
@@ -1586,42 +1545,6 @@ fn parse_census_fill_sources_with(
       )
     ),
   }
-}
-
-// THE THREE WRAPPERS, each varying ONE axis and defaulting the other. Every ordinary consumer
-// parses the running binary's own corpus at full retention, so naming both axes at every call site
-// would be noise; these are the only places `dag_parse_environment` is named on the census path. A
-// caller reading ANOTHER revision must reach the environment form -- arriving here with base-side
-// sources is precisely the silent head-rules read the parameter exists to prevent.
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
-  parse_census_fill_sources_with(
-    sources: sources,
-    retention: RetainParsedModules,
-    environment: dag_parse_environment
-  )
-}
-
-// Singleton occurrence and namespace consumers select their module-retention projection; the
-// grammar is the running binary's.
-fn parse_census_fill_sources_with_retention(sources: List<SourceFile>, retention: CensusModuleRetention) -> CensusFillParse {
-  parse_census_fill_sources_with(
-    sources: sources,
-    retention: retention,
-    environment: dag_parse_environment
-  )
-}
-
-// Base-side readers select the grammar and keep full retention, because a baseline compared against
-// the head must carry the same declaration detail the head side carries.
-fn parse_census_fill_sources_with_environment(
-  sources: List<SourceFile>,
-  environment: ParseEnvironment
-) -> CensusFillParse {
-  parse_census_fill_sources_with(
-    sources: sources,
-    retention: RetainParsedModules,
-    environment: environment
-  )
 }
 
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
@@ -1733,12 +1656,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let fill = parse_census_fill_sources_with_retention(
-        sources: options.census_only_sources,
-        retention: RetainDeclarationHeads
-      )
-      let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
-      let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
+      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {

@@ -91,24 +91,26 @@ pub fn free_monoid_last(
     mut __tco_loop_xs: Rc<Vec<OccurrenceId>>,
     mut __tco_loop_last: Option<OccurrenceId>,
 ) -> Option<OccurrenceId> {
-    loop {
-        #[allow(unused_mut)]
-        let mut xs = __tco_loop_xs;
-        #[allow(unused_mut)]
-        let mut last = __tco_loop_last;
-        {
-            let __fm = xs.clone();
-            if __fm.is_empty() {
-                break last;
-            } else {
-                let h = (*__fm)[0].clone();
-                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                {
-                    let __tco_0 = t.clone();
-                    let __tco_1 = Some(h.clone());
-                    __tco_loop_xs = __tco_0;
-                    __tco_loop_last = __tco_1;
-                    continue;
+    {
+        let mut __tco_cursor: usize = 0;
+        loop {
+            #[allow(unused_mut)]
+            let mut last = __tco_loop_last;
+            #[allow(unused_mut)]
+            let mut xs = __tco_loop_xs.clone();
+            {
+                let __fm = xs.clone();
+                if (__fm.len() - __tco_cursor) == 0 {
+                    break last;
+                } else {
+                    let h = (*__fm)[__tco_cursor + 0].clone();
+                    {
+                        let __tco_0 = Some(h.clone());
+                        let __tco_1 = __tco_cursor + 1;
+                        __tco_loop_last = __tco_0;
+                        __tco_cursor = __tco_1;
+                        continue;
+                    }
                 }
             }
         }

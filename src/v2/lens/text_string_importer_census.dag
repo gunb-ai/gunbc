@@ -1,62 +1,28 @@
 module v2.lens.text_string_importer_census
 
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  filesystem_read_outcome,
-  FilesystemReadSucceeded,
-  FilesystemReadRefused,
-}
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.common.source_analysis_standing {
-  LanguageGrammarRejected,
-  LanguageGrammarUnavailable,
-  SourceAnalysisNotEstablishedCause,
-  SourceNormalizationRejected,
-  SourceParseRejected,
-  SourceTokenizationRejected,
-  SourceUnreadable
-}
+import v2.lens.common.source_analysis_standing { LanguageGrammarRejected, LanguageGrammarUnavailable, SourceAnalysisNotEstablishedCause, SourceNormalizationRejected, SourceParseRejected, SourceTokenizationRejected, SourceUnreadable }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact, import_resolution_facts_live, reference_derived_import_resolution_facts_live, module_declaration_facts_live }
 import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
-import v2.std.provenance { SpanIndex, span_index_empty, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, span_index_empty, node_authored_span_optional }
 import std.optional { Optional, Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, Textual, ByteRange, WholeFile }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
-import v2.std.collection { Map, empty_map, map_insert, map_lookup }
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
+import std.types { Map, List, NonEmptyStr }
+import std.algebra { empty_map, map_insert, map_lookup, Cons, Empty, FreeMonoid, contains, fold_list, length, list_reverse }
 import v2.std.source_position { source_newline_byte_offsets }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.types { List, NonEmptyStr }
-import std.primitives {
-  primitive_contract_roster,
-  PrimitiveContract,
-  char_at_contract,
-  string_length_contract,
-  substring_contract,
-  string_contains_contract,
-  starts_with_contract,
-  ends_with_contract,
-  trim_contract,
-  split_contract,
-  repeat_contract,
-  chars_contract,
-  to_string_contract,
-  parse_int_contract,
-  str_eq_contract,
-  replace_section_contract,
-  code_point_contract,
-  scan_while_contract,
-  skip_horizontal_ws_contract,
-  scan_to_eol_contract,
-  scan_string_end_contract
-}
+import std.primitives { primitive_contract_roster, PrimitiveContract, char_at_contract, string_length_contract, substring_contract, string_contains_contract, starts_with_contract, ends_with_contract, trim_contract, split_contract, repeat_contract, chars_contract, to_string_contract, parse_int_contract, str_eq_contract, replace_section_contract, code_point_contract, scan_while_contract, skip_horizontal_ws_contract, scan_to_eol_contract, scan_string_end_contract }
+import std.roster_frontier { FrontierRow, PathSubject }
 
 // THE CENSUS OF `import v2.std.text { String }` IMPORTERS, AT SITE GRAIN (gunbc#12760, decision A;
 // method ruled by neat-boar-16 2026-09-30). v1 binds a bare `String` in these modules to the KERNEL
@@ -127,7 +93,6 @@ data text_string_importer_census_batch_scaffold: Disposition = Scaffold {
 }
 
 data text_string_importer_census_dissolution: DissolutionCondition = unbound_dissolution(description: "gunbc#12760 has landed AND v2.lens.text_string_importer_census text_string_importer_population returns an empty population for both v2.std.text and std.string_type" as NonEmptyStr)
-
 
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name.
 data host_text_primitive_contracts: List<PrimitiveContract> = [
@@ -974,17 +939,14 @@ type PositionedAtom {
 }
 
 fn atom_position(n: Node, spans: SpanIndex) -> Optional<Int> {
-  match node_occurrence_id_optional(node: n) {
+  match node_authored_span_optional(node: n, index: spans) {
     Absent => Absent
-    Present { value: id } => match span_index_textual_locus_optional(index: spans, id: id) {
-      Absent => Absent
-      Present { value: locus } => match locus {
-        Textual { file: _, extent: e } => match e {
-          ByteRange { start: s, end: _ } => Present { value: s }
-          WholeFile => Absent
-        }
-        _ => Absent
+    Present { value: locus } => match locus {
+      Textual { file: _, extent: e } => match e {
+        ByteRange { start: s, end: _ } => Present { value: s }
+        WholeFile => Absent
       }
+      _ => Absent
     }
   }
 }
@@ -2223,3 +2185,34 @@ fn text_string_importer_literal_sites(paths_csv: String, out: String, roots_csv:
     }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "atom_position" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "atoms_reversed" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "callee_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "crossing_is_host" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "crossing_is_structural" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "crossing_is_undecided" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "crossing_modules" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "crossings_of" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "fixpoint_round" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "fixpoint_row" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_bare_site" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_census_undecided" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_host_site" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_listed_position" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_other_site" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_parse_refused" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_structural_site" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "is_unpositioned" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "literal_kind_token" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "literal_modules" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "literal_position" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "next_alias_spelling" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "next_annotation_spelling" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "next_arrow_spelling" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "next_field_types" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "next_param_types" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "position_is_structural" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "position_is_unresolved" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
+]

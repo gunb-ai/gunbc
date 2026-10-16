@@ -1,0 +1,401 @@
+module test.claim.host.host_software_surface_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Absent, Present }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
+import gunbc.host.host_software_surface {
+  HostSoftwareSurface,
+  srv1_software_surface,
+  host_software_surface_for_identity,
+  unobserved_software_surface,
+  software_surface,
+  blank_kernel,
+  blank_cgroup,
+  HostSysctlFact,
+  host_program_version,
+  host_operating_system_surface,
+  host_os_package_manager,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+  user_manager_sandbox_enforcement,
+  UserManagerDoesNotEnforceSandbox,
+  UserManagerSandboxEnforcementUnobserved,
+  UserManagerSandboxUnobserved,
+  UserManagerSandboxSysctlUnreadable,
+  srv1_software_inhabitance_probe_commands,
+  srv1_user_manager_protect_home_wrote_into_home,
+  user_manager_wrote_into_home_observed_on_this_host_obligation,
+  host_kill_signal_realization,
+  host_kill_signal_realizations,
+  HostKillRealizations,
+  KillRealizationsEstablished,
+  KillRealizationsBuiltinUnobserved,
+}
+import extdeps.linux.apparmor_userns {
+  apparmor_restrict_unprivileged_userns_sysctl_name,
+  apparmor_unprivileged_userns_restricted,
+  apparmor_userns_restriction_standing,
+}
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.tailscale.serve { tailscale_program }
+import gunbc.host.srv1_software_inhabitance_receipt {
+  srv1_software_inhabitance_receipt,
+  srv1_os_release_probe,
+  srv1_apparmor_sysctl_probe,
+  srv1_procps_probe,
+  srv1_git_path_probe,
+  srv1_dpkg_query_probe,
+  host_software_probe_obligation,
+  srv1_package_version_read_obligation,
+}
+import extdeps.procps.kill {
+  procps_ng_kill_term_pgid_argv,
+  procps_ng_kill_term_pgid_form,
+  procps_kill_standing,
+  kill_program,
+  KillSignalRealization,
+  ProcpsNgArgvKill,
+  ShellBuiltinKill,
+  procps_pgid_signal_host_consumer_frontier,
+}
+import extdeps.procps.sysctl { sysctl_standing }
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  ObservedByReceipt,
+  observed_receipt_ref,
+}
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code, timeout_program }
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
+  fleet_posix_operator_principal,
+}
+import std.dissolution { dissolution_is_bound }
+import product.host_identity { host_identity_eq }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_software_is_keyed_by_compute_host_identity() -> Bool {
+  host_identity_eq(a: srv1_software_surface().host, b: srv1_host.identity)
+    && host_identity_eq(a: host_software_surface_for_identity(identity: srv1_host.identity).host, b: operator_host_srv1)
+}
+
+test fn srv2_software_is_typed_unobserved() -> Bool {
+  match host_os_package_manager(surface: host_software_surface_for_identity(identity: srv2_host.identity)) {
+    HostPackageManagerUnobserved { obligation: _ } => true
+    HostPackageManagerKnown { manager: _ } => false
+  }
+}
+
+test fn srv1_os_joins_the_ubuntu_catalog_to_apt() -> Bool {
+  match host_os_package_manager(surface: srv1_software_surface()) {
+    HostPackageManagerKnown { manager: m } =>
+      match m {
+        Apt => (match host_operating_system_surface(surface: srv1_software_surface()).distro_or_product {
+          Present { value: d } => (d as String) == "Ubuntu"
+          Absent => false
+        })
+        Winget => false
+        HomebrewDeFacto => false
+      }
+    HostPackageManagerUnobserved { obligation: _ } => false
+  }
+}
+
+test fn srv1_user_manager_does_not_enforce_sandbox_because_of_the_sysctl() -> Bool {
+  match user_manager_sandbox_enforcement(surface: srv1_software_surface()) {
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: receipt } =>
+      srv1_software_surface().apparmor_userns.value.value == Present { value: apparmor_unprivileged_userns_restricted }
+        && srv1_software_surface().apparmor_userns.value.name == apparmor_restrict_unprivileged_userns_sysctl_name
+        && (receipt as String) == (srv1_user_manager_protect_home_wrote_into_home.receipt as String)
+        && host_identity_eq(a: srv1_user_manager_protect_home_wrote_into_home.host, b: srv1_software_surface().host)
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_sysctl_zero_host_does_not_promote_the_enforcing_bet() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv1,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 0 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn a_non_srv1_host_with_sysctl_one_does_not_inherit_the_srv1_receipt() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match user_manager_sandbox_enforcement(surface: surface) {
+    UserManagerSandboxEnforcementUnobserved { obligation: o } =>
+      o == user_manager_wrote_into_home_observed_on_this_host_obligation
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxUnobserved { obligation: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn sudo_all_is_observed_and_not_copied_into_the_declared_grants() -> Bool {
+  match srv1_software_surface().sudo_policy.value.observed_listing {
+    Absent => false
+    Present { value: _ } =>
+      fleet_posix_operator_sudo_grant_is_hostnamectl_only()
+        && srv1_software_surface().sudo_policy.value.principal.posix.name == fleet_posix_operator_principal().posix.name
+  }
+}
+
+test fn srv1_procps_kill_uses_end_of_options() -> Bool {
+  match host_kill_signal_realization(surface: srv1_software_surface()) {
+    Absent => false
+    Present { value: realization } =>
+      match realization {
+        ShellBuiltinKill => false
+        ProcpsNgArgvKill =>
+          match procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234) {
+            Absent => false
+            Present { value: argv } =>
+              match argv[0] {
+                Absent => false
+                Present { value: bin } =>
+                  (bin as String) == (kill_program().invocation as String)
+                    && match argv[2] {
+                      Absent => false
+                      Present { value: sep } => (sep as String) == "--"
+                    }
+                    && argv != [
+                      kill_program().invocation as String,
+                      "-TERM",
+                      concat("-", to_string(1234)),
+                    ]
+              }
+          }
+      }
+  }
+}
+
+fn realization_is_shell_builtin(r: KillSignalRealization) -> Bool {
+  match r {
+    ShellBuiltinKill => true
+    ProcpsNgArgvKill => false
+  }
+}
+
+fn realization_is_procps_argv(r: KillSignalRealization) -> Bool {
+  match r {
+    ProcpsNgArgvKill => true
+    ShellBuiltinKill => false
+  }
+}
+
+fn established_kill_realizations(r: HostKillRealizations) -> List<KillSignalRealization> {
+  match r {
+    KillRealizationsEstablished { realizations: rs } => rs
+    KillRealizationsBuiltinUnobserved { known: _ } => []
+  }
+}
+
+test fn a_shell_builtin_kill_does_not_inherit_the_procps_pgid_quirk() -> Bool {
+  let realized = established_kill_realizations(r: host_kill_signal_realizations(surface: srv1_software_surface()))
+  any(realized, realization_is_shell_builtin)
+    && any(realized, realization_is_procps_argv)
+    && procps_ng_kill_term_pgid_form(realization: ShellBuiltinKill, pgid: 1234) == none
+    && procps_ng_kill_term_pgid_form(realization: ProcpsNgArgvKill, pgid: 1234)
+      == Present { value: procps_ng_kill_term_pgid_argv(pgid: 1234) }
+    && match host_kill_signal_realizations(surface: unobserved_software_surface(host: operator_host_srv2)) {
+      KillRealizationsBuiltinUnobserved { known: k } => k.length() == 0
+      KillRealizationsEstablished { realizations: _ } => false
+    }
+}
+
+// THE REALIZATIONS FOLLOW THE SURFACE'S OBSERVATION, NOT THE HOST'S NAME (review 81037), AND AN
+// UNOBSERVED BUILTIN IS CARRIED AS UNOBSERVED, NEVER AS ABSENT (review 81199). srv1's own surface with
+// the builtin observed not listed establishes procps-ng alone; with it unobserved the answer is the
+// BuiltinUnobserved arm carrying procps-ng as known; listed establishes both. The argv selection is
+// procps-ng in all three, because an argv exec is never shadowed by a shell builtin.
+fn srv1_surface_with_kill_builtin(listed: Bool?) -> HostSoftwareSurface {
+  let s = srv1_software_surface()
+  HostSoftwareSurface {
+    host: s.host,
+    os_release: s.os_release,
+    kernel_release: s.kernel_release,
+    apparmor_userns: s.apparmor_userns,
+    programs: s.programs,
+    sudo_policy: s.sudo_policy,
+    user_cgroup_delegation: s.user_cgroup_delegation,
+    toolchain_paths: s.toolchain_paths,
+    kill_shell_builtin: listed,
+  }
+}
+
+fn argv_selection_is_procps(surface: HostSoftwareSurface) -> Bool {
+  match host_kill_signal_realization(surface: surface) {
+    Present { value: r } => realization_is_procps_argv(r: r)
+    Absent => false
+  }
+}
+
+test fn kill_realizations_follow_the_surface_observation_not_the_host_identity() -> Bool {
+  let not_listed = srv1_surface_with_kill_builtin(listed: Present { value: false })
+  let unobserved = srv1_surface_with_kill_builtin(listed: none)
+  let listed = srv1_surface_with_kill_builtin(listed: Present { value: true })
+  (match host_kill_signal_realizations(surface: not_listed) {
+      KillRealizationsEstablished { realizations: rs } => !any(rs, realization_is_shell_builtin) && any(rs, realization_is_procps_argv)
+      KillRealizationsBuiltinUnobserved { known: _ } => false
+    })
+    && (match host_kill_signal_realizations(surface: unobserved) {
+      KillRealizationsBuiltinUnobserved { known: k } => any(k, realization_is_procps_argv) && !any(k, realization_is_shell_builtin)
+      KillRealizationsEstablished { realizations: _ } => false
+    })
+    && (match host_kill_signal_realizations(surface: listed) {
+      KillRealizationsEstablished { realizations: rs } => any(rs, realization_is_shell_builtin) && any(rs, realization_is_procps_argv)
+      KillRealizationsBuiltinUnobserved { known: _ } => false
+    })
+    && argv_selection_is_procps(surface: not_listed)
+    && argv_selection_is_procps(surface: unobserved)
+    && argv_selection_is_procps(surface: listed)
+}
+
+test fn unobserved_procps_does_not_keep_srv1s_kill_form() -> Bool {
+  match host_program_version(surface: unobserved_software_surface(host: operator_host_srv2), program: kill_program()) {
+    Absent => true
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+test fn srv1_timeout_is_observed_and_coreutils_deadline_is_124() -> Bool {
+  match host_program_version(surface: srv1_software_surface(), program: timeout_program()) {
+    Absent => false
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => false
+        Present { value: _ } => coreutils_timeout_expired_exit_code == 124
+      }
+  }
+}
+
+test fn procps_pgid_signal_host_consumer_is_a_named_unbound_frontier() -> Bool {
+  !dissolution_is_bound(condition: procps_pgid_signal_host_consumer_frontier)
+}
+
+test fn inhabitance_recipe_names_the_probes_the_brief_named() -> Bool {
+  let cmds = srv1_software_inhabitance_probe_commands()
+  cmds.length() == 15
+    && match cmds[0] {
+      Present { value: p } => p.program.invocation == srv1_os_release_probe().program.invocation
+      Absent => false
+    }
+    && any(cmds, c => (c.program.invocation as String) == "uname")
+    && any(cmds, c =>
+      (host_software_probe_obligation(p: c) as String).contains(apparmor_restrict_unprivileged_userns_sysctl_name as String)
+    )
+    && any(cmds, c => (host_software_probe_obligation(p: srv1_procps_probe()) as String) == (host_software_probe_obligation(p: c) as String))
+    && (host_software_probe_obligation(p: srv1_procps_probe()) as String) == "/usr/bin/kill -V"
+    && any(cmds, c => c.program.invocation == srv1_git_path_probe().program.invocation && c.arguments.length() == 0)
+    && !any(cmds, c => c.program.invocation == srv1_dpkg_query_probe().program.invocation)
+}
+
+fn standing_is_cited_to_authority(s: CitedFigureStanding) -> Bool {
+  match s {
+    CitedToAuthority { authority: _ } => true
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+test fn upstream_sandbox_procps_and_apparmor_figures_are_cited_to_authority() -> Bool {
+  standing_is_cited_to_authority(s: apparmor_userns_restriction_standing())
+    && standing_is_cited_to_authority(s: procps_kill_standing())
+    && standing_is_cited_to_authority(s: sysctl_standing())
+}
+
+test fn srv1_software_is_observed_by_the_inhabitance_receipt() -> Bool {
+  let r = srv1_software_inhabitance_receipt
+  match srv1_software_surface().os_release.value.standing {
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).decl_name as String) == "srv1_software_inhabitance_receipt"
+        && srv1_software_surface().apparmor_userns.value.value == Present { value: r.apparmor_userns }
+        && r.apparmor_userns == apparmor_unprivileged_userns_restricted
+        && match host_program_version(surface: srv1_software_surface(), program: tailscale_program()) {
+          Present { value: ts } => ts.version_label == Present { value: r.tailscale_version_label }
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: jq_program()) {
+          Present { value: jq } =>
+            jq.version_label == Present { value: r.jq_version_label }
+              && jq.package_version_label == none
+          Absent => false
+        }
+        && match host_program_version(surface: srv1_software_surface(), program: git_program()) {
+          Present { value: g } => g.program.invocation == git_program().invocation
+          Absent => false
+        }
+        && srv1_software_surface().kernel_release.value.kernel_release_label == Present { value: r.kernel_release_label }
+        && srv1_software_surface().os_release.value.pretty_name == Present { value: r.os_pretty_name }
+        && (r.os_id as String) == "ubuntu"
+        && (r.os_codename as String) == "noble"
+        && (r.observer_login as String) == "briansrls"
+        && r.observer_uid == 1000
+        && (r.observed_at as String) == "2026-10-15T12:11:17Z"
+        && (r.public_receipt_locator as String) == "github.com/gunb-ai/gunbc/pull/14049#issuecomment-6191742919"
+        && (r.sudo_listing_sha256_prefix as String) == "ca5b4a7bdd59bad3"
+        && (r.sudo_all_as_all as String) == "(ALL : ALL) ALL"
+        && (r.sudo_nopasswd_all as String) == "(ALL) NOPASSWD: ALL"
+        && (r.procps_version_stdout as String) == "kill from procps-ng 4.0.4"
+    CitedToAuthority { authority: _ } => false
+    TranscribedUncited { read_obligation: _ } => false
+  }
+}
+
+test fn unobserved_apparmor_is_not_a_default_enforcement() -> Bool {
+  match user_manager_sandbox_enforcement(surface: unobserved_software_surface(host: operator_host_srv2)) {
+    UserManagerSandboxUnobserved { obligation: _ } => true
+    UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+    UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+    UserManagerSandboxSysctlUnreadable { value: _ } => false
+  }
+}
+
+test fn dpkg_package_versions_stay_unobserved_with_the_dpkg_probe_as_obligation() -> Bool {
+  match host_program_version(surface: srv1_software_surface(), program: kill_program()) {
+    Absent => false
+    Present { value: k } =>
+      k.package_version_label == none
+        && match host_program_version(surface: srv1_software_surface(), program: git_program()) {
+          Absent => false
+          Present { value: g } =>
+            g.package_version_label == none
+              && (srv1_package_version_read_obligation() as String).contains("dpkg-query")
+        }
+  }
+}

@@ -3,7 +3,7 @@ module test.claim.devboot_subject_identity_witness
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size }
-import std.materialization_store_grant { materialization_store_staging_root_path, DurableHostVolumeRoot }
+import std.materialization_store_grant { materialization_store_staging_root_path, DurableHostVolume }
 import std.content_hash {
   ContentHash,
   Sha256Digest,
@@ -733,7 +733,7 @@ fn devboot_root_count(ts: List<OwnedDirectoryTarget>) -> Int {
 // root-owned /var/lib/gunbc. RED against the spec that declared the store and not its sibling, under
 // which every srv1 build refused 'store unavailable' (srv1 lab, 2026-10-11).
 fn store_staging_count(ts: List<OwnedDirectoryTarget>) -> Int {
-  count(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == materialization_store_staging_root_path(root: DurableHostVolumeRoot)))
+  count(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == materialization_store_staging_root_path(root: DurableHostVolume)))
 }
 
 test fn the_store_staging_sibling_is_a_host_directory_demand() -> Bool {

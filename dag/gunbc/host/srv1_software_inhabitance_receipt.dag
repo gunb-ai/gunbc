@@ -1,0 +1,227 @@
+module gunbc.host.srv1_software_inhabitance_receipt
+
+import std.types { NonEmptyStr, Int, FilePath, List, String, Bool }
+import std.optional { Absent, Present }
+import extdeps.exec.program { ProgramIdentity }
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+import extdeps.procps.sysctl { sysctl_program }
+import extdeps.tools.gnu_coreutils { cat_program, timeout_program }
+import extdeps.tools.uname { uname_program }
+import extdeps.sudo.elevation { sudo_program }
+import extdeps.procps.kill { kill_program }
+import extdeps.git { git_program }
+import extdeps.tools.jq { jq_program }
+import extdeps.systemd.systemctl { systemctl_path_resolved_program }
+import extdeps.systemd.systemd_run { systemd_run_program }
+import extdeps.tailscale.serve { tailscale_program }
+import extdeps.package_managers.dpkg { dpkg_query_identity }
+
+// Receipt of HOST-1 inhabitance on srv1 as briansrls uid 1000 at 2026-10-15T12:11:17Z
+// (parent bright-moth-475, github.com/gunb-ai/gunbc/pull/14049#issuecomment-6191742919).
+// BOUNDARY TRANSCRIPTION (DESIGN 4b): these fields ARE the probe results that comment
+// published. dpkg package versions were not in that receipt and stay absent; the dpkg-query
+// probe is the named obligation, not an executed probe. Next-rung trigger: an executing
+// probe route that writes this record from live argv.
+
+type HostSoftwareProbe {
+  program: ProgramIdentity
+  arguments: List<String>
+}
+
+fn host_software_probe_obligation(p: HostSoftwareProbe) -> NonEmptyStr {
+  fold(p.arguments, init: p.program.invocation as String, f: (acc, a) => join([acc, " ", a], "")) as NonEmptyStr
+}
+
+fn srv1_os_release_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: cat_program(), arguments: ["/etc/os-release"] }
+}
+
+fn srv1_kernel_release_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: uname_program(), arguments: ["-r"] }
+}
+
+fn srv1_apparmor_sysctl_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: sysctl_program(),
+    arguments: ["-n", apparmor_restrict_unprivileged_userns_sysctl_name as String],
+  }
+}
+
+fn srv1_sudo_list_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: sudo_program(), arguments: ["-n", "-l"] }
+}
+
+fn srv1_procps_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: kill_program(), arguments: ["-V"] }
+}
+
+fn srv1_timeout_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: timeout_program(), arguments: ["--version"] }
+}
+
+fn srv1_git_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: git_program(), arguments: ["--version"] }
+}
+
+fn srv1_jq_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: jq_program(), arguments: ["--version"] }
+}
+
+fn srv1_systemd_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: systemctl_path_resolved_program(), arguments: ["--version"] }
+}
+
+fn srv1_cgroup_delegation_probe(uid: Int) -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: cat_program(),
+    arguments: [
+      join([
+        "/sys/fs/cgroup/user.slice/user-",
+        to_string(uid),
+        ".slice/user@",
+        to_string(uid),
+        ".service/cgroup.controllers",
+      ], ""),
+    ],
+  }
+}
+
+fn srv1_tailscale_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: tailscale_program(), arguments: ["version"] }
+}
+
+fn srv1_git_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: git_program(), arguments: [] }
+}
+
+fn srv1_jq_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: jq_program(), arguments: [] }
+}
+
+fn srv1_timeout_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: timeout_program(), arguments: [] }
+}
+
+fn srv1_systemd_run_path_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe { program: systemd_run_program(), arguments: [] }
+}
+
+fn srv1_toolchain_path_probes() -> List<HostSoftwareProbe> {
+  [
+    srv1_git_path_probe(),
+    srv1_jq_path_probe(),
+    srv1_timeout_path_probe(),
+    srv1_systemd_run_path_probe(),
+  ]
+}
+
+fn srv1_toolchain_read_obligation() -> NonEmptyStr {
+  join([
+    host_software_probe_obligation(p: srv1_git_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_jq_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_timeout_path_probe()) as String,
+    "; ",
+    host_software_probe_obligation(p: srv1_systemd_run_path_probe()) as String,
+  ], "") as NonEmptyStr
+}
+
+fn srv1_dpkg_query_probe() -> HostSoftwareProbe {
+  HostSoftwareProbe {
+    program: dpkg_query_identity(),
+    arguments: ["-W", "procps", "coreutils", "git", "jq", "systemd", "tailscale"],
+  }
+}
+
+type Srv1SoftwareInhabitanceReading {
+  observer_login: NonEmptyStr
+  observer_uid: Int
+  observed_at: NonEmptyStr
+  public_receipt_locator: NonEmptyStr
+  sudo_listing_sha256_prefix: NonEmptyStr
+  probes: List<HostSoftwareProbe>
+  os_id: NonEmptyStr
+  os_version_id: NonEmptyStr
+  os_pretty_name: NonEmptyStr
+  os_codename: NonEmptyStr
+  kernel_release_label: NonEmptyStr
+  apparmor_userns: Int
+  procps_version_stdout: NonEmptyStr
+  procps_version_label: NonEmptyStr
+  kill_shell_builtin_listed: Bool
+  procps_package: NonEmptyStr?
+  coreutils_version_label: NonEmptyStr
+  coreutils_package: NonEmptyStr?
+  git_version_label: NonEmptyStr
+  git_package: NonEmptyStr?
+  jq_version_label: NonEmptyStr
+  jq_package: NonEmptyStr?
+  systemd_version_label: NonEmptyStr
+  systemd_package: NonEmptyStr?
+  tailscale_version_label: NonEmptyStr
+  tailscale_package: NonEmptyStr?
+  sudo_all_as_all: NonEmptyStr
+  sudo_nopasswd_all: NonEmptyStr
+  cgroup_controllers: NonEmptyStr
+  git_path: FilePath
+  jq_path: FilePath
+  timeout_path: FilePath
+  systemd_run_path: FilePath
+}
+
+fn srv1_package_version_read_obligation() -> NonEmptyStr {
+  host_software_probe_obligation(p: srv1_dpkg_query_probe())
+}
+
+data srv1_software_inhabitance_receipt: Srv1SoftwareInhabitanceReading = Srv1SoftwareInhabitanceReading {
+  observer_login: "briansrls",
+  observer_uid: 1000,
+  observed_at: "2026-10-15T12:11:17Z",
+  public_receipt_locator: "github.com/gunb-ai/gunbc/pull/14049#issuecomment-6191742919",
+  sudo_listing_sha256_prefix: "ca5b4a7bdd59bad3",
+  probes: [
+    srv1_os_release_probe(),
+    srv1_kernel_release_probe(),
+    srv1_apparmor_sysctl_probe(),
+    srv1_sudo_list_probe(),
+    srv1_procps_probe(),
+    srv1_timeout_probe(),
+    srv1_git_probe(),
+    srv1_jq_probe(),
+    srv1_systemd_probe(),
+    srv1_cgroup_delegation_probe(uid: 1000),
+    srv1_tailscale_probe(),
+    srv1_git_path_probe(),
+    srv1_jq_path_probe(),
+    srv1_timeout_path_probe(),
+    srv1_systemd_run_path_probe(),
+  ],
+  os_id: "ubuntu",
+  os_version_id: "24.04",
+  os_pretty_name: "Ubuntu 24.04.4 LTS",
+  os_codename: "noble",
+  kernel_release_label: "6.8.0-138-generic",
+  apparmor_userns: 1,
+  procps_version_stdout: "kill from procps-ng 4.0.4",
+  procps_version_label: "4.0.4",
+  kill_shell_builtin_listed: true,
+  procps_package: none,
+  coreutils_version_label: "9.4",
+  coreutils_package: none,
+  git_version_label: "2.43.0",
+  git_package: none,
+  jq_version_label: "jq-1.7",
+  jq_package: none,
+  systemd_version_label: "255 (255.4-1ubuntu8.17)",
+  systemd_package: none,
+  tailscale_version_label: "1.102.2",
+  tailscale_package: none,
+  sudo_all_as_all: "(ALL : ALL) ALL",
+  sudo_nopasswd_all: "(ALL) NOPASSWD: ALL",
+  cgroup_controllers: "cpu memory pids",
+  git_path: "/usr/bin/git" as FilePath,
+  jq_path: "/usr/bin/jq" as FilePath,
+  timeout_path: "/usr/bin/timeout" as FilePath,
+  systemd_run_path: "/usr/bin/systemd-run" as FilePath,
+}
