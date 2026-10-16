@@ -470,14 +470,14 @@ type IpmiCompletionCode {
 // 0xCC -- "Invalid data field in Request": a data field in the request was not valid for this
 // controller's policy or state. Distinct from 0xC7 (length) and 0xCC is not an authentication
 // failure: the command was accepted, understood, and refused on policy.
-data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte }
+data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
 data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data field in request" as NonEmptyStr
 
 // 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
 // 0xCC when a password-related write is refused: length versus content, which is the difference
 // between "the form was wrong" and "the value is not acceptable to this firmware".
-data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }
+data ipmi_completion_code_request_data_length_invalid: IpmiCompletionCode = IpmiCompletionCode { code: 199 }
 
 // The description lives beside the byte it describes, as its own row -- see the note below on why there
 // is exactly one home for a code's English.
@@ -578,4 +578,45 @@ fn ipmi_command_interface_is_in_band_host_transport(interface: IpmiCommandInterf
     SerialTerminal => false
     DummyTestInterface => false
   }
+}
+
+// THE ANSWER TO `ipmitool mc info`, TYPED ─────────────────────────────────────────────────────
+//
+// WHY THIS EXISTS ALONGSIDE extdeps.bmc.capability's BmcFirmwareVersion RATHER THAN REPLACING IT.
+// They are two different instruments reading the same controller. BmcFirmwareVersion comes from a Redfish
+// Manager resource, which needs a session and therefore a credential. This is the IPMI Device ID command's
+// answer, which the host's own kernel driver services over /dev/ipmi0 with NO credential -- the only
+// identity a LOCKED BMC will give up. A recovery route that had to wait for a credential to know which
+// controller it was talking to could not justify its own destructive step, so the identity that justifies
+// it has to come from this instrument.
+//
+// WHY manufacturer_id AND product_id ARE HERE AND NOT ONLY IN A FRU PARSE. The Get Device ID response
+// carries Manufacturer ID and Product ID directly (IPMI Platform Management Interface Specification,
+// 2nd gen, §27.1 Get Device ID), so this is the board identity as the controller itself reports it, not a
+// board name someone typed. The capture shows how lossy the text is: `Product Name : Unknown (0x2035)`
+// because the SDR/FRU text is not read -- the NUMBER is present and the STRING is a placeholder. So the
+// numbers are identity-bearing and the strings are description only, which is why nothing below compares
+// a name. A reading taken on a real board is filed with that board's catalog, in its vendor module; this
+// module only owns the SHAPE of an answer and how two answers compare.
+type IpmiDeviceIdentity {
+  device_id: Int
+  device_revision: Int
+  firmware_revision_major: Int
+  firmware_revision_minor: Int
+  manufacturer_id: Int
+  manufacturer_name: NonEmptyStr
+  product_id: Int
+  product_name: NonEmptyStr
+}
+
+// THE IDENTITY A READING MUST AGREE ON TO BE THE SAME CONTROLLER RUNNING THE SAME RELEASE. Compared on
+// the numbers the controller reported -- Manufacturer ID, Product ID, and both Firmware Revision fields.
+// device_id and device_revision are excluded deliberately: they say which chip answered, not which
+// release it runs, and a recovery decision is keyed to a release. Names are excluded for the reason the
+// capture gives: a controller can answer "Unknown (0x2035)" while being exactly the board it is.
+fn ipmi_device_identity_runs_same_firmware(a: IpmiDeviceIdentity, b: IpmiDeviceIdentity) -> Bool {
+  a.manufacturer_id == b.manufacturer_id
+    && a.product_id == b.product_id
+    && a.firmware_revision_major == b.firmware_revision_major
+    && a.firmware_revision_minor == b.firmware_revision_minor
 }

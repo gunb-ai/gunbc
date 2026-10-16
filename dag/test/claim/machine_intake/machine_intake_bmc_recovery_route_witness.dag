@@ -4,10 +4,13 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.ipmi {
   IpmiCompletionCode, IpmiCompletionCodeByte, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
-  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq,
+  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq, IpmiDeviceIdentity,
 }
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
+  PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured,
+  CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on,
+  asrock_altrad8ud_1l2t_inband_device_identity,
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
   asrock_altrad8ud_openbmc_3_22_00_capabilities,
@@ -21,13 +24,15 @@ import gunbc.auth.privileged_effect_census {
 import gunbc.auth.authorization_pattern_selection {
   AuthorizationPatternSelection, PatternSelected, OperatorApprovedCapability,
   EffectReversibility, ReversibleByReapply, IrreversibleEffect,
+  MintedCredentialReach, MintsNoCredential, MintsResourceScopedCredential,
 }
 import std.decl_ref { declaration_ref_display_key }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
   RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
   recovery_reset_actuation, InBandTemporaryAdministratorPassword,
-  RecoveryRouteUnavailable, RecoveryFirmwarePolicyUnknown, recovery_test_route,
+  RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree,
+  recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity,
   recovery_measured_refusal_policy, converge_in_band_recovery,
   recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback,
   recovery_admitted_in_band_write, recovery_admitted_reset_write,
@@ -61,6 +66,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // generalized are the two ways it has to be refused: a release nobody measured, and a neighbouring
 // completion code.
 
+// THE LOOKUP IS CALLED THROUGH, NOT MERELY DESCRIBED (review 81115 #1: a census/witness that only
+// checks names stays green when the thing it names is absent). The release-keyed lookup answers with an
+// arm of THIS coproduct, so calling it and matching the answer is what makes the "no default" claim real.
 test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool {
   let measured = asrock_altrad8ud_published_factory_password_write_policy_for(
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
@@ -78,7 +86,7 @@ test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool
     // to the operator as "this firmware was never read".
     && match unmeasured {
       NotMeasured { firmware: f } => f.version.major == 3 && f.version.minor == 6
-      FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => false
+      FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => false
     }
 }
 
@@ -86,14 +94,14 @@ test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool
 // exactly these two arms.
 fn policy_arm_is_refusal(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
   match policy {
-    FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _ } => true
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => true
     NotMeasured { firmware: _ } => false
   }
 }
 
 fn policy_refusal_completion_code(policy: PublishedFactoryPasswordWritePolicy) -> IpmiCompletionCode? {
   match policy {
-    FirmwareRefusesPublishedPassword { firmware: _, completion_code: c, capture: _ } => Present { value: c }
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: c, capture: _, measured_under: _ } => Present { value: c }
     NotMeasured { firmware: _ } => Absent
   }
 }
@@ -112,11 +120,12 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
     firmware: firmware,
     completion_code: ipmi_completion_code_request_data_length_invalid,
     capture: asrock_altrad8ud_inband_recovery_capture,
+    measured_under: asrock_altrad8ud_1l2t_inband_device_identity,
   }) == false
     // and the codes stay distinct as numbers -- 204 is the rejected field, 199 the length complaint
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 204 as IpmiCompletionCodeByte })
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 199 as IpmiCompletionCodeByte }) == false
-    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 as IpmiCompletionCodeByte }) == false
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 204 })
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 199 }) == false
+    && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 }) == false
     && (ipmi_completion_code_invalid_data_field_text as String) == "Invalid data field in request"
     && (ipmi_completion_code_invalid_data_field.code as Int) != (ipmi_completion_code_request_data_length_invalid.code as Int)
 }
@@ -134,7 +143,7 @@ fn refuses_that_code(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
 
 test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable_string() -> Bool {
   match asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy {
-    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, capture: _ } =>
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, capture: _, measured_under: m } =>
       f.family == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.family
         && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
         && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
@@ -250,23 +259,45 @@ test fn each_recovery_census_row_points_at_a_declaration_the_live_tree_has() -> 
     && census_row_names_a_declared_declaration(wanted: "gunbc.machine_intake.bmc_recovery_route::no_such_recovery_gate") == false
 }
 
-test fn the_destructive_reset_is_admitted_only_under_an_operator_approved_capability() -> Bool {
+// BOTH ROWS LAND ON THE OPERATOR-APPROVED CAPABILITY, AND THE CLAIM SAYS SO RATHER THAN HOPING ONE
+// DOES NOT. Review 81176 found the password row realizing that pattern while its profile said the
+// selection could not produce it -- a divergence with no reason, DESIGN §3b's only red. Two ways to close
+// that fork existed: change `realized`, or make the profile honest about what the write does. The profile
+// was wrong, so both rows now select the same pattern and this claim checks the SEPARATION that actually
+// matters -- each row's own characteristics force its own selection, so neither is claiming a pattern the
+// other's effect happens to produce.
+test fn both_recovery_writes_are_admitted_only_under_an_operator_approved_capability() -> Bool {
   selection_is_operator_approved(v: verdict_for(wanted: recovery_reset_site_name))
-    // The temporary password is reversible, so it is NOT the same pattern: if it ever became
-    // operator-approved too, the census would be claiming a destructive standing for a write the next
-    // rotation undoes.
-    && selection_is_operator_approved(v: verdict_for(wanted: recovery_in_band_site_name)) == false
+    && selection_is_operator_approved(v: verdict_for(wanted: recovery_in_band_site_name))
 }
 
-test fn the_reset_effect_is_irreversible_where_the_temporary_password_effect_is_reversible() -> Bool {
-  // The characteristics are what selection reads. Asserted here so that softening the reset's
-  // reversibility -- which would silently change the authorization pattern a recovery run is admitted
-  // under -- is caught by this witness and not shipped.
+// WHY EACH ROW SELECTS WHAT IT DOES, ASSERTED AT THE CHARACTERISTICS SELECTION READS. The reset is
+// irreversible because nothing it destroys can be reissued; the password write is irreversible for a
+// DIFFERENT reason -- it leaves an enabled account holding a secret the run never stored, and writing the
+// password again does not close that window (the same reasoning route_qualification_effect already
+// carries). If either reason were softened the pattern would move, and this witness goes red rather than
+// shipping a recovery run admitted under a grant nobody approved.
+test fn each_row_is_forced_to_its_pattern_by_its_own_effect_characteristics() -> Bool {
   is_irreversible(r: recovery_manager_reset_to_defaults_effect().reversibility)
-    && is_irreversible(r: recovery_in_band_set_user_password_effect().reversibility) == false
-    // Neither write mints a credential in our store: the route terminates by handing the factory
-    // credential to the existing factory-login-then-rotate path, and no secret is taken here.
-    && recovery_manager_reset_to_defaults_effect().minted_reach == recovery_in_band_set_user_password_effect().minted_reach
+    && is_irreversible(r: recovery_in_band_set_user_password_effect().reversibility)
+    // the two irreversibilities are DIFFERENT losses, not one fact copied: only the reset destroys
+    // something no later act can restore
+    && recovery_manager_reset_to_defaults_effect().reversibility
+      != recovery_in_band_set_user_password_effect().reversibility
+    // the password write mints a device-scoped credential; the reset mints none. This is the second,
+    // independent force that puts the write under an attended pattern.
+    && match recovery_in_band_set_user_password_effect().minted_reach {
+      MintsResourceScopedCredential => true
+      _ => false
+    }
+    && match recovery_manager_reset_to_defaults_effect().minted_reach {
+      MintsNoCredential => true
+      _ => false
+    }
+    // and neither write takes a credential into OUR store: the route terminates by handing the factory
+    // credential to the existing factory-login-then-rotate path, so no secret is kept here
+    && recovery_in_band_set_user_password_effect().minted_reach
+      != recovery_manager_reset_to_defaults_effect().minted_reach
 }
 
 // ── 3. AN UNCATURED WRITE PROVES AN ATTEMPT AND NOTHING MORE ─────────────────────────────────
@@ -311,11 +342,7 @@ data recovery_other_unit_key: StepSubjectKey = "some-other-unit-inband-witness" 
 
 fn recovery_locked_standing_on_a_release_nobody_measured() -> InBandRecoveryStanding {
   converge_in_band_recovery(
-    route: recovery_test_route(
-      policy: asrock_altrad8ud_published_factory_password_write_policy_for(
-        firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
-      ),
-    ),
+    route: recovery_test_route(reading: recovery_unmeasured_identity()),
     in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: recovery_factory_credential_readback(),
@@ -326,7 +353,7 @@ fn recovery_locked_standing_on_a_release_nobody_measured() -> InBandRecoveryStan
 
 fn recovery_completed_standing() -> InBandRecoveryStanding {
   converge_in_band_recovery(
-    route: recovery_test_route(policy: recovery_measured_refusal_policy()),
+    route: recovery_test_route(reading: recovery_measured_identity()),
     in_band_write: recovery_in_band_write_record(),
     reset_write: recovery_reset_write_record(),
     readback: recovery_factory_credential_readback(),
@@ -358,9 +385,11 @@ test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route
   )
   access_refusal_is_the_recovery_arm(o: armed)
     // the arm carries the route's OWN typed requirement, so the reader gets the next physical action
-    // (measure this release) rather than a retry: the cause is not collapsed into "unavailable"
+    // (measure this controller) rather than a retry: the cause is not collapsed into "unavailable", and
+    // it carries the Get Device ID answer that failed to match, so the refusal can be checked against the
+    // capture without re-running the route
     && access_refusal_cause(o: armed)
-      == Present { value: RecoveryFirmwarePolicyUnknown { firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware } }
+      == Present { value: RecoveryControllerNeverMeasured { observed: recovery_unmeasured_identity() } }
     // with no recovery observed the step behaves exactly as before this arm existed -- the same read
     // still establishes its out-of-band route, so the arm is not a trap door on every locked board
     && access_refusal_is_the_recovery_arm(
