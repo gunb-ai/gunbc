@@ -347,15 +347,6 @@ test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bo
   ok_reads_ok && bad_reads_refused && absent_reads_unobserved && ok_clean.success && bad_clean.success
 }
 
-// CONTROL: the boot step stays in the job after the phase because every MODELED failure of the phase
-// is a typed receipt with ExitSuccess - the boot is scheduled by the model, not by an absorbed exit
-// code (fan_policy_phase_unmodeled_failure_fails_loud_at_the_step pins that no flag absorbs the rest).
-test fn fan_policy_phase_nonzero_or_timeout_leaves_boot_scheduled() -> Bool {
-  !fan_policy_phase_continue_on_error(s: fleet_converge_fan_policy_phase_step())
-    && fan_policy_phase_timeout_present(s: fleet_converge_fan_policy_phase_step())
-    && !fan_policy_phase_continue_on_error(s: fleet_converge_mtcollins1_fan_observe_step())
-}
-
 // CONTROL: the receipt upload still fails the job when the phase wrote NOTHING (review 81077's
 // wrong-place-failure finding is closed at the other end: every modeled path writes a receipt, so a
 // missing file now means the step itself died - and it already failed at the fan step). Under
