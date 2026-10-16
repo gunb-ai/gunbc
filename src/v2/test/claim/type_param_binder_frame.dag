@@ -17,6 +17,8 @@ import v2.compiler.emit_produced { emit_produced_decl }
 import v2.compiler.infer { infer }
 import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model, rust_type_expression_projection }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.std.compilers.target_model { TargetModel }
 import v2.compiler.translate { translate_type_expression_project }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
@@ -401,24 +403,42 @@ fn tpb_emitted_add_twin() -> Outcome<Medium<String>> {
 }
 
 fn tpb_emitted_add_generic() -> Outcome<Medium<String>> {
+  tpb_emitted_add_generic_for(target: rust_target_model())
+}
+
+fn tpb_emitted_add_generic_for(target: TargetModel) -> Outcome<Medium<String>> {
   match table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: decl, diagnostics: _ } =>
-      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: rust_target_model())
+      emit_produced_decl(decl: tpb_with_type_param(decl: decl), target: target)
   }
 }
 
-test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
+data tpb_rust_generic_add_golden: String = "fn add<T>(x: i32, y: i32) -> i32 { x + y }"
+
+// POSITIVE CONTROL: Rust's rows declare a type-parameter segment, so the generic header RENDERS its
+// parameter list (no bounds: that is the bound fold's, not the header's). The non-generic twin is
+// byte-identical to the golden `add`.
+test fn tpb_emitter_renders_a_generic_arrow_header_where_rows_declare_one() -> Bool {
   let twin_emits = match tpb_emitted_add_twin() {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: m, diagnostics: _ } => m.carried == "fn add(x: i32, y: i32) -> i32 { x + y }"
     Rejected { diagnostics: _ } => false
   }
-  let generic_refused = match tpb_emitted_add_generic() {
+  let generic_renders = match tpb_emitted_add_generic() {
+    Accepted { value: m, diagnostics: _ } => m.carried == tpb_rust_generic_add_golden
+    Rejected { diagnostics: _ } => false
+  }
+  twin_emits && generic_renders
+}
+
+// REGRESSION CONTROL (the refusal this seam always had): a target whose rows declare NO type-parameter
+// segment still refuses translate_reason_generic_arrow_not_rendered instead of dropping the list.
+test fn tpb_emitter_refuses_a_generic_arrow_where_rows_declare_no_type_params() -> Bool {
+  match tpb_emitted_add_generic_for(target: ts_target_model()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^translate_reason_generic_arrow_not_rendered)
   }
-  twin_emits && generic_refused
 }
 
 // TYPE DECLARATIONS (trigger (1) of gunbc.recurring_failure_mode

@@ -14,7 +14,7 @@ import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDe
 import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, LexRule, LexRules, LexicalPhrase, LiteralPattern, ModeledLexRules, TokenRule, ModeTransitionTokenRule, NotFollowedByPattern, lex_rule_set_matching_rules, lex_rule_token_class_optional, TriviaRule, VoidLexRules, CharClassPattern, CharPattern, ChoicePattern, DelimitedPattern, EmptyPattern, OneOrMorePattern, OptionalPattern, RepeatPattern, SequencePattern }
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
-import v2.std.type_binder { cast_target_optional, type_annotation_optional }
+import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
 import v2.std.node { StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, Occupancy, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
@@ -76,6 +76,7 @@ import std.roster_frontier { FrontierRow, PathSubject }
 type ProducedDeclSignatureSegment
   = ProducedSignatureFixed { token_class: Symbol }
   | ProducedSignatureDeclName { token_class: Symbol }
+  | ProducedSignatureTypeParams { open: Symbol, separator: Symbol, close: Symbol, name_class: Symbol }
   | ProducedSignatureParams
   | ProducedSignatureReturnType
 
@@ -191,8 +192,20 @@ type ProducedDeclSupport
 // per declaration rather than per segment.
 type ProducedDeclSignatureSubject {
   fn_name: Symbol
+  type_params: List<ProducedTypeParam>
   params: List<Edge>
   codomain: Node
+}
+
+// ONE DECLARED TYPE PARAMETER OF A PRODUCED DECLARATION, as the header model carries it: its name
+// and, when the binder is KINDED (`bits: WidthResolution`, v2.std.type_binder
+// kinded_type_param_kind_optional), the kind. The header model carries the kind so a const-generic
+// parameter (a Rust `const N: u128`) is a row the target declares rather than a second model;
+// no target declares a kind-spelling row yet, so a kinded parameter refuses typed at render
+// (produced_decl_render_type_param_kind_unrealized), never rendering as an unkinded one.
+type ProducedTypeParam {
+  name: Symbol
+  kind: Optional<Node>
 }
 
 fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -371,6 +384,65 @@ fn produced_decl_params_tokens(
   )
 }
 
+// THE TYPE-PARAMETER LIST: nothing at all for a declaration with none, so a non-generic header is
+// byte-identical to what the rows rendered before this segment existed; otherwise OPEN name
+// (SEPARATOR name)* CLOSE, every token named by the target's own row. A parameter that is a binder
+// introduces its own name, so the name is bound to itself -- it is not a type reference that
+// type_binding must resolve. A KINDED parameter refuses: no target row spells a kind yet.
+fn produced_decl_type_params_tokens(
+  type_params: List<ProducedTypeParam>,
+  open: Symbol,
+  separator: Symbol,
+  close: Symbol,
+  name_class: Symbol,
+  anchor: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  if is_empty(xs: type_params) {
+    outcome_accepted(value: Empty)
+  } else {
+    bind_outcome(
+      o: fold_list(
+        xs: type_params,
+        empty: outcome_accepted(value: ProducedDeclParamsFold { any_written: false, tokens: Empty }),
+        cons: fn(acc, p) {
+          bind_outcome(
+            o: acc,
+            f: fn(so_far) {
+              match p.kind {
+                Present { value: kind } =>
+                  outcome_rejected(
+                    d: produced_decl_render_diagnostic(reason: ^produced_decl_render_type_param_kind_unrealized, node: kind)
+                  )
+                Absent =>
+                  outcome_accepted(
+                    value: ProducedDeclParamsFold {
+                      any_written: true,
+                      tokens: list_append(
+                        left: so_far.tokens,
+                        right: match so_far.any_written {
+                          true => [FixedToken { token_class: separator }, BoundToken { token_class: name_class, binding: p.name }]
+                          false => [BoundToken { token_class: name_class, binding: p.name }]
+                        }
+                      )
+                    }
+                  )
+              }
+            }
+          )
+        }
+      ),
+      f: fn(folded) {
+        outcome_accepted(
+          value: list_append(
+            left: [FixedToken { token_class: open }],
+            right: list_append(left: folded.tokens, right: [FixedToken { token_class: close }])
+          )
+        )
+      }
+    )
+  }
+}
+
 fn produced_decl_signature_segment_tokens(
   rows: ProducedDeclRenderRows,
   subject: ProducedDeclSignatureSubject,
@@ -382,6 +454,15 @@ fn produced_decl_signature_segment_tokens(
       outcome_accepted(value: [FixedToken { token_class: tc }])
     ProducedSignatureDeclName { token_class: tc } =>
       outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
+    ProducedSignatureTypeParams { open: open, separator: separator, close: close, name_class: name_class } =>
+      produced_decl_type_params_tokens(
+        type_params: subject.type_params,
+        open: open,
+        separator: separator,
+        close: close,
+        name_class: name_class,
+        anchor: subject.codomain
+      )
     ProducedSignatureParams =>
       produced_decl_params_tokens(rows: rows, params: subject.params, type_binding: type_binding)
     ProducedSignatureReturnType =>
@@ -611,6 +692,17 @@ fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outc
   }
 }
 
+// The Arrow's declared type parameters in declaration order, each with the kind its binder carries.
+fn produced_decl_type_params_of_arrow(arrow: Node) -> List<ProducedTypeParam> {
+  fold_list(
+    xs: type_param_names(n: arrow),
+    empty: Empty,
+    cons: fn(acc, name) {
+      list_snoc_item(xs: acc, item: ProducedTypeParam { name: name, kind: kinded_type_param_kind_optional(n: arrow, name: name) })
+    }
+  )
+}
+
 fn produced_decl_subject_from_name_and_arrow(
   fn_name: Symbol,
   arrow: Node
@@ -625,6 +717,7 @@ fn produced_decl_subject_from_name_and_arrow(
               outcome_accepted(
                 value: ProducedDeclSignatureSubject {
                   fn_name: fn_name,
+                  type_params: produced_decl_type_params_of_arrow(arrow: arrow),
                   params: params,
                   codomain: codomain
                 }
@@ -709,12 +802,58 @@ fn produced_decl_signature_with_open_from_rows(
   bind_outcome(
     o: produced_decl_subject_from_decl(decl: decl),
     f: fn(subject) {
-      produced_decl_signature_segments_tokens(
-        rows: rows,
-        subject: subject,
-        segments: rows.signature,
-        type_binding: type_binding
-      )
+      if is_empty(xs: subject.type_params) == false && produced_decl_rows_render_type_params(rows: rows) == false {
+        outcome_rejected(
+          d: produced_decl_render_diagnostic(reason: ^translate_reason_generic_arrow_not_rendered, node: subject.codomain)
+        )
+      } else {
+        produced_decl_signature_segments_tokens(
+          rows: rows,
+          subject: subject,
+          segments: rows.signature,
+          type_binding: produced_decl_binding_with_own_type_params(subject: subject, outer: type_binding)
+        )
+      }
+    }
+  )
+}
+
+// A TYPE-PARAMETER ATOM IS A BINDER'S OWN NAME, not a type the target realizes: an atom naming one
+// of the declaration's own type parameters binds to itself, every other atom goes to the outer binding
+// unchanged (so a name that is not declared still refuses as unrealized).
+fn produced_decl_binding_with_own_type_params(
+  subject: ProducedDeclSignatureSubject,
+  outer: fn(Node) -> Outcome<Symbol>
+) -> fn(Node) -> Outcome<Symbol> {
+  fn(type_node) {
+    match type_node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if fold_list(xs: subject.type_params, empty: false, cons: fn(acc, p) { acc || p.name == id }) {
+          outcome_accepted(value: id)
+        } else {
+          outer(type_node)
+        }
+      _ => outer(type_node)
+    }
+  }
+}
+
+// WHETHER THE TARGET'S ROWS HAVE A PLACE FOR A TYPE-PARAMETER LIST. A generic declaration handed to
+// rows with none refuses translate_reason_generic_arrow_not_rendered rather than rendering a
+// signature without the parameters its types name (the refusal this seam inherited from
+// v2.compiler.target_serialize, now owned by the rows that can lift it).
+fn produced_decl_rows_render_type_params(rows: ProducedDeclRenderRows) -> Bool {
+  fold_list(
+    xs: rows.signature,
+    empty: false,
+    cons: fn(acc, segment) {
+      acc || match segment {
+        ProducedSignatureTypeParams { open: _, separator: _, close: _, name_class: _ } => true
+        ProducedSignatureFixed { token_class: _ } => false
+        ProducedSignatureDeclName { token_class: _ } => false
+        ProducedSignatureParams => false
+        ProducedSignatureReturnType => false
+      }
     }
   )
 }
