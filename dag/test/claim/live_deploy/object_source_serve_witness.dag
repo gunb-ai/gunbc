@@ -22,6 +22,7 @@ import extdeps.git.partial_clone {
   ObjectSourceCannotServe,
   ObjectStoreComplete,
   PartialClonePromisor,
+  ShallowClone,
   object_source_serve_admission,
   object_source_serve_refusal_text,
 }
@@ -86,6 +87,24 @@ test fn a_complete_object_source_admits_and_keeps_binary_mutate() -> Bool {
     ObjectSourceCanServe { source: _ } =>
       match host_script_mutate_projection(
         fragments: fragments_with_binary_mutate(serve: apply_complete_object_source_serve()),
+      ) {
+        MutateRefused { member: _, cause: _ } => false
+        MutateStepsAdmitted { steps: s } =>
+          string_contains(s: pipeline_steps_text(steps: s), pattern: "/opt/gunbc/bin/gunbc")
+      }
+  }
+}
+
+test fn a_shallow_non_promisor_source_admits_the_apply_plan() -> Bool {
+  let serve = object_source_serve_admission(
+    source: "/tmp/complete-shallow",
+    standing: ShallowClone,
+  )
+  match serve {
+    ObjectSourceCannotServe { source: _, cause: _ } => false
+    ObjectSourceCanServe { source: _ } =>
+      match host_script_mutate_projection(
+        fragments: fragments_with_binary_mutate(serve: serve),
       ) {
         MutateRefused { member: _, cause: _ } => false
         MutateStepsAdmitted { steps: s } =>

@@ -47,7 +47,10 @@ data git_upload_pack_external_authority_anchor: ExternalAuthority = ExternalAuth
 // git-rev-parse(1) `--is-shallow-repository` answers the `.git/shallow` file. upload-pack at
 // git_upload_pack_lazy_fetch_disabled_version disables lazy fetching from a promisor remote,
 // so a source that still lists those keys cannot serve pack-objects the blobs the transfer
-// needs (including thin-pack delta bases of advertised "have" commits).
+// needs (including thin-pack delta bases of advertised "have" commits). Shallow without
+// promisor keys is an observed reading, not a refuse: the srv1 specimen was partial and
+// shallow, and every reproduced fetch death was the promisor side. A complete shallow
+// source has no discriminating red on FetchForcedRefInRepoTrustingSource.
 
 type ShallowRepositoryReading
   = ShallowRepositoryYes
@@ -148,7 +151,7 @@ fn object_source_cannot_serve_cause(standing: PartialCloneStanding) -> String {
         " disables lazy fetching, so pack-objects dies reading blobs the source does not hold",
       ], "")
     ShallowClone =>
-      "it is a shallow repository (`rev-parse --is-shallow-repository` is true); pack-objects also reads blobs of advertised have-commits outside the shallow boundary"
+      ""
     PartialCloneUnreadable { detail: d } =>
       join(["the repository's partial-clone standing could not be read: ", d], "")
   }
@@ -162,7 +165,7 @@ fn object_source_serve_admission(source: String, standing: PartialCloneStanding)
     PartialCloneFilter { detail: _ } =>
       ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
     ShallowClone =>
-      ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
+      ObjectSourceCanServe { source: source }
     PartialCloneUnreadable { detail: _ } =>
       ObjectSourceCannotServe { source: source, cause: object_source_cannot_serve_cause(standing: standing) }
   }

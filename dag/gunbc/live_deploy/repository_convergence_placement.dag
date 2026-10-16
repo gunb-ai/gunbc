@@ -141,6 +141,8 @@ import std.optional { Present, Absent }
 // disables lazy fetching, so pack-objects dies on blobs the source does not hold (including
 // thin-pack bases of advertised have-commits). Admission therefore consumes
 // extdeps.git.partial_clone object_source_serve_admission over that path, not path shape alone.
+// Shallow history without those keys is observed and admitted: no specimen shows a complete
+// shallow source failing the same fetch.
 // A fetch from `origin` would reintroduce a second source of truth for the admitted subject at
 // the last step of the transaction.
 //
