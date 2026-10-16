@@ -325,6 +325,34 @@ pub fn different_sharing_build_accepted(report: Rc<SubjectCollisionReport>) -> b
     }
 }
 
+pub fn report_has_undetermined_sharing(report: Rc<SubjectCollisionReport>) -> bool {
+    {
+        let mut __found = false;
+        for r in report.rows.clone().iter().cloned() {
+            if match r.sharing.clone() {
+                CollisionSharing::SharingUndeterminedByDeclaration => true,
+                CollisionSharing::SameSharing => false,
+                CollisionSharing::DifferentSharing => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn undetermined_sharing_reported(report: Rc<SubjectCollisionReport>) -> bool {
+    match (*report.build.clone()).clone() {
+        SubjectBuild::BuildAccepted => {
+            (report_has_undetermined_sharing(report.clone())
+                && !report_has_different_sharing(report.clone()))
+        }
+        SubjectBuild::BuildRefused { diagnostic: _, .. } => false,
+        SubjectBuild::BuildNotAttempted => false,
+    }
+}
+
 pub fn green_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
     match (*report.build.clone()).clone() {
         SubjectBuild::BuildAccepted => report_has_no_collision(report.clone()),
@@ -485,15 +513,15 @@ pub fn control_line(name: String, held: bool) -> String {
 }
 
 pub fn fixture_standing(
-    refuse_report: Rc<SubjectCollisionReport>,
-    silent_report: Rc<SubjectCollisionReport>,
+    independent_report: Rc<SubjectCollisionReport>,
+    recursive_report: Rc<SubjectCollisionReport>,
     green_report: Rc<SubjectCollisionReport>,
 ) -> String {
     {
-        let refuse_held = different_sharing_build_accepted(refuse_report.clone());
-        let silent_held = different_sharing_build_accepted(silent_report.clone());
+        let independent_held = different_sharing_build_accepted(independent_report.clone());
+        let recursive_held = undetermined_sharing_reported(recursive_report.clone());
         let green_held = green_control_holds(green_report.clone());
-        let held = ((refuse_held.clone() && silent_held.clone()) && green_held.clone());
+        let held = ((independent_held.clone() && recursive_held.clone()) && green_held.clone());
         Rc::new(vec![
             v1_rt::concat(
                 "STANDING ".to_string(),
@@ -505,11 +533,11 @@ pub fn fixture_standing(
             ),
             control_line(
                 "DifferentSharingIdentitiesBuildIndependently".to_string(),
-                refuse_held.clone(),
+                independent_held.clone(),
             ),
             control_line(
-                "silent_different_sharing_rustc_accepted".to_string(),
-                silent_held.clone(),
+                "RecursiveLeafSharingUndeterminedByDeclaration".to_string(),
+                recursive_held.clone(),
             ),
             control_line(
                 "green_no_collision_rustc_accepted".to_string(),
@@ -521,12 +549,12 @@ pub fn fixture_standing(
 }
 
 pub fn fixture_controls_hold(
-    refuse_report: Rc<SubjectCollisionReport>,
-    silent_report: Rc<SubjectCollisionReport>,
+    independent_report: Rc<SubjectCollisionReport>,
+    recursive_report: Rc<SubjectCollisionReport>,
     green_report: Rc<SubjectCollisionReport>,
 ) -> bool {
-    ((different_sharing_build_accepted(refuse_report.clone())
-        && different_sharing_build_accepted(silent_report.clone()))
+    ((different_sharing_build_accepted(independent_report.clone())
+        && undetermined_sharing_reported(recursive_report.clone()))
         && green_control_holds(green_report.clone()))
 }
 

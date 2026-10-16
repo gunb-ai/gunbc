@@ -158,6 +158,24 @@ fn different_sharing_build_accepted(report: SubjectCollisionReport) -> Bool {
   }
 }
 
+fn report_has_undetermined_sharing(report: SubjectCollisionReport) -> Bool {
+  report.rows |> any(r =>
+    match r.sharing {
+      SharingUndeterminedByDeclaration => true
+      SameSharing => false
+      DifferentSharing => false
+    }
+  )
+}
+
+fn undetermined_sharing_reported(report: SubjectCollisionReport) -> Bool {
+  match report.build {
+    BuildAccepted => report_has_undetermined_sharing(report: report) && !report_has_different_sharing(report: report)
+    BuildRefused { diagnostic: _ } => false
+    BuildNotAttempted => false
+  }
+}
+
 fn green_control_holds(report: SubjectCollisionReport) -> Bool {
   match report.build {
     BuildAccepted => report_has_no_collision(report: report)
@@ -219,21 +237,21 @@ fn control_line(name: String, held: Bool) -> String {
   concat(concat(concat("control ", name), " "), if held { "held" } else { "unmet" })
 }
 
-fn fixture_standing(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> String {
-  let refuse_held = different_sharing_build_accepted(report: refuse_report)
-  let silent_held = different_sharing_build_accepted(report: silent_report)
+fn fixture_standing(independent_report: SubjectCollisionReport, recursive_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> String {
+  let independent_held = different_sharing_build_accepted(report: independent_report)
+  let recursive_held = undetermined_sharing_reported(report: recursive_report)
   let green_held = green_control_holds(report: green_report)
-  let held = refuse_held && silent_held && green_held
+  let held = independent_held && recursive_held && green_held
   [
     concat("STANDING ", if held { "held" } else { "unmet" }),
-    control_line(name: "DifferentSharingIdentitiesBuildIndependently", held: refuse_held),
-    control_line(name: "silent_different_sharing_rustc_accepted", held: silent_held),
+    control_line(name: "DifferentSharingIdentitiesBuildIndependently", held: independent_held),
+    control_line(name: "RecursiveLeafSharingUndeterminedByDeclaration", held: recursive_held),
     control_line(name: "green_no_collision_rustc_accepted", held: green_held)
   ] |> join(separator: "\n")
 }
 
-fn fixture_controls_hold(refuse_report: SubjectCollisionReport, silent_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
-  different_sharing_build_accepted(report: refuse_report) && different_sharing_build_accepted(report: silent_report) && green_control_holds(report: green_report)
+fn fixture_controls_hold(independent_report: SubjectCollisionReport, recursive_report: SubjectCollisionReport, green_report: SubjectCollisionReport) -> Bool {
+  different_sharing_build_accepted(report: independent_report) && undetermined_sharing_reported(report: recursive_report) && green_control_holds(report: green_report)
 }
 
 fn observation_held(standing_held: Bool, live_unobserved: Bool) -> Bool {

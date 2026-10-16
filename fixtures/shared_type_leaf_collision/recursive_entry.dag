@@ -1,0 +1,10 @@
+module stlc.recursive_entry
+
+import stlc.recursive_chain { hold_chain }
+import stlc.recursive_flat { hold_flat }
+
+fn use_both() -> Int {
+  let _c = hold_chain()
+  let _f = hold_flat()
+  0
+}
