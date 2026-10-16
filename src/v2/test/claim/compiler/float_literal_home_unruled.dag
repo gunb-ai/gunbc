@@ -48,6 +48,6 @@ test fn zz_probe_infer_accepted() -> Bool {
 test fn zz_probe_grounding() -> Bool {
   match fmi_assemble(src: flhu_float_src) {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree)) == ^infer_reason_grounding_not_derived
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree)) == ^infer_grounding_not_derived
   }
 }
