@@ -9,7 +9,7 @@ import std.measure {
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
   byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
@@ -37,10 +37,6 @@ import gunbc.harness.harness_reasoning_wire {
 
 // A RECIPE IS KEYED BY DECLARATION IDENTITY (as the vendor rows are): a new recipe is a new row, not an
 // edit to a closed enum or to an equality function.
-fn serving_recipe_id_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
-  (left.module_path as String == right.module_path as String) && (left.decl_name as String == right.decl_name as String)
-}
-
 fn serving_recipe_ref(decl_name: NonEmptyStr) -> DeclarationRef {
   DeclarationRef {
     module_path: "product.fabric.serving_recipe" as NonEmptyStr,
@@ -195,7 +191,7 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
 // Two recipes are interchangeable only when identical, or when both name catalog units that the
 // catalog says are fungible. A recipe with no catalog unit is interchangeable with nothing else.
 fn serving_recipes_interchangeable(left: ServingRecipe, right: ServingRecipe) -> Bool {
-  if serving_recipe_id_eq(left: left.id, right: right.id) {
+  if declaration_ref_eq(a: left.id, b: right.id) {
     true
   } else {
     match left.catalog_unit {
