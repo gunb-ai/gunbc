@@ -97,6 +97,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   rotation_route_request_identity,
 }
 import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
+import gunbc.machine_intake.bmc_recovery_route { RecoveryRouteUnavailable, recovery_route_unavailability, InBandRecoveryStanding }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
 import gunbc.machine_intake.prior_life_boundary {
   DryPriorLifeWorld,
@@ -511,6 +512,19 @@ type ArrivalStepReceipt
 
 type ArrivalStepRefusal
   = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
+  // CREDENTIAL UNKNOWN, IN-BAND ROUTE AVAILABLE. The third thing AccessDiscover can say, beside "I
+  // observed access" and "the controller refused me": the out-of-band credential we hold is not the
+  // credential this controller accepts, and this unit has a MODELED way back in -- the in-band recovery
+  // route of gunbc.machine_intake.bmc_recovery_route. The cause is that route's own named judgement and
+  // not AccessObserveRefusal, because ControllerUnreachable there means "the controller did not answer"
+  // -- and a locked-but-alive BMC answers perfectly well; folding the two is how a board that needs a
+  // rescue medium gets written off as dead metal. The cause names what the route still requires (no
+  // reachable rescue host yet, firmware policy never measured yet, readback inconclusive yet), which is
+  // the next physical action, not a retry. The arm carries NO receipt: an available route is not
+  // access, and nothing downstream may treat it as such -- it stops the run exactly like any other
+  // refusal. IntakePhase is untouched: this is a refusal of a step already in the phase order, not a
+  // new phase, so the order authority stays where it lives (DESIGN §4d).
+  | AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: RecoveryRouteUnavailable }
   | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
   | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }
   | ReadOnlyPhaseRefused { phase: ArrivalPhase, reason: NonEmptyStr }
@@ -583,6 +597,21 @@ fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhase
     Refuse { reason: r } => ReadOnlyPhaseRefused { phase: phase, reason: r }
     Apply { plan: _ } => ReadOnlyPhaseDecidedApply { phase: phase }
     Noop => ReadOnlyPhaseSatisfiedWithoutEvidence { phase: phase }
+  }
+}
+
+// WHO BUILDS THE CREDENTIAL-UNKNOWN ARM. A locked unit is refused here, with the recovery route's own
+// named requirement as the cause -- and the arm is REFUSED TO when the route has already handed off.
+// That second half is the point: a standing whose recovery completed is not a refusal at all, it is the
+// case where the out-of-band path is back in reach (bmc_secure's, not this module's), so minting a
+// refusal from it would let a recovered unit be reported as locked. The recovery module cannot mint
+// this arm (its standing is sealed, and the arm belongs to the arrival step), and this module cannot
+// mint a recovery standing; the seam needs both, which is why it sits here.
+fn access_discover_refusal_for_locked_credential(standing: InBandRecoveryStanding) -> ArrivalStepRefusal? {
+  match recovery_route_unavailability(standing: standing) {
+    Present { value: cause } =>
+      Present { value: AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: cause } }
+    Absent => none
   }
 }
 

@@ -283,6 +283,48 @@ data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
 ]
 
+// THE TWO IN-BAND RECOVERY WRITES, CLASSIFIED. Both are DeviceOnce: each actuation is one physical
+// occasion at one chassis, not a recurring control-plane operation, and neither is a read.
+//
+// The temporary Administrator password is REVERSIBLE in the sense the ledger means -- a later reset
+// clears it and the ordinary rotation replaces it with a managed secret, which is exactly what the
+// recovery route hands off to. It mints no credential in our store: the password sits transiently on
+// the BMC and is never taken into a secret store here, so it is not a credential-minting effect and
+// owes no witness discharge.
+fn recovery_kcs_set_user_password_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "from the rescue host OS, over the passwordless in-band KCS channel (/dev/ipmi0, no -I lanplus, no credential on the command line), write one temporary password to the BMC's ADMINISTRATOR account, so an authenticated in-band session can be opened against a controller whose existing password is unknown" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// The reset is the destructive half, and its classification is what decides the authorization pattern.
+// ResetToDefaultsType=ResetAll restores every user account, every password and the network
+// configuration to factory state on a board being brought into the fleet rather than serviced: nothing
+// re-applies the prior user table, so the loss is not undone by a reapply. Irreversible, therefore
+// OperatorApprovedCapability -- the operator approval on this write is not a courtesy, it is what the
+// characteristics force.
+fn recovery_manager_reset_to_defaults_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "against the BMC controller over Redfish, POST Manager.ResetToDefaults with ResetToDefaultsType=ResetAll, returning every account, password and the user table to factory state, on a board being brought into the fleet rather than serviced" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "the prior user table and every password on the controller: a reset to factory state cannot be reapplied to bring them back, which is exactly why this write cannot be used to install a credential of our own" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // ONE EFFECT SHAPE PER ROOT OF THE RULING, differing only in the root's own identity: both are the
 // recurring, irreversible, standing-ruled Mt. Collins destructive controller effect.
 fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity: WorkloadIdentityStanding) -> PrivilegedEffect {
@@ -467,6 +509,20 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
     ],
   },
 ]
+
+// THE RULING THE RECOVERY RESET IS ACTUATED UNDER. The destructive half of bringing a locked BMC back
+// is not a standing the route carries of its own: it runs under a named operator ruling covering
+// exactly the reset site, and a RecoveryInBandRoute carries that ruling's declaration reference
+// (RecoveryInBandRoute::operator_approval) instead of a boolean saying "approved". The effect is
+// irreversible, which is what makes selection demand an approval rather than a federation grant; the
+// ruling's words state the terms the approval is filed against. No per-instance hold is claimed, so
+// this is an operator ruling and not a discharge: the route's own readback law stays in the recovery
+// module, where the standing that needs it is minted.
+data recovery_reset_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
+  ruling_text: "an arrival unit whose BMC ADMINISTRATOR password is unknown and whose rescue host OS is reachable may be returned to factory state by Redfish Manager.ResetToDefaults (ResetToDefaultsType=ResetAll) over the in-band channel, one unit at a time, under a per-effect operator approval filed against this ruling; the route may not use the reset to install a credential of its own and terminates by handing the factory credential to the existing factory-login-then-rotate path" as NonEmptyStr,
+  effect_subject: "in-band recovery reset: Redfish Manager.ResetToDefaults ResetAll on one arrival unit's BMC controller" as NonEmptyStr,
+  interlock: InterlockPending { obligation: "the unit hold the recovery run must take before the reset is actuated (gunbc.host.managed_host_unit_hold UnitHoldProof); rostered against the reset site when the wet realization of the recovery route lands, and refused until then" as NonEmptyStr },
+}
 
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
@@ -1075,6 +1131,27 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "plan_bmc_account_action"),
     effect: bmc_secure_account_rotation_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  // THE TWO IN-BAND RECOVERY WRITES (gunbc.machine_intake.bmc_recovery_route). A locked BMC is
+  // brought back by two writes made from the machine's own rescue OS, and both are classified here
+  // rather than described in prose: the temporary Administrator password that makes an authenticated
+  // in-band session possible, and the ResetToDefaults that wipes the unknown password. The reset is
+  // the destructive half -- ResetAll returns every account, every password and the user table to
+  // factory state on a board being inducted -- and it is the irreversibility of THAT effect, not a
+  // preference, that makes selection land on the operator-approved capability. recovery_reset_operator_ruling
+  // states the ruling the run acts under; the recovery route refuses its handoff without the post-reset
+  // readback (its own domain law), so the row cannot realize a pattern the effect rules out.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_kcs_password_write"),
+    effect: recovery_kcs_set_user_password_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.bmc_recovery_route", decl_name: "admit_recovery_manager_reset_to_defaults"),
+    effect: recovery_manager_reset_to_defaults_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },

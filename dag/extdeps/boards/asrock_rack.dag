@@ -22,6 +22,8 @@ import extdeps.bmc.types {
   FanPidIndependentEntries,
 }
 import extdeps.bmc.capability { BmcCapability, BmcFirmwareCapabilityRow, BmcFirmwareVersion, HistoricalEvidenceSnapshot }
+import extdeps.bmc.ipmi { IpmiCompletionCode, ipmi_completion_code_eq, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.firmware.types {
   FirmwarePrerequisiteObservation,
   PushAcceptedByTarget,
@@ -1126,3 +1128,97 @@ data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
 // PMBus supply; a supply shared by several boards can be monitored by at most one of them through
 // this header, which is a station design fact rather than a board one.
 data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
+
+// ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
+//
+// THE FACT THAT DECIDES WHETHER A LOCKED UNIT NEEDS A RESET AT ALL. On the one release we have
+// captured, writing the PUBLISHED factory password to the Administrator account over the in-band
+// channel is refused by the firmware:
+//
+//   $ sudo ipmitool user set password 1 '0penBmc'
+//   IPMI command failed: Invalid data field in request
+//   Set User Password command failed (user 1)
+//   exit=1
+//
+// and the 20-byte form fails identically -- which is the observation that rules password LENGTH out
+// as the explanation. A refused Set User Password changes nothing, so the unit stays locked and a
+// recovery route cannot be "write the factory password, then log in". It has to actuate a reset.
+//
+// WHY THIS SITS ON A RELEASE ROW AND NOT IN extdeps.bmc.openbmc. The refusal is a property of one
+// vendor build, not of OpenBMC in general: another build, or another vendor's firmware, may accept
+// the published password (and a unit that does is carrying a different, worse fact -- a factory
+// password that is writable). Stating it as an OpenBMC-wide rule would license a reset on firmware
+// that never refused anything. So the policy is keyed by the catalog's own typed BmcFirmwareVersion,
+// beside the release's other capability rows: there is no free-string version field here, and no
+// second version authority beside the catalog.
+//
+// A RELEASE THE CATALOG DOES NOT CARRY IS NotMeasured, and NotMeasured means "refuse", not "assume
+// the same as the release we did read" (DESIGN §4d). The row's own version is checked into the
+// judgement: a policy for 2.07.00 never answers a question about 3.22.00.
+//
+// Cited bytes (SHA256SUMS committed with them):
+//   artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt
+//     -- the two refused `ipmitool user set password 1 ...` invocations and their completion code,
+//        re-run after the reset and reproducing identically; the `mc info` line in the same file is
+//        where the Firmware Revision 3.22 reading comes from.
+type PublishedFactoryPasswordWritePolicy
+  = FirmwareRefusesPublishedPassword {
+      firmware: BmcFirmwareVersion
+      completion_code: IpmiCompletionCode
+      completion_code_text: NonEmptyStr
+      capture: Sha256Digest
+    }
+  | NotMeasured { firmware: BmcFirmwareVersion }
+
+data asrock_altrad8ud_inband_recovery_capture: Sha256Digest = Sha256Digest {
+  hex: "ec0869623cf9cac1642080ee1711c35c7c0580bd15feee9d5cdeb02ce3b3cb51",
+}
+
+// THE ONE MEASURED ROW. ASRock Rack E3C272D26P-2S class board, OpenBMC Firmware Revision 3.22, both
+// password forms, reproduced after the reset.
+data asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy: PublishedFactoryPasswordWritePolicy =
+  FirmwareRefusesPublishedPassword {
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+    completion_code: ipmi_completion_code_invalid_data_field,
+    completion_code_text: ipmi_completion_code_invalid_data_field_text,
+    capture: asrock_altrad8ud_inband_recovery_capture,
+  }
+
+data asrock_altrad8ud_published_factory_password_write_policy_catalog: List<PublishedFactoryPasswordWritePolicy> = [
+  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
+]
+
+// The policy for a release, read off the catalog. A lookup and never a default: an unmeasured
+// release answers NotMeasured with ITS OWN version attached, so the refusal can be reported against
+// the firmware that was actually observed.
+fn asrock_altrad8ud_published_factory_password_write_policy_for(
+  firmware: BmcFirmwareVersion,
+) -> PublishedFactoryPasswordWritePolicy {
+  match asrock_altrad8ud_published_factory_password_write_policy_catalog
+    |> first(p => policy_names_firmware(policy: p, firmware: firmware)) {
+    Present { value: p } => p
+    Absent => NotMeasured { firmware: firmware }
+  }
+}
+
+fn policy_names_firmware(policy: PublishedFactoryPasswordWritePolicy, firmware: BmcFirmwareVersion) -> Bool {
+  let row = match policy {
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: _, completion_code_text: _, capture: _ } => f
+    NotMeasured { firmware: f } => f
+  }
+  row.family == firmware.family && row.version.major == firmware.version.major
+    && row.version.minor == firmware.version.minor && row.version.patch == firmware.version.patch
+}
+
+// WHETHER A RESET IS REQUIRED: only when the measured refusal is THAT refusal, on THAT release. A
+// different completion code is a different fault -- 0xC7 would say the request length was wrong,
+// which indicts the form of the command and not the firmware's policy -- and acting on the wrong one
+// would spend a destructive ResetAll on a unit that would have accepted the write.
+fn asrock_altrad8ud_published_factory_password_is_refused(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
+  match policy {
+    FirmwareRefusesPublishedPassword { firmware: _, completion_code: c, completion_code_text: t, capture: _ } =>
+      ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
+        && (t as String) == (ipmi_completion_code_invalid_data_field_text as String)
+    NotMeasured { firmware: _ } => false
+  }
+}
