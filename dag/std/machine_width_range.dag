@@ -1,6 +1,7 @@
 module std.machine_width_range
 
 import std.types { Int, Bool }
+import std.integer { Signedness, Signed, Unsigned }
 import std.power_of_two { bitwise_pow2 }
 import std.measure { BitWidth, bit_width_count }
 
@@ -18,8 +19,12 @@ import std.measure { BitWidth, bit_width_count }
 // when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range
 // below is therefore only consulted where 2^N or 2^(N-1) is itself a host Int, which std.power_of_two covers totally. A width
 // below 1 admits nothing: there is no zero-bit integer.
-fn machine_width_admits(signed: Bool, bits: BitWidth, value: Int) -> Bool {
+fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> Bool {
   let n = bit_width_count(b: bits)
+  let signed = match signedness {
+    Signed => true
+    Unsigned => false
+  }
   if n < 1 {
     false
   } else if n >= 64 || (!signed && n >= 63) {
