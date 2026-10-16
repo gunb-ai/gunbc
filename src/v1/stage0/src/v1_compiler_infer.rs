@@ -32645,7 +32645,31 @@ pub fn build_emit_graph_info(
                             module_name.clone(),
                             typed_module.type_env.clone().source_indices.clone(),
                         ) {
-                            inner_state.clone()
+                            let carrier_name = crate::v1_std_core::authored_name_at(
+                                typed_module.type_env.clone().source_indices.clone(),
+                                item.clone(),
+                            );
+                            if (carrier_name.clone() == "") {
+                                inner_state.clone()
+                            } else {
+                                Rc::new(EmitInfoBuildState {
+                                    type_summaries: inner_state.type_summaries.clone(),
+                                    type_decl_items:
+                                        crate::v1_compiler_infer_emit_info::type_decl_index_insert(
+                                            inner_state.type_decl_items.clone(),
+                                            module_name.clone(),
+                                            carrier_name.clone(),
+                                            item.clone(),
+                                        ),
+                                    fn_decl_items: inner_state.fn_decl_items.clone(),
+                                    structural_alias_fn_surface_names: inner_state
+                                        .structural_alias_fn_surface_names
+                                        .clone(),
+                                    structural_alias_direct_fn_names: inner_state
+                                        .structural_alias_direct_fn_names
+                                        .clone(),
+                                })
+                            }
                         } else {
                             crate::v1_compiler_infer_emit_info::add_emit_item_summary(
                                 inner_state.clone(),
