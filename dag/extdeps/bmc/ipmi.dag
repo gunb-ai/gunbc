@@ -483,16 +483,17 @@ fn ipmi_completion_code_eq(a: IpmiCompletionCode, b: IpmiCompletionCode) -> Bool
   a.code == b.code
 }
 
-fn ipmi_completion_code_is_invalid_data_field(code: IpmiCompletionCode) -> Bool {
-  ipmi_completion_code_eq(a: code, b: ipmi_completion_code_invalid_data_field)
-}
-
-fn ipmi_completion_code_text(code: IpmiCompletionCode) -> NonEmptyStr? {
-  if ipmi_completion_code_eq(a: code, b: ipmi_completion_code_invalid_data_field) {
-    Present { value: ipmi_completion_code_invalid_data_field_text }
-  } else if ipmi_completion_code_eq(a: code, b: ipmi_completion_code_request_data_length_invalid) {
-    Present { value: "Request data length invalid" as NonEmptyStr }
-  } else {
-    none
-  }
-}
+// THE TWO WAYS TO STATE A COMPLETION CODE'S DESCRIPTION ARE DELIBERATELY REDUCED TO ONE. An earlier
+// revision had `ipmi_completion_code_text` mapping a code to its words with the 0xC7 string written
+// inline, while 0xCC's words lived in their own data row: two representations of one kind of fact, one of
+// which could be edited while the other kept vouching for it. There is now exactly one home for a code's
+// English -- the `<name>_text` data row beside the code -- and comparison goes through
+// ipmi_completion_code_eq alone. An equality wrapper per code (`..._is_invalid_data_field`) is also gone:
+// it existed for no caller but a test, and `ipmi_completion_code_eq(a: c, b: <constant>)` says the same
+// thing with the constant in plain sight.
+//
+// Each code's description stays next to its byte so they cannot drift apart, and a caller that needs the
+// words for an operator reads the row for the code it has already matched -- not a lookup that quietly
+// answers `none` for a code nobody cataloged. Consumers naming these rows today:
+// extdeps.boards.asrock_rack (the measured refusal records 0xCC's words) and
+// gunbc.machine_intake.bmc_recovery_route (a refusal quotes the code it saw).

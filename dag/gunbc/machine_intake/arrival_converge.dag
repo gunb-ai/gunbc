@@ -1139,7 +1139,7 @@ fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read:
   match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } =>
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life), discharges: [])
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, locked: locked), discharges: [])
   }
 }
 

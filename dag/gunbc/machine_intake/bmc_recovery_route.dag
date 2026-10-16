@@ -6,7 +6,10 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, content_ha
 import extdeps.board_authority { BoardFruObservation, BoardFruUnreadCause }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareVersion, bmc_firmware_release_identity_eq }
-import extdeps.bmc.ipmi { IpmiCompletionCode, ipmi_completion_code_eq, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text, ipmi_completion_code_request_data_length_invalid }
+import extdeps.bmc.ipmi {
+  IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
+  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_request_data_length_invalid_text,
+}
 import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
@@ -582,6 +585,38 @@ fn recovery_admission_issued_by(authorization: RecoveryWriteAuthorization, gate:
     RecoveryWriteAdmitted { kind: _, authorized_by: issuer, destructive: _, operator_approval_required: _ } =>
       declaration_ref_eq(a: issuer, b: gate)
     RecoveryWriteRefused { kind: _, cause: _ } => false
+  }
+}
+
+// WHETHER A WRITE RECORD PROVES ANYTHING AT ALL. Both privileged writes of this sequence were executed
+// and NEITHER was byte-captured: the temporary password was wiped by the reset and cannot be reproduced,
+// and the ResetToDefaults request/response bodies were observed in session only. That is what
+// ExecutedWithoutByteCapture, and the route's success condition does NOT rest on it -- it rests on
+// the post-reset readback below. A write record can therefore prove an ATTEMPT and nothing more.
+type RecoveryWriteRecord
+  = ExecutedWithCapturedExchange {
+      kind: RecoveryActuationKind
+      request: EvidenceRef
+      response: EvidenceRef
+      observed_at: EpochMs
+    }
+  | ExecutedWithoutByteCapture { kind: RecoveryActuationKind, observed_exit: Int, detail: NonEmptyStr }
+  | NotExecuted { kind: RecoveryActuationKind }
+
+fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActuationKind) -> Bool {
+  match record {
+    ExecutedWithCapturedExchange { kind: k, request: _, response: _, observed_at: _ } =>
+      recovery_actuation_kinds_are_same(a: k, b: kind)
+    ExecutedWithoutByteCapture { kind: k, observed_exit: _, detail: _ } => recovery_actuation_kinds_are_same(a: k, b: kind)
+    NotExecuted { kind: _ } => false
+  }
+}
+
+fn recovery_write_grounds_success(record: RecoveryWriteRecord) -> Bool {
+  match record {
+    ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
+    ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
+    NotExecuted { kind: _ } => false
   }
 }
 
