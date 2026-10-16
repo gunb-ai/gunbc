@@ -5438,14 +5438,20 @@ fn realize_live_deploy_ensure_dependency_on_host(
 }
 
 // THE PROBE-THEN-INSTALL FOLD, over outcomes the legs already ran -- witness-dry by the same
-// split the compile-pool install fold documents above. Its shape is the old If/Not/ExitZero tree
-// read as data. A probe that answers installed (exit 0) CONVERGES WITH NO INSTALL RUN: that
-// non-run is the idempotence evidence, the probe's own observation, not a replay. Any non-zero
-// took the old script's install arm -- dpkg -s exits 1 for not-installed and non-zero for
-// errors, and `if ! dpkg -s` treated every non-zero alike -- so the install decides the result
-// there. A refused operation never started a process, so it is never reported with an exit
-// status and never laundered into success: the old `|| exit` after apt-get meant non-zero stops
-// the stage, and refusal is the stronger stop.
+// split the compile-pool install fold documents above. THE DECISION IS THE DPKG MODULE'S OWN
+// VERDICT PROCEDURE, NOT AN EXIT-CODE READ: extdeps.package_managers.dpkg declares beside its
+// Status row that the probe exits zero for ANY package the database has a record for -- including
+// one REMOVED with configuration files kept -- so exit status cannot answer "installed"
+// (dpkg.dag's own comment), and `if ! dpkg -s` was reading it wrong. The fold asks
+// dpkg_query_status_verdict_of (the module's single answer for that fact; DESIGN §3 "each fact
+// lives in exactly one place"): Installed CONVERGES with no install run -- that non-run is the
+// idempotence evidence, the probe's own observation, not a replay; NotInstalled and Unknown
+// (absent from the database) take the install arm, which decides; Undecidable REFUSES the route
+// rather than authorizing an install on nothing established -- a wrong answer is a loud error
+// (DESIGN §5), and "Undecidable is never read as absent" is the module's rule. A refused
+// operation never started a process, so it is never reported with an exit status and never
+// laundered into success: the old `|| exit` after apt-get meant non-zero stops the stage, and
+// refusal is the stronger stop.
 fn live_deploy_ensure_package_fold(
   package: NonEmptyStr,
   probe: RunArgvTransportOutcome,
@@ -5468,25 +5474,53 @@ fn live_deploy_ensure_package_fold(
         applied: intent,
       }
     RunArgvTransportObserved { observed: p } =>
-      if p.exit_code == 0 {
-        Converged { evidence: ShellEffectApplied { exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr }, applied: intent }
+      match dpkg_query_status_verdict_of(exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr) {
+        DpkgPackageInstalled =>
+          Converged { evidence: ShellEffectApplied { exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr }, applied: intent }
+        DpkgPackageUnknown =>
+          live_deploy_ensure_install_fold(package: package, install: install, intent: intent)
+        DpkgPackageNotInstalled { status: _ } =>
+          live_deploy_ensure_install_fold(package: package, install: install, intent: intent)
+        DpkgQueryUndecidable { reason: why } =>
+          NotConverged {
+            reason: join(
+              [
+                "host_effect_apply: live-deploy ensure-dependency refused on the probe of package ",
+                package as String,
+                " because its state could not be read -- ",
+                why,
+                "; an unreadable state is never read as absent (absent would authorize an install and nothing was established), so the install was not attempted.",
+              ],
+              "",
+            ),
+            applied: intent,
+          }
+      }
+  }
+}
+
+// THE INSTALL ARM OF THE PACKAGE FOLD: the install's own outcome decides, reported as the install's
+// observation. Shared by the verdict's NotInstalled and Unknown answers -- unknown (no record at all)
+// is absent, and absent authorizes the install; the leg ran it only for those two answers.
+fn live_deploy_ensure_install_fold(
+  package: NonEmptyStr,
+  install: RunArgvTransportOutcome,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match install {
+    RunArgvTransportObserved { observed: i } =>
+      if i.exit_code == 0 {
+        Converged { evidence: ShellEffectApplied { exit_code: i.exit_code, stdout: i.stdout, stderr: i.stderr }, applied: intent }
       } else {
-        match install {
-          RunArgvTransportObserved { observed: i } =>
-            if i.exit_code == 0 {
-              Converged { evidence: ShellEffectApplied { exit_code: i.exit_code, stdout: i.stdout, stderr: i.stderr }, applied: intent }
-            } else {
-              NotConverged {
-                reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
-                applied: intent,
-              }
-            }
-          RunArgvTransportRefused { reason: _ } =>
-            NotConverged {
-              reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
-              applied: intent,
-            }
+        NotConverged {
+          reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
+          applied: intent,
         }
+      }
+    RunArgvTransportRefused { reason: _ } =>
+      NotConverged {
+        reason: live_deploy_ensure_step_failure_line(step: "apt-get install", subject: package as String, outcome: install),
+        applied: intent,
       }
   }
 }
@@ -5524,32 +5558,30 @@ fn live_deploy_ensure_package_leg(
             intent: intent,
           )
         RunArgvTransportObserved { observed: p } =>
-          if p.exit_code == 0 {
-            live_deploy_ensure_package_fold(
-              package: package,
-              probe: RunArgvTransportObserved { observed: p },
-              install: live_deploy_leg_not_run_outcome(),
-              intent: intent,
-            )
-          } else {
-            match apt_get_install_command(package: package) {
-              AptGetInstallCommandRefused { cause: cause } =>
-                live_deploy_ensure_package_fold(
-                  package: package,
-                  probe: RunArgvTransportObserved { observed: p },
-                  install: RunArgvTransportRefused {
-                    reason: concat("the install command could not be built from the apt.PackageManager Install row: ", cause),
-                  },
-                  intent: intent,
-                )
-              AptGetInstallCommandReady { command: install_command } =>
-                live_deploy_ensure_package_fold(
-                  package: package,
-                  probe: RunArgvTransportObserved { observed: p },
-                  install: run_argv_over_host_effect_transport(command: install_command, transport: transport),
-                  intent: intent,
-                )
-            }
+          // The SAME verdict procedure the fold reads decides whether to run the install at all --
+          // one decision procedure, consulted where the effect actually launches (DESIGN §3). An
+          // installed answer means nothing more runs; an UNREADABLE answer means the install must
+          // not run either (refuse rather than install on nothing established); only absent (not
+          // installed, or unknown to the database) launches it.
+          match dpkg_query_status_verdict_of(exit_code: p.exit_code, stdout: p.stdout, stderr: p.stderr) {
+            DpkgPackageInstalled =>
+              live_deploy_ensure_package_fold(
+                package: package,
+                probe: RunArgvTransportObserved { observed: p },
+                install: live_deploy_leg_not_run_outcome(),
+                intent: intent,
+              )
+            DpkgQueryUndecidable { reason: _ } =>
+              live_deploy_ensure_package_fold(
+                package: package,
+                probe: RunArgvTransportObserved { observed: p },
+                install: live_deploy_leg_not_run_outcome(),
+                intent: intent,
+              )
+            DpkgPackageUnknown =>
+              live_deploy_ensure_install_leg(package: package, probe: p, transport: transport, intent: intent)
+            DpkgPackageNotInstalled { status: _ } =>
+              live_deploy_ensure_install_leg(package: package, probe: p, transport: transport, intent: intent)
           }
       }
   }
@@ -5559,6 +5591,34 @@ fn live_deploy_ensure_package_leg(
 // only arm that does not claim an observation: a refusal never started a process and this must
 // not be able to masquerade as either. The folds only consult it on paths that report it as
 // "did not run".
+// THE INSTALL LAUNCH, shared by the verdict's two absent answers. A row that will not materialize
+// is a refusal carried to the fold typed, never a silently skipped leg.
+fn live_deploy_ensure_install_leg(
+  package: NonEmptyStr,
+  probe: ShellExecObserved,
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match apt_get_install_command(package: package) {
+    AptGetInstallCommandRefused { cause: cause } =>
+      live_deploy_ensure_package_fold(
+        package: package,
+        probe: RunArgvTransportObserved { observed: probe },
+        install: RunArgvTransportRefused {
+          reason: concat("the install command could not be built from the apt.PackageManager Install row: ", cause),
+        },
+        intent: intent,
+      )
+    AptGetInstallCommandReady { command: install_command } =>
+      live_deploy_ensure_package_fold(
+        package: package,
+        probe: RunArgvTransportObserved { observed: probe },
+        install: run_argv_over_host_effect_transport(command: install_command, transport: transport),
+        intent: intent,
+      )
+  }
+}
+
 fn live_deploy_leg_not_run_outcome() -> RunArgvTransportOutcome {
   RunArgvTransportRefused { reason: "not attempted: an earlier leg decided this route's outcome before this leg" }
 }
