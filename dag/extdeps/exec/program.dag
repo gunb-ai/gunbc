@@ -168,6 +168,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_program"),
     decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_program"),
     decl_ref(module_path: "extdeps.procps.kill", decl_name: "kill_program"),
+    decl_ref(module_path: "extdeps.procps.ps", decl_name: "ps_program"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program"),
     decl_ref(module_path: "extdeps.python", decl_name: "python_program"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
