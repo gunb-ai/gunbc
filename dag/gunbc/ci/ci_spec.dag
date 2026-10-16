@@ -64,7 +64,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_failed_sentinel, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
@@ -1945,47 +1945,74 @@ fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
 }
 
 fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")])], set_e: false)
-  // THE TYPED FORM (review 81077): the bounded Secret Manager read and the payload decode each keep
-  // their bounds AND keep failing LOUDLY on a hang (a timeout still kills the step under set -e), but
-  // a refused fetch - non-zero curl, undecodable payload - writes the sentinel line into the
-  // credential file instead of aborting the prelude, and the boot-phase entry turns that into a
-  // typed refused receipt with ExitSuccess. The sentinel is the module's own constant (single
-  // authority; the entry above is what recognizes it). The untyped form is what the strict lanes --
-  // the KVM observer -- keep: there, a missing credential must still fail the step by name.
+  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")])], set_e: false)
+  // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
+  // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
+  // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
+  // FILE ("ok" / "fetch-failed") and DELETES the credential file on refusal. The credential carrier
+  // never holds anything but a credential: a fabricated value inside it would let the observer confuse
+  // "the controller could not be reached" with "the password is this word". The boot-phase entry folds
+  // the status into FanObserveBootPhaseRefused credential=fetch-failed with ExitSuccess, so the step
+  // needs no continue-on-error to keep the boot honest. The status file's name is
+  // mtcollins1_fan_credential_fetch_status_suffix on the module that READS it - writer and reader
+  // share one authority. The untyped form is what the strict lanes -- the KVM observer -- keep: there,
+  // a missing credential must still fail the step by name.
   let fetch = bcmd(words: [
     bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
     bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
     bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
   ])
   let decode = bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")])
+  let chmod = bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")])
+  let rm_dest = bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")])
+  // THE CREDENTIAL IS NOT A STATUS CARRIER: on refusal the credential file is removed and only the
+  // status file says why, so no consumer can read a value this run did not fetch. The success arm
+  // carries its own chmod and its "ok": a chmod left to run unconditionally would die under set -e on
+  // the refused path, where the credential file was just removed, and the step would fail before the
+  // entry could write a receipt.
   let fetch_pair = if typed_fetch_failure {
     bash_build_or_else(
       left: bash_build_and_then(
-        left: bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")]),
+        left: rm_dest,
         right: bash_build_and_then(
           left: fetch,
-          right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
+          right: bash_build_and_then(
+            left: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
+            right: bash_build_and_then(
+              left: chmod,
+              right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "ok")]), path: bv(name: "STATUS_FILE")),
+            ),
+          ),
         ),
       ),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: mtcollins1_fan_credential_fetch_failed_sentinel)]), path: bv(name: "DEST_FILE")),
+      right: bash_build_and_then(
+        left: rm_dest,
+        right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "fetch-failed")]), path: bv(name: "STATUS_FILE")),
+      ),
     )
   } else {
     bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
   }
-  [
+  let base = [
     bcmdl(lits: ["set", "-euo", "pipefail"]),
     bcmdl(lits: ["umask", "077"]),
     bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
     bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
+    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
     bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
     bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
     fetch_pair,
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
+  ]
+  let tail = [
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
     gunbc_ci_mtcollins1_probe_root_statement(),
   ]
+  if typed_fetch_failure {
+    concat(base, tail)
+  } else {
+    concat(concat(base, [chmod]), tail)
+  }
 }
 
 fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {

@@ -22,7 +22,8 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host { ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_fixture, managed_hosts }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_failed_sentinel }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_fetch_status, FetchOk, FetchRefused, FetchStatusUnobserved }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmission, FanObserveAdmitted, FanObserveRefused, FanHostFamilyUnobserved, FanHostNotManaged,
   fan_observe_admission, fan_observe_authority, fan_observe_refusal_text,
@@ -209,19 +210,41 @@ test fn fan_policy_phase_unmodeled_failure_fails_loud_at_the_step() -> Bool {
     && !fan_policy_phase_continue_on_error(s: fleet_converge_mtcollins1_fan_observe_step())
 }
 
-// CONTROL (review 81077): the credential fetch and decode are INSIDE the typed path for this lane
-// only. The boot-phase prelude bounds the read, then writes the module's sentinel into the credential
-// file when the fetch or decode comes back refused, so the entry turns it into a
-// FanObserveBootPhaseRefused receipt (cause fetch-failed) with ExitSuccess - the boot stays scheduled
-// because a receipt says so. The sentinel is named by its authority (this module's constant), never
-// by a copy, and it is a cause name, not a secret. The KVM observer lane keeps the strict form: the
-// same curl there still fails the step by name, with no sentinel anywhere in its script.
+// CONTROL (review 81090 finding B): the credential carrier carries ONLY a credential. The boot-phase
+// prelude reports a refused Secret Manager fetch through a sibling STATUS file named by the reader's
+// own constant, removes the credential file on refusal, and the strict KVM lane keeps the old shape
+// (fetch failure dies under set -e, and no status file logic rides along in its script).
 test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Bool {
   let boot = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
   let kvm = gunbc_ci_mtcollins1_kvm_observer_observe_invoke()
   string_contains(s: boot, pattern: "||")
-    && string_contains(s: boot, pattern: mtcollins1_fan_credential_fetch_failed_sentinel)
-    && !string_contains(s: kvm, pattern: mtcollins1_fan_credential_fetch_failed_sentinel)
+    && string_contains(s: boot, pattern: mtcollins1_fan_credential_fetch_status_suffix)
+    && string_contains(s: boot, pattern: "fetch-failed")
+    && string_contains(s: boot, pattern: "printf 'ok'")
+    && !string_contains(s: kvm, pattern: mtcollins1_fan_credential_fetch_status_suffix)
+    && !string_contains(s: kvm, pattern: "fetch-failed")
+}
+
+// CONTROL (review 81090): the three status arms fold by REAL EXECUTION - a file saying ok, a file
+// saying anything else, and no file at all land in FetchOk / FetchRefused / FetchStatusUnobserved.
+// Executed, not described: the fold is what decides whether the boot sees a refusal, so its truth is
+// owed as an observation of the reader, not as agreement with its text. Flat paths beside the claim's
+// own working files: the file transport creates no parent directories, and each path is deleted after
+// the read so a rerun starts from the absent arm.
+test fn fan_policy_phase_fetch_status_folds_three_arms_by_real_execution() -> Bool {
+  let ok_credential = "eh810-fan-fetch-status-claim-credential"
+  let bad_credential = "eh810-fan-fetch-status-claim-other"
+  let absent_credential = "eh810-fan-fetch-status-claim-absent"
+  let ok_path = concat(ok_credential, mtcollins1_fan_credential_fetch_status_suffix)
+  let bad_path = concat(bad_credential, mtcollins1_fan_credential_fetch_status_suffix)
+  let ok_write = Filesystem.Write(path: ok_path, content: "ok")
+  let bad_write = Filesystem.Write(path: bad_path, content: "fetch-failed")
+  let ok_reads_ok = ok_write.success && mtcollins1_fan_credential_fetch_status(credential_path: ok_credential) == FetchOk
+  let bad_reads_refused = bad_write.success && mtcollins1_fan_credential_fetch_status(credential_path: bad_credential) == FetchRefused
+  let absent_reads_unobserved = mtcollins1_fan_credential_fetch_status(credential_path: absent_credential) == FetchStatusUnobserved
+  let ok_clean = Filesystem.Delete(path: ok_path)
+  let bad_clean = Filesystem.Delete(path: bad_path)
+  ok_reads_ok && bad_reads_refused && absent_reads_unobserved && ok_clean.success && bad_clean.success
 }
 
 // CONTROL: the boot step stays in the job after the phase because every MODELED failure of the phase
