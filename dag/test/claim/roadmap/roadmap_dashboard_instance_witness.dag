@@ -30,6 +30,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dispatch_base_branch,
   prod_role_realization,
   fleet_admitted_revision_source,
   HostDashboardInstance,
@@ -755,6 +756,7 @@ fn witness_production_slot(
     local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "gunbc"),
     dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
     dispatch_state_scope: scope,
     execution_environment: dashboard_execution_environment(serve_binary: binary),
     provider_state: DashboardExistingProviderState {
@@ -777,6 +779,7 @@ fn witness_production_slot(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
+    materialization_store_root: none,
   }
 }
 
@@ -1129,6 +1132,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     local_origin_publish_ref: live.local_origin_publish_ref,
     repo_root: live.repo_root,
     dispatch_base_ref: live.dispatch_base_ref,
+    publication_base_branch: live.publication_base_branch,
     dispatch_state_scope: live.dispatch_state_scope,
     execution_environment: live.execution_environment,
     provider_state: live.provider_state,
@@ -1144,6 +1148,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    materialization_store_root: live.materialization_store_root,
   }
 }
 
@@ -1151,4 +1156,13 @@ test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() 
   !dashboard_instance_is_disjoint_from_public_builtins(
     candidate: outside_instance_claiming_live_id_on_live_footprint(),
   )
+}
+
+// THE LAB PUBLISHES INTO ITS INTEGRATION BRANCH, THE LIVE INSTANCE INTO MAIN. The lab's dispatch_base_ref
+// still reads "origin/main" (its source repository's origin/main is rewritten to the admitted lab-dev
+// revision), so the old derivation -- strip "origin/" -- offered lab attempts against GitHub main. RED
+// on lab-dev cf420d9, where dispatch_base_branch(lab) was "main".
+test fn the_lab_publishes_into_its_integration_branch_and_live_into_main() -> Bool {
+  (dispatch_base_branch(instance: srv1_lab_dashboard_instance()) as String) == "bright-moth-475/lab-dev"
+    && (dispatch_base_branch(instance: srv1_live_dashboard_instance()) as String) == "main"
 }

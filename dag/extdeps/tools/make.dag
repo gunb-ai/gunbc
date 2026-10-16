@@ -33,6 +33,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 fn make_program() -> ProgramIdentity = uncataloged_program(invocation: "make")
 
+// THE VARIABLE GNU make PASSES TO SUB-MAKES (make manual, "Communicating Options to a Sub-make"), and
+// the one through which a jobserver auth clause reaches cargo. A runner slot that carries it hands
+// its builds to whatever pool the clause names; the fleet's slots must carry none.
+data make_makeflags_env_name: String = "MAKEFLAGS"
+
 // -C IS PART OF THE OPERATION, THE REST IS THE CALLER'S. Which directory the build runs in is a fact
 // this builder owns, because getting it from the ambient working directory is how a build silently
 // operates on the wrong tree. Everything after it -- targets, and the variable assignments GNU make

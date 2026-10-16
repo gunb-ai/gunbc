@@ -18,7 +18,7 @@ data dependency_demand_census_seed_growth_justification: SeedGrowthJustification
     }
   ],
 
-  reason: "The producer arm for D13's dependency-demand census (gunbc.target_binding DependencyDemandCensusProducer). Its host part is only what no .dag fold can do: emit and build the compiler closure through the existing prepare_emitted_compiler, spawn the built binary in its demand-census verb, and relay its stdout and status unjudged. Every line and the exit are decided by v2.compiler.compile native_demand_census_output inside the emitted binary, so the host adds no verdict. It sits in the host because the census reads the whole corpus through the emitted front end, which no interpreted .dag entry can afford, and the instrument is how D13's row-deletion change executes it at its own head.",
+  reason: "The producer arm for D13's dependency-demand census (gunbc.target_binding DependencyDemandCensusProducer). Its host part is only what no .dag fold can do: emit and build the compiler closure through the existing prepare_emitted_compiler, spawn the built binary in its demand-census verb, and relay its stdout and status unjudged. Every line and the exit are decided by v2.compiler.source_root_eval native_demand_census_output inside the emitted binary, so the host adds no verdict. It sits in the host because the census reads the whole corpus through the emitted front end, which no interpreted .dag entry can afford, and the instrument is how D13's row-deletion change executes it at its own head.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 
