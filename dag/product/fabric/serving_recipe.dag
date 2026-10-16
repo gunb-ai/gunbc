@@ -14,6 +14,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
+import gunbc.serving.rented_ninfer_source {
+  RentedWeightsPlacement, NinferEngineRelease, rented_qwen3_8_27b_nvfp4_weights_placement, ninfer_serve_81c8ce09_sm120_release,
+}
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
@@ -43,15 +46,22 @@ fn serving_recipe_id_eq(left: ServingRecipeId, right: ServingRecipeId) -> Bool {
 }
 
 // ── model artifact ───────────────────────────────────────────────────────────────────────────
+// WHICH BYTES A CARD RUNS HAS ONE AUTHORITY: a placed model REFERENCES gunbc.serving.rented_ninfer_source
+// RentedWeightsPlacement (the digest-pinned model row plus its object key) and an ninfer engine REFERENCES
+// NinferEngineRelease; the recipe redeclares no digest, url or rev. A model with no landed pin is named only,
+// and says so.
+type ServingWeightsSource
+  = WeightsPlacedOnObjectStore { placement: RentedWeightsPlacement }
+  | WeightsNamedUnpinned { weights: NonEmptyStr, quantization: NonEmptyStr? }
+
 type ServingModelArtifact {
-  weights: NonEmptyStr
-  quantization: NonEmptyStr?
+  source: ServingWeightsSource
   served_model_id: NonEmptyStr?
 }
 
 // ── engine build ─────────────────────────────────────────────────────────────────────────────
 type ServingEngineBuild
-  = NinferEngine
+  = NinferEngine { release: NinferEngineRelease }
   | VllmEngine { build: NonEmptyStr }
 
 // ── card class requirements ──────────────────────────────────────────────────────────────────
@@ -127,11 +137,10 @@ data serving_card_class_rtx_pro_6000_96gb: ServingCardClass = ServingCardClass {
 data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
   id: RecipeQwen3_8_27bNvfp4OnNinfer,
   model: ServingModelArtifact {
-    weights: "Qwen3.8-27B",
-    quantization: Present { value: "NVFP4" },
+    source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
     served_model_id: Present { value: "qwen" },
   },
-  engine: NinferEngine,
+  engine: NinferEngine { release: ninfer_serve_81c8ce09_sm120_release },
   host_image: Present { value: "vastai/vllm:v0.30.0-cuda-13.0" },
   published_tcp_port: 8000,
   cards: [serving_card_class_rtx_5000_48gb, serving_card_class_72gb, serving_card_class_rtx_pro_6000_96gb],
@@ -155,8 +164,7 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
 data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   id: RecipeFlashNextOnLabVllm,
   model: ServingModelArtifact {
-    weights: "Qwen3.8-Flash-Next",
-    quantization: none,
+    source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
     served_model_id: none,
   },
   engine: VllmEngine { build: "local-inference-lab vLLM build" },
