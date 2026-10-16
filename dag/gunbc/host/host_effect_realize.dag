@@ -440,7 +440,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_unit_path, microvm_slot_reserve_unit_path,
   microvm_controller_slice_unit_name, microvm_slot_unit_template_name,
   microvm_slot_reserve_unit_name, microvm_slot_reserve_unit_file,
-  microvm_controller_requires_ci_reservation_unit,
+  microvm_controller_requires_ci_reservation_unit, microvm_controller_firecracker_release,
 }
 import gunbc.live_deploy.emit {
   microvm_controller_release_dir, microvm_controller_stage_dir,
@@ -465,8 +465,13 @@ import extdeps.virtualization.firecracker {
   firecracker_release_aarch64_tarball_sha256, firecracker_release_download_url,
   firecracker_release_binary_path_in_tarball, firecracker_release_jailer_path_in_tarball,
 }
-import gunbc.runner.microvm_guest_artifacts { runner_guest_base_artifact_path }
+import gunbc.runner.microvm_guest_artifacts {
+  runner_guest_base_artifact_path, runner_guest_kernel_artifact,
+  ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
+}
 import gunbc.runner.workspace_guest_image { workspace_installed_image_root, workspace_image_path }
+import gunbc.workspace_image_delivery { workspace_image_staging_root }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import extdeps.crypto.hash { sha256_digest, sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.gnu_coreutils {
   mkdir_parents_command, coreutils_install_directory_argv, coreutils_install_directory_owned_argv,
@@ -4923,23 +4928,6 @@ fn realize_approval_broker_dark_install_on_host(
   )
 }
 
-fn realize_microvm_controller_install_on_host(
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  intent: HostEffectIntent,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  realize_shell_on_host(
-    script: retained_srvn(
-      body: microvm_controller_install_script(
-        revision: RevisionBoundAtEmission { revision: candidate.revision },
-      ),
-      reason: "microVM slot controller install (additive locus + template unit; starts no instance)",
-    ),
-    transport: transport,
-    intent: intent,
-  )
-}
-
 fn realize_live_deploy_ensure_dependency_on_host(
   dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
@@ -6503,7 +6491,8 @@ fn microvm_controller_starts_no_instance_refusal(step: MicrovmControllerInstallS
   let words = match step {
     MicrovmControllerArgvStep { command: c } => argv_words(command: c)
     MicrovmControllerVerifyStep { command: c } => argv_words(command: c)
-    MicrovmControllerReceiptStep { observe: c } => argv_words(command: c)
+    MicrovmControllerReceiptStep { observe: c, observe2: _, write: w } =>
+      concat(argv_words(command: c), concat(argv_words(command: w), []))
   }
   let offending = fold(
     words,
@@ -6566,6 +6555,29 @@ fn microvm_controller_kernel_pinned_digest() -> Digest {
 // empty pin either -- `echo '  file' | sha256sum -c -` fails -- but it failed
 // ON THE HOST, after the download. Here an empty pin refuses the PLAN, so a
 // release with nothing to verify against never downloads a binary at all.
+// THE GUEST KERNEL'S OWN PIN. The retired builder read
+// runner_guest_kernel_artifact.integrity and refused the whole leg with
+// `exit 1` when the row was unpinned; here an unpinned row refuses the PLAN
+// with the cause in the text, so nothing runs and the reason names the row.
+fn microvm_controller_guest_kernel_pinned_digest() -> Digest {
+  match runner_guest_kernel_artifact.integrity {
+    ArtifactDigestPinned { digest: digest, provenance: _ } => digest
+    ArtifactDigestUnpinned { cause: _ } => sha256_digest(hex: "" as NonEmptyStr)
+    ArtifactDigestNotPinnable { cause: _ } => sha256_digest(hex: "" as NonEmptyStr)
+  }
+}
+
+fn microvm_controller_guest_kernel_pin_refusal() -> String {
+  match runner_guest_kernel_artifact.integrity {
+    ArtifactDigestPinned { digest: _, provenance: _ } => ""
+    ArtifactDigestUnpinned { cause: cause } => join([microvm_controller_install_edge,
+      " refused before any operation ran: the guest kernel artifact row is unpinned (", cause,
+      "); the retired pipeline emitted `exit 1` here after its earlier legs had already run"], "")
+    ArtifactDigestNotPinnable { cause: cause } => join([microvm_controller_install_edge,
+      " refused before any operation ran: the guest kernel artifact row is unpinnable (", cause, ")",], "")
+  }
+}
+
 fn microvm_controller_pinned_digest_refusal() -> String {
   if string_length(s: firecracker_release_aarch64_tarball_sha256 as String) == 64 {
     ""
@@ -6594,9 +6606,19 @@ fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> Micro
   } else {
     ""
   }
-  let pin_refusal = microvm_controller_pinned_digest_refusal()
+  let pin_refusal = if microvm_controller_pinned_digest_refusal() != "" {
+    microvm_controller_pinned_digest_refusal()
+  } else {
+    microvm_controller_guest_kernel_pin_refusal()
+  }
   let kernel_digest = microvm_controller_kernel_pinned_digest()
-  let steps = microvm_controller_install_steps(revision: revision, release_dir: release_dir, kernel_digest: kernel_digest)
+  let guest_kernel_digest = microvm_controller_guest_kernel_pinned_digest()
+  let steps = microvm_controller_install_steps(
+    revision: revision,
+    release_dir: release_dir,
+    kernel_digest: kernel_digest,
+    guest_kernel_pinned_digest: guest_kernel_digest,
+  )
   let invariant_refusal = fold(
     steps,
     init: "",
@@ -6616,20 +6638,34 @@ fn microvm_controller_install_staging(revision: ReleaseRevisionBinding) -> Micro
 // THE STEP LIST, exactly the retired intent's order. The tree-copy leg is
 // W6's vertical and is named here as ONE step (the fold calls the real
 // function; see microvm_controller_run_tree_install).
+// THE STEP LIST, exactly the retired intent's order, as pure data.
 fn microvm_controller_install_steps(
   revision: ReleaseRevisionBinding,
   release_dir: String,
   kernel_digest: Digest,
+  guest_kernel_pinned_digest: Digest,
 ) -> List<MicrovmControllerInstallStep> {
-  let stage = microvm_controller_stage_dir(revision: revision)
-  let tarball = microvm_controller_tarball_stage_path(revision: revision)
+  let stage = microvm_controller_stage_dir
+  let tarball = microvm_controller_tarball_stage_path()
+  let image_root = workspace_installed_image_root(release_dir: release_dir, identity: workspace_demo_image_identity())
+  let kernel_installed = concat(image_root, concat("/", runner_guest_kernel_artifact.filename as String))
+  let rootfs = concat(image_root, "/workspace.ext4")
+  let grant_stage = concat(workspace_dispatch_grant_path, microvm_controller_stage_suffix)
+  let grant_pending = concat(workspace_dispatch_grant_path, ".pending")
   concat(
     [
-      // microvm_controller_vmm_install_steps.
+      // microvm_controller_vmm_install_steps. Elevation matches the retired
+      // builder leg for leg: mkdir/curl/tar ran as the deploying user (their
+      // text came from shell_command_text_of_argv), while each install went
+      // through shell_privileged_command_text_of_argv -- so each install below
+      // carries sudo_elevate_command and the three others do not.
       microvm_controller_argv_step(name: "vmm stage dir", command: mkdir_parents_command(path: stage)),
       microvm_controller_argv_step(
         name: "vmm tarball download",
-        command: curl_download_command(url: firecracker_release_download_url(), destination: tarball),
+        command: curl_download_command(
+          url: firecracker_release_download_url(rel: microvm_controller_firecracker_release),
+          destination: tarball,
+        ),
       ),
       MicrovmControllerVerifyStep {
         name: "vmm tarball digest",
@@ -6647,8 +6683,8 @@ fn microvm_controller_install_steps(
           mode: install_executable_shared_mode,
           owner: microvm_controller_owner,
           group: microvm_controller_owner,
-          source: join([stage, "/", firecracker_release_binary_path_in_tarball()], ""),
-          dest: microvm_controller_vmm_binary(revision: revision),
+          source: join([stage, "/", firecracker_release_binary_path_in_tarball(rel: microvm_controller_firecracker_release)], ""),
+          dest: microvm_controller_vmm_binary(release_dir: release_dir),
         )),
       ),
       microvm_controller_argv_step(
@@ -6657,21 +6693,20 @@ fn microvm_controller_install_steps(
           mode: install_executable_shared_mode,
           owner: microvm_controller_owner,
           group: microvm_controller_owner,
-          source: join([stage, "/", firecracker_release_jailer_path_in_tarball()], ""),
-          dest: microvm_controller_jailer_binary(revision: revision),
+          source: join([stage, "/", firecracker_release_jailer_path_in_tarball(rel: microvm_controller_firecracker_release)], ""),
+          dest: microvm_controller_jailer_binary(release_dir: release_dir),
         )),
       ),
       // The vmm receipt: the two binaries' sha256sum lines, OBSERVED by this
       // edge and installed as stdin data. The retired leg piped sha256sum into
-      // `install /dev/stdin`; here the lines are the fold's own observed text,
-      // so the receipt records the binaries that were installed. The reader
+      // `install /dev/stdin`; here the bytes written are the bytes observed, so
+      // the receipt records the binaries this edge installed. The reader
       // (apply.dag microvm_controller_vmm_receipt_present) checks both binary
-      // names appear, and they do: each line is sha256sum's own output for the
-      // installed path.
+      // names appear, and they do -- each line is sha256sum's own output.
       MicrovmControllerReceiptStep {
         name: "vmm receipt",
-        observe: sha256sum_file_command(path: microvm_controller_vmm_binary(revision: revision)),
-        observe2: sha256sum_file_command(path: microvm_controller_jailer_binary(revision: revision)),
+        observe: sha256sum_file_command(path: microvm_controller_vmm_binary(release_dir: release_dir)),
+        observe2: sha256sum_file_command(path: microvm_controller_jailer_binary(release_dir: release_dir)),
         write: sudo_elevate_command(command: coreutils_install_file_owned_argv(
           mode: install_file_shared_mode,
           owner: microvm_controller_owner,
@@ -6679,27 +6714,21 @@ fn microvm_controller_install_steps(
           source: "/dev/stdin",
           dest: microvm_controller_vmm_receipt_path(revision: revision),
         )),
-        subject: microvm_controller_vmm_binary(revision: revision),
+        subject: microvm_controller_vmm_binary(release_dir: release_dir),
       },
     ],
     concat(
       [
-        // workspace_image_install_steps.
-        MicrovmControllerVerifyStep {
-          name: "workspace guest kernel digest",
-          command: sha256sum_file_command(path: runner_guest_base_artifact_path()),
-          expected: kernel_digest,
-          subject: runner_guest_base_artifact_path(),
-        },
-        MicrovmControllerVerifyStep {
-          name: "workspace guest image digest",
-          command: sha256sum_file_command(path: workspace_image_path()),
-          expected: kernel_digest,
-          subject: workspace_image_path(),
-        },
+        // workspace_image_install_steps, leg for leg. The digests checked here
+        // are each file's OWN pinned value (the guest kernel artifact row's
+        // integrity, the demo-image identity), not the firecracker release pin,
+        // and each check follows the install that produced the file -- the
+        // retired builder verified the INSTALLED copy, which is what a host can
+        // actually be wrong about. An unpinned artifact row refuses the plan
+        // (microvm_controller_install_staging) rather than skipping the check.
         microvm_controller_argv_step(
           name: "workspace image dir",
-          command: sudo_elevate_command(command: coreutils_install_directory_argv(paths: [workspace_installed_image_root()])),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: image_root)),
         ),
         microvm_controller_argv_step(
           name: "workspace kernel install",
@@ -6707,21 +6736,34 @@ fn microvm_controller_install_steps(
             mode: install_file_shared_mode,
             owner: microvm_controller_owner,
             group: microvm_controller_owner,
-            source: runner_guest_base_artifact_path(),
-            dest: join([workspace_installed_image_root(), "/", "gunbc-kernel"], ""),
+            source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact),
+            dest: kernel_installed,
           )),
         ),
+        MicrovmControllerVerifyStep {
+          name: "workspace guest kernel digest",
+          command: sha256sum_file_command(path: kernel_installed),
+          expected: guest_kernel_pinned_digest,
+          subject: kernel_installed,
+        },
         microvm_controller_argv_step(
-          name: "workspace image install",
+          name: "workspace rootfs install",
           command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
             mode: install_file_shared_mode,
             owner: microvm_controller_owner,
             group: microvm_controller_owner,
-            source: workspace_image_path(),
-            dest: join([workspace_installed_image_root(), "/", "workspace-demo.img"], ""),
+            source: workspace_image_path(root: workspace_image_staging_root),
+            dest: rootfs,
           )),
         ),
-        // install_d_owned_for_user x4 -- one step per directory, named.
+        MicrovmControllerVerifyStep {
+          name: "workspace rootfs digest",
+          command: sha256sum_file_command(path: rootfs),
+          expected: sha256_digest(hex: workspace_demo_image_identity()),
+          subject: rootfs,
+        },
+        // install_d_owned_for_user x4 -- one step per directory, each named, so
+        // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
           command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_slot_controller_receipt_dir)),
@@ -6741,7 +6783,7 @@ fn microvm_controller_install_steps(
       ],
       concat(
         // microvm_slot_unit_write_steps: staged write then owned install, per
-        // unit. Templates only -- the invariant check above refuses any start.
+        // unit. Templates only -- the invariant check refuses any start verb.
         concat(
           microvm_controller_staged_write_steps(
             name: "controller slice unit",
@@ -6807,49 +6849,53 @@ fn microvm_controller_install_steps(
             // workspace_dispatch_grant_steps: stage the sudoers drop-in, visudo
             // -cf the STAGED file, install it 0440 at the pending path, visudo
             // -cf the pending path, rename -T into place (atomic: a reader sees
-            // the old grant or the new one, never a partial), visudo -cf the
-            // live path. Every leg is its own named step.
+            // the old grant or the new one, never a partial write), visudo -cf
+            // the live path. Every leg is its own named step, so a refusal says
+            // which of the five the retired script's six lines would have been.
             [
               microvm_controller_stdin_step(
                 name: "dispatch grant (stage)",
-                command: sudo_elevate_command(command: dd_overwrite_path_command(path: concat(workspace_dispatch_grant_path, ".gunbc-stage"))),
+                command: sudo_elevate_command(command: dd_overwrite_path_command(path: grant_stage)),
                 stdin_payload: concat(workspace_dispatch_grant_content(
                   release_dir: release_dir as NonEmptyStr,
                 ), "\n"),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant visudo check (staged)",
-                command: visudo_check_command(file_path: concat(workspace_dispatch_grant_path, ".gunbc-stage")),
+                command: visudo_check_command(file: grant_stage),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant install (pending)",
                 command: sudo_elevate_command(command: coreutils_install_file_owned_argv(
-                  mode: microvm_controller_grant_mode,
+                  mode: approval_broker_helper_sudoers_mode,
                   owner: microvm_controller_owner,
                   group: microvm_controller_owner,
-                  source: concat(workspace_dispatch_grant_path, ".gunbc-stage"),
-                  dest: concat(workspace_dispatch_grant_path, ".pending"),
+                  source: grant_stage,
+                  dest: grant_pending,
                 )),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant policy check (pending)",
-                command: visudo_policy_check_command(file_path: concat(workspace_dispatch_grant_path, ".pending")),
+                command: visudo_policy_check_command(file: grant_pending),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant rename",
                 command: sudo_elevate_command(command: mv_exact_destination_command(
-                  source: concat(workspace_dispatch_grant_path, ".pending"),
+                  source: grant_pending,
                   destination: workspace_dispatch_grant_path,
                 )),
               ),
               microvm_controller_argv_step(
                 name: "dispatch grant policy check (live)",
-                command: visudo_policy_check_command(file_path: workspace_dispatch_grant_path),
+                command: visudo_policy_check_command(file: workspace_dispatch_grant_path),
               ),
             ],
-            // systemctl daemon-reload, LAST: the units above are templates;
-            // the reload makes them known and starts nothing.
-            [microvm_controller_argv_step(name: "systemd daemon-reload", command: systemctl_daemon_reload_command())],
+            // systemctl daemon-reload, LAST: the units above are templates; the
+            // reload makes them known and starts nothing.
+            [microvm_controller_argv_step(
+              name: "systemd daemon-reload",
+              command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(),
+            )],
           ),
         ),
       ),
@@ -6877,27 +6923,6 @@ type MicrovmControllerFoldAcc
 // THE PER-STEP RUNNER. Bytes on stdin go through the stdin seam (which enforces
 // the payload bound before any write); words alone go through the plain seam.
 // A non-zero exit is returned as data for the fold, not swallowed.
-fn microvm_controller_run_step(step: MicrovmControllerInstallStep, transport: HostEffectTransport) -> MicrovmControllerStepRun {
-  match step {
-    MicrovmControllerArgvStep { command: command, stdin_payload: stdin_text } => {
-      let outcome = if stdin_text == "" {
-        run_argv_over_host_effect_transport(command: command, transport: transport)
-      } else {
-        run_argv_stdin_over_host_effect_transport(command: command, stdin_payload: stdin_text, transport: transport)
-      }
-      match outcome {
-        RunArgvTransportObserved { observed: observed } => StepRan {
-          exit_code: observed.exit_code,
-          stdout: observed.stdout,
-          stderr: observed.stderr,
-        }
-        RunArgvTransportRefused { reason: why } => StepRefused { reason: why }
-      }
-    }
-    _ => StepRefused { reason: "the argv runner received a step it does not run" }
-  }
-}
-
 // THE VERIFY LEG: run the digest command, then compare its parsed stdout
 // against the PINNED value. Unparseable output and a mismatch are both
 // non-zero exits with the reason in stderr, so the fold's failure text says
@@ -7036,8 +7061,8 @@ fn microvm_controller_tree_install_verdict_text(verdict: ApprovalBrokerTreeInsta
 
 fn microvm_controller_tree_install_succeeded(verdict: ApprovalBrokerTreeInstallVerdict) -> Bool {
   match verdict {
-    TreeInstallConverged { _ } => true
-    TreeInstallRefused { _ } => false
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => true
+    TreeInstallRefused { step: _, reason: _ } => false
   }
 }
 
