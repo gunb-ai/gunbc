@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import std.content_hash { Sha256Digest }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.gnu_coreutils { rm_force_command, cp_command }
+import extdeps.tools.gnu_coreutils { rm_force_command, cp_command, mv_exact_destination_command, ln_symbolic_force_command }
 import extdeps.ninfer.ninfer_serve { NinferModelsAdvertised, ninfer_serve_launch_argv }
 import gunbc.harness.operator_pod_launch { operator_pod_listen_port }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
@@ -189,4 +189,11 @@ test fn an_unreadable_model_link_refuses_the_switch() -> Bool {
 test fn a_writing_program_onto_a_digest_path_and_a_relative_operand_are_refused() -> Bool {
   serving_sequence_endangers(commands: [cp_command(source: "/tmp/x", destination: serving_digest_path(roots: w_roots, digest: w_digest))], protected: w_protected)
     && serving_sequence_endangers(commands: [rm_force_command(path: "sha256")], protected: w_protected)
+}
+
+// REVIEW 80991: a relative mv or ln operand is refused, not dropped: a rename onto sha256/<d> run from the
+// store root, and a link created at a relative model path, would otherwise be admitted on their one absolute operand.
+test fn relative_mv_and_ln_operands_are_refused() -> Bool {
+  serving_sequence_endangers(commands: [mv_exact_destination_command(source: "/root/serve/store/partial/d.1", destination: "sha256/d")], protected: w_protected)
+    && serving_sequence_endangers(commands: [ln_symbolic_force_command(target: "/root/serve/store/sha256/d", link_name: "model.ninfer")], protected: w_protected)
 }

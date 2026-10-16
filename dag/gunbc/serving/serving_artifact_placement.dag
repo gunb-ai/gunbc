@@ -264,8 +264,7 @@ fn serving_destination_forbidden(destination: String, protected: ServingProtecte
   serving_names_protected(argument: destination, protected: protected) || destination == protected.model_link
 }
 
-fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
-  let invocation = command.program.invocation as String
+fn serving_mutating_endangers(invocation: String, command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
   let destination = serving_destination(command: command)
   let source = serving_source(command: command)
   if invocation == "mv" {
@@ -275,13 +274,20 @@ fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPa
     if invocation == "ln" {
       serving_destination_forbidden(destination: destination, protected: protected)
     } else {
-      if serving_read_only_program(invocation: invocation) {
-        false
-      } else {
-        any(xs: serving_operands(command: command), predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
-          || any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) })
-      }
+      any(xs: serving_operands(command: command), predicate: fn(a) { serving_destination_forbidden(destination: a, protected: protected) })
     }
+  }
+}
+
+// A relative operand cannot be placed against the absolute protected set, so every program off the read-only
+// list that carries one is refused BEFORE the per-program branches (mv and ln included).
+fn serving_command_endangers(command: ArgvCommand, protected: ServingProtectedPaths) -> Bool {
+  let invocation = command.program.invocation as String
+  if serving_read_only_program(invocation: invocation) {
+    false
+  } else {
+    any(xs: serving_operand_words(command: command), predicate: fn(a) { serving_relative_operand(argument: a) })
+      || serving_mutating_endangers(invocation: invocation, command: command, protected: protected)
   }
 }
 
