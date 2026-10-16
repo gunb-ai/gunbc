@@ -188,7 +188,7 @@ import v1.compiler.trait_bound_witness {
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
-  lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
@@ -1521,8 +1521,10 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
         if is_width_nat_type_literal(n: n) {
           match expr_literal_int_optional(expr: n) {
             Present { value: v } =>
-              if v < 0 { Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) } }
-              else { Present { value: concat("crate::", module_to_filename(name: "std.machine_constraints"), "::StaticWidthIndex<", to_string(v), ">") } }
+              match static_width_index_declaring_module(env: env) {
+                Present { value: declaring } => Present { value: concat("crate::", module_to_filename(name: declaring), "::", static_width_index_arm_name(), "<", to_string(v), ">") }
+                Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+              }
             Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
           }
         } else if is_machine_width_phantom_token(name: name) {
@@ -3297,24 +3299,12 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
 // std.machine_constraints WidthResolution's StaticWidthIndex arm is indexed by a std.nat Nat; its
 // marker carries that index as a const generic so MachineWidth<8> and MachineWidth<16> are distinct
 // Rust types. PointerWidth and every other unit variant stay the bare unit marker.
-fn rust_phantom_zst_marker_def(vname: String) -> String {
-  let index_params = if vname == "StaticWidthIndex" { "<const N: u128>" } else { "" }
+fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
+  let index_params = if indexed { "<const N: u128>" } else { "" }
   concat(
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
     rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, index_params, ";"
   )
-}
-
-fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> String {
-  let markers = children
-    |> filter(child => child.children |> count == 0)
-    |> filter(child => is_phantom_unit_variant_type_arg(env: env, variant_name: authored_name(env: env, node: child)))
-    |> map(child =>
-      let vname = authored_name(env: env, node: child)
-      rust_phantom_zst_marker_def(vname: vname)
-    )
-    |> join(separator: "\n")
-  markers
 }
 
 fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
@@ -3324,7 +3314,13 @@ fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indi
   )
 }
 
-fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<String> {
+// One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
+type PhantomZstMarker {
+  name: String
+  indexed: Bool
+}
+
+fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZstMarker> {
   items
     |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
     |> fold(init: [], f: (acc, item) =>
@@ -3332,9 +3328,9 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
           if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !inner |> any(n => n == vname)
+            && !inner |> any(m => m.name == vname)
             && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
-            concat(inner, [vname])
+            concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
           } else { inner }
         } else { inner }
       )
@@ -3342,8 +3338,8 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
 }
 
 fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
-  collect_phantom_zst_marker_names(items: items, env: env)
-    |> map(vname => rust_phantom_zst_marker_def(vname: vname))
+  collect_phantom_zst_markers(items: items, env: env)
+    |> map(m => rust_phantom_zst_marker_def(vname: m.name, indexed: m.indexed))
     |> join(separator: "\n")
 }
 
@@ -5829,7 +5825,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
         || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
       )
       |> map(item => authored_name(env: scope.type_env, node: item)),
-    collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
+    collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env) |> map(m => m.name)
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)

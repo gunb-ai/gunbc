@@ -48,3 +48,16 @@ fn w_width_nat_literals_are_distinct_const_generic_types() -> Bool {
 test fn machine_width_8_and_16_are_distinct_types() -> Bool {
   w_width_nat_literals_are_distinct_const_generic_types()
 }
+
+fn w_unrelated_static_width_index_spelling_stays_unit_marker() -> Bool {
+  compile_dag_rust_emit_check(
+    "module unrelated_static_width_index\n\ntype Other = StaticWidthIndex | PointerWidth\n\ntype Holder<bits: Other>\n\ntype Held = Holder<StaticWidthIndex>\n",
+    "src/unrelated_static_width_index.rs",
+    ["pub struct StaticWidthIndex;", "Holder<StaticWidthIndex>"],
+    ["<const N: u128>", "StaticWidthIndex<"]
+  )
+}
+
+test fn unrelated_static_width_index_spelling_is_not_the_const_generic_arm() -> Bool {
+  w_unrelated_static_width_index_spelling_stays_unit_marker()
+}
