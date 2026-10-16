@@ -193,8 +193,8 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
     crate_relative_path: "src/cli_run/user_work_scope.rs",
     cause: SupportDirectoryMemberSource,
     reason: ReasonDeclaredHere {
-      detail: "Test/Run wrap trampoline, including MODELED_CAPPED_SYSTEM_SLICES, the wrap-time census of gunbc.live_deploy.slice_bounds declared_system_slice_memory_maxes. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
-      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored MODELED_CAPPED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (DESIGN 3).")
+      detail: "Test/Run wrap trampoline, including RECOGNIZED_SYSTEM_SLICES, the wrap-time census of gunbc.compute.unit_bounds recognized_system_slice. Seed cannot eval that fold at wrap time; standing_from_supplied plus standing_fixture_tests join the fold wires.",
+      dissolution: unbound_dissolution(description: "native emission of the Test/Run wrap trampoline from gunbc.compute.unit_bounds (the seed evals that fold at wrap time); then src/cli_run/user_work_scope.rs and the mirrored RECOGNIZED_SYSTEM_SLICES census delete together. Unbound because that emission declaration does not exist yet; naming it would be the fabricated-citation class (DESIGN 3).")
     }
   },
   retained_support_dir_member(path: "src/module_path_index/index.rs"),
