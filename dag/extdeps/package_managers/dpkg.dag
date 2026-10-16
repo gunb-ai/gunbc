@@ -47,6 +47,11 @@ service dpkg.Package {
 // 36375956111, srv1: "remote words are not portable under the far-side shell re-parse"), because the
 // word carries shell metacharacters. The Status line of the plain record is the same fact.
 data dpkg_query_program: NonEmptyStr = "dpkg-query"
+// THE dpkg BINARY ITSELF, a different program from dpkg-query above. dpkg(1) and dpkg-query(1) are
+// two executables with two calling conventions: the Status row runs `dpkg -s`, the Query row runs
+// `dpkg-query -s`. Naming both here keeps each program identity in the module that owns dpkg, so a
+// caller never carries a bare binary word and never spells one as the other.
+data dpkg_status_program: NonEmptyStr = "dpkg"
 
 fn dpkg_query_identity() -> ProgramIdentity = uncataloged_program(invocation: dpkg_query_program)
 
@@ -137,4 +142,26 @@ fn dpkg_query_status_verdict_of(exit_code: Int, stdout: String, stderr: String) 
 // process outputs for dpkg_query_status_verdict_of.
 fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
  argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
+}
+
+// THE INSTALL-STATE PROBE AS A TYPED COMMAND, the `dpkg -s` a caller asks before installing anything.
+// ITS AUTHORITY IS THE Operation ROW `Package.Status` above, whose transport shell argv is
+// ["dpkg","-s","{package}"]; the words here are that row's, spelled once for the sealed `ArgvCommand`
+// the transport-parameterized host-effect lane takes.
+// WHY A SEALED COMMAND AND NOT THE BINDER THE SIBLING DECLARES ABOVE. The row's own argv is read by the
+// Bash emitter through v2.std.operation_argv, which yields argv TEXT. The host-effect lane runs commands
+// over an argument-vector transport with no shell in it, and that seam takes a sealed `ArgvCommand` — a
+// program identity beside its argument tail — so there is no form of the row a call over that seam could
+// consume directly. The sibling `dpkg_query_status_command` and the systemctl command family
+// (`systemctl_daemon_reload_command`, `systemctl_start_command`) sit the same way beside their own rows:
+// one authority for the operation, one sealed spelling for the lane that cannot read it. WHAT KEEPS THE
+// TWO FROM DRIFTING is not the comment; it is `live_deploy_dpkg_status_argv_matches_op_row`, which
+// materializes the row and compares its argv to these words token by token — the check
+// `gunbc.systemd_run_transient.systemd_run_transient_operation_argv_matches_authority` records as the
+// answer to a duplicated argv: checked, never asserted.
+fn dpkg_status_command(package: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: dpkg_status_program),
+    arguments: ["-s", package as String],
+  )
 }
