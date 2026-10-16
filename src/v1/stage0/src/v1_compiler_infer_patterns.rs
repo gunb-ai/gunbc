@@ -1007,7 +1007,10 @@ pub fn never_identity_node(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
 }
 
 pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {
-    (n.occurrence_identity.clone() == identity.occurrence_identity.clone())
+    match (*identity.occurrence_identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => false,
+        _ => (n.occurrence_identity.clone() == identity.occurrence_identity.clone()),
+    }
 }
 
 pub fn node_names_never_declaration(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
