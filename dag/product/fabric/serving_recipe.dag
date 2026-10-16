@@ -13,10 +13,11 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
-import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifactSource, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_source }
+import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifactSource, NinferEngineRelease, ninfer_serve_81c8ce09_sm120_release, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_source }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
+import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
@@ -121,10 +122,17 @@ type ServingThroughput
   = ThroughputOperatorReading { tokens_per_second: TokensPerSecond, at_concurrency: Nat, standing: CitedFigureStanding }
   | ThroughputUnread
 
+// The engine is the engine's own typed release row (each in its own module), so a provision phase reads
+// the release's pins (ninfer: installed-file pins) to verify an install. A new engine is a new arm here
+// with its own extdeps module, never a string.
+type ServingEngine
+  = EngineNinfer { build: NinferEngineRelease }
+  | EngineVllmLab { build: VllmEngineRelease }
+
 type ServingRecipe {
   id: DeclarationRef
   model: ServingModelArtifact
-  engine: DeclarationRef
+  engine: ServingEngine
   catalog_unit: HarnessServingUnit?
   published_tcp_port: Port
   cards: List<ServingCardRequirement>
@@ -158,7 +166,7 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
     source: WeightsPlacedOnObjectStore { placement: rented_qwen3_8_27b_nvfp4_weights_placement },
     served_model_id: Present { value: operator_pod_ninfer_launch.model_id },
   },
-  engine: decl_ref(module_path: "gunbc.serving.rented_ninfer_source", decl_name: "ninfer_serve_81c8ce09_sm120_release"),
+  engine: EngineNinfer { build: ninfer_serve_81c8ce09_sm120_release },
   catalog_unit: Present { value: Qwen3_8_27bOnNinfer },
   published_tcp_port: operator_pod_listen_port,
   cards: [serving_card_class_rtx_pro_5000_blackwell, serving_card_class_rtx_pro_6000_blackwell],
@@ -188,7 +196,7 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
     source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
     served_model_id: none,
   },
-  engine: decl_ref(module_path: "extdeps.vllm.local_inference_lab_build", decl_name: "local_inference_lab_vllm_release"),
+  engine: EngineVllmLab { build: local_inference_lab_vllm_release },
   catalog_unit: none,
   published_tcp_port: 8000,
   cards: [serving_card_class_rtx_pro_6000_blackwell],

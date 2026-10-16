@@ -30,7 +30,7 @@ import product.fabric.selection {
   SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, select_supply,
 }
 import product.fabric.serving_recipe {
-  ServingRecipe, ThroughputUnread, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
+  ServingRecipe, ThroughputUnread, EngineNinfer, EngineVllmLab, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm, serving_recipes_interchangeable,
   serving_recipe_frontier, ServingCardFacts, ServingCardVerdict, CardAccepted, CardRefusedWrongCard,
   CardRefusedDriverBelowFloor, CardRefusedDriverUnread, CardScreenedOnUncitedFloor, serving_recipe_accepts_card,
   ServingCardSupply, RentedCardSupply, OwnedCardSupply, ServingDiskRate,
@@ -234,7 +234,14 @@ test fn serving_recipe_frontier_builds_a_keyed_roster() -> Bool {
 }
 
 test fn flash_next_engine_ref_names_the_lab_release_row() -> Bool {
-  serving_recipe_flash_next_lab_vllm.engine.decl_name as String == "local_inference_lab_vllm_release"
+  (match serving_recipe_flash_next_lab_vllm.engine {
+    EngineVllmLab { build: r } => (r.release_name as String) == (local_inference_lab_vllm_release.release_name as String)
+    EngineNinfer { build: _ } => false
+  })
+    && (match serving_recipe_qwen3_8_27b_nvfp4_ninfer.engine {
+      EngineNinfer { build: _ } => true
+      EngineVllmLab { build: _ } => false
+    })
     && (match local_inference_lab_vllm_release.standing {
       TranscribedUncited { read_obligation: _ } => true
       _ => false
