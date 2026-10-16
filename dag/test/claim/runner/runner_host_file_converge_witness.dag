@@ -363,19 +363,20 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
 }
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
-// before any SSH. On srv1, committed width 5 (user-work 88 GiB, operator ruling 2026-10-16) desires
-// 01 through 04; fabric member 13 is not a retiree; the union of open rows retires 05..12 and 14..50.
+// before any SSH. On srv1, committed width 3 (user-work 88 GiB plus the stacked attempt-worker
+// slice) desires 01 and 02; fabric member 13 is not a retiree; the union of open rows retires
+// 03..12 and 14..50.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
-      length(s.desired_units) == 4
+      length(s.desired_units) == 2
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
-        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-04.service")
-        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-05.service")
-        && length(s.retired_units) == 45
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-05.service")
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-06.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
+        && length(s.retired_units) == 47
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-50.service")
         && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-13.service")
