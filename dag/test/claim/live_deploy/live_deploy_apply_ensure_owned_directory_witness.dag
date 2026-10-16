@@ -27,7 +27,7 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, EnsureOwnedDirectory,
   executor_privileged_operation_elevated_command,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect {
   HostEffectIntent, HostEffectEvidence, HostEffectTransport, HostEffect, HostOs, LocalShell,
@@ -159,7 +159,10 @@ fn w_intent() -> HostEffectIntent {
 // refuses typed, before touching a session, because that arm's own authority is a separate change.
 // That is what makes the real-route claim below both real and hermetic.
 fn w_unreachable_transport() -> HostEffectTransport {
-  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+  // ANNOTATED SCRUTINEE: the fixture hands back an optional and the checker will not guess an
+  // arm's meaning from an uninstantiated generic, so the produced value carries its declared type.
+  let context: FleetSshExecutionContext? = fleet_ssh_execution_context_hermetic_witness_fixture()
+  match context {
     Absent => LocalShell
     Present { value: ctx } =>
       FleetSsh {
@@ -392,9 +395,9 @@ test fn each_refusal_names_the_directory_it_refused() -> Bool {
 }
 
 fn is_intent_of_host_os(applied: HostEffectIntent) -> Bool {
-  match applied {
-    HostEffectIntent { target: HostOs { node: _ } } => true
-    HostEffectIntent { target: _ } => false
+  match applied.target {
+    HostOs { node: _ } => true
+    _ => false
   }
 }
 
@@ -422,7 +425,7 @@ test fn the_privileged_write_is_the_sealed_install_operation_word_for_word() -> 
 }
 
 fn count_word(words: List<String>, wanted: String) -> Int {
-  fold(words, init: 0, f: (acc: Int, word: String) => if word == wanted { acc + 1 } else { acc })
+  fold(words, init: 0, f: (acc, word) => if word == wanted { acc + 1 } else { acc })
 }
 
 // ══ THE FOLD HALTS AT THE FIRST REFUSAL (set -e preserved, not weakened) ════════════════════════

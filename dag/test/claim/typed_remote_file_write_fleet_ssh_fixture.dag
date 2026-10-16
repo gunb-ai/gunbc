@@ -102,6 +102,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
     // what this context provides -- the host-effect runner's FleetSsh arm refuses typed, so the claim
     // runs the real leaf/provider/runner chain with nothing privileged spawned in CI.
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "the_srv1_demanded_directories_reach_the_leaf_and_refuse_without_a_transport"),
+    decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "w_unreachable_transport"),
     decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_ensure_owned_directory_witness", decl_name: "the_fold_halts_at_the_first_refused_directory_and_names_it"),
   ]
 {

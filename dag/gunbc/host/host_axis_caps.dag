@@ -696,17 +696,17 @@ fn slice_control_converge_stmts_for_unit(u: SliceControlUnit) -> List<Node> {
   }
 }
 
-fn slice_control_converge_stmts(host: HostIdentity) -> List<Node> {
-  match slice_control_plan_for(host: host) {
-    SliceControlPlanNotOwed => []
-    SliceControlPlanRefused { cause: _ } => []
-    SliceControlPlanDerived { units } =>
-      fold(units, init: [], f: (acc, u) => concat(acc, slice_control_converge_stmts_for_unit(u: u)))
-  }
+// THE CONTENT PRODUCER TAKES THE ROSTER, NOT THE HOST. Same reason as the caller: re-deriving the
+// plan here would put a second, unguarded copy of the NotOwed/Refused -> [] decision one layer below
+// the caller that already made it, and this is the function whose [] becomes an EMPTY SCRIPT -- the
+// quietest possible way to not converge a host, since an empty script applies cleanly and reports
+// nothing. Callers discriminate once and hand the Derived roster down.
+fn slice_control_converge_stmts(units: List<SliceControlUnit>) -> List<Node> {
+  fold(units, init: [], f: (acc, u) => concat(acc, slice_control_converge_stmts_for_unit(u: u)))
 }
 
-fn deploy_slice_control_converge_script(host: HostIdentity) -> String {
-  shell_command_text_of_stmts(stmts: slice_control_converge_stmts(host: host))
+fn deploy_slice_control_converge_script(units: List<SliceControlUnit>) -> String {
+  shell_command_text_of_stmts(stmts: slice_control_converge_stmts(units: units))
 }
 
 // Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
