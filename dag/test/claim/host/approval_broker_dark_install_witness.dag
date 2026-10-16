@@ -36,7 +36,7 @@ import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOw
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
-import extdeps.sudo.visudo { visudo_check_command }
+import extdeps.tools.findutils { find_untrusted_entries_command }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -91,15 +91,15 @@ test fn the_snapshot_readback_runs_two_bare_finds() -> Bool {
   count(dark_snapshot_readback_legs(dir: "/opt/gunbc/approval-broker-helpers/x")) == 2
 }
 
-// THE RED: the first leg fails (visudo on a file that does not exist), so the line stops there. The
+// THE RED: the first leg fails (find on a root that does not exist), so the line stops there. The
 // later leg would itself fail at a DIFFERENT step, so the verdict naming the first step is the proof
 // that no later leg decided it.
 test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
   let legs = [
-    DarkLegArgv { step: DarkStepSudoersCheck, command: visudo_check_command(file: "/nonexistent-w6b/none") },
+    DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root") },
     DarkLegSameHash { step: DarkStepSudoersCompare, left: "/nonexistent-w6b/a", right: "/nonexistent-w6b/b" },
   ]
-  step_of(s: dark_run_legs(legs: legs, transport: LocalShell)) == Present { value: DarkStepSudoersCheck }
+  step_of(s: dark_run_legs(legs: legs, transport: LocalShell)) == Present { value: DarkStepSnapshotReadback }
 }
 
 test fn an_unhashable_pair_fails_the_compare() -> Bool {
