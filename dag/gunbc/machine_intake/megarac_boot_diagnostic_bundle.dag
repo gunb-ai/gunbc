@@ -372,7 +372,7 @@ type SdrCacheReading
 // to; it comes through the managed host binding, so a row whose secured endpoint and observed endpoint
 // disagree is refused before a single read is made. The read functions below have no other way to name
 // a host -- there is no host constant left in this module to reach for.
-type MegaRacIpmiReadPolicy sole_constructor {
+type MegaRacIpmiReadPolicy {
   deadline: Second,
   kill_after: Second,
   // How many IPMI reads the attempt will make. The row knows because it knows its own SMpro site's
@@ -380,7 +380,7 @@ type MegaRacIpmiReadPolicy sole_constructor {
   planned_reads: Int,
 }
 
-type MegaRacRedfishReadPolicy sole_constructor {
+type MegaRacRedfishReadPolicy {
   read_deadline: Second,
   read_budget: Int,
   collection_page_bound: Int,
@@ -390,7 +390,7 @@ type MegaRacRedfishReadPolicy sole_constructor {
 
 // WHAT A ROW OWNS: the endpoint, the host the operator tools run on, the read bounds, the population
 // its own census recorded, and where it keeps retained evidence.
-type MegaRacBootRow sole_constructor {
+type MegaRacBootRow {
   controller: BmcControllerEndpoint,
   operator_host: NonEmptyStr,
   // What this machine calls itself in the text of a bundle it produced. The adapter prints whatever the
@@ -414,7 +414,7 @@ type MegaRacBootRow sole_constructor {
 // match is evidence only under the firmware and population the reference run was taken WITH, so both
 // scopes and the reference artifact are the row's claim about its own reference; the neutral module
 // compares captures against whatever the row names and never against a stored run.
-type MegaRacConsoleReference sole_constructor {
+type MegaRacConsoleReference {
   census_sol_artifact_path: NonEmptyStr,
   reference_firmware_scope: NonEmptyStr,
   reference_configuration_scope: NonEmptyStr,
@@ -424,7 +424,7 @@ type MegaRacConsoleReference sole_constructor {
 // receipt says about it, is the row's classification; this module carries the rendered answer into the
 // bundle text and the harness notes and does not decide it. A row that cannot classify its evidence
 // says so with an unread account -- it does not inherit another machine's answer.
-type MegaRacAccountReceipt sole_constructor {
+type MegaRacAccountReceipt {
   // The row's classification of its own evidence, or nothing when the row cannot classify it. Nothing
   // is a real answer here: it means the row read no account, and it is not the same as another row's
   // answer.
@@ -1952,7 +1952,7 @@ fn processor_members_text(row: MegaRacBootRow, m: MembersReading<RedfishProcesso
 
 fn sensors_text(row: MegaRacBootRow, s: SensorReading) -> String {
   match s {
-    SensorsRead { lines: ls, at: a, naming: n } => concat("read at ", a as String, ": ", megarac_sensor_table_text(row: row, naming: n, lines: ls, sockets: row.sensor_sockets))
+    SensorsRead { lines: ls, at: a, naming: n } => concat("read at ", a as String, ": ", megarac_sensor_table_text(naming: n, lines: ls, sockets: row.sensor_sockets))
     SensorsUnread { cause: c } => concat("UNREAD: ", bmc_read_cause_text(cause: c))
     SensorsNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }

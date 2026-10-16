@@ -18,7 +18,7 @@ module test.claim.machine_intake.megarac_boot_record_mapping_witness
 // own inputs -- so a failure means the classification is wrong, not the read.
 
 import std.types { NonEmptyStr }
-import std.text { string_contains }
+import std.algebra { string_contains }
 import std.measure { byte_size }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
 import gunbc.host.boot_attempt {
@@ -41,8 +41,10 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacPresentationObserved, MegaRacSessionRefused, MegaRacRawRead, CdErrorUnread, SessionRelease,
   SessionReleased, SessionReleaseRefused, SessionReleaseNotAttempted, RouteAlreadyPresented,
 }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, AmiMegaRac }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.endpoint { AmiMegaRac }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BmcChannelRead, BmcChannelStanding, BmcChannelFailed, BmcTimeout, HarnessFinding,
   MegaRacStalePowerOff, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffObserved,
   MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotObserved,
   MegaRacMediaAttach, MegaRacMediaAttachNotAttempted, MegaRacMediaAttachAttempted,
@@ -61,7 +63,6 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_handoff_call_result, megarac_handoff_media_record, megarac_end_media_record,
   megarac_power_after_attempt, megarac_override_consumption, megarac_harness_findings_neutral,
 }
-import gunbc.machine_intake.mtcollins1_power_on_account { BmcChannelRead }
 
 // ── FIXTURES ─────────────────────────────────────────────────────────────────────────
 
@@ -236,6 +237,7 @@ test fn an_unconfirmed_handoff_call_stays_unconfirmed() -> Bool {
   match megarac_handoff_call_result(h: MegaRacHandoffAttemptedUnconfirmed { reason: "no answer" }) {
     HandoffAttemptedUnconfirmed { reason: r } => r == "no answer"
     HandoffConfirmed => false
+    HandoffRefused { reason: _ } => false
   }
 }
 
@@ -345,7 +347,7 @@ test fn an_override_read_that_failed_says_so() -> Bool {
 // ── HARNESS FINDINGS: every raw arm onto its neutral arm ─────────────────────────────
 
 fn every_read() -> List<HarnessFinding> {
-  [MegaRacEveryReadFailed { failed: [BmcChannelRead { channel: "ipmi", ok: false, detail: "timeout" }] }]
+  [MegaRacEveryReadFailed { failed: [BmcChannelRead { channel: "ipmi", standing: BmcChannelFailed { cause: BmcTimeout { endpoint: "bmc", at: "90000000001", detail: "timeout" } } }] }]
 }
 
 // One failed channel in the raw finding becomes a count and the channel's own name, both derived
@@ -370,7 +372,7 @@ test fn a_media_not_ready_finding_anchors_on_the_classified_record() -> Bool {
   let mapped = megarac_harness_findings_neutral(raw: raw)
   count(mapped) == 1 && any(mapped, f => match f {
     MediaAttachNotReady { record: r } => match r {
-      MediaAttachAttempted { medium_image_name: n, presentation: p, _ } => n == "m" && p != Presented
+      MediaAttachAttempted { medium_image_name: n, medium_image_sha256: _, power: _, stale_power_off: _, presentation: p } => n == "m" && p != Presented
       MediaAttachNotAttempted { reason: _ } => false
     }
     _ => false

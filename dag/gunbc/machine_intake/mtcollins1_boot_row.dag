@@ -84,6 +84,19 @@ fn mtcollins1_boot_ipmi_read_count() -> Int {
   4 + smpro_site_probe_bound(standing: mtcollins1_smpro_site())
 }
 
+// How many sockets this row's census reported. Derived from the population above, never restated: a
+// consumer that wants the number asks the row, and a row whose population changes changes this too.
+fn mtcollins1_census_socket_count() -> Int {
+  count(mtcollins1_census_sockets())
+}
+
+// Where this row retains the KVM observer capture for one attempt. The path shape is the row's own
+// artifact convention, built from its retained-artifact prefix so the KVM capture lands beside the
+// rest of the attempt's evidence rather than at an unrelated hard-coded prefix.
+fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
+  concat(mtcollins1_boot_retained_artifact_prefix, "kvm-", attempt)
+}
+
 // The console capture this row retains, decided by the neutral module against THIS row's reference. The
 // decision (size bound, reference comparison, checkpoint relations) is gunbc.host.boot_attempt's; the
 // measured facts it runs on are this row's.
@@ -119,15 +132,10 @@ type MegaRacBootRowStanding
   = BootRowFor { row: MegaRacBootRow }
   | BootRowEndpointMismatch { expected: NonEmptyStr, observed: NonEmptyStr }
 
-// THE ROW. `controller` must be the endpoint mtcollins1's access observation records; anything else is
-// refused rather than answered with mtcollins1's measurements.
-fn mtcollins1_boot_row(controller: BmcControllerEndpoint) -> MegaRacBootRowStanding {
-  if controller.host != mtcollins1_endpoint.host {
-    BootRowEndpointMismatch { expected: mtcollins1_endpoint.host, observed: controller.host }
-  } else {
-    BootRowFor {
-      row: MegaRacBootRow {
-        controller: controller,
+// THE ROW, once. Every reading of mtcollins1's row -- the checked one below, the run procedure's
+// -- is this same value, so no consumer can be handed a row that disagrees with another's.
+data mtcollins1_boot_row_value: MegaRacBootRow = MegaRacBootRow {
+        controller: mtcollins1_endpoint,
         operator_host: operator_host_mtcollins1 as NonEmptyStr,
         // What mtcollins1 calls itself. This is the row's word, not the adapter's: a MegaRAC adapter
         // has no name to print.
@@ -153,7 +161,16 @@ fn mtcollins1_boot_row(controller: BmcControllerEndpoint) -> MegaRacBootRowStand
           reference_firmware_scope: mtcollins1_census_reference_firmware_scope,
           reference_configuration_scope: mtcollins1_census_reference_configuration_scope,
         },
-      },
-    }
+}
+
+// THE ROW, checked. `controller` must be the endpoint mtcollins1's access observation records;
+// anything else is refused rather than answered with mtcollins1's measurements. The admitted row IS
+// mtcollins1_boot_row_value -- checked admission chooses whether you get the row at all, it does not
+// build a second copy of it.
+fn mtcollins1_boot_row(controller: BmcControllerEndpoint) -> MegaRacBootRowStanding {
+  if controller.host != mtcollins1_endpoint.host {
+    BootRowEndpointMismatch { expected: mtcollins1_endpoint.host, observed: controller.host }
+  } else {
+    BootRowFor { row: mtcollins1_boot_row_value }
   }
 }

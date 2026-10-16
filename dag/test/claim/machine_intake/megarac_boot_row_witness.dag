@@ -23,7 +23,7 @@ module test.claim.machine_intake.megarac_boot_row_witness
 
 import std.types { NonEmptyStr, String }
 import std.measure { second }
-import std.text { string_contains }
+import std.algebra { string_contains }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BootDiagnosticBundle, MegaRacAccountReceipt, MegaRacBootRow, MegaRacConsoleReference,
