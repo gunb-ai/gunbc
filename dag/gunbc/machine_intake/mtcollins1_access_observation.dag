@@ -5,13 +5,7 @@ import std.types { EpochMs, Int, NonEmptyStr, String }
 import std.measure { Second, second }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
-import extdeps.bmc.capability {
-  BmcFirmwareReleaseCapabilityRow,
-  BmcFirmwareReleaseIdentity,
-  CapabilityBootSourceOverride,
-  CapabilityOemRemoteMedia,
-  CapabilityPowerControl,
-}
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessObservationStanding,
@@ -280,15 +274,6 @@ data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserve
 // probably real, and it is still omitted because that session was driven by hand from a terminal
 // and not through any modeled route. A capability this row asserts must be one the AUTOMATION can
 // perform.
-
-data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareReleaseCapabilityRow {
-  firmware: mtcollins1_firmware,
-  capabilities: [
-    CapabilityBootSourceOverride,
-    CapabilityPowerControl,
-    CapabilityOemRemoteMedia,
-  ],
-}
 
 // THE BOUND ON ONE READ-ONLY ipmitool EXCHANGE WITH THIS UNIT'S CONTROLLER, as `timeout --kill-after`
 // operands. A fact about reaching this BMC, not about any one run that reads it: the boot's diagnostic

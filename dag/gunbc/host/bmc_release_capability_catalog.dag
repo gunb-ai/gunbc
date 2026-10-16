@@ -167,7 +167,11 @@ fn megarac_evidence_attempt_identity(evidence: MegaRacCapabilityEvidence) -> Att
 // ONE RELEASE'S ESTABLISHED CAPABILITY SET: the release identity, the row we established for it, how the
 // version was established, the evidence that established the row, and our citation.
 type MegaRacReleaseCapabilityEntry {
-  firmware: BmcFirmwareReleaseIdentity,
+  // THE SINGLE RELEASE KEY of this catalog row is row.firmware: the release identity the capability
+  // row itself declares. There is deliberately no second firmware field here -- an entry keyed by one
+  // build while its row describes another is the reflash-staleness defect wearing a different hat, and
+  // a coherence check that is not on the only path is a check that will be bypassed. Consumers reach
+  // the release identity through the row (entry.row.firmware), so key and fact cannot disagree.
   row: BmcFirmwareReleaseCapabilityRow,
   version: MegaRacReleaseVersionStanding,
   evidence: MegaRacCapabilityEvidence,
@@ -225,7 +229,6 @@ data megarac_0_45_3_operator_attestation_instant: ObservationInstant = Observati
 // it, the 0.45.3 row on an executed run that did not itself read the version plus an operator readback.
 data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
   MegaRacReleaseCapabilityEntry {
-    firmware: megarac_firmware_0_32,
     row: BmcFirmwareReleaseCapabilityRow {
       firmware: megarac_firmware_0_32,
       capabilities: [
@@ -251,7 +254,6 @@ data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
   // is not claimed here — our coverage obligation, which is precisely the kind of fact that must not live
   // upstream.
   MegaRacReleaseCapabilityEntry {
-    firmware: megarac_firmware_0_45_3,
     row: BmcFirmwareReleaseCapabilityRow {
       firmware: megarac_firmware_0_45_3,
       capabilities: [
@@ -300,7 +302,7 @@ fn megarac_release_entry_is_coherent(entry: MegaRacReleaseCapabilityEntry) -> Bo
     MegaRacEvidenceExecutedRun { run_id: _, run_attempt: _, exercised: _, firmware_read: read, receipt_path: _ } =>
       if machine_read {
         match read {
-          MegaRacRunReadFirmware { read: r } => bmc_firmware_release_identity_eq(a: r, b: entry.firmware)
+          MegaRacRunReadFirmware { read: r } => bmc_firmware_release_identity_eq(a: r, b: entry.row.firmware)
           MegaRacRunRecordedNoFirmware { why: _ } => false
         }
       } else {
@@ -318,10 +320,16 @@ type MegaRacReleaseCapabilityLookup
   = MegaRacReleaseCapabilityKnown { row: BmcFirmwareReleaseCapabilityRow }
   | MegaRacReleaseCapabilityUncatalogued { firmware: BmcFirmwareReleaseIdentity }
   | MegaRacReleaseCapabilityAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
+    // The release IS catalogued, but its entry's own evidence does not support its version standing.
+    // Distinct from Uncatalogued, whose repair is "go read the build": here the row exists and is
+    // wrongly asserted, so the repair is to fix or withdraw the entry. Different owner, different
+    // action, therefore a different arm — DESIGN's failure-mode list forbids one symbol standing for
+    // two conditions whose remedies point at different people.
+    | MegaRacReleaseCapabilityIncoherent { firmware: BmcFirmwareReleaseIdentity }
 
 fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> MegaRacReleaseCapabilityLookup {
   let hits = megarac_release_capability_catalog
-    |> filter(entry => bmc_firmware_release_identity_eq(a: entry.firmware, b: firmware))
+    |> filter(entry => bmc_firmware_release_identity_eq(a: entry.row.firmware, b: firmware))
   let n = count(hits)
   if n == 0 {
     MegaRacReleaseCapabilityUncatalogued { firmware: firmware }
@@ -329,7 +337,15 @@ fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> M
     fold(
       hits,
       init: MegaRacReleaseCapabilityUncatalogued { firmware: firmware },
-      f: (_acc, entry) => MegaRacReleaseCapabilityKnown { row: entry.row },
+      // The ONLY path to a capability row: an entry whose version standing its own evidence does not
+      // support is refused rather than returned, so no consumer can be handed a row that drifted from
+      // the release it is keyed by, and no separate "check the key matches the row" call is needed
+      // somewhere else to keep the two honest.
+      f: (_acc, entry) => if megarac_release_entry_is_coherent(entry: entry) {
+        MegaRacReleaseCapabilityKnown { row: entry.row }
+      } else {
+        MegaRacReleaseCapabilityIncoherent { firmware: firmware }
+      },
     )
   } else {
     MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: n }

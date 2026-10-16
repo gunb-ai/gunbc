@@ -5,7 +5,6 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
-import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
 import gunbc.machine_intake.subject {
   IntakeAttemptId,
@@ -18,16 +17,16 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.hostname_allocation { HostnameAllocation, gunbc_fleet_hostname_allocations, allocated_canonical_hostname }
 import gunbc.rung_drop { RungDrop, Standing, Retired, dissolved_is_admissible }
 import gunbc.rung_drop.standing { standing_rung_drops }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_standing }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.machine_intake.ampere_smpro_observation {
-  SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
-}
+import gunbc.machine_intake.ampere_smpro_observation { smpro_pass_subject }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.host.smpro_platform_capability {
-  smpro_facility, SmproFacilityStanding, SmproFacilityCarried, SmproFacilityNotCarried,
-  SmproFacilityUnestablished,
+  SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
+  SmproPlatformUnestablished, smpro_platform_standing, smpro_platform_controller_host,
+  smpro_platform_is_well_formed, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
 }
 import gunbc.host.bmc_control_binding {
   BmcControlStanding, bmc_control_binding,
@@ -58,7 +57,9 @@ type ManagedHost sole_constructor {
   access: BmcAccessObservationStanding
   secure: BmcSecureStanding
   unit_hold: ResetUnitHold
-  smpro: SmproSiteStanding
+  // The platform verdict carries the site only where the platform has the interface, so a machine whose
+  // silicon does not carry SMpro is a well-formed row without inventing an Ampere observation.
+  smpro: SmproPlatformStanding
 }
 
 // WHETHER DRIVING THIS HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store
@@ -112,10 +113,15 @@ type ManagedHostAdmission sole_constructor {
   host: HostIdentity
   subject: MachineIntakeSubject
   access: BmcAccessObservationStanding
-  capability_row: BmcFirmwareReleaseCapabilityRow
+  // NO capability row here. It used to be carried in and then silently dropped by row_from_admission,
+  // because the row is a fact ABOUT A RELEASE that the catalog owns and resolves from the release the
+  // controller REPORTED (gunbc.host.host_capability_row) -- a second, hand-supplied path to it was a
+  // dead input and an attractor beside the catalog, able to disagree with the observation it described.
   secure: BmcSecureStanding
   hold: ManagedHostAdmissionHold
-  smpro: SmproSiteStanding
+  // The machine's SMpro FACT AS A PLATFORM QUESTION, not an always-present site: only a platform that
+  // carries the interface owes a site and an endpoint join, so an x86 machine is representable at all.
+  smpro: SmproPlatformStanding
   receipt: ManagedHostAdmissionReceipt
   current_subject: MachineIntakeSubject?
   covering_drop: DeclarationRef?
@@ -125,10 +131,9 @@ fn managed_host_admission(
   host: HostIdentity,
   subject: MachineIntakeSubject,
   access: BmcAccessObservationStanding,
-  capability_row: BmcFirmwareReleaseCapabilityRow,
   secure: BmcSecureStanding,
   hold: ManagedHostAdmissionHold,
-  smpro: SmproSiteStanding,
+  smpro: SmproPlatformStanding,
   receipt: ManagedHostAdmissionReceipt,
   current_subject: MachineIntakeSubject?,
   covering_drop: DeclarationRef?,
@@ -147,7 +152,6 @@ fn managed_host_admission(
     host: host,
     subject: subject,
     access: access,
-    capability_row: capability_row,
     secure: secure,
     hold: hold,
     smpro: smpro,
@@ -212,13 +216,6 @@ fn secure_controller_host(secure: BmcSecureStanding) -> NonEmptyStr? {
   }
 }
 
-fn smpro_controller_host(smpro: SmproSiteStanding) -> NonEmptyStr? {
-  match smpro {
-    SmproSiteRefused { cause: _ } => none
-    SmproSiteAdmitted { site: s } => Present { value: s.endpoint.host }
-  }
-}
-
 fn receipt_matches_record(record: ManagedHostAdmission) -> Bool {
   (record.receipt.host as String) == (record.host as String)
     && (record.receipt.secure_attempt as NonEmptyStr) == (record.subject.attempt_id as NonEmptyStr)
@@ -230,17 +227,23 @@ fn receipt_matches_record(record: ManagedHostAdmission) -> Bool {
 
 fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
   (record.secure.subject.subject.unit_key as NonEmptyStr) == (record.subject.subject.unit_key as NonEmptyStr)
+    // The arms must be the arms: a Carried platform must present a read site, and a platform that does
+    // not carry the interface must not smuggle one in.
+    && smpro_platform_is_well_formed(standing: record.smpro)
     && match access_controller_host(access: record.access) {
       Absent => false
       Present { value: access_host } =>
         match secure_controller_host(secure: record.secure) {
           Absent => false
           Present { value: secure_host } =>
-            match smpro_controller_host(smpro: record.smpro) {
-              Absent => false
-              Present { value: smpro_host } =>
-                (access_host as String) == (secure_host as String) && (secure_host as String) == (smpro_host as String)
-            }
+            (access_host as String) == (secure_host as String)
+            // ONLY a Carried platform has read anything, so only it has an endpoint to hold against the
+            // secured one. NotCarried / Unestablished name no endpoint at all -- requiring one is what
+            // forced an x86 host to fabricate an Ampere site in order to be managed at all.
+              && match smpro_platform_controller_host(standing: record.smpro) {
+                Absent => true
+                Present { value: smpro_host } => (secure_host as String) == (smpro_host as String)
+              }
         }
     }
 }
@@ -379,10 +382,9 @@ fn mtcollins1_managed_host_admission() -> ManagedHostAdmission? {
                   host: operator_host_mtcollins1,
                   subject: subject,
                   access: mtcollins1_access_standing,
-                  capability_row: mtcollins1_capability_row,
                   secure: secure,
                   hold: AdmissionHoldDecided { hold: mtcollins1_unit_hold() },
-                  smpro: mtcollins1_smpro_site(),
+                  smpro: smpro_platform_standing(access: mtcollins1_access_standing, site: mtcollins1_smpro_site()),
                   receipt: managed_host_admission_receipt(
                     host: operator_host_mtcollins1,
                     access_host: access_host,
@@ -550,7 +552,7 @@ fn managed_host_fixture(
   access: BmcAccessObservationStanding,
   secure: BmcSecureStanding,
   unit_hold: ResetUnitHold,
-  smpro: SmproSiteStanding,
+  smpro: SmproPlatformStanding,
 ) -> ManagedHost
   admit_callers: [
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
@@ -593,40 +595,38 @@ fn managed_host_fixture(
 // have. (An earlier version carried a DECLARED FRONTIER here asserting every managed host was an Altra
 // board and minting a subject for all of them: a host-name-shaped assumption sitting in generic code, and
 // exactly the thing this cut's x86 RED exists to prevent.)
-fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) -> SmproPassSubjectStanding? {
+fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) -> SmproSubjectOutcome {
   match control {
     BmcControlBound { route: r } =>
-      match managed_host_smpro_pass_licensing(facility: smpro_facility(access: host.access)) {
-        SmproPassLicensed =>
-          Present { value: smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: host.smpro) }
-        SmproPassNotLicensed { reason: _ } => none
+      match host.smpro {
+        // The only arm that can take a pass, and the only one that reads a site.
+        SmproPlatformCarried { family: _, site: site } =>
+          match smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: site) {
+            SmproPassSubjectBound { subject: s } => SmproSubjectMinted { subject: s }
+            SmproPassSiteRefused { cause: c } => SmproSubjectSiteRefused { cause: c }
+            SmproPassEndpointMismatch { bound: b, site: st } => SmproSubjectEndpointMismatch { bound: b, site: st }
+          }
+        // Named, and named BY THE PLATFORM: the controller is bound and healthy here, so a message
+        // claiming there is no controller would be false. The family is carried through so the reader
+        // can see WHICH silicon was asked about.
+        SmproPlatformNotCarried { family: family } => SmproSubjectNotCarried { family: family }
+        SmproPlatformUnestablished { reason: reason } => SmproSubjectUnestablished { reason: reason }
       }
-    BmcControlAccessUnobserved { endpoint: _ } => none
-    BmcControlNotSecured { cause: _ } => none
-    BmcControlEndpointMismatch { observed: _, secured: _ } => none
+    BmcControlAccessUnobserved { endpoint: _ } =>
+      SmproSubjectUnestablished { reason: "the controller's access standing is unobserved, so no control route is bound to read SMpro through" }
+    BmcControlNotSecured { cause: _ } =>
+      SmproSubjectUnestablished { reason: "the bound controller is not secured, so no control route is bound to read SMpro through" }
+    BmcControlEndpointMismatch { observed: _, secured: _ } =>
+      SmproSubjectUnestablished {
+        reason: "the observed controller and the secured account name different endpoints, so no control route is bound to read SMpro through",
+      }
   }
 }
 
 // WHETHER A HOST'S PLATFORM LICENCES AN SMpro PASS AT ALL, decided from the facility standing its bound
-// board establishes. A PURE DECISION, deliberately separated from the mint: smpro_pass_subject is a sealed
-// constructor whose admitted callers name managed_host_smpro_subject and one witness only, so the mint
-// stays in that one caller (widening a seal to let a test helper mint it would be the wrong fix) and this
-// is what a witness can exercise over every standing — the licensed one and the two that bind nothing.
-// Invert this fn or delete its call and w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject turns
-// red, which is the point: a gate no claim can falsify is not a gate.
-type SmproPassLicensing
-  = // The board admits an SoC family the cited carrying set names, so an SMpro pass may be paired with a
-    // site (the pairing itself is still refused by smpro_pass_subject if the site names another controller).
-    SmproPassLicensed
-  // The family does not carry the facility, or the board admits no family at all so nothing is known about
-  // the silicon. NO subject is bound — not an empty one and not a refused one — and the reason says which,
-  // because 'the family lacks it' and 'we do not know the family' are different answers.
-  | SmproPassNotLicensed { reason: NonEmptyStr }
-
-fn managed_host_smpro_pass_licensing(facility: SmproFacilityStanding) -> SmproPassLicensing {
-  match facility {
-    SmproFacilityCarried { family: _ } => SmproPassLicensed
-    SmproFacilityNotCarried { family: _ } => SmproPassNotLicensed { reason: "the bound board's SoC family does not carry SMpro" }
-    SmproFacilityUnestablished { reason: r } => SmproPassNotLicensed { reason: r }
-  }
-}
+// board establishes. THE ROW ITSELF CARRIES THAT DECISION: ManagedHost.smpro is a SmproPlatformStanding,
+// so the arms ARE the licensing -- Carried can take a pass, NotCarried and Unestablished bind no subject.
+// The separate SmproPassLicensing standing that used to say this is DELETED: it was a second
+// representation of the same three facts (parallel vocabulary, and one the mint could drift from), and the
+// gate is falsified better by the outcome than by a shadow of it -- see managed_host_smpro_subject, whose
+// SmproSubjectOutcome a mutation of the gate turns red.
