@@ -11096,13 +11096,11 @@ fn name_is_std_optional_payload_member(scope: InferScope, name: String) -> Bool 
   }
 }
 
-// A parent spelling is asked of the census (the declaration its mint is bound to), never compared.
-fn parent_name_is_std_optional(parent_name: String) -> Bool {
-  match kernel_mint_parent_identity(minted_name: parent_name) {
-    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } => declaration_is_std_optional(d: d)
-    VariantParentIdentified { key: _ } => false
-    VariantParentUnrecovered { cause: _ } => false
-    VariantParentBeforeInference => false
+// A parent spelling is resolved to its declaration and asked of the census, never compared.
+fn parent_name_is_std_optional(parent_name: String, scope: InferScope) -> Bool {
+  match lookup_type_by_name(env: scope.type_env, name: parent_name) {
+    Present { value: decl } => node_is_std_optional(n: decl, scope: scope)
+    Absent => false
   }
 }
 
@@ -11157,15 +11155,7 @@ fn optional_reading_by_census(n: Node, scope: InferScope, spelling: String) -> O
 }
 
 fn optional_reading_of_kernel_mint(kernel: String) -> OptionalDeclarationReading {
-  match kernel_mint_parent_identity(minted_name: kernel) {
-    VariantParentIdentified { key: VariantParentDeclaration { declaration: d } } =>
-      if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
-    VariantParentIdentified { key: _ } => IsOtherType
-    VariantParentUnrecovered { cause: _ } =>
-      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
-    VariantParentBeforeInference =>
-      if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
-  }
+  if qualified_last_segment(name: kernel) == "Optional" { OptionalUnrecovered { spelling: kernel } } else { IsOtherType }
 }
 
 // `Present { value: v }` UNDER AN EXPECTED OPTIONAL EXPECTS THE PAYLOAD FOR ITS VALUE. `T?`
@@ -11628,7 +11618,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => false
     }) || (match local_variant_parent {
-      Present { value: parent_name } => parent_name_is_std_optional(parent_name: parent_name)
+      Present { value: parent_name } => parent_name_is_std_optional(parent_name: parent_name, scope: scope)
       Absent => false
     })
     let skip_owner_widen = type_name_declares_own_product || (parent_is_std_optional && name_is_std_optional_present_arm(scope: scope, name: type_name.value))

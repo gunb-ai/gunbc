@@ -17760,16 +17760,13 @@ pub fn name_is_std_optional_payload_member(scope: Rc<InferScope>, name: String) 
     }
 }
 
-pub fn parent_name_is_std_optional(parent_name: String) -> bool {
-    match (*kernel_mint_parent_identity(parent_name.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
-            VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                declaration_is_std_optional(d.clone())
-            }
-            _ => false,
-        },
-        VariantParentIdentity::VariantParentUnrecovered { cause: _, .. } => false,
-        VariantParentIdentity::VariantParentBeforeInference => false,
+pub fn parent_name_is_std_optional(parent_name: String, scope: Rc<InferScope>) -> bool {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
+        scope.type_env.clone(),
+        parent_name.clone(),
+    ) {
+        Some(decl) => node_is_std_optional(decl.clone(), scope.clone()),
+        std::option::Option::None => false,
     }
 }
 
@@ -17885,39 +17882,12 @@ pub fn optional_reading_by_census(
 }
 
 pub fn optional_reading_of_kernel_mint(kernel: String) -> Rc<OptionalDeclarationReading> {
-    match (*kernel_mint_parent_identity(kernel.clone())).clone() {
-        VariantParentIdentity::VariantParentIdentified { ref key, .. } => match key.as_ref() {
-            VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                if declaration_is_std_optional(d.clone()) {
-                    Rc::new(OptionalDeclarationReading::IsStdOptional)
-                } else {
-                    Rc::new(OptionalDeclarationReading::IsOtherType)
-                }
-            }
-            _ => Rc::new(OptionalDeclarationReading::IsOtherType),
-        },
-        VariantParentIdentity::VariantParentUnrecovered { cause: _, .. } => {
-            if (crate::v1_std_core::qualified_last_segment(kernel.clone())
-                == "Optional".to_string())
-            {
-                Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
-                    spelling: kernel.clone(),
-                })
-            } else {
-                Rc::new(OptionalDeclarationReading::IsOtherType)
-            }
-        }
-        VariantParentIdentity::VariantParentBeforeInference => {
-            if (crate::v1_std_core::qualified_last_segment(kernel.clone())
-                == "Optional".to_string())
-            {
-                Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
-                    spelling: kernel.clone(),
-                })
-            } else {
-                Rc::new(OptionalDeclarationReading::IsOtherType)
-            }
-        }
+    if (crate::v1_std_core::qualified_last_segment(kernel.clone()) == "Optional".to_string()) {
+        Rc::new(OptionalDeclarationReading::OptionalUnrecovered {
+            spelling: kernel.clone(),
+        })
+    } else {
+        Rc::new(OptionalDeclarationReading::IsOtherType)
     }
 }
 
@@ -18692,7 +18662,9 @@ Rc::new(FieldInferResult {
                     }
                     std::option::Option::None => false,
                 }) || match local_variant_parent.clone() {
-                    Some(parent_name) => parent_name_is_std_optional(parent_name.clone()),
+                    Some(parent_name) => {
+                        parent_name_is_std_optional(parent_name.clone(), scope.clone())
+                    }
                     std::option::Option::None => false,
                 });
                 let skip_owner_widen = (type_name_declares_own_product.clone()

@@ -1,6 +1,8 @@
 module v2.test.claim.optional_sugar_declaration_bound
 
 import v2.compiler.resolve { ResolvedTree }
+import v2.std.qualified_name { optional_declaration_identity, qualified_name_to_dotted_string }
+import gunbc.structural_realization_bindings { optional_declaration_ref }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -201,3 +203,9 @@ test fn osd_the_conforming_declaration_is_not_refused() -> Bool {
     && osd_accepted(o: osd_with_std_text(std_text: osd_std_optional(), body: "type U = Optional<Int>\n"))
 }
 
+
+// The v2 identity and the seed row name ONE declaration; qualified_name cannot import the row, so this
+// claim is the pairing (a disagreement between the two spellings is red here).
+test fn osd_identity_matches_the_seed_row() -> Bool {
+  qualified_name_to_dotted_string(qn: optional_declaration_identity()) == concat(optional_declaration_ref.module_path as String, ".", optional_declaration_ref.decl_name as String)
+}
