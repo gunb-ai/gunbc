@@ -202,8 +202,8 @@ type SoCFamily {
 fn soc_family_architecture(family: SoCFamily) -> Architecture? {
   match family.models |> first() {
     Present { value: lead } =>
-      if family.models |> all(m => m.architecture == lead) {
-        Present { value: lead }
+      if family.models |> all(m => m.architecture == lead.architecture) {
+        Present { value: lead.architecture }
       } else {
         none
       }
