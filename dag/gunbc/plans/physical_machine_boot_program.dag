@@ -65,7 +65,7 @@ fn cuts() -> List<MarkdownBlock> {
   [
     h2(text: "5. Cut order"),
     ul(items: [
-      li(text: "**Managed-host untangle (in flight):** 4b-ii census image chain (merged, #14065); 4d-ii neutral boot-attempt core plus MegaRAC adapter (#14064); 4d-i boot-run re-derivation; cut 1 physical subject join (#14062); cut 2 ManagedHost decomposition (#14063)."),
+      li(text: "**Managed-host untangle (in flight):** 4b-ii census image chain (merged, #14065); 4d-ii neutral boot-attempt core plus MegaRAC adapter (#14064); 4d-i boot-run re-derivation; cut 1 physical subject join (#14062); cut 2 ManagedHost decomposition (#14063). The untangle's own cut ledger (cuts 0-7 and O1a-O2, the governing import rule, the non-import census and the terminal receipt each cut owes) was the hand-written plan deleted by the plan bankruptcy; it is recoverable verbatim with `git show 80c2a87d1b6^:docs/plans/managed-host-untangle.md`, and in-tree modules still cite its cut numbers. This program supersedes its target (the managed-host lifecycle) but keeps its cut discipline."),
       li(text: "**3 — common boot transaction** built around the mtcollins1 boot, without changing its operational sequence."),
       li(text: "**4 — srv3 as the second forcing consumer:** a different BMC protocol and boot-selection shape, and OS installation rather than a diagnostic census."),
       li(text: "**5 — host_reset_return as the third:** no media, a terminal observed from another host, local disk as a first-class target; the old controller actuation is then deleted."),
