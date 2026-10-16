@@ -27,7 +27,7 @@ import gunbc.host.smpro_platform_capability {
   smpro_facility, smpro_facility_of_families, SmproFacilityStanding, SmproFacilityCarried,
   SmproFacilityNotCarried, SmproFacilityUnestablished, smpro_facility_licenses_read,
 }
-import extdeps.cpu.types { SoCFamily, soc_family_architecture }
+import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
@@ -287,6 +287,76 @@ test fn w_a_board_admitting_a_carrying_family_is_carried_even_beside_one_that_is
     SmproFacilityNotCarried { family: _ } => false
     SmproFacilityUnestablished { reason: _ } => false
   }
+}
+
+// RED (review 81149, finding 3): A FAMILY ROW THAT MERELY SPELLS ITS NAME 'Altra' DOES NOT CARRY SMpro.
+// Membership was first decided by comparing `name`, which handed the SMpro facility to any row that
+// wrote the right string while grouping entirely different silicon. Membership is now FAMILY IDENTITY —
+// the grouping of cited model rows — so this impostor, same name and same architecture as Altra but
+// grouping the x86 model row, must be answered NotCarried. A name-based test cannot produce this answer;
+// that is what makes the claim worth having.
+data altra_named_impostor_family: SoCFamily = SoCFamily {
+  name: "Altra",
+  models: [ryzen_9_7950x3d_catalog],
+}
+
+test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
+  // The premise, checked not assumed: same name as the carrying family, and NOT the same family.
+  let same_name = (altra_named_impostor_family.name as String) == (ampere_altra_soc_family.name as String)
+  let different_family = soc_family_eq(a: altra_named_impostor_family, b: ampere_altra_soc_family) == false
+  // ...and the verdict follows the identity, not the name.
+  let not_carried = match smpro_facility_of_families(families: [altra_named_impostor_family]) {
+    SmproFacilityNotCarried { family: _ } => true
+    SmproFacilityCarried { family: _ } => false
+    SmproFacilityUnestablished { reason: _ } => false
+  }
+  // And the real Altra row is still Carried, so the test is not simply rejecting everything.
+  let real_carried = match smpro_facility_of_families(families: [ampere_altra_soc_family]) {
+    SmproFacilityCarried { family: _ } => true
+    _ => false
+  }
+  same_name && different_family && not_carried && real_carried
+}
+
+// RED (review 81149 / manager): THE PLATFORM GATE ITSELF IS ENFORCED, NOT JUST ASSERTED. Deleting the
+// gate in managed_host_smpro_subject — minting a pass subject for every bound host regardless of what its
+// platform carries — MUST turn this red. A host whose family is NotCarried (an x86 family) or whose board
+// admits no family at all (Unestablished) binds NO SMpro pass subject, while a host whose family IS carried
+// binds exactly one. The control route is untouched either way, so a host with no subject is still fully
+// controlled — the x86 machine needs no empty or refused SMpro field, it simply has no subject to pair.
+test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
+  managed_hosts() |> all(h => {
+    let endpoint = match bmc_control_binding(observed: h.access, secured: h.secure) {
+      BmcControlBound { route: r } => bmc_control_route_endpoint(route: r)
+      _ => fixture_bmc_endpoint
+    }
+    // The real row: carried through the board authority, so one subject is bound.
+    let carried_binds = match managed_host_smpro_subject_under(
+      host: h, endpoint: endpoint, facility: smpro_facility(access: h.access)) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    // The same host on a family the cited set does not name: NO subject, and no pairing to fail.
+    let not_carried_binds_none = match managed_host_smpro_subject_under(
+      host: h, endpoint: endpoint,
+      facility: SmproFacilityNotCarried { family: amd_7950x3d_soc_family }) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    // ...and the same again on an unknown platform: still no subject, and still not a refusal.
+    let unknown_binds_none = match managed_host_smpro_subject_under(
+      host: h, endpoint: endpoint,
+      facility: SmproFacilityUnestablished { reason: "the board admits no SoC family" }) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    // And the machine is still controlled: the route binds from access + secure, independent of all of it.
+    let still_controlled = match bmc_control_binding(observed: h.access, secured: h.secure) {
+      BmcControlBound { route: _ } => true
+      _ => false
+    }
+    carried_binds && not_carried_binds_none && unknown_binds_none && still_controlled
+  }) && count(managed_hosts()) == 1
 }
 
 // THE NON-AMPERE FAMILY THIS WITNESS ASKS ABOUT, built from a catalog row the corpus already has

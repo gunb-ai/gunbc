@@ -174,9 +174,11 @@ data megarac_firmware_0_32: BmcFirmwareReleaseIdentity = bmc_firmware_release_id
   wire: "0.32",
 )
 
-// FIRMWARE IDENTITY 0.45.3: the build the BMC has run since the 2026-10-02 reflash. The identity is the
-// vendor's wire form; HOW IT IS ESTABLISHED is the catalog entry's version standing below (the run that
-// exercised this build did not read the version, so the standing is operator-attested, not machine-read).
+// FIRMWARE IDENTITY 0.45.3: the build the BMC has run since the 2026-10-02 reflash. Only the IDENTITY
+// lives here, because which versions AMI ships is AMI's fact. What we established about this build — the
+// capability row, the run that exercised it, and how the version string came to be known (an operator
+// read of the web UI, not a machine read) — is a receipt in the observing layer, at
+// gunbc.host.bmc_release_capability_catalog (DESIGN.md §3; review 81149).
 data megarac_firmware_0_45_3: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(
   family: AmiMegaRac,
   wire: "0.45.3",
@@ -417,137 +419,13 @@ service megarac.Media {
   }
 }
 
-// THE RELEASE CAPABILITY CATALOG. A capability row is a fact about a vendor FIRMWARE RELEASE, keyed
-// by the exact release identity (family + raw version), true of every unit running that build -- not
-// a fact about one unit. A reflash changes the unit's release, and the next lookup resolves the new
-// build's row (or refuses, if that build is not yet catalogued); nothing per-unit edits. Each entry
-// cites the evidence its row was read from.
-// HOW THE BUILD'S VERSION ITSELF WAS ESTABLISHED. Named, because the arms differ in kind and a
-// consumer must not read an attested build as though a machine had reported it: the standing upgrades
-// only when a machine read lands.
-type MegaRacReleaseVersionStanding
-  = MegaRacVersionMachineRead { read_from: NonEmptyStr }
-  | MegaRacVersionOperatorAttested { attested_on: Int, detail: NonEmptyStr, upgrade_read: NonEmptyStr }
-
-// THE EXECUTED RUN THAT JOINS A RELEASE ROW TO WHAT IT ACTUALLY DID. The capabilities a release row
-// asserts are the ones a named fleet-converge run exercised at that build; version_read_by_run says
-// whether that run itself read the version (when it did not, the version standing must be attested,
-// never dressed as read).
-type MegaRacExecutedRunEvidence {
-  run_id: Int
-  artifact_dir: NonEmptyStr
-  pull: NonEmptyStr
-  exercised: List<BmcCapability>
-  version_read_by_run: Bool
-  note: NonEmptyStr
-}
-
-// The fleet-converge run that exercised BMC 0.45.3 end to end. Its artifacts are committed under the
-// artifact dir on main (gunb-ai/gunbc#14117): power control, boot-source override, and MegaRAC OEM
-// remote media (CD handoff, cd_error_code 0). The run did NOT read the version: the pre-power hpm check
-// was skipped because no attempt receipt was named, so the version standing on the 0.45.3 entry is
-// operator-attested.
-data megarac_run_38789347052_evidence: MegaRacExecutedRunEvidence = MegaRacExecutedRunEvidence {
-  run_id: 38789347052,
-  artifact_dir: "artifacts/bmc/mtcollins1-boot-run-38789347052/",
-  pull: "gunb-ai/gunbc#14117",
-  exercised: [
-    CapabilityPowerControl,
-    CapabilityBootSourceOverride,
-    CapabilityOemRemoteMedia,
-  ],
-  version_read_by_run: false,
-  note: "the boot ran end to end at this build; the pre-power hpm check was skipped (no attempt receipt named), so the run is evidence of the capabilities it exercised, not of the version string",
-}
-
-type MegaRacReleaseCapabilityEntry {
-  firmware: BmcFirmwareReleaseIdentity
-  row: BmcFirmwareReleaseCapabilityRow
-  version: MegaRacReleaseVersionStanding
-  citations: List<FactCitation>
-}
-
-// The 0.32 release's capabilities as read on the Foxconn Mt. Collins build: the automation-exercisable
-// set -- a boot-source override, power control, and the OEM REST remote-media route. What is deliberately
-// ABSENT is the point: generic virtual media (the controller serves no Redfish, so the exercised surface
-// is the OEM remote-media route specifically), account management (rotation has no modeled operation),
-// and serial console (SOL was driven by hand, not through a modeled route). A capability this row
-// asserts is one the AUTOMATION can perform. Cited to the AMI MegaRAC family authority; the build
-// observation is corroboration, carried per-unit.
-data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
-  MegaRacReleaseCapabilityEntry {
-    firmware: megarac_firmware_0_32,
-    row: BmcFirmwareReleaseCapabilityRow {
-      firmware: megarac_firmware_0_32,
-      capabilities: [
-        CapabilityBootSourceOverride,
-        CapabilityPowerControl,
-        CapabilityOemRemoteMedia,
-      ],
-    },
-    version: MegaRacVersionMachineRead {
-      read_from: "ipmitool hpm check retained under artifacts/bmc/mtcollins1-ipmitool-hpm-check-bmc0.32-2026-10-02.txt (APP component, Active column: 0.32)",
-    },
-    citations: [
-      {
-        fact: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.bmc", decl_name: "mt_collins_bmc_implementation_expected"),
-        authority: extdeps_external_authority_anchor,
-      },
-    ],
-  },
-  // THE 0.45.3 RELEASE ROW: the three capabilities the named run exercised at this build; every other
-  // capability stays absent (absent here means NOT EXERCISED AT THIS BUILD, never "cannot"). The
-  // version standing is operator-attested, NOT machine-read: the operator read the BMC web UI firmware
-  // page on 2026-10-16 (BMC firmware 0.45.3, build 'Dec 27 2023 09:36:21 CDT', Image 1; BIOS
-  // 0ACOD014; SCP shown blank). The run joined below did not read the version -- its pre-power hpm
-  // check was skipped (no attempt receipt named). The next boot names an attempt receipt and should
-  // produce the machine-read hpm check, which upgrades the standing to MegaRacVersionMachineRead.
-  MegaRacReleaseCapabilityEntry {
-    firmware: megarac_firmware_0_45_3,
-    row: BmcFirmwareReleaseCapabilityRow {
-      firmware: megarac_firmware_0_45_3,
-      capabilities: [
-        CapabilityBootSourceOverride,
-        CapabilityPowerControl,
-        CapabilityOemRemoteMedia,
-      ],
-    },
-    version: MegaRacVersionOperatorAttested {
-      attested_on: 1792108800000,
-      detail: "operator read of the BMC web UI firmware page: BMC firmware 0.45.3, build 'Dec 27 2023 09:36:21 CDT', Image 1; BIOS version 0ACOD014; SCP version shown blank",
-      upgrade_read: "the next boot names an attempt receipt and produces the machine-read pre-power hpm check (ipmitool hpm check, APP component Active column), which upgrades this standing",
-    },
-    citations: [
-      {
-        fact: decl_ref(module_path: "extdeps.bmc.megarac", decl_name: "megarac_run_38789347052_evidence"),
-        authority: extdeps_external_authority_anchor,
-      },
-    ],
-  },
-]
-
-// THE TYPED RELEASE CAPABILITY LOOKUP. Resolve the capability row for an observed firmware release
-// identity against the catalog: one matching entry resolves its row; no entry is a typed uncatalogued
-// refusal (never a default); more than one is an ambiguous refusal with its count. This is the
-// per-release grain the per-unit row was conflating with the unit.
-type MegaRacReleaseCapabilityLookup
-  = MegaRacReleaseCapabilityKnown { row: BmcFirmwareReleaseCapabilityRow }
-  | MegaRacReleaseCapabilityUncatalogued { firmware: BmcFirmwareReleaseIdentity }
-  | MegaRacReleaseCapabilityAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
-
-fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> MegaRacReleaseCapabilityLookup {
-  let hits = megarac_release_capability_catalog
-    |> filter(entry => bmc_firmware_release_identity_eq(a: entry.firmware, b: firmware))
-  let n = count(hits)
-  if n == 0 {
-    MegaRacReleaseCapabilityUncatalogued { firmware: firmware }
-  } else if n == 1 {
-    fold(
-      hits,
-      init: MegaRacReleaseCapabilityUncatalogued { firmware: firmware },
-      f: (_acc, entry) => MegaRacReleaseCapabilityKnown { row: entry.row },
-    )
-  } else {
-    MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: n }
-  }
-}
+// THE RELEASE CAPABILITY CATALOG MOVED OUT OF THIS MODULE, to
+// gunbc.host.bmc_release_capability_catalog. A capability row is not an AMI fact: it is what OUR
+// automation established about a build — which controls a named fleet-converge run of ours exercised,
+// where OUR artifacts landed, which PR of ours carried them, and whether a human read a web UI page.
+// DESIGN.md §3 puts observations this repository makes in the OBSERVING layer, "not facts of the
+// observed upstream", and a missing observation is a downstream coverage obligation, "never an
+// `Unobserved` property inside the upstream module" — so neither the rows, the run receipt, the version
+// standing, nor a 'not exercised at this build' default belongs here. What stays upstream is what AMI
+// actually states: the release identities (megarac_firmware_0_32, megarac_firmware_0_45_3) and the
+// protocol surface above. Review 81149, finding 1.

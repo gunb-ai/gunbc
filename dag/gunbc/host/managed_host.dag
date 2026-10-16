@@ -25,6 +25,10 @@ import gunbc.machine_intake.ampere_smpro_observation {
   SmproSiteStanding, SmproSiteAdmitted, SmproSiteRefused, SmproPassSubjectStanding, smpro_pass_subject,
 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.host.smpro_platform_capability {
+  smpro_facility, SmproFacilityStanding, SmproFacilityCarried, SmproFacilityNotCarried,
+  SmproFacilityUnestablished,
+}
 import gunbc.host.bmc_control_binding {
   BmcControlStanding, bmc_control_binding,
   bmc_control_route_account, bmc_control_route_endpoint,
@@ -579,17 +583,36 @@ fn managed_host_fixture(
 // THE SILICON STANDING OF A BOUND HOST: its SMpro site joined to the controller its bound route drives,
 // minted by gunbc.machine_intake.ampere_smpro_observation smpro_pass_subject, which refuses a site that
 // names another controller. The endpoint is read THROUGH the route's binding
-// (gunbc.host.bmc_control_binding bmc_control_endpoint), never carried a second time, and a host with
-// no bound route binds no subject. Every Ampere SMpro pass reads through the subject this returns, so a
-// pass cannot pair one host's controller with another board's site. DECLARED FRONTIER: smpro is a
-// SmproSiteStanding on every row because every managed host today is an Altra board; the first
-// managed host with no SMpro adds its arm with it.
+// (gunbc.host.bmc_control_binding bmc_control_endpoint), never carried a second time, and a host with no
+// bound route binds no subject. THE PLATFORM DECIDES WHETHER A PASS MAY BE TAKEN AT ALL: the subject is
+// minted only where gunbc.host.smpro_platform_capability says the host's board admits an SoC family the
+// cited carrying set names. A host whose family does not carry SMpro — or whose board admits no family at
+// all, so nothing is known about its silicon — binds NO subject rather than an empty or refused one, which
+// is what makes an x86 machine a valid controlled machine without needing to model an SMpro field it cannot
+// have. (An earlier version carried a DECLARED FRONTIER here asserting every managed host was an Altra
+// board and minting a subject for all of them: a host-name-shaped assumption sitting in generic code, and
+// exactly the thing this cut's x86 RED exists to prevent.)
 fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) -> SmproPassSubjectStanding? {
   match control {
     BmcControlBound { route: r } =>
-      Present { value: smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: host.smpro) }
+      managed_host_smpro_subject_under(host: host, endpoint: bmc_control_route_endpoint(route: r), facility: smpro_facility(access: host.access))
     BmcControlAccessUnobserved { endpoint: _ } => none
     BmcControlNotSecured { cause: _ } => none
     BmcControlEndpointMismatch { observed: _, secured: _ } => none
+  }
+}
+
+// THE SAME GATE OVER AN EXPLICIT FACILITY STANDING — one implementation, reached two ways. The
+// production path above reads the families through the board authority; this one takes the standing
+// directly, so a witness can show what a host whose platform does not carry the facility does (bind no
+// subject, and stay controlled) without minting a board row per question. Without this arm the gate
+// above could be deleted and no claim would go red.
+fn managed_host_smpro_subject_under(host: ManagedHost, endpoint: BmcControllerEndpoint, facility: SmproFacilityStanding) -> SmproPassSubjectStanding? {
+  match facility {
+    SmproFacilityCarried { family: _ } =>
+      Present { value: smpro_pass_subject(host: host.host, endpoint: endpoint, site: host.smpro) }
+    // Not carried and unestablished mint nothing: there is no subject to pair a site with.
+    SmproFacilityNotCarried { family: _ } => none
+    SmproFacilityUnestablished { reason: _ } => none
   }
 }
