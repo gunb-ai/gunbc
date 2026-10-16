@@ -39,7 +39,7 @@ import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
-import extdeps.tools.gnu_coreutils { mv_command }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.systemd { ExecStopProperty }
@@ -677,7 +677,7 @@ fn same_path_reset(toolchain_homes: IsolatedJobToolchainHomes, frame: Int) -> St
       match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: workspace, args: drop_checkout.arguments) {
         ComputeExecFailed { exit_code, stdout: _, stderr } => join(["worktree remove exited ", to_string(value: exit_code), ": ", stderr], "")
         ComputeExecOk { stdout: _, stderr: _ } => {
-          let aside = mv_command(source: layout.target_dir, destination: join([layout.target_dir, ".run1"], ""))
+          let aside = mv_exact_destination_command(source: layout.target_dir, destination: join([layout.target_dir, ".run1"], ""))
           match compute_exec(program: aside.program.invocation as String, workdir: ".", args: aside.arguments) {
             ComputeExecFailed { exit_code, stdout: _, stderr } => join(["target move exited ", to_string(value: exit_code), ": ", stderr], "")
             ComputeExecOk { stdout: _, stderr: _ } => ""
