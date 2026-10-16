@@ -490,7 +490,7 @@ type Scope
 // path-keyed parameter reference (resolve_frame_bound_reference). A `let`, a match arm and a
 // lambda's own Arrow are Lexical: their binders are not declarations (see the match-arm frame below),
 // so a reference they answer is minted as a lexical reference keyed by its own occurrence, with the
-// binder that answered it recorded in ResolvedTree.lexical_bindings (LexicalBinding). A type-parameter
+// binder that answered it recorded in ResolvedTree.occurrence_bindings (LexicalBinding). A type-parameter
 // frame is TypeParameterFrame: it binds a type, not a value, and a name it answers stays the bare
 // canonical atom, which is how v2.compiler.infer recognizes a type variable (type_param_names).
 // Every consumer of a value reference therefore reads which binder answered it from resolve, and
@@ -511,7 +511,7 @@ type FrameKind
 // v2.std.node_query member_edge_type_node), LexicalValued at a let, LexicalOwedFormal at a
 // match-payload formal, LexicalUntyped otherwise.
 // A reference this frame answers is minted as v2.std.qualified_name lexical_reference_node and its
-// binding is recorded in ResolvedTree.lexical_bindings under the REFERENCE's own occurrence, so a
+// binding is recorded in ResolvedTree.occurrence_bindings under the REFERENCE's own occurrence, so a
 // consumer reads which binder answered and never searches scope again: resolve decided it here.
 //
 // A lexical binder's standing is ONE case, not a bag of independent Optionals: a declared type, a
@@ -2290,7 +2290,7 @@ fn resolve_frame_bound_reference(
 }
 
 // A LEXICAL REFERENCE IS MINTED UNDER ITS MARKER AND ITS BINDING RECORDED BY THE REFERENCE'S OWN
-// OCCURRENCE (ResolvedTree.lexical_bindings). A reference with no minted occurrence has no key a
+// OCCURRENCE (ResolvedTree.occurrence_bindings). A reference with no minted occurrence has no key a
 // consumer could read its binding back by, so it refuses, typed and located, rather than becoming a
 // lexical reference whose binder nobody can find. A frame that answers a name its binders do not
 // record is a resolver defect, and refuses as one.
