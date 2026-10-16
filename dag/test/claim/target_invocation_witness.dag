@@ -103,6 +103,9 @@ import gunbc.instrument_targets {
   compute_wrong_capture_label,
   compute_wrong_capture_entry,
   compute_wrong_capture_function,
+  compute_dependency_wrong_capture_label,
+  compute_dependency_wrong_capture_entry,
+  compute_dependency_wrong_capture_function,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -1086,6 +1089,17 @@ test fn the_compute_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: compute_wrong_capture_label())
         && (b.producer == CliWireProgramProducer { entry: compute_wrong_capture_entry() function: compute_wrong_capture_function() })
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// C5: the dependency arm routes to the SAME entry file as C1 with its own entry function; a
+// binding that silently reused C1's function would let the dependency arm pass on top-crate marks.
+test fn the_compute_dependency_wrong_capture_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:compute-dependency-wrong-capture") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: compute_dependency_wrong_capture_label())
+        && (b.producer == CliWireProgramProducer { entry: compute_dependency_wrong_capture_entry() function: compute_dependency_wrong_capture_function() })
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
