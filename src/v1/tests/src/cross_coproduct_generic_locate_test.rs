@@ -36,6 +36,61 @@ fn rfm_row_parses() {
     );
 }
 
+// THE DISCRIMINATING RED. Every accept row above asserts an ABSENCE, and an
+// absence-only suite passes on a compiler that never implements the rule — which is
+// how the seed passed these while unify_generics bound first-wins. This asserts the
+// PRESENCE of the refusal the fold emits, and names its text, so it is false before
+// the fold executes and true after. Its positive control is
+// same_arm_int_int_is_accepted: same generic, same arity, same call shape, and only
+// the two actuals' identity differs.
+#[test]
+fn same_arm_two_distinct_coproducts_refuses_with_the_fold_message() {
+    let msgs = blocking_messages(&same_arm_call("P", "Q"));
+    assert!(
+        has_generic_rebind(&msgs),
+        "one T bound by P and Q must refuse with the fold's own diagnostic; got {msgs:?}"
+    );
+}
+
+#[test]
+fn same_arm_int_bool_refuses_with_the_fold_message() {
+    let msgs = blocking_messages(
+        "module locate.ib\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: 1, b: true) }\n",
+    );
+    assert!(
+        has_generic_rebind(&msgs),
+        "one T bound by Int and Bool must refuse; got {msgs:?}"
+    );
+}
+
+// The nested arm: same constructor head on both sides, differing payload VALUES, so
+// node_type_shape agrees on the head and only the argument list separates them. The
+// accept control below is the identical shape with payloads that agree; before the
+// fold, same head was sufficient for applied constructors, so the control and this
+// row could not be told apart — which is what makes this row the discriminator for
+// the nested arm rather than a second copy of the head arm.
+#[test]
+fn applied_constructor_same_head_differing_payload_refuses() {
+    let msgs = blocking_messages(
+        "module locate.w1\ntype W\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: W { v: 1 }, b: W { v: true }) }\n",
+    );
+    assert!(
+        has_generic_rebind(&msgs),
+        "one T bound by two W applications with differing payloads must refuse on the argument list; got {msgs:?}"
+    );
+}
+
+#[test]
+fn applied_constructor_same_head_agreeing_payload_is_accepted() {
+    let msgs = blocking_messages(
+        "module locate.w2\ntype W\nfn same_arm<T>(a: T, b: T) -> Bool { true }\nfn probe() -> Bool { same_arm(a: W { v: 1 }, b: W { v: 2 }) }\n",
+    );
+    assert!(
+        !has_generic_rebind(&msgs),
+        "one T bound by two W{v:Int} must not refuse: {msgs:?}"
+    );
+}
+
 #[test]
 fn same_arm_same_coproduct_is_accepted() {
     let msgs = blocking_messages(&same_arm_call("P1 { x: 1 }", "P2 { y: 2 }"));
