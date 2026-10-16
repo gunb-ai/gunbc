@@ -339,9 +339,9 @@ fn user_slice_backstop_memory_swap_max() -> ByteSize {
   user_work_slice_memory_swap_max
 }
 
-// SYSTEM SLICES THAT DECLARE MemoryMax. Exemption from the user-work wrap may skip only when the
-// enclosing slice is one of these rows with a positive max — the unit name is the row's identity,
-// not a separate list. user-work is a --user slice and is not in this census.
+// SYSTEM SLICES THAT DECLARE MemoryMax on the deploy host that owns these rows. Wrap exemption
+// does not consume these magnitudes: membership is recognized_system_slice (names), and a skip
+// is only a live finite memory.max on that slice. user-work is a --user slice and is not here.
 type DeclaredSliceMemoryMax {
   unit: NonEmptyStr
   memory_max: ByteSize
