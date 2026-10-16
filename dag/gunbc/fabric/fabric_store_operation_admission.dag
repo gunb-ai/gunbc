@@ -137,10 +137,10 @@ type OperationRequirement
 // NoApprovalFlowForOperation until a flow for another group is ruled and lands. EstablishAuthority and RecoverHostEffect have
 // NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
 // host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
-// recover, finalize and abort flows are the store-operation wall (gunbc.fabric.fabric_store_operation_admission) PR 5b, which the flip depends on, so
+// recover, finalize and abort flows are an unmodeled capability the enforcing door depends on, so
 // no enforcing door runs without the manual repair path (proud-deer-538, 2026-09-28); their scopes
-// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is PR 7:
-// it runs once per group, and both groups are established. An empty list refuses
+// join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is a
+// separate unmodeled capability: it runs once per group, and both groups are established. An empty list refuses
 // (NoApprovalFlowForOperation) rather than admitting: an operation nobody can approve is refused,
 // never exempted.
 fn operation_requirement(operation: StoreOperation) -> OperationRequirement {
