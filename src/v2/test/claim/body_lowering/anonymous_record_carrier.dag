@@ -39,7 +39,7 @@ module v2.test.claim.body_lowering.anonymous_record_carrier
 // claims) is poisoned by any refusing source inside it -- every claim there then refuses at prepare with
 // cause=positive_population_empty.
 
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.optional { Absent, Present }
 import std.types { List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -61,13 +61,12 @@ import v2.std.diagnostic {
   Accepted,
   DeclarationLocus,
   InvariantPortLocus,
+  Locus,
   NodeLocus,
   Outcome,
   Rejected,
   SourcePortLocus,
-  Textual,
-  diagnostics_fatal,
-  diagnostics_fatal_reason
+  Textual
 }
 import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_lexeme }
 import v2.std.node_query { ConstructTagElided, construct_tag_reading, construct_tag_path_optional }
@@ -100,6 +99,16 @@ data arc_pos_source: String = "module v2.test.arc_pos\n\nimport std.types { Bool
 // POSITIVE CONTROL's HEADED TWIN.
 data arc_pos_headed_source: String = "module v2.test.arc_pos_headed\n\nimport std.types { Bool }\nimport v2.test.arc_types { List }\nimport v2.test.arc_p { ArB }\n\ndata arc_entries: List<ArB> = [\n  ArB { n: true, m: false },\n  ArB { n: false, m: true }\n]\n\nfn arc_ret() -> List<ArB> { [ArB { n: true, m: true }] }\n"
 
+// THE CARRIER WRITTEN DIRECTLY, with no alias in the way: the annotation names `FreeMonoid<ArB>` itself,
+// the head std.algebra really declares (dag/std/algebra.dag type FreeMonoid). This is the pass-proven
+// shape of the in-repo control v2.test.claim.body_lowering.anonymous_record's ar_list_headless_source.
+// It isolates the ALIAS as a variable: if the headless form closes under `FreeMonoid` but not under a
+// `type List<element> = FreeMonoid<element>` carrier, the 16 acyclic sites are not closed by an import
+// alone and the after-census reading is what says so -- this pair cannot be quietly true while that is false.
+data arc_direct_headless_source: String = "module v2.test.arc_direct_headless\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arc_p { ArB }\n\ndata arc_entries: FreeMonoid<ArB> = [\n  { n: true, m: false },\n  { n: false, m: true }\n]\n\nfn arc_ret() -> FreeMonoid<ArB> { [{ n: true, m: true }] }\n"
+
+data arc_direct_headed_source: String = "module v2.test.arc_direct_headed\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arc_p { ArB }\n\ndata arc_entries: FreeMonoid<ArB> = [\n  ArB { n: true, m: false },\n  ArB { n: false, m: true }\n]\n\nfn arc_ret() -> FreeMonoid<ArB> { [ArB { n: true, m: true }] }\n"
+
 fn arc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
@@ -115,7 +124,9 @@ data arc_ingest: SourceRootIngest = [
   arc_read(source: arc_red_source, id: ^arc_red_read, unit: ^arc_red_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red.dag"),
   arc_read(source: arc_red_headed_source, id: ^arc_red_headed_read, unit: ^arc_red_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red_headed.dag"),
   arc_read(source: arc_pos_source, id: ^arc_pos_read, unit: ^arc_pos_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos.dag"),
-  arc_read(source: arc_pos_headed_source, id: ^arc_pos_headed_read, unit: ^arc_pos_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag")
+  arc_read(source: arc_pos_headed_source, id: ^arc_pos_headed_read, unit: ^arc_pos_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag"),
+  arc_read(source: arc_direct_headless_source, id: ^arc_direct_headless_read, unit: ^arc_direct_headless_cu, path: "src/v2/test/fixture/anonymous_record/direct_headless.dag"),
+  arc_read(source: arc_direct_headed_source, id: ^arc_direct_headed_read, unit: ^arc_direct_headed_cu, path: "src/v2/test/fixture/anonymous_record/direct_headed.dag")
 ]
 
 // THE FRONT END RUNS ONCE, THROUGH THE PRODUCTION ROUTE -- tokenize, parse, normalize, resolve -- as in
@@ -161,7 +172,7 @@ fn arc_locus_of(o: Outcome<ResolvedTree>, reason: Symbol) -> Optional<Locus> {
   match o {
     Accepted { value: _, diagnostics: _ } => Absent
     Rejected { diagnostics: d } => {
-      let all = [d.head] || d.tail
+      let all = list_append(left: [d.head], right: d.tail)
       fold(all, init: Absent, f: fn(acc, diag) {
         match acc {
           Present { value: _ } => acc
@@ -174,6 +185,25 @@ fn arc_locus_of(o: Outcome<ResolvedTree>, reason: Symbol) -> Optional<Locus> {
 
 fn arc_has_reason(o: Outcome<ResolvedTree>, reason: String) -> Bool {
   fold(arc_reasons(o: o), init: false, f: fn(acc, r) { acc || (r == reason) })
+}
+
+// THE HEADED CONSTRUCTS OF A RESOLVED TREE, in tree order, as dotted strings -- read the way the
+// pass-proven in-repo control reads them (v2.test.claim.body_lowering.anonymous_record ar_construct_paths:
+// v2.std.node_query construct_tag_path_optional, then v2.std.qualified_name qualified_name_to_dotted_string).
+// A literal whose constructor was never decided reports NO path at all, so this reading is what reds the
+// ruled-out leniency: nothing here accepts a silently structural record, and every positive arm must name
+// the record it elaborated to.
+fn arc_construct_paths(o: Outcome<ResolvedTree>) -> List<String> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: Empty, f: fn(acc, n) {
+        match construct_tag_path_optional(n: n) {
+          Present { value: path } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: path))
+          Absent => acc
+        }
+      })
+  }
 }
 
 // A node whose construct tag is ELIDED -- an authored `{ f: v }`. construct_tag_reading is the authority
@@ -251,6 +281,21 @@ test fn arc_with_the_carrier_the_headless_form_elaborates_like_its_headed_form_h
     && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) == [
       "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
     ])
+}
+
+// THE CARRIER, WRITTEN AS ITS OWN HEAD, CLOSES THE SAME THREE POSITIONS. The census's 16 acyclic sites
+// name an ALIAS (`List<...>`, where std.types writes `type List<element> = FreeMonoid<element>`); this pair
+// names the aliased head `FreeMonoid` directly and is the shape the in-repo control
+// v2.test.claim.body_lowering.anonymous_record's ar_list_headless_source already proves passes. If the
+// alias were what kept a headless literal unresolved, this claim would stay green while the after-census
+// reading stayed at 93 -- so the two readings together, not either alone, are what closes the group.
+test fn arc_a_head_literal_under_a_directly_named_head_elaborates_holds() -> Bool {
+  (arc_reasons(o: arc_resolve(subject: "v2.test.arc_direct_headless")) == Empty)
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headless")) == [
+      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
+    ])
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headed"))
+      == arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headless")))
 }
 
 // THE CARRIER IS THE ONLY DIFFERENCE, BOTH WAYS AND AT ONCE, so the pair cannot drift apart: RED refuses,
