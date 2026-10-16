@@ -3550,7 +3550,12 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
         _ => type_expr
       }
   }
-  if kernel_scalar || rust_type_node_is_arrow(n: judged) {
+  // An alias to a non-container is a Rust `pub type` of the bare declaration: the fn-position
+  // renderers keep it at the value layer (type Second = Measure<..>), so the field position may not
+  // answer shared for it. Only an alias whose right-hand side is a container hands its layer on.
+  let judged_leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: judged)
+  let alias_to_non_container = judged_leaf != spelled && !is_container_type(name: judged_leaf)
+  if kernel_scalar || alias_to_non_container || rust_type_node_is_arrow(n: judged) {
     SharedLayerAtValue
   } else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: judged)

@@ -6767,7 +6767,10 @@ pub fn shared_layer_of_type_expr(
                 }
             }
         };
-        if kernel_scalar || rust_type_node_is_arrow(judged.clone()) {
+        let judged_leaf = rust_fn_sig_leaf_name(source_indices.clone(), judged.clone());
+        let alias_to_non_container = ((judged_leaf.clone() != spelled.clone())
+            && !crate::std_types::is_container_type(judged_leaf.clone()));
+        if kernel_scalar || alias_to_non_container || rust_type_node_is_arrow(judged.clone()) {
             Rc::new(SharedLayerAnswer::SharedLayerAtValue)
         } else {
             {
