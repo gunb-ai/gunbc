@@ -12,7 +12,7 @@ import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   SystemdSummaryPrintingWaitReading,
   SystemdSetenvBinding, systemd_run_user_scope_command, systemd_run_user_transient_command,
   systemd_run_user_wait_command,
@@ -69,8 +69,8 @@ fn unit_cpu_quota_percent(m: Millicore) -> Nat {
 // projected duplicate -p Slice= / MemorySwapMax= (review 79894).
 fn user_work_slice_binding_properties() -> List<SystemdRunProperty> {
   [
-    SystemdRunProperty { property: SliceProperty, value: user_work_slice_unit_name },
-    SystemdRunProperty { property: MemorySwapMax, value: to_string(value: byte_size_count(b: user_work_slice_memory_swap_max)) as NonEmptyStr },
+    NamedUnitSetting { property: SliceProperty, value: user_work_slice_unit_name },
+    NamedUnitSetting { property: MemorySwapMax, value: to_string(value: byte_size_count(b: user_work_slice_memory_swap_max)) as NonEmptyStr },
   ]
 }
 
@@ -81,15 +81,15 @@ fn user_work_run_properties(rest: List<SystemdRunProperty>) -> List<SystemdRunPr
 fn compute_grant_unit_properties(granted: Kibibyte, working_directory: String, process_bounds: UnitProcessBounds?) -> List<SystemdRunProperty> {
   concat(
     [
-      SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
-      SystemdRunProperty { property: compute_kill_mode_property, value: compute_kill_mode_value() },
-      SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(b: kibibyte_to_byte_size(k: granted))) as NonEmptyStr },
+      NamedUnitSetting { property: compute_kill_mode_property, value: compute_kill_mode_value() },
+      NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     ],
     match process_bounds {
       Absent => []
       Present { value: b } => [
-        SystemdRunProperty { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
-        SystemdRunProperty { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
+        NamedUnitSetting { property: CPUQuota, value: join([to_string(value: unit_cpu_quota_percent(m: b.cpu_quota)), "%"], "") as NonEmptyStr },
+        NamedUnitSetting { property: TasksMax, value: to_string(value: b.tasks_max) as NonEmptyStr },
       ]
     },
   )
@@ -565,7 +565,7 @@ fn user_work_wrap_high_property(memory_max: ByteSize, memory_high: MemoryBound) 
     MemoryUnbounded => []
     MemoryCapped { bytes: h } =>
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryHigh,
           value: to_string(value: nat_min(a: byte_size_count(b: h), b: byte_size_count(b: memory_max))) as NonEmptyStr,
         },
@@ -578,7 +578,7 @@ fn user_work_wrap_envelope_properties(memory_max: ByteSize, memory_high: MemoryB
     user_work_slice_binding_properties(),
     concat(
       [
-        SystemdRunProperty {
+        NamedUnitSetting {
           property: MemoryMax,
           value: to_string(value: byte_size_count(b: memory_max)) as NonEmptyStr,
         },
