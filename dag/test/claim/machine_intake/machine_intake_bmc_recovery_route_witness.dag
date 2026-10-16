@@ -1,48 +1,29 @@
 module test.claim.machine_intake.machine_intake_bmc_recovery_route_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types {
+  Bool, Int, List, String,
+}
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.ipmi {
-  IpmiCompletionCode, IpmiCompletionCodeByte, ipmi_completion_code_invalid_data_field, ipmi_completion_code_invalid_data_field_text,
-  ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq, IpmiDeviceIdentity,
+  IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq,
 }
 import extdeps.boards.asrock_rack {
-  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured,
-  PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured,
-  CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on,
-  asrock_altrad8ud_1l2t_inband_device_identity,
-  asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
-  asrock_altrad8ud_openbmc_3_06_00_capabilities,
-  asrock_altrad8ud_openbmc_3_22_00_capabilities,
-  asrock_altrad8ud_published_factory_password_write_policy_for,
-  asrock_altrad8ud_inband_recovery_capture,
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, asrock_altrad8ud_1l2t_inband_device_identity, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_inband_recovery_capture,
 }
 import gunbc.auth.privileged_effect_census {
   SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
   census_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
-  AuthorizationPatternSelection, PatternSelected, OperatorApprovedCapability,
-  EffectReversibility, ReversibleByReapply, IrreversibleEffect,
-  MintedCredentialReach, MintsNoCredential, MintsResourceScopedCredential,
+  PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
 }
 import std.decl_ref { declaration_ref_display_key }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
-  RecoveryWriteRecord, ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success,
-  recovery_reset_actuation, InBandTemporaryAdministratorPassword,
-  RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree,
-  NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive,
-  recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity,
-  recovery_measured_refusal_policy, converge_in_band_recovery,
-  recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action,
-  recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback,
-  recovery_admitted_in_band_write, recovery_admitted_reset_write,
+  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
 import gunbc.machine_intake.arrival_converge {
-  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable,
-  access_discover, access_discover_refusal_for_locked_credential, access_discover_step_ref,
-  read_mtjade1_current_manager_read,
+  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
 }
 import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
 
