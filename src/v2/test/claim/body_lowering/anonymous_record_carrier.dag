@@ -39,7 +39,7 @@ module v2.test.claim.body_lowering.anonymous_record_carrier
 // claims) is poisoned by any refusing source inside it -- every claim there then refuses at prepare with
 // cause=positive_population_empty.
 
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -118,16 +118,7 @@ fn arc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSource
   }
 }
 
-data arc_ingest: SourceRootIngest = [
-  arc_read(source: arc_provider_source, id: ^arc_provider_read, unit: ^arc_provider_cu, path: "src/v2/test/fixture/anonymous_record/provider.dag"),
-  arc_read(source: arc_types_source, id: ^arc_types_read, unit: ^arc_types_cu, path: "src/v2/test/fixture/anonymous_record/carrier_types.dag"),
-  arc_read(source: arc_red_source, id: ^arc_red_read, unit: ^arc_red_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red.dag"),
-  arc_read(source: arc_red_headed_source, id: ^arc_red_headed_read, unit: ^arc_red_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red_headed.dag"),
-  arc_read(source: arc_pos_source, id: ^arc_pos_read, unit: ^arc_pos_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos.dag"),
-  arc_read(source: arc_pos_headed_source, id: ^arc_pos_headed_read, unit: ^arc_pos_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag"),
-  arc_read(source: arc_direct_headless_source, id: ^arc_direct_headless_read, unit: ^arc_direct_headless_cu, path: "src/v2/test/fixture/anonymous_record/direct_headless.dag"),
-  arc_read(source: arc_direct_headed_source, id: ^arc_direct_headed_read, unit: ^arc_direct_headed_cu, path: "src/v2/test/fixture/anonymous_record/direct_headed.dag")
-]
+data arc_ingest: SourceRootIngest = Cons { head: arc_read(source: arc_provider_source, id: ^arc_provider_read, unit: ^arc_provider_cu, path: "src/v2/test/fixture/anonymous_record/provider.dag"), tail: Cons { head: arc_read(source: arc_types_source, id: ^arc_types_read, unit: ^arc_types_cu, path: "src/v2/test/fixture/anonymous_record/carrier_types.dag"), tail: Cons { head: arc_read(source: arc_red_source, id: ^arc_red_read, unit: ^arc_red_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red.dag"), tail: Cons { head: arc_read(source: arc_red_headed_source, id: ^arc_red_headed_read, unit: ^arc_red_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_red_headed.dag"), tail: Cons { head: arc_read(source: arc_pos_source, id: ^arc_pos_read, unit: ^arc_pos_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos.dag"), tail: Cons { head: arc_read(source: arc_pos_headed_source, id: ^arc_pos_headed_read, unit: ^arc_pos_headed_cu, path: "src/v2/test/fixture/anonymous_record/carrier_pos_headed.dag"), tail: Cons { head: arc_read(source: arc_direct_headless_source, id: ^arc_direct_headless_read, unit: ^arc_direct_headless_cu, path: "src/v2/test/fixture/anonymous_record/direct_headless.dag"), tail: Cons { head: arc_read(source: arc_direct_headed_source, id: ^arc_direct_headed_read, unit: ^arc_direct_headed_cu, path: "src/v2/test/fixture/anonymous_record/direct_headed.dag"), tail: Empty } } } } } } } }
 
 // THE FRONT END RUNS ONCE, THROUGH THE PRODUCTION ROUTE -- tokenize, parse, normalize, resolve -- as in
 // v2.test.claim.body_lowering.map_literal's ml_resolve_subject and anonymous_record's ar_* producers.
@@ -160,7 +151,7 @@ fn arc_reasons(o: Outcome<ResolvedTree>) -> List<String> {
   match o {
     Accepted { value: _, diagnostics: _ } => Empty
     Rejected { diagnostics: d } =>
-      fold(d.tail, init: [symbol_lexeme(sym: d.head.reason)], f: fn(acc, diag) {
+      fold(d.tail, init: Cons { head: symbol_lexeme(sym: d.head.reason), tail: Empty }, f: fn(acc, diag) {
         list_snoc_item(xs: acc, item: symbol_lexeme(sym: diag.reason))
       })
   }
@@ -172,8 +163,7 @@ fn arc_locus_of(o: Outcome<ResolvedTree>, reason: Symbol) -> Optional<Locus> {
   match o {
     Accepted { value: _, diagnostics: _ } => Absent
     Rejected { diagnostics: d } => {
-      let all = list_append(left: [d.head], right: d.tail)
-      fold(all, init: Absent, f: fn(acc, diag) {
+      fold(Cons { head: d.head, tail: d.tail }, init: Absent, f: fn(acc, diag) {
         match acc {
           Present { value: _ } => acc
           Absent => if diag.reason == reason { Present { value: diag.at } } else { acc }
@@ -203,6 +193,19 @@ fn arc_construct_paths(o: Outcome<ResolvedTree>) -> List<String> {
           Absent => acc
         }
       })
+  }
+}
+
+// THE THREE ELABORATED CONSTRUCTS, as data. Built with Cons/Empty rather than a list literal on purpose:
+// a `[..]` literal is elaborated through v2.std.list_introduction's head path
+// (std.algebra.FreeMonoid), and that path does NOT resolve in a claim module today -- the pass-proven
+// precedent v2.test.claim.body_lowering.anonymous_record refuses ALL 12 of its claims at exactly that
+// construction on pure origin/main (A/B'd: identical verdicts with my two tree files reverted), so this
+// file keeps literals out of its own text and pins the census group through the instrument instead.
+fn arc_three_arb_paths() -> List<String> {
+  Cons {
+    head: "v2.test.arc_p.ArB",
+    tail: Cons { head: "v2.test.arc_p.ArB", tail: Cons { head: "v2.test.arc_p.ArB", tail: Empty } }
   }
 }
 
@@ -266,9 +269,7 @@ test fn arc_the_refusal_is_located_at_the_element_and_yields_no_tree_holds() -> 
 // cannot be blamed on the module, its `Bool` import, the list, or the route.
 test fn arc_elements_that_name_their_constructor_elaborate_holds() -> Bool {
   (arc_reasons(o: arc_resolve(subject: "v2.test.arc_red_headed")) == Empty)
-    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_red_headed")) == [
-      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
-    ])
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_red_headed")) == arc_three_arb_paths()
 }
 
 // POSITIVE CONTROL, RUN (2) -- THE CARRIER CLOSES THE GROUP BY ELABORATING. The byte-identical module
@@ -278,9 +279,7 @@ test fn arc_elements_that_name_their_constructor_elaborate_holds() -> Bool {
 // records with their constructors elaborated.
 test fn arc_with_the_carrier_the_headless_form_elaborates_like_its_headed_form_holds() -> Bool {
   (arc_reasons(o: arc_resolve(subject: "v2.test.arc_pos")) == Empty)
-    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) == [
-      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
-    ])
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_pos")) == arc_three_arb_paths()
 }
 
 // THE CARRIER, WRITTEN AS ITS OWN HEAD, CLOSES THE SAME THREE POSITIONS. The census's 16 acyclic sites
@@ -291,11 +290,9 @@ test fn arc_with_the_carrier_the_headless_form_elaborates_like_its_headed_form_h
 // reading stayed at 93 -- so the two readings together, not either alone, are what closes the group.
 test fn arc_a_head_literal_under_a_directly_named_head_elaborates_holds() -> Bool {
   (arc_reasons(o: arc_resolve(subject: "v2.test.arc_direct_headless")) == Empty)
-    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headless")) == [
-      "v2.test.arc_p.ArB", "v2.test.arc_p.ArB", "v2.test.arc_p.ArB"
-    ])
+    && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headless")) == arc_three_arb_paths()
     && (arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headed"))
-      == arc_construct_paths(o: arc_resolve(subject: "v2.test.arc_direct_headless")))
+      == arc_three_arb_paths())
 }
 
 // THE CARRIER IS THE ONLY DIFFERENCE, BOTH WAYS AND AT ONCE, so the pair cannot drift apart: RED refuses,
