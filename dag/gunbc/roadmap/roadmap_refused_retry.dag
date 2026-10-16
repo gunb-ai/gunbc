@@ -50,7 +50,7 @@ fn compute_refusal_reason(ending: String, document: String) -> String {
 fn compute_refusal_cause(ending: WorkEnding, document: String) -> ValidationRefusalCause {
   match ending {
     WorkEndedRefusedByInfrastructure =>
-      ValidationComputeInfrastructureRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
+      ValidationComputeInfrastructureRefused { reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
     WorkEndedSucceeded =>
       ValidationCommandRefused { program: compute_refusal_program, reason: compute_refusal_reason(ending: work_ending_wire(e: ending), document: document) }
     WorkEndedFailed =>
@@ -64,7 +64,7 @@ fn compute_refusal_cause(ending: WorkEnding, document: String) -> ValidationRefu
 
 fn refusal_cause_class(cause: ValidationRefusalCause) -> RefusalCauseClass {
   match cause {
-    ValidationComputeInfrastructureRefused { program: _, reason: _ } => RefusalCauseInfrastructure
+    ValidationComputeInfrastructureRefused { reason: _ } => RefusalCauseInfrastructure
     ValidationContractUnspecified => RefusalCauseCandidate
     ValidationContractClosesNothing => RefusalCauseCandidate
     ValidationNotAgentWork { mode: _ } => RefusalCauseCandidate
