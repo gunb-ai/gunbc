@@ -2356,7 +2356,7 @@ fn resolve_atom_unscoped_unbound(ctx: ResolveContext, n: Node, identity: Symbol,
 // A NAME THE INDEX BINDS ONLY AS A KIND THE POSITION EXCLUDES refuses as the category mismatch it is,
 // derived directly from the one eligibility verdict (v2.std.symbol_index ExcludedByCategory): no replay
 // of the unbound tiers and no rewrite of their diagnostic. The verdict's required category and excluded
-// candidates are carried for the diagnostic that will name them. FRONTIER (DESIGN 3c, declared): consumed by the first change that gives Diagnostic or Correction a field for declared alternatives (std.diagnostic Correction has only Suggested and Unavailable today); until then they are read by no route, and that change owns reading them or shrinking this arm.
+// candidates are carried for the diagnostic that will name them. FRONTIER (DESIGN 3c, declared): consumed by the capability a Diagnostic field carrying the excluded candidate (std.diagnostic Diagnostic has only reason, at and correction today, and Suggested names a replacement node, not a found one); until then they are read by no route, and that change owns reading them or shrinking this arm.
 fn resolve_atom_category_mismatch(n: Node, pending: Diagnostics) -> Outcome<Node> {
   Rejected { diagnostics: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: Diagnostic {
     reason: ^resolve_reason_reference_category_mismatch,
@@ -2477,9 +2477,13 @@ fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> O
 
 // What a type application head admits at each argument position, or that the head is outside the arity
 // check (a head the index does not hold, a malformed binder order, a refused head walk).
+type InstantiationPosition
+  = PositionKinded
+  | PositionUnkinded
+
 type InstantiationKinds
   = InstantiationKindsOutsideCheck
-  | InstantiationKindsDeclared { admitted: List<Bool> }
+  | InstantiationKindsDeclared { admitted: List<InstantiationPosition> }
 
 // ONE RESOLUTION OBSERVATION OF ONE NODE. The refused arm carries the ORDERED POPULATION of
 // independent failure chains, `first` then `rest`, so "refused with no chain" has no constructor;
@@ -3972,8 +3976,8 @@ fn resolve_instantiation_walk_from_head(ctx: ResolveContext, n: Node, head_walk:
   }
 }
 
-fn resolve_no_admitted_kinds() -> List<Bool> {
-  let no_kinds: List<Bool> = Empty
+fn resolve_no_admitted_kinds() -> List<InstantiationPosition> {
+  let no_kinds: List<InstantiationPosition> = Empty
   no_kinds
 }
 
@@ -3984,7 +3988,7 @@ fn resolve_instantiation_head_kinds(ctx: ResolveContext, head_walk: ResolveNodeW
   }
 }
 
-fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk, kinds: List<Bool>) -> ResolveNodeWalk {
+fn resolve_instantiation_walk_arguments(ctx: ResolveContext, n: Node, head_walk: ResolveNodeWalk, kinds: List<InstantiationPosition>) -> ResolveNodeWalk {
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     if acc.ordinal == 0 {
       child_walk_step(w: acc, e: e, r: head_walk)
@@ -4050,31 +4054,34 @@ fn resolve_instantiation_argument_kinds(ctx: ResolveContext, head: Node) -> Inst
 }
 
 // One entry per declared binder, in authored order: the kind the binder admits, or Absent.
-fn resolve_instantiation_admitted_kinds(ctx: ResolveContext, path: QualifiedName, binders: Node, labels: List<Symbol>) -> List<Bool> {
-  let seed: List<Bool> = Empty
+fn resolve_instantiation_admitted_kinds(ctx: ResolveContext, path: QualifiedName, binders: Node, labels: List<Symbol>) -> List<InstantiationPosition> {
+  let seed: List<InstantiationPosition> = Empty
   fold(labels, init: seed, f: fn(acc, l) { list_snoc_item(xs: acc, item: resolve_instantiation_admitted_kind(ctx: ctx, path: path, binders: binders, label: l)) })
 }
 
-fn resolve_instantiation_admitted_kind(ctx: ResolveContext, path: QualifiedName, binders: Node, label: Symbol) -> Bool {
+fn resolve_instantiation_admitted_kind(ctx: ResolveContext, path: QualifiedName, binders: Node, label: Symbol) -> InstantiationPosition {
   match type_binder_target_of(binders: binders, name: label) {
-    Absent => false
+    Absent => PositionUnkinded
     Present { value: b } =>
       match type_param_kind_optional(binder: b) {
-        Absent => false
+        Absent => PositionUnkinded
         Present { value: kind } =>
           match resolve_kind_variant_paths_optional(ctx: ctx, declaration: path, kind: kind) {
-            Present { value: _ } => true
-            Absent => false
+            Present { value: _ } => PositionKinded
+            Absent => PositionUnkinded
           }
       }
   }
 }
 
-fn resolve_instantiation_argument_ctx(ctx: ResolveContext, kinds: List<Bool>, ordinal: Int) -> ResolveContext {
+fn resolve_instantiation_argument_ctx(ctx: ResolveContext, kinds: List<InstantiationPosition>, ordinal: Int) -> ResolveContext {
   match list_at_optional(xs: kinds, index: ordinal - 1) {
     Absent => ctx
-    Present { value: admits_variant } =>
-      if admits_variant { resolve_ctx_with_reference_category(ctx: ctx, category: LexicalValueOccurrence) } else { ctx }
+    Present { value: position } =>
+      match position {
+        PositionKinded => resolve_ctx_with_reference_category(ctx: ctx, category: LexicalValueOccurrence)
+        PositionUnkinded => ctx
+      }
   }
 }
 
