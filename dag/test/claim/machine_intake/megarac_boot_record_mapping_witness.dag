@@ -60,6 +60,8 @@ import gunbc.host.boot_attempt {
   boot_attempt_console_reading_decl_ref,
   boot_attempt_console_debt_dissolves_when_the_typed_reading_retires,
   boot_attempt_console_debt_status,
+  boot_attempt_console_debt_refs,
+  boot_attempt_console_debt_outstanding,
   TerminalMarker, TerminalNotObserved, AttemptRunId,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
@@ -767,7 +769,7 @@ test fn harness_findings_come_through_the_same_call() -> Bool {
 // (review 81187, DESIGN §5: "a dissolution condition describes how admitted debt ends; it does not
 // authorize creating it"). The console half is the one thing this neutral core is not yet neutral about,
 // and the trigger for ending it used to live only in `//` prose. It is now a DissolutionCondition; these
-// three claims are what keep the carrier from being a comment wearing a type.
+// four claims are what keep the carrier from being a comment wearing a type.
 
 // (a) THE CARRIER NAMES SOMETHING THAT EXISTS TODAY, in this module. Deliberately a retirement trigger,
 // not the forward shape: naming gunbc.host.boot_console_observation before anyone declared it would be a
@@ -785,6 +787,26 @@ test fn the_console_debt_is_live_while_the_core_still_declares_the_reading() -> 
     DissolutionPending => true
     _ => false
   }
+}
+
+// (c2) THE CARRIER COVERS THE WHOLE DEBT, not part of it (review 81263 F3). The neutral core imports
+// declarations from two machine-named modules; the debt list must name every one of them, and the census
+// question must answer which are still live. Today: all five, from exactly those two modules -- and it
+// can report a subset, which is what makes it a census rather than a constant.
+test fn the_debt_carrier_lists_every_machine_named_declaration_the_core_borrows() -> Bool {
+  let census = boot_attempt_console_debt_refs
+  // live while the census contains them
+  let live = boot_attempt_console_debt_outstanding(present_decls: census)
+  let all_live = length(xs: live) == length(xs: census)
+  // the list names only the two machine-named modules, never the neutral one
+  let only_machine_modules = all(census, r =>
+    r.module_path == "gunbc.machine_intake.mtcollins1_power_on_account"
+      || r.module_path == "gunbc.machine_intake.mtcollins1_console_milestone_observation")
+  // and it CAN fire selectively: retire exactly one and the outstanding list shrinks by one, so the
+  // carrier reports WHICH borrowing is left rather than a single live/fired bit.
+  let one_retired = filter(census, r => r.decl_name != "SpanConsoleReading")
+  let after = boot_attempt_console_debt_outstanding(present_decls: one_retired)
+  all_live && only_machine_modules && length(xs: after) == length(xs: census) - 1
 }
 
 // (c) THE CARRIER CAN ACTUALLY FIRE, and it fires because the reading is ABSENT -- not because the census

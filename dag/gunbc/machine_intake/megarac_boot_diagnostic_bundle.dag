@@ -166,7 +166,7 @@ import gunbc.host.boot_attempt {
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
   StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,
   StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted,
-  media_attach_ready, media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
+  media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
   HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
   handoff_media_text, EndMedia, EndMediaNotTaken, EndMediaObserved, end_media_text,
   PowerAfterAttempt, PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
