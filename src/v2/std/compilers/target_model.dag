@@ -844,30 +844,24 @@ fn produced_decl_signature_with_open_from_rows(
         rows: rows,
         subject: subject,
         segments: rows.signature,
-        type_binding: produced_decl_binding_with_own_type_params(subject: subject, outer: type_binding)
+        // A TYPE-PARAMETER ATOM IS A BINDER'S OWN NAME, not a type the target realizes: an atom naming one of
+        // the declaration's own type parameters binds to itself, every other atom goes to the outer binding
+        // unchanged (so a name that is not declared still refuses as unrealized). Written inline, not as a
+        // function returning the closure, so the outer binding is passed down and never retained.
+        type_binding: fn(type_node) {
+          match type_node.kind {
+            TypeNode { connective: Atom { identity: id } } =>
+              if fold_list(xs: subject.type_params, empty: false, cons: fn(acc, p) { acc || p.name == id }) {
+                outcome_accepted(value: id)
+              } else {
+                type_binding(type_node)
+              }
+            _ => type_binding(type_node)
+          }
+        }
       )
     }
   )
-}
-
-// A TYPE-PARAMETER ATOM IS A BINDER'S OWN NAME, not a type the target realizes: an atom naming one
-// of the declaration's own type parameters binds to itself, every other atom goes to the outer binding
-// unchanged (so a name that is not declared still refuses as unrealized).
-fn produced_decl_binding_with_own_type_params(
-  subject: ProducedDeclSignatureSubject,
-  outer: fn(Node) -> Outcome<Symbol>
-) -> fn(Node) -> Outcome<Symbol> {
-  fn(type_node) {
-    match type_node.kind {
-      TypeNode { connective: Atom { identity: id } } =>
-        if fold_list(xs: subject.type_params, empty: false, cons: fn(acc, p) { acc || p.name == id }) {
-          outcome_accepted(value: id)
-        } else {
-          outer(type_node)
-        }
-      _ => outer(type_node)
-    }
-  }
 }
 
 // The whole produced-declaration rendering, read off the target's declared rows. This
