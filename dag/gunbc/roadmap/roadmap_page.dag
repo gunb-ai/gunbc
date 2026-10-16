@@ -26,6 +26,7 @@ import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import std.algebra { empty_map, map_insert, map_lookup }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
@@ -2383,7 +2384,42 @@ fn issue_chain_breadcrumb_node(chain: NodeChain) -> Fragment {
 }
 
 // The page consumes the hierarchy view its entry derived; it reads no node list and no edge itself.
-fn issue_detail_page(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+// THE RETIRE-LINEAGE AFFORDANCE (LINEAGE-RETIRE-1): for an Ended lineage, a form posting to
+// /dispatch/{node_id}/retire-lineage with the ended attempt key hidden, a required reason and the
+// session's csrf token (disabled without a session, as the comment composer is); once a record
+// exists, who/when/why and the kept branch. No panel for any other lineage state.
+fn issue_lineage_retire_panel_nodes(node_id: String, panel: LineageRetirePanel, command_context: IssueFormContext) -> List<Fragment> {
+  match panel {
+    LineageRetirePanelNone => []
+    LineageRetirePanelOffer { attempt_key, branch } => [
+      el_attrs("form", [
+        attr(name: "class", value: "issue-lineage-retire-form"),
+        attr(name: "method", value: "post"),
+        attr(name: "enctype", value: "application/x-www-form-urlencoded"),
+        attr(name: "action", value: join(["/dispatch/", node_id, "/retire-lineage"], "")),
+      ], [
+        el_class("p", "issue-lineage-retire-note", [ txt(join(["This lineage ended at attempt ", attempt_key, " without a candidate. Retiring it lets the belt start a fresh attempt from base; branch ", branch, " is kept, not deleted."], "")) ]),
+        el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
+        el_attrs("input", [ attr(name: "name", value: "attempt_key"), attr(name: "type", value: "hidden"), attr(name: "value", value: attempt_key) ], []),
+        el_attrs("textarea", [ attr(name: "name", value: "reason"), attr(name: "required", value: ""), attr(name: "class", value: "issue-comment-input"), attr(name: "aria-label", value: "Reason for retiring this lineage"), attr(name: "placeholder", value: "Why this ended lineage should be retired") ], []),
+        el_attrs("button", concat(if command_context.csrf == "" { [attr(name: "disabled", value: ""), attr(name: "title", value: "Sign in to retire this lineage")] } else { [] }, [
+          attr(name: "class", value: "issue-lineage-retire-submit issue-action-text"),
+          attr(name: "type", value: "submit"),
+        ]), [ txt("Retire lineage") ]),
+      ])
+    ]
+    LineageRetirePanelUnreadable { reason } => [
+      el_class("p", "issue-lineage-retire-note issue-lineage-retire-unreadable", [ txt(join(["This lineage's retire record exists but cannot be read, so dispatch refuses it until an operator resolves the file: ", reason], "")) ])
+    ]
+    LineageRetirePanelRecorded { record } => [
+      el_class("div", "issue-lineage-retired", [
+        el_class("p", "issue-lineage-retire-note", [ txt(join(["Lineage retired at attempt ", record.attempt_key, " by ", record.decided_by, " at ", record.decided_at, ". Reason: ", record.reason, ". Branch ", record.branch, " is kept."], "")) ]),
+      ])
+    ]
+  }
+}
+
+fn issue_detail_page(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, lineage_retire: LineageRetirePanel? = none) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
@@ -2404,7 +2440,7 @@ fn issue_detail_page(view: WorkRowView, hierarchy: IssueHierarchyView, observati
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
         el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, hierarchy: hierarchy)),
-        el_attrs("section", [attr(name: "class", value: "panel-work"), attr(name: "id", value: issue_work_tab_anchor)], issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
+        el_attrs("section", [attr(name: "class", value: "panel-work"), attr(name: "id", value: issue_work_tab_anchor)], concat(issue_work_tab_nodes(view: view, attempts: attempts, events: events), issue_lineage_retire_panel_nodes(node_id: view.node_id, panel: match lineage_retire { Present { value: v } => v Absent => LineageRetirePanelNone }, command_context: command_context))),
         el_class("section", "panel-history", issue_history_tab_nodes(events: events, profiles: view.profiles)),
       ]),
       issue_metadata_rail_node(view: view, hierarchy: hierarchy, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
@@ -2660,9 +2696,9 @@ fn issue_modified_value(events: List<RoadmapEventEnvelope>) -> String {
   }
 }
 
-fn issue_detail_page_launch(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
+fn issue_detail_page_launch(view: WorkRowView, hierarchy: IssueHierarchyView, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>, lineage_retire: LineageRetirePanel? = none) -> Fragment {
   site_document(title: join(["gunbc — issue ", view.node_id], ""), heading: "issue", styles: roadmap_styles(), content: [
-issue_detail_page(view: view, hierarchy: hierarchy, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+issue_detail_page(view: view, hierarchy: hierarchy, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context, lineage_retire: lineage_retire),
 dispatch_client_script()
 ])
 }
@@ -2706,6 +2742,7 @@ fn issue_detail_page_for(
   recents: List<EventPrincipal>,
   command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" },
   profiles: List<PrincipalProfile>,
+  lineage_retire: LineageRetirePanel? = none,
  memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -2732,7 +2769,7 @@ fn issue_detail_page_for(
             viewer: viewer,
             recents: recents,
             expected_revision: issue_chain_head_id(envs: events), command_context: command_context,
-            profiles: profiles)
+            profiles: profiles, lineage_retire: lineage_retire)
       }
   }
 }

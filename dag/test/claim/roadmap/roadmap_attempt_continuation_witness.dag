@@ -4,9 +4,16 @@ import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
-  continuation_decision,
+  continuation_decision, continuation_decision_with_retirement,
+  LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
+import gunbc.roadmap.roadmap_lineage_retire_record {
+  LineageRetireDecoded, LineageRetireUndecodable, lineage_retire_json, lineage_retire_decode,
+  LineageRetireAbsent, LineageRetireCommitted, LineageRetireCommitRefused, LineageRetireFound, lineage_retire_commit_of,
+}
+import extdeps.filesystem.filesystem_io { FilesystemCreated, FilesystemCreateTargetOccupied }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
@@ -180,7 +187,7 @@ test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
 
 // VERIFICATION OWNED BY THE BELT HOLDS THE LINEAGE: absent, pending, and active segments are the
 // belt's outstanding obligation; a refused verification is an environment fact and the obligation
-// stays outstanding with the retry named; a stopped segment is a state verification does not
+// names the operator resume (nothing retries it automatically); a stopped segment is a state verification does not
 // inhabit and refuses.
 test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
   let owed = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
@@ -201,11 +208,121 @@ test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_
       _ => false
     })
     && (match continuation_decision(prior: Present { value: refused }) {
-      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("retries")
+      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("operator resumes") && !reason.contains("retries")
       _ => false
     })
     && (match continuation_decision(prior: Present { value: stopped }) {
       ContinuationRefused { reason } => reason.contains("does not inhabit")
       _ => false
     })
+}
+
+// ---- LINEAGE-RETIRE-1 (ruling 2026-10-16): the operator's retire record releases an Ended lineage ----
+
+fn ended_prior() -> PriorAttemptFacts {
+  pri(capture: CaptureAbsent, verification: none, review: none, goal_audit: none)
+}
+
+fn retire_record(attempt_key: String) -> LineageRetireRecord {
+  LineageRetireRecord { node_id: "n1", attempt_key: attempt_key, branch: "roadmap/n1/a1", reason: "worker ended without hand-in; abandon", decided_by: "google:op-1", decided_at: "2026-10-16T10:00:00Z" }
+}
+
+// CLAIM 1: an Ended lineage plus the record naming ITS ending attempt spawns fresh, and the reason cites
+// the record (principal, time, operator reason) and keeps the branch named. RED on lab-dev (no retire input).
+test fn retire_claim_1_ended_lineage_with_matching_record_spawns_fresh_citing_the_record() -> Bool {
+  match continuation_decision_with_retirement(prior: Present { value: ended_prior() }, retire: Present { value: retire_record(attempt_key: "a1") }) {
+    ContinuationSpawnFresh { reason } =>
+      reason.contains("google:op-1") && reason.contains("2026-10-16T10:00:00Z") && reason.contains("abandon")
+        && reason.contains("roadmap/n1/a1") && reason.contains("is kept")
+    _ => false
+  }
+}
+
+// CLAIM 2 (control): a record naming a different attempt than the lineage's current end is stale.
+test fn retire_claim_2_record_for_another_attempt_is_refused_as_stale() -> Bool {
+  match continuation_decision_with_retirement(prior: Present { value: ended_prior() }, retire: Present { value: retire_record(attempt_key: "a0") }) {
+    ContinuationRefused { reason } => reason.contains("stale")
+    _ => false
+  }
+}
+
+// CLAIM 3 (control): a record over an active, held or complete lineage, or over no lineage, is refused.
+test fn retire_claim_3_record_over_a_non_ended_lineage_is_refused() -> Bool {
+  let active = PriorAttemptFacts { node_id: "n1", attempt_key: "a1", branch: "roadmap/n1/a1", worker_terminal: false, capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: SessionRecoveryNone }
+  let held = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
+  let green = segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "ok")
+  let approved = segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")
+  let complete = pri(capture: ready_capture(), verification: green, review: approved, goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"))
+  let r = retire_record(attempt_key: "a1")
+  retire_refused_by(p: Present { value: active }, r: r, pattern: "not Ended")
+    && retire_refused_by(p: Present { value: held }, r: r, pattern: "not Ended")
+    && retire_refused_by(p: Present { value: complete }, r: r, pattern: "not Ended")
+    && retire_refused_by(p: none, r: r, pattern: "no prior attempt")
+}
+
+fn retire_refused_by(p: PriorAttemptFacts?, r: LineageRetireRecord, pattern: String) -> Bool {
+  match continuation_decision_with_retirement(prior: p, retire: Present { value: r }) {
+    ContinuationRefused { reason } => reason.contains(pattern)
+    _ => false
+  }
+}
+
+// CLAIM 4 (control, green on both): with no record the lineage stays Ended, unchanged.
+test fn retire_claim_4_without_a_record_the_lineage_stays_ended() -> Bool {
+  match continuation_decision_with_retirement(prior: Present { value: ended_prior() }, retire: none) {
+    ContinuationEnded { reason: _ } => true
+    _ => false
+  }
+}
+
+// CLAIM 5, admission half: only the lineage's ended end is admitted; another attempt, a non-ended
+// lineage and an empty reason refuse; who and when are the supplied values, not request text.
+test fn retire_claim_5_admission_admits_only_the_ended_end() -> Bool {
+  let admitted = match lineage_retire_admission(prior: Present { value: ended_prior() }, attempt_key: "a1", reason: "abandon", decided_by: "google:op-1", decided_at: "t") {
+    LineageRetireAdmitted { record } => record.decided_by == "google:op-1" && record.decided_at == "t" && record.branch == "roadmap/n1/a1" && record.node_id == "n1"
+    LineageRetireRefused { reason: _ } => false
+  }
+  let wrong_attempt = match lineage_retire_admission(prior: Present { value: ended_prior() }, attempt_key: "a0", reason: "abandon", decided_by: "p", decided_at: "t") {
+    LineageRetireRefused { reason } => reason.contains("only the ended end")
+    LineageRetireAdmitted { record: _ } => false
+  }
+  let not_ended = match lineage_retire_admission(prior: Present { value: pri(capture: ready_capture(), verification: none, review: none, goal_audit: none) }, attempt_key: "a1", reason: "abandon", decided_by: "p", decided_at: "t") {
+    LineageRetireRefused { reason } => reason.contains("not Ended")
+    LineageRetireAdmitted { record: _ } => false
+  }
+  let empty_reason = match lineage_retire_admission(prior: Present { value: ended_prior() }, attempt_key: "a1", reason: "", decided_by: "p", decided_at: "t") {
+    LineageRetireRefused { reason: _ } => true
+    LineageRetireAdmitted { record: _ } => false
+  }
+  admitted && wrong_attempt && not_ended && empty_reason
+}
+
+// CLAIM 5, inhabitance: the record the admission produces survives the carrier's codec and the decoded
+// value yields the fresh spawn through the decision -- the shape the route writes is the shape the decision reads.
+test fn retire_claim_5_written_record_shape_is_the_shape_the_decision_reads() -> Bool {
+  match lineage_retire_admission(prior: Present { value: ended_prior() }, attempt_key: "a1", reason: "abandon", decided_by: "google:op-1", decided_at: "t") {
+    LineageRetireRefused { reason: _ } => false
+    LineageRetireAdmitted { record } =>
+      match lineage_retire_decode(text: lineage_retire_json(record: record)) {
+        LineageRetireUndecodable { reason: _ } => false
+        LineageRetireDecoded { record: back } =>
+          match continuation_decision_with_retirement(prior: Present { value: ended_prior() }, retire: Present { value: back }) {
+            ContinuationSpawnFresh { reason: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+// The carrier is create-only: a different decision over the same attempt does not replace the first.
+test fn retire_record_commit_first_decision_stands() -> Bool {
+  let first = retire_record(attempt_key: "a1")
+  let second = LineageRetireRecord { node_id: "n1", attempt_key: "a1", branch: "roadmap/n1/a1", reason: "other", decided_by: "google:op-2", decided_at: "t2" }
+  (match lineage_retire_commit_of(record: first, created: FilesystemCreateTargetOccupied { path: "p" }, existing: LineageRetireFound { record: first }) {
+    LineageRetireCommitted { record: _ } => true
+    LineageRetireCommitRefused { step: _, detail: _ } => false
+  }) && (match lineage_retire_commit_of(record: second, created: FilesystemCreateTargetOccupied { path: "p" }, existing: LineageRetireFound { record: first }) {
+    LineageRetireCommitRefused { step, detail: _ } => step == "lineage-retire-conflict"
+    LineageRetireCommitted { record: _ } => false
+  })
 }

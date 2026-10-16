@@ -387,7 +387,7 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
   exact_verification_address_for,
   ExactVerificationAddress,
   verification_receipt_file_source_from_exact,
-  belt_verification_decision,
+  belt_verification_decision, belt_verification_resume_decision,
   BeltVerificationRun,
   BeltVerificationDefer,
   BeltVerificationRefuse,
@@ -585,10 +585,17 @@ import gunbc.roadmap.roadmap_acceptance_outcome {
   AcceptanceOutcome, AcceptanceUnavailable,
   AcceptanceOutcomeRecord, acceptance_outcome_of_stages, acceptance_outcome_record_text, acceptance_outcome_key, acceptance_outcome_basename,
 }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord, LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
+import gunbc.roadmap.roadmap_lineage_retire_record {
+  LineageRetireRead, LineageRetireFound, LineageRetireAbsent, LineageRetireUnreadable,
+  LineageRetireCommit, LineageRetireCommitted, LineageRetireCommitRefused,
+  lineage_retire_read_for_instance, lineage_retire_create_for_instance,
+}
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
   ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
-  continuation_decision,
+  continuation_decision, continuation_decision_with_retirement,
+  LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, ProviderAwaitingAcceptance }
@@ -2516,19 +2523,79 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
 fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
-  continuation_decision(
-    prior: Present { value: PriorAttemptFacts {
-      node_id: node.node as String,
-      attempt_key: progress.attempt_key,
-      branch: progress.branch,
-      worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
-      verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
-      review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
-      goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
-    } },
-  )
+  let prior = Present { value: belt_prior_attempt_facts(instance: instance, node_id: node.node, progress: progress) }
+  match lineage_retire_read_for_instance(instance: instance, node_id: node.node, attempt_key: progress.attempt_key) {
+    LineageRetireAbsent => continuation_decision_with_retirement(prior: prior, retire: none)
+    LineageRetireFound { record } => continuation_decision_with_retirement(prior: prior, retire: Present { value: record })
+    LineageRetireUnreadable { reason } =>
+      ContinuationRefused { reason: join(["the lineage's retire record is present but unreadable, so the lineage is neither retired nor trusted: ", reason], "") }
+  }
+}
+
+fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: node_id as String,
+    attempt_key: progress.attempt_key,
+    branch: progress.branch,
+    worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
+    capture: belt_prior_attempt_capture(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+    verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
+    review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
+    goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
+    recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+  }
+}
+
+// THE OPERATOR'S RETIRE-LINEAGE ENTRY: admit the request over the node's current lineage facts, then
+// commit the create-only record beside the ended attempt's state. The route supplies the authenticated
+// principal and the clock; nothing here reads a caller-claimed identity. The branch is never touched.
+type BeltLineageRetireOutcome
+  = BeltLineageRetired { record: LineageRetireRecord }
+  | BeltLineageRetireRefused { step: String, detail: String }
+
+fn belt_lineage_retire_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, reason: String, decided_by: String, decided_at: String) -> BeltLineageRetireOutcome {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason: why } =>
+      BeltLineageRetireRefused { step: "lineage-retire-ledger", detail: join(["the attempts ledger is unobservable: ", why], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let mine = attempts |> filter(p => p.node_id == node_id as String)
+      let prior = match mine.first() {
+        Absent => none
+        Present { value: p } => Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }
+      }
+      match lineage_retire_admission(prior: prior, attempt_key: attempt_key, reason: reason, decided_by: decided_by, decided_at: decided_at) {
+        LineageRetireRefused { reason: why } => BeltLineageRetireRefused { step: "lineage-retire-admission", detail: why }
+        LineageRetireAdmitted { record } =>
+          match lineage_retire_create_for_instance(instance: instance, node_id: node_id, record: record) {
+            LineageRetireCommitted { record: committed } => BeltLineageRetired { record: committed }
+            LineageRetireCommitRefused { step, detail } => BeltLineageRetireRefused { step: step, detail: detail }
+          }
+      }
+    }
+  }
+}
+
+// THE NODE PAGE'S RETIREMENT PANEL over the node's attempts (newest first): a record beside the latest
+// attempt is shown as recorded; with none, the offer exists only when the unretired decision for that
+// attempt is Ended. Every other state shows nothing. It decides nothing: the route re-admits.
+fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempts: List<WorkflowAttemptProgress>) -> LineageRetirePanel {
+  match (attempts |> filter(p => p.node_id == node_id as String)).first() {
+    Absent => LineageRetirePanelNone
+    Present { value: p } =>
+      match lineage_retire_read_for_instance(instance: instance, node_id: node_id, attempt_key: p.attempt_key) {
+        LineageRetireFound { record } => LineageRetirePanelRecorded { record: record }
+        LineageRetireUnreadable { reason } => LineageRetirePanelUnreadable { reason: reason }
+        LineageRetireAbsent =>
+          match continuation_decision_with_retirement(prior: Present { value: belt_prior_attempt_facts(instance: instance, node_id: node_id, progress: p) }, retire: none) {
+            ContinuationEnded { reason: _ } => LineageRetirePanelOffer { attempt_key: p.attempt_key, branch: p.branch }
+            ContinuationSpawnFresh { reason: _ } => LineageRetirePanelNone
+            ContinuationRefused { reason: _ } => LineageRetirePanelNone
+            ContinuationHold { reason: _ } => LineageRetirePanelNone
+            ContinuationComplete { reason: _ } => LineageRetirePanelNone
+            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
+          }
+      }
+  }
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
@@ -8683,9 +8750,28 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
   }
 }
 
+// WHO ASKED FOR THIS VERIFICATION: the belt (a recorded verdict of any kind is final) or the operator
+// resuming a refused one (a recorded REFUSED verdict runs again; any other stays).
+type BeltVerifyMode = VerifyAsBelt | VerifyAsOperatorResume
+
 fn belt_verify_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
+) -> BeltVerifyOutcome {
+  belt_verify_attempt_in_mode(instance: instance, progress: progress, mode: VerifyAsBelt)
+}
+
+fn belt_verification_decision_in_mode(mode: BeltVerifyMode, expected: VerificationSubject, source: ExactVerificationReceiptSource) -> BeltVerificationDecision {
+  match mode {
+    VerifyAsBelt => belt_verification_decision(expected: expected, source: source)
+    VerifyAsOperatorResume => belt_verification_resume_decision(expected: expected, source: source)
+  }
+}
+
+fn belt_verify_attempt_in_mode(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+  mode: BeltVerifyMode,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   if belt_provider_candidate_ready(provider: progress.provider) {
@@ -8817,7 +8903,8 @@ fn belt_verify_attempt_for_instance(
                           verification_dir: address.verification_dir,
                           receipt_basename: address.receipt_basename,
                         )
-                        match belt_verification_decision(
+                        match belt_verification_decision_in_mode(
+                          mode: mode,
                           expected: subject,
                           source: exact_source,
                         ) {
@@ -9305,6 +9392,24 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
           }
         }
       }
+  }
+}
+
+// THE OPERATOR'S RESUME OF ONE ATTEMPT'S REFUSED VERIFICATION. It runs the shared verify machinery in
+// resume mode, which re-runs only a recorded REFUSED verdict at the attempt's exact head; the new
+// verdict replaces the refused receipt. Nothing else changes: a passed or failed verdict answers
+// already-recorded, exactly as belt_verify_one_for_instance does.
+fn belt_verify_resume_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+  match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    OneAttemptNotCurrent { named, current } =>
+      VerifyOneRefused {
+        reason: join([
+          "the named attempt ", named, " is not the node's current modeled attempt (current is ",
+          current, "); the resume does not act on a lineage the pointer has left",
+        ], ""),
+      }
+    OneAttemptProgress { progress } =>
+      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_in_mode(instance: instance, progress: progress, mode: VerifyAsOperatorResume) }
   }
 }
 

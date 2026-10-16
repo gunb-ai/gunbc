@@ -1,0 +1,39 @@
+module gunbc.roadmap.roadmap_lineage_retire
+
+import std.types { String }
+
+// THE OPERATOR'S DECISION TO RETIRE AN ENDED LINEAGE (ruling 2026-10-16, LINEAGE-RETIRE-1: "Operator
+// retire-lineage record, then a fresh lineage"). A lineage that ended without an approved candidate
+// (gunbc.roadmap.roadmap_attempt_continuation ContinuationEnded) spawns nothing, because starting
+// over from base would discard committed work silently. This record is what makes the discard
+// explicit and attributable: it names the node, the ENDED attempt and its branch, the operator's
+// reason, and who decided when. It is the decision's only new input; it is the type alone, below the
+// continuation decision that reads it and the carrier that persists it.
+//
+// THE BRANCH IS KEPT. The record never deletes, resets or rewrites the branch; it only releases the
+// node to a fresh attempt from the instance's base ref. The retired branch stays addressable as the
+// record's `branch`, for the operator and the dashboard. A fresh attempt's brief does NOT point at
+// it by default: every attempt starts from base with no second origin (slice S1 removed the
+// prior-verdict-in-the-brief lane), and the ended attempt's verdict is the least trustworthy thing
+// to seed a replacement with. A worker that needs the old work reads it from the named branch.
+//
+// WHO AND WHEN ARE THE ROUTE'S, never the caller's: `decided_by` is the authenticated principal's
+// label and `decided_at` the server clock at admission.
+type LineageRetireRecord {
+  node_id: String
+  attempt_key: String
+  branch: String
+  reason: String
+  decided_by: String
+  decided_at: String
+}
+
+// WHAT THE NODE PAGE SHOWS OF A LINEAGE'S RETIREMENT: nothing, the offer to retire the ended end
+// (its attempt key and kept branch), or the record once one exists. The route
+// (POST /dispatch/{node_id}/retire-lineage) is the one realization of the offer; the page only renders
+// this value and never decides it.
+type LineageRetirePanel
+  = LineageRetirePanelNone
+  | LineageRetirePanelOffer { attempt_key: String, branch: String }
+  | LineageRetirePanelRecorded { record: LineageRetireRecord }
+  | LineageRetirePanelUnreadable { reason: String }
