@@ -38,9 +38,9 @@ fn axes() -> List<MarkdownBlock> {
     h2(text: "2. Three axes, joined, not merged"),
     ul(items: [
       li(text: "**Physical identity:** gunbc.machine_intake.subject UnitKey plus the current MachineIntakeSubject (assembly and firmware state). A receipt taken before a DIMM or firmware change does not apply to the repaired assembly."),
-      li(text: "**Fleet binding (optional):** gunbc.fleet.fleet_enrollment HostEnrollmentIntent; the host-to-unit edge lives on gunbc.fleet.fleet_host_backing OwnedMachine (a UnitKeyStanding, absent until a board serial is observed). Roles (CI runner, serving, sessions) are participation, never a machine kind, and never select a boot implementation."),
-      li(text: "**Control standing:** gunbc.host.host_control_route ControlledHost over gunbc.host.bmc_control_binding (cut 2). Control is keyed by controller endpoint and unit, not by host label, so an unenrolled arrival unit is controllable."),
-      li(text: "gunbc.host.managed_host is a BMC-specific standing being decomposed and retired, not the universal machine. Ampere SMpro is a platform capability (absent, not refused, on x86); BMC capabilities come from a per-firmware-release catalog looked up from the observed release, never a per-unit row."),
+      li(text: "**Fleet binding (optional):** gunbc.fleet.fleet_enrollment HostEnrollmentIntent; the host-to-unit edge is to live on gunbc.fleet.fleet_host_backing OwnedMachine as an optional UnitKeyStanding, absent until a board serial is observed (cut 1, #14062, not yet on main; today OwnedMachine carries only provisioning). Roles (CI runner, serving, sessions) are participation, never a machine kind, and never select a boot implementation."),
+      li(text: "**Control standing:** gunbc.host.host_control_route ControlledHost, to be re-based over a sealed BMC control binding (gunbc.host.bmc_control_binding, cut 2, #14063, not yet on main). Control is to be keyed by controller endpoint and unit, not by host label, so an unenrolled arrival unit is controllable."),
+      li(text: "gunbc.host.managed_host is a BMC-specific standing being decomposed and retired, not the universal machine. Ampere SMpro is a platform capability (absent, not refused, on x86); BMC capabilities are to come from a per-firmware-release catalog looked up from the observed release, never a per-unit row (cut 2; today mtcollins1 still carries a per-unit capability row)."),
     ]),
   ]
 }
