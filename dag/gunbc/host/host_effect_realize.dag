@@ -311,6 +311,34 @@ import extdeps.cache.sccache {
 import extdeps.crypto.hash { Digest }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.build_cache.build_cache_unit { build_cache_unit_text }
+import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheEnsureExecuted,
+  BuildCachePlanRefused,
+  EnsureOps,
+  BuildCacheEnsureOp,
+  BuildCacheHostRunObserved,
+  BuildCacheHostRunOutcome,
+  BuildCacheObserve,
+  CouldNotRun,
+  EnsureCompleted,
+  EnsureFailed,
+  EnsurePlanRefused,
+  EnsureSkipped,
+  EnsureTransportBlocked,
+  Ran,
+  build_cache_binary_presence_of,
+  build_cache_daemon_ensure_observation,
+  build_cache_daemon_ensure_plan,
+  build_cache_daemon_presence_command,
+  build_cache_daemon_stats_command,
+  build_cache_ensure_is_needed,
+  build_cache_matched_stats_fragment,
+  build_cache_observe_observed,
+  build_cache_read_back_observation,
+  build_cache_sccache_install_params,
+  build_cache_unit_bytes,
+  build_cache_unit_stage_discard_command,
+}
 import gunbc.build_cache.build_cache_provision_verdict {
   BuildCacheDaemonObservation,
   DaemonStatsOk,
