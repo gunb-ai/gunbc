@@ -7,25 +7,31 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
-// emitted v2 compiler's `census-infer` walk prints one `binding` line per module-level reference
-// occurrence, read off resolve's one binding record (v2.compiler.occurrence_binding_census), and one
+// emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
+// read off resolve's one binding record (v2.compiler.occurrence_binding_census), and one
 // `binding_module` line per module that resolved, or one `binding_unreached` line per module that did
-// not. This module is the host-side reader the instrument row hands three runs to, and it decides:
+// not. This module is the host-side reader the instrument row hands its runs to, and it decides:
 //
 //   1. the FIXTURE ROOT (ambient_census_fixture_files): every expected row present and no unexpected
 //      row -- an identity join both ways, never a count;
-//   2. EXACTLY ONE SOURCE PER OCCURRENCE, on the fixture and on the whole tree: a module whose walk
-//      recorded one occurrence twice (binding_module's duplicate field) refuses, naming the module.
-//      The record is a map, so a second write would otherwise replace the first silently;
+//   2. EXACTLY ONE SOURCE PER OCCURRENCE, on the fixture and on every subject run: a module whose walk
+//      recorded one occurrence with two different bindings (binding_module's duplicate field), or a
+//      declaration reference with no record, refuses, naming the module;
 //   3. the UNINDEXED ROOT: a module that does not resolve must leave the run with no observation
 //      (status 2), never a run that held over a module with no binding record;
-//   4. the WHOLE TREE (`dag` + `src/v2`): every module-level row, then a summary per (table, spelling) --
-//      the names the NAMESPACE-XL waves have left to move, ranked by the reader of this output, never
-//      transcribed (DESIGN section 6).
+//   4. THE POPULATION (tidy-ant-251's ruling on PR #14112, 2026-10-16): the whole corpus does not fit
+//      a bounded runner in one census (gunbc.recurring_failure_mode
+//      whole_corpus_census_exceeds_the_memory_bound), so the population is the closure of each SUBJECT,
+//      read one scoped run at a time: the roster below, plus every module the wave at this commit
+//      rewrites against ambient_census_base_ref. Every rewritten module this checkout holds that no
+//      subject run observed is printed BY NAME as `unobserved_rewritten`, and makes the run exit 2:
+//      a wave whose edits the census did not read is not admitted. A module outside every subject's
+//      closure is not read at all, and nothing here claims it was.
 //
-// Exit: 0 every control held and every module of the tree was observed; 1 a control did not hold; 2 the
-// whole tree has a module the census did not reach or a spelling it could not read (the summary is
-// printed either way, and is a reading of the modules it names, not of the corpus).
+// Exit: 0 every control held and every rewritten module was observed; 1 a control did not hold; 2 a
+// rewritten module or a subject run went unobserved (or nothing at all was observed). A module inside
+// a closure that resolve refused is listed as `binding_unreached` and is a fact of the reading, not a
+// failure of it: its refusal is the native census's to count.
 //
 // THE PRIMITIVE-AUTHORITY ARM IS NOT IN THE FIXTURE, and why: that tier binds a free name to its
 // std.primitives contract row, which a one-root fixture cannot declare without std. Its evidence is
@@ -72,6 +78,19 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding\texamples.uses\tBool\t0\tambient:kernel_type_spelling\tkernel:bool_node_symbol",
     "binding\texamples.uses\tdag_token_kw_true\t0\tambient:kernel_canonical_symbol\tkernel:dag_token_kw_true"
   ]
+}
+
+// THE STANDING SUBJECTS: the native test target (native-seven; gunbc.instrument_targets
+// v2_native_census_scoped_subject names the same module), whose closure is the population the
+// NAMESPACE-XL waves are ranked over. A further subject is a further row.
+fn ambient_census_subjects() -> List<String> {
+  ["v2.test.claim.parse.expression_bodied_fn_decl_parse"]
+}
+
+// THE BASE A WAVE'S REWRITTEN MODULES ARE READ AGAINST: the merge base of the run's commit and this
+// ref. A policy fact, owned here; the binding diff reads its base at the same ref.
+fn ambient_census_base_ref() -> String {
+  "origin/main"
 }
 
 fn binding_lines(stdout: String) -> List<String> {
@@ -140,35 +159,92 @@ fn ambient_summary_lines(stdout: String) -> List<String> {
   map(map_keys(counts), k => "ambient_summary\t" + k + "\t" + to_string(match map_get(counts, k) { Present { value: n } => n  Absent => 0 }))
 }
 
+fn distinct_lines(lines: List<String>) -> List<String> {
+  let seen = fold(lines, init: empty_map(), f: fn(m, l) { map_insert(m, l, true) })
+  map_keys(seen)
+}
+
+// Fields of the host's per-subject line: subject, then its exit status or `covered` (an earlier
+// subject's closure already observed it, so it was not run again).
+fn failed_subject_runs(tree_runs: String) -> List<String> {
+  split(s: tree_runs, delimiter: "\n")
+    |> filter(l => l != "")
+    |> filter(l => (field_at(line: l, index: 1) != "0") && (field_at(line: l, index: 1) != "covered"))
+}
+
+fn observed_modules(tree_stdout: String) -> Map<String, Bool> {
+  fold(module_lines(stdout: tree_stdout), init: empty_map(), f: fn(m, l) { map_insert(m, field_at(line: l, index: 1), true) })
+}
+
+// A rewritten module this checkout holds that no subject run observed.
+fn unobserved_rewritten(rewritten: String, tree_stdout: String) -> List<String> {
+  let observed = observed_modules(tree_stdout: tree_stdout)
+  split(s: rewritten, delimiter: "\n")
+    |> filter(l => field_at(line: l, index: 1) == "present")
+    |> filter(l => match map_get(observed, field_at(line: l, index: 0)) { Present { value: _ } => false  Absent => true })
+    |> map(l => field_at(line: l, index: 0))
+}
+
+// One module read twice (two closures held it) must read the same both times: the same compiler over the
+// same bytes. Two different binding_module lines for one module are an inconsistent observation.
+fn inconsistent_module_failure(tree_stdout: String) -> Optional<String> {
+  let distinct = distinct_lines(lines: module_lines(stdout: tree_stdout))
+  let counts = fold(distinct, init: empty_map(), f: fn(m, l) {
+    let k = field_at(line: l, index: 1)
+    map_insert(m, k, match map_get(m, k) { Present { value: n } => n + 1  Absent => 1 })
+  })
+  match first(map_keys(counts) |> filter(k => match map_get(counts, k) { Present { value: n } => n > 1  Absent => false })) {
+    Present { value: k } => Present { value: "module " + k + " read differently by two subject closures" }
+    Absent => Absent
+  }
+}
+
 fn ambient_name_census_standing(
   fixture_stdout: String,
   fixture_status: Int,
   unindexed_status: Int,
   tree_stdout: String,
-  tree_status: Int
+  tree_runs: String,
+  rewritten: String
 ) -> CliWireResponse {
   // EVERY module-level row is printed, not only the ambient ones: this output is also the base or head
   // half the namespace-wave binding diff reads (gunbc.instruments.namespace_wave_binding_diff), which
   // must see a declared binding change target as well as an ambient one move home.
-  let tree_rows = binding_lines(stdout: tree_stdout)
-  let unreached = unreached_lines(stdout: tree_stdout)
-  let bytes = (tree_rows |> join(separator: "\n")) + "\n" + (unreached |> join(separator: "\n")) + "\n" + (ambient_summary_lines(stdout: tree_stdout) |> join(separator: "\n")) + "\n"
+  let tree_rows = distinct_lines(lines: binding_lines(stdout: tree_stdout))
+  let observed = observed_modules(tree_stdout: tree_stdout)
+  let unreached = distinct_lines(lines: unreached_lines(stdout: tree_stdout))
+    |> filter(l => match map_get(observed, field_at(line: l, index: 1)) { Present { value: _ } => false  Absent => true })
+  let missing = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
+  let failed = failed_subject_runs(tree_runs: tree_runs)
+  let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "") |> map(l => "rewritten\t" + l)
+  let bytes = (tree_rows |> join(separator: "\n")) + "\n"
+    + (unreached |> join(separator: "\n")) + "\n"
+    + (rewritten_lines |> join(separator: "\n")) + "\n"
+    + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
+    + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
+    + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
   match fixture_join_failure(stdout: fixture_stdout) {
     Present { value: why } => CliWirePrintable { bytes: fixture_stdout + "\n", exit: ExitFailure { code: 1, reason: "fixture control: " + why } }
     Absent =>
       match duplicate_record_failure(stdout: fixture_stdout + "\n" + tree_stdout) {
         Present { value: why } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "exactly-one-source control: " + why } }
         Absent =>
-          if unindexed_status != 2 {
-            CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "unindexed control: a module with no reference index must leave the run with no observation (status 2), got " + to_string(unindexed_status) } }
-          } else if count(module_lines(stdout: tree_stdout)) == 0 {
-            CliWirePrintable { bytes: tree_stdout + "\n", exit: ExitFailure { code: 2, reason: "whole tree: the run observed no module at all (status " + to_string(tree_status) + "); an empty census is no observation, never a held one" } }
-          } else if count(unreached) != 0 {
-            CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "whole tree: " + to_string(count(unreached)) + " module(s) the census did not reach (binding_unreached rows above); the summary is a reading of the modules it observed" } }
-          } else if count(unreadable_modules(stdout: tree_stdout)) != 0 {
-            CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "whole tree: a module has a reference whose authored spelling did not read" } }
-          } else {
-            CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+          match inconsistent_module_failure(tree_stdout: tree_stdout) {
+            Present { value: why } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "consistency control: " + why } }
+            Absent =>
+              if unindexed_status != 2 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: "unindexed control: a module with no reference index must leave the run with no observation (status 2), got " + to_string(unindexed_status) } }
+              } else if count(module_lines(stdout: tree_stdout)) == 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no subject run observed any module; an empty census is no observation, never a held one" } }
+              } else if count(missing) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(missing)) + " rewritten module(s) no subject run observed (unobserved_rewritten rows above): the wave's edits were not read" } }
+              } else if count(failed) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(failed)) + " subject run(s) did not complete (unobserved_subject rows above)" } }
+              } else if count(unreadable_modules(stdout: tree_stdout)) != 0 {
+                CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "a module has a reference whose authored spelling did not read" } }
+              } else {
+                CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+              }
           }
       }
   }

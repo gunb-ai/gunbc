@@ -4751,6 +4751,79 @@ pub fn run_census_infer_root_sets(
         .collect()
 }
 
+/// `census-scoped <subject>` over `source_roots` with an already-prepared binary: its stdout and
+/// status, its stderr relayed. Nothing about the run is decided here.
+fn run_census_scoped_with(
+    binary: &std::path::Path,
+    subject_label: &str,
+    source_roots: &[String],
+) -> Result<CensusInferRun, String> {
+    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
+    args.extend(source_roots.iter().cloned());
+    let output = Command::new(binary).args(&args).output().map_err(|e| {
+        format!(
+            "AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("AMBIENT-NAME-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    Ok(CensusInferRun {
+        stdout,
+        status: output.status.code(),
+    })
+}
+
+/// The runs `gunbc test //gunbc/instruments:ambient-name-census` reads, over ONE prepared binary:
+/// `census-infer` over each control root set, then `census-scoped` once per subject module. A subject
+/// a previous subject's closure already observed (a `binding_module` row names it) is not run again:
+/// its closure is a subset of what was read, so a second run would re-read it for nothing. Each
+/// scoped run holds one subject's closure at a time, which is how the census stays inside a memory
+/// bound the whole-corpus walk does not.
+pub struct CensusSubjectRun {
+    pub subject: String,
+    pub run: Option<CensusInferRun>,
+}
+
+pub fn run_census_controls_and_subjects(
+    source_roots: &[String],
+    control_root_sets: &[Vec<String>],
+    subjects: &[String],
+) -> Result<(Vec<CensusInferRun>, Vec<CensusSubjectRun>), String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let controls = control_root_sets
+        .iter()
+        .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut observed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut runs = Vec::new();
+    for subject in subjects {
+        if observed.contains(subject) {
+            runs.push(CensusSubjectRun {
+                subject: subject.clone(),
+                run: None,
+            });
+            continue;
+        }
+        let label = format!("//{}:all", subject.replace('.', "/"));
+        let run = run_census_scoped_with(&preparation.binary_path, &label, source_roots)?;
+        for line in run.stdout.lines() {
+            if let Some(rest) = line.strip_prefix("binding_module\t") {
+                if let Some(module) = rest.split('\t').next() {
+                    observed.insert(module.to_string());
+                }
+            }
+        }
+        runs.push(CensusSubjectRun {
+            subject: subject.clone(),
+            run: Some(run),
+        });
+    }
+    Ok((controls, runs))
+}
+
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
 /// this process folds in every child it ever reaped -- cargo and rustc included -- so it cannot
 /// answer for the native binary alone; `wait4` returns the usage of the one pid it reaps. The host
