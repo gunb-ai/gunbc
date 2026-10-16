@@ -82,7 +82,8 @@ test fn the_worker_unit_confines_writes_to_the_worktree_scratch_and_git_carve_ou
 // DISCRIMINATING ON THE PRODUCTION INSTANCE: ReadWritePaths=/opt/gunbc covered /opt/gunbc/bin and
 // the deployed checkout. The writable set is this attempt's worktree, its scratch directory, and
 // the common git dir (commit/stash/fetch), so a write to the binary or a source file is not a
-// carved-out path. Sibling attempts, the attempt-state root, and the exit spool are not either.
+// carved-out path. Sibling attempts (their worktrees and their .git/worktrees/<n> pointer files, review
+// 81064), the attempt-state root, and the exit spool are not either.
 test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
   let inst = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
@@ -113,7 +114,10 @@ test fn the_srv1_worker_cannot_write_the_deployed_binary_or_tree() -> Bool {
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([attempt, "/forged-owner-record"], ""))
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_attempt_state_root(instance: inst) as String)
     && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: dashboard_instance_dispatch_worktree_root(instance: inst) as String)
-    && dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/attempt"], ""))
+    && dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/", key, "/index"], ""))
+    && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees"], ""))
+    && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/sibling-a-key/commondir"], ""))
+    && !dispatch_worker_path_is_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch, path: join([inst.repo_root as String, "/.git/worktrees/sibling-a-key/gitdir"], ""))
     && git_pointer_files_are_not_writable(instance: inst, attempt_worktree: wt, scratch_directory: scratch)
     && has_property(props: lab_props, needle: join(["ReadOnlyPaths=", dispatch_worker_git_pointer_readonly_paths(instance: lab, attempt_worktree: lab_wt)], ""))
     && !has_property(props: lab_props, needle: "ReadOnlyPaths=-")

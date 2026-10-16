@@ -3076,18 +3076,31 @@ fn dispatch_worker_unit_stream_properties(
 // /opt/gunbc/bin and the deployed checkout (smart-gull-336 item c). Carving the whole common
 // git dir would reopen the same class: the worker plants .git/hooks or .git/config, then
 // belt_commit_staged runs git from the belt process and the hook executes as the controller
-// (bright-moth-475 on 13942). Choice (1): keep objects/refs/logs/worktrees/packed-refs writable;
-// do not carve .git itself, so hooks, config, and info cannot be created or written. Choice (2)
+// (bright-moth-475 on 13942). Choice (1): keep objects/refs/logs/packed-refs and THIS attempt's
+// .git/worktrees/<entry> writable; do not carve .git itself, so hooks, config, and info cannot be
+// created or written, and never the .git/worktrees parent: its sibling entries hold other attempts'
+// commondir and gitdir, and a worker that could rewrite them would redirect the controller's git in
+// that sibling's worktree (review 81064). Choice (2)
 // (never run git with authority in a worker-writable repo) is the publication-transport
 // precedent and is not this cut; belt_commit_git still prefixes git_command_config_inert_args
 // so a planted hook would not be the hooksPath the controller uses. /tmp is PrivateTmp=yes.
-fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance) -> List<String> {
+//
+// THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/, logs/ and packed-refs stay
+// writable as wholes because git updates a ref through a <ref>.lock created beside it, so the ref's
+// directory must be writable, and refs/heads/dispatch/ holds every attempt's branch. A worker can
+// therefore move any ref in the shared repository, including another attempt's branch and the
+// controller's base refs; it still cannot reach hooks or config, and the controller's own git runs
+// with git_command_config_inert_args. Removal: a per-attempt git directory (the worker commits into a
+// repository of its own whose objects borrow the shared store as an alternate, and the controller
+// fetches the attempt branch from it), recorded on
+// gunbc.recurring_failure_mode.protect_carve_out_reopens_the_protected_subject.
+fn dispatch_worker_git_writable_paths(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
   let git = join([instance.repo_root as String, "/.git"], "")
   [
     join([git, "/objects"], ""),
     join([git, "/refs"], ""),
     join([git, "/logs"], ""),
-    join([git, "/worktrees"], ""),
+    dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
     join([git, "/packed-refs"], ""),
   ]
 }
@@ -3148,7 +3161,7 @@ fn dispatch_worker_git_pointer_readonly_paths(instance: HostDashboardInstance, a
 fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
   concat(
     [attempt_worktree, scratch_directory],
-    dispatch_worker_git_writable_paths(instance: instance),
+    dispatch_worker_git_writable_paths(instance: instance, attempt_worktree: attempt_worktree),
   )
 }
 
