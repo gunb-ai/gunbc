@@ -2432,10 +2432,10 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
-                                        if callable_element_signature_mismatch(
+                                        if product_versus_coproduct_head_mismatch(
                                             declared.clone(),
                                             produced.clone(),
-                                            si.clone(),
+                                            scope.clone(),
                                         ) {
                                             Rc::new(vec![type_mismatch_error(
                                                 crate::v1_compiler_infer_types::node_type_shape(
@@ -2450,15 +2450,34 @@ pub fn declared_type_conformance_diags_core(
                                                 scope.module_name.clone(),
                                             )])
                                         } else {
-                                            if !both_ground.clone() {
-                                                Rc::new(vec![])
+                                            if callable_element_signature_mismatch(
+                                                declared.clone(),
+                                                produced.clone(),
+                                                si.clone(),
+                                            ) {
+                                                Rc::new(vec![type_mismatch_error(
+                                                    crate::v1_compiler_infer_types::node_type_shape(
+                                                        declared.clone(),
+                                                        si.clone(),
+                                                    ),
+                                                    crate::v1_compiler_infer_types::node_type_shape(
+                                                        produced.clone(),
+                                                        si.clone(),
+                                                    ),
+                                                    span.clone(),
+                                                    scope.module_name.clone(),
+                                                )])
                                             } else {
-                                                if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
-    env: scope.type_env.clone(),
-})) {
+                                                if !both_ground.clone() {
                                                     Rc::new(vec![])
                                                 } else {
-                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                    if crate::v1_compiler_infer_types::node_type_compatible(declared.clone(), produced.clone(), si.clone(), Rc::new(TextJudgment::TextJudgedIn {
+    env: scope.type_env.clone(),
+})) {
+                                                        Rc::new(vec![])
+                                                    } else {
+                                                        Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()), crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()), span.clone(), scope.module_name.clone())])
+                                                    }
                                                 }
                                             }
                                         }
@@ -17995,6 +18014,38 @@ pub fn std_optional_payload_node(
     }
 }
 
+pub fn present_payload_declared_from_optional(
+    type_name: String,
+    field_name: String,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        std::option::Option::None => std::option::Option::None,
+        Some(exp) => {
+            let names_present_payload =
+                (name_is_std_optional_present_arm(scope.clone(), type_name.clone())
+                    && name_is_std_optional_payload_member(scope.clone(), field_name.clone()));
+            if ((exp.return_cardinality.clone() == Cardinality::CardOptional)
+                && names_present_payload.clone())
+            {
+                Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
+            } else {
+                if node_is_std_optional(exp.clone(), scope.clone()) {
+                    std_optional_payload_node(
+                        exp.clone(),
+                        type_name.clone(),
+                        field_name.clone(),
+                        scope.clone(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    }
+}
+
 pub fn present_value_expected_from_optional(
     type_name: String,
     field_name: String,
@@ -18473,10 +18524,21 @@ if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clon
 },
     std::option::Option::None => Rc::new(vec![]),
 };
+let present_payload_diags = match present_payload_declared_from_optional(tn_str.clone(), fi_name.clone(), expected.clone(), scope.clone()) {
+    Some(payload_declared) => {
+                let payload_produced = crate::v1_compiler_infer_types::resolved_type(ar_typed.clone());
+if product_versus_coproduct_head_mismatch(payload_declared.clone(), payload_produced.clone(), scope.clone()) {
+                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(payload_declared.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(payload_produced.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                } else {
+                    Rc::new(vec![])
+                }
+},
+    std::option::Option::None => Rc::new(vec![]),
+};
 Rc::new(FieldInferResult {
     typed_field: crate::v1_std_core::make_field_init_node(fi.occurrence_identity.clone(), fi_name.clone(), ar_typed.clone(), fi.span.clone(), crate::v1_std_core::node_name_span(fi.clone())),
     infer_result: ar.clone(),
-    diagnostics: v1_rt::concat(v1_rt::concat(v1_rt::concat(ar_diags.clone(), field_type_diags.clone()), unknown_field_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())),
+    diagnostics: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(ar_diags.clone(), field_type_diags.clone()), present_payload_diags.clone()), unknown_field_diags.clone()), bare_none_field_construction_diags(fi.clone(), fi_name.clone(), field_declared_type.clone(), tn_str.clone(), scope.clone())),
 })
 });
             }
