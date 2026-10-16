@@ -352,10 +352,13 @@ fn prepare_toolchain_closure(store: String, debs_dir: String) -> ToolchainClosur
 // upgrade logic (service restarts and version checks on a running system; there is none), doc and
 // conffile helpers, libselinux's tmpfiles registration, and dpkg's vendor setup. git, gcc and ld are
 // shipped as files by their packages and need no script.
+// THE LINKS ARE RELATIVE, so they resolve inside the tree from wherever it is examined: an absolute
+// /usr/bin/gcc, tested from the build host as <tree>/usr/bin/cc, resolves the HOST's gcc, and the
+// image build's acceptance check would certify the host rather than the tree.
 fn toolchain_effect_commands(tree: String) -> List<ArgvCommand> {
   [
-    ln_symbolic_force_command(target: "/usr/bin/gcc", link_name: concat(tree, "/usr/bin/cc")),
-    ln_symbolic_force_command(target: "/usr/bin/cpp", link_name: concat(tree, "/usr/lib/cpp")),
+    ln_symbolic_force_command(target: "gcc", link_name: concat(tree, "/usr/bin/cc")),
+    ln_symbolic_force_command(target: "../bin/cpp", link_name: concat(tree, "/usr/lib/cpp")),
     cp_preserve_if_absent_command(source: concat(tree, "/usr/share/libc-bin/nsswitch.conf"), destination: concat(tree, "/etc/nsswitch.conf")),
     ldconfig_root_command(ldconfig: concat(tree, "/usr/sbin/ldconfig.real"), root: tree),
   ]

@@ -74,7 +74,7 @@ test fn a_deb_whose_control_disagrees_with_its_row_refuses() -> Bool {
 
 test fn the_effects_link_cc_and_cpp_keep_nsswitch_and_run_the_closures_own_ldconfig() -> Bool {
   join(map(toolchain_effect_commands(tree: "/t"), c => join(argv_words(command: c), " ")), "\n")
-    == "ln -sfnT /usr/bin/gcc /t/usr/bin/cc\nln -sfnT /usr/bin/cpp /t/usr/lib/cpp\ncp -p --update=none /t/usr/share/libc-bin/nsswitch.conf /t/etc/nsswitch.conf\n/t/usr/sbin/ldconfig.real -r /t"
+    == "ln -sfnT gcc /t/usr/bin/cc\nln -sfnT ../bin/cpp /t/usr/lib/cpp\ncp -p --update=none /t/usr/share/libc-bin/nsswitch.conf /t/etc/nsswitch.conf\n/t/usr/sbin/ldconfig.real -r /t"
 }
 
 test fn every_pinned_field_reaches_the_row_digest_preimage() -> Bool {
