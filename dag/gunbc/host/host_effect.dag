@@ -91,6 +91,7 @@ type HostEffect =
   | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
   | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
   | ActivateRunnerSlot { slot: RunnerSlotIdentity }
+  | DrainAndMaskRunnerSlot { slot: RunnerSlotIdentity }
   | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
   | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }

@@ -90,6 +90,7 @@ pub enum ReferenceDerivedClosureTrigger {
     P2aStructuralCandidateProducer7515,
     P2aReferenceDependencyProjection7515,
     P2aPoolIndependentDependencyProjection7515,
+    NoDagReachableNativeOccurrenceTransportProducer,
 }
 
 pub fn file_present(xs: Rc<Vec<String>>, wanted: String) -> bool {
@@ -248,3 +249,5 @@ pub struct P2aStructuralCandidateProducer7515;
 pub struct P2aReferenceDependencyProjection7515;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct P2aPoolIndependentDependencyProjection7515;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoDagReachableNativeOccurrenceTransportProducer;

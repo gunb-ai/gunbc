@@ -21,9 +21,10 @@ import v2.std.diagnostic {
   UserInputBoundary,
   Unavailable
 }
-import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Optional, Present }
+import std.types { Map }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, empty_map, map_insert, map_lookup }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.member_declaration_kind { DeclaredMember }
@@ -327,7 +328,7 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
 }
 
 // Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
-// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
+// imports without unsealing the carrier: v2.compiler.source_root_eval native_import_target_attribution,
 // which attributes a resolve refusal to an import target the context refused at ingest.
 fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
   tree.import_bindings

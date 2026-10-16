@@ -2,9 +2,9 @@ module v2.test.lens_fact_density.fact_bundle_compile_lens_passes
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
-  CompileLensEnforce,
   apply_compile_lens,
-  fact_density_lens
+  fact_density_lens,
+  CompileLensEnforce
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Rejected }

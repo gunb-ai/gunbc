@@ -17,7 +17,7 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.compiler.fold_lowering {
   CallbackAllByAnd,
   CallbackAnyByOr,
@@ -91,12 +91,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
 import v2.std.node { content_hash }
-import v2.std.collection {
-  empty_map,
-  list_at_optional,
-  map_insert,
-  map_lookup
-}
+
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
@@ -5420,7 +5415,7 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // this reader for every nested argument, so a call nested d deep is folded on the order of 5^d
 // times. The instrument that re-derives this is the native lane's per-file phase clock: the
 // emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
-// v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
+// v2.compiler.source_root_eval native_test_context_absorb) prints one row per ingested file carrying
 // `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate.
 //
 // A FOLD THAT REFUSES IS THE VALUE'S REFUSAL, AND IT PROPAGATES. It used to hand the value to the
@@ -7111,7 +7106,7 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
   }
   body_lower_transform_call(
     operator: qualified_name_spine_node(
-      qn: [^v2, ^std, ^collection, ^list_at_optional],
+      qn: [^std, ^algebra, ^list_at_optional],
       occurrence_id: operator_occurrence
     ),
     args: [

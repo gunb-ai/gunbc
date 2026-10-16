@@ -1,7 +1,7 @@
 module extdeps.ssh.client_options
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.measure { Second, second, second_count }
+import std.types { NonEmptyStr, String, Bool, Int, List, Port }
+import std.measure { Second, second, second_count, ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -98,6 +98,64 @@ type UpdateHostKeysValue
   | UpdateHostKeysNo
   | UpdateHostKeysAsk
 
+// CONNECTION SHARING (ssh_config(5) ControlMaster, ControlPath, ControlPersist). ControlMaster
+// "Enables the sharing of multiple sessions over a single network connection"; its domain is
+// yes | no | ask | auto | autoask, and auto "will use a master connection if one is available, or
+// connect normally if one is not" and become the master. ControlPath names the socket and expands
+// %C, "a hash of %l%h%p%r%j" (local host, remote host, port, user, ProxyJump). ControlPersist is
+// yes | no | a time: with a time "the master connection will remain open in the background ... and
+// will automatically terminate after it has remained idle (with no client connections) for the
+// specified time". A multiplexed session reuses the master's authentication, so a client's own
+// trust and credential options do not apply to it -- the socket path is a trust boundary, which is
+// why its owner (the caller) must bind it to everything the master authenticated with.
+type ControlMasterValue
+  = ControlMasterYes
+  | ControlMasterNo
+  | ControlMasterAsk
+  | ControlMasterAuto
+  | ControlMasterAutoAsk
+
+type ControlPersistValue
+  = ControlPersistNo
+  | ControlPersistIndefinite
+  | ControlPersistIdle { seconds: Second }
+
+// ControlPath "none" disables connection sharing outright; any other value names the socket.
+type ControlPathValue
+  = ControlPathNone
+  | ControlPathSocket { path: NonEmptyStr }
+
+// THE RELEASE FLOOR, as cited prose (OpenSSH release notes, openssh.com/txt/release-5.6):
+// ControlMaster, ControlPath and -O check/exit predate it, and ControlPersist arrived in OpenSSH
+// 5.6. No ControlPath % token is used by any caller, so no expansion claim rests on a release. The
+// fleet's runners and operator positions read OpenSSH_10.0p2 (Debian 13).
+
+// THE TEMPORARY NAME A MASTER BINDS. OpenSSH mux.c muxserver_listen binds the control socket at
+// the ControlPath followed by "." and 16 random ASCII characters, then renames it into place, so a
+// ControlPath must leave that many bytes of sun_path free.
+data openssh_control_path_temporary_suffix_length: ByteSize = byte_size(count: 17)
+
+// ssh(1) -O ctl_cmd: "Control an active connection multiplexing master process ... check (check
+// that the master process is running) ... exit (request the master to exit)".
+type SshControlCommand
+  = SshControlCheck
+  | SshControlExit
+
+fn ssh_control_command_wire(command: SshControlCommand) -> String {
+  match command {
+    SshControlCheck => "check"
+    SshControlExit => "exit"
+  }
+}
+
+// The control request names its master by socket alone: ssh(1) -S ctl_path "Specifies the location
+// of a control socket for connection sharing". The destination operand ssh(1) requires is not
+// contacted, and -F none keeps any ambient configuration from adding options. The socket is its own
+// word, so a caller can pass it as one argument (find -exec substitutes a whole {} argument).
+fn shape_openssh_control_command_argv(command: SshControlCommand, control_path: String, destination: NonEmptyStr) -> List<String> {
+  ["ssh", "-F", "none", "-S", control_path, "-O", ssh_control_command_wire(command: command), destination as String]
+}
+
 // One variant per keyword, each carrying the value domain THAT keyword admits, so a nonsensical
 // pairing has no constructor. ServerAliveInterval and ServerAliveCountMax are the LIVENESS half of a
 // deadline, distinct from ConnectTimeout, which bounds only the TCP connect: ssh_config(5) --
@@ -110,7 +168,10 @@ type UpdateHostKeysValue
 // on TCP alone, which is how fleet-converge run 37156689444 sat ~1h inside one leg.
 // ConnectTimeout takes an Int because ssh_config(5) specifies seconds;
 // BatchMode takes a Bool because its domain is yes|no and Bool is that domain already grounded
-// (section 2: no net new concepts by re-invention).
+// (section 2: no net new concepts by re-invention). Port is ssh_config(5) "Specifies the port number to
+// connect on the remote host. The default is 22." -- carried as std.types Port, the grounded 1..65535 domain.
+// The arm is RemotePort, not Port, only because a variant named Port would shadow the std.types Port
+// type it carries in this module; the wire keyword is still "Port" (ssh_client_option_keyword).
 type SshClientOption
   = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
   | UserKnownHostsFile { path: NonEmptyStr }
@@ -131,6 +192,10 @@ type SshClientOption
   | PasswordAuthentication { enabled: Bool }
   | KbdInteractiveAuthentication { enabled: Bool }
   | User { name: NonEmptyStr }
+  | RemotePort { port: Port }
+  | ControlMaster { value: ControlMasterValue }
+  | ControlPath { value: ControlPathValue }
+  | ControlPersist { value: ControlPersistValue }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
 // rather than a corpus-wide grep.
@@ -155,6 +220,10 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     PasswordAuthentication { enabled: _ } => "PasswordAuthentication"
     KbdInteractiveAuthentication { enabled: _ } => "KbdInteractiveAuthentication"
     User { name: _ } => "User"
+    RemotePort { port: _ } => "Port"
+    ControlMaster { value: _ } => "ControlMaster"
+    ControlPath { value: _ } => "ControlPath"
+    ControlPersist { value: _ } => "ControlPersist"
   }
 }
 
@@ -184,6 +253,24 @@ fn update_host_keys_wire(value: UpdateHostKeysValue) -> String {
   }
 }
 
+fn control_master_wire(value: ControlMasterValue) -> String {
+  match value {
+    ControlMasterYes => "yes"
+    ControlMasterNo => "no"
+    ControlMasterAsk => "ask"
+    ControlMasterAuto => "auto"
+    ControlMasterAutoAsk => "autoask"
+  }
+}
+
+fn control_persist_wire(value: ControlPersistValue) -> String {
+  match value {
+    ControlPersistNo => "no"
+    ControlPersistIndefinite => "yes"
+    ControlPersistIdle { seconds: s } => to_string(second_count(s: s))
+  }
+}
+
 fn ssh_client_option_value(option: SshClientOption) -> String {
   match option {
     StrictHostKeyChecking { value: v } => strict_host_key_checking_wire(value: v)
@@ -205,6 +292,13 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     PasswordAuthentication { enabled: e } => if e { "yes" } else { "no" }
     KbdInteractiveAuthentication { enabled: e } => if e { "yes" } else { "no" }
     User { name: n } => n as String
+    RemotePort { port: n } => to_string(n)
+    ControlMaster { value: v } => control_master_wire(value: v)
+    ControlPath { value: v } => match v {
+      ControlPathNone => "none"
+      ControlPathSocket { path: p } => p as String
+    }
+    ControlPersist { value: v } => control_persist_wire(value: v)
   }
 }
 
@@ -362,5 +456,9 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     PasswordAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
     KbdInteractiveAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
     User { name: _ } => serialize_ssh_client_option(option: option)
+    RemotePort { port: _ } => serialize_ssh_client_option(option: option)
+    ControlMaster { value: _ } => serialize_ssh_client_option(option: option)
+    ControlPath { value: _ } => serialize_ssh_client_option(option: option)
+    ControlPersist { value: _ } => serialize_ssh_client_option(option: option)
   }
 }

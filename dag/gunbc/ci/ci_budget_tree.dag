@@ -21,7 +21,7 @@ fn host_overhead_bytes(offer: ComputeOffer) -> ByteSize {
   match gunbc_ci_host_fixed_overhead_for(host: offer.supply.physical.identity) {
     HostFixedOverheadMeasured { bytes: b, provenance: _ } => b
     HostFixedOverheadAllowance { bytes: b, reason: _ } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
+    HostFixedOverheadUnmeasured { reason: _ } => byte_size(0)
   }
 }
 

@@ -2,7 +2,7 @@ module gunbc.host.host_effect_realize
 
 import gunbc.host_command_binding { scratch_removed, render_scratch_outcome, host_file_write_text }
 
-import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, trim, fold_list, list_map, string_concat_join }
 import extdeps.package_managers.dpkg { dpkg_query_status_argv, dpkg_query_status_verdict_of, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -40,6 +40,7 @@ import gunbc.host.host_effect {
   EnsureRunnerSystemdTemplate,
   EnsureRunnerMemoryCaps,
   ActivateRunnerSlot,
+  DrainAndMaskRunnerSlot,
   ReplaceRunnerIncarnation,
   ObserveRunnerLocalState,
   ObserveGitHubRunnerRegistration,
@@ -208,6 +209,7 @@ import gunbc.runner.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_runner_systemd_template,
   runner_lifecycle_realize_ensure_runner_memory_caps,
   runner_lifecycle_realize_activate_runner_slot,
+  runner_lifecycle_realize_drain_and_mask_runner_slot,
   runner_lifecycle_realize_replace_runner_incarnation,
   runner_lifecycle_realize_observe_runner_local_state,
   runner_lifecycle_realize_observe_github_runner_registration,
@@ -306,6 +308,8 @@ import gunbc.build_cache.build_cache_endpoint_observe {
   owner_principal_command,
   owner_executable_command,
   path_kind_of_socket_test_read,
+  EndpointParentListing, ParentListsEntry, ParentOmitsEntry, ParentListingUnread,
+  endpoint_parent_listing_of, endpoint_parent_listing_command, endpoint_path_name,
   survey_build_cache_endpoint,
 }
 import gunbc.build_cache.build_cache_endpoint_path {
@@ -331,7 +335,6 @@ import v2.std.compilers.cli_surface {
   process_argv_expansion,
   ProcessArgvExpansion,
 }
-import extdeps.jobserver { jobserver_config }
 import gunbc.host.host_layout {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
@@ -421,6 +424,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   NbdProxyServeTransportIntent,
 }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, list_length }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
@@ -469,6 +473,7 @@ type ResolvedHostEffectCell =
   | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | DrainAndMaskRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ReplaceRunnerIncarnationOnHost {
       node: ComputeHost,
       from: LocalRunnerSlotIncarnation,
@@ -563,6 +568,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       EnsureRunnerMemoryCapsOnHost { node: n, slot: s }
     ActivateRunnerSlot { slot: s } =>
       ActivateRunnerSlotOnHost { node: n, slot: s }
+    DrainAndMaskRunnerSlot { slot: s } =>
+      DrainAndMaskRunnerSlotOnHost { node: n, slot: s }
     ReplaceRunnerIncarnation { from: inc, cause: c } =>
       ReplaceRunnerIncarnationOnHost { node: n, from: inc, cause: c }
     ObserveRunnerLocalState { slot: s } =>
@@ -645,6 +652,8 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: EnsureRunnerMemoryCaps is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     ActivateRunnerSlot { slot: _ } =>
       IncompatibleCell { reason: "host_effect: ActivateRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    DrainAndMaskRunnerSlot { slot: _ } =>
+      IncompatibleCell { reason: "host_effect: DrainAndMaskRunnerSlot is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     ReplaceRunnerIncarnation { from: _, cause: _ } =>
       IncompatibleCell { reason: "host_effect: ReplaceRunnerIncarnation is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     ObserveRunnerLocalState { slot: _ } =>
@@ -697,6 +706,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        DrainAndMaskRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ReplaceRunnerIncarnation { from: _, cause: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ObserveRunnerLocalState { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ObserveGitHubRunnerRegistration { slot: _, organization: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -755,6 +765,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
+        DrainAndMaskRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ObserveRunnerLocalState { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -801,6 +812,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        DrainAndMaskRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ReplaceRunnerIncarnation { from: _, cause: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ObserveRunnerLocalState { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ObserveGitHubRunnerRegistration { slot: _, organization: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1645,6 +1657,7 @@ fn realize_provision_codex_runtime(
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    DrainAndMaskRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ObserveRunnerLocalState { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3020,7 +3033,7 @@ fn srv3_tool_receipt_entry(observation: Srv3ToolObservation) -> String {
 fn srv3_toolchain_receipt(observations: List<Srv3ToolObservation>) -> String {
   concat(
     "OsInstallActuatorToolchainReceipt: ",
-    join(list_map(xs: observations, f: fn(o) { srv3_tool_receipt_entry(observation: o) }), " "),
+    string_concat_join(fields: observations.map(o => srv3_tool_receipt_entry(observation: o)), separator: " "),
   )
 }
 
@@ -3028,17 +3041,14 @@ fn srv3_realize_os_install_actuator_toolchain_ensure_body(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observations = list_map(
-    xs: srv3_toolchain_rows(),
-    f: fn(row) {
-      Srv3ToolObservation {
-        tool_name: row.tool.program.invocation,
-        verdict: srv3_ensure_tool(row: row, transport: transport),
-      }
-    },
+  let observations = srv3_toolchain_rows().map(row =>
+    Srv3ToolObservation {
+      tool_name: row.tool.program.invocation,
+      verdict: srv3_ensure_tool(row: row, transport: transport),
+    }
   )
   let verdict = srv3_summarize_independent_observations(
-    steps: list_map(xs: observations, f: fn(o) { o.verdict }),
+    steps: observations.map(o => o.verdict),
   )
   let stdout = srv3_toolchain_receipt(observations: observations)
   match verdict {
@@ -3468,6 +3478,7 @@ fn realize_provision_build_cache(
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    DrainAndMaskRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ReplaceRunnerIncarnation { from: _, cause: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ObserveRunnerLocalState { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ObserveGitHubRunnerRegistration { slot: _, organization: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -3560,7 +3571,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         success: false,
         stdout: join([
           "host_effect_apply: run_shell_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". This carrier is a shell script BODY -- a command string, not argv -- and the fleet path admits",
           " only portable remote words, so there is no shaping that preserves the script's meaning. The refusal",
           " is the carrier's shape surfacing, not a missing case: the residue dissolves when the effect reaches",
@@ -3691,7 +3702,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
           " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
           " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
@@ -3738,7 +3749,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
       RunArgvTransportRefused {
         reason: join([
           "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          t.endpoint as String,
+          known_hosts_host_field(address: t.address) as String,
           ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
           " body where the fleet path admits portable words) does not apply; what remains is the",
           " transport's own authority: the fleet seam executes through its own session type and trust",
@@ -4333,7 +4344,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
       ], "")
     FleetSsh { target: t, context: _ } =>
       join([
-        "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
+        "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")
@@ -4721,6 +4732,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
     ActivateRunnerSlotOnHost { node: _, slot: _ } =>
       runner_lifecycle_realize_activate_runner_slot(intent: intent)
+    DrainAndMaskRunnerSlotOnHost { node: _, slot: _ } =>
+      runner_lifecycle_realize_drain_and_mask_runner_slot(intent: intent)
     ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
       runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
     ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
@@ -4891,6 +4904,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     EnsureRunnerSystemdTemplate { host_label: _ } => access
     EnsureRunnerMemoryCaps { slot: _ } => access
     ActivateRunnerSlot { slot: _ } => access
+    DrainAndMaskRunnerSlot { slot: _ } => access
     ReplaceRunnerIncarnation { from: _, cause: _ } => access
     ObserveRunnerLocalState { slot: _ } => access
     ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
@@ -4978,6 +4992,8 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_ensure_runner_memory_caps(intent: intent)
         ActivateRunnerSlotOnHost { node: _, slot: _ } =>
           runner_lifecycle_realize_activate_runner_slot(intent: intent)
+        DrainAndMaskRunnerSlotOnHost { node: _, slot: _ } =>
+          runner_lifecycle_realize_drain_and_mask_runner_slot(intent: intent)
         ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } =>
           runner_lifecycle_realize_replace_runner_incarnation(intent: intent)
         ObserveRunnerLocalStateOnHost { node: _, slot: _ } =>
@@ -5054,6 +5070,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            DrainAndMaskRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -5159,11 +5176,17 @@ fn build_cache_path_kind_read(
     SccacheServerUnixSocket { path: p } =>
       match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
-          path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
+          path_kind_of_socket_test_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true, parent: ParentListsEntry)
         BuildCacheReadRan { observed: o } =>
           path_kind_of_socket_test_read(
             read: HostReadText { text: o.stdout },
             exit_success: o.success,
+            parent: if o.success { ParentListsEntry } else {
+              match build_cache_host_read_observed(command: endpoint_parent_listing_command(path: p), transport: transport) {
+                BuildCacheReadRefused { reason: why } => ParentListingUnread { detail: concat("the endpoint path's parent listing was refused: ", why) as NonEmptyStr }
+                BuildCacheReadRan { observed: l } => endpoint_parent_listing_of(exit_success: l.success, stdout: l.stdout, stderr: l.stderr, name: endpoint_path_name(path: p as String))
+              }
+            },
           )
       }
   }
@@ -5520,7 +5543,7 @@ fn build_cache_ensure_step(
 // THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
 // its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
 // pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
-// gunbc.fleet.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// gunbc.fleet.fleet_host_budget compile_pool_bytes_for (which refuses a separate pool now that the jobserver sizing is retired). Putting either on the effect
 // would mint a second answer to a question that already has one authority, so the effect names the target host
 // and the derivation happens here from that host's own facts.
 // WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
@@ -5654,19 +5677,7 @@ fn compile_pool_ensure_admission_for(
 // the host stops conserving, and they agree because there is one derivation, not because two call sites were
 // kept in step.
 fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
-  match compute_host_primary_cpu(host: node) {
-    Absent =>
-      CompilePoolUnresolved {
-        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
-      }
-    Present { value: cpu } =>
-      compile_pool_bytes_for(
-        placement: placement,
-        nproc: cpu_facts_threads(cpu: cpu),
-        host: compute_host_ram_bytes_total(host: node),
-        citation: jobserver_config,
-      )
-  }
+  compile_pool_bytes_for(placement: placement)
 }
 
 // The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a

@@ -11080,7 +11080,7 @@ macro_rules! v1_map_grounding_dispatch {
     };
 }
 
-const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
+const V2_STD_COLLECTION_MODULE: &str = "std.algebra";
 
 pub fn std_node_reflection_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_REFLECTION_BRIDGE_FNS
@@ -15783,6 +15783,7 @@ fn reference_derived_closure_admission_value(
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
             T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+            T::NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer",
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };

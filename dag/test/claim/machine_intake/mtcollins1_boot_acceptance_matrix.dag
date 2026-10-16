@@ -34,8 +34,8 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
   SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
 }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
-import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, CensusImageDerived }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { census_record_path, census_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
 import gunbc.runner.runner_browser_toolchain {
   RunnerBrowserToolchainResolution, RunnerBrowserToolchainLocation, RunnerBrowserToolchainStanding,
@@ -145,9 +145,9 @@ fn selected_digest() -> String {
 
 fn healthy_srv2() -> ModeledRemoteHost {
   ModeledRemoteHost { endpoint: "srv2", files: match mtcollins1_census_image {
-    Mtcollins1CensusImageDerived { input: input } => [
-      ModeledRemoteFile { path: mtcollins1_census_record_path(input: input) as String, content: Present { value: concat(selected_digest(), "\n") }, sha256: none },
-      ModeledRemoteFile { path: mtcollins1_census_medium_served_path(medium: mtcollins1_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
+    CensusImageDerived { input: input } => [
+      ModeledRemoteFile { path: census_record_path(input: input) as String, content: Present { value: concat(selected_digest(), "\n") }, sha256: none },
+      ModeledRemoteFile { path: census_medium_served_path(medium: mtcollins1_boot_medium) as String, content: Present { value: "<image bytes>" }, sha256: Present { value: selected_digest() } },
     ]
     _ => []
   } }
