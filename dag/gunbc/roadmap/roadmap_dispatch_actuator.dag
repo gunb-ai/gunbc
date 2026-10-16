@@ -3053,14 +3053,22 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
 }
 
 // THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
-// writable carve-outs (the worktree and .git/worktrees/<n>/). ReadOnlyPaths= with systemd's '-'
-// prefix wins over the parent ReadWritePaths for those exact files, including before git worktree
-// add has created them. Index, HEAD, refs and logs under the private dir stay writable.
+// writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
+// files wins over the parent ReadWritePaths. systemd can only bind a path that exists, so the
+// entries carry NO '-' prefix (systemd.exec(5): '-' ignores a missing path): the belt's staged
+// spawn runs worktree-add before it starts the unit (gunbc.roadmap.roadmap_belt_actuate), so all
+// three exist at start, and a missing one fails the unit start instead of leaving the file open.
+// Index, HEAD, refs and logs under the private dir stay writable.
+//
+// config.worktree IS NOT ONE OF THEM and is not claimed read-only. git worktree add does not create
+// it, so no mount can hold it, and the worker can create it under the writable .git/worktrees/<n>/.
+// It is inert rather than protected: git reads $GIT_DIR/config.worktree only when
+// extensions.worktreeConfig is set (git-worktree(1), CONFIGURATION FILE), and that key lives in the
+// common config, dispatch_worker_common_git_config, which no writable root covers (review 81053).
 type DispatchWorkerGitPointerFiles {
   gitfile: String
   commondir: String
   gitdir_file: String
-  config_worktree: String
 }
 
 fn dispatch_worker_git_pointer_files(instance: HostDashboardInstance, attempt_worktree: String) -> DispatchWorkerGitPointerFiles {
@@ -3069,27 +3077,24 @@ fn dispatch_worker_git_pointer_files(instance: HostDashboardInstance, attempt_wo
     gitfile: join([attempt_worktree, "/", git_non_bare_git_dir_name], ""),
     commondir: join([private_dir, "/commondir"], ""),
     gitdir_file: join([private_dir, "/gitdir"], ""),
-    config_worktree: join([private_dir, "/config.worktree"], ""),
   }
+}
+
+fn dispatch_worker_worktree_config(instance: HostDashboardInstance, attempt_worktree: String) -> String {
+  join([dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree), "/config.worktree"], "")
+}
+
+fn dispatch_worker_common_git_config(instance: HostDashboardInstance) -> String {
+  join([instance.repo_root as String, "/.git/config"], "")
 }
 
 fn dispatch_worker_git_pointer_readonly_list(instance: HostDashboardInstance, attempt_worktree: String) -> List<String> {
   let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: attempt_worktree)
-  [pointers.gitfile, pointers.commondir, pointers.gitdir_file, pointers.config_worktree]
-}
-
-fn dispatch_worker_optional_readonly_path(path: String) -> String {
-  join(["-", path], "")
+  [pointers.gitfile, pointers.commondir, pointers.gitdir_file]
 }
 
 fn dispatch_worker_git_pointer_readonly_paths(instance: HostDashboardInstance, attempt_worktree: String) -> String {
-  join(
-    map(
-      dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree),
-      p => dispatch_worker_optional_readonly_path(path: p),
-    ),
-    separator: " ",
-  )
+  join(dispatch_worker_git_pointer_readonly_list(instance: instance, attempt_worktree: attempt_worktree), separator: " ")
 }
 
 fn dispatch_worker_writable_path_list(instance: HostDashboardInstance, attempt_worktree: String, scratch_directory: String) -> List<String> {
