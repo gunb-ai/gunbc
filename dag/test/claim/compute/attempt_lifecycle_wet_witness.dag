@@ -19,7 +19,7 @@ import gunbc.compute.work_provider_local {
   compute_settle_attempt, compute_attempt_settlement_wire, attempt_settlement_host_record,
   host_record_was_written,
   ProvideResult, ProvideFresh, ProvideAttached, compute_ceiling_retry_reference,
-  compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten,
+  compute_provide_leaf, compute_layout_in, compute_work_identity, HostRecordWritten, compute_settled_record,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
@@ -587,6 +587,49 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     && (match other_toolchain { ComputeStoreAbsent => true  _ => false })
     && (match other_subject { ComputeStoreAbsent => true  _ => false })
     && (match other_operation { ComputeStoreAbsent => true  _ => false })
+}
+
+// THE OWNED TARGET'S LIFETIME ENDS AT SETTLEMENT, AND ONLY AT A SETTLEMENT THAT LANDED. Both cells run
+// the production compute_settled_record against a real scratch store and a real target tree. Landed:
+// the record commits and the target is gone. Forced failure: the run log is never written, so the
+// store refuses the record, the outcome is a refusal naming the kept path, and the target is still
+// there. RED against a settlement that leaves the target, or one that removes it before the commit.
+fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
+  let layout = ComputeLayout {
+    root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
+    leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: join([root_path, "/owned/target"], ""),
+    log_path: join([root_path, "/run.log"], ""), consumption_path: root_path, attempts_dir: root_path,
+  }
+  let made = shell.Mkdir.Parents(path: layout.target_dir as FilePath)
+  let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
+  let log = if write_log { Filesystem.Write(path: layout.log_path, content: "built\n").success } else { true }
+  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
+  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
+  let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
+    WorkOutput { declared: "release/gunbc", blob: "b1" },
+    WorkOutput { declared: "release/claim_batch", blob: "b2" },
+  ], log_path: layout.log_path }
+  compute_settled_record(
+    materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: ExactTree { tree: reuse_tree() }, operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
+    layout: layout, identity: "fixture-identity", subject: ExactTree { tree: reuse_tree() }, op: work_default_build(), outcome: outcome)
+}
+
+test fn a_settlement_that_landed_removes_the_owned_target() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: true)
+  let gone = reuse_path_absent(path: join([root_path, "/owned/target"], ""))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && gone
+    && (match r { ProvideFresh { outcome: _, document: _, host_record } => match host_record { HostRecordWritten => true  _ => false }  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
+}
+
+test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() -> Bool {
+  let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_target_life.XXXXXX").path
+  let r = target_lifetime_settle(root_path: root_path, write_log: false)
+  let kept = Filesystem.Read(path: join([root_path, "/owned/target/artifact"], "")).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  removed.success && kept
+    && (match r { ProvideFresh { outcome: _, document: doc, host_record: _ } => string_contains(s: doc, pattern: "is KEPT") && string_contains(s: doc, pattern: "/owned/target")  ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => false })
 }
 
 // ── THE PRODUCTION SERVE-OR-PRODUCE DECISION, EXECUTED (side-chat review at 41a107ce81) ──────────

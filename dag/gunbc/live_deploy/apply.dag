@@ -523,14 +523,22 @@ fn live_deploy_tailnet_door_cutover_gate(
   }
 }
 
+fn live_deploy_digest_readback_effect(spec: DeploymentSpec, candidate: CandidateRelease) -> HostEffect {
+  LiveDeployDigestReadback {
+    port: deployment_plan_listen_port(spec: spec),
+    expected_digest: candidate.expected_dispatch_digest,
+  }
+}
+
 fn live_deploy_apply_digest_readback_via_transport(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
+    effect: live_deploy_digest_readback_effect(spec: spec, candidate: candidate),
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -630,6 +638,7 @@ fn live_deploy_apply_admitted_via_transport(
   } else {
     let digest = live_deploy_apply_digest_readback_via_transport(
       spec: spec,
+      candidate: candidate,
       transport: transport,
       access: access,
     )
@@ -1313,10 +1322,6 @@ fn live_deploy_operator_local_admitted(deployment: DesiredDeployment, access: De
 
 fn live_deploy_retract_prod_role_wet() -> ProcessExit {
   live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_access)
-}
-
-fn live_deploy_retract_prod_role_operator_wet() -> ProcessExit {
-  live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
 }
 
 fn live_deploy_prod_role_retract_wet_with_access(access: DeployAccess) -> ProcessExit {

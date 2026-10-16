@@ -31883,6 +31883,7 @@ pub struct RcGroupedArmPlan {
     pub inner_pat_str: String,
     pub plain_bindings: Rc<Vec<Rc<RcPlainFieldBinding>>>,
     pub plain_refutable: bool,
+    pub deeper_rc: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31912,6 +31913,7 @@ pub fn ungroupable_arm_plan(variant: String, pat_str: String) -> Rc<RcGroupedArm
         inner_pat_str: "".to_string(),
         plain_bindings: Rc::new(vec![]),
         plain_refutable: false,
+        deeper_rc: false,
     })
 }
 
@@ -32139,6 +32141,7 @@ pub fn rc_grouped_arm_plan(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
+    allow_deeper: bool,
 ) -> Rc<RcGroupedArmPlan> {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -32216,21 +32219,28 @@ pub fn rc_grouped_arm_plan(
                                 emit_info.clone(),
                                 si.clone(),
                             );
-                            if inner_rc.needs_rc_pattern.clone() {
+                            if (inner_rc.needs_rc_pattern.clone() && !allow_deeper.clone()) {
                                 ungroupable_arm_plan(variant.clone(), pat_str.clone())
                             } else {
                                 {
-                                    let inner_pat_str = emit_pattern(
-                                        fb_pat.clone(),
-                                        v1_rt::rc_list_push(
-                                            v1_rt::rc_list_push(Rc::new(vec![]), variant.clone()),
-                                            field_name.clone(),
-                                        ),
-                                        shared_types.clone(),
-                                        "".to_string(),
-                                        si.clone(),
-                                        emit_info.clone(),
-                                    );
+                                    let inner_pat_str = if inner_rc.needs_rc_pattern.clone() {
+                                        "".to_string()
+                                    } else {
+                                        emit_pattern(
+                                            fb_pat.clone(),
+                                            v1_rt::rc_list_push(
+                                                v1_rt::rc_list_push(
+                                                    Rc::new(vec![]),
+                                                    variant.clone(),
+                                                ),
+                                                field_name.clone(),
+                                            ),
+                                            shared_types.clone(),
+                                            "".to_string(),
+                                            si.clone(),
+                                            emit_info.clone(),
+                                        )
+                                    };
                                     Rc::new(RcGroupedArmPlan {
                                         groupable: true,
                                         variant: variant.clone(),
@@ -32247,6 +32257,7 @@ pub fn rc_grouped_arm_plan(
                                             field_name.clone(),
                                             si.clone(),
                                         ),
+                                        deeper_rc: inner_rc.needs_rc_pattern.clone(),
                                     })
                                 }
                             }
@@ -32279,6 +32290,7 @@ pub fn rc_grouped_arm_plan(
                             si.clone(),
                         ),
                         plain_refutable: false,
+                        deeper_rc: false,
                     })
                 }
             }
@@ -32312,31 +32324,55 @@ pub fn emit_rc_grouped_match_arm(
     match_result_type: Rc<Node>,
 ) -> String {
     {
-        let inner_arms = Rc::new({
-            let mut __result = Vec::new();
+        let inner_arms = if {
+            let mut __found = false;
             for e in members.iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("    ".to_string(), e.plan.clone().inner_pat_str.clone()),
-                            " => ".to_string(),
-                        ),
-                        emit_typed_match_arm_body_str(
-                            e.arm.clone(),
-                            registry.clone(),
-                            scope.clone(),
-                            depth.clone(),
-                            shared_types.clone(),
-                            emit_info.clone(),
-                            match_result_type.clone(),
-                        ),
-                    ),
-                    ",".to_string(),
-                ));
+                if e.plan.clone().deeper_rc.clone() {
+                    __found = true;
+                    break;
+                }
             }
-            __result
-        })
-        .join(&"\n".to_string());
+            __found
+        } {
+            emit_rc_deeper_inner_arm_strs(
+                members.clone(),
+                plan.ref_field.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                match_result_type.clone(),
+            )
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for e in members.iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "    ".to_string(),
+                                    e.plan.clone().inner_pat_str.clone(),
+                                ),
+                                " => ".to_string(),
+                            ),
+                            emit_typed_match_arm_body_str(
+                                e.arm.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                match_result_type.clone(),
+                            ),
+                        ),
+                        ",".to_string(),
+                    ));
+                }
+                __result
+            })
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -32352,10 +32388,119 @@ pub fn emit_rc_grouped_match_arm(
                     ),
                     ".as_ref() {\n".to_string(),
                 ),
-                inner_arms.clone(),
+                inner_arms.clone().join(&"\n".to_string()),
             ),
             "\n} },".to_string(),
         )
+    }
+}
+
+pub fn emit_rc_deeper_inner_arm_strs(
+    members: Rc<Vec<Rc<RcGroupedArmEntry>>>,
+    field: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    match_result_type: Rc<Node>,
+) -> Rc<Vec<String>> {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        let posed = Rc::new({
+            let mut __result = Vec::new();
+            for e in members.iter().cloned() {
+                __result.push({
+                    let inner_pattern = match variant_pattern_field_binding_named(
+                        crate::v1_std_core::arm_pattern(e.arm.clone()),
+                        field.clone(),
+                        si.clone(),
+                    ) {
+                        Some(fb) => crate::v1_std_core::field_binding_pattern(fb.clone()),
+                        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
+                    };
+                    field_binding_with_pattern(e.arm.clone(), inner_pattern.clone())
+                });
+            }
+            __result
+        });
+        if {
+            let mut __found = false;
+            for a in posed.iter().cloned() {
+                if crate::v1_std_core::match_pattern_is_irrefutable(
+                    crate::v1_std_core::arm_pattern(a.clone()),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            Rc::new({
+                let mut __result = Vec::new();
+                for pair in Rc::new(
+                    posed
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(emit_typed_match_arm(
+                        pair.1.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        "".to_string(),
+                        match_result_type.clone(),
+                        false,
+                        false,
+                    ));
+                }
+                __result
+            })
+        } else {
+            rc_grouped_match_arm_strs(
+                posed.clone(),
+                scope.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                "".to_string(),
+                true,
+                |inner_members, inner_plan| {
+                    emit_rc_grouped_match_arm(
+                        inner_members.clone(),
+                        inner_plan.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        match_result_type.clone(),
+                    )
+                },
+                |index, arm| {
+                    emit_typed_match_arm(
+                        arm.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        "".to_string(),
+                        match_result_type.clone(),
+                        false,
+                        false,
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -32428,6 +32573,7 @@ pub fn emit_typed_match_arm_strs(
                 shared_types.clone(),
                 emit_info.clone(),
                 scrut_type.clone(),
+                true,
                 |members, rep| {
                     emit_rc_grouped_match_arm(
                         members.clone(),
@@ -32465,6 +32611,7 @@ pub fn rc_grouped_match_arm_strs(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
+    allow_deeper: bool,
     emit_group: impl Fn(Rc<Vec<Rc<RcGroupedArmEntry>>>, Rc<RcGroupedArmPlan>) -> String + Clone,
     emit_single: impl Fn(i64, Rc<Node>) -> String + Clone,
 ) -> Rc<Vec<String>> {
@@ -32480,6 +32627,7 @@ pub fn rc_grouped_match_arm_strs(
                         shared_types.clone(),
                         emit_info.clone(),
                         scrut_type.clone(),
+                        allow_deeper.clone(),
                     ),
                 }));
             }
@@ -37530,6 +37678,7 @@ pub fn emit_rust_tco_match(
                             shared_types.clone(),
                             emit_info.clone(),
                             tco_scrut_type.clone(),
+                            false,
                             |members, rep| {
                                 emit_rc_grouped_tco_match_arm(
                                     members.clone(),
