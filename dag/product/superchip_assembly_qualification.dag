@@ -125,9 +125,12 @@ type CarrierUnitObservation {
 // reads "GH100-888K-A1 QUAL SAMPLE". The listing DESCRIPTION (operator transcription, 2026-10-04) also
 // states "CPU Memory: 512GB physical LPDDR5X / roughly 480GB usable in the standard GH200 configuration"
 // and "DV5 development/pre-production revision; compatibility not guaranteed".
+// RECEIVED 2026-10-16: the operator read this unit's label as "S/N 1582823830042 699-2G530-0215-DV5 C1
+// Model:PG530", the part number and revision the listing photographed, and grouped it with the K1
+// carrier. Asset gh200-dv5-a is bound to that serial.
 data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_a,
-  serial: Absent,
+  serial: Present { value: "1582823830042" },
   board_designation: "PG530",
   board_part_number: "699-2G530-0215-DV5",
   die_marking: "GH100-888K-A1 QUAL SAMPLE",
@@ -151,20 +154,25 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
 }
 
 
-// The operator bought TWO units of this listing (2026-10-04). The second carries the same listing facts
-// and no serial of its own yet, and it has no carrier: it is not an assembly until one is bought, so it
-// is recorded as held rather than paired with anything.
+// The operator bought TWO units of this listing (2026-10-04). The second unit RECEIVED is not the listed
+// part: its label, read 2026-10-16, is "S/N 1583023920189 699-2G530-0215-DV9 D1 Model : PG530" -- DV9
+// where the title and the photographed label say DV5, revision D1 where they say C1. The asset id keeps
+// the "dv5" it was allocated under before receipt; it is an opaque key, and the part number below is
+// the reading. The listing's memory claims are what was sold and stay as listed; its die photograph
+// was of a DV5 C1 unit, so this unit's die marking is unread. The operator groups it with the E1
+// carrier (p4261_e1_b), but no assembly is declared until the first qualification pair is chosen, so
+// it is recorded as held.
 data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_b,
-  serial: Absent,
+  serial: Present { value: "1583023920189" },
   board_designation: gh200_dv5_unit.board_designation,
-  board_part_number: gh200_dv5_unit.board_part_number,
-  die_marking: gh200_dv5_unit.die_marking,
+  board_part_number: "699-2G530-0215-DV9",
+  die_marking: "unread on this unit; the listing's die photograph (GH100-888K-A1 QUAL SAMPLE) was of a DV5 C1 unit",
   listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
   listed_cpu_memory: gh200_dv5_unit.listed_cpu_memory,
   mezzanine_face: gh200_dv5_unit.mezzanine_face,
   measured_inventory: InventoryUnmeasured,
-  source: "second unit bought from eBay item 298619132349; its own serial and photographs not yet recorded",
+  source: "second unit bought from eBay item 298619132349; label read from the operator's photograph 2026-10-16",
 }
 
 // Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
@@ -173,11 +181,12 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
 // "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
 // consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
 // J4, one toward each short edge, each flanked by mounting holes.
-// The label photographs show two serials (p4261_k1_layout labels), so the received unit's serial is
-// unread and the carrier is identified by its allocated asset until it is.
+// The listing's label photographs show two serials (p4261_k1_layout labels); the received unit's
+// label, read 2026-10-16, is S/N 1582023110038 694-24261-0000-100 K1 beside the same "Rework
+// 180-14261-DAAF-A01" silkscreen, so the board that arrived is the 0038 one.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
   asset: p4261_k1_a,
-  serial: Absent,
+  serial: Present { value: "1582023110038" },
   carrier_designation: "P4261",
   carrier_part_number: "694-24261-0000-100",
   revision: "K1",

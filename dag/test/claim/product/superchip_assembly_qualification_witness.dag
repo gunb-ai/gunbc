@@ -139,12 +139,13 @@ test fn a_claim_is_placed_against_the_row_and_the_family_separately() -> Bool {
   other && outside
 }
 
-// As bought: one assembly, and the second DV5 -- the same part number, a different asset -- held
-// unpaired rather than invented into an assembly with a carrier that was never bought.
+// As received: one assembly, and the second module -- a different asset, and read as a different part
+// number from the assembly's (DV9 D1 against DV5 C1) -- held rather than invented into an assembly
+// before the first qualification pair is chosen.
 test fn the_purchase_is_one_assembly_and_one_held_module() -> Bool {
   count(unpaired_modules) == 1
     && match unpaired_modules.first() {
-      Present { value: u } => u.board_part_number == gh200_dv5_unit.board_part_number && (u.asset as String) == (gh200_dv5_b as String)
+      Present { value: u } => u.board_part_number != gh200_dv5_unit.board_part_number && (u.asset as String) == (gh200_dv5_b as String)
       Absent => false
     }
 }
@@ -238,7 +239,8 @@ test fn a_fully_read_assembly_is_workload_qualified() -> Bool {
 }
 
 // THE SAME PART NUMBER IS NOT THE SAME UNIT. Every receipt was taken on module asset A; attached to an
-// assembly of module asset B -- same part number, same carrier, same configuration -- not one of them
+// assembly of module asset B given A's part number (supplied: the received B reads DV9, so the
+// same-part case is a hypothesis here) -- same carrier, same configuration -- not one of them
 // counts, and the assembly stops at the first stage that needs a receipt, naming the two assets. The
 // same receipts on asset A's assembly qualify it (a_fully_read_assembly_is_workload_qualified).
 test fn a_receipt_for_another_unit_of_the_same_part_does_not_transfer() -> Bool {
@@ -246,7 +248,7 @@ test fn a_receipt_for_another_unit_of_the_same_part_does_not_transfer() -> Bool 
     asset: gh200_dv5_second_unit.asset,
     serial: Present { value: "supplied-serial-b" },
     board_designation: gh200_dv5_second_unit.board_designation,
-    board_part_number: gh200_dv5_second_unit.board_part_number,
+    board_part_number: gh200_dv5_unit.board_part_number,
     die_marking: gh200_dv5_second_unit.die_marking,
     listed_gpu_memory: gh200_dv5_second_unit.listed_gpu_memory,
     listed_cpu_memory: gh200_dv5_second_unit.listed_cpu_memory,
