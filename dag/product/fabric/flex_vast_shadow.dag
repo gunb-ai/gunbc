@@ -25,12 +25,16 @@ import product.fabric.flex_policy {
 }
 import product.fabric.flex_market {
   flex_owner_label_gunbc_flex, FlexOwnerLabel,
-  flex_offer_meets_unit_driver,
+  flex_offer_driver_major,
   FlexCapAssessment, FlexCapUnder, FlexCapAtLimit, FlexCapOver,
   FlexCapNeedsExhaustedRoster, FlexCapUnreadable, FlexCapUnobserved,
   FlexCapRateUnconverted, FlexCapCurrencyMismatch,
 }
-import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
+import product.fabric.serving_recipe {
+  ServingRecipe, ServingRecipeId, RecipeQwen3_8_27bNvfp4OnNinfer, serving_recipe,
+  ServingCardFacts, serving_recipe_accepts_card, CardAccepted, CardRefusedBelowVram,
+  CardRefusedWrongCard, CardRefusedDriverBelowFloor, CardRefusedDriverUnread,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import product.fabric.demand { debt_payoff_objective, DemandObjective }
 import product.fabric.budget { MoneyAccount }
@@ -385,10 +389,11 @@ data flex_delay_unvalued: MoneyPerSecond = MoneyRate {
 
 data flex_objective: DemandObjective = debt_payoff_objective
 
-data flex_qwen_serving_image: NonEmptyStr = "vastai/vllm:v0.30.0-cuda-13.0"
-data flex_qwen_published_tcp_port: Int = 8000
-data flex_qwen_disk: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 32))
-data flex_qwen_model_id: NonEmptyStr = "qwen"
+// The recipe the flex tier realizes is a POLICY fact, selected here and resolved through
+// product.fabric.serving_recipe: the image, port, disk, model id, card classes and driver floor are
+// the recipe's, not literals of this loop. Consumer: flex_offer_in_shadow_field, which walks the
+// Vast roster against it.
+data flex_serving_recipe: ServingRecipeId = RecipeQwen3_8_27bNvfp4OnNinfer
 
 type FlexServingTemplate {
   image: NonEmptyStr
@@ -397,35 +402,31 @@ type FlexServingTemplate {
   model_id: NonEmptyStr
 }
 
-data flex_qwen_serving_template: FlexServingTemplate = FlexServingTemplate {
-  image: flex_qwen_serving_image,
-  published_tcp_port: flex_qwen_published_tcp_port,
-  disk: flex_qwen_disk,
-  model_id: flex_qwen_model_id,
-}
+type FlexTemplateRealization
+  = FlexTemplateResolved { template: FlexServingTemplate }
+  | FlexTemplateImageUnread
+  | FlexTemplateServedIdUnread
 
-type FlexGpuClass {
-  identity: NonEmptyStr
-  gpu_name_contains: String?
-  min_vram: ByteSize
-}
-
-data flex_gpu_class_rtx_5000_48gb: FlexGpuClass = FlexGpuClass {
-  identity: "rtx-5000-class-48gb",
-  gpu_name_contains: Present { value: "RTX 5000" },
-  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 49152)),
-}
-
-data flex_gpu_class_72gb: FlexGpuClass = FlexGpuClass {
-  identity: "72gb-class",
-  gpu_name_contains: none,
-  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 73728)),
-}
-
-data flex_gpu_class_rtx_pro_6000_96gb: FlexGpuClass = FlexGpuClass {
-  identity: "rtx-pro-6000-blackwell-96gb",
-  gpu_name_contains: Present { value: "RTX PRO 6000" },
-  min_vram: mebibyte_to_byte_size(m: mebibyte(count: 98304)),
+// The Vast create body for a recipe. A recipe whose host image or served model id is unread refuses
+// to realize rather than defaulting one. Consumer: the wet create path
+// (flex_wet_create_release_consumer_frontier).
+fn flex_serving_template(recipe: ServingRecipe) -> FlexTemplateRealization {
+  match recipe.host_image {
+    Absent => FlexTemplateImageUnread
+    Present { value: image } =>
+      match recipe.model.served_model_id {
+        Absent => FlexTemplateServedIdUnread
+        Present { value: model_id } =>
+          FlexTemplateResolved {
+            template: FlexServingTemplate {
+              image: image,
+              published_tcp_port: recipe.published_tcp_port,
+              disk: recipe.disk,
+              model_id: model_id,
+            },
+          }
+      }
+  }
 }
 
 fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
@@ -435,32 +436,33 @@ fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
   }
 }
 
-fn flex_supported_gpu_classes() -> List<FlexGpuClass> {
-  [flex_gpu_class_rtx_5000_48gb, flex_gpu_class_72gb, flex_gpu_class_rtx_pro_6000_96gb]
-}
-
-fn flex_gpu_name_matches(offer: VastAiOffer, needle: String?) -> Bool {
-  match needle {
-    Absent => true
-    Present { value: n } => string_contains(s: offer.gpu_name, pattern: n)
-  }
-}
-
-fn flex_gpu_class_matches(offer: VastAiOffer, class: FlexGpuClass) -> Bool {
+// A Vast offer as the recipe sees any card. An unreadable VRAM is no card at all.
+fn flex_offer_card_facts(offer: VastAiOffer) -> ServingCardFacts? {
   match vast_gpu_ram_bytes(gpu_ram_mb: offer.gpu_ram) {
-    Absent => false
+    Absent => none
     Present { value: vram } =>
-      flex_gpu_name_matches(offer: offer, needle: class.gpu_name_contains)
-        && byte_size_count(b: vram) >= byte_size_count(b: class.min_vram)
+      Present {
+        value: ServingCardFacts {
+          gpu_name: offer.gpu_name,
+          vram: vram,
+          driver_major: flex_offer_driver_major(offer: offer),
+        },
+      }
   }
 }
 
-fn flex_offer_supported(offer: VastAiOffer) -> Bool {
-  fold(
-    flex_supported_gpu_classes(),
-    init: false,
-    f: (acc, class) => acc || flex_gpu_class_matches(offer: offer, class: class),
-  )
+fn flex_offer_accepted_by_recipe(offer: VastAiOffer, recipe: ServingRecipe) -> Bool {
+  match flex_offer_card_facts(offer: offer) {
+    Absent => false
+    Present { value: card } =>
+      match serving_recipe_accepts_card(recipe: recipe, card: card) {
+        CardAccepted { class: _ } => true
+        CardRefusedBelowVram { required: _, observed: _ } => false
+        CardRefusedWrongCard => false
+        CardRefusedDriverBelowFloor { required: _, observed: _ } => false
+        CardRefusedDriverUnread => false
+      }
+  }
 }
 
 fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
@@ -472,8 +474,7 @@ fn flex_interruptible_rentable(offer: VastAiOffer) -> Bool {
 
 fn flex_offer_in_shadow_field(offer: VastAiOffer) -> Bool {
   flex_interruptible_rentable(offer: offer)
-    && flex_offer_supported(offer: offer)
-    && flex_offer_meets_unit_driver(offer: offer, unit: Qwen3_8_27bOnNinfer)
+    && flex_offer_accepted_by_recipe(offer: offer, recipe: serving_recipe(id: flex_serving_recipe))
 }
 
 data flex_search_type: String = vast_ai_search_type_bid

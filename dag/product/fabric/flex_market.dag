@@ -40,6 +40,7 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
   PlacedOnFleetSeat, RunOnOperatorEndpoint, LeasedFromHostedQuota,
 }
+import product.fabric.serving_recipe { serving_recipe_qwen3_8_27b_nvfp4_ninfer }
 import extdeps.cloud.vast_ai {
   VastAiOffer, VastAiDriverVersionRead, VastAiDriverVersionUnread, VastAiDriverVersionMalformed,
   vast_ai_ingest_search_offer_driver,
@@ -983,13 +984,6 @@ type FlexHostDriverMinimum {
   standing: CitedFigureStanding
 }
 
-data flex_ninfer_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
-  major: 580,
-  standing: TranscribedUncited {
-    read_obligation: "read the ninfer Qwen3.8-27b launch image NVIDIA driver major requirement; 580 is a transcribed flex screen, not a cited NVIDIA or ninfer figure" as NonEmptyStr,
-  },
-}
-
 data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
   major: 590,
   standing: TranscribedUncited {
@@ -999,7 +993,7 @@ data flex_vllm_min_driver: FlexHostDriverMinimum = FlexHostDriverMinimum {
 
 fn flex_unit_min_host_driver(unit: HarnessServingUnit) -> Nat? {
   match unit {
-    Qwen3_8_27bOnNinfer => Present { value: flex_ninfer_min_driver.major }
+    Qwen3_8_27bOnNinfer => Present { value: serving_recipe_qwen3_8_27b_nvfp4_ninfer.driver_floor.major }
     DeepseekV4FlashOnVllm => Present { value: flex_vllm_min_driver.major }
     Glm53FlashOnVllm => Present { value: flex_vllm_min_driver.major }
     NemotronUltraFreeOnOpenRouter => none
