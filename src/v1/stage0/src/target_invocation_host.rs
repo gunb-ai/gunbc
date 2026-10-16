@@ -1766,7 +1766,7 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
             subjects.push(module.clone());
         }
     }
-    let (controls, subject_runs) = match cli_run::run_census_controls_and_subjects(
+    let (controls, union) = match cli_run::run_census_controls_and_subjects(
         source_roots,
         &[vec![fixture_root], vec![unindexed_root]],
         &subjects,
@@ -1775,18 +1775,11 @@ fn run_ambient_name_census(source_roots: &[String]) -> InvocationOutcome {
         Err(cause) => return unreached(cause),
     };
     let status = |s: Option<i32>| i64::from(s.unwrap_or(-1));
-    let mut tree_stdout = String::new();
-    let mut tree_runs = String::new();
-    for run in &subject_runs {
-        match &run.run {
-            Some(r) => {
-                tree_stdout.push_str(&r.stdout);
-                tree_stdout.push('\n');
-                tree_runs.push_str(&format!("{}\t{}\n", run.subject, status(r.status)));
-            }
-            None => tree_runs.push_str(&format!("{}\tcovered\n", run.subject)),
-        }
-    }
+    let tree_stdout = union.stdout.clone();
+    let tree_runs: String = subjects
+        .iter()
+        .map(|subject| format!("{subject}\t{}\n", status(union.status)))
+        .collect();
     let rewritten_text: String = rewritten
         .iter()
         .map(|(m, present)| format!("{m}\t{}\n", if *present { "present" } else { "absent" }))

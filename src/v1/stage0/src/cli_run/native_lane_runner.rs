@@ -4755,10 +4755,11 @@ pub fn run_census_infer_root_sets(
 /// status, its stderr relayed. Nothing about the run is decided here.
 fn run_census_scoped_with(
     binary: &std::path::Path,
-    subject_label: &str,
+    subject_labels: &[String],
     source_roots: &[String],
 ) -> Result<CensusInferRun, String> {
-    let mut args = vec!["census-scoped".to_string(), subject_label.to_string()];
+    let mut args = vec!["census-scoped".to_string()];
+    args.extend(subject_labels.iter().cloned());
     args.extend(source_roots.iter().cloned());
     let output = Command::new(binary).args(&args).output().map_err(|e| {
         format!(
@@ -4777,51 +4778,27 @@ fn run_census_scoped_with(
 }
 
 /// The runs `gunbc test //gunbc/instruments:ambient-name-census` reads, over ONE prepared binary:
-/// `census-infer` over each control root set, then `census-scoped` once per subject module. A subject
-/// a previous subject's closure already observed (a `binding_module` row names it) is not run again:
-/// its closure is a subset of what was read, so a second run would re-read it for nothing. Each
-/// scoped run holds one subject's closure at a time, which is how the census stays inside a memory
-/// bound the whole-corpus walk does not.
-pub struct CensusSubjectRun {
-    pub subject: String,
-    pub run: Option<CensusInferRun>,
-}
-
+/// `census-infer` over each control root set, then ONE `census-scoped` over every subject module at
+/// once. The emitted compiler acquires the union of the subjects' closures and resolves each member
+/// once (v2.compiler.source_root_eval native_lane_census_scoped_ingest); its `binding_subject` lines
+/// say which subjects reach each member. One run per subject re-resolved every shared member once per
+/// subject (DESIGN §2), which on a wave of thirty rewritten modules outran the runner.
 pub fn run_census_controls_and_subjects(
     source_roots: &[String],
     control_root_sets: &[Vec<String>],
     subjects: &[String],
-) -> Result<(Vec<CensusInferRun>, Vec<CensusSubjectRun>), String> {
+) -> Result<(Vec<CensusInferRun>, CensusInferRun), String> {
     let preparation = prepare_emitted_compiler(source_roots)?;
     let controls = control_root_sets
         .iter()
         .map(|roots| run_census_infer_with(&preparation.binary_path, roots))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut observed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let mut runs = Vec::new();
-    for subject in subjects {
-        if observed.contains(subject) {
-            runs.push(CensusSubjectRun {
-                subject: subject.clone(),
-                run: None,
-            });
-            continue;
-        }
-        let label = format!("//{}:all", subject.replace('.', "/"));
-        let run = run_census_scoped_with(&preparation.binary_path, &label, source_roots)?;
-        for line in run.stdout.lines() {
-            if let Some(rest) = line.strip_prefix("binding_module\t") {
-                if let Some(module) = rest.split('\t').next() {
-                    observed.insert(module.to_string());
-                }
-            }
-        }
-        runs.push(CensusSubjectRun {
-            subject: subject.clone(),
-            run: Some(run),
-        });
-    }
-    Ok((controls, runs))
+    let labels: Vec<String> = subjects
+        .iter()
+        .map(|subject| format!("//{}:all", subject.replace('.', "/")))
+        .collect();
+    let union = run_census_scoped_with(&preparation.binary_path, &labels, source_roots)?;
+    Ok((controls, union))
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in

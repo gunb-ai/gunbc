@@ -108,7 +108,7 @@ pub use native_lane_runner::{
     run_native_process_memory_runs, run_native_serve_program, run_required_v2_native,
     run_self_host, run_type_declaration_use_census_runs, run_v2_demand_census,
     run_v2_native_census, run_v2_native_census_scoped, run_v2_native_cli, run_v2_native_cli_emit,
-    run_v2_native_frontier, CensusInferRun, CensusSubjectRun, MeasuredSpawnRoute, NativeCensusRun,
+    run_v2_native_frontier, CensusInferRun, MeasuredSpawnRoute, NativeCensusRun,
     NativeCensusScopeWord, NativeChildMeasured, NativeClaimProgramAttempt, NativeClaimProgramRun,
     NativeFrontierRun, NativeMemberTermination, NativeProcessMemoryRuns, NativeRouteOutcome,
     NativeServeProgramRun, PreparationCause, PreparationRefusal, SelfHostHeld,

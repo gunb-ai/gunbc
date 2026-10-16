@@ -21,12 +21,15 @@ import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 //      (status 2), never a run that held over a module with no binding record;
 //   4. THE POPULATION (tidy-ant-251's ruling on PR #14112, 2026-10-16): the whole corpus does not fit
 //      a bounded runner in one census (gunbc.recurring_failure_mode
-//      whole_corpus_census_exceeds_the_memory_bound), so the population is the closure of each SUBJECT,
-//      read one scoped run at a time: the roster below, plus every module the wave at this commit
-//      rewrites against ambient_census_base_ref. Every rewritten module this checkout holds that no
-//      subject run observed is printed BY NAME as `unobserved_rewritten`, and makes the run exit 2:
-//      a wave whose edits the census did not read is not admitted. A module outside every subject's
-//      closure is not read at all, and nothing here claims it was.
+//      whole_corpus_census_exceeds_the_memory_bound), so the population is exactly the UNION of the
+//      SUBJECTS' closures: the roster below, plus every module the wave at this commit rewrites against
+//      ambient_census_base_ref. It is read in ONE census-scoped run over all the subjects, so a module
+//      two closures share is resolved once; the run's `binding_subject` lines attribute each member to
+//      the subjects whose closure reaches it, and every observed module is printed with them as
+//      `module_subjects`. Every rewritten module this checkout holds that the run did not observe is
+//      printed BY NAME as `unobserved_rewritten`, and makes the run exit 2: a wave whose edits the
+//      census did not read is not admitted. A module outside every subject's closure is not read at
+//      all, and nothing here claims it was.
 //
 // Exit: 0 every control held and every rewritten module was observed; 1 a control did not hold; 2 a
 // rewritten module or a subject run went unobserved (or nothing at all was observed). A module inside
@@ -164,12 +167,25 @@ fn distinct_lines(lines: List<String>) -> List<String> {
   map_keys(seen)
 }
 
-// Fields of the host's per-subject line: subject, then its exit status or `covered` (an earlier
-// subject's closure already observed it, so it was not run again).
+// Fields of the host's per-subject line: subject, then the exit status of the run that read it (one
+// union run reads every subject, so every subject carries that run's status).
 fn failed_subject_runs(tree_runs: String) -> List<String> {
   split(s: tree_runs, delimiter: "\n")
     |> filter(l => l != "")
     |> filter(l => (field_at(line: l, index: 1) != "0") && (field_at(line: l, index: 1) != "covered"))
+}
+
+// The subjects whose closure reaches each module, from the run's `binding_subject\t<subject>\t<module>` lines.
+fn module_subject_attribution(tree_stdout: String) -> Map<String, List<String>> {
+  fold(split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_subject\t")), init: empty_map(), f: fn(m, l) {
+    let module = field_at(line: l, index: 2)
+    let subject = field_at(line: l, index: 1)
+    map_insert(m, module, match map_get(m, module) { Present { value: xs } => list_push(xs, subject)  Absent => [subject] })
+  })
+}
+
+fn module_subjects_text(attribution: Map<String, List<String>>, module: String) -> String {
+  match map_get(attribution, module) { Present { value: xs } => join(distinct_lines(lines: xs), separator: ",")  Absent => "-" }
 }
 
 fn observed_modules(tree_stdout: String) -> Map<String, Bool> {
@@ -185,8 +201,10 @@ fn unobserved_rewritten(rewritten: String, tree_stdout: String) -> List<String> 
     |> map(l => field_at(line: l, index: 0))
 }
 
-// One module read twice (two closures held it) must read the same both times: the same compiler over the
-// same bytes. Two different binding_module lines for one module are an inconsistent observation.
+// One module read twice must read the same both times: the same compiler over the same bytes. The union
+// run reads each member once, so this holds by construction there; it stays because tree_stdout is the
+// concatenation of whatever runs the host made, and two different binding_module lines for one module
+// are an inconsistent observation whoever made them.
 fn inconsistent_module_failure(tree_stdout: String) -> Optional<String> {
   let distinct = distinct_lines(lines: module_lines(stdout: tree_stdout))
   let counts = fold(distinct, init: empty_map(), f: fn(m, l) {
@@ -216,8 +234,12 @@ fn ambient_name_census_standing(
     |> filter(l => match map_get(observed, field_at(line: l, index: 1)) { Present { value: _ } => false  Absent => true })
   let missing = unobserved_rewritten(rewritten: rewritten, tree_stdout: tree_stdout)
   let failed = failed_subject_runs(tree_runs: tree_runs)
-  let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "") |> map(l => "rewritten\t" + l)
+  let attribution = module_subject_attribution(tree_stdout: tree_stdout)
+  let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
+    |> map(l => "rewritten\t" + l + "\t" + module_subjects_text(attribution: attribution, module: field_at(line: l, index: 0)))
+  let subject_lines = map_keys(observed) |> map(m => "module_subjects\t" + m + "\t" + module_subjects_text(attribution: attribution, module: m))
   let bytes = (tree_rows |> join(separator: "\n")) + "\n"
+    + (subject_lines |> join(separator: "\n")) + "\n"
     + (unreached |> join(separator: "\n")) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
