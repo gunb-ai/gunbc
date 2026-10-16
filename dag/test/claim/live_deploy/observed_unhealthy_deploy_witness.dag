@@ -36,6 +36,11 @@ module test.claim.live_deploy.observed_unhealthy_deploy_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List, CommitSha, HttpStatus, http_status_of }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import v2.std.operation_argv {
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  operation_argv_bind_text,
+}
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.optional { Present, Absent }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
@@ -122,7 +127,11 @@ fn release_target() -> ReleaseTarget {
 }
 
 fn candidate() -> CandidateRelease {
-  CandidateRelease { revision: rev_b(), expected_surface_identity: witness_expected_surface_identity() }
+  CandidateRelease {
+    revision: rev_b(),
+    expected_surface_identity: witness_expected_surface_identity(),
+    expected_dispatch_digest: content_hash_atom(value: "dispatch" as NonEmptyStr),
+  }
 }
 
 fn desired_tree() -> MemberIdentity { TreeIdentity { tree: TreePublicationIdentity { revision: rev_b(), tracked_projection_clean: true } } }
@@ -420,6 +429,47 @@ test fn an_unhealthy_answer_never_equals_anything() -> Bool {
   let q = ProcessObservedUnhealthy { active: Active, status: unhealthy_status, detail: "two" }
   !process_identity_eq(a: p, b: q)
     && !member_identity_eq(a: ProcessAt { process: p }, b: desired_process())
+}
+
+// THE TWO TRANSPORTS OF ONE SHAPE AGREE. The probe is ONE operation with two bound handlers, the
+// module's standing pattern (GetWithin / http_client_get_argv): the local route runs the declared op
+// argv and the fleet route runs the builder's argv over ssh. Bound transports may SPELL differently;
+// they may not mean differently. This compares what each route actually hands curl, read off the
+// DECLARATION through the materializer (not from a restated literal), so the fact stays in the one
+// place the declaration keeps it.
+//
+// RED BEFORE THE FIX: the op argv carried no `--connect-timeout` while the builder's did, so a probe's
+// connect-deadline behaviour depended on which route ran -- DESIGN 3's "each fact lives in exactly one
+// place", caught in review on #14194. It is green now because the op declares the deadline as a
+// BOUND INPUT and both routes take it from http_client_localhost_connect_timeout_flag.
+test fn the_two_bound_transports_of_the_probe_agree_on_every_flag() -> Bool {
+  let url = "http://127.0.0.1:9/healthz" as NonEmptyStr
+  let deadline = second(count: 240)
+  let local = shell_materialize_operation_argv(
+    "dag/extdeps/http/client.dag",
+    "http.Client",
+    "GetWithinWithStatus",
+    [
+      operation_argv_bind_text(name: "url", text: url as String),
+      operation_argv_bind_text(
+        name: "connect_seconds",
+        text: http_client_localhost_connect_timeout_flag()
+      ),
+      operation_argv_bind_text(
+        name: "max_seconds",
+        text: http_client_max_time_flag(max_time: deadline) as String
+      ),
+    ]
+  )
+  match local {
+    // A refusal arm is false, never true: an unbound declared input or an unsupported element would
+    // otherwise make the agreement true by vacuity.
+    ArgvMaterialized { argv: op_argv } =>
+      op_argv == http_client_get_with_status_argv(url: url, max_time: deadline)
+        && string_list_contains(xs: op_argv, wanted: "--connect-timeout")
+        && !string_list_contains(xs: op_argv, wanted: "-fsS")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
+  }
 }
 
 // ---------------------------------------------------------------- CLAIM 2 -- CONTROL

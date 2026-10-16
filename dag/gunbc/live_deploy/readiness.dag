@@ -79,7 +79,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.http.client
-import extdeps.http.client { http_client_get_argv, http_client_get_with_status_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
+import extdeps.http.client { http_client_get_argv, http_client_localhost_connect_timeout_flag, http_client_get_with_status_argv, http_client_get_unix_socket_argv, http_client_max_time_flag }
 import extdeps.ietf.http_semantics { http_status_class_of, HttpStatusClass, Informational, Successful, Redirection, ClientError, ServerError }
 import extdeps.tools.curl { classify_curl_http_code_after_newline, curl_body_before_http_code, CurlWriteOutHttpStatus, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import gunbc.serve_liveness {
@@ -251,7 +251,7 @@ fn live_deploy_healthz_get_local(port: Int, spec: DeploymentSpec) -> HealthzEffe
   match live_deploy_healthz_probe_deadline(spec: spec) {
     Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
     Present { value: deadline } => {
-      let got = http.Client.GetWithinWithStatus(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+      let got = http.Client.GetWithinWithStatus(url: url, connect_seconds: http_client_localhost_connect_timeout_flag(), max_seconds: http_client_max_time_flag(max_time: deadline))
       healthz_effective_read_from_status_get(
         success: got.success,
         stdout: got.body,
@@ -430,7 +430,7 @@ fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, trans
     Present { value: deadline } =>
       match transport {
         LocalShell => {
-          let got = http.Client.GetWithinWithStatus(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+          let got = http.Client.GetWithinWithStatus(url: url, connect_seconds: http_client_localhost_connect_timeout_flag(), max_seconds: http_client_max_time_flag(max_time: deadline))
           healthz_effective_read_from_status_get(success: got.success, stdout: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
         }
         SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)

@@ -263,13 +263,26 @@ service http.Client {
   // classify_curl_http_code_after_newline and curl_body_before_http_code already own -- so the caller
   // splits a real status from a real body with the one authority for that format, and a reply that
   // identifies a release is still read as that release.
+  //
+  // THE CONNECT DEADLINE IS A DECLARED INPUT, spelled exactly as the module's nearest sibling spells
+  // it (GetQueryStdinWithin, which also writes the `-w "\n%{http_code}"` reply line): the op binds
+  // `{connect_seconds}` and the CALLER supplies it from the one authority,
+  // `http_client_localhost_connect_timeout_flag` (value `curl_localhost_connect_timeout` in
+  // extdeps.tools.curl). So the local op and the remote-shell builder
+  // `http_client_get_with_status_argv` are two bound transports of ONE shape -- the module's standing
+  // pattern, the peer pair being GetWithin / http_client_get_argv -- where the argv ROWS are spelled
+  // per transport but every VALUE in them resolves to one place. A probe's connect-deadline behaviour
+  // no longer depends on which route ran (review on #14194: the two copies differed; they do not now).
+  // An argv ELEMENT expression is not used here because v2.std.operation_argv refuses to evaluate
+  // one (ArgvExpressionUnsupported, a pinned deficit) -- binding it as an input is the form that
+  // carries the same fact without growing that deficit.
   operation GetWithinWithStatus {
     requires Network
-    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "-sS", "--max-time", "{max_seconds}", "{url}", "-w", "\n%\{http_code\}"]
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "{url}", "-w", "\n%\{http_code\}"]
     }
     exit {
       0 => Unit
