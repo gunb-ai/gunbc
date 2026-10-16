@@ -1,0 +1,469 @@
+module gunbc.compute.compute_seat_ensure
+
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
+import std.list { distinct_by_key }
+import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import gunbc.durable_cas_file_store { cas_slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, DispatchOwned, OwnerUnrecorded,
+  UnitLifecycle, UnitLifecycleUnknown, UnitStillRunning, unit_lifecycle_ended,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
+  recovery_trigger,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+}
+import gunbc.compute.host_capacity {
+  ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
+}
+import gunbc.compute.work_provider_local {
+  ComputeRecovery, RecoveryReleased, RecoveryNothingHeld, RecoverySettledButHeld, RecoveryDeclined, RecoveryRefused,
+  UnitLifecycleSource, unit_lifecycle_from_source, compute_recover_attempt_in, compute_recovery_wire,
+  UnitStop, UnitStopped, UnitStopFailed, unit_stop_by_source, unit_source_after_stop,
+  LeaseDrop, LeaseDropped, LeaseNotDropped, compute_drop_lease_at, compute_lease_path, compute_seat_dir, compute_lease_holder_line,
+}
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
+  AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
+  AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names,
+}
+
+// A COMPUTE SEAT HELD BY AN ATTEMPT THAT ENDED IS ENSURED RETURNED, THROUGH THE ONE DISCHARGE DOOR
+// (gunbc.recurring_failure_mode a_held_compute_seat_has_no_in_corpus_discharge).
+//
+// This is an ensure over std.upsert_decision, not a second release path: the decision is made here, the
+// ACTION is gunbc.compute.work_provider_local compute_recover_attempt_in, which re-proves unit
+// termination itself and releases through the ledger's own release. Selection precedes convergence
+// (DESIGN 3d): which references to ensure is chosen by the driver below, from the attempt records.
+//
+//   live owner (deadline not reached / unit not ended) -> Noop, seat kept, unit NOT stopped
+//   owner proven ended, its unit still live             -> Apply: STOP the unit the slot record names,
+//                                                          then the door re-proves termination
+//   unit ended (owner ended OR live) and the seat held  -> Apply (the door), then the producer lease is
+//                                                          dropped through compute_drop_lease_at and read back
+//   slot unreadable / slot absent / lifecycle unknown   -> Refuse, the charge is KEPT
+//
+// Readback is independent of the door's own report: the ledger's committed figure is read before and
+// after, and a release only counts when committed fell by exactly the attempt's grant.
+// RecoverySettledButHeld, or a release the readback does not confirm, is SeatEnsureRed -- never success.
+type SeatEnsureOutcome
+  = SeatEnsureNoop { reference: String, why: String }
+  | SeatEnsureReleased { reference: String, committed_before: Kibibyte, committed_after: Kibibyte }
+  | SeatEnsureRefused { reference: String, reason: String }
+  | SeatEnsureRed { reference: String, reason: String }
+  | SeatEnsureLeaseDropped { reference: String }
+
+// WHO OWNS THE UNIT: derived by the driver from the attempt's worker exit record, never assumed. A unit of a
+// live owner is never stopped. Stopping the unit of an ended owner is safe for other attempts because a joiner
+// attaches only to a STORED outcome (work_provider_local compute_attach_under_lease), never to a running unit.
+type SeatOwnerStanding
+  = SeatOwnerEnded
+  | SeatOwnerLive
+
+type SeatPlan
+  = SeatPlanRelease { reference: String }
+  | SeatPlanStopThenRelease { reference: String }
+
+fn seat_ensure_refuse(verdict: ObservationVerdict, reason: String) -> UpsertClassification<SeatPlan> {
+  UpsertClassification { verdict: verdict, decision: Refuse { reason: reason as NonEmptyStr } }
+}
+
+fn seat_ensure_apply(reference: String) -> UpsertClassification<SeatPlan> {
+  UpsertClassification { verdict: Drifted, decision: Apply { plan: SeatPlanRelease { reference: reference } } }
+}
+
+// THE PURE DECISION: slot reading + observed lifecycle + clock in, classification out.
+fn compute_seat_classify(reading: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs?, owner: SeatOwnerStanding) -> UpsertClassification<SeatPlan> {
+  match reading {
+    AttemptSlotUnreadable { detail: d } => seat_ensure_refuse(verdict: Inaccessible, reason: join(["the attempt slot could not be read (", d, "); the charge is kept"], ""))
+    AttemptSlotAbsent => seat_ensure_refuse(verdict: UnknownRefused, reason: "no attempt slot names this reference; the charge is kept")
+    AttemptSlotHeld { record: rec, generation: _ } =>
+      match rec.owner {
+        OwnerUnrecorded { why: w } => seat_ensure_refuse(verdict: UnknownRefused, reason: join(["the record names no owner (", w, "), so its end cannot be derived from an owner's end; the charge is kept"], ""))
+        _ => seat_classify_owned(rec: rec, lifecycle: lifecycle, now: now, owner: owner)
+      }
+  }
+}
+
+fn seat_classify_owned(rec: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs?, owner: SeatOwnerStanding) -> UpsertClassification<SeatPlan> {
+  if seat_stop_due(lifecycle: lifecycle, owner: owner) {
+    UpsertClassification { verdict: Drifted, decision: Apply { plan: SeatPlanStopThenRelease { reference: rec.reference } } }
+  } else {
+    seat_classify_by_trigger(rec: rec, lifecycle: lifecycle, now: now)
+  }
+}
+
+// A UNIT IS STOPPED ONLY WHEN ITS OWNER IS PROVEN ENDED AND THE UNIT IS OBSERVED LIVE. An unknown lifecycle
+// is not "live", so it never reaches a stop.
+fn seat_stop_due(lifecycle: UnitLifecycle, owner: SeatOwnerStanding) -> Bool {
+  match owner {
+    SeatOwnerLive => false
+    SeatOwnerEnded =>
+      match lifecycle {
+        UnitStillRunning { detail: _ } => true
+        _ => false
+      }
+  }
+}
+
+fn seat_classify_by_trigger(rec: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs?) -> UpsertClassification<SeatPlan> {
+  {
+      match now {
+        Absent => seat_ensure_refuse(verdict: UnknownRefused, reason: "the clock could not be read; the charge is kept")
+        Present { value: t } =>
+          match recovery_trigger(record: rec, lifecycle: lifecycle, now: t) {
+            RecoveryMayTerminate { reason: _ } => seat_ensure_apply(reference: rec.reference)
+            RecoveryTerminalRecordMayRelease { state: _ } => seat_ensure_apply(reference: rec.reference)
+            RecoveryTooEarly { deadline: _, now: _ } => UpsertClassification { verdict: Converged, decision: Noop }
+            RecoveryUnitNotEnded { lifecycle: u } =>
+              match u {
+                UnitLifecycleUnknown { detail: d } => seat_ensure_refuse(verdict: UnknownRefused, reason: join(["the unit's lifecycle is unknown (", d, "); the charge is kept"], ""))
+                _ => UpsertClassification { verdict: Converged, decision: Noop }
+              }
+          }
+      }
+  }
+}
+
+fn seat_committed(subject: ComputeCapacitySubject) -> Kibibyte? {
+  match compute_capacity_standing_on(subject: subject) {
+    ComputeCapacityStandingRead { committed: c, ceiling: _, headroom: _, observed_available: _, observed_total: _ } => Present { value: c }
+    ComputeCapacityStandingUnread { detail: _ } => none
+  }
+}
+
+fn seat_granted_of(reading: AttemptSlotReading) -> Kibibyte {
+  match reading {
+    AttemptSlotHeld { record: rec, generation: _ } => rec.granted
+    _ => kibibyte(count: 0)
+  }
+}
+
+fn seat_fell_by(before: Kibibyte, after: Kibibyte, granted: Kibibyte) -> Bool {
+  match measure_sub(a: before, b: after) {
+    MeasureDifference { value: d } => d == granted
+    MeasureSubtrahendExceedsMinuend => false
+  }
+}
+
+fn seat_apply(attempts_root: NonEmptyStr, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource, granted: Kibibyte) -> SeatEnsureOutcome {
+  match seat_committed(subject: subject) {
+    Absent => SeatEnsureRefused { reference: reference as String, reason: "the capacity ledger could not be read before the release; nothing was released" }
+    Present { value: before } =>
+      match compute_recover_attempt_in(attempts_root: attempts_root, subject: subject, reference: reference, source: source) {
+        RecoverySettledButHeld { reference: r, verdict: _, seat: s } => SeatEnsureRed { reference: r, reason: join(["settled but still charged: ", s], "") }
+        RecoveryRefused { detail: d } => SeatEnsureRefused { reference: reference as String, reason: d }
+        RecoveryDeclined { reference: r, why: w } => SeatEnsureNoop { reference: r, why: w }
+        RecoveryNothingHeld { reference: r, verdict: _, detail: d } =>
+          match seat_committed(subject: subject) {
+            Absent => SeatEnsureRed { reference: r, reason: "the door reported nothing held but the ledger could not be read back" }
+            Present { value: after } =>
+              if before == after {
+                SeatEnsureNoop { reference: r, why: join(["the ledger reported it held nothing for this reference, and the committed figure did not move: ", d], "") }
+              } else {
+                SeatEnsureRed { reference: r, reason: "the ledger reported it held nothing but the committed figure moved during the ensure" }
+              }
+          }
+        RecoveryReleased { reference: r, verdict: _, seat: _ } =>
+          match seat_committed(subject: subject) {
+            Absent => SeatEnsureRed { reference: r, reason: "the door reported a release but the ledger could not be read back" }
+            Present { value: after } =>
+              if seat_fell_by(before: before, after: after, granted: granted) {
+                SeatEnsureReleased { reference: r, committed_before: before, committed_after: after }
+              } else {
+                SeatEnsureRed { reference: r, reason: "the door reported a release and the ledger's committed figure did not fall by the attempt's grant" }
+              }
+          }
+      }
+  }
+}
+
+// THE PRODUCER LEASE FOLLOWS THE SEAT. The seat is the capacity ledger's; the lease is the producer's
+// exclusion over the work identity. A seat released while the lease remains is a RED, and the lease is only
+// dropped when the unit is freshly observed ended -- never on a doubt. Readback re-lists the leases directory.
+type LeasePresence
+  = LeasePresent
+  | LeaseAbsent
+  | LeaseUnreadable { detail: String }
+
+fn seat_lease_presence(leases_dir: String, identity: String) -> LeasePresence {
+  let listed = Filesystem.List(path: leases_dir)
+  match filesystem_listing_observation(directory: leases_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) => if any(filesystem_listing_entry_names(listing: admitted), n => n == identity) { LeasePresent } else { LeaseAbsent }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => LeaseUnreadable { detail: e }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => LeaseUnreadable { detail: c }
+  }
+}
+
+fn seat_settle_lease(seated: SeatEnsureOutcome, seat_dir: String, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+  match seated {
+    SeatEnsureReleased { reference: r, committed_before: _, committed_after: _ } => seat_drop_lease(seated: seated, seat_dir: seat_dir, reference: r, leases_dir: leases_dir, rec: rec, source: source)
+    SeatEnsureNoop { reference: r, why: _ } => seat_drop_lease(seated: seated, seat_dir: seat_dir, reference: r, leases_dir: leases_dir, rec: rec, source: source)
+    _ => seated
+  }
+}
+
+fn seat_drop_lease(seated: SeatEnsureOutcome, seat_dir: String, reference: String, leases_dir: String, rec: AttemptRecord, source: UnitLifecycleSource) -> SeatEnsureOutcome {
+  if !unit_lifecycle_ended(u: unit_lifecycle_from_source(source: source, unit: rec.unit as NonEmptyStr)) {
+    seated
+  } else {
+    match seat_lease_presence(leases_dir: leases_dir, identity: rec.identity) {
+      LeaseAbsent => seated
+      LeaseUnreadable { detail: d } => SeatEnsureRed { reference: reference, reason: join(["the producer lease directory could not be read back (", d, ")"], "") }
+      LeasePresent => seat_drop_lease_if_held_by(seated: seated, seat_dir: seat_dir, reference: reference, leases_dir: leases_dir, rec: rec)
+    }
+  }
+}
+
+// COMPARE, THEN DELETE -- ONLY FOR THE HOLDER. The lease's first line names the attempt that took it; this
+// pass drops it only when that is the attempt whose record is being discharged. Another attempt's lease is that
+// attempt's and is left alone; a legacy lease (no holder line) is refused and kept, never guessed at (the
+// existing legacy leases are the debris sweep's, slice 4). The read-then-delete is not a CAS: the lease is a
+// plain create-new file, and its window is that the holder's own driver deletes it between our read and our
+// delete AND another attempt re-creates it in that gap. Both need the holder's unit to have ended and its
+// driver to be running its final drop at the instant this pass runs; the alternative (moving the lease into a
+// CAS slot) changes the producer-exclusion store, which is outside this slice.
+fn seat_drop_lease_if_held_by(seated: SeatEnsureOutcome, seat_dir: String, reference: String, leases_dir: String, rec: AttemptRecord) -> SeatEnsureOutcome {
+  let read = Filesystem.Read(path: compute_lease_path(leases_dir: leases_dir, identity_hex: rec.identity))
+  if !read.success {
+    SeatEnsureRefused { reference: reference, reason: join(["the producer lease could not be read to find its holder (", read.error, "); it is kept"], "") }
+  } else if starts_with(s: read.content, prefix: compute_lease_holder_line(seat_dir: seat_dir)) {
+    seat_drop_own_lease(seated: seated, reference: reference, leases_dir: leases_dir, rec: rec)
+  } else if starts_with(s: read.content, prefix: "holder ") {
+    seated
+  } else {
+    SeatEnsureRefused { reference: reference, reason: "the producer lease names no holder (a legacy lease); it is kept for the sweep" }
+  }
+}
+
+fn seat_drop_own_lease(seated: SeatEnsureOutcome, reference: String, leases_dir: String, rec: AttemptRecord) -> SeatEnsureOutcome {
+  match compute_drop_lease_at(lease_path: compute_lease_path(leases_dir: leases_dir, identity_hex: rec.identity)) {
+    LeaseNotDropped { detail: d } => SeatEnsureRed { reference: reference, reason: join(["the seat is returned but the producer lease remains: ", d], "") }
+    LeaseDropped =>
+      match seat_lease_presence(leases_dir: leases_dir, identity: rec.identity) {
+        LeaseAbsent => match seated { SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => seated  _ => SeatEnsureLeaseDropped { reference: reference } }
+        _ => SeatEnsureRed { reference: reference, reason: "the lease drop reported success and the lease is still listed" }
+      }
+  }
+}
+
+fn seat_apply_plan(attempts_root: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, rec: AttemptRecord, plan: SeatPlan, source: UnitLifecycleSource, granted: Kibibyte) -> SeatEnsureOutcome {
+  let reference = rec.reference as NonEmptyStr
+  let stop = match plan {
+    SeatPlanRelease { reference: _ } => UnitStopped
+    SeatPlanStopThenRelease { reference: _ } => unit_stop_by_source(source: source, unit: rec.unit as NonEmptyStr)
+  }
+  match stop {
+    UnitStopFailed { detail: d } => SeatEnsureRefused { reference: rec.reference, reason: join(["the owned unit could not be stopped (", d, "); the charge is kept"], "") }
+    UnitStopped => {
+      let after = match plan {
+        SeatPlanRelease { reference: _ } => source
+        SeatPlanStopThenRelease { reference: _ } => unit_source_after_stop(source: source)
+      }
+      seat_settle_lease(
+        seat_dir: attempts_root as String,
+        seated: seat_apply(attempts_root: attempts_root, subject: subject, reference: reference, source: after, granted: granted),
+        leases_dir: leases_dir, rec: rec, source: after)
+    }
+  }
+}
+
+fn compute_seat_ensure_in(attempts_root: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, reference: NonEmptyStr, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatEnsureOutcome {
+  let reading = attempt_slot_read(root: attempts_root, reference: reference)
+  let lifecycle = match reading {
+    AttemptSlotHeld { record: rec, generation: _ } => unit_lifecycle_from_source(source: source, unit: rec.unit as NonEmptyStr)
+    _ => UnitLifecycleUnknown { detail: "no attempt record to observe a unit for" }
+  }
+  let c = compute_seat_classify(reading: reading, lifecycle: lifecycle, now: now_epoch_seconds(), owner: owner)
+  match c.decision {
+    Noop => SeatEnsureNoop { reference: reference as String, why: "the owner is live or its launch deadline has not passed" }
+    Refuse { reason: r } => SeatEnsureRefused { reference: reference as String, reason: r as String }
+    Apply { plan: p } =>
+      match reading {
+        AttemptSlotHeld { record: rec, generation: _ } =>
+          seat_apply_plan(attempts_root: attempts_root, leases_dir: leases_dir, subject: subject, rec: rec, plan: p, source: source, granted: seat_granted_of(reading: reading))
+        _ => SeatEnsureRefused { reference: reference as String, reason: "the slot changed while the plan was made; the charge is kept" }
+      }
+  }
+}
+
+// THE DRIVER. Who calls the ensure: the dispatch attempt's exit record is the TRIGGER (a worker whose
+// exit was recorded may have ended its units). The attempt's own compute seats are DERIVED FROM ITS
+// RECORD DIRECTORY -- a seat's compute attempt slot lives under the dispatch attempt it belongs to
+// (work_provider_local compute_seat_dir), so the attempt reads its own directory and the cost is
+// proportional to the attempt, not to the host's slots. There is no corpus scan to discover seats.
+// The exit record is not the proof -- the door re-proves termination from the unit itself. The belt
+// executes this as an event-triggered obligation but is only the executor: the ownership authority is
+// the location the owner's seat was recorded at, written by the slot's exclusive create before the
+// reservation exists.
+type SeatDischargePass
+  = SeatDischargeSkipped { why: String }
+  | SeatDischargeRan { outcomes: List<SeatEnsureOutcome> }
+  | SeatDischargeRefused { reason: String }
+
+// A pass-level refusal that occurs inside a per-seat fan-out is located by the directory it refused on;
+// the top-level pass refusal never becomes a seat outcome (seat_discharge_pass_standing carries it as its own arm).
+fn seat_discharge_outcomes(p: SeatDischargePass, located: String) -> List<SeatEnsureOutcome> {
+  match p {
+    SeatDischargeRan { outcomes: os } => os
+    SeatDischargeSkipped { why: _ } => [] as List<SeatEnsureOutcome>
+    SeatDischargeRefused { reason: r } => [SeatEnsureRefused { reference: located, reason: r }]
+  }
+}
+
+fn seat_outcome_is_red(o: SeatEnsureOutcome) -> Bool {
+  match o {
+    SeatEnsureRed { reference: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn seat_outcome_is_refused(o: SeatEnsureOutcome) -> Bool {
+  match o {
+    SeatEnsureRefused { reference: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn seat_outcome_reason(o: SeatEnsureOutcome) -> String {
+  match o {
+    SeatEnsureRed { reference: r, reason: why } => join([r, ": ", why], "")
+    SeatEnsureRefused { reference: r, reason: why } => join([r, ": ", why], "")
+    SeatEnsureNoop { reference: r, why: why } => join([r, ": ", why], "")
+    SeatEnsureReleased { reference: r, committed_before: _, committed_after: _ } => r
+    SeatEnsureLeaseDropped { reference: r } => r
+  }
+}
+
+// THE PASS'S STANDING, COUNTED AND LOCATED: a red (settled but still charged, an unverified release) outranks
+// a refusal (the charge is kept and the cause is named); neither is ever folded into a clean pass.
+type SeatDischargeStanding
+  = SeatDischargeClean
+  | SeatDischargeHasRefusals { refused: Int, first: String }
+  | SeatDischargeHasReds { reds: Int, first: String }
+  | SeatDischargePassRefused { reason: String }
+
+fn seat_discharge_pass_standing(p: SeatDischargePass) -> SeatDischargeStanding {
+  match p {
+    SeatDischargeRefused { reason: why } => SeatDischargePassRefused { reason: why }
+    _ => seat_discharge_outcomes_standing(p: p)
+  }
+}
+
+fn seat_discharge_outcomes_standing(p: SeatDischargePass) -> SeatDischargeStanding {
+  let outcomes = seat_discharge_outcomes(p: p, located: "")
+  let reds = outcomes |> filter(o => seat_outcome_is_red(o: o))
+  let refused = outcomes |> filter(o => seat_outcome_is_refused(o: o))
+  match reds.first() {
+    Present { value: r } => SeatDischargeHasReds { reds: count(reds), first: seat_outcome_reason(o: r) }
+    Absent =>
+      match refused.first() {
+        Present { value: r } => SeatDischargeHasRefusals { refused: count(refused), first: seat_outcome_reason(o: r) }
+        Absent => SeatDischargeClean
+      }
+  }
+}
+
+// A DIRECTORY THAT DOES NOT EXIST IS "NO SEATS", A DIRECTORY THAT COULD NOT BE LISTED IS NOT. The
+// absence is established from the PARENT's listing (a name that is not there), never from the failure
+// text of the child's listing.
+fn seat_dir_provably_absent(attempts_dir: String, attempt_key: String) -> Bool {
+  let listed = Filesystem.List(path: attempts_dir)
+  match filesystem_listing_observation(directory: attempts_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) => !any(filesystem_listing_entry_names(listing: admitted), n => n == join(["dispatch-", attempt_key], ""))
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => false
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => false
+  }
+}
+
+fn compute_seat_discharge_dir(seats: NonEmptyStr, leases_dir: String, subject: ComputeCapacitySubject, source: UnitLifecycleSource, owner: SeatOwnerStanding) -> SeatDischargePass {
+  match cas_slot_keys(root: seats) {
+    CasSlotKeysListed { keys } =>
+      SeatDischargeRan { outcomes: keys |> map(k => compute_seat_ensure_in(attempts_root: seats, leases_dir: leases_dir, subject: subject, reference: k, source: source, owner: owner)) }
+    CasSlotKeysListingRefused { root: _, detail: d } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: _, cause: c } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", c], "") }
+  }
+}
+
+fn compute_seat_discharge_owned(attempts_dir: String, leases_dir: String, subject: ComputeCapacitySubject, node_id: String, attempt_key: String, source: UnitLifecycleSource) -> SeatDischargePass {
+  let seats = compute_seat_dir(attempts_dir: attempts_dir, owner: DispatchOwned { node_id: node_id, attempt_key: attempt_key })
+  match compute_seat_discharge_dir(seats: seats, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerEnded) {
+    SeatDischargeRefused { reason: r } =>
+      if seat_dir_provably_absent(attempts_dir: attempts_dir, attempt_key: attempt_key) {
+        SeatDischargeSkipped { why: "the attempt opened no seat directory" }
+      } else {
+        SeatDischargeRefused { reason: r }
+      }
+    SeatDischargeRan { outcomes: os } => SeatDischargeRan { outcomes: os }
+    SeatDischargeSkipped { why: w } => SeatDischargeSkipped { why: w }
+  }
+}
+
+// LIVE ATTEMPTS' SEAT DIRECTORIES, enumerated from the attempts directory's own `dispatch-*` entries (the
+// directories the attempt records were created in) -- not the compute root, not a unit scan. A dispatch
+// directory whose attempt has a worker exit record belongs to the ended set above and is not visited twice.
+// A listing that cannot be read is not an empty one: the caller refuses the pass.
+fn seat_live_dispatch_dirs(attempts_dir: String, ended: List<SeatOwnerKey>) -> SeatLiveDirs {
+  let listed = Filesystem.List(path: attempts_dir)
+  match filesystem_listing_observation(directory: attempts_dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) =>
+      SeatLiveDirsListed { names: filesystem_listing_entry_names(listing: admitted)
+        |> filter(n => starts_with(s: n, prefix: "dispatch-"))
+        |> filter(n => !any(ended, o => n == join(["dispatch-", o.attempt_key], ""))) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SeatLiveDirsUnreadable { reason: join(["the attempts directory could not be listed: ", e], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SeatLiveDirsUnreadable { reason: join(["the attempts directory could not be listed: ", c], "") }
+  }
+}
+
+type SeatLiveDirs
+  = SeatLiveDirsListed { names: List<String> }
+  | SeatLiveDirsUnreadable { reason: String }
+
+type SeatOwnerKey {
+  node_id: String
+  attempt_key: String
+}
+
+fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<SeatOwnerKey> {
+  distinct_by_key(
+    xs: listings |> flat_map(l => match l {
+      AttemptExitStageNames { names } => names
+      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+    }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryDecoded { record } =>
+        if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<SeatOwnerKey>
+    }),
+    key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
+}
+
+fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> List<String> {
+  listings |> flat_map(l => match l {
+    AttemptExitStageUnreadable { reason: r } => [r]
+    AttemptExitStageNames { names: _ } => [] as List<String>
+  })
+}
+
+// ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
+// whole pass: "I could not look" is never "there is no exit".
+fn compute_seat_discharge_all(instance_root: String, attempts_dir: String, leases_dir: String, subject: ComputeCapacitySubject, source: UnitLifecycleSource) -> SeatDischargePass {
+  let listings = attempt_exit_stage_listings(instance_root: instance_root)
+  match seat_exit_listings_unreadable(listings: listings).first() {
+    Present { value: why } => SeatDischargeRefused { reason: why }
+    Absent =>
+      match seat_live_dispatch_dirs(attempts_dir: attempts_dir, ended: seat_worker_exit_owners(listings: listings)) {
+        SeatLiveDirsUnreadable { reason: why } => SeatDischargeRefused { reason: why }
+        SeatLiveDirsListed { names: dirs } =>
+          SeatDischargeRan {
+            outcomes: concat(
+              seat_worker_exit_owners(listings: listings)
+                |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(attempts_dir: attempts_dir, leases_dir: leases_dir, subject: subject, node_id: o.node_id, attempt_key: o.attempt_key, source: source), located: join(["dispatch-", o.attempt_key], ""))),
+              dirs |> flat_map(d => seat_discharge_outcomes(p: compute_seat_discharge_dir(seats: join([attempts_dir, "/", d], "") as NonEmptyStr, leases_dir: leases_dir, subject: subject, source: source, owner: SeatOwnerLive), located: d))),
+          }
+      }
+  }
+}
