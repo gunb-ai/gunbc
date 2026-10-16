@@ -152,6 +152,7 @@ test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
       == gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
     && fan_policy_phase_step_run_text(s: fleet_converge_mtcollins1_fan_observe_step())
       == gunbc_ci_mtcollins1_fan_observe_invoke()
+    && !string_contains(s: gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke(), pattern: "dissolve-on")
 }
 
 // THE PHASE IS A PRIOR JOB STEP, NOT A CHILD OF THE BOOT INVOKE. GitHub Actions runs job steps
