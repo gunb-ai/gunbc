@@ -6,7 +6,12 @@ import gunbc.host.host_effect_realize {
   tree_entries_agree,
   tree_hash_lines,
   tree_ancestor_directories,
+  approval_broker_tree_install,
+  ApprovalBrokerTreeInstallVerdict,
+  TreeInstallRefused,
+  TreeInstallConverged,
 }
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -56,4 +61,34 @@ test fn a_missing_installed_file_does_not_agree() -> Bool {
 
 test fn directories_are_ancestors_parents_first() -> Bool {
   tree_ancestor_directories(files: source_entries()) == ["dag", "dag/gunbc"]
+}
+
+fn refused_step(v: ApprovalBrokerTreeInstallVerdict) -> String {
+  match v {
+    TreeInstallRefused { step: s, reason: _ } => s
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => "converged"
+  }
+}
+
+// INHABITANCE CLAIM ON THE REAL ROUTE: the real function runs the real LocalShell find|sha256sum
+// argv against a root that does not exist and must refuse AT the source observation, before any
+// sudo install is attempted. Deleting the observation leg makes this claim fail.
+test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
+  refused_step(v: approval_broker_tree_install(
+    owner: "gunbc" as NonEmptyStr,
+    base_root: "/nonexistent-w6-base",
+    source_root: "/nonexistent-w6-source",
+    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
+    transport: LocalShell,
+  )) == "source-observe"
+}
+
+test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
+  refused_step(v: approval_broker_tree_install(
+    owner: "gunbc" as NonEmptyStr,
+    base_root: "/nonexistent-w6-base",
+    source_root: "/nonexistent-w6-source",
+    revision: RevisionNotInstalled,
+    transport: LocalShell,
+  )) == "revision"
 }
