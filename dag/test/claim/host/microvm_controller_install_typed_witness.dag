@@ -164,11 +164,8 @@ test fn microvm_w5_daemon_reload_is_last() -> Bool {
 // is W6's (approval_broker_tree_install, witnessed in PR 14138), so this edge
 // must not carry find/xargs among its own words.
 test fn microvm_w5_carries_no_second_tree_copy() -> Bool {
-  let surface = join(
-    fold(microvm_w5_steps(), init: [], f: (acc, s) => concat(acc, microvm_controller_step_words(step: s))),
-    " ",
-  )
-  !string_contains(s: surface, pattern: "find") && !string_contains(s: surface, pattern: "xargs")
+  let words = fold(microvm_w5_steps(), init: [], f: (acc, s) => concat(acc, microvm_controller_step_words(step: s)))
+  !any(words, w => w == "find" || w == "xargs" || w == "-print0" || w == "-type")
 }
 
 // GREEN (3f): the vmm receipt observes BOTH binaries -- the reader
