@@ -41394,7 +41394,7 @@ pub fn file_write_create_new_with_mode_expr() -> String {
 pub fn file_write_bytes_expr() -> String {
     thread_local! {
         static CACHED: String = {
-            "{\n    let octets: Vec<u8> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
+            "{\n    let octets: Box<[u8]> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
