@@ -126,8 +126,9 @@ type CarrierUnitObservation {
 // states "CPU Memory: 512GB physical LPDDR5X / roughly 480GB usable in the standard GH200 configuration"
 // and "DV5 development/pre-production revision; compatibility not guaranteed".
 // RECEIVED 2026-10-16: the operator read this unit's label as "S/N 1582823830042 699-2G530-0215-DV5 C1
-// Model:PG530", the part number and revision the listing photographed, and grouped it with the K1
-// carrier. Asset gh200-dv5-a is bound to that serial.
+// Model:PG530", the part number and revision the listing photographed. Asset gh200-dv5-a is bound to
+// that serial. All four parts are loose; the operator reports the seller appears to have had both
+// modules on the E1 carrier (p4261_e1_b), which is provenance of both, not a pairing.
 data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_a,
   serial: Present { value: "1582823830042" },
@@ -159,9 +160,8 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
 // where the title and the photographed label say DV5, revision D1 where they say C1. The asset id keeps
 // the "dv5" it was allocated under before receipt; it is an opaque key, and the part number below is
 // the reading. The listing's memory claims are what was sold and stay as listed; its die photograph
-// was of a DV5 C1 unit, so this unit's die marking is unread. The operator groups it with the E1
-// carrier (p4261_e1_b), but no assembly is declared until the first qualification pair is chosen, so
-// it is recorded as held.
+// was of a DV5 C1 unit, so this unit's die marking is unread. No assembly is declared until the first
+// qualification pair is chosen, so it is recorded as held.
 data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   asset: gh200_dv5_b,
   serial: Present { value: "1583023920189" },
