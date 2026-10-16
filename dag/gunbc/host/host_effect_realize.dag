@@ -7166,6 +7166,13 @@ fn realize_microvm_controller_install_on_host(
                         if code == 0 { FoldOk { exit_code: code, stdout: out, stderr: err } }
                         else { FoldFailed { reason: join([microvm_controller_run_edge, " step '", name, "' failed (exit ", to_string(code), "): ", err], "") } }
                     }
+                  // The tree leg is not run by the fold's own hands: the realizer
+                  // called W6's vertical ONCE, before the fold, and refused the
+                  // whole edge if it refused. Its verdict is the fold's initial
+                  // evidence, so this arm passes the accumulator through -- the
+                  // leg is in the plan (a witness counts it) but never re-run.
+                  MicrovmControllerTreeStep { name: _, source_root: _ } =>
+                    FoldOk { exit_code: prior_code, stdout: prior_out, stderr: prior_err }
                 }
             },
         )
