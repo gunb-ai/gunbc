@@ -46,6 +46,7 @@ import gunbc.runner.runner_microvm_shakedown {
   microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_account,
   microvm_shakedown_maximum_buy_order, microvm_shakedown_route, microvm_shakedown_work,
   microvm_shakedown_demand_id, microvm_shakedown_attempt, microvm_shakedown_attempt_id,
+  MicroVmCellJob, microvm_shakedown_job, microvm_job_route, microvm_job_offer, microvm_job_demand, microvm_job_demand_id, microvm_job_attempt,
 }
 import gunbc.fabric.fabric_cell_grant {
   CellGrantDecision, CellGrantDecided, CellGrantNotSelected, broker_grant_for_demand,
@@ -140,11 +141,12 @@ fn microvm_shakedown_grant_evidence() -> FabricGrantEvidence {
   }
 }
 
-fn microvm_shakedown_broker_decide(
+fn microvm_job_broker_decide(
   root: NonEmptyStr,
   slot: RunnerSlotIdentity,
   field: CandidateField<NonEmptyStr>,
   issued_at: Timestamp,
+  job: MicroVmCellJob,
 ) -> ShakedownBrokerOutcome {
   match bind_shakedown_roster(slot: slot, admitted: field.admitted) {
     ShakedownOfferIsNotTheCell { slot_key: k, executor: e } =>
@@ -153,9 +155,9 @@ fn microvm_shakedown_broker_decide(
       ShakedownBrokerDecided {
         decision: broker_grant_for_demand(
           root: root,
-          demand: microvm_shakedown_demand(slot: slot),
-          work: microvm_shakedown_work(),
-          attempt: microvm_shakedown_attempt(slot: slot),
+          demand: microvm_job_demand(slot: slot, job: job),
+          work: job.work,
+          attempt: microvm_job_attempt(slot: slot, job: job),
           roster: roster,
           sanctions: [fleet_cell_sanction(slot: slot)],
           account: microvm_shakedown_account(),
@@ -166,6 +168,15 @@ fn microvm_shakedown_broker_decide(
         ),
       }
   }
+}
+
+fn microvm_shakedown_broker_decide(
+  root: NonEmptyStr,
+  slot: RunnerSlotIdentity,
+  field: CandidateField<NonEmptyStr>,
+  issued_at: Timestamp,
+) -> ShakedownBrokerOutcome {
+  microvm_job_broker_decide(root: root, slot: slot, field: field, issued_at: issued_at, job: microvm_shakedown_job())
 }
 
 // ── the candidate field: the shakedown offer, admitted under the fleet CI posture ──────────────────
@@ -192,9 +203,9 @@ fn fleet_ci_github_path() -> ProviderPathStanding {
   }
 }
 
-fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
+fn microvm_job_route_facts(job: MicroVmCellJob) -> ProviderRouteFacts {
   ProviderRouteFacts {
-    route: microvm_shakedown_route(),
+    route: microvm_job_route(job: job),
     contract_terms: fleet_ci_github_terms_ref(),
     data_paths: ProviderDataPathClosure {
       execution: fleet_ci_on_host_path(),
@@ -217,11 +228,15 @@ fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
   }
 }
 
+fn microvm_shakedown_route_facts() -> ProviderRouteFacts {
+  microvm_job_route_facts(job: microvm_shakedown_job())
+}
+
 // ONE SANCTION ROW, AND ONE IS THE POINT: any other customer or data class on this route refuses.
-fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
+fn microvm_job_sanctions(job: MicroVmCellJob) -> List<RouteScopeSanction> {
   [
     RouteScopeSanction {
-      route: microvm_shakedown_route(),
+      route: microvm_job_route(job: job),
       posture: fleet_ci_posture,
       customer_profile: fleet_ci_customer_profile_ref(),
       data_handling_profile: fleet_ci_data_handling_profile_ref(),
@@ -230,10 +245,14 @@ fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
   ]
 }
 
-fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmptyStr> {
+fn microvm_shakedown_sanctions() -> List<RouteScopeSanction> {
+  microvm_job_sanctions(job: microvm_shakedown_job())
+}
+
+fn microvm_job_scope(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> ProviderUseScope<NonEmptyStr> {
   ProviderUseScope {
-    demand: microvm_shakedown_demand_id(slot: slot),
-    work: microvm_shakedown_work().id,
+    demand: microvm_job_demand_id(slot: slot, job: job),
+    work: job.work.id,
     customer_profile: fleet_ci_customer_profile_ref(),
     data_handling_profile: fleet_ci_data_handling_profile_ref(),
     agreement: fleet_ci_github_terms_ref(),
@@ -243,24 +262,28 @@ fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmpt
   }
 }
 
+fn microvm_shakedown_scope(slot: RunnerSlotIdentity) -> ProviderUseScope<NonEmptyStr> {
+  microvm_job_scope(slot: slot, job: microvm_shakedown_job())
+}
+
 // THE DISPATCH COSTS ARE THE OFFER'S OWN PRICING, NOT NEW OBSERVATIONS. The fleet prices its own cells
 // at nothing (gunbc.runner.runner_microvm_shakedown microvm_shakedown_offer quotes zero), so every cost
 // component is zero and cites the same slot observation the offer does. THE SHAKEDOWN IS THE FIRST
 // EXERCISE OF ITS ROUTE (product.fabric.route_readiness ExerciseOfRoute): a route that could only be
 // used once already exercised could never be exercised, so readiness admits it for this one work, and
 // the decision instant is unread on that arm, which is why it is zero rather than a clock reading.
-fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField<NonEmptyStr> {
-  let offer = microvm_shakedown_offer(slot: slot)
-  let work = microvm_shakedown_work()
-  let receipt = "gunbc.observation.microvm-shakedown-slot" as NonEmptyStr
+fn microvm_job_candidate_field(slot: RunnerSlotIdentity, job: MicroVmCellJob) -> CandidateField<NonEmptyStr> {
+  let offer = microvm_job_offer(slot: slot, job: job)
+  let work = job.work
+  let receipt = join([job.origin as String, "-slot"], "") as NonEmptyStr
   assemble_candidate_field(
-    routes: [OfferRouteRow { offer: offer.id, facts: microvm_shakedown_route_facts() }],
-    sanctions: microvm_shakedown_sanctions(),
+    routes: [OfferRouteRow { offer: offer.id, facts: microvm_job_route_facts(job: job) }],
+    sanctions: microvm_job_sanctions(job: job),
     active: fleet_ci_posture,
-    scope: microvm_shakedown_scope(slot: slot),
+    scope: microvm_job_scope(slot: slot, job: job),
     decision_receipt: decl_ref(module_path: "gunbc.runner.runner_microvm_slot_unit", decl_name: "microvm_slot_reserve_receipt_prefix"),
     exercises: [],
-    readiness: ExerciseOfRoute { route: microvm_shakedown_route(), work: work.id },
+    readiness: ExerciseOfRoute { route: microvm_job_route(job: job), work: work.id },
     at: 0,
     requirements: work.requirements,
     requests: [
@@ -279,6 +302,10 @@ fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField
       },
     ],
   )
+}
+
+fn microvm_shakedown_candidate_field(slot: RunnerSlotIdentity) -> CandidateField<NonEmptyStr> {
+  microvm_job_candidate_field(slot: slot, job: microvm_shakedown_job())
 }
 
 // ── the broker's root entry ─────────────────────────────────────────────────────────────────────

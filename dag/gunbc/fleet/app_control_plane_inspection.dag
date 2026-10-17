@@ -1,6 +1,7 @@
 module gunbc.fleet.app_control_plane_inspection
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Never }
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.error_primitives { Never }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { list_map, non_empty_to_list, string_concat_join }

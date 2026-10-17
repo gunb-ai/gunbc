@@ -4,8 +4,7 @@
 use self::KeyedRosterBuild::*;
 use self::KeyedRosterInsert::*;
 use self::KeyedRosterSecondRowScan::*;
-pub use crate::std_keyed_row::keyed_row_find;
-pub use crate::std_keyed_row::KeyedRow;
+pub use crate::std_keyed_row::{keyed_row_find, KeyedRow};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
@@ -80,7 +79,9 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRow<K, V>>> {
     match (*rows.iter().cloned().fold(
         Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
-        |acc: _, row: Rc<KeyedRow<K, V>>| match (*acc.clone()).clone() {
+        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone())
+            .clone()
+        {
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: _, .. } => acc.clone(),
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {

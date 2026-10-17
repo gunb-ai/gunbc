@@ -1,7 +1,8 @@
 module std.checked_arithmetic
-import std.optional { Present }
+import std.optional { Present, Absent }
 
 import std.nat { Nat }
+import std.types { String }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
@@ -247,6 +248,36 @@ fn checked_int_to_nat(n: Int) -> Nat? {
       CheckedNatOverflow { cause: _ } => none
       CheckedNatReady { value: v } => Present { value: v }
     }
+  }
+}
+
+// LAST SPACE-SEPARATED TOKEN AS NAT: parse_int then the nonnegative crossing above. Process-log
+// lines in independently versioned upstreams (a kit CAPACITY_OK line, a ninfer metric line) share
+// this shape; the crossing lives once so they cannot drift.
+fn nat_from_last_space_token(line: String) -> Nat? {
+  let last = fold(split(s: line, delimiter: " "), init: "", f: fn(_acc, p) { p })
+  match parse_int(s: last) {
+    Absent => none
+    Present { value: n } => checked_int_to_nat(n: n)
+  }
+}
+
+// A MARKER-PREFIXED PROCESS-LOG LINE: the line starts with the prefix, then the last space token
+// is a Nat. Contains-match is not this fact — it would mint a reading from an unrelated log line
+// that happened to mention the marker.
+type PrefixedLineNat
+  = PrefixedLineMiss
+  | PrefixedLineNatUnreadable
+  | PrefixedLineNat { value: Nat }
+
+fn prefixed_line_last_space_nat(line: String, prefix: String) -> PrefixedLineNat {
+  if starts_with(s: line, prefix: prefix) {
+    match nat_from_last_space_token(line: line) {
+      Absent => PrefixedLineNatUnreadable
+      Present { value: n } => PrefixedLineNat { value: n }
+    }
+  } else {
+    PrefixedLineMiss
   }
 }
 
