@@ -10,7 +10,7 @@ import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInsta
 import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.runner.jit_registration_subject { JitRegistrationSubjectStanding }
-import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, JitSlotExit, JitDeregistration, ensure_jit_runner_deregistered }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, JitSlotExit, JitDeregistration, ensure_jit_runner_deregistered, JitDeregistrationSubject, AuthorizedDispatchRegistration }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, dispatch_jit_mint, JitMintDispatchRefused, JitMintDispatchAuthorized, DispatchRefusedRunnerGroupUnrestricted }
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
@@ -147,7 +147,7 @@ fn deregister_binding_registration(binding: JitMintBinding, state: GitHubAppCont
           token: t,
           authority: jit_mint_credential_authority(),
           control_plane: state,
-          registration: registration,
+          subject: AuthorizedDispatchRegistration { registration: registration },
           exit: exit,
         ),
       }
