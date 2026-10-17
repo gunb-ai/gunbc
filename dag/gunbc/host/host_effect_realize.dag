@@ -4909,10 +4909,12 @@ type Sha256Observation
   = Sha256Observed { digest: Digest }
   | Sha256Unobserved { cause: Sha256UnobservedCause }
 
+type Sha256Side = SourceSide | InstalledSide
+
 type Sha256Agreement
   = Sha256Agrees
   | Sha256Differs
-  | Sha256SideUnobserved { side: String, cause: Sha256UnobservedCause }
+  | Sha256SideUnobserved { side: Sha256Side, cause: Sha256UnobservedCause }
 
 fn sha256_observation_of_outcome(outcome: RunArgvTransportOutcome) -> Sha256Observation {
   match outcome {
@@ -4943,10 +4945,10 @@ fn sha256_unobserved_cause_text(cause: Sha256UnobservedCause) -> String {
 
 fn sha256_observations_agreement(source: Sha256Observation, installed: Sha256Observation) -> Sha256Agreement {
   match source {
-    Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: "source", cause: c }
+    Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: SourceSide, cause: c }
     Sha256Observed { digest: a } =>
       match installed {
-        Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: "installed", cause: c }
+        Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: InstalledSide, cause: c }
         Sha256Observed { digest: b } => if (a.hex as String) == (b.hex as String) { Sha256Agrees } else { Sha256Differs }
       }
   }
@@ -4960,11 +4962,18 @@ fn tree_binary_agreement(source_path: String, installed_path: String, transport:
     installed: observe_sha256_over_transport(path: installed_path, transport: transport))
 }
 
+fn sha256_side_text(side: Sha256Side) -> String {
+  match side {
+    SourceSide => "source"
+    InstalledSide => "installed"
+  }
+}
+
 fn sha256_disagreement_text(agreement: Sha256Agreement) -> String? {
   match agreement {
     Sha256Agrees => none
     Sha256Differs => Present { value: "the two sums differ" }
-    Sha256SideUnobserved { side: s, cause: c } => Present { value: join([s, " sum unobserved: ", sha256_unobserved_cause_text(cause: c)], "") }
+    Sha256SideUnobserved { side: s, cause: c } => Present { value: join([sha256_side_text(side: s), " sum unobserved: ", sha256_unobserved_cause_text(cause: c)], "") }
   }
 }
 

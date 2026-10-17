@@ -94,14 +94,6 @@ fn run_archive_commands(commands: List<ArgvCommand>, transport: HostEffectTransp
   }
 }
 
-fn archive_digest_from_sha256sum_stdout(stdout: String, expected: NonEmptyStr) -> ArchiveDigestVerdict {
-  match sha256sum_line_digest(line: stdout) {
-    Absent => ArchiveDigestUnverifiable { reason: "sha256sum printed no 64-hex digest field" }
-    Present { value: d } =>
-      if (d.hex as String) == (expected as String) { ArchiveDigestMatches } else { ArchiveDigestMismatch }
-  }
-}
-
 fn archive_digest_from_sha256_transport(outcome: RunArgvTransportOutcome, expected: NonEmptyStr) -> ArchiveDigestVerdict {
   match sha256_observation_of_outcome(outcome: outcome) {
     Sha256Unobserved { cause: c } => ArchiveDigestUnverifiable { reason: sha256_unobserved_cause_text(cause: c) }

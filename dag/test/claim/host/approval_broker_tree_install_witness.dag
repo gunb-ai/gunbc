@@ -7,7 +7,7 @@ import gunbc.host.host_effect_realize {
   tree_hash_lines,
   tree_ancestor_directories,
   tree_binary_agreement,
-  Sha256Agreement, Sha256Agrees, Sha256Differs, Sha256SideUnobserved,
+  Sha256Side, SourceSide, InstalledSide, Sha256Agreement, Sha256Agrees, Sha256Differs, Sha256SideUnobserved,
   Sha256Observation, Sha256Observed, Sha256Unobserved,
   Sha256UnobservedCause, Sha256TransportRefused, Sha256RunFailed, Sha256LineUnparsed,
   sha256_observation_of_outcome, sha256_observations_agreement,
@@ -106,7 +106,8 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
 // and the disagreement names the unobserved side.
 test fn a_binary_with_no_readable_hash_does_not_agree() -> Bool {
   match tree_binary_agreement(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell) {
-    Sha256SideUnobserved { side: s, cause: _ } => s == "source"
+    Sha256SideUnobserved { side: SourceSide, cause: _ } => true
+    Sha256SideUnobserved { side: InstalledSide, cause: _ } => false
     Sha256Agrees => false
     Sha256Differs => false
   }
@@ -171,9 +172,10 @@ test fn two_equal_observations_agree_and_two_different_differ() -> Bool {
 test fn an_unobserved_side_disagrees_with_its_cause_preserved() -> Bool {
   let bad = sha256_observation_of_outcome(outcome: observed_out(stdout: "", success: false, stderr: "boom"))
   match sha256_observations_agreement(source: obs_of(stdout: hex_a), installed: bad) {
-    Sha256SideUnobserved { side: s, cause: Sha256RunFailed { stderr: e } } => s == "installed" && e == "boom"
-    Sha256SideUnobserved { side: _, cause: Sha256TransportRefused { reason: _ } } => false
-    Sha256SideUnobserved { side: _, cause: Sha256LineUnparsed { stdout: _ } } => false
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256RunFailed { stderr: e } } => e == "boom"
+    Sha256SideUnobserved { side: SourceSide, cause: _ } => false
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256TransportRefused { reason: _ } } => false
+    Sha256SideUnobserved { side: InstalledSide, cause: Sha256LineUnparsed { stdout: _ } } => false
     Sha256Agrees => false
     Sha256Differs => false
   }
