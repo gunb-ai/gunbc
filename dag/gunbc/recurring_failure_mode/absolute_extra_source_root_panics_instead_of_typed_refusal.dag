@@ -15,11 +15,13 @@ data absolute_extra_source_root_panics_instead_of_typed_refusal: RecurringFailur
 
     "It is not `extra_source_root_outside_workspace_refuses_annotations_as_unattached`: that class completes resolve and lied with UnattachedAtScopeEnd (a refusal parse-comment-gap-attachment deleted; that row records its standing since). This class never reaches attachment. A repair that types the panic does not by itself attach annotations, and a repair that attaches annotations under a relative extra root does not stop the absolute-path panic.",
 
+    "SECOND SPELLING, SAME WRAPPER (calm-crane-178, 2026-10-16): the panic is not confined to `--source-root`. `gunbc run --source-root dag --source-root src/v2 --entry <absolute path> --function __no_such_function__` panics in `repo_relative_path_normalized` too, when run from a checkout whose absolute entry path is not workspace-relative. The same invocation with a RELATIVE `--entry` completes resolve and refuses with its real diagnostics. It first read as a git-worktree defect and was misattributed to one; the discriminator is absolute versus relative, not worktree versus plain checkout. The ceiling and next-rung trigger below name both spellings. The row id says `extra_source_root` and undernames the class; it is left unrenamed to keep the id stable for existing citations.",
+
     "RUNG FOUND AT: below the ladder -- process death, no typed cause.",
 
-    "CEILING: structurally guaranteed once every extra source root that is an existing directory, including an absolute one, is keyed by `module_index_path_key` and never by panicking `repo_relative_path_normalized`.",
+    "CEILING: structurally guaranteed once every path reaching `repo_relative_path_normalized` -- an extra source root that is an existing directory, and an `--entry` path, absolute or not -- is keyed by `module_index_path_key` and never by panicking `repo_relative_path_normalized`.",
 
-    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: an absolute extra `--source-root` that names an existing directory is admitted into the module index under its absolute key, or refused with a located typed diagnostic naming that root -- sufficient for `gunbc run --source-root /tmp/overlay` to not panic. `try_repo_relative_path_normalized` already returns None; the defect is the panicking wrapper on a path `module_index_path_key` was written to accept.)",
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: any absolute path that names an existing directory (an extra `--source-root`) or an entry file (`--entry`) is admitted into the module index under its absolute key, or refused with a located typed diagnostic naming that path -- sufficient for BOTH `gunbc run --source-root /tmp/overlay` and `gunbc run --entry <absolute path>` to not panic; fixing one spelling does not retire this row. `try_repo_relative_path_normalized` already returns None; the defect is the panicking wrapper on a path `module_index_path_key` was written to accept.)",
   ],
 
   evidence: [],

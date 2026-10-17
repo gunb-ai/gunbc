@@ -34,13 +34,10 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     node_occurrence_identity_minted, occurrence_id_allocator_advance_to,
-    occurrence_id_allocator_initial,
-};
-pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, DeclarationOccurrence, NodeOccurrenceIdentity, OccurrenceCategory,
-    OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
-    OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
-    ReferenceOccurrence,
+    occurrence_id_allocator_initial, AuthoredTokenOrdinalSpace, DeclarationOccurrence,
+    NodeOccurrenceIdentity, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
+    OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
+    OccurrenceProjection, OccurrenceTransport, ReferenceOccurrence,
 };
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
@@ -56,7 +53,7 @@ pub use crate::std_syntax::{
 };
 pub use crate::std_target_representation::VariantParentIdentity;
 use crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference;
-pub use crate::std_types::{NonEmptyStr, SourceSpan};
+pub use crate::std_types::{is_container_type, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -91,10 +88,10 @@ pub use crate::v1_std_core::{
     field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
-    intern_table_with_authored_token_ordinals, is_compiler_error, is_container_type, kernel_span,
-    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    intern_table_with_authored_token_ordinals, is_compiler_error, kernel_span, leaf_node_with_span,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node,
     make_pattern_binder_declaration_node, make_resource_use_node, make_text_part_node,
     make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
     param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
@@ -102,13 +99,10 @@ pub use crate::v1_std_core::{
     transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
     type_param_kind_property_name, variant_node_fields, variant_node_name_at,
-    with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
-    NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape,
-    UnaryOpKind,
+    with_required_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable,
+    MatchPattern, NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token,
+    TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

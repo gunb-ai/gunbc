@@ -4,9 +4,8 @@
 use self::OccurrenceBindingFoldState::*;
 use self::OccurrenceBindingResult::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -189,33 +188,35 @@ pub fn occurrence_binding_from_candidates<N: Clone>(
     {
         let state = candidates.iter().cloned().fold(
             Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldZero),
-            |state: _, candidate: Rc<BindingCandidate<N>>| match (*state).clone() {
-                OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
-                    Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
-                        first: candidate.clone(),
-                    })
-                }
-                OccurrenceBindingFoldState::OccurrenceBindingFoldOne { first: first, .. } => {
-                    Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
+            |state: Rc<OccurrenceBindingFoldState<N>>, candidate: Rc<BindingCandidate<N>>| {
+                match (*state).clone() {
+                    OccurrenceBindingFoldState::OccurrenceBindingFoldZero => {
+                        Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
+                            first: candidate.clone(),
+                        })
+                    }
+                    OccurrenceBindingFoldState::OccurrenceBindingFoldOne {
+                        first: first, ..
+                    } => Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
                         first: first.clone(),
                         second: candidate.clone(),
                         rest_reversed: Rc::new(vec![]),
-                    })
-                }
-                OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
-                    first,
-                    second,
-                    rest_reversed,
-                    ..
-                } => Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
-                    first: first.clone(),
-                    second: second.clone(),
-                    rest_reversed: Rc::new({
-                        let mut __cons_v = (*rest_reversed.clone()).clone();
-                        __cons_v.insert(0, candidate.clone());
-                        __cons_v
                     }),
-                }),
+                    OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
+                        first,
+                        second,
+                        rest_reversed,
+                        ..
+                    } => Rc::new(OccurrenceBindingFoldState::OccurrenceBindingFoldMany {
+                        first: first.clone(),
+                        second: second.clone(),
+                        rest_reversed: Rc::new({
+                            let mut __cons_v = (*rest_reversed.clone()).clone();
+                            __cons_v.insert(0, candidate.clone());
+                            __cons_v
+                        }),
+                    }),
+                }
             },
         );
         match (*state.clone()).clone() {
