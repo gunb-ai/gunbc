@@ -40,11 +40,25 @@ import extdeps.tailscale.serve {
   ScopedRemovalUnsupported,
 }
 import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_receipt }
+import extdeps.external_authority { ObservedByReceipt, CitedToAuthority, TranscribedUncited }
 import gunbc.live_deploy.spec { deployment_srv1_target }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, deployment_srv2_target }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_lab_plan_reads_the_observed_receipt_standing() -> Bool {
+  match srv1_lab_deploy_plan() {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match srv1_software_surface().os_release.value.standing {
+        ObservedByReceipt { observed: _ } =>
+          (srv1_software_inhabitance_receipt.observed_at as String) == "2026-10-15T12:11:17Z"
+        CitedToAuthority { authority: _ } => false
+        TranscribedUncited { read_obligation: _ } => false
+      }
+  }
+}
 
 test fn srv1_as_data_yields_apt_and_receipt_toolchain_paths() -> Bool {
   let r = srv1_software_inhabitance_receipt
@@ -277,8 +291,8 @@ test fn srv1_deploy_target_carries_the_ready_plan() -> Bool {
   }
 }
 
-test fn system_manager_launcher_wiring_is_a_named_unbound_frontier() -> Bool {
-  !dissolution_is_bound(condition: system_manager_launcher_wiring_frontier)
+test fn system_manager_launcher_wiring_is_bound_to_the_apply_emitter() -> Bool {
+  dissolution_is_bound(condition: system_manager_launcher_wiring_frontier)
 }
 
 test fn srv2_deploy_target_does_not_invent_a_package_manager() -> Bool {

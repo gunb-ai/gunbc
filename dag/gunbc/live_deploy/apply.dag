@@ -186,7 +186,7 @@ import gunbc.live_deploy.apply_receipt {
   observe_candidate_root_tree_oid, CandidateTreeOidObserved, CandidateTreeOidUnobservable,
   live_deploy_apply_receipt_json, live_deploy_apply_receipt_dir_for, live_deploy_apply_receipt_artifact_path_for,
 }
-import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
 import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
 }
@@ -523,14 +523,22 @@ fn live_deploy_tailnet_door_cutover_gate(
   }
 }
 
+fn live_deploy_digest_readback_effect(spec: DeploymentSpec, candidate: CandidateRelease) -> HostEffect {
+  LiveDeployDigestReadback {
+    port: deployment_plan_listen_port(spec: spec),
+    expected_digest: candidate.expected_dispatch_digest,
+  }
+}
+
 fn live_deploy_apply_digest_readback_via_transport(
   spec: DeploymentSpec,
+  candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_fold(
     spec: spec,
-    effect: LiveDeployDigestReadback { port: deployment_plan_listen_port(spec: spec) },
+    effect: live_deploy_digest_readback_effect(spec: spec, candidate: candidate),
     transport: transport,
     access: access,
     fixture_actor: Absent,
@@ -630,6 +638,7 @@ fn live_deploy_apply_admitted_via_transport(
   } else {
     let digest = live_deploy_apply_digest_readback_via_transport(
       spec: spec,
+      candidate: candidate,
       transport: transport,
       access: access,
     )
@@ -1315,10 +1324,6 @@ fn live_deploy_retract_prod_role_wet() -> ProcessExit {
   live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_access)
 }
 
-fn live_deploy_retract_prod_role_operator_wet() -> ProcessExit {
-  live_deploy_prod_role_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
-}
-
 fn live_deploy_prod_role_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
   match live_deploy_prod_role_apply_selection(access: access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
@@ -1344,6 +1349,12 @@ fn live_deploy_prod_role_retract_wet_with_access(access: DeployAccess) -> Proces
 fn live_deploy_post_apply_readiness(spec: DeploymentSpec, access: DeployAccess) -> LiveDeployReadinessOutcome {
   match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), spec: spec, transport: access.transport) {
     HealthzProbeRefused { probe_error: e } => LiveDeployReadinessRefused { detail: e }
+    // Post-apply, an answered-unhealthy observation is a refusal to report readiness, not a
+    // readiness claim: the receipt must not say 'observed' about a serve that answered 503 with no
+    // release in its body. It is a DIFFERENT refusal from an unanswered probe, and says so, because
+    // the two tell the operator opposite things about what just ran.
+    HealthzAnsweredUnhealthy { status, detail } =>
+      LiveDeployReadinessRefused { detail: join(["the post-apply healthz answered ", to_string(status) as String, " and named no release: ", detail], "") }
     HealthzBodyRead { body: b } =>
       match observe_running_release_identity(healthz_body: b) {
         RunningReleaseIdentified { observation: o } =>

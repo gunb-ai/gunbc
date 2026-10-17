@@ -51,7 +51,12 @@ import extdeps.linux.apparmor_userns {
   apparmor_unprivileged_userns_restricted,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.procps.kill { kill_program }
+import extdeps.procps.kill {
+  kill_program,
+  KillSignalRealization,
+  ProcpsNgArgvKill,
+  ShellBuiltinKill,
+}
 import extdeps.git { git_program }
 import extdeps.tools.jq { jq_program }
 import extdeps.systemd.systemctl { systemctl_path_resolved_program }
@@ -135,6 +140,9 @@ type HostSoftwareSurface {
   sudo_policy: HostResource<SudoPolicyRole, HostSudoPolicyFact>
   user_cgroup_delegation: HostResource<CgroupDelegationRole, HostCgroupDelegationFact>
   toolchain_paths: HostResource<ToolchainPathsRole, HostToolchainPathFact>
+  // Whether the host's shell lists a builtin `kill` beside procps-ng's binary. Absent is not
+  // observed, never "no builtin": only an observed surface may say which realizations exist.
+  kill_shell_builtin: Bool?
 }
 
 fn unobserved_standing(probe: NonEmptyStr) -> CitedFigureStanding {
@@ -167,6 +175,7 @@ fn software_surface(
   sudo_policy: HostSudoPolicyFact,
   cgroup: HostCgroupDelegationFact,
   toolchain: HostToolchainPathFact,
+  kill_shell_builtin: Bool? = none,
 ) -> HostSoftwareSurface {
   let a0 = resource_occurrence_allocator_initial()
   let m0 = alloc_resource_occurrence(alloc: a0)
@@ -213,6 +222,7 @@ fn software_surface(
       role: ToolchainPaths,
       value: toolchain,
     },
+    kill_shell_builtin: kill_shell_builtin,
   }
 }
 
@@ -313,8 +323,9 @@ fn unobserved_software_surface(host: HostIdentity) -> HostSoftwareSurface {
 }
 
 // srv1 values are derived from srv1_software_inhabitance_receipt. jq version_label is the
-// binary self-report; jq package_version_label is the dpkg version. Lab deploy reads PATH
-// and the binary label.
+// binary self-report. Package versions were not in the HOST-1 inhabitance comment and stay
+// Absent (obligation: srv1_package_version_read_obligation). Lab deploy reads PATH and the
+// binary label.
 fn srv1_software_surface() -> HostSoftwareSurface {
   let r = srv1_software_inhabitance_receipt
   let standing = srv1_software_inhabitance_ground()
@@ -336,12 +347,12 @@ fn srv1_software_surface() -> HostSoftwareSurface {
       standing: standing,
     },
     programs: [
-      observed_program(program: kill_program(), version_label: r.procps_version_label, package_version_label: Present { value: r.procps_package }, standing: standing),
-      observed_program(program: timeout_program(), version_label: r.coreutils_version_label, package_version_label: Present { value: r.coreutils_package }, standing: standing),
-      observed_program(program: git_program(), version_label: r.git_version_label, package_version_label: Present { value: r.git_package }, standing: standing),
-      observed_program(program: jq_program(), version_label: r.jq_version_label, package_version_label: Present { value: r.jq_package }, standing: standing),
-      observed_program(program: systemctl_path_resolved_program(), version_label: r.systemd_version_label, package_version_label: Present { value: r.systemd_package }, standing: standing),
-      observed_program(program: tailscale_program(), version_label: r.tailscale_version_label, package_version_label: Present { value: r.tailscale_package }, standing: standing),
+      observed_program(program: kill_program(), version_label: r.procps_version_label, package_version_label: r.procps_package, standing: standing),
+      observed_program(program: timeout_program(), version_label: r.coreutils_version_label, package_version_label: r.coreutils_package, standing: standing),
+      observed_program(program: git_program(), version_label: r.git_version_label, package_version_label: r.git_package, standing: standing),
+      observed_program(program: jq_program(), version_label: r.jq_version_label, package_version_label: r.jq_package, standing: standing),
+      observed_program(program: systemctl_path_resolved_program(), version_label: r.systemd_version_label, package_version_label: r.systemd_package, standing: standing),
+      observed_program(program: tailscale_program(), version_label: r.tailscale_version_label, package_version_label: r.tailscale_package, standing: standing),
     ],
     sudo_policy: HostSudoPolicyFact {
       principal: fleet_posix_operator_principal(),
@@ -361,6 +372,7 @@ fn srv1_software_surface() -> HostSoftwareSurface {
       systemd_run: Present { value: r.systemd_run_path },
       standing: standing,
     },
+    kill_shell_builtin: Present { value: r.kill_shell_builtin_listed },
   )
 }
 
@@ -456,6 +468,52 @@ fn host_program_version(surface: HostSoftwareSurface, program: ProgramIdentity) 
           Present { value: p }
         } else {
           none
+        }
+    }
+  )
+}
+
+// WHICH kill REALIZATIONS A SURFACE ESTABLISHES, WITH THE BUILTIN'S STANDING CARRIED (review 81199).
+// procps-ng's binary is established by its observed version label; a shell builtin only by the
+// surface's own observation. An unobserved builtin is carried as unobserved, never read as absent.
+type HostKillRealizations
+  = KillRealizationsEstablished { realizations: List<KillSignalRealization> }
+  | KillRealizationsBuiltinUnobserved { known: List<KillSignalRealization> }
+
+fn host_procps_kill_realizations(surface: HostSoftwareSurface) -> List<KillSignalRealization> {
+  match host_program_version(surface: surface, program: kill_program()) {
+    Absent => []
+    Present { value: fact } =>
+      match fact.version_label {
+        Absent => []
+        Present { value: _ } => [ProcpsNgArgvKill]
+      }
+  }
+}
+
+fn host_kill_signal_realizations(surface: HostSoftwareSurface) -> HostKillRealizations {
+  let procps = host_procps_kill_realizations(surface: surface)
+  match surface.kill_shell_builtin {
+    Present { value: listed } =>
+      KillRealizationsEstablished { realizations: if listed { concat(procps, [ShellBuiltinKill]) } else { procps } }
+    Absent => KillRealizationsBuiltinUnobserved { known: procps }
+  }
+}
+
+// THE ARGV REALIZATION DOES NOT DEPEND ON THE BUILTIN'S STANDING. ProcpsNgArgvKill is an exec of the
+// procps-ng binary by argv, which no shell interprets, so a shell builtin cannot shadow it; it is
+// admissible exactly when procps-ng's binary is established, whether the builtin was observed or
+// not. The builtin's standing stays on HostKillRealizations for any caller that runs kill through
+// a shell, which must not read an unobserved builtin as absent.
+fn host_kill_signal_realization(surface: HostSoftwareSurface) -> KillSignalRealization? {
+  let established = host_procps_kill_realizations(surface: surface)
+  fold(established, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match r {
+          ProcpsNgArgvKill => Present { value: ProcpsNgArgvKill }
+          ShellBuiltinKill => none
         }
     }
   )
