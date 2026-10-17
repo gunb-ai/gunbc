@@ -15275,19 +15275,31 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     let else_diags = else_result.diagnostics.clone();
                     let then_rt = crate::v1_compiler_infer_types::resolved_type(then_typed.clone());
                     let else_rt = crate::v1_compiler_infer_types::resolved_type(else_typed.clone());
-                    let unified = crate::v1_compiler_infer_types::prefer_specific_type(
+                    let optional_representations = optional_representations_join(
                         then_rt.clone(),
                         else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
+                        scope.clone(),
                     );
-                    let branch_diags = if crate::v1_compiler_infer_types::node_type_compatible(
-                        then_rt.clone(),
-                        else_rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        Rc::new(TextJudgment::TextJudgedIn {
-                            env: scope.type_env.clone(),
-                        }),
-                    ) {
+                    let unified = match optional_representations.clone() {
+                        Some(joined) => joined.clone(),
+                        std::option::Option::None => {
+                            crate::v1_compiler_infer_types::prefer_specific_type(
+                                then_rt.clone(),
+                                else_rt.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            )
+                        }
+                    };
+                    let branch_diags = if ((optional_representations.clone()
+                        != std::option::Option::None)
+                        || crate::v1_compiler_infer_types::node_type_compatible(
+                            then_rt.clone(),
+                            else_rt.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                            Rc::new(TextJudgment::TextJudgedIn {
+                                env: scope.type_env.clone(),
+                            }),
+                        )) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![inference_error(
@@ -17698,6 +17710,28 @@ pub fn node_is_std_optional(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
     match (*optional_declaration_reading(n.clone(), scope.clone())).clone() {
         OptionalDeclarationReading::IsStdOptional => true,
         _ => false,
+    }
+}
+
+pub fn optional_representations_join(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    if (((left.return_cardinality.clone() == Cardinality::CardOptional)
+        && (right.return_cardinality.clone() != Cardinality::CardOptional))
+        && node_is_std_optional(right.clone(), scope.clone()))
+    {
+        Some(left.clone())
+    } else {
+        if (((right.return_cardinality.clone() == Cardinality::CardOptional)
+            && (left.return_cardinality.clone() != Cardinality::CardOptional))
+            && node_is_std_optional(left.clone(), scope.clone()))
+        {
+            Some(right.clone())
+        } else {
+            std::option::Option::None
+        }
     }
 }
 
