@@ -3215,9 +3215,10 @@ pub fn node_type_equals_core(
                                     || (right_applied.clone()
                                         && (left_leaf.clone() || left_struct.clone())))
                                 {
-                                    crate::v1_std_core::type_name_compatible(
-                                        left_name.clone(),
-                                        right_name.clone(),
+                                    applied_argument_heads_identical(
+                                        left.clone(),
+                                        right.clone(),
+                                        source_indices.clone(),
                                     )
                                 } else {
                                     {
