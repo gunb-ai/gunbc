@@ -11,8 +11,9 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // the brief.
 //
 // THREE STANDINGS, KEPT APART (DESIGN 4d):
-//  - the DEFAULT is a typed operator assumption, not a vendor fact: modules of one type are admitted
-//    when ranks agree, whatever their speeds;
+//  - the DEFAULT is a typed operator assumption, not a vendor fact: modules of one type (the pair
+//    buffering + non-volatile backing) are admitted when ranks agree, whatever their speeds; a mixture of
+//    buffering classes was never observed and is refused, not defaulted;
 //  - the PLATFORM ROWS are committed observations of this unit, each naming its run and capture;
 //  - the AUTHORITY on what a unit accepted is the DRAM firmware's own training verdict on the booted
 //    population. This function predicts that verdict from the observations; a booted population's verdict
@@ -47,6 +48,7 @@ type DimmAdmissionBasis
   | PlatformObservationMixedRankAccepted { run: NonEmptyStr }
   | PlatformObservationModuleTypeMixtureRefused { run: NonEmptyStr }
   | OperatorDefaultRankMixtureNotObserved
+  | BufferingMixtureNotObserved
 
 type DimmAdmission
   = DimmPopulationAdmitted { basis: DimmAdmissionBasis }
@@ -60,6 +62,14 @@ fn dimm_population_has_backing(modules: List<ObservedDimm>, nv: Bool) -> Bool {
   any(modules, m => m.non_volatile_backing == nv)
 }
 
+fn dimm_population_has_buffering_mixture(modules: List<ObservedDimm>) -> Bool {
+  any(modules, a => any(modules, b => a.buffering != b.buffering))
+}
+
+fn dimm_population_is_registered(modules: List<ObservedDimm>) -> Bool {
+  !any(modules, m => m.buffering != Registered)
+}
+
 fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
   any(modules, a => any(modules, b => a.rank_count != b.rank_count))
 }
@@ -67,8 +77,10 @@ fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
 fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmission {
   if dimm_population_has_backing(modules: modules, nv: false) && dimm_population_has_backing(modules: modules, nv: true) {
     DimmPopulationRefused { basis: PlatformObservationModuleTypeMixtureRefused { run: mtcollins1_refused_run } }
+  } else if dimm_population_has_buffering_mixture(modules: modules) {
+    DimmPopulationRefused { basis: BufferingMixtureNotObserved }
   } else if dimm_population_has_rank_mixture(modules: modules) {
-    if dimm_population_has_backing(modules: modules, nv: false) {
+    if dimm_population_is_registered(modules: modules) && dimm_population_has_backing(modules: modules, nv: false) {
       DimmPopulationAdmitted { basis: PlatformObservationMixedRankAccepted { run: mtcollins1_accepted_run } }
     } else {
       DimmPopulationAdmitted { basis: OperatorDefaultRankMixtureNotObserved }

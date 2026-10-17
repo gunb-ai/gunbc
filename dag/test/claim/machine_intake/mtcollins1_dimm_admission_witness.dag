@@ -1,13 +1,13 @@
 module test.claim.machine_intake.mtcollins1_dimm_admission_witness
 
 import std.types { Bool, Int, List }
-import extdeps.memory.types { Registered }
+import extdeps.memory.types { Registered, LoadReduced }
 import std.measure { megatransfers_per_second }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_dimm_admission {
   ObservedDimm, DimmAdmission, DimmPopulationAdmitted, DimmPopulationRefused,
   DimmAdmissionBasis, OperatorDefaultSameRankSameType, PlatformObservationMixedRankAccepted,
-  PlatformObservationModuleTypeMixtureRefused,
+  PlatformObservationModuleTypeMixtureRefused, BufferingMixtureNotObserved,
   mtcollins1_dimm_population_admission, mtcollins1_run_39005709187_population, mtcollins1_run_39010930690_population,
 }
 
@@ -53,4 +53,14 @@ test fn mtcollins1_admission_rows_inhabit_the_committed_firmware_tables() -> Boo
     && string_contains(s: accepted.content, pattern: "RDIMM[ad:80] 16GB 2666 ECC 1R")
     && string_contains(s: accepted.content, pattern: "RDIMM[2c:80] 16GB 2133 ECC 2R")
     && string_contains(s: accepted.content, pattern: "DRAM: 128GB DDR4 2133")
+}
+
+test fn mtcollins1_RED_registered_load_reduced_mixture_is_refused_as_not_observed() -> Bool {
+  match mtcollins1_dimm_population_admission(modules: [
+    ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+    ObservedDimm { buffering: LoadReduced, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ]) {
+    DimmPopulationRefused { basis: BufferingMixtureNotObserved } => true
+    _ => false
+  }
 }
