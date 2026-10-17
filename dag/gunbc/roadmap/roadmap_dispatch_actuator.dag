@@ -71,7 +71,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1827,7 +1827,7 @@ fn dispatch_review_unit_properties(
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_model_driven_privilege_confinement_properties(), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1836,7 +1836,20 @@ fn dispatch_review_unit_properties(
     NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])
+  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }])))
+}
+
+// THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
+// setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
+// reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles
+// launch through the user manager, which cannot switch uid, so they keep the owner's identity and this
+// is their whole privilege reduction; the dedicated identity needs the system-manager launcher.
+fn dispatch_model_driven_privilege_confinement_properties() -> List<SystemdRunProperty> {
+  [
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
+    EmptyCapabilityBoundingSet,
+  ]
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -2949,16 +2962,16 @@ fn dispatch_worker_unit_stream_properties(
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(
-    compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+    concat(
+      compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+      dispatch_model_driven_privilege_confinement_properties(),
+    ),
     [
       NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
       NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
       NamedUnitSetting { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: NoNewPrivilegesProperty, value: "yes" as NonEmptyStr },
-      NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: "yes" as NonEmptyStr },
-      EmptyCapabilityBoundingSet,
       NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance, attempt_worktree: attempt_worktree, scratch_directory: path_parent_directory(path: stdout_path)) as NonEmptyStr },
       NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_git_pointer_readonly_paths(instance: instance, attempt_worktree: attempt_worktree) as NonEmptyStr },
       NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },

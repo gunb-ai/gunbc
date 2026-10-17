@@ -217,6 +217,34 @@ data infrastructure_refusal_is_retried_to_a_bound: DesignRuling = DesignRuling {
   provenance: "Operator escalation msg_a35bb568-294c-4ad6-88d7-5cfa0a5fad05, approved by default (option A). An acceptance stage refused because its ENVIRONMENT failed (compute refused_by_infrastructure) is retried by the belt on its existing wake events, to a bound, each retry a recorded event with its cause; past the bound the lineage reaches a typed RetryExhausted terminal the operator sees and resumes. This amends the 2026-10-03 manual-resume ruling for infrastructure refusals only: a refusal about the candidate keeps manual resume, and a FAILED stage is a verdict and is never retried.",
 }
 
+data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, answering whether the boot may set BMC fan control back to automatic: 'yes it can set the fan control back to whatever the fan policy demands, which is probably managed at a different layer - basically make sure all the machines share a fan policy somewhere' and 'personally i wouldn't tie fan policy to boot - its a separate management workflow entirely, you can have it gate boot if you want, but it needs to be modeled separately regardless'. Fan policy is one fleet-wide authority that every fan-controlled physical host shares (microVM guests have no fan controller and do not inhabit it), converged by its own management workflow, which may write BMC fan control to whatever the policy demands. The boot transaction does not own, author or independently decide fan policy, and may consume the fan-policy convergence standing as an admission gate. Any fan-control restoration a boot initiates must consume or invoke that one convergence authority; boot may not carry a boot-owned or per-family fan policy path of its own. A per-BMC-family fan route (MegaRAC, OpenBMC, Supermicro) is an adapter behind that one policy, never a policy of its own. The operator also reports that the mtcollins1 fans were under automatic management with a 20 percent setting in force, recorded as an operator account, not a machine reading.",
+}
+
+data dimm_population_is_admitted_permissively: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
+  decided: "2026-10-17",
+  section: "4d",
+  provenance: "Operator, to session merry-fox-82, after mtcollins1 booted a mixed RDIMM population: 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or a committed observation of that platform, and the DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted. This row cites no run: the populations and verdicts behind it are recorded with their own evidence.",
+}
+
+data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
+  decided: "2026-10-17",
+  section: "6",
+  provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
+}
+
+data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).",
+}
+
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
@@ -273,6 +301,10 @@ fn design_rulings() -> List<DesignRuling> {
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
     physical_and_guest_control_remain_distinct,
+    fan_policy_is_one_fleet_management_workflow,
+    dimm_population_is_admitted_permissively,
+    mtcollins1_ci_runner_enrolment_approved,
+    operator_delegates_fan_control_to_the_fleet_policy,
     production_is_main_only_lab_admits_integration,
     v1_seed_emitted_byte_write_exception,
     flex_market_policy_is_operator_decided,

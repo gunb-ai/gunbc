@@ -46,9 +46,8 @@ pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeReferenceIdentity,
 };
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::std_literal_elaboration::LiteralElaboration;
@@ -60,11 +59,8 @@ use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
-    occurrence_id_allocator_advance_to,
-};
-pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
-    OccurrenceTransportRefusal,
+    occurrence_id_allocator_advance_to, AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity,
+    OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
 pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::AlgebraFieldKind::{
@@ -79,9 +75,8 @@ pub use crate::std_target_representation::VariantParentIdentity;
 use crate::std_target_representation::VariantParentIdentity::*;
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
+    kernel_type_set, FilePath, NonEmptyStr, SourceSpan,
 };
-pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;

@@ -31,6 +31,7 @@ import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRe
 type ServingStoreRoots {
   root: NonEmptyStr
   model_link: NonEmptyStr
+  serve_log: NonEmptyStr
 }
 
 fn serving_digest_path(roots: ServingStoreRoots, digest: Sha256Digest) -> String {

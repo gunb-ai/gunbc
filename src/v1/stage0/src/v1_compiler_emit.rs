@@ -22,6 +22,7 @@ use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
+pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
@@ -35,15 +36,13 @@ use crate::std_compiler_entry::NativeEffectScope::{NativeAdmitAllExcept, NativeA
 pub use crate::std_compiler_entry::{
     CompilerEntryDriver, NativeEffectClass, NativeEffectDenominator, NativeEffectScope,
 };
-pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_occurrence_identity::occurrence_id_eq;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic,
 };
-pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_occurrence_identity::{occurrence_id_eq, NodeOccurrenceIdentity, OccurrenceId};
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -64,14 +63,13 @@ pub use crate::v1_compiler_emit_core_support::{
     apply_type_template3, capitalize_first, escape_json_string, escape_string_literal_body,
     extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
-    make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
-    to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings,
+    make_indent, sanitize_service_name, service_var_name, test_function_name, to_pascal,
+    to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings, EmitResult,
+    TestProjection,
 };
-pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
-pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
-    resolved_type_name,
+    resolved_type_name, InferScope,
 };
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
     DataVariantBareString, DataVariantInternalTagged, DataVariantSpellingRefused,
@@ -83,20 +81,19 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReference
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
-};
-pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
 };
-pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_items::{
+    item_is_effectful_callee, item_resource_names, ItemInfo, ResolvedGraph, TypedModule,
+};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver,
+    extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
 };
-pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::func_sig_for_derivation;
 use crate::v1_compiler_infer_sigs::DerivedCalleeSig::{DerivedFromSig, NoDerivableSig};
-pub use crate::v1_compiler_infer_sigs::{DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_sigs::{
+    func_sig_for_derivation, DerivedCalleeSig, ResolvedFuncEnv, ResolvedFuncSig,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_product_type, is_unit_like, node_is_collection,
@@ -118,13 +115,11 @@ use crate::v1_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v1_compiler_languages::{
     binop_symbol, canonical_emoji_char_escape, is_string_like, language_spec_for_target,
     service_method_depth, service_methods_inside_class, service_receiver_str, service_return_str,
-    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type,
-};
-pub use crate::v1_compiler_languages::{
-    BlockSyntax, CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule,
-    ImportTrigger, InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax,
-    ReservedWordStrategy, ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions,
-    TestNameStyle, VariantPatternSyntax, VisibilitySpec,
+    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax,
+    CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger,
+    InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy,
+    ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle,
+    VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -173,13 +168,11 @@ pub use crate::v1_std_core::{
     module_items, operation_modifier_name, param_node_default_value, param_node_name_at,
     param_node_type_expr, qualified_last_segment, record_lit_type_name_at, return_value,
     slice_base, slice_end, slice_start, transport_base_path, transport_has_auth, transport_verb,
-    tuple_type_name, unaryop_operand, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
-    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    StringPart, TextFile, TransportKind, UnaryOpKind, VarBindingKind,
+    tuple_type_name, unaryop_operand, with_required_cardinality, CallSemantics, CallTargetIdentity,
+    Cardinality, CompilerDiagnostic, Connective, DeclaredCallableIdentity, DeclaredFuncSig,
+    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind, StringPart, TextFile, TransportKind,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
