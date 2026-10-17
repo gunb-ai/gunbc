@@ -340,8 +340,21 @@ fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> No
 // the socket the seed opens to every class is walled by nothing but the kernel peer uid the handler
 // is handed, so the account that connects needs only to reach it.
 fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_shared_directory(instance: instance, member: "agent-door" as NonEmptyStr, child: "agent-door")
+  OwnedDirectoryDeclared {
+    member: "agent-door" as NonEmptyStr,
+    path: lab_agent_door_host_prepared_directory,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+  }
 }
+
+// HOST-PREPARED, outside the home tree. The instance roots sit under a home whose parents are not
+// other-traversable (srv1: .local/share is drwx--x---), and opening that would expose every instance
+// directory to every account, so the lab agent's account could never reach a socket beneath it. The
+// directory is created once by the operator-side qualification step (sudo, owner = the service user,
+// mode 0711), exactly as the gunbc-lab-agent account is; the deploy then re-asserts it as an ordinary
+// owned-directory demand. Only a deployment with an agent door demands it.
+data lab_agent_door_host_prepared_directory: FilePath = "/var/lib/gunbc-lab-agent-door" as FilePath
 
 fn dashboard_instance_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
   join([owned_directory_path(t: dashboard_instance_agent_door_directory(instance: instance)) as String, "/agent.sock"], "") as NonEmptyStr
