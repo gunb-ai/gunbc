@@ -1171,6 +1171,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.object_source_serve_real_execution", function: "a_complete_fixture_repository_yields_object_store_complete_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/object_source_serve_real_execution.dag",
+      function: "a_complete_fixture_repository_yields_object_store_complete_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.object_source_serve_real_execution", function: "a_promisor_fixture_repository_yields_partial_clone_promisor_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/object_source_serve_real_execution.dag",
+      function: "a_promisor_fixture_repository_yields_partial_clone_promisor_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "stage_linked_worktree_into_persistent_mirror_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
       function: "stage_linked_worktree_into_persistent_mirror_by_real_execution",
@@ -2506,6 +2518,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.process_lifecycle_wet_witness", function: "readiness_stalled_listener_witness" },
       entry: "dag/test/claim/process_lifecycle_wet_witness.dag",
       function: "readiness_stalled_listener_witness",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.observed_unhealthy_probe_wet_witness", function: "the_real_probe_answers_a_503_as_answered_unhealthy" },
+      entry: "dag/test/claim/live_deploy/observed_unhealthy_probe_wet_witness.dag",
+      function: "the_real_probe_answers_a_503_as_answered_unhealthy",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.observed_unhealthy_probe_wet_witness", function: "the_ssh_route_argv_answers_a_503_as_answered_unhealthy_too" },
+      entry: "dag/test/claim/live_deploy/observed_unhealthy_probe_wet_witness.dag",
+      function: "the_ssh_route_argv_answers_a_503_as_answered_unhealthy_too",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.observed_unhealthy_probe_wet_witness", function: "the_real_probe_still_refuses_when_nothing_listens" },
+      entry: "dag/test/claim/live_deploy/observed_unhealthy_probe_wet_witness.dag",
+      function: "the_real_probe_still_refuses_when_nothing_listens",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
