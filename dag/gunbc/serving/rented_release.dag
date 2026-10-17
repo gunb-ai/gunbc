@@ -349,17 +349,13 @@ fn rented_leg_refusal(outcome: RentedLegOutcome) -> NonEmptyStr? {
   }
 }
 
-// An on-card leg's outcome given the host reading: the answered case runs the leg's own decision, a host
-// established silent yields NotPerformed (never NothingToUndo, which would read an unread card as clean),
-// and an ambiguous silence is a typed refusal.
-fn rented_on_card_outcome(host: RentedHostReading, answered: RentedLegOutcome) -> RentedLegOutcome {
-  match host {
-    RentedHostAnswered { drain: _, store: _ } => answered
-    other =>
-      match rented_host_ambiguity(host: other) {
-        Present { value: r } => RentedLegOutcomeRefused { reason: r }
-        Absent => RentedLegOutcomeNotPerformedHostSilent
-      }
+// An on-card leg's outcome when the host did not answer: a host established silent yields NotPerformed (never
+// NothingToUndo, which would read an unread card as clean), and an ambiguous silence is a typed refusal. The
+// answered case computes the leg's own decision at its call site.
+fn rented_unanswered_on_card_outcome(host: RentedHostReading) -> RentedLegOutcome {
+  match rented_host_ambiguity(host: host) {
+    Present { value: r } => RentedLegOutcomeRefused { reason: r }
+    Absent => RentedLegOutcomeNotPerformedHostSilent
   }
 }
 
@@ -382,13 +378,10 @@ fn rented_release_receipt(
   mode: ApplyMode,
   readings: RentedReleaseReadings,
 ) -> RentedReleaseReceiptV1 {
-  let drain = rented_on_card_outcome(
-    host: readings.host,
-    answered: match readings.host {
-      RentedHostAnswered { drain: d, store: _ } => rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: d))
-      _ => RentedLegOutcomeNotReached
-    },
-  )
+  let drain = match readings.host {
+    RentedHostAnswered { drain: d, store: _ } => rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: d))
+    other => rented_unanswered_on_card_outcome(host: other)
+  }
   let drain_refused = match rented_leg_refusal(outcome: drain) {
     Present { value: _ } => true
     Absent => false
@@ -405,13 +398,10 @@ fn rented_release_receipt(
   let clean = if drain_refused || anchor_refused {
     RentedLegOutcomeNotReached
   } else {
-    rented_on_card_outcome(
-      host: readings.host,
-      answered: match readings.host {
-        RentedHostAnswered { drain: _, store: st } => rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: st))
-        _ => RentedLegOutcomeNotReached
-      },
-    )
+    match readings.host {
+      RentedHostAnswered { drain: _, store: st } => rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: st))
+      other => rented_unanswered_on_card_outcome(host: other)
+    }
   }
   let grant = rented_grant_standing(allocation: allocation, authorizations: readings.authorizations)
   let held = match rented_leg_refusal(outcome: drain) {
