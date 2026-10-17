@@ -398,11 +398,6 @@ data rented_release_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "a std.scoped_authorization early-end transition on ScopedAuthorization, sufficient for release to end a held grant and read the end back"),
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
-    reason: "binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step, so no flex caller invokes rented_release_receipt yet",
-    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode"),
-  ),
-  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
     reason: "an unreachable host reads as unreadable and holds the release at that leg rather than being skipped",
     dissolution: unbound_dissolution(description: "an unreachable-host arm in the readings with a stated consequence for the destroy, sufficient for a dead card to release without a human"),
