@@ -119,7 +119,7 @@ use crate::v1_compiler_artifact::RustModuleRenderSelection::{RenderEveryModule, 
 use crate::v1_compiler_emit::BoundOperation::{RestBound, ShellBound, LocalBound, FileBound, BindingRefused};
 use crate::v1_compiler_emit::EmitterOutcome::{Emitted, Refused};
 use crate::v1_compiler_emit::FileResultChannel::{FileChanSuccess, FileChanByteCount, FileChanPath, FileChanError, FileChanErrorKind, FileChanContent};
-use crate::v1_compiler_emit::FileVerb::{FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList};
+use crate::v1_compiler_emit::FileVerb::{FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList};
 use crate::v1_compiler_emit::NativeEffectContract::{NativeServiceEffect, NativeResourceEffect};
 use crate::v1_compiler_emit::NativeEffectHandler::{NativeTransportHandler, NativeCapabilityToken};
 use crate::v1_compiler_emit::NativeEffectRealizationAdmission::{NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable};
@@ -41424,6 +41424,7 @@ pub fn file_verb_action_expr(verb: FileVerb) -> String {
     match verb.clone() {
         FileVerb::FileRead => file_read_match_expr(),
         FileVerb::FileWrite => file_write_expr(),
+        FileVerb::FileWriteBytes => file_write_bytes_expr(),
         FileVerb::FileWriteOwnerOnly => file_write_owner_only_expr(),
         FileVerb::FileWriteCreateNew => file_write_create_new_expr(),
         FileVerb::FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr(),
@@ -41645,6 +41646,15 @@ pub fn file_write_create_new_with_mode_expr() -> String {
     thread_local! {
         static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn file_write_bytes_expr() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{\n    let octets: Box<[u8]> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

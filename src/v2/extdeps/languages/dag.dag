@@ -5917,7 +5917,12 @@ type DagCanonicalLiteral
   | DagCanonicalIntLiteral { magnitude: Int }
   | DagCanonicalSymbolLiteral { symbol: Symbol }
   | DagCanonicalStringLiteral { value: Symbol }
+  | DagCanonicalFloatLiteral { lexeme: Symbol }
 
+// A FLOAT LITERAL CARRIES ITS EXACT SOURCE DIGITS, NOT A NUMBER. The lexeme (`digits '.' digits`,
+// dag_float_literal_lex_rule; a sign is the unary operator, there is no exponent form) is the
+// literal's structure; decoding it to binary64 or to std.decimal presupposes the home of Float,
+// which is an open operator ruling, and the first would lose digits a decimal home keeps.
 fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^dag_literal_shape_invalid,
@@ -5953,6 +5958,11 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: true })
       } else if dag_node_is_kw_false_atom(node: node) && (length(xs: node.children) == 0) {
         outcome_accepted(value: DagCanonicalBoolLiteral { value: false })
+      } else if dag_node_is_float_literal_atom(node: node) && (length(xs: node.children) == 1) {
+        match dag_float_literal_lexeme_optional(node: node) {
+          Present { value: l } => outcome_accepted(value: DagCanonicalFloatLiteral { lexeme: symbol_intern_lexeme(lexeme: l) })
+          Absent => outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+        }
       } else if dag_node_is_int_literal_atom(node: node) && (length(xs: node.children) == 1) {
         match dag_int_literal_magnitude_int_from_node(node: node) {
           Accepted { value: magnitude, diagnostics: d } =>

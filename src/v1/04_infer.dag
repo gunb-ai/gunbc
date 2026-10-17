@@ -1705,6 +1705,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -9771,7 +9779,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) {
+          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
             []
           } else {
             [inference_error(
@@ -11197,6 +11205,23 @@ fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, s
   }
 }
 
+// THE PRESENT PAYLOAD IS A DECLARED-TYPE POSITION WHATEVER THE PAYLOAD'S SYNTAX. present_value_expected_from_optional hands the
+// peeled payload type to a nested record or list literal only, so `Present { value: r }` for a plain reference `r` was never
+// judged against the declared payload and a whole record escaped a declared `T?` (gunbc.recurring_failure_mode
+// record_value_escapes_declared_optional_return). This is the same peeled node without the value-shape filter; it answers none
+// for any expected that is not a plain `T?` (return_cardinality CardOptional), so an alias or a nominal `Optional<T>` expected keeps
+// abstaining: this is a product-versus-coproduct judgment of a plain-`T?` Present payload, not general recursive Optional conformance.
+fn present_payload_declared_from_optional(type_name: String, field_name: String, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let names_present_payload = name_is_std_optional_present_arm(scope: scope, name: type_name) && name_is_std_optional_payload_member(scope: scope, name: field_name)
+      if exp.return_cardinality == CardOptional && names_present_payload {
+        Present { value: with_required_cardinality(n: exp) }
+      } else { none }
+  }
+}
+
 // FREEZE-ONLY: the `T?` arm peels only the Present payload, keyed on the std.optional Present arm and
 // payload member read from the canonical declaration (name_is_std_optional_present_arm and name_is_std_optional_payload_member), the same declaration the
 // nominal arm reads; it dissolves with slice 3, the kernel Optional mint cut.
@@ -11520,10 +11545,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => []
     }
+    let present_payload_diags = match present_payload_declared_from_optional(type_name: tn_str, field_name: fi_name, expected: expected, scope: scope) {
+      Present { value: payload_declared } =>
+        let payload_produced = resolved_type(n: ar_typed)
+        if product_versus_coproduct_head_mismatch(declared: payload_declared, produced: payload_produced, scope: scope) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: payload_declared, source_indices: scope.type_env.source_indices),
+            got: node_type_shape(n: payload_produced, source_indices: scope.type_env.source_indices),
+            span: ar_typed.span,
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      Absent => []
+    }
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+      diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
@@ -15531,6 +15569,73 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     } else {
       qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
     }
+}
+
+// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
+// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
+// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
+// target refused here although they are one type. Resolution already carries the answer:
+// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
+// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
+// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
+// matches, and every applied argument agrees pairwise. transparent_alias_identity_agrees cannot
+// answer this: it admits only bare-name aliases and deliberately records no edge for `type A = B<C>`.
+// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
+// parameter's declared type reference carries none today, so `if c { a } else { b }` over
+// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
+// itself still judges by spelling (gunbc.recurring_failure_mode
+// carrier_alias_refuses_its_own_carriers_constructor).
+fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  if left_opt != right_opt { false }
+  else {
+    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
+    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
+    let left_args = left_inner.children
+    let right_args = right_inner.children
+    let same_declaration = match whole_declaration_carried(n: left_inner) {
+      Present { value: l } =>
+        match whole_declaration_carried(n: right_inner) {
+          Present { value: r } => declaration_ref_eq(a: l, b: r)
+          Absent => false
+        }
+      Absent => false
+    }
+    same_declaration
+      && (left_args |> count) == (right_args |> count)
+      && if_branch_type_arguments_agree(left_args: left_args, right_args: right_args, scope: scope)
+  }
+}
+
+fn if_branch_type_arguments_agree(left_args: List<Node>, right_args: List<Node>, scope: InferScope) -> Bool {
+  match left_args |> first {
+    Present { value: l } =>
+      match right_args |> first {
+        Present { value: r } =>
+          if_branch_argument_types_agree(left: child_type_node(ch: l), right: child_type_node(ch: r), scope: scope)
+            && if_branch_type_arguments_agree(left_args: left_args |> skip(1), right_args: right_args |> skip(1), scope: scope)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+// AN ARGUMENT AGREES BY ITS WHOLE STRUCTURE, NOT ITS HEAD. node_type_compatible reads a non-container
+// application's head name and none of its arguments, so Inner<Int> and Inner<Bool> agree there; this
+// relation recurses through every applied argument so the alias admission cannot extend that. The
+// head-only reading itself is node_type_compatible's and is untouched here: `if c { a } else { b }` over
+// `a: Boxed<Int>, b: Boxed<Bool>` is admitted on main without any alias.
+fn if_branch_argument_types_agree(left: Node, right: Node, scope: InferScope) -> Bool {
+  let heads_agree = node_type_compatible(
+    left: left,
+    right: right,
+    source_indices: scope.type_env.source_indices,
+    text: TextJudgedIn { env: scope.type_env })
+    || if_branch_types_agree_through_alias_identity(left: left, right: right, scope: scope)
+  heads_agree
+    && (left.children |> count) == (right.children |> count)
+    && if_branch_type_arguments_agree(left_args: left.children, right_args: right.children, scope: scope)
 }
 
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
