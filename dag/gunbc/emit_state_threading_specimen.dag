@@ -54,13 +54,6 @@ fn spec_build(n: Int) -> List<Int> {
   if n == 0 { [] } else { list_push(spec_build(n: n - 1), n) }
 }
 
-fn spec_walk(n: Int) -> Int {
-  let src = spec_build(n: n)
-  let r = src |> fold(init: SpecAcc { remaining: SpecCursor { source: src, index: 0 }, tokens: [], pos: 0, done: false, context: empty_map(), tag: 7 }, f: (acc, e) =>
-    if acc.done { acc } else { spec_step(acc: acc) })
-  count(r.tokens) + r.pos + r.tag
-}
-
 // The specimen walk returning the token SEQUENCE it built, so a measuring caller keeps the result
 // (an unused result is allocation the release compiler may elide) and checks the walk, not a count.
 fn spec_walk_tokens(src: List<Int>) -> List<Int> {
@@ -70,37 +63,4 @@ fn spec_walk_tokens(src: List<Int>) -> List<Int> {
 
 fn spec_init(src: List<Int>) -> SpecAcc {
   SpecAcc { remaining: SpecCursor { source: src, index: 0 }, tokens: [], pos: 0, done: false, context: empty_map(), tag: 7 }
-}
-
-fn spec_summary(r: SpecAcc) -> Int {
-  count(r.tokens) + r.pos + r.tag
-}
-
-// CONTROL: the same walk with the accumulator constructed inline in the fold lambda and the whole
-// accumulator returned unchanged on the done arm.
-fn spec_walk_inline(src: List<Int>) -> Int {
-  let r = src |> fold(init: spec_init(src: src), f: (acc, e) =>
-    if acc.done { acc } else {
-      match get(xs: acc.remaining.source, index: acc.remaining.index) {
-        Present { value: h } => SpecAcc { remaining: SpecCursor { source: acc.remaining.source, index: acc.remaining.index + 1 }, tokens: list_push(acc.tokens, h), pos: acc.pos + 1, done: false, context: acc.context, tag: acc.tag }
-        Absent => SpecAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, context: acc.context, tag: acc.tag }
-      }
-    })
-  spec_summary(r: r)
-}
-
-// CONTROL: as above, but the done arm rebuilds the record field by field so the whole accumulator
-// is never mentioned beside its projections.
-fn spec_walk_inline_fieldwise(src: List<Int>) -> Int {
-  let r = src |> fold(init: spec_init(src: src), f: (acc, e) =>
-    match get(xs: acc.remaining.source, index: acc.remaining.index) {
-      Present { value: h } => SpecAcc { remaining: SpecCursor { source: acc.remaining.source, index: acc.remaining.index + 1 }, tokens: list_push(acc.tokens, h), pos: acc.pos + 1, done: false, context: acc.context, tag: acc.tag }
-      Absent => SpecAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, context: acc.context, tag: acc.tag }
-    })
-  spec_summary(r: r)
-}
-
-fn spec_walk_named(src: List<Int>) -> Int {
-  let r = src |> fold(init: spec_init(src: src), f: (acc, e) => if acc.done { acc } else { spec_step(acc: acc) })
-  spec_summary(r: r)
 }
