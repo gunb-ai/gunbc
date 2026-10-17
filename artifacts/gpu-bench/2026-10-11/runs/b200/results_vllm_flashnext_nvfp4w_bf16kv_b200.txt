@@ -1,0 +1,13 @@
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA B200, 183359 MiB, 160254 MiB, 3996 MHz
+== vllm_flashnext_nvfp4w_bf16kv_b200 short
+N= 1: rounds= 13  median    229  p90    298  p99    305  max    305 tok/s
+N= 4: rounds= 13  median    751  p90    873  p99    877  max    877 tok/s
+N= 8: rounds= 13  median   1402  p90   1523  p99   1534  max   1534 tok/s
+N=16: rounds= 13  median   2380  p90   2481  p99   2518  max   2518 tok/s
+N=32: rounds= 13  median   1844  p90   2119  p99   2189  max   2189 tok/s
+== vllm_flashnext_nvfp4w_bf16kv_b200 warm ~174k
+N=1 ctx~173966: rounds=24 | aggregate med 233 p90 273 p99 297 | per-stream med 353 p99 484 | TTFT med 0.8s p90 0.9s
+N=4 ctx~173785: rounds=24 | aggregate med 500 p90 592 p99 638 | per-stream med 243 p99 366 | TTFT med 1.4s p90 2.2s
+N=8 ctx~173905: rounds=24 | aggregate med 668 p90 758 p99 779 | per-stream med 184 p99 301 | TTFT med 2.4s p90 3.6s
+N=12 ctx~173574: rounds=24 | aggregate med 780 p90 857 p99 877 | per-stream med 145 p99 254 | TTFT med 3.1s p90 4.9s

@@ -1,0 +1,20 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+CAPACITY_OK 2097152
+2026-10-11 20:39:23.020  INFO  pinning host context | 32.0 GiB
+2026-10-11 20:40:08.994  INFO  capacity | KV 2,097,152 tokens, fp8, explicit | pages 32,768/32,768 | runtime 71.0 GiB | free 4.29 GiB
+2026-10-11 20:40:08.994  INFO  context | history on | 8 active + 2 extra device states | host 32.0 GiB
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB, 92860 MiB, 14001 MHz
+warming 8 sessions
+warm done 277s {0: 173940, 1: 173890, 7: 173743, 2: 173669, 3: 173759, 4: 173879, 6: 173709, 5: 173858}
+== ninfer_fp8kv_pro6000ws short
+N= 1: rounds= 18  median    136  p90    144  p99    159  max    159 tok/s
+N= 4: rounds= 18  median    470  p90    485  p99    490  max    490 tok/s
+N= 8: rounds= 18  median    775  p90    800  p99    805  max    805 tok/s
+== ninfer_fp8kv_pro6000ws warm ~174k
+N=1 ctx~173967: rounds=13 | aggregate med 80 p90 107 p99 112 | per-stream med 124 p99 161 | TTFT med 2.0s p90 4.0s
+N=4 ctx~173786: rounds=13 | aggregate med 152 p90 209 p99 236 | per-stream med 68 p99 100 | TTFT med 4.7s p90 10.8s
+N=8 ctx~173736: rounds=13 | aggregate med 171 p90 245 p99 279 | per-stream med 39 p99 62 | TTFT med 7.2s p90 17.4s
+RUN_EXIT=0

@@ -1,0 +1,33 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+failed 2097152: 2026-10-11 20:49:01.688  FATAL server failed during startup | cudaMalloc failed: cudaErrorMemoryAllocation: out of memory
+failed 2047152: 2026-10-11 20:49:13.789  FATAL server failed during startup | requested Engine runtime reservation requires 74390616320 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1997152: 2026-10-11 20:49:23.698  FATAL server failed during startup | requested Engine runtime reservation requires 72636777728 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1947152: 2026-10-11 20:49:33.714  FATAL server failed during startup | requested Engine runtime reservation requires 70882939136 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1897152: 2026-10-11 20:49:43.417  FATAL server failed during startup | requested Engine runtime reservation requires 69126854912 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1847152: 2026-10-11 20:49:53.783  FATAL server failed during startup | requested Engine runtime reservation requires 67373016320 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1797152: 2026-10-11 20:50:03.802  FATAL server failed during startup | requested Engine runtime reservation requires 65619177728 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1747152: 2026-10-11 20:50:13.827  FATAL server failed during startup | requested Engine runtime reservation requires 63865339136 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1697152: 2026-10-11 20:50:23.872  FATAL server failed during startup | requested Engine runtime reservation requires 62109254912 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1647152: 2026-10-11 20:50:33.916  FATAL server failed during startup | requested Engine runtime reservation requires 60355416320 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1597152: 2026-10-11 20:50:43.624  FATAL server failed during startup | requested Engine runtime reservation requires 58601577728 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1547152: 2026-10-11 20:50:54.007  FATAL server failed during startup | requested Engine runtime reservation requires 56847739136 bytes, but only 54820667392 bytes are available for runtime capacity
+failed 1497152: 2026-10-11 20:51:04.030  FATAL server failed during startup | requested Engine runtime reservation requires 55091654912 bytes, but only 54820667392 bytes are available for runtime capacity
+CAPACITY_OK 1447152
+2026-10-11 20:51:14.019  INFO  pinning host context | 32.0 GiB
+2026-10-11 20:51:36.706  INFO  capacity | KV 1,447,168 tokens, fp8, explicit | pages 22,612/32,768 | runtime 49.7 GiB | free 1.94 GiB
+2026-10-11 20:51:36.706  INFO  context | history on | 8 active + 2 extra device states | host 32.0 GiB
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 72GB Blackwell, 73415 MiB, 70850 MiB, 14001 MHz
+warming 8 sessions
+warm done 498s {0: 173940, 1: 173890, 3: 173759, 5: 173858, 7: 173743, 2: 173669, 4: 173879, 6: 173709}
+== ninfer_fp8kv_pro5000_72g short
+N= 1: rounds= 14  median     97  p90    102  p99    104  max    104 tok/s
+N= 4: rounds= 14  median    353  p90    363  p99    366  max    366 tok/s
+N= 8: rounds= 14  median    584  p90    602  p99    610  max    610 tok/s
+== ninfer_fp8kv_pro5000_72g warm ~174k
+N=1 ctx~173967: rounds=12 | aggregate med 74 p90 83 p99 97 | per-stream med 86 p99 112 | TTFT med 1.2s p90 1.7s
+N=4 ctx~173917: rounds=12 | aggregate med 138 p90 179 p99 199 | per-stream med 48 p99 73 | TTFT med 2.1s p90 5.3s
+N=8 ctx~173944: rounds=12 | aggregate med 170 p90 228 p99 229 | per-stream med 29 p99 43 | TTFT med 3.3s p90 9.2s
+RUN_EXIT=0

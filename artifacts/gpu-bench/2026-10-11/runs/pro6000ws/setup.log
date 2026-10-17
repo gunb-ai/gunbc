@@ -1,0 +1,633 @@
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+Hit:1 http://archive.ubuntu.com/ubuntu noble InRelease
+Hit:2 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:3 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64  InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:5 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu noble InRelease
+Hit:6 http://archive.ubuntu.com/ubuntu noble-backports InRelease
+Reading package lists...
+W: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+Reading package lists...
+Building dependency tree...
+Reading state information...
+pkg-config is already the newest version (1.8.1-2build1).
+libcurl4-openssl-dev is already the newest version (8.5.0-2ubuntu10.15).
+The following additional packages will be installed:
+  libswresample-dev
+The following NEW packages will be installed:
+  libavcodec-dev libavformat-dev libavutil-dev libswresample-dev
+  libswscale-dev
+0 upgraded, 5 newly installed, 0 to remove and 46 not upgraded.
+Need to get 8753 kB of archives.
+After this operation, 33.3 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu noble/universe amd64 libavutil-dev amd64 7:6.1.1-3ubuntu5 [547 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble/universe amd64 libswresample-dev amd64 7:6.1.1-3ubuntu5 [79.7 kB]
+Get:3 http://archive.ubuntu.com/ubuntu noble/universe amd64 libavcodec-dev amd64 7:6.1.1-3ubuntu5 [6504 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble/universe amd64 libavformat-dev amd64 7:6.1.1-3ubuntu5 [1398 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble/universe amd64 libswscale-dev amd64 7:6.1.1-3ubuntu5 [224 kB]
+perl: warning: Setting locale failed.
+perl: warning: Please check that your locale settings:
+	LANGUAGE = (unset),
+	LC_ALL = "en_US.UTF-8",
+	LANG = "C.UTF-8"
+    are supported and installed on your system.
+perl: warning: Falling back to a fallback locale ("C.UTF-8").
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 8753 kB in 3s (2812 kB/s)
+Selecting previously unselected package libavutil-dev:amd64.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 33605 files and directories currently installed.)
+Preparing to unpack .../libavutil-dev_7%3a6.1.1-3ubuntu5_amd64.deb ...
+Unpacking libavutil-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Selecting previously unselected package libswresample-dev:amd64.
+Preparing to unpack .../libswresample-dev_7%3a6.1.1-3ubuntu5_amd64.deb ...
+Unpacking libswresample-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Selecting previously unselected package libavcodec-dev:amd64.
+Preparing to unpack .../libavcodec-dev_7%3a6.1.1-3ubuntu5_amd64.deb ...
+Unpacking libavcodec-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Selecting previously unselected package libavformat-dev:amd64.
+Preparing to unpack .../libavformat-dev_7%3a6.1.1-3ubuntu5_amd64.deb ...
+Unpacking libavformat-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Selecting previously unselected package libswscale-dev:amd64.
+Preparing to unpack .../libswscale-dev_7%3a6.1.1-3ubuntu5_amd64.deb ...
+Unpacking libswscale-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Setting up libavutil-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Setting up libswresample-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Setting up libavcodec-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Setting up libavformat-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Setting up libswscale-dev:amd64 (7:6.1.1-3ubuntu5) ...
+Cloning into '/workspace/ninfer'...
+-- The C compiler identification is GNU 13.3.0
+-- The CXX compiler identification is GNU 13.3.0
+-- The CUDA compiler identification is NVIDIA 13.0.88
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/local/cuda/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found CUDAToolkit: /usr/local/cuda/targets/x86_64-linux/include (found version "13.0.88") 
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Checking for modules 'libavformat;libavcodec;libavutil;libswscale'
+--   Found libavformat, version 60.16.100
+--   Found libavcodec, version 60.31.102
+--   Found libavutil, version 58.29.100
+--   Found libswscale, version 7.5.100
+-- Checking for module 'libcurl>=7.85'
+--   Found libcurl, version 8.5.0
+-- Configuring done (5.8s)
+-- Generating done (0.1s)
+-- Build files have been written to: /workspace/ninfer/build
+[1/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/dtype.cpp.o
+[2/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/cast.cpp.o
+[3/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/gelu.cpp.o
+[4/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/prepare_ragged_prefix.cpp.o
+[5/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/add_bias.cpp.o
+[6/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/residual_add.cpp.o
+[7/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/tensor.cpp.o
+[8/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/argmax.cpp.o
+[9/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/position.cpp.o
+[10/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/gdn_replay_records.cpp.o
+[11/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/mtp_pack.cpp.o
+[12/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/gdn_gating.cpp.o
+[13/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/prepare_masked_block.cpp.o
+[14/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/layer_norm.cpp.o
+[15/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/mtp_round.cpp.o
+[16/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/layout.cpp.o
+[17/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/l2norm.cpp.o
+[18/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/embedding.cpp.o
+[19/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/host_context_arena.cpp.o
+[20/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/bf16/bf16_attn_input_plan.cpp.o
+[21/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/speculative_round.cpp.o
+[22/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/weight_view.cpp.o
+[23/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/causal_conv1d_silu.cpp.o
+[24/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/cyclic_kv_cache.cpp.o
+[25/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/rmsnorm_pack_tail.cpp.o
+[26/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/rmsnorm.cpp.o
+[27/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/sigmoid_mul.cpp.o
+[28/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/vision_pos_embed.cpp.o
+[29/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/silu_mul.cpp.o
+[30/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/scatter.cpp.o
+[31/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/linear_attention_state.cpp.o
+[32/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/weight_input.cpp.o
+[33/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/nvfp4/nvfp4_attn_input_plan.cpp.o
+[34/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q4_q5/q4_q5_attn_input_plan.cpp.o
+[35/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/decode_graph.cpp.o
+[36/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_attn_input_plan.cpp.o
+[37/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/attn_input_proj.cpp.o
+[38/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/scalar.cpp.o
+[39/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/sampling.cpp.o
+[40/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/target_logprobs.cpp.o
+[41/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/rope.cpp.o
+[42/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/candidate_selector.cpp.o
+[43/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/fp8/fp8_attn_input_plan.cpp.o
+[44/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/host_kv_arena.cpp.o
+[45/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/candidate_selector/bf16/candidate_selector_path_plan.cpp.o
+[46/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/mtp_round.cu.o
+[47/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/prepare_masked_block.cu.o
+[48/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/scalar.cu.o
+[49/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/position.cu.o
+[50/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/context_kv_materialize/context_kv_materialize.cpp.o
+[51/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/dynamic_grouped_conv/bf16/bf16_dynamic_grouped_conv_prepare_plan.cpp.o
+[52/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/dynamic_grouped_conv/q8/q8_dynamic_grouped_conv_add_plan.cpp.o
+[53/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/host_worker_pool.cpp.o
+[54/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/dynamic_grouped_conv.cpp.o
+[55/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_input_plan.cpp.o
+[56/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_gating_proj/bf16/bf16_gdn_gating_proj_plan.cpp.o
+[57/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/gdn_gating_proj.cpp.o
+[58/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/rmsnorm_pack_tail.cu.o
+[59/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/target_logprobs.cu.o
+[60/519] Building CUDA object src/core/CMakeFiles/ninfer_core.dir/arena.cu.o
+[61/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/cast.cu.o
+[62/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/scatter.cu.o
+[63/519] Building CUDA object src/core/CMakeFiles/ninfer_core.dir/device.cu.o
+[64/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_conv_plan.cpp.o
+[65/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/gdn_gating.cu.o
+[66/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/prepare_ragged_prefix.cu.o
+[67/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/add_bias.cu.o
+[68/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/vision_pos_embed.cu.o
+[69/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/sigmoid_gate_mul.cu.o
+[70/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/bf16/bf16_attn_input_decode.cu.o
+[71/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/residual_add.cu.o
+[72/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_plan.cpp.o
+[73/519] Building CXX object src/core/CMakeFiles/ninfer_core.dir/paged_kv_cache.cpp.o
+[74/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/gelu.cu.o
+[75/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/l2norm.cu.o
+[76/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_snapshot_plan.cpp.o
+[77/519] Linking CXX static library CMakeFiles/ninfer_core.dir/cmake_device_link.o
+[78/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/embed_gather.cu.o
+[79/519] Linking CXX static library src/core/libninfer_core.a
+[80/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/nvfp4/nvfp4_attn_input_small_t.cu.o
+[81/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q4_q5/q4_q5_gdn_input_plan.cpp.o
+[82/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/layer_norm.cu.o
+[83/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/dynamic_grouped_conv/bf16/bf16_dynamic_grouped_conv_prepare_reduce.cu.o
+[84/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/mtp_pack.cu.o
+[85/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q8/q8_gdn_input_plan.cpp.o
+[86/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/rope.cu.o
+[87/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/silu_and_mul.cu.o
+[88/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/argmax.cu.o
+[89/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_attn_input_decode.cu.o
+[90/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/bf16_dispatch.cpp.o
+[91/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/linear.cpp.o
+[92/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/attn_input_proj/nvfp4/nvfp4_attn_input_a4_tma.cu.o
+[93/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_a4_tma.cu.o
+[94/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/gdn_input_proj.cpp.o
+[95/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_gating_proj/bf16/bf16_gdn_norm_gating_proj_27.cu.o
+[96/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/fp8/fp8_attn_input_decode.cu.o
+[97/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/linear_swiglu/nvfp4/nvfp4_linear_swiglu_a4_tma.cu.o
+[98/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/dynamic_grouped_conv/bf16/bf16_dynamic_grouped_conv_prepare_partial.cu.o
+[99/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_attn_input_gemm_simt.cu.o
+[100/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/rmsnorm.cu.o
+[101/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/linear_add/nvfp4/nvfp4_linear_add_a4_tma.cu.o
+[102/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/nvfp4/nvfp4_attn_input_decode.cu.o
+[103/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/bf16/bf16_attn_input_small_t.cu.o
+[104/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/kv_cache/append/kv_cache_append.cpp.o
+[105/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/bf16/bf16_attn_input_gemm_mma.cu.o
+[106/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/causal_conv1d.cu.o
+[107/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_snapshot_post.cu.o
+[108/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/fp8_format.cpp.o
+[109/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_input_decode.cu.o
+[110/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/fp8_dispatch.cpp.o
+[111/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/fp8/fp8_attn_input_a16_gemm.cu.o
+[112/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q4_q5/q4_q5_attn_input_gemm_mma.cu.o
+[113/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/linear/nvfp4/nvfp4_a4_tma.cu.o
+[114/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_small_t.cu.o
+[115/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_decode.cu.o
+[116/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/gdn_projected_conv.cu.o
+[117/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/nvfp4_format.cpp.o
+[118/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q8/q8_gdn_input_decode.cu.o
+[119/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/nvfp4/nvfp4_attn_input_a4.cu.o
+[120/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/nvfp4_dispatch.cpp.o
+[121/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_snapshot_decode.cu.o
+[122/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/fp8/fp8_attn_input_a16_small_t.cu.o
+[123/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_conv_fused.cu.o
+/workspace/ninfer/src/ops/gdn_input_proj/fp8/fp8_gdn_conv_fused.cu(21): warning #177-D: member "ninfer::ops::detail::<unnamed>::Fp8GdnConvEpilogue<Tokens, Publish>::kRowTokens [with Tokens=1, Publish=ninfer::ops::detail::SnapshotHistoryPublish]" was declared but never referenced
+      [[maybe_unused]] static constexpr int kRowTokens = Tokens;
+                                            ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+[124/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/context_kv_materialize/materialize.cu.o
+[125/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/sampling.cu.o
+[126/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/candidate_selector/bf16/candidate_selector_path.cu.o
+[127/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q4_q5/q4_q5_gdn_input_gemm_mma.cu.o
+[128/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q8/q8_gdn_input_gemm_mma.cu.o
+[129/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/q4_dispatch.cpp.o
+[130/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_a4.cu.o
+[131/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n48_k2560.cu.o
+[132/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n96_k2560.cu.o
+[133/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/fp8_a8.cu.o
+[134/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_input_matrix.cu.o
+[135/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/fp8/fp8_attn_input_a8.cu.o
+[136/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/nvfp4/nvfp4_attn_input_a16.cu.o
+[137/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n1024_k5120.cu.o
+[138/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n10240_k320.cu.o
+[139/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n4096_k5120.cu.o
+[140/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n3456_k1152.cpp.o
+[141/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n1024_k5120.cpp.o
+[142/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n4304_k1152.cpp.o
+[143/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n256_k5120.cu.o
+[144/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n5120_k6144.cu.o
+[145/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n6144_k5120.cu.o
+[146/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/q5_dispatch.cpp.o
+[147/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n320_k10240.cu.o
+[148/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n7168_k5120.cu.o
+[149/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n1152_k1152.cpp.o
+[150/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n5120_k6144.cu.o
+[151/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/shapes/n248320_k5120.cpp.o
+[152/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n1152_k4304.cpp.o
+[153/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/shapes/n248320_k2048.cpp.o
+[154/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n1664_k2560.cu.o
+[155/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n34816_k5120.cu.o
+[156/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/q6_dispatch.cpp.o
+[157/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/launcher/speculative_round.cu.o
+[158/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n14336_k5120.cu.o
+[159/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n131072_k5120.cu.o
+[160/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/shapes/n1152_k1536.cpp.o
+[161/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n248320_k2560.cu.o
+[162/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n1024_k2048.cpp.o
+[163/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n1024_k5120.cpp.o
+[164/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/shapes/n131072_k2048.cu.o
+[165/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/nvfp4_a4.cu.o
+[166/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n324_k10240.cu.o
+[167/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n12288_k2048.cpp.o
+[168/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_input_a16.cu.o
+[169/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/q8_dispatch.cpp.o
+[170/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n2048_k4608.cpp.o
+[171/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n6144_k5120.cu.o
+[172/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n7168_k5120.cu.o
+[173/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n5120_k17408.cu.o
+[174/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/shapes/n5120_k6144.cu.o
+[175/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n1152_k1536.cu.o
+[176/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n3456_k1152.cu.o
+[177/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n13952_k2560.cu.o
+[178/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n4608_k4608.cpp.o
+[179/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/q4_a16_gemv.cu.o
+[180/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n2560_k6144.cu.o
+[181/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/fp8/fp8_gdn_input_a8.cu.o
+[182/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n9216_k2048.cpp.o
+[183/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n1152_k1152.cu.o
+[184/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n4304_k1152.cu.o
+[185/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n12800_k2560.cu.o
+[186/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n5120_k4608.cpp.o
+[187/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n2560_k2560.cu.o
+[188/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/bf16/bf16_linear_add_plan.cpp.o
+[189/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/q4_a16_simt.cu.o
+[190/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n1152_k4304.cu.o
+[191/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/nvfp4/nvfp4_linear_add_plan.cpp.o
+[192/519] Building CUDA object src/ops/CMakeFiles/ninfer_nvfp4_non_rdc.dir/softmax_attention/dense/causal_cache/nvfp4/tiled_launch.cu.o
+[193/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n2560_k4608.cu.o
+[194/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/q8_gemv.cu.o
+[195/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/fp8/fp8_linear_add_plan.cpp.o
+[196/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/bf16/shapes/n4608_k4608.cu.o
+[197/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/q6_a16_simt.cu.o
+[198/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/kv_cache/append/nvfp4_launch.cu.o
+[199/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/kv_cache/append/k8v4_launch.cu.o
+[200/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q5/q5_linear_add_plan.cpp.o
+[201/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/q5_a16_mma.cu.o
+[202/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/bf16/bf16_linear_add_decode.cu.o
+[203/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n248320_k5120.cu.o
+[204/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n2560_k6144.cu.o
+[205/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/bf16/bf16_linear_add_small_t.cu.o
+[206/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_attn_input_gemm_mma.cu.o
+[207/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/kv_cache/append/launch.cu.o
+[208/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_plan.cpp.o
+[209/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/linear_add.cpp.o
+[210/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/fp8/fp8_linear_add_decode.cu.o
+[211/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/q8_simt.cu.o
+[212/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/gated_delta_net/gated_delta_net.cpp.o
+[213/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/nvfp4/nvfp4_linear_add_small_t.cu.o
+[214/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/gated_delta_net/replay.cpp.o
+[215/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/kimi_delta_attention/kimi_delta_attention.cpp.o
+[216/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/q4_a16_mma.cu.o
+[217/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/shapes/n5120_k17408.cu.o
+[218/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_gating_proj/bf16/bf16_gdn_gating_proj_kernels.cu.o
+[219/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n14336_k5120.cu.o
+[220/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/nvfp4/nvfp4_linear_add_decode.cu.o
+[221/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/shapes/n14336_k5120.cu.o
+[222/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/q6_a16_sliced_k_mma.cu.o
+[223/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/bf16/bf16_linear_add_gemm_mma.cu.o
+[224/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/shapes/n16384_k5120.cu.o
+[225/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n5120_k6144.cu.o
+[226/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_pair/q8/q8_pair_plan.cpp.o
+[227/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/linear_pair.cpp.o
+[228/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q6/q6_a16_mma.cu.o
+[229/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n16384_k5120.cu.o
+[230/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q4/q4_linear_swiglu_plan.cpp.o
+[231/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q5/q5_linear_add_gemm_mma.cu.o
+[232/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n34816_k5120.cu.o
+[233/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/nvfp4/nvfp4_linear_swiglu_plan.cpp.o
+[234/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/fp8/fp8_linear_swiglu_plan.cpp.o
+[235/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/kimi_delta_attention/recurrent.cu.o
+[236/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/shapes/n34816_k5120.cu.o
+[237/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/gated_delta_net/chunked/prepare.cu.o
+[238/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/kimi_delta_attention/chunked/prepare.cu.o
+[239/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/q5_a16_simt.cu.o
+[240/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/q8_sliced_k_mma.cu.o
+[241/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q8/q8_linear_swiglu_plan.cpp.o
+[242/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/linear_swiglu.cpp.o
+[243/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/nvfp4/shapes/n5120_k6144.cu.o
+[244/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_gemm_grouped.cu.o
+[245/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/gated_delta_net/chunked/recurrence.cu.o
+[246/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/linear_topk.cpp.o
+[247/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/kimi_delta_attention/chunked/recurrence.cu.o
+[248/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/rmsnorm_rope/rmsnorm_rope.cpp.o
+[249/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_attention/gated_delta_net/recurrent.cu.o
+[250/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_pair/q8/q8_pair_decode.cu.o
+[251/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q8/q8_linear_swiglu_decode.cu.o
+[252/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_gemm_simt.cu.o
+[253/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/nvfp4/nvfp4_linear_add_a4.cu.o
+[254/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/fp8/shapes/n5120_k17408.cu.o
+[255/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q4_q5/q4_q5_attn_input_small_t.cu.o
+[256/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/fp8/fp8_linear_swiglu_decode.cu.o
+[257/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q4/q4_linear_swiglu_gemm_mma.cu.o
+[258/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/nvfp4/nvfp4_linear_swiglu_decode.cu.o
+[259/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n248320_k5120.cu.o
+[260/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/rmsnorm_rope/launch.cu.o
+[261/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/bf16/plan.cpp.o
+[262/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/causal_softmax_attention.cpp.o
+[263/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n2048_k4096.cu.o
+[264/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/nvfp4/nvfp4_linear_swiglu_a4.cu.o
+[265/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_pair/q8/q8_pair_gemm_mma.cu.o
+[266/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q5/q5_linear_add_gemm_simt.cu.o
+[267/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/fp8/plan.cpp.o
+[268/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/nvfp4/nvfp4_linear_swiglu_small_t.cu.o
+[269/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/int8/plan.cpp.o
+[270/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/decode/sparse_moe_decode_plan.cpp.o
+[271/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/nvfp4/nvfp4_linear_add_a16.cu.o
+[272/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/sliding_window/sliding_window_attention.cpp.o
+[273/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/nvfp4/plan.cpp.o
+[274/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/small_t/sparse_moe_small_t_plan.cpp.o
+[275/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/prefill/sparse_moe_prefill_plan.cpp.o
+[276/519] Linking CXX static library src/ops/libninfer_nvfp4_non_rdc.a
+[277/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/nvfp4/nvfp4_gdn_snapshot_small_t.cu.o
+[278/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/k8v4/plan.cpp.o
+[279/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/packed/packed_softmax_attention.cpp.o
+[280/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/context/context_softmax_attention.cpp.o
+[281/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/fp8/fp8_linear_add_a16.cu.o
+[282/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/config.cc.o
+[283/519] Building CXX object src/ops/CMakeFiles/ninfer_ops.dir/wrapper/sparse_moe.cpp.o
+[284/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/fp8/fp8_linear_swiglu_a16.cu.o
+[285/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/q8_mma.cu.o
+[286/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/fp8/fp8_linear_swiglu_a8.cu.o
+[287/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/glm.cc.o
+[288/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/merge.cu.o
+[289/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/kimi_k3.cc.o
+[290/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/packed/launch.cu.o
+[291/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/q4.cu.o
+[292/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/deepseek.cc.o
+[293/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q4_q5/q4_q5_gdn_input_independent.cu.o
+[294/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/minimax.cc.o
+[295/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/fp8.cu.o
+[296/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/qwen.cc.o
+[297/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/q4_m64.cu.o
+[298/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/q8_m64.cu.o
+[299/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q5/q5_a16_sliced_k_mma.cu.o
+[300/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/q8.cu.o
+[301/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_topk/fp8_m64.cu.o
+[302/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n2048_k16384.cu.o
+[303/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q5/q5_linear_add_sliced_k_mma.cu.o
+[304/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/support/logging.cc.o
+[305/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/cohere.cc.o
+[306/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q4/q4_a16_sliced_k_mma.cu.o
+[307/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n5120_k10240.cu.o
+[308/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n5120_k25600.cu.o
+[309/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/gemma.cc.o
+[310/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n12288_k2560.cu.o
+[311/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/support/recursion_guard.cc.o
+[312/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/converter_ext/minimax_m3.cc.o
+[313/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_builder.cc.o
+[314/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/suffix_automata.cc.o
+[315/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/fp8/fp8_linear_add_a8.cu.o
+[316/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q4/q4_linear_swiglu_gemv.cu.o
+[317/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/earley_parser.cc.o
+[318/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/decode/sparse_moe_decode_kernels.cu.o
+[319/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n16384_k2560.cu.o
+[320/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q4_q5/q4_q5_gdn_input_conv_snapshot.cu.o
+[321/519] Building CXX object src/text/CMakeFiles/ninfer_text.dir/unicode.cpp.o
+[322/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n6144_k2560.cu.o
+[323/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/regex_converter.cc.o
+[324/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/formats.cpp.o
+[325/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/layouts.cpp.o
+[326/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/testing.cc.o
+[327/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/file_io.cpp.o
+[328/519] Building C object src/text/CMakeFiles/ninfer_text.dir/__/__/third_party/utf8proc/utf8proc.c.o
+[329/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/compiled_grammar.cc.o
+[330/519] Linking CXX static library src/text/libninfer_text.a
+[331/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_printer.cc.o
+[332/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/unicode.cpp.o
+[333/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/registry.cpp.o
+[334/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/prefill/sparse_moe_prefill_kernels.cu.o
+[335/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n10240_k2560.cu.o
+[336/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar.cc.o
+[337/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/string.cpp.o
+[338/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q4/q4_linear_add.cu.o
+[339/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/views.cpp.o
+[340/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/fsm_builder.cc.o
+[341/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/binder.cpp.o
+[342/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_parser.cc.o
+[343/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/lexer.cpp.o
+[344/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/sparse_moe/small_t/sparse_moe_small_t_kernels.cu.o
+[345/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/reader.cpp.o
+[346/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n34816_k5120.cu.o
+[347/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/materializer.cpp.o
+[348/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/json_string_grammar.cc.o
+[349/519] Building CXX object src/media/CMakeFiles/ninfer_media_decode.dir/decode/decode.cpp.o
+[350/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/tokenizer_info.cc.o
+[351/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n5120_k17408.cu.o
+[352/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/json_number.cc.o
+[353/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/json.cpp.o
+[354/519] Building CXX object src/runtime/CMakeFiles/ninfer_runtime_support.dir/engine/public_types.cpp.o
+[355/519] Linking CXX static library src/media/libninfer_media_decode.a
+[356/519] Building CXX object src/runtime/CMakeFiles/ninfer_runtime_support.dir/engine/context_cache/context_cost_defaults.cpp.o
+[357/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q8/q8_dflash2_linear_swiglu.cu.o
+[358/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/model.cpp.o
+[359/519] Building CXX object src/runtime/CMakeFiles/ninfer_runtime_support.dir/engine/kv_capacity.cpp.o
+[360/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/parser.cpp.o
+[361/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/mtp.cpp.o
+[362/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/resources.cpp.o
+[363/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/fsm.cc.o
+[364/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/fp8/tiled_launch.cu.o
+[365/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n6144_k5120.cu.o
+[366/519] Building CXX object src/artifact/CMakeFiles/ninfer_artifact.dir/schema.cpp.o
+[367/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/vision.cpp.o
+[368/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/digest.cpp.o
+[369/519] Linking CXX static library src/artifact/libninfer_artifact.a
+[370/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/dflash.cpp.o
+[371/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/cfg.cpp.o
+[372/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/dflash2.cpp.o
+[373/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/frontend/resources.cpp.o
+[374/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/async.cpp.o
+[375/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/color_sinks.cpp.o
+[376/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/__/__/src/text/jinja.cpp.o
+[377/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/runtime.cpp.o
+[378/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/config.cpp.o
+[379/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/prepare.cpp.o
+[380/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/k8v4/tiled_launch.cu.o
+[381/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/visual_scatter.cpp.o
+[382/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_compiler.cc.o
+[383/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/file_sinks.cpp.o
+[384/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load/text.cpp.o
+[385/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/stdout_sinks.cpp.o
+[386/519] Building CXX object src/text/CMakeFiles/ninfer_grammar.dir/json_input.cpp.o
+[387/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/state/state_image.cpp.o
+[388/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/load.cpp.o
+[389/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_dflash2_attn_input.cu.o
+[390/519] Building CXX object src/text/CMakeFiles/ninfer_grammar.dir/grammar.cpp.o
+[391/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/lark_converter.cc.o
+[392/519] Building CXX object src/text/CMakeFiles/ninfer_grammar.dir/json_schema.cpp.o
+[393/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/state/decoder_state.cpp.o
+[394/519] Building CXX object third_party/llama-jinja/CMakeFiles/ninfer_jinja.dir/jinja/value.cpp.o
+[395/519] Linking CXX static library third_party/llama-jinja/libninfer_jinja.a
+[396/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/context_work.cpp.o
+[397/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/prompt_layout.cpp.o
+[398/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/ffn.cpp.o
+[399/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/gdn.cpp.o
+[400/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/mtp.cpp.o
+[401/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/bundled_fmtlib_format.cpp.o
+[402/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/attention.cpp.o
+[403/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/round_buffers.cpp.o
+[404/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n14336_k5120.cu.o
+[405/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/vision_control.cpp.o
+[406/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_functor.cc.o
+[407/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/prefix_identity.cpp.o
+[408/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/grammar_matcher.cc.o
+[409/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/output_session.cpp.o
+[410/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/media_cache.cpp.o
+[411/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/parameters.cpp.o
+[412/519] Building CXX object src/runtime/CMakeFiles/ninfer_engine.dir/contract/sampling.cpp.o
+[413/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/vision.cpp.o
+[414/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/structural_tag.cc.o
+[415/519] Building CXX object src/text/CMakeFiles/ninfer_grammar.dir/schema_composition.cpp.o
+[416/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/tool_call_parser.cpp.o
+[417/519] Building CXX object src/product/CMakeFiles/ninfer_product_logging.dir/logging/pretty_format.cpp.o
+[418/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/draft.cpp.o
+[419/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/processor.cpp.o
+[420/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/program.cpp.o
+[421/519] Building CXX object src/models/CMakeFiles/ninfer_model_loading.dir/qwen3_5/frontend/tokenizer.cpp.o
+[422/519] Building CXX object third_party/xgrammar/CMakeFiles/ninfer_xgrammar.dir/cpp/json_schema_converter.cc.o
+[423/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/planning/graph_profiles.cpp.o
+[424/519] Linking CXX static library third_party/xgrammar/libninfer_xgrammar.a
+[425/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/execution/text.cpp.o
+[426/519] Linking CXX static library src/text/libninfer_grammar.a
+[427/519] Building CXX object src/product/CMakeFiles/ninfer_media_acquire.dir/media_acquire/acquire.cpp.o
+[428/519] Building CXX object src/runtime/CMakeFiles/ninfer_runtime_support.dir/engine/context_cache/context_cost.cpp.o
+[429/519] Linking CXX static library src/product/libninfer_media_acquire.a
+[430/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/measurement.cpp.o
+[431/519] Linking CXX static library src/runtime/libninfer_runtime_support.a
+[432/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/grammar_masks.cpp.o
+[433/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/storage/draft_context.cpp.o
+[434/519] Building CXX object src/product/CMakeFiles/ninfer_product_logging.dir/logging/logging.cpp.o
+[435/519] Building CXX object third_party/spdlog/CMakeFiles/ninfer_third_party_spdlog.dir/src/spdlog.cpp.o
+[436/519] Linking CXX static library third_party/spdlog/libninfer_third_party_spdlog.a
+[437/519] Building CXX object src/product/CMakeFiles/ninfer_product_logging.dir/logging/startup_log.cpp.o
+[438/519] Linking CXX static library src/product/libninfer_product_logging.a
+[439/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_gemm_mma.cu.o
+[440/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/prefill.cpp.o
+[441/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/tool_contract.cpp.o
+[442/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/speculative/target_verification.cpp.o
+[443/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/planning/source.cpp.o
+[444/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear/q8/shapes/n5120_k6144.cu.o
+[445/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_pair/q8/q8_pair_gemm_concat.cu.o
+[446/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/speculative/mtp.cpp.o
+[447/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/graphs.cpp.o
+[448/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/decode.cpp.o
+[449/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q8/q8_linear_swiglu_gemm_mma.cu.o
+[450/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/tool_grammar.cpp.o
+[451/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/chat_template.cpp.o
+[452/519] Building CXX object src/runtime/CMakeFiles/ninfer_engine.dir/engine/model_instance.cpp.o
+[453/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/planning/startup.cpp.o
+[454/519] Building CXX object apps/CMakeFiles/ninfer-perplexity.dir/perplexity/evaluation.cpp.o
+[455/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/storage/sequence.cpp.o
+[456/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/request_events.cpp.o
+[457/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/program_impl.cpp.o
+[458/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/commit.cpp.o
+[459/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/planning/request_plan.cpp.o
+[460/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/metrics.cpp.o
+[461/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/capture.cpp.o
+[462/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/replay.cpp.o
+[463/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/storage/checkpoints.cpp.o
+[464/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/context_transaction.cpp.o
+[465/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/operational_log.cpp.o
+[466/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/serve_options.cpp.o
+[467/519] Building CXX object apps/CMakeFiles/ninfer.dir/cli/options.cpp.o
+[468/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/generation_service.cpp.o
+[469/519] Building CXX object apps/CMakeFiles/ninfer.dir/cli/main.cpp.o
+[470/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/request_validation.cpp.o
+[471/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/pause.cpp.o
+[472/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/frontend/frontend.cpp.o
+[473/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_common.cpp.o
+[474/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_responses_store.cpp.o
+[475/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_responses_state.cpp.o
+[476/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/sliding_window/launch.cu.o
+[477/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/binding.cpp.o
+[478/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_chat_response.cpp.o
+[479/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_chat_request.cpp.o
+[480/519] Building CXX object apps/CMakeFiles/ninfer-perplexity.dir/perplexity/corpus.cpp.o
+[481/519] Building CXX object src/product/CMakeFiles/ninfer_product_prompt_input.dir/prompt_input/prompt_input.cpp.o
+[482/519] Linking CXX static library src/product/libninfer_product_prompt_input.a
+[483/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/anthropic_messages_request.cpp.o
+[484/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/translate.cpp.o
+[485/519] Building CXX object src/models/CMakeFiles/ninfer_model_runtime.dir/qwen3_5/program/transactions/reclaim.cpp.o
+[486/519] Building CXX object apps/CMakeFiles/ninfer-perplexity.dir/perplexity/main.cpp.o
+[487/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/context/launch.cu.o
+[488/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_responses_response.cpp.o
+[489/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/anthropic_messages_response.cpp.o
+[490/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_responses_request.cpp.o
+[491/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/request_log.cpp.o
+[492/519] Building CXX object src/runtime/CMakeFiles/ninfer_engine.dir/engine/engine.cpp.o
+[493/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/http_transport.cpp.o
+[494/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/gdn_input_proj/q8/q8_gdn_input_gemm_splitk.cu.o
+[495/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_chat_http.cpp.o
+[496/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/anthropic_messages_http.cpp.o
+[497/519] Building CXX object apps/CMakeFiles/ninfer-serve.dir/serve/main.cpp.o
+[498/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/dynamic_grouped_conv/q8/q8_dynamic_grouped_conv_add_materialized.cu.o
+[499/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/http_server.cpp.o
+[500/519] Building CXX object src/serve/CMakeFiles/ninfer_serve.dir/openai_responses_http.cpp.o
+[501/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_gemm_capacity.cu.o
+[502/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/attn_input_proj/q8/q8_attn_input_gemm_splitk.cu.o
+[503/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_pair/q8/q8_pair_gemm_splitk.cu.o
+[504/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_swiglu/q8/q8_linear_swiglu_gemm_splitk.cu.o
+[505/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/bf16/launch.cu.o
+[506/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/fp8/launch.cu.o
+[507/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/int8/launch.cu.o
+[508/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/nvfp4/launch.cu.o
+[509/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/softmax_attention/dense/causal_cache/k8v4/launch.cu.o
+[510/519] Building CUDA object src/ops/CMakeFiles/ninfer_ops.dir/linear_add/q8/q8_linear_add_gemm_splitk.cu.o
+[511/519] Linking CXX static library CMakeFiles/ninfer_ops.dir/cmake_device_link.o
+[512/519] Linking CXX static library src/ops/libninfer_ops.a
+[513/519] Linking CXX static library src/models/libninfer_model_loading.a
+[514/519] Linking CXX static library src/models/libninfer_model_runtime.a
+[515/519] Linking CXX static library src/runtime/libninfer_engine.a
+[516/519] Linking CXX static library src/serve/libninfer_serve.a
+[517/519] Linking CXX executable apps/ninfer
+[518/519] Linking CXX executable apps/ninfer-serve
+[519/519] Linking CXX executable apps/ninfer-perplexity
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 10.0 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 20.0 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 30.0 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 40.0 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 50.0 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 60.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 70.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 80.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 90.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 100.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 110.1 seconds)
+Still waiting to acquire lock on /workspace/models/ninfer/.cache/huggingface/download/qwen3_8_27b_nvfp4.ninfer.lock (elapsed: 120.1 seconds)
+[32m✓ Downloaded[0m
+  path: /workspace/models/ninfer/qwen3_8_27b_nvfp4.ninfer
+-rw-r--r-- 1 root root 23719715844 Oct 11 20:37 /workspace/models/ninfer/qwen3_8_27b_nvfp4.ninfer
+-rwxr-xr-x 1 root root   238462696 Oct 11 20:35 /workspace/ninfer/build/apps/ninfer-serve
+SETUP_OK

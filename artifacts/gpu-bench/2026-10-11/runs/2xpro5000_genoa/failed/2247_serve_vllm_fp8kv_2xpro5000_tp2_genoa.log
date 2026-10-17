@@ -1,0 +1,1055 @@
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347] 
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347]        █     █     █▄   ▄█
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.30.0
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347]   █▄█▀ █     █     █     █  model   nvidia/Qwen3.8-27B-NVFP4
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:347] 
+(APIServer pid=7658) INFO 10-11 22:26:47 [api_utils.py:286] non-default args: {'model_tag': 'nvidia/Qwen3.8-27B-NVFP4', 'port': 8081, 'model': 'nvidia/Qwen3.8-27B-NVFP4', 'max_model_len': 262144, 'served_model_name': ['qwen'], 'tensor_parallel_size': 2, 'gpu_memory_utilization': 0.91, 'kv_cache_dtype': 'fp8_e4m3', 'enable_prefix_caching': True, 'max_num_batched_tokens': 32768, 'max_num_seqs': 16, 'enable_chunked_prefill': True, 'speculative_config': {'method': 'mtp', 'num_speculative_tokens': 3}}
+(APIServer pid=7658) WARNING 10-11 22:26:47 [envs.py:2248] Unknown vLLM environment variable detected: VLLM_TEST_ENDPOINT
+(APIServer pid=7658) WARNING 10-11 22:26:47 [envs.py:2248] Unknown vLLM environment variable detected: VLLM_MODEL
+(APIServer pid=7658) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(APIServer pid=7658) INFO 10-11 22:26:47 [model.py:692] Resolved architecture: Qwen3_5ForConditionalGeneration
+(APIServer pid=7658) INFO 10-11 22:26:47 [model.py:2030] Using max model len 262144
+(APIServer pid=7658) INFO 10-11 22:26:50 [cache.py:343] Using fp8_e4m3 data type to store kv cache. It reduces the GPU memory footprint and boosts the performance. Meanwhile, it may cause accuracy drop without a proper scaling factor
+(APIServer pid=7658) INFO 10-11 22:26:50 [model.py:692] Resolved architecture: Qwen3_5MTP
+(APIServer pid=7658) INFO 10-11 22:26:50 [model.py:2030] Using max model len 262144
+(APIServer pid=7658) INFO 10-11 22:26:50 [model.py:900] Disabled mm_prefix attention mode because multimodal inputs are configuration-disabled. Attention backends without mm_prefix support may now be selected.
+(APIServer pid=7658) WARNING 10-11 22:26:50 [speculative.py:1361] Enabling num_speculative_tokens > 1 will run multiple times of forward on same MTP layer,which may result in lower acceptance rate
+(APIServer pid=7658) INFO 10-11 22:26:50 [scheduler.py:288] Chunked prefill is enabled with max_num_batched_tokens=32768.
+(APIServer pid=7658) INFO 10-11 22:26:50 [config.py:625] Mamba cache mode is set to 'align' for Qwen3_5ForConditionalGeneration by default when prefix caching is enabled
+(APIServer pid=7658) INFO 10-11 22:26:50 [kernel.py:416] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['triton', 'native'])
+(APIServer pid=7658) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(EngineCore pid=8040) INFO 10-11 22:27:08 [core.py:123] Initializing a V1 LLM engine (v0.30.0) with config: model='nvidia/Qwen3.8-27B-NVFP4', speculative_config=SpeculativeConfig(method='mtp', model='nvidia/Qwen3.8-27B-NVFP4', num_spec_tokens=3), tokenizer='nvidia/Qwen3.8-27B-NVFP4', skip_tokenizer_init=False, tokenizer_mode=auto, revision=main, tokenizer_revision=main, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=262144, download_dir=None, load_format=auto, tensor_parallel_size=2, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=modelopt_mixed, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=fp8_e4m3, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=qwen, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::qwen4_exp_ple_short_conv', 'vllm::qwen4_exp_qsa_with_output', 'vllm::linear_attention', 'vllm::qwen_gdn_attention_core', 'vllm::qwen_gdn_attention_core_fused_norm_packed', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::hpc_rope_norm_forward', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [32768], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 128, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, enable_jit_warmup=True, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=8040) INFO 10-11 22:27:08 [multiproc_executor.py:153] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=127.0.0.1, mq_connect_ip=172.17.0.2 (local), world_size=2, local_world_size=2
+(Worker pid=8405) INFO 10-11 22:27:19 [parallel_state.py:1827] world_size=2 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_dist_4be201a9debf461790042be9fea76aaf backend=nccl
+(APIServer pid=7658) [transformers] Qwen3VL video processing does not apply the per-frame pixel cap the reference implementation (qwen-vl-utils) applies, so some videos cost far more tokens than they would there. In v5.22 the capped behavior will become the default and `cap_pixels_per_frame` will be removed. Pass `cap_pixels_per_frame=True` to adopt the reference behavior now, or `False` to keep the current behavior and silence this warning.
+(APIServer pid=7658) INFO 10-11 22:27:23 [base.py:261] Multi-modal warmup completed in 16.111s
+(APIServer pid=7658) INFO 10-11 22:27:25 [base.py:261] Readonly multi-modal warmup completed in 1.616s
+(Worker pid=8470) INFO 10-11 22:27:26 [parallel_state.py:1827] world_size=2 rank=1 local_rank=1 distributed_init_method=file:///tmp/vllm_dist_4be201a9debf461790042be9fea76aaf backend=nccl
+(Worker pid=8405) INFO 10-11 22:27:27 [pynccl.py:148] vLLM is using nccl==2.30.7
+(Worker pid=8405) WARNING 10-11 22:27:27 [symm_mem.py:67] SymmMemCommunicator: Device capability 12.0 not supported, communicator is not available.
+(Worker pid=8470) WARNING 10-11 22:27:27 [symm_mem.py:67] SymmMemCommunicator: Device capability 12.0 not supported, communicator is not available.
+(Worker pid=8405) WARNING 10-11 22:27:27 [flashinfer_all_reduce.py:383] FlashInfer All Reduce is disabled because it is not supported for world_size=2.
+(Worker pid=8470) WARNING 10-11 22:27:27 [flashinfer_all_reduce.py:383] FlashInfer All Reduce is disabled because it is not supported for world_size=2.
+(Worker pid=8405) INFO 10-11 22:27:27 [cuda_communicator.py:318] Using ['CUSTOM', 'PYNCCL'] all-reduce backends (in dispatch order) for group 'tp:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+(Worker pid=8405) INFO 10-11 22:27:27 [parallel_state.py:2267] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank N/A, EPLB rank N/A
+(Worker pid=8405) INFO 10-11 22:27:27 [gpu_worker.py:441] Using V2 Model Runner
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [model_runner.py:396] Loading model from scratch...
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [cuda.py:597] Using backend AttentionBackendEnum.FLASH_ATTN for vit attention
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [mm_encoder_attention.py:372] Using AttentionBackendEnum.FLASH_ATTN for MMEncoderAttention.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [__init__.py:758] Selected FlashInferFP8ScaledMMLinearKernel for MergedColumnParallelLinear
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [deep_gemm.py:192] deep_gemm not found in site-packages, trying vendored vllm.third_party.deep_gemm
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [deep_gemm.py:219] DeepGEMM PDL enabled on vllm.third_party.deep_gemm.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [deep_gemm.py:136] DeepGEMM E8M0 enabled on current platform.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [__init__.py:758] Selected FlashInferFP8ScaledMMLinearKernel for RowParallelLinear
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [qwen_gdn_linear_attn.py:176] Using FlashInfer GDN prefill kernel (requested=auto, head_k_dim=128).
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [qwen_gdn_linear_attn.py:528] GDN decode kernel: cuda
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [__init__.py:1180] Using FlashInferCutlassNvFp4LinearKernel for NVFP4 GEMM
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [__init__.py:758] Selected FlashInferFP8ScaledMMLinearKernel for QKVParallelLinear
+(Worker_TP0 pid=8405) INFO 10-11 22:27:28 [cuda.py:538] Using FLASHINFER attention backend out of potential backends: ['FLASHINFER', 'TRITON_ATTN'].
+(Worker_TP0 pid=8405) INFO 10-11 22:27:29 [weight_utils.py:895] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 20.42 GiB. Available RAM: 228.38 GiB.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:29 [weight_utils.py:918] Auto-prefetch is disabled because the filesystem (OVERLAY) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards:   0% Completed | 0/3 [00:00<?, ?it/s]
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards:  33% Completed | 1/3 [00:00<00:01,  1.76it/s]
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards:  67% Completed | 2/3 [00:01<00:00,  1.74it/s]
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:01<00:00,  2.46it/s]
+(Worker_TP0 pid=8405) 
+(Worker_TP0 pid=8405) INFO 10-11 22:27:30 [default_loader.py:430] Loading weights took 1.23 seconds
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards:   0% Completed | 0/3 [00:00<?, ?it/s]
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards:  33% Completed | 1/3 [00:00<00:00,  8.54it/s]
+(Worker_TP0 pid=8405) Loading safetensors checkpoint shards: 100% Completed | 3/3 [00:00<00:00, 14.15it/s]
+(Worker_TP0 pid=8405) 
+(Worker_TP0 pid=8405) INFO 10-11 22:27:31 [default_loader.py:430] Loading weights took 0.22 seconds
+(Worker_TP1 pid=8470) INFO 10-11 22:27:31 [model_runner.py:428] Model loading took 10.89 GiB memory and 3.566383 seconds
+(Worker_TP1 pid=8470) INFO 10-11 22:27:31 [interface.py:933] Setting attention block size to 1600 tokens to ensure that attention page size is >= mamba page size.
+(Worker_TP1 pid=8470) INFO 10-11 22:27:31 [interface.py:957] Padding mamba page size by 0.25% to ensure that mamba page size and attention page size are exactly equal.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:31 [model_runner.py:428] Model loading took 10.89 GiB memory and 3.665290 seconds
+(Worker_TP0 pid=8405) INFO 10-11 22:27:31 [topk_topp_sampler.py:78] Using FlashInfer for top-p & top-k sampling.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:31 [interface.py:933] Setting attention block size to 1600 tokens to ensure that attention page size is >= mamba page size.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:31 [interface.py:957] Padding mamba page size by 0.25% to ensure that mamba page size and attention page size are exactly equal.
+(EngineCore pid=8040) INFO 10-11 22:27:31 [torch_utils.py:287] Reducing Torch threads from 15 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=8040) INFO 10-11 22:27:31 [utils.py:320] Using LBNHC KV cache layout.
+(Worker_TP1 pid=8470) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(Worker_TP0 pid=8405) Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+(Worker_TP1 pid=8470) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(Worker_TP0 pid=8405) [transformers] The `use_fast` parameter is deprecated and will be removed in a future version. Use `backend="torchvision"` instead of `use_fast=True`, or `backend="pil"` instead of `use_fast=False`.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:39 [encoder_runner.py:131] Encoder cache will be initialized with a budget of 32768 tokens, and profiled with 2 image items of the maximum feature size.
+(Worker_TP1 pid=8470) INFO 10-11 22:27:45 [caching.py:343] reconstructed serializable fn from standalone compile artifacts. num_artifacts=21 num_submods=65
+(Worker_TP1 pid=8470) INFO 10-11 22:27:45 [decorators.py:313] Directly load AOT compilation from path /workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/c4622845b0d64d2a47492c1b346ff3532e505e9bffc13450be1409750392d259/rank_1_0/model
+(Worker_TP1 pid=8470) Skipping cuDNN in bmm_fp8 auto candidates on SM12x: override_shape unavailable (cuDNN backend < 9.23.1); policy=ALL per-shape build is unbounded at serving time.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:45 [caching.py:343] reconstructed serializable fn from standalone compile artifacts. num_artifacts=21 num_submods=65
+(Worker_TP0 pid=8405) INFO 10-11 22:27:45 [decorators.py:313] Directly load AOT compilation from path /workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/c4622845b0d64d2a47492c1b346ff3532e505e9bffc13450be1409750392d259/rank_0_0/model
+(Worker_TP0 pid=8405) INFO 10-11 22:27:45 [monitor.py:53] torch.compile took 1.07 s in total
+(Worker_TP0 pid=8405) Skipping cuDNN in bmm_fp8 auto candidates on SM12x: override_shape unavailable (cuDNN backend < 9.23.1); policy=ALL per-shape build is unbounded at serving time.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:57 [monitor.py:81] Initial profiling/warmup run took 11.83 s
+(Worker_TP0 pid=8405) INFO 10-11 22:27:57 [caching.py:343] reconstructed serializable fn from standalone compile artifacts. num_artifacts=2 num_submods=2
+(Worker_TP0 pid=8405) INFO 10-11 22:27:57 [decorators.py:313] Directly load AOT compilation from path /workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/rank_0_0/model
+(Worker_TP0 pid=8405) INFO 10-11 22:27:57 [monitor.py:53] torch.compile took 0.05 s in total
+(Worker_TP1 pid=8470) INFO 10-11 22:27:57 [caching.py:343] reconstructed serializable fn from standalone compile artifacts. num_artifacts=2 num_submods=2
+(Worker_TP0 pid=8405) INFO 10-11 22:27:57 [monitor.py:81] Initial profiling/warmup run took 0.00 s
+(Worker_TP1 pid=8470) INFO 10-11 22:27:57 [decorators.py:313] Directly load AOT compilation from path /workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/rank_1_0/model
+(Worker_TP1 pid=8470) WARNING 10-11 22:27:58 [kv_cache_utils.py:1556] Add 3 padding layers, may waste at most 6.25% KV cache memory
+(Worker_TP1 pid=8470) WARNING 10-11 22:27:58 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(Worker_TP0 pid=8405) WARNING 10-11 22:27:58 [kv_cache_utils.py:1556] Add 3 padding layers, may waste at most 6.25% KV cache memory
+(Worker_TP0 pid=8405) WARNING 10-11 22:27:58 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(Worker_TP0 pid=8405) INFO 10-11 22:27:58 [flashinfer.py:909] FlashInfer resolved query dtypes: prefill=torch.bfloat16, decode=torch.bfloat16, decode_backend=xqa, kv_cache_dtype=torch.float8_e4m3fn, arch=sm120
+(Worker_TP0 pid=8405) INFO 10-11 22:27:58 [speculator.py:120] Fused multi-step draft decode is not supported by attention backend(s) FLASHINFER; falling back to rebuilding attention metadata between draft steps.
+(Worker_TP0 pid=8405) Capturing CUDA graphs (PIECEWISE):   0%|          | 0/19 [00:00<?, ?it/s]Capturing CUDA graphs (PIECEWISE):   5%|▌         | 1/19 [00:04<01:28,  4.90s/it]Capturing CUDA graphs (PIECEWISE):  11%|█         | 2/19 [00:05<00:37,  2.19s/it]Capturing CUDA graphs (PIECEWISE):  16%|█▌        | 3/19 [00:05<00:21,  1.32s/it]Capturing CUDA graphs (PIECEWISE):  21%|██        | 4/19 [00:05<00:13,  1.10it/s]Capturing CUDA graphs (PIECEWISE):  26%|██▋       | 5/19 [00:06<00:09,  1.45it/s]Capturing CUDA graphs (PIECEWISE):  32%|███▏      | 6/19 [00:06<00:07,  1.80it/s]Capturing CUDA graphs (PIECEWISE):  37%|███▋      | 7/19 [00:06<00:05,  2.12it/s]Capturing CUDA graphs (PIECEWISE):  42%|████▏     | 8/19 [00:06<00:04,  2.33it/s]Capturing CUDA graphs (PIECEWISE):  47%|████▋     | 9/19 [00:07<00:03,  2.59it/s]Capturing CUDA graphs (PIECEWISE):  53%|█████▎    | 10/19 [00:07<00:03,  2.78it/s]Capturing CUDA graphs (PIECEWISE):  58%|█████▊    | 11/19 [00:07<00:02,  2.90it/s]Capturing CUDA graphs (PIECEWISE):  63%|██████▎   | 12/19 [00:08<00:02,  3.04it/s]Capturing CUDA graphs (PIECEWISE):  68%|██████▊   | 13/19 [00:08<00:01,  3.10it/s]Capturing CUDA graphs (PIECEWISE):  74%|███████▎  | 14/19 [00:08<00:01,  3.14it/s]Capturing CUDA graphs (PIECEWISE):  79%|███████▉  | 15/19 [00:09<00:01,  3.38it/s]Capturing CUDA graphs (PIECEWISE):  84%|████████▍ | 16/19 [00:09<00:00,  3.65it/s]Capturing CUDA graphs (PIECEWISE):  89%|████████▉ | 17/19 [00:09<00:00,  3.87it/s]Capturing CUDA graphs (PIECEWISE):  95%|█████████▍| 18/19 [00:09<00:00,  4.04it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 19/19 [00:09<00:00,  4.09it/s]Capturing CUDA graphs (PIECEWISE): 100%|██████████| 19/19 [00:09<00:00,  1.91it/s]
+(Worker_TP0 pid=8405) Capturing CUDA graphs (FULL):   0%|          | 0/2 [00:00<?, ?it/s]Capturing CUDA graphs (FULL):  50%|█████     | 1/2 [00:00<00:00,  4.98it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  5.03it/s]Capturing CUDA graphs (FULL): 100%|██████████| 2/2 [00:00<00:00,  5.02it/s]
+(Worker_TP1 pid=8470) INFO 10-11 22:28:09 [speculator.py:151] Capturing model for speculator...
+(Worker_TP0 pid=8405) INFO 10-11 22:28:09 [speculator.py:151] Capturing model for speculator...
+(Worker_TP0 pid=8405) Capturing prefill CUDA graphs (PIECEWISE):   0%|          | 0/19 [00:00<?, ?it/s]Capturing prefill CUDA graphs (PIECEWISE): 100%|██████████| 19/19 [00:00<00:00, 187.07it/s]Capturing prefill CUDA graphs (PIECEWISE): 100%|██████████| 19/19 [00:00<00:00, 186.78it/s]
+(Worker_TP0 pid=8405) Capturing prefill CUDA graphs (FULL):   0%|          | 0/9 [00:00<?, ?it/s]Capturing prefill CUDA graphs (FULL): 100%|██████████| 9/9 [00:00<00:00, 177.55it/s]
+(Worker_TP0 pid=8405) Capturing decode CUDA graphs (FULL):   0%|          | 0/5 [00:00<?, ?it/s]Capturing decode CUDA graphs (FULL): 100%|██████████| 5/5 [00:00<00:00, 279.35it/s]
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [model_runner.py:1066] Graph capturing finished in 11 secs, took 0.81 GiB
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [model_runner.py:1066] Graph capturing finished in 12 secs, took 0.81 GiB
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [gpu_worker.py:640] Available KV cache memory: 27.03 GiB
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9100 is equivalent to --gpu-memory-utilization=0.8925 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9275. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9100 is equivalent to --gpu-memory-utilization=0.8925 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9275. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+(EngineCore pid=8040) WARNING 10-11 22:28:10 [kv_cache_utils.py:1556] Add 3 padding layers, may waste at most 6.25% KV cache memory
+(EngineCore pid=8040) WARNING 10-11 22:28:10 [kv_cache_utils.py:2206] Speculative decoding (method=mtp) is enabled but no KV cache group could be identified as the draft model's.
+(EngineCore pid=8040) INFO 10-11 22:28:10 [kv_cache_utils.py:2395] GPU KV cache size: 1,524,535 tokens, Maximum concurrency for 262,144 tokens per request: 5.82x
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [kernel_warmup.py:172] JIT kernel warmup starting.
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [kernel_warmup.py:185] JIT kernel warmup finished in 0.00s.
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [qwen_triton_warmup.py:294] Warming up Qwen GDN Triton kernels for model_type=qwen3_5_text.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [kernel_warmup.py:172] JIT kernel warmup starting.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [kernel_warmup.py:185] JIT kernel warmup finished in 0.00s.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [qwen_triton_warmup.py:294] Warming up Qwen GDN Triton kernels for model_type=qwen3_5_text.
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [qwen_vl_triton_warmup.py:57] Warmed position embedding and vision rotary kernels on grids=[(1, 16, 16), (1, 16, 2), (1, 2, 16), (1, 2, 2)].
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [qwen_vl_triton_warmup.py:57] Warmed position embedding and vision rotary kernels on grids=[(1, 16, 16), (1, 16, 2), (1, 2, 16), (1, 2, 2)].
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [qwen_vl_triton_warmup.py:98] Warmed M-RoPE Triton kernels.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [qwen_vl_triton_warmup.py:98] Warmed M-RoPE Triton kernels.
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [mamba_triton_warmup.py:42] Warmed Mamba batch_memcpy_kernel.
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [kernel_warmup.py:438] Using FlashInfer autotune cache file: /workspace/.vllm_cache/flashinfer_autotune_cache/0.6.18.post1/120f/d94bb3958a8043ccda5c23a63c71ce09136910536e54036a9221649cc160eb7b/autotune_configs.json
+(Worker_TP0 pid=8405) 2026-10-11 22:28:10,844 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP1 pid=8470) 2026-10-11 22:28:10,844 - INFO - autotuner.py:972 - flashinfer.jit: [Autotuner]: Autotuning process starts ...
+(Worker_TP0 pid=8405) INFO 10-11 22:28:10 [kernel_warmup.py:359] Running FlashInfer autotune with 32768 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192, 16384, 32768).
+(Worker_TP1 pid=8470) INFO 10-11 22:28:10 [kernel_warmup.py:359] Running FlashInfer autotune with 32768 tokens and token buckets (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560, 3072, 3584, 4096, 8192, 16384, 32768).
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp8_gemm:  30%|███       | 7/23 [00:00<00:00, 65.97profile/s][AutoTuner]: Tuning fp8_gemm:  30%|███       | 7/23 [00:00<00:00, 66.44profile/s][AutoTuner]: Tuning fp8_gemm:  61%|██████    | 14/23 [00:00<00:00, 52.88profile/s][AutoTuner]: Tuning fp8_gemm:  61%|██████    | 14/23 [00:00<00:00, 53.00profile/s][AutoTuner]: Tuning fp8_gemm:  87%|████████▋ | 20/23 [00:00<00:00, 29.47profile/s][AutoTuner]: Tuning fp8_gemm:  87%|████████▋ | 20/23 [00:00<00:00, 29.49profile/s][rank0]:[W1011 22:28:11.035007045 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1073741824 bytes (free: 548274176, total: 50752258048).
+[rank1]:[W1011 22:28:11.035510743 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1073741824 bytes (free: 548274176, total: 50752258048).
+[AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:01<00:00, 13.98profile/s]
+[AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:01<00:00, 13.99profile/s]
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp8_gemm:  43%|████▎     | 10/23 [00:00<00:00, 91.66profile/s][AutoTuner]: Tuning fp8_gemm:  43%|████▎     | 10/23 [00:00<00:00, 91.94profile/s][AutoTuner]: Tuning fp8_gemm:  87%|████████▋ | 20/23 [00:00<00:00, 46.58profile/s][AutoTuner]: Tuning fp8_gemm:  87%|████████▋ | 20/23 [00:00<00:00, 46.60profile/s][AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:01<00:00, 22.17profile/s]
+[AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:01<00:00, 22.18profile/s]
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp4_gemm:   0%|          | 0/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp4_gemm:   0%|          | 0/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp4_gemm:   4%|▍         | 1/23 [00:00<00:03,  5.80profile/s][AutoTuner]: Tuning fp4_gemm:   4%|▍         | 1/23 [00:00<00:03,  5.81profile/s][AutoTuner]: Tuning fp4_gemm:  13%|█▎        | 3/23 [00:00<00:01, 10.19profile/s][AutoTuner]: Tuning fp4_gemm:  13%|█▎        | 3/23 [00:00<00:01, 10.20profile/s][AutoTuner]: Tuning fp4_gemm:  22%|██▏       | 5/23 [00:00<00:01, 11.71profile/s][AutoTuner]: Tuning fp4_gemm:  22%|██▏       | 5/23 [00:00<00:01, 11.71profile/s][AutoTuner]: Tuning fp4_gemm:  30%|███       | 7/23 [00:00<00:01, 13.11profile/s][AutoTuner]: Tuning fp4_gemm:  30%|███       | 7/23 [00:00<00:01, 13.12profile/s][AutoTuner]: Tuning fp4_gemm:  39%|███▉      | 9/23 [00:00<00:01, 13.80profile/s][AutoTuner]: Tuning fp4_gemm:  39%|███▉      | 9/23 [00:00<00:01, 13.80profile/s][AutoTuner]: Tuning fp4_gemm:  48%|████▊     | 11/23 [00:00<00:01, 11.37profile/s][AutoTuner]: Tuning fp4_gemm:  48%|████▊     | 11/23 [00:00<00:01, 11.37profile/s][AutoTuner]: Tuning fp4_gemm:  57%|█████▋    | 13/23 [00:01<00:01,  8.51profile/s][AutoTuner]: Tuning fp4_gemm:  57%|█████▋    | 13/23 [00:01<00:01,  8.51profile/s][AutoTuner]: Tuning fp4_gemm:  65%|██████▌   | 15/23 [00:01<00:01,  6.36profile/s][AutoTuner]: Tuning fp4_gemm:  65%|██████▌   | 15/23 [00:01<00:01,  6.36profile/s][AutoTuner]: Tuning fp4_gemm:  70%|██████▉   | 16/23 [00:02<00:01,  5.52profile/s][AutoTuner]: Tuning fp4_gemm:  70%|██████▉   | 16/23 [00:02<00:01,  5.52profile/s][AutoTuner]: Tuning fp4_gemm:  74%|███████▍  | 17/23 [00:02<00:01,  4.61profile/s][AutoTuner]: Tuning fp4_gemm:  74%|███████▍  | 17/23 [00:02<00:01,  4.61profile/s][AutoTuner]: Tuning fp4_gemm:  78%|███████▊  | 18/23 [00:02<00:01,  3.82profile/s][AutoTuner]: Tuning fp4_gemm:  78%|███████▊  | 18/23 [00:02<00:01,  3.82profile/s][AutoTuner]: Tuning fp4_gemm:  83%|████████▎ | 19/23 [00:03<00:01,  3.17profile/s][AutoTuner]: Tuning fp4_gemm:  83%|████████▎ | 19/23 [00:03<00:01,  3.17profile/s][AutoTuner]: Tuning fp4_gemm:  87%|████████▋ | 20/23 [00:03<00:01,  2.67profile/s][AutoTuner]: Tuning fp4_gemm:  87%|████████▋ | 20/23 [00:03<00:01,  2.67profile/s][AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:04<00:01,  1.80profile/s][AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:04<00:01,  1.80profile/s][rank0]:[W1011 22:28:18.573432534 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 776863744, total: 50752258048).
+[rank1]:[W1011 22:28:18.573536924 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 776863744, total: 50752258048).
+[rank0]:[W1011 22:28:18.573753083 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 778960896, total: 50752258048).
+[rank1]:[W1011 22:28:18.573854672 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 778960896, total: 50752258048).
+2026-10-11 22:28:18,445 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:04<00:00,  4.29profile/s]
+2026-10-11 22:28:18,445 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) [AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:04<00:00,  4.29profile/s]
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp4_gemm:   0%|          | 0/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp4_gemm:   0%|          | 0/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp4_gemm:   9%|▊         | 2/23 [00:00<00:01, 16.83profile/s][AutoTuner]: Tuning fp4_gemm:   9%|▊         | 2/23 [00:00<00:01, 16.87profile/s][AutoTuner]: Tuning fp4_gemm:  17%|█▋        | 4/23 [00:00<00:01, 17.68profile/s][AutoTuner]: Tuning fp4_gemm:  17%|█▋        | 4/23 [00:00<00:01, 17.70profile/s][AutoTuner]: Tuning fp4_gemm:  26%|██▌       | 6/23 [00:00<00:00, 18.20profile/s][AutoTuner]: Tuning fp4_gemm:  26%|██▌       | 6/23 [00:00<00:00, 18.21profile/s][AutoTuner]: Tuning fp4_gemm:  35%|███▍      | 8/23 [00:00<00:00, 18.79profile/s][AutoTuner]: Tuning fp4_gemm:  35%|███▍      | 8/23 [00:00<00:00, 18.79profile/s][AutoTuner]: Tuning fp4_gemm:  43%|████▎     | 10/23 [00:00<00:00, 17.48profile/s][AutoTuner]: Tuning fp4_gemm:  43%|████▎     | 10/23 [00:00<00:00, 17.48profile/s][AutoTuner]: Tuning fp4_gemm:  52%|█████▏    | 12/23 [00:00<00:00, 14.51profile/s][AutoTuner]: Tuning fp4_gemm:  52%|█████▏    | 12/23 [00:00<00:00, 14.51profile/s][AutoTuner]: Tuning fp4_gemm:  61%|██████    | 14/23 [00:00<00:00, 11.55profile/s][AutoTuner]: Tuning fp4_gemm:  61%|██████    | 14/23 [00:00<00:00, 11.55profile/s][AutoTuner]: Tuning fp4_gemm:  70%|██████▉   | 16/23 [00:01<00:00,  9.33profile/s][AutoTuner]: Tuning fp4_gemm:  70%|██████▉   | 16/23 [00:01<00:00,  9.33profile/s][AutoTuner]: Tuning fp4_gemm:  78%|███████▊  | 18/23 [00:01<00:00,  7.27profile/s][AutoTuner]: Tuning fp4_gemm:  78%|███████▊  | 18/23 [00:01<00:00,  7.27profile/s][AutoTuner]: Tuning fp4_gemm:  83%|████████▎ | 19/23 [00:01<00:00,  6.32profile/s][AutoTuner]: Tuning fp4_gemm:  83%|████████▎ | 19/23 [00:01<00:00,  6.32profile/s][AutoTuner]: Tuning fp4_gemm:  87%|████████▋ | 20/23 [00:02<00:00,  5.46profile/s][AutoTuner]: Tuning fp4_gemm:  87%|████████▋ | 20/23 [00:02<00:00,  5.46profile/s][AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:02<00:00,  3.82profile/s][AutoTuner]: Tuning fp4_gemm:  91%|█████████▏| 21/23 [00:02<00:00,  3.82profile/s][AutoTuner]: Tuning fp4_gemm:  96%|█████████▌| 22/23 [00:03<00:00,  2.23profile/s][AutoTuner]: Tuning fp4_gemm:  96%|█████████▌| 22/23 [00:03<00:00,  2.23profile/s][rank1]:[W1011 22:28:22.371310158 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 671088640 bytes (free: 38666240, total: 50752258048).
+[rank0]:[W1011 22:28:22.371321698 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 671088640 bytes (free: 38666240, total: 50752258048).
+[AutoTuner]: Tuning fp4_gemm: 100%|██████████| 23/23 [00:05<00:00,  1.16profile/s][AutoTuner]: Tuning fp4_gemm: 100%|██████████| 23/23 [00:05<00:00,  1.16profile/s][AutoTuner]: Tuning fp4_gemm: 100%|██████████| 23/23 [00:05<00:00,  3.94profile/s]
+[AutoTuner]: Tuning fp4_gemm: 100%|██████████| 23/23 [00:05<00:00,  3.94profile/s]
+[rank1]:[W1011 22:28:24.457661086 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 709754880, total: 50752258048).
+[rank0]:[W1011 22:28:24.457679766 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 709754880, total: 50752258048).
+[rank1]:[W1011 22:28:24.458863431 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:24.459381629 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:24,331 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) 2026-10-11 22:28:24,332 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:24.484383262 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:24.484860310 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:24.485204819 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:24.485317258 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:24,377 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:24,378 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp8_gemm:   0%|          | 0/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp8_gemm:  39%|███▉      | 9/23 [00:00<00:00, 85.63profile/s][AutoTuner]: Tuning fp8_gemm:  39%|███▉      | 9/23 [00:00<00:00, 86.28profile/s][AutoTuner]: Tuning fp8_gemm:  78%|███████▊  | 18/23 [00:00<00:00, 40.86profile/s][AutoTuner]: Tuning fp8_gemm:  78%|███████▊  | 18/23 [00:00<00:00, 40.91profile/s][rank0]:[W1011 22:28:25.452895859 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 671088640 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.452907549 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 671088640 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:25.456012856 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 939524096 bytes (free: 275644416, total: 50752258048).
+[rank1]:[W1011 22:28:25.456023316 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 939524096 bytes (free: 275644416, total: 50752258048).
+[rank0]:[W1011 22:28:25.466734960 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 939524096 bytes (free: 678297600, total: 50752258048).
+[rank1]:[W1011 22:28:25.466742320 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 939524096 bytes (free: 678297600, total: 50752258048).
+[rank0]:[W1011 22:28:25.466898779 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 939524096 bytes (free: 678297600, total: 50752258048).
+[rank1]:[W1011 22:28:25.466904739 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 939524096 bytes (free: 678297600, total: 50752258048).
+2026-10-11 22:28:25,339 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp8_gemm:  96%|█████████▌| 22/23 [00:00<00:00, 23.05profile/s]
+2026-10-11 22:28:25,339 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) [AutoTuner]: Tuning fp8_gemm:  96%|█████████▌| 22/23 [00:00<00:00, 23.06profile/s]
+[rank0]:[W1011 22:28:25.482311223 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:25.482428023 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:25,353 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:25.483623488 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.483757497 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:25,354 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:25.506054312 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:25.506173882 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:25,377 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:25.508612311 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.508736721 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:25,379 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:25.529017174 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.532682519 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:25.583323192 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:25.583336902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:25,454 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:25,455 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:25.604475232 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:25.605425408 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:25.631269178 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.631381617 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:25.631420447 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:25.631634516 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:25,503 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:25,504 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:25.645850876 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 939524096 bytes (free: 376307712, total: 50752258048).
+[rank0]:[W1011 22:28:25.645851356 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 939524096 bytes (free: 376307712, total: 50752258048).
+(Worker_TP0 pid=8405) [AutoTuner]: Tuning fp8_gemm:  96%|█████████▌| 22/23 [00:00<?, ?profile/s](Worker_TP1 pid=8470) [AutoTuner]: Tuning fp8_gemm:  96%|█████████▌| 22/23 [00:00<?, ?profile/s][AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:00<00:00,  1.95profile/s][AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:00<00:00,  1.95profile/s][AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:00<00:00,  1.95profile/s]
+[AutoTuner]: Tuning fp8_gemm: 100%|██████████| 23/23 [00:00<00:00,  1.95profile/s]
+[rank0]:[W1011 22:28:26.191807755 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 107872256, total: 50752258048).
+[rank1]:[W1011 22:28:26.192716222 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 107872256, total: 50752258048).
+[rank0]:[W1011 22:28:26.207428319 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.207437879 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,079 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,079 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.232525012 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.232647161 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,103 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.233762776 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.233876206 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,105 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.255652603 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.257956603 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.299316296 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.299327947 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,170 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,170 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.320314877 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.321331173 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.347269922 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.347395521 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.347401891 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.347751360 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,219 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,220 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.375142733 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.375281682 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,246 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.376150688 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.376299868 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,247 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.399372309 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.399499099 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,270 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.401496630 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.401617720 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,272 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.422457671 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.425635047 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.485332942 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.485346662 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,356 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,357 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.506702691 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.507740757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.533288328 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.533410257 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.533411567 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.533747146 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,405 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,406 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.559222757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.559356077 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,430 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.560331842 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.560476612 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,431 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.583451494 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.583573473 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,454 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.585750124 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.585870533 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,457 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.606460476 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.609907121 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.671330548 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.671343688 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,542 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,543 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.692703917 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.693832283 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.719354223 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.719364994 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.719502763 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.719507263 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,592 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,593 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.748116581 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.748251290 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,619 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.749150976 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.749287766 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,620 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.772523016 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.772636606 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,643 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.774814337 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.774927196 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,646 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.795615678 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.798908764 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.858330770 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.858345810 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,729 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,730 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.879761859 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.880658995 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.906285696 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.906400175 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.906433095 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.906652774 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,778 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,779 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.932464964 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.932596903 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,803 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.933457690 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.933599679 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,804 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.956935389 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.957054379 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,828 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.958869231 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.958997421 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,830 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.980181650 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.983078548 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.043329941 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.043345841 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,914 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,915 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.064861919 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.065698245 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.092317051 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.092423091 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:26.092451731 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:26.092686920 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,964 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,965 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:26.119378866 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:26.119509106 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:26,990 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:26.120458661 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:26.120590101 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:26,991 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.143727862 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.143849882 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,014 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.145811513 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.145943403 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,017 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.167114892 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.170079839 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.231329968 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.231342578 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,102 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,103 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.252876616 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.253853572 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.279297823 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.279308083 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.279445663 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.279449843 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,151 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,152 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.306076049 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.306209318 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,177 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.307182144 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.307328364 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,178 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.330428835 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.330544424 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,201 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.332510176 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.332637385 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,203 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.353644156 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.356616973 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.417326374 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.417338094 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,288 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,289 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.438937352 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.439856018 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.466297285 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.466404565 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.466444754 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.466661903 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,338 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,339 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.493552429 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.493698768 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,364 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.494547514 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.494723694 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,365 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.517991584 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.518113914 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,389 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.520030845 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.520156155 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,391 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.541299865 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.544242822 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.604329646 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.604340505 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,475 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,476 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.625884014 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.626782010 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.652287861 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.652422980 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.652425960 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.652775669 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,524 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,525 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.678392080 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.678518559 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,549 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.679417015 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.679550775 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,550 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.702822925 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.702938865 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,574 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.704905456 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.705040966 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,576 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.726115036 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.729102453 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.790320902 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.790333562 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,661 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,662 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.811902870 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.812825555 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.838289577 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.838405186 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.838435796 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.838665985 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,710 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,711 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.865453801 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.865588510 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,736 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.866423097 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.866599256 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,737 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.889867477 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.889984326 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,761 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.891784028 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.891895138 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,763 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.913124237 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.915884426 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.976325797 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.976343037 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,847 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,848 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.997970995 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.998712782 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.024279303 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.024420732 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.024425452 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.024764811 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,896 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,897 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.051527296 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:27.051667496 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,922 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.052472052 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:27.052645092 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,923 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.075898632 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:27.076025862 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:27,947 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:27.077801564 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.077924124 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:27,949 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:27.099215343 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:27.101943351 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.162325053 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.162334513 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,033 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,034 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.183906081 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.184836987 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.210331858 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.210338128 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.210480398 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.210483728 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,082 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,083 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.236340977 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.236468757 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,107 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.237432713 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.237571122 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,108 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.260842943 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.260972922 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,132 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.263524141 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.263645011 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,134 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.284186903 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.287833357 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.348325619 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.348339429 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,219 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,220 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.369875127 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.370750303 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.396338644 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.396349504 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.396490843 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.396494543 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,268 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,269 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.422468632 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.422597602 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,293 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.423216659 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.423561718 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,294 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.446908988 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.447045688 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,318 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.448909980 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.449039559 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,320 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.470344258 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.473076906 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.534333935 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.534346555 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,405 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,406 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.556035032 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.556800129 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.582294030 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.582425720 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.582431180 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.582769008 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,454 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,455 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.608522478 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.608652438 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,479 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.609469604 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.609629564 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,480 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.632934544 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.633052273 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,504 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.634825746 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.634951665 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,506 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.656246694 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.658958533 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.720325851 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.720339151 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,591 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,592 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.741910289 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.742741925 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.768345386 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.768355876 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.768508735 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.768512615 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,640 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,641 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.808312145 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank0]:[W1011 22:28:28.808448715 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,679 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank1]:[W1011 22:28:28.810524836 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+[rank1]:[W1011 22:28:28.810667685 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 1140850688 bytes (free: 1047396352, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,681 - WARNING - autotuner.py:1896 - flashinfer.jit: [Autotuner]: OOM detected, falling back to default tactic
+[rank0]:[W1011 22:28:28.827281394 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 570425344 bytes (free: 476971008, total: 50752258048).
+[rank0]:[W1011 22:28:28.827408234 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 0 while trying to allocate 570425344 bytes (free: 476971008, total: 50752258048).
+(Worker_TP0 pid=8405) 2026-10-11 22:28:28,698 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+[rank1]:[W1011 22:28:28.830608930 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 570425344 bytes (free: 476971008, total: 50752258048).
+[rank1]:[W1011 22:28:28.830733039 CUDACachingAllocator.cpp:3933] memory allocation failed with OOM on device 1 while trying to allocate 570425344 bytes (free: 476971008, total: 50752258048).
+(Worker_TP1 pid=8470) 2026-10-11 22:28:28,701 - INFO - autotuner.py:995 - flashinfer.jit: [Autotuner]: Autotuning process ends
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] WorkerProc hit an exception.
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] Traceback (most recent call last):
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1047, in _execute_worker_rpc
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     output = func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 807, in compile_or_warm_up_model
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     kernel_warmup(self)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 257, in kernel_warmup
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     flashinfer_autotune(worker.model_runner)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 470, in flashinfer_autotune
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     _run_flashinfer_autotune_dummy_runs(runner, skip_attn=hisparse_enabled)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 365, in _run_flashinfer_autotune_dummy_runs
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     runner._dummy_run(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 27, in wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = fn(self, *args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 890, in _dummy_run
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self.speculator.propose(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 321, in propose
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self._prefill(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 478, in _prefill
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     last_hidden_states, hidden_states = self._run_model(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                                         ^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 450, in _run_model
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     ret_hidden_states = self.model(**model_inputs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 522, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.aot_compiled_fn(self, *args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile.py", line 244, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_5_mtp.py", line 289, in forward
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     def forward(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/caching.py", line 225, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.optimized_call(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "<string>", line 21, in execution_fn
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/cuda_graph.py", line 256, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.runnable(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 380, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return range_entry.runnable(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 198, in compiled_graph_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     graph_output = compiled_graph(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                    ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/standalone_compile.py", line 321, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.inner_fn(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile_types.py", line 221, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/aot_autograd_result.py", line 742, in forward
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return compiled_fn(list(runtime_args))
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 2548, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1141, in runtime_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = _codegen_runtime_wrapper(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/subclass_codegen.py:codegen(runtime_wrapper_orchestration)", line 8, in _runtime_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py", line 763, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.current_callable(inputs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/inductor_cache/qv/cqvcwjhfqref7mqc3dibc4fa3dropmshbk5jmzl5zwraq5ehvqog.py", line 769, in call
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     buf7 = empty_strided_cuda((s47, 8704), (8704, 1), torch.bfloat16)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 544.00 MiB. GPU 0 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] Traceback (most recent call last):
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1047, in _execute_worker_rpc
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     output = func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 807, in compile_or_warm_up_model
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     kernel_warmup(self)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 257, in kernel_warmup
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     flashinfer_autotune(worker.model_runner)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 470, in flashinfer_autotune
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     _run_flashinfer_autotune_dummy_runs(runner, skip_attn=hisparse_enabled)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 365, in _run_flashinfer_autotune_dummy_runs
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     runner._dummy_run(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 27, in wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = fn(self, *args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 890, in _dummy_run
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self.speculator.propose(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 321, in propose
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self._prefill(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 478, in _prefill
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     last_hidden_states, hidden_states = self._run_model(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                                         ^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 450, in _run_model
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     ret_hidden_states = self.model(**model_inputs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 522, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.aot_compiled_fn(self, *args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile.py", line 244, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_5_mtp.py", line 289, in forward
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     def forward(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/caching.py", line 225, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.optimized_call(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "<string>", line 21, in execution_fn
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/cuda_graph.py", line 256, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.runnable(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 380, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return range_entry.runnable(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 198, in compiled_graph_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     graph_output = compiled_graph(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                    ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/standalone_compile.py", line 321, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.inner_fn(*args)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile_types.py", line 221, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/aot_autograd_result.py", line 742, in forward
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return compiled_fn(list(runtime_args))
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 2548, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1141, in runtime_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = _codegen_runtime_wrapper(
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/subclass_codegen.py:codegen(runtime_wrapper_orchestration)", line 8, in _runtime_wrapper
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py", line 763, in __call__
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.current_callable(inputs)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/inductor_cache/qv/cqvcwjhfqref7mqc3dibc4fa3dropmshbk5jmzl5zwraq5ehvqog.py", line 769, in call
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     buf7 = empty_strided_cuda((s47, 8704), (8704, 1), torch.bfloat16)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 544.00 MiB. GPU 0 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+(Worker_TP0 pid=8405) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] 
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] WorkerProc hit an exception.
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] Traceback (most recent call last):
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1047, in _execute_worker_rpc
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     output = func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 807, in compile_or_warm_up_model
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     kernel_warmup(self)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 257, in kernel_warmup
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     flashinfer_autotune(worker.model_runner)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 470, in flashinfer_autotune
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     _run_flashinfer_autotune_dummy_runs(runner, skip_attn=hisparse_enabled)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 365, in _run_flashinfer_autotune_dummy_runs
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     runner._dummy_run(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 27, in wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = fn(self, *args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 890, in _dummy_run
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self.speculator.propose(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 321, in propose
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self._prefill(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 478, in _prefill
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     last_hidden_states, hidden_states = self._run_model(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                                         ^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 450, in _run_model
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     ret_hidden_states = self.model(**model_inputs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 522, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.aot_compiled_fn(self, *args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile.py", line 244, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_5_mtp.py", line 289, in forward
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     def forward(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/caching.py", line 225, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.optimized_call(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "<string>", line 21, in execution_fn
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/cuda_graph.py", line 256, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.runnable(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 380, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return range_entry.runnable(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 198, in compiled_graph_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     graph_output = compiled_graph(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                    ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/standalone_compile.py", line 321, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.inner_fn(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile_types.py", line 221, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/aot_autograd_result.py", line 742, in forward
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return compiled_fn(list(runtime_args))
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 2548, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1141, in runtime_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = _codegen_runtime_wrapper(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/subclass_codegen.py:codegen(runtime_wrapper_orchestration)", line 8, in _runtime_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py", line 763, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.current_callable(inputs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/inductor_cache/55/c55fby7ycv6c5behlsfm7zr7lpfzlnd5fmlj7e2e5tphdgmtns4e.py", line 769, in call
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     buf7 = empty_strided_cuda((s47, 8704), (8704, 1), torch.bfloat16)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 544.00 MiB. GPU 1 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] Traceback (most recent call last):
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 1047, in _execute_worker_rpc
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     output = func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py", line 807, in compile_or_warm_up_model
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     kernel_warmup(self)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 257, in kernel_warmup
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     flashinfer_autotune(worker.model_runner)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 470, in flashinfer_autotune
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     _run_flashinfer_autotune_dummy_runs(runner, skip_attn=hisparse_enabled)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/warmup/kernel_warmup.py", line 365, in _run_flashinfer_autotune_dummy_runs
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     runner._dummy_run(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/eplb_utils.py", line 27, in wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = fn(self, *args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py", line 890, in _dummy_run
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self.speculator.propose(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 321, in propose
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     self._prefill(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 478, in _prefill
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     last_hidden_states, hidden_states = self._run_model(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                                         ^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return func(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py", line 450, in _run_model
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     ret_hidden_states = self.model(**model_inputs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/decorators.py", line 522, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.aot_compiled_fn(self, *args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile.py", line 244, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen3_5_mtp.py", line 289, in forward
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     def forward(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/caching.py", line 225, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.optimized_call(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "<string>", line 21, in execution_fn
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/cuda_graph.py", line 256, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.runnable(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 380, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return range_entry.runnable(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/vllm/compilation/piecewise_backend.py", line 198, in compiled_graph_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     graph_output = compiled_graph(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]                    ^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/standalone_compile.py", line 321, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.inner_fn(*args)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_dynamo/aot_compile_types.py", line 221, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/aot_autograd_result.py", line 742, in forward
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return compiled_fn(list(runtime_args))
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 2548, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.compiled_fn(*args, **kwargs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 1141, in runtime_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     result = _codegen_runtime_wrapper(
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]              ^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_functorch/_aot_autograd/subclass_codegen.py:codegen(runtime_wrapper_orchestration)", line 8, in _runtime_wrapper
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/usr/local/lib/python3.12/dist-packages/torch/_inductor/output_code.py", line 763, in __call__
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     return self.current_callable(inputs)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]   File "/workspace/.vllm_cache/torch_compile_cache/torch_aot_compile/aa375e06e20c6bf8e5a210eb82b5e6d8de70230a36ef0d6f7105dad652791622/inductor_cache/55/c55fby7ycv6c5behlsfm7zr7lpfzlnd5fmlj7e2e5tphdgmtns4e.py", line 769, in call
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]     buf7 = empty_strided_cuda((s47, 8704), (8704, 1), torch.bfloat16)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 544.00 MiB. GPU 1 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+(Worker_TP1 pid=8470) ERROR 10-11 22:28:28 [multiproc_executor.py:1055] 
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366] EngineCore failed to start.
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366] Traceback (most recent call last):
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     super().__init__(
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     return func(*args, **kwargs)
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 356, in _initialize_kv_caches
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     self.model_executor.compile_or_warm_up_model()
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/abstract.py", line 126, in compile_or_warm_up_model
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     compilation_times: list[CompilationTimes] = self.collective_rpc(
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]                                                 ^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 448, in collective_rpc
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     return future if non_block else future.result()
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]                                     ^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 99, in result
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     return super().result()
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]            ^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     return self.__get_result()
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     raise self._exception
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 103, in _wait_for_response
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     response = self.aggregate(self.get_response())
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]                               ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 437, in get_response
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366]     raise RuntimeError(
+(EngineCore pid=8040) ERROR 10-11 22:28:28 [core.py:1366] RuntimeError: Worker failed with error 'CUDA out of memory. Tried to allocate 544.00 MiB. GPU 0 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)', please check the stack trace above for the root cause
+(EngineCore pid=8040) ERROR 10-11 22:28:31 [multiproc_executor.py:314] Worker proc VllmWorker-1 died unexpectedly (exit code: None), shutting down executor.
+(EngineCore pid=8040) INFO 10-11 22:28:31 [multiproc_executor.py:472] [shutdown] Executor: waiting for worker exit count=2
+(EngineCore pid=8040) Process EngineCore:
+(EngineCore pid=8040) Traceback (most recent call last):
+(EngineCore pid=8040)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=8040)     self.run()
+(EngineCore pid=8040)   File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+(EngineCore pid=8040)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1370, in run_engine_core
+(EngineCore pid=8040)     raise e
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1328, in run_engine_core
+(EngineCore pid=8040)     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=8040)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=8040)     return func(*args, **kwargs)
+(EngineCore pid=8040)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 1085, in __init__
+(EngineCore pid=8040)     super().__init__(
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 145, in __init__
+(EngineCore pid=8040)     kv_cache_config = self._initialize_kv_caches(vllm_config)
+(EngineCore pid=8040)                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=8040)     return func(*args, **kwargs)
+(EngineCore pid=8040)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py", line 356, in _initialize_kv_caches
+(EngineCore pid=8040)     self.model_executor.compile_or_warm_up_model()
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/abstract.py", line 126, in compile_or_warm_up_model
+(EngineCore pid=8040)     compilation_times: list[CompilationTimes] = self.collective_rpc(
+(EngineCore pid=8040)                                                 ^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 448, in collective_rpc
+(EngineCore pid=8040)     return future if non_block else future.result()
+(EngineCore pid=8040)                                     ^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 99, in result
+(EngineCore pid=8040)     return super().result()
+(EngineCore pid=8040)            ^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 449, in result
+(EngineCore pid=8040)     return self.__get_result()
+(EngineCore pid=8040)            ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/lib/python3.12/concurrent/futures/_base.py", line 401, in __get_result
+(EngineCore pid=8040)     raise self._exception
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 103, in _wait_for_response
+(EngineCore pid=8040)     response = self.aggregate(self.get_response())
+(EngineCore pid=8040)                               ^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=8040)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/multiproc_executor.py", line 437, in get_response
+(EngineCore pid=8040)     raise RuntimeError(
+(EngineCore pid=8040) RuntimeError: Worker failed with error 'CUDA out of memory. Tried to allocate 544.00 MiB. GPU 0 has a total capacity of 47.27 GiB of which 454.88 MiB is free. Including non-PyTorch memory, this process has 46.76 GiB memory in use. Of the allocated memory 44.41 GiB is allocated by PyTorch, and 1.56 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)', please check the stack trace above for the root cause
+(EngineCore pid=8040) INFO 10-11 22:28:32 [multiproc_executor.py:479] [shutdown] Executor: all workers exited gracefully
+(APIServer pid=7658) INFO 10-11 22:28:33 [utils.py:632] [shutdown] Process manager: send sigterm to process EngineCore
+(APIServer pid=7658) Traceback (most recent call last):
+(APIServer pid=7658)   File "/usr/local/bin/vllm", line 10, in <module>
+(APIServer pid=7658)     sys.exit(main())
+(APIServer pid=7658)              ^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/main.py", line 106, in main
+(APIServer pid=7658)     args.dispatch_function(args)
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/serve.py", line 154, in cmd
+(APIServer pid=7658)     uvloop.run(run_server(args))
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py", line 96, in run
+(APIServer pid=7658)     return __asyncio.run(
+(APIServer pid=7658)            ^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+(APIServer pid=7658)     return runner.run(main)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+(APIServer pid=7658)     return self._loop.run_until_complete(task)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py", line 48, in wrapper
+(APIServer pid=7658)     return await main
+(APIServer pid=7658)            ^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 176, in run_server
+(APIServer pid=7658)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 190, in run_server_worker
+(APIServer pid=7658)     async with build_async_engine_client(
+(APIServer pid=7658)   File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=7658)     return await anext(self.gen)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 58, in build_async_engine_client
+(APIServer pid=7658)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=7658)   File "/usr/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=7658)     return await anext(self.gen)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/launchers/api_server/entry.py", line 94, in build_async_engine_client_from_engine_args
+(APIServer pid=7658)     async_llm = AsyncLLM.from_vllm_config(
+(APIServer pid=7658)                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/async_llm.py", line 235, in from_vllm_config
+(APIServer pid=7658)     return cls(
+(APIServer pid=7658)            ^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/async_llm.py", line 169, in __init__
+(APIServer pid=7658)     self.engine_core = EngineCoreClient.make_async_mp_client(
+(APIServer pid=7658)                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=7658)     return func(*args, **kwargs)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 163, in make_async_mp_client
+(APIServer pid=7658)     return AsyncMPClient(
+(APIServer pid=7658)            ^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(APIServer pid=7658)     return func(*args, **kwargs)
+(APIServer pid=7658)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 1060, in __init__
+(APIServer pid=7658)     super().__init__(
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core_client.py", line 656, in __init__
+(APIServer pid=7658)     with launch_core_engines(
+(APIServer pid=7658)   File "/usr/lib/python3.12/contextlib.py", line 144, in __exit__
+(APIServer pid=7658)     next(self.gen)
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1240, in launch_core_engines
+(APIServer pid=7658)     wait_for_engine_startup(
+(APIServer pid=7658)   File "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/utils.py", line 1320, in wait_for_engine_startup
+(APIServer pid=7658)     raise RuntimeError(
+(APIServer pid=7658) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 2 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

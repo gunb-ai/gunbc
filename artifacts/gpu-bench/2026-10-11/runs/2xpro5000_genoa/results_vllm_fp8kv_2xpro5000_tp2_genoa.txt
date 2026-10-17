@@ -1,0 +1,12 @@
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 48935 MiB, 44125 MiB, 14001 MHz
+NVIDIA RTX PRO 5000 Blackwell, 48935 MiB, 44125 MiB, 14001 MHz
+== vllm_fp8kv_2xpro5000_tp2_genoa short
+N= 1: rounds= 15  median    142  p90    152  p99    153  max    153 tok/s
+N= 4: rounds= 15  median    557  p90    571  p99    578  max    578 tok/s
+N= 8: rounds= 15  median    971  p90   1000  p99   1014  max   1014 tok/s
+N=16: rounds= 15  median   1573  p90   1591  p99   1594  max   1594 tok/s
+== vllm_fp8kv_2xpro5000_tp2_genoa warm ~174k
+N=1 ctx~173966: rounds=17 | aggregate med 116 p90 122 p99 131 | per-stream med 190 p99 210 | TTFT med 1.7s p90 2.0s
+N=4 ctx~173916: rounds=17 | aggregate med 214 p90 225 p99 232 | per-stream med 96 p99 141 | TTFT med 3.8s p90 5.4s
+N=7 ctx~173905: rounds=17 | aggregate med 240 p90 255 p99 272 | per-stream med 65 p99 100 | TTFT med 6.4s p90 8.6s

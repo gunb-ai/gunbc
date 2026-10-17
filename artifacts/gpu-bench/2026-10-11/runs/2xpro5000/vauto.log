@@ -1,0 +1,41 @@
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+SERVE_OK
+(Worker_TP1 pid=8074) INFO 10-11 21:11:12 [gpu_worker.py:825] CUDA graph pool memory: 0.58 GiB (actual), 1.1 GiB (estimated), difference: 0.52 GiB (90.2%).
+(Worker_TP1 pid=8074) INFO 10-11 21:11:12 [gpu_worker.py:888] Free memory on device (46.56/47.27 GiB) on startup. Desired GPU memory utilization is (0.9, 42.54 GiB). Actual usage is 12.39 GiB for consumed memory (weights + non-torch), 4.31 GiB for peak activation, and 0.58 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=26963872154` (25.11 GiB) to fit into requested memory, or `--kv-cache-memory=31278755840` (29.13 GiB) to fully utilize gpu memory. Current kv cache memory in use is 25.83 GiB.
+(Worker_TP0 pid=7996) INFO 10-11 21:11:12 [gpu_worker.py:825] CUDA graph pool memory: 0.58 GiB (actual), 1.1 GiB (estimated), difference: 0.52 GiB (90.2%).
+(Worker_TP0 pid=7996) INFO 10-11 21:11:12 [gpu_worker.py:888] Free memory on device (46.56/47.27 GiB) on startup. Desired GPU memory utilization is (0.9, 42.54 GiB). Actual usage is 12.39 GiB for consumed memory (weights + non-torch), 4.31 GiB for peak activation, and 0.58 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=26963872154` (25.11 GiB) to fit into requested memory, or `--kv-cache-memory=31278755840` (29.13 GiB) to fully utilize gpu memory. Current kv cache memory in use is 25.83 GiB.
+(EngineCore pid=7607) INFO 10-11 21:11:14 [core.py:372] init engine (profile, create kv cache, warmup model) took 137.59 s (compilation: 1.52 s)
+(EngineCore pid=7607) INFO 10-11 21:11:17 [kv_cache_utils.py:748] kv cache group sizes [1600, 1600, 1600, 1600]
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+name, memory.total [MiB], memory.used [MiB], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 48935 MiB, 44114 MiB, 14001 MHz
+NVIDIA RTX PRO 5000 Blackwell, 48935 MiB, 44112 MiB, 14001 MHz
+warming 8 sessions
+warm done 360s {0: 173940, 1: 173890, 2: 173669, 7: 173743, 3: 173759, 4: 173879, 5: 173858, 6: 173709}
+== vllm_fp8kv_2xpro5000_tp2 short
+N= 1: rounds=  9  median    146  p90    149  p99    159  max    159 tok/s
+N= 4: rounds=  9  median    553  p90    565  p99    568  max    568 tok/s
+N= 8: rounds=  9  median    947  p90    968  p99    970  max    970 tok/s
+N=16: rounds=  9  median   1451  p90   1471  p99   1493  max   1493 tok/s
+N=32: rounds=  9  median   1902  p90   1923  p99   1933  max   1933 tok/s
+== vllm_fp8kv_2xpro5000_tp2 warm ~174k
+N=1 ctx~173966: rounds=3 | aggregate med 10 p90 92 p99 92 | per-stream med 141 p99 211 | TTFT med 46.3s p90 47.2s
+N=4 ctx~174503: rounds=3 | aggregate med 14 p90 203 p99 203 | per-stream med 75 p99 136 | TTFT med 54.8s p90 139.2s
+N=8 ctx~175040: rounds=3 | aggregate med 21 p90 67 p99 67 | per-stream med 9 p99 77 | TTFT med 9.5s p90 158.7s
+RUN_EXIT=0
+# HELP vllm:prefix_cache_queries_total Prefix cache queries, in terms of number of queried tokens.
+# TYPE vllm:prefix_cache_queries_total counter
+vllm:prefix_cache_queries_total{engine="0",model_name="qwen"} 8.265711e+06
+# HELP vllm:prefix_cache_hits_total Prefix cache hits, in terms of number of cached tokens.
+# TYPE vllm:prefix_cache_hits_total counter
+vllm:prefix_cache_hits_total{engine="0",model_name="qwen"} 3.7872e+06
+# HELP vllm:external_prefix_cache_queries_total External prefix cache queries from KV connector cross-instance cache sharing, in terms of number of queried tokens.
+# TYPE vllm:external_prefix_cache_queries_total counter
+vllm:external_prefix_cache_queries_total{engine="0",model_name="qwen"} 0.0
+# HELP vllm:external_prefix_cache_hits_total External prefix cache hits from KV connector cross-instance cache sharing, in terms of number of cached tokens.
+# TYPE vllm:external_prefix_cache_hits_total counter
+vllm:external_prefix_cache_hits_total{engine="0",model_name="qwen"} 0.0
+# HELP vllm:num_preemptions_total Cumulative number of preemption from the engine.
+# TYPE vllm:num_preemptions_total counter
+vllm:num_preemptions_total{engine="0",model_name="qwen"} 0.0

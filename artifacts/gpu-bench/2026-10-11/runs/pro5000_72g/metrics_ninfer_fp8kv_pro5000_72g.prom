@@ -1,0 +1,259 @@
+# HELP ninfer_constraint_requests_total Settled constrained requests by language completion.
+# TYPE ninfer_constraint_requests_total counter
+ninfer_constraint_requests_total{outcome="terminated"} 0
+ninfer_constraint_requests_total{outcome="complete_interrupted"} 0
+ninfer_constraint_requests_total{outcome="incomplete_interrupted"} 0
+# HELP ninfer_constraint_cache_total Compilation cache access for settled constrained requests.
+# TYPE ninfer_constraint_cache_total counter
+ninfer_constraint_cache_total{result="hit"} 0
+ninfer_constraint_cache_total{result="built"} 0
+ninfer_constraint_cache_total{result="waited"} 0
+# HELP ninfer_constraint_prepare_seconds_total Observed constraint preparation work.
+# TYPE ninfer_constraint_prepare_seconds_total counter
+ninfer_constraint_prepare_seconds_total 0
+# HELP ninfer_constraint_mask_seconds_total Observed CPU mask work, including lookahead rollback.
+# TYPE ninfer_constraint_mask_seconds_total counter
+ninfer_constraint_mask_seconds_total 0
+# HELP ninfer_constraint_matcher_seconds_total Observed matcher acceptance and discard work.
+# TYPE ninfer_constraint_matcher_seconds_total counter
+ninfer_constraint_matcher_seconds_total 0
+# HELP ninfer_constraint_mask_positions_total Evaluated constrained prediction positions.
+# TYPE ninfer_constraint_mask_positions_total counter
+ninfer_constraint_mask_positions_total 0
+# HELP ninfer_constraint_mask_upload_bytes_total Submitted mask payload bytes.
+# TYPE ninfer_constraint_mask_upload_bytes_total counter
+ninfer_constraint_mask_upload_bytes_total 0
+# HELP ninfer_constraint_draft_wait_seconds_total Draft-ready wait, counted once per batch.
+# TYPE ninfer_constraint_draft_wait_seconds_total counter
+ninfer_constraint_draft_wait_seconds_total 0
+# HELP ninfer_engine_ready Whether Engine can accept work.
+# TYPE ninfer_engine_ready gauge
+ninfer_engine_ready 1
+# HELP ninfer_server_start_time_seconds Unix time at service attachment after warmup.
+# TYPE ninfer_server_start_time_seconds gauge
+ninfer_server_start_time_seconds 1791751896.7948017
+# HELP ninfer_model_info Resident model and speculative backend.
+# TYPE ninfer_model_info gauge
+ninfer_model_info{model_name="qwen3.8-27b",speculative_backend="mtp"} 1
+# HELP ninfer_max_concurrency Maximum resident execution lanes.
+# TYPE ninfer_max_concurrency gauge
+ninfer_max_concurrency 8
+# HELP ninfer_max_context_tokens Per-request logical context limit.
+# TYPE ninfer_max_context_tokens gauge
+ninfer_max_context_tokens 262144
+# HELP ninfer_spec_decode_draft_window Configured speculative draft window.
+# TYPE ninfer_spec_decode_draft_window gauge
+ninfer_spec_decode_draft_window 3
+# HELP ninfer_requests_running Resident requests, including prefill and decode.
+# TYPE ninfer_requests_running gauge
+ninfer_requests_running 6
+# HELP ninfer_requests_waiting Requests waiting for initial admission.
+# TYPE ninfer_requests_waiting gauge
+ninfer_requests_waiting 1
+# HELP ninfer_requests_paused Paused requests waiting for recovery.
+# TYPE ninfer_requests_paused gauge
+ninfer_requests_paused 0
+# HELP ninfer_requests_prefilling Resident requests in initial prefill.
+# TYPE ninfer_requests_prefilling gauge
+ninfer_requests_prefilling 0
+# HELP ninfer_requests_decode_ready Resident requests ready for decode.
+# TYPE ninfer_requests_decode_ready gauge
+ninfer_requests_decode_ready 6
+# HELP ninfer_requests_replaying Resident requests rebuilding committed history.
+# TYPE ninfer_requests_replaying gauge
+ninfer_requests_replaying 0
+# HELP ninfer_requests_materializing Requests with a binding transaction in progress.
+# TYPE ninfer_requests_materializing gauge
+ninfer_requests_materializing 1
+# HELP ninfer_prompt_tokens_total Full input tokens counted once on initial binding.
+# TYPE ninfer_prompt_tokens_total counter
+ninfer_prompt_tokens_total 28272253
+# HELP ninfer_prompt_tokens_cached_total Input tokens supplied by exact checkpoints.
+# TYPE ninfer_prompt_tokens_cached_total counter
+ninfer_prompt_tokens_cached_total 26827593
+# HELP ninfer_prefill_tokens_total Initial input tokens actually computed, excluding Replay.
+# TYPE ninfer_prefill_tokens_total counter
+ninfer_prefill_tokens_total 1444660
+# HELP ninfer_generation_tokens_total Committed output tokens, including first and control tokens.
+# TYPE ninfer_generation_tokens_total counter
+ninfer_generation_tokens_total 164997
+# HELP ninfer_decode_tokens_total Committed decode/control tokens, excluding the first token.
+# TYPE ninfer_decode_tokens_total counter
+ninfer_decode_tokens_total 164653
+# HELP ninfer_replayed_tokens_total History tokens recomputed during recovery.
+# TYPE ninfer_replayed_tokens_total counter
+ninfer_replayed_tokens_total 0
+# HELP ninfer_decode_rounds_total Decode batch executions.
+# TYPE ninfer_decode_rounds_total counter
+ninfer_decode_rounds_total 16358
+# HELP ninfer_decode_row_rounds_total Sum of decode batch sizes.
+# TYPE ninfer_decode_row_rounds_total counter
+ninfer_decode_row_rounds_total 64850
+# HELP ninfer_preemptions_total Resource-pressure pauses.
+# TYPE ninfer_preemptions_total counter
+ninfer_preemptions_total 0
+# HELP ninfer_snapshot_restores_total Restores from complete paused snapshots.
+# TYPE ninfer_snapshot_restores_total counter
+ninfer_snapshot_restores_total 0
+# HELP ninfer_replay_restores_total Recovery operations that rebuild history.
+# TYPE ninfer_replay_restores_total counter
+ninfer_replay_restores_total 0
+# HELP ninfer_root_selections_total Initial bindings without checkpoint reuse.
+# TYPE ninfer_root_selections_total counter
+ninfer_root_selections_total 190
+# HELP ninfer_checkpoint_selections_total Initial bindings with checkpoint reuse.
+# TYPE ninfer_checkpoint_selections_total counter
+ninfer_checkpoint_selections_total 154
+# HELP ninfer_spec_decode_rounds_total Native speculative verification rounds.
+# TYPE ninfer_spec_decode_rounds_total counter
+ninfer_spec_decode_rounds_total 64743
+# HELP ninfer_spec_decode_draft_tokens_total Draft tokens evaluated by native verification.
+# TYPE ninfer_spec_decode_draft_tokens_total counter
+ninfer_spec_decode_draft_tokens_total 193886
+# HELP ninfer_spec_decode_accepted_tokens_total Draft tokens accepted by native verification.
+# TYPE ninfer_spec_decode_accepted_tokens_total counter
+ninfer_spec_decode_accepted_tokens_total 99850
+# HELP ninfer_spec_decode_fallback_steps_total Speculative fallback steps without drafts.
+# TYPE ninfer_spec_decode_fallback_steps_total counter
+ninfer_spec_decode_fallback_steps_total 107
+# HELP ninfer_device_state_used_slots Occupied device StateImage slots.
+# TYPE ninfer_device_state_used_slots gauge
+ninfer_device_state_used_slots 10
+# HELP ninfer_device_state_capacity_slots Total device StateImage slots, including resident lanes.
+# TYPE ninfer_device_state_capacity_slots gauge
+ninfer_device_state_capacity_slots 10
+# HELP ninfer_device_kv_used_pages Occupied physical Main KV pages, including retained history.
+# TYPE ninfer_device_kv_used_pages gauge
+ninfer_device_kv_used_pages 22612
+# HELP ninfer_device_kv_capacity_pages Main KV pool capacity in pages.
+# TYPE ninfer_device_kv_capacity_pages gauge
+ninfer_device_kv_capacity_pages 22612
+# HELP ninfer_device_backend_kv_used_pages Occupied speculative backend KV pages.
+# TYPE ninfer_device_backend_kv_used_pages gauge
+ninfer_device_backend_kv_used_pages 22620
+# HELP ninfer_host_context_used_bytes Occupied Host backing, including reservations.
+# TYPE ninfer_host_context_used_bytes gauge
+ninfer_host_context_used_bytes 34293114880
+# HELP ninfer_host_context_reserved_bytes Reserved Host bytes, a subset of used bytes.
+# TYPE ninfer_host_context_reserved_bytes gauge
+ninfer_host_context_reserved_bytes 0
+# HELP ninfer_host_context_capacity_bytes Shared pinned Host backing capacity.
+# TYPE ninfer_host_context_capacity_bytes gauge
+ninfer_host_context_capacity_bytes 34359738368
+# HELP ninfer_host_context_peak_bytes Host backing high-water mark, including reservations.
+# TYPE ninfer_host_context_peak_bytes gauge
+ninfer_host_context_peak_bytes 34359682048
+# HELP ninfer_host_state_images StateImages in the shared Host backing.
+# TYPE ninfer_host_state_images gauge
+ninfer_host_state_images 202
+# HELP ninfer_host_kv_used_bytes KV bytes in the shared Host backing, a subset of used bytes.
+# TYPE ninfer_host_kv_used_bytes gauge
+ninfer_host_kv_used_bytes 3194345472
+# HELP ninfer_context_transfer_bytes_total Completed context payload transfers.
+# TYPE ninfer_context_transfer_bytes_total counter
+ninfer_context_transfer_bytes_total{resource="state",direction="d2h"} 69125482496
+ninfer_context_transfer_bytes_total{resource="state",direction="h2d"} 22477328384
+ninfer_context_transfer_bytes_total{resource="state",direction="d2d"} 0
+ninfer_context_transfer_bytes_total{resource="main_kv",direction="d2h"} 4142530560
+ninfer_context_transfer_bytes_total{resource="main_kv",direction="h2d"} 27475968
+ninfer_context_transfer_bytes_total{resource="main_kv",direction="d2d"} 576995328
+ninfer_context_transfer_bytes_total{resource="backend_kv",direction="d2h"} 255209472
+ninfer_context_transfer_bytes_total{resource="backend_kv",direction="h2d"} 0
+ninfer_context_transfer_bytes_total{resource="backend_kv",direction="d2d"} 35269632
+# HELP ninfer_context_transfer_seconds_total Accumulated context transfer operation time.
+# TYPE ninfer_context_transfer_seconds_total counter
+ninfer_context_transfer_seconds_total 1.9575561599999982
+# HELP ninfer_host_work_seconds_total Exclusive Engine Host phases, excluding device waits.
+# TYPE ninfer_host_work_seconds_total counter
+ninfer_host_work_seconds_total{phase="engine_boundary"} 185.78675223900001
+ninfer_host_work_seconds_total{phase="program_submit"} 33.308628293000005
+ninfer_host_work_seconds_total{phase="program_post"} 0.45197120900000004
+ninfer_host_work_seconds_total{phase="engine_commit_output"} 0.48523309700000006
+ninfer_host_work_seconds_total{phase="engine_maintenance"} 0.014061274
+# HELP ninfer_device_wait_seconds_total Engine wall time waiting for device work, not kernel time.
+# TYPE ninfer_device_wait_seconds_total counter
+ninfer_device_wait_seconds_total 1032.3181979030001
+# HELP ninfer_requests_total Generation attempts entering preparation, by terminal outcome.
+# TYPE ninfer_requests_total counter
+ninfer_requests_total{outcome="completed"} 338
+ninfer_requests_total{outcome="cancelled"} 0
+ninfer_requests_total{outcome="failed"} 0
+ninfer_requests_total{outcome="rejected"} 0
+# HELP ninfer_response_failures_total Response rendering, storage or transport failures after generation settlement.
+# TYPE ninfer_response_failures_total counter
+ninfer_response_failures_total 0
+# HELP ninfer_time_to_first_token_seconds Preparation through first committed token; observed once, before completion.
+# TYPE ninfer_time_to_first_token_seconds histogram
+ninfer_time_to_first_token_seconds_bucket{le="0.001"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.002"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.0050000000000000001"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.01"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.025000000000000001"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.050000000000000003"} 0
+ninfer_time_to_first_token_seconds_bucket{le="0.10000000000000001"} 27
+ninfer_time_to_first_token_seconds_bucket{le="0.25"} 58
+ninfer_time_to_first_token_seconds_bucket{le="0.5"} 113
+ninfer_time_to_first_token_seconds_bucket{le="1"} 188
+ninfer_time_to_first_token_seconds_bucket{le="2.5"} 262
+ninfer_time_to_first_token_seconds_bucket{le="5"} 296
+ninfer_time_to_first_token_seconds_bucket{le="10"} 328
+ninfer_time_to_first_token_seconds_bucket{le="20"} 336
+ninfer_time_to_first_token_seconds_bucket{le="40"} 336
+ninfer_time_to_first_token_seconds_bucket{le="80"} 336
+ninfer_time_to_first_token_seconds_bucket{le="160"} 336
+ninfer_time_to_first_token_seconds_bucket{le="320"} 336
+ninfer_time_to_first_token_seconds_bucket{le="640"} 344
+ninfer_time_to_first_token_seconds_bucket{le="1280"} 344
+ninfer_time_to_first_token_seconds_bucket{le="+Inf"} 344
+ninfer_time_to_first_token_seconds_sum 4582.8811304049959
+ninfer_time_to_first_token_seconds_count 344
+# HELP ninfer_request_duration_seconds Generation request duration through settlement, including cancellation.
+# TYPE ninfer_request_duration_seconds histogram
+ninfer_request_duration_seconds_bucket{le="0.001"} 0
+ninfer_request_duration_seconds_bucket{le="0.002"} 0
+ninfer_request_duration_seconds_bucket{le="0.0050000000000000001"} 0
+ninfer_request_duration_seconds_bucket{le="0.01"} 0
+ninfer_request_duration_seconds_bucket{le="0.025000000000000001"} 0
+ninfer_request_duration_seconds_bucket{le="0.050000000000000003"} 0
+ninfer_request_duration_seconds_bucket{le="0.10000000000000001"} 0
+ninfer_request_duration_seconds_bucket{le="0.25"} 0
+ninfer_request_duration_seconds_bucket{le="0.5"} 0
+ninfer_request_duration_seconds_bucket{le="1"} 0
+ninfer_request_duration_seconds_bucket{le="2.5"} 0
+ninfer_request_duration_seconds_bucket{le="5"} 3
+ninfer_request_duration_seconds_bucket{le="10"} 197
+ninfer_request_duration_seconds_bucket{le="20"} 278
+ninfer_request_duration_seconds_bucket{le="40"} 330
+ninfer_request_duration_seconds_bucket{le="80"} 330
+ninfer_request_duration_seconds_bucket{le="160"} 330
+ninfer_request_duration_seconds_bucket{le="320"} 330
+ninfer_request_duration_seconds_bucket{le="640"} 338
+ninfer_request_duration_seconds_bucket{le="1280"} 338
+ninfer_request_duration_seconds_bucket{le="+Inf"} 338
+ninfer_request_duration_seconds_sum 7622.2238832050043
+ninfer_request_duration_seconds_count 338
+# HELP ninfer_request_queue_seconds Initial Engine queue wait of settled generation requests.
+# TYPE ninfer_request_queue_seconds histogram
+ninfer_request_queue_seconds_bucket{le="0.001"} 3
+ninfer_request_queue_seconds_bucket{le="0.002"} 3
+ninfer_request_queue_seconds_bucket{le="0.0050000000000000001"} 28
+ninfer_request_queue_seconds_bucket{le="0.01"} 28
+ninfer_request_queue_seconds_bucket{le="0.025000000000000001"} 38
+ninfer_request_queue_seconds_bucket{le="0.050000000000000003"} 58
+ninfer_request_queue_seconds_bucket{le="0.10000000000000001"} 75
+ninfer_request_queue_seconds_bucket{le="0.25"} 109
+ninfer_request_queue_seconds_bucket{le="0.5"} 169
+ninfer_request_queue_seconds_bucket{le="1"} 234
+ninfer_request_queue_seconds_bucket{le="2.5"} 284
+ninfer_request_queue_seconds_bucket{le="5"} 313
+ninfer_request_queue_seconds_bucket{le="10"} 332
+ninfer_request_queue_seconds_bucket{le="20"} 338
+ninfer_request_queue_seconds_bucket{le="40"} 338
+ninfer_request_queue_seconds_bucket{le="80"} 338
+ninfer_request_queue_seconds_bucket{le="160"} 338
+ninfer_request_queue_seconds_bucket{le="320"} 338
+ninfer_request_queue_seconds_bucket{le="640"} 338
+ninfer_request_queue_seconds_bucket{le="1280"} 338
+ninfer_request_queue_seconds_bucket{le="+Inf"} 338
+ninfer_request_queue_seconds_sum 465.0363192770003
+ninfer_request_queue_seconds_count 338
