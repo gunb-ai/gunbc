@@ -75,7 +75,7 @@ fn leaf_collision_row(leaf: String, declarers: List<String>, would_share: List<B
 }
 
 fn declaration_would_share(summary: TypeSummary, recursive_type_set: Set<String>, needs_sharing: Bool) -> Bool {
-  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing), summary.name)
+  set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: needs_sharing, by_value_records: false), summary.name)
 }
 
 fn would_share_of_identity(info: EmitGraphInfo, identity: String, needs_sharing: Bool) -> Bool {
