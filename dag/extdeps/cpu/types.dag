@@ -8,6 +8,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import std.measure { ByteSize, Celsius, HardwareThreadCount, Hertz, Watt }
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -190,7 +191,14 @@ type CpuModelCatalogRow {
 // families it admits and lets the architecture be DERIVED from the models it cites, never inferred.
 type SoCFamily {
   name: NonEmptyStr
-  models: List<CpuModelCatalogRow>
+  // NON-EMPTY BY CONSTRUCTION (review 81340 F1). This was List<CpuModelCatalogRow>, which let an
+  // EMPTY family be written and then caught it at run time: soc_family_architecture answered `none`
+  // on Absent, and the refusal read the same as "the models disagree". DESIGN.md Sec 5 -- "stronger
+  // than catching a wrong state is making it unwritable" -- and Sec 3b's ruling
+  // gunbc.design_ruling nonemptiness_is_constructed_or_proved, which names FreeSemigroup as the
+  // carrier for exactly this: "Nonemptiness is constructed or proved, then consumed". A family with
+  // no model rows is not a family, so it now has no representation rather than a runtime veto.
+  models: FreeSemigroup<CpuModelCatalogRow>
 }
 
 // WHETHER TWO FAMILY ROWS ARE THE SAME SILICON LINE, tested by IDENTITY — never by name.
@@ -217,26 +225,34 @@ fn cpu_model_catalog_row_eq(a: CpuModelCatalogRow, b: CpuModelCatalogRow) -> Boo
 }
 
 fn soc_family_eq(a: SoCFamily, b: SoCFamily) -> Bool {
-  count(a.models) == count(b.models)
-    && all(a.models, m => any(b.models, n => cpu_model_catalog_row_eq(a: m, b: n)))
-    && all(b.models, m => any(a.models, n => cpu_model_catalog_row_eq(a: m, b: n)))
+  // Read through the canonical accessor, as every other FreeSemigroup field in the corpus is
+  // (extdeps.colo.types, std.goal_assessment, gunbc.witness.witness_floor_lanes): the non-emptiness is
+  // carried by the TYPE, and the folds below run on the ordinary list once that guarantee is had.
+  let am = non_empty_to_list(xs: a.models)
+  let bm = non_empty_to_list(xs: b.models)
+  count(am) == count(bm)
+    && all(am, m => any(bm, n => cpu_model_catalog_row_eq(a: m, b: n)))
+    && all(bm, m => any(am, n => cpu_model_catalog_row_eq(a: m, b: n)))
 }
 
 // THE FIRMWARE ARCHITECTURE A FAMILY ESTABLISHES, OR NONE.
 //
 // A family establishes an architecture only when every model in it reports the SAME one. A family
-// whose models disagree — or an empty family — establishes nothing, and the answer is `none`, never
-// "first wins". This is the platform fact a board edge composes over, and the refusal is typed as
-// "unestablished" downstream, not collapsed to an absent selection.
+// whose models disagree establishes nothing, and the answer is `none`, never "first wins". This is the
+// platform fact a board edge composes over, and the refusal is typed as "unestablished" downstream, not
+// collapsed to an absent selection.
+//
+// THE EMPTY FAMILY HAS NO ARM HERE ANY MORE (review 81340 F1). It used to: `first()` on a List could
+// answer Absent, so the function needed a branch for it and callers had to wonder whether "none" meant
+// "disagreeing models" or "nobody said anything". `models` is now FreeSemigroup, so there is always a
+// lead and the only remaining reason to refuse is the one that is a real fact.
 fn soc_family_architecture(family: SoCFamily) -> Architecture? {
-  match family.models |> first() {
-    Present { value: lead } =>
-      if family.models |> all(m => m.architecture == lead.architecture) {
-        Present { value: lead.architecture }
-      } else {
-        none
-      }
-    Absent => none
+  let models = non_empty_to_list(xs: family.models)
+  let lead = family.models.head
+  if models |> all(m => m.architecture == lead.architecture) {
+    Present { value: lead.architecture }
+  } else {
+    none
   }
 }
 

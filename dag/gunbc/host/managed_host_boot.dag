@@ -7,7 +7,14 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.boot_medium { BootMedium }
 import gunbc.host.board_platform_facts { host_board_architecture }
 import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
-import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowKnown }
+import gunbc.host.host_capability_row {
+  host_capability_row, host_capability_row_in, HostCapabilityRowKnown,
+  HostCapabilityRowUncatalogued, HostCapabilityRowAmbiguous, HostCapabilityRowUnobserved,
+  HostCapabilityRowIncoherent,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityEntry, megarac_release_capability_catalog,
+}
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
   VirtualMediaBootSelectionRefusal,
@@ -40,11 +47,32 @@ import gunbc.host.bmc_control_binding {
 // carries the same media profile gets the same selection with no code change. A host that cannot
 // have a selection decided for it is not bootable however capable its controller.
 fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
+  boot_selection_in(table: megarac_release_capability_catalog, host: host)
+}
+
+// THE SAME DERIVATION OVER A SUPPLIED RELEASE TABLE, so a claim can put a DRIFTED row under a real
+// host and assert that boot selection refuses before any effect (see
+// gunbc.host.host_capability_row.host_capability_row_in for why a supplied table is the only way to
+// reach that state). The shipped entry above passes the shipped catalog and both go through this one
+// implementation, so the refusal cannot be routed around by a consumer -- and admit_boot_subject below
+// calls this, so a drifted row reaches BootSubjectNoSelection rather than an attach.
+fn boot_selection_in(
+  table: List<MegaRacReleaseCapabilityEntry>,
+  host: ManagedHost,
+) -> VirtualMediaBootSelectionOutcome {
   let arch = host_board_architecture(access: host.access)
   let media =
-    match host_capability_row(access: host.access) {
+    match host_capability_row_in(table: table, access: host.access) {
       HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
-      _ => CapabilityUnestablished
+      // Named arm by arm, deliberately: a drifted row must be VISIBLE as the reason a selection
+      // refuses, not absorbed into a catch-all that cannot distinguish "nobody read the controller"
+      // from "the row disagrees with its own evidence". All four answer the same way -- an
+      // unestablished capability cannot admit a selection -- but each is its own arm so a future
+      // divergence has somewhere to live.
+      HostCapabilityRowUncatalogued { firmware: _ } => CapabilityUnestablished
+      HostCapabilityRowAmbiguous { firmware: _, count: _ } => CapabilityUnestablished
+      HostCapabilityRowUnobserved { endpoint: _ } => CapabilityUnestablished
+      HostCapabilityRowIncoherent { firmware: _ } => CapabilityUnestablished
     }
   virtual_media_boot_selection(arch: arch, media: media)
 }

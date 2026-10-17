@@ -10,6 +10,7 @@ import extdeps.board_soc { BoardSocEdge }
 import extdeps.cpu.ampere { ampere_altra_soc_family, ampere_altra_max_soc_family }
 import std.decl_ref { decl_ref }
 import extdeps.external_authority { FactCitation }
+import std.algebra { FreeSemigroup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_gsg_authority
 
@@ -54,7 +55,10 @@ data mt_collins_board_authority: BoardAuthorityRef = BoardAuthorityRef {
 // (extdeps.board_soc.board_soc_architecture), never defaulted to the first.
 data mt_collins_board_soc_edge: BoardSocEdge = BoardSocEdge {
   board: mt_collins_board_authority,
-  soc_families: [ampere_altra_soc_family, ampere_altra_max_soc_family],
+  soc_families: FreeSemigroup {
+    head: ampere_altra_soc_family,
+    tail: [ampere_altra_max_soc_family],
+  },
   citations: [
     FactCitation {
       fact: decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.platform", decl_name: "platform_note"),

@@ -1,6 +1,7 @@
 module extdeps.cpu.ampere
 
 import std.types { String, List }
+import std.algebra { FreeSemigroup }
 import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
 import extdeps.external_authority { ExternalAuthority, FactCitation }
 import std.decl_ref { decl_field_ref, decl_ref }
@@ -362,7 +363,7 @@ data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
 // never asserted separately.
 data ampere_altra_soc_family: SoCFamily = SoCFamily {
   name: "Altra",
-  models: [altra_q6430_catalog, altra_q8030_catalog],
+  models: FreeSemigroup { head: altra_q6430_catalog, tail: [altra_q8030_catalog] },
 }
 
 // THE AMPERE ALTRA MAX SOC FAMILY: the M-series Altra Max line. A dual-socket Altra/Altra Max board
@@ -370,7 +371,7 @@ data ampere_altra_soc_family: SoCFamily = SoCFamily {
 // then derived from whether both families agree, never defaulted.
 data ampere_altra_max_soc_family: SoCFamily = SoCFamily {
   name: "Altra Max",
-  models: [altra_max_m12830_catalog],
+  models: FreeSemigroup { head: altra_max_m12830_catalog, tail: [] },
 }
 
 // WHICH SoC FAMILIES CARRY SMpro. SMpro is the Ampere Altra-family SoC's own out-of-band register

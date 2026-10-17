@@ -27,12 +27,15 @@ import gunbc.host.physical_machine_binding {
   PhysicalMachineAdmitted, physical_machine_admission,
 }
 import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_current_intake_subject }
-import gunbc.machine_intake.ampere_smpro_observation { smpro_pass_subject }
+import gunbc.machine_intake.ampere_smpro_observation {
+  smpro_pass_subject, SmproSiteAdmitted,
+}
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.host.smpro_platform_capability {
   SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
   SmproPlatformUnestablished, smpro_platform_standing, smpro_platform_controller_host,
   SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproPlatformSiteRefused,
   SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
   SmproUnestablishedCause, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
@@ -617,6 +620,11 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
     decl_ref(module_path: "test.claim.auth.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
+    // The two platform-arm claims: both re-point a real row's SMpro standing (not-carried, and the
+    // supplied x86 specimen that carries no site at all), which needs a constructor for the same reason
+    // the cross-wired rows above do — the admission cannot mint that shape through the admitted path.
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_boot_of_an_unbound_host_is_refused"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
@@ -656,7 +664,14 @@ fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) ->
       match host.smpro {
         // The only arm that can take a pass, and the only one that reads a site.
         SmproPlatformCarried { family: _, site: site } =>
-          match smpro_pass_subject(host: host.host, endpoint: bmc_control_route_endpoint(route: r), site: site) {
+          match smpro_pass_subject(
+            host: host.host,
+            endpoint: bmc_control_route_endpoint(route: r),
+            // The arm already holds an ADMITTED site; the mint's surface takes a standing, so it is
+            // presented as admitted rather than the platform arm weakened back to a standing that
+            // could hold a refusal.
+            site: SmproSiteAdmitted { site: site },
+          ) {
             SmproPassSubjectBound { subject: s } => SmproSubjectMinted { subject: s }
             SmproPassSiteRefused { cause: c } => SmproSubjectSiteRefused { cause: c }
             SmproPassEndpointMismatch { bound: b, site: st } => SmproSubjectEndpointMismatch { bound: b, site: st }
@@ -664,6 +679,7 @@ fn managed_host_smpro_subject(host: ManagedHost, control: BmcControlStanding) ->
         // Named, and named BY THE PLATFORM: the controller is bound and healthy here, so a message
         // claiming there is no controller would be false. The family is carried through so the reader
         // can see WHICH silicon was asked about.
+        SmproPlatformSiteRefused { family: _, cause: cause } => SmproSubjectSiteRefused { cause: cause }
         SmproPlatformNotCarried { family: family } => SmproSubjectNotCarried { family: family }
         SmproPlatformUnestablished { cause: cause } => SmproSubjectUnestablished { cause: cause }
       }

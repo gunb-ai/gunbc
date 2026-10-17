@@ -24,13 +24,14 @@ import extdeps.bmc.access_profile {
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, BmcFirmwareReleaseCapabilityRow }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import std.types { Int }
+import std.types { Int, List }
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityLookup,
   MegaRacReleaseCapabilityKnown,
   MegaRacReleaseCapabilityUncatalogued,
-  MegaRacReleaseCapabilityAmbiguous,
-  megarac_release_capability_row_for,
+  MegaRacReleaseCapabilityAmbiguous, MegaRacReleaseCapabilityIncoherent,
+  MegaRacReleaseCapabilityEntry, megarac_release_capability_row_for,
+  megarac_release_capability_row_for_in, megarac_release_capability_catalog,
 }
 
 // THE HOST-GRAIN STANDING OF A CONTROLLER'S CAPABILITY ROW. The three observed arms mirror the
@@ -51,10 +52,22 @@ type HostCapabilityRowStanding
 // access observation) and resolve the per-release catalog row for that build. An unobserved controller
 // has no reported build, so it is Unobserved, not a default row.
 fn host_capability_row(access: BmcAccessObservationStanding) -> HostCapabilityRowStanding {
+  host_capability_row_in(table: megarac_release_capability_catalog, access: access)
+}
+
+// THE SAME RESOLUTION OVER A SUPPLIED RELEASE TABLE. The shipped entry above resolves against the
+// shipped catalog and nothing else; this is the same implementation with the table named, so a witness
+// can hand it a DRIFTED table (an entry whose evidence read one build while its row declares another)
+// and assert that the capability row refuses -- the state the shipped catalog cannot contain and
+// therefore cannot demonstrate. One implementation, so the claim tests the path production walks.
+fn host_capability_row_in(
+  table: List<MegaRacReleaseCapabilityEntry>,
+  access: BmcAccessObservationStanding,
+) -> HostCapabilityRowStanding {
   match access {
     BmcAccessUnobserved { endpoint: endpoint } => HostCapabilityRowUnobserved { endpoint: endpoint }
     BmcAccessObserved { observation: observation } =>
-      match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
+      match megarac_release_capability_row_for_in(table: table, firmware: observation.identity.firmware) {
         MegaRacReleaseCapabilityKnown { row: row } => HostCapabilityRowKnown { row: row }
         MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => HostCapabilityRowUncatalogued { firmware: firmware }
         MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => HostCapabilityRowAmbiguous { firmware: firmware, count: count }

@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import std.algebra { FreeSemigroup }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -15,6 +16,9 @@ import gunbc.host.managed_host {
   managed_hosts,
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
+import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruIdentity }
+import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
   SmproTarget, SiteFromOperatorBrief, smpro_site_admit,
 }
@@ -81,6 +85,36 @@ test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission()
       OrdinaryResetRosterHost { host: _ } => false
       ResetRosterHostUnderDeclaredDrop { host: h, drop: _ } => (h as String) == (operator_host_mtcollins1 as String)
     })
+}
+
+// AN OBSERVATION WHOSE BOARD NO AUTHORITY CLAIMS. The board lookup reads the FRU, NOT the endpoint
+// (host_board_soc_families -> observed_board_authority(o.identity.board)), so re-pointing only the
+// endpoint would still resolve Mount Diablo and answer Carried -- the fixture would test nothing. This
+// keeps every other field of a real reading and replaces the board area with a vendor/product no
+// BoardAuthorityBinding names, which is the honest shape of "we looked, and the board is unbound".
+fn observation_with_unbound_board(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
+  let with_board = BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
+    identity: BmcObservedIdentity {
+      board: BoardFruRead {
+        fru: BoardFruIdentity {
+          manufacturer: "UNBOUND-FIXTURE-VENDOR",
+          product: "UNBOUND-FIXTURE-BOARD",
+          part_number: none,
+        },
+      },
+      chassis_part_number: o.identity.chassis_part_number,
+      firmware: o.identity.firmware,
+    },
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+  with_board
 }
 
 fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
@@ -209,7 +243,7 @@ test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
 // the whole point of the RED.
 data aarch64_family_outside_the_cited_set: SoCFamily = SoCFamily {
   name: "Aarch64-Family-Outside-The-Cited-Set",
-  models: [altra_q6430_catalog],
+  models: FreeSemigroup { head: altra_q6430_catalog, tail: [] },
 }
 
 test fn w_an_aarch64_family_the_cited_set_does_not_name_is_not_carried() -> Bool {
@@ -245,28 +279,61 @@ test fn w_an_unknown_family_is_unestablished_and_never_not_carried() -> Bool {
     SmproFacilityNotCarried { family: _ } => false
     SmproFacilityCarried { family: _ } => false
   }
-  // A host with no board row bound to it at all answers the same way, through the production path:
-  // the access observation reaches the board authority, finds nothing, and the verdict is
-  // Unestablished — NOT Carried (nothing licenses a read) and NOT NotCarried (no family was named to
-  // be refused). This is the arm the architecture key could not express at all.
-  let unbound_board = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
-    // The endpoint RIDES THROUGH in the cause, so the claim can name which controller it could not
-    // resolve -- a NonEmptyStr reason could only say "something was missing" about nothing in particular.
-    SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: e } } =>
+  // TWO DIFFERENT KINDS OF UNKNOWN, AND THE CAUSE SAYS WHICH (review 81322). Before the fix both
+  // reached the same NoBoardRowBound cause, because host_board_soc_families returns none for an
+  // unobserved access AND for an observed controller whose board reaches no row. Collapsing them told
+  // an operator chasing a missing board row to go bind a board, when the real gap was that nobody had
+  // ever looked at the controller -- a wrong located diagnostic, DESIGN.md Sec 5. Each case below
+  // asserts ITS OWN cause, so neither can be satisfied by the other's: if a future edit collapses
+  // them again, one of the two goes red.
+  //
+  // CASE 1: nobody has looked. The access standing was never observed.
+  let never_observed = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
+    // The endpoint RIDES THROUGH in the cause, so the claim names which controller was never read --
+    // prose could only say "something was missing" about nothing in particular.
+    SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: e } } =>
       (e.host as String) == (fixture_bmc_endpoint.host as String)
     SmproFacilityUnestablished { cause: _ } => false
     SmproFacilityNotCarried { family: _ } => false
     SmproFacilityCarried { family: _ } => false
+  }
+  // CASE 2: somebody looked, and the board it names is not bound to any authority. NOT a stand-in for
+  // case 1: mtcollins1's own reading is used, with only its board area replaced by a vendor/product no
+  // BoardAuthorityBinding names, so the board lookup genuinely reaches no row. The endpoint does NOT
+  // participate in board resolution, so re-pointing it alone would resolve Mount Diablo and answer
+  // Carried -- the fixture would assert nothing while still passing.
+  let board_unbound = match smpro_facility(access: BmcAccessObserved {
+      observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") }) {
+    SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: e } } =>
+      (e.host as String) == "fixture-unbound-bmc"
+    SmproFacilityUnestablished { cause: _ } => false
+    SmproFacilityNotCarried { family: _ } => false
+    SmproFacilityCarried { family: _ } => false
+  }
+  // AND THE DISCRIMINATOR ITSELF: the same query must not answer both causes. A cause is worth having
+  // only if it distinguishes, so this asserts the two paths disagree rather than merely both passing.
+  let causes_differ = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
+    SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: _ } } =>
+      match smpro_facility(access: BmcAccessObserved {
+          observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") }) {
+        SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: _ } } => true
+        _ => false
+      }
+    _ => false
   }
   // And neither unknown licenses a read.
   let no_read = smpro_facility_licenses_read(
     standing: smpro_facility_of_families(families: [])) == false
   let unbound_licenses_no_read = smpro_facility_licenses_read(
     standing: smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint })) == false
-  no_families && unbound_board && no_read && unbound_licenses_no_read
+  let board_unbound_licenses_no_read = smpro_facility_licenses_read(
+    standing: smpro_facility(access: BmcAccessObserved {
+      observation: observation_with_unbound_board(o: mtcollins1_access_observation, host: "fixture-unbound-bmc") })) == false
+  no_families && never_observed && board_unbound && causes_differ && no_read
+    && unbound_licenses_no_read && board_unbound_licenses_no_read
 }
 
-// The endpoint used to ask about a host with no access observation and therefore no board row.
+// The endpoint used to ask about a host nobody has ever observed (case 1 of the two unknowns).
 data fixture_bmc_endpoint: BmcControllerEndpoint = BmcControllerEndpoint {
   host: "fixture-unbound-bmc",
 }
@@ -386,7 +453,7 @@ test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set
 // that is what makes the claim worth having.
 data altra_named_impostor_family: SoCFamily = SoCFamily {
   name: "Altra",
-  models: [ryzen_9_7950x3d_catalog],
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
 }
 
 test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
@@ -523,7 +590,7 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
 // on.
 data amd_7950x3d_soc_family: SoCFamily = SoCFamily {
   name: "Ryzen 9 7950X3D",
-  models: [ryzen_9_7950x3d_catalog],
+  models: FreeSemigroup { head: ryzen_9_7950x3d_catalog, tail: [] },
 }
 
 
