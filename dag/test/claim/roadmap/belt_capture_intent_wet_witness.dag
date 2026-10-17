@@ -217,36 +217,3 @@ test fn a_kill_after_the_commit_does_not_lose_the_capture() -> Bool {
   let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
   held && cleaned.success
 }
-
-test fn step_plant_dirty() -> Bool {
-  let instance = fresh_instance(tag: "s1")
-  let w = plant_dirty(instance: instance)
-  let ok = w != "" && git_out(dir: w, args: ["status", "--porcelain"]) != ""
-  let c = shell.Remove.RecursiveForce(path: instance.instance_root)
-  ok && c.success
-}
-
-test fn step_mint() -> Bool {
-  let instance = fresh_instance(tag: "s2")
-  let w = plant_dirty(instance: instance)
-  let why = match belt_scm_capture_candidate_tree(
-    instance: instance, worktree: w, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt,
-    message: msg() as String, committed_revision: Absent,
-  ) {
-    ScmCandidateMinted { repository: _, generation: _, path: _, commit_ordinal: _, commit_root_locator: _ } => "minted"
-    ScmCaptureMintRefused { detail } => join(["refused: ", detail], "")
-    ScmCaptureMintPoisoned { detail } => join(["poisoned: ", detail], "")
-  }
-  let dbg = Filesystem.Write(path: "/tmp/gunbc_dbg_mint.txt", content: why).success
-  let ok = w != "" && why == "minted"
-  let c = shell.Remove.RecursiveForce(path: instance.instance_root)
-  ok && c.success && dbg
-}
-
-test fn step_save() -> Bool {
-  let instance = fresh_instance(tag: "s3")
-  let w = plant_dirty(instance: instance)
-  let o = if w == "" { 0 - 1 } else { through_scm_save(instance: instance, worktree: w) }
-  let c = shell.Remove.RecursiveForce(path: instance.instance_root)
-  o >= 0 && c.success
-}
