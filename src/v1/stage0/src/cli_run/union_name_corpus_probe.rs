@@ -355,7 +355,13 @@ mod probe {
                     stack.push(p);
                 } else if name.ends_with(".dag") {
                     if let Ok(text) = std::fs::read_to_string(&p) {
-                        out.push((p.to_string_lossy().to_string(), text));
+                        // REPO-RELATIVE, WITHOUT THE LEADING "./" THE WALK ADDS: the probe prints
+                        // these paths, and a file list handed back in is matched against them. A
+                        // leading "./" made a 141-file selection choose 0 files -- a run that measures
+                        // nothing, visible only because the phase lines print both counts.
+                        let rel = p.to_string_lossy().to_string();
+                        let rel = rel.strip_prefix("./").map(|r| r.to_string()).unwrap_or(rel);
+                        out.push((rel, text));
                     }
                 }
             }
