@@ -198,6 +198,9 @@ carrying both facts without conflating them:
 type AppliedPowerLimit                          // makes 'a watt with no provenance' unwritable
   = AppliedLimitUnread
   | AppliedLimitGrounded { limit: Watt, standing: CitedFigureStanding }
+  // standing stays the SHARED coproduct: external_authority:13-16 rules CITED/UNCITED/OBSERVED
+  // "ONE STANDING, not a per-domain coproduct", so AppliedPowerLimit cannot narrow it to a
+  // per-domain subset; which arm an applied limit may take is a witness + review fact, not a type fact
 
 type HomeServingPowerPolicy
   = PowerPolicyUnread { missing: NonEmptyStr }   // neither known: refused, never defaulted
@@ -248,6 +251,31 @@ home-serving fold that claims an *observed* applied limit is itself an admitting
 file and a review, not a call. Second, keeping `tdp_standing` beside the number rather than
 assuming it is deliberate: a ceiling without its datasheet is not the same fact as a ceiling with
 it, and P1 already attached the datasheet citation to exactly these rows.
+
+**The seal is only a third of this coproduct, and C's headline claim needs that stated honestly.**
+`ObservedReceipt` is `sole_constructor` (`:36`) and `observed_receipt` is `admit_callers`-gated
+(`:45-46`), but `CitedToAuthority` carries `ExternalAuthority`, which is a plain open record —
+`type ExternalAuthority { uri: Uri }` (`:9`), no constructor function, no admission list. So any
+module that imports the coproduct can already mint `CitedToAuthority { authority:
+ExternalAuthority { uri: ... } }` pointing at any string. What option C makes **unwritable is a watt
+carrying no standing**, not a watt carrying a standing that does not actually state its figure. The
+second failure is real and has form here: review 79389 on P1 caught exactly that — the Workstation
+CUDA-core count and a PCIe `x16` were sitting `CitedToAuthority` on
+`rtx_pro_6000_workstation_authority` (`extdeps/gpu/nvidia.dag:90`), whose locator is the *products*
+page `www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000/`, which does
+not state either figure. The fix added `rtx_pro_6000_workstation_datasheet_authority` (`:97`) with
+the real PDF (`.../workstation-datasheet-blackwell-rtx-pro6000-x-nvidia-us-3519208-web.pdf`) and
+re-pointed the standing and both citations at it; it landed in P1's squash `de0fedf0005`.
+
+So the guarantee on the cited arm is a *reviewable named declaration plus the human check*, not a
+type-level bar — which is also why the standing must be a named `data` row that a witness can pin,
+never an inline `CitedToAuthority` written at the use site. Two guards follow, and both are cheap: a
+witness pins each power standing's `authority.uri.locator` to the exact string (a citation cannot
+drift to a friendlier page unnoticed, which is how 79389 got in), and the applied-limit arm, if the
+operator chooses C with an observed reading, goes through the *sealed* arm rather than the open one —
+which is why `AppliedLimitGrounded` should not offer `CitedToAuthority` as the cheap default for a
+number this repository measured itself. `gunbc.recurring_failure_mode`
+`citation_verified_against_a_rendering_that_destroyed_its_scope` already rosters the adjacent class.
 
 with the relation stated as a rule instead of implied by a shared type: `applied_limit ≤
 tdp_watts`, refused loudly when violated, and `PowerPolicyUnread` refused at the fold — §5: *"A
