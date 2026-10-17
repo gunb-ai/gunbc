@@ -42,7 +42,7 @@ import extdeps.network.mac { Eui48Address, mac_is_permanent_interface_identity, 
 // The identity axes a boot attempt can be proven on. Closed, because the verdict must be accountable to
 // a fixed list: a verdict that could omit an axis silently would be a verdict about whatever happened to be
 // asked. An additional axis (a TPM attestation quote, say) adds an arm here, a union below, a field on
-// each side, and a row in the axis table -- and the match fn's totals stay total because the comparison is
+// each side, and a row in the axis table -- and the match fn's totals stay total because the verdict is
 // a fold over this union rather than a hand-written chain.
 type RuntimeIdentityAxis
   = BoardSerialAxis
@@ -61,23 +61,10 @@ type AxisWeight
   = DecisiveAxis
   | CorroboratingAxis
 
-// How two readings of one axis are compared, as policy rather than as code scattered through the fold.
-//
-// The MAC set is NOT an exact-equality axis: a firmware reports every interface it can boot from while the
-// booted OS reports the interfaces it brought up, and on the fleet's boxes those sets legitimately differ
-// (a management NIC the firmware lists and the OS leaves down). Requiring exact equality there would be
-// Unprovable for every real unit; requiring NOTHING there would let a different machine through. So the
-// rule is a shared address, and it is stated in the table where a reviewer can read it, not buried in the
-// comparison.
-type AxisComparison
-  = ExactStringEquality
-  | NonEmptyMacIntersection
-
 // ONE ROW PER AXIS: what it weighs, how it is compared, and who says so.
 type RuntimeIdentityAxisRow {
   axis: RuntimeIdentityAxis
   weight: AxisWeight
-  comparison: AxisComparison
   // TWO homes, both required, because a row makes TWO claims and a single citation can own only one of
   // them -- DESIGN section 3b calls that a scope mismatch, and it is worse than no citation because it
   // looks audited. `reading_authority` owns the FIELD this axis reads (its spelling, and that it can be
@@ -113,7 +100,7 @@ type RuntimeIdentityAxisRow {
 //   them) and binds through RecordedFruObservation, the sealed carrier that ties those fields to a named
 //   subject AND to the exact capture they were read from. It is the binding that makes a decoded string
 //   belong to a unit rather than to a parse, and it is a weaker claim than the serial's key, which is why
-//   this row is Corroborating and its comparison is only string agreement.
+//   this row is Corroborating and what it can ever claim is that two strings agree.
 // - NicSet reads Eui48Address (the address itself, and what its scope/transmission bits mean) and binds
 //   through mac_is_permanent_interface_identity, the predicate that owns when an address is a permanent
 //   interface identity at all. A shared address can only bind two sightings if an address can name an
@@ -128,21 +115,18 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
   RuntimeIdentityAxisRow {
     axis: BoardSerialAxis,
     weight: DecisiveAxis,
-    comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "BoardSerialObservation"),
     binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "bind_unit_key"),
   },
   RuntimeIdentityAxisRow {
     axis: BiosVersionAxis,
     weight: CorroboratingAxis,
-    comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "FirmwareManifest"),
     binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "firmware_manifest_digest"),
   },
   RuntimeIdentityAxisRow {
     axis: ModelAxis,
     weight: CorroboratingAxis,
-    comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "FruIdentityFields"),
     binding_authority: decl_ref(
       module_path: "gunbc.machine_intake.mtjade1_access_observation",
@@ -152,7 +136,6 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
   RuntimeIdentityAxisRow {
     axis: NicSetAxis,
     weight: DecisiveAxis,
-    comparison: NonEmptyMacIntersection,
     reading_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "Eui48Address"),
     binding_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_is_permanent_interface_identity"),
   },
@@ -249,8 +232,8 @@ type IdentitySide
 // side into a `NonEmptyStr` would have to be fabricated -- either a refinement cast that asserts something
 // unproven, or a sentinel string standing in for absence. Both are forbidden (DESIGN section 5: no
 // fabricated output; absence uses the language's absence type). So the divergence stores what the sides
-// SAID, and `divergence_pre_side` / `divergence_post_side` render it for a report into a LIST, where "I was
-// told nothing" is a length rather than a lie. Adding an axis that reports something other than text or
+// SAID. A report renders an address side into a LIST of `render_mac_address` strings, where "I was told
+// nothing" is a length rather than a lie; the consumer decides what absence looks like to its reader. Adding an axis that reports something other than text or
 // addresses adds an arm to that pair and to those two fns -- the compiler asks, rather than a cast
 // silently agreeing to produce a string of whatever length it gets.
 type RuntimeIdentityDivergence {
@@ -369,7 +352,7 @@ fn axes_checked_and_passed(pre: PreBootIdentityStanding, post: PostBootIdentityR
 // element, so a verdict can never be assembled from a fabricated reading.
 fn divergence_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityDivergence> {
   match axis_pair(row: row, pre: pre, post: post) {
-    Present { value: pair } => if axes_agree(row: row, pair: pair) {
+    Present { value: pair } => if axes_agree(pair: pair) {
       []
     } else {
       [RuntimeIdentityDivergence { axis: row.axis, readings: pair }]
@@ -405,14 +388,14 @@ fn both_sides_read(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, po
 
 // THE READINGS OF ONE AXIS ON BOTH SIDES, or Absent when either side failed to read.
 //
-// A SUM, not a record with four fields two of which are always placeholders. The two comparison policies
-// consume different evidence -- an exact-string axis has no addresses to compare, an address-set axis has
+// A SUM, not a record with four fields two of which are always placeholders. The two agreement rules
+// consume different evidence -- an exact-equality axis has no addresses to compare, an address-set axis has
 // no text to compare -- and one flat record would force every string axis to carry `[]` where addresses
 // should be and every address axis to carry a rendering where a reading should be. A flat shape then lets
-// a comparison read the half its policy does not use: the divergence this shape makes impossible is a
-// MAC axis "agreeing" because two rendered strings happened to match, or a serial axis comparing empty
-// address lists and calling that a shared interface. Which arm a pair is follows from the axis's policy in
-// the table, and `axes_agree` cannot ask for evidence its arm does not carry.
+// one rule read the half it does not use: the divergence this shape makes impossible is a MAC axis
+// "agreeing" because two rendered strings happened to match, or a serial axis comparing empty address lists
+// and calling that a shared interface. Which arm a pair is follows from the axis, in `axis_pair`, the only
+// place a pair is ever built -- so the rule that runs is decided by the evidence in hand and nothing else.
 type AxisReadingPair
   = TextPair { pre_text: NonEmptyStr, post_text: NonEmptyStr }
   | AddressSetPair { pre_addresses: List<Eui48Address>, post_addresses: List<Eui48Address> }
@@ -458,24 +441,30 @@ fn axis_pair(
   }
 }
 
-// The comparison, dispatched on the table's policy rather than on the axis: the table says how to compare,
-// and this fn is the one implementation of each rule.
+// THE AGREEMENT RULES, indexed by READING KIND -- which is the only way this can be written so a
+// misconfiguration cannot fabricate a verdict. There used to be an `AxisComparison` field on the row and a
+// dispatch on both the row's policy and the pair's arm; that let a reviewer-visible edit to the table (give
+// the address axis `ExactStringEquality`) produce a `Mismatch` for units whose addresses agree, reporting a
+// divergence that never happened. Two independent facts that can contradict each other, and the code's
+// answer to the contradiction was a fabricated verdict -- DESIGN section 5 forbids exactly that, and
+// prefers the shape where the wrong state is unwritable over one that catches it.
 //
-// WHICH ARM CAN ARRIVE is settled upstream by the same policy -- axis_pair builds the pair from the row --
-// so the cross combinations below are unreachable. They FAIL CLOSED rather than being written as an
-// assertion or a panic: an axis that somehow reached a rule with evidence of the other kind must not be
-// blessed as agreeing, it must surface as a divergence an operator sees. Fail-closed is also the only
-// choice that keeps the fn total, which the fold's totality depends on.
-fn axes_agree(row: RuntimeIdentityAxisRow, pair: AxisReadingPair) -> Bool {
+// So the rule travels WITH the evidence: a text pair is compared by exact equality, an address pair by a
+// shared permanent address. Which kind a axis produces is settled by `axis_pair` above, the single place a
+// pair is ever built, and no row can now overrule it. The two rules stay two rules because they are
+// genuinely different claims -- the address rule is NOT exact equality, since a firmware reports every
+// interface it can boot from while the booted OS reports only what it brought up, and on this fleet's boxes
+// those sets legitimately differ (a management NIC the firmware lists and the OS leaves down). Exact
+// equality there would make every real unit Unprovable; requiring nothing would let a different machine
+// through.
+//
+// A future axis that needs a THIRD rule (a TPM quote compared by containment, say) adds an arm to
+// `AxisReadingPair` and an arm here, and the compiler asks for both -- that is the cost this shape buys
+// with, and it is cheaper than a table that can state a policy the fold cannot honour.
+fn axes_agree(pair: AxisReadingPair) -> Bool {
   match pair {
-    TextPair { pre_text: pt, post_text: pt2 } => match row.comparison {
-      ExactStringEquality => pt == pt2
-      NonEmptyMacIntersection => false
-    }
-    AddressSetPair { pre_addresses: pa, post_addresses: po } => match row.comparison {
-      NonEmptyMacIntersection => mac_sets_share_an_address(pre: pa, post: po)
-      ExactStringEquality => false
-    }
+    TextPair { pre_text: pt, post_text: pt2 } => pt == pt2
+    AddressSetPair { pre_addresses: pa, post_addresses: po } => mac_sets_share_an_address(pre: pa, post: po)
   }
 }
 
@@ -502,36 +491,6 @@ fn same_mac_address(left: Eui48Address, right: Eui48Address) -> Bool {
     && left.octet4 == right.octet4
     && left.octet5 == right.octet5
     && left.octet6 == right.octet6
-}
-
-// THE TWO SIDES OF A DIVERGENCE, rendered for a report. Reporting only -- never deciding: the comparison
-// reads addresses and octets, and `render_mac_address` is the single authority for how one is written.
-//
-// Each side is a LIST of renderings, not a joined string, because a side is entitled to have said nothing:
-// an empty address set is a reading (the side reported no addresses), and turning that into a `NonEmptyStr`
-// means fabricating content to satisfy a refinement. As a list, the empty case is a length, which is true,
-// and a consumer that wants one string must decide what absence means for its reader -- a decision this
-// module refuses to make on its behalf. Both sides are exposed because a report that showed only one side
-// would recreate the accusation-without-diagnosis this type exists to prevent.
-//
-// What is reported is what each side REPORTED, addresses the binding rule refused included: an operator
-// diagnosing a divergence needs to see that a side's only address was a locally administered one, not a
-// list that quietly dropped it and looked like silence.
-//
-// Consumed by this module's witness and by the S10 wet half's operator report (DESIGN section 3c: named
-// later change, with its trigger).
-fn divergence_pre_side(divergence: RuntimeIdentityDivergence) -> List<NonEmptyStr> {
-  match divergence.readings {
-    TextPair { pre_text: pt, post_text: _ } => [pt]
-    AddressSetPair { pre_addresses: pa, post_addresses: _ } => pa.map(a => render_mac_address(addr: a))
-  }
-}
-
-fn divergence_post_side(divergence: RuntimeIdentityDivergence) -> List<NonEmptyStr> {
-  match divergence.readings {
-    TextPair { pre_text: _, post_text: po } => [po]
-    AddressSetPair { pre_addresses: _, post_addresses: po } => po.map(a => render_mac_address(addr: a))
-  }
 }
 
 // Which side stayed quiet, and what it said. Both sides are checked so an Unprovable is located rather than
@@ -620,48 +579,7 @@ fn absence_on_os_side(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport)
 }
 
 
-// HOW a gap failed, as data rather than as a string a consumer would have to re-parse. Consumed now by
-// this module's witness, and by the declared S10 wet half: the operator report routes a refusal to a row
-// to pin and an unread axis to a probe fix, which is the difference these three fns exist to preserve
-// (DESIGN section 3c: consumed by a named later change, with its trigger, not left dangling). A caller that must
-// route "the controller said no" to a row-pin and "nobody asked" to a probe fix reads these; both are
-// derivable from the sum, and neither is stored beside it.
-fn runtime_identity_gap_is_refusal(gap: RuntimeIdentityGap) -> Bool {
-  match gap.absence {
-    ControllerRefused { refusal: _ } => true
-    Unread { reason: _ } => false
-  }
-}
-
-fn runtime_identity_gap_refusal(gap: RuntimeIdentityGap) -> RuntimeIdentityRefusal? {
-  match gap.absence {
-    ControllerRefused { refusal: f } => Present { value: f }
-    Unread { reason: _ } => Absent
-  }
-}
-
-// The gap rendered for a human, derived from the sum on demand. Renderings are always derived from the
-// semantic arms and never stored next to them.
-fn runtime_identity_gap_detail(gap: RuntimeIdentityGap) -> NonEmptyStr {
-  match gap.absence {
-    Unread { reason: r } => r
-    ControllerRefused { refusal: f } => runtime_identity_refusal_detail(refusal: f)
-  }
-}
-
 // Whether a verdict is a Match, as an fn rather than as a field: a caller cannot ask a verdict whether it
 // matched and get a stored answer that drifted from its arms.
 
 
-
-// THE CARRIED UNIT. Consumed now by this module's witness (which asserts a verdict is attributable), and
-// by the declared next change -- the S10 wet half, which reports verdicts to an operator and so cannot
-// report one without naming the unit it binds. Classified per DESIGN section 3c as consumed by a named
-// later change rather than left dangling: its trigger is the first caller that surfaces a verdict.
-fn runtime_identity_verdict_unit(verdict: RuntimeIdentityVerdict) -> NonEmptyStr {
-  match verdict {
-    Match { axes_matched: _, unit: u } => u
-    Mismatch { diverged: _, unit: u } => u
-    Unprovable { why: _, unit: u } => u
-  }
-}

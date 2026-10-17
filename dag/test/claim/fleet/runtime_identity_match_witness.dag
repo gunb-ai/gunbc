@@ -16,7 +16,7 @@ import std.types { Bool, List, NonEmptyStr }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address }
 import gunbc.fleet.runtime_identity_match {
   BoardSerialAxis,
   BoardSerialObserved,
@@ -45,21 +45,22 @@ import gunbc.fleet.runtime_identity_match {
   PostBootOsSide,
   RuntimeIdentityAxis,
   RuntimeIdentityDivergence,
-  divergence_pre_side,
-  divergence_post_side,
+  AxisReadingPair,
+  TextPair,
+  AddressSetPair,
   RuntimeIdentityGap,
   AuthenticationFailed,
   QueryUnsupported,
   ReplyUnreadable,
   RuntimeIdentityVerdict,
-  TextPair,
-  AddressSetPair,
+  RuntimeIdentityAbsence,
+  ControllerRefused,
+  Unread,
   axes_agree,
   same_runtime_identity_axis,
   Unprovable,
   runtime_identity_axis_rows,
   runtime_identity_match,
-  runtime_identity_verdict_unit,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -145,7 +146,7 @@ test fn test_verdict_predicates_are_exclusive() -> Bool {
   classifies_as_match(verdict: agreed)
     && classifies_as_mismatch(verdict: diverged)
     && classifies_as_unprovable(verdict: mute)
-    && runtime_identity_verdict_unit(verdict: agreed) == fixture_unit
+    && verdict_unit(verdict: agreed) == fixture_unit
 }
 
 // A corroborating axis that agrees contributes NOTHING to axes_matched: claiming it would make a Match look
@@ -362,7 +363,7 @@ fn verdict_is_coherent(pre: PreBootIdentityStanding, post: PostBootIdentityRepor
   let verdict = runtime_identity_match(pre: pre, post: post)
   classifies_as_match(verdict: verdict) || classifies_as_mismatch(verdict: verdict) || classifies_as_unprovable(verdict: verdict)
     && exactly_one_of_three(verdict: verdict)
-    && runtime_identity_verdict_unit(verdict: verdict) == fixture_unit
+    && verdict_unit(verdict: verdict) == fixture_unit
 }
 
 fn exactly_one_of_three(verdict: RuntimeIdentityVerdict) -> Bool {
@@ -594,17 +595,36 @@ fn first_axis(divergences: List<RuntimeIdentityDivergence>) -> RuntimeIdentityAx
   }
 }
 
+// The two sides of a divergence, read off the pair it carries and rendered here. `render_mac_address` is the
+// module's own spelling; the divergence hands over the addresses themselves so that a side which reported
+// NONE renders as an empty list rather than as an invented string.
+fn side_renderings(readings: AxisReadingPair, side_is_pre: Bool) -> List<NonEmptyStr> {
+  match readings {
+    TextPair { pre_text: pt, post_text: po } => if side_is_pre { [pt] } else { [po] }
+    AddressSetPair { pre_addresses: pa, post_addresses: po } =>
+      if side_is_pre { pa.map(a => render_mac_address(addr: a)) } else { po.map(a => render_mac_address(addr: a)) }
+  }
+}
+
 fn first_pre_side(divergences: List<RuntimeIdentityDivergence>) -> List<NonEmptyStr> {
   match divergences.first() {
-    Present { value: d } => divergence_pre_side(divergence: d)
+    Present { value: d } => side_renderings(readings: d.readings, side_is_pre: true)
     Absent => []
   }
 }
 
 fn first_post_side(divergences: List<RuntimeIdentityDivergence>) -> List<NonEmptyStr> {
   match divergences.first() {
-    Present { value: d } => divergence_post_side(divergence: d)
+    Present { value: d } => side_renderings(readings: d.readings, side_is_pre: false)
     Absent => []
+  }
+}
+
+fn verdict_unit(verdict: RuntimeIdentityVerdict) -> NonEmptyStr {
+  match verdict {
+    Match { axes_matched: _, unit: u } => u
+    Mismatch { diverged: _, unit: u } => u
+    Unprovable { why: _, unit: u } => u
   }
 }
 
@@ -615,29 +635,51 @@ fn first_gap_axis(gaps: List<RuntimeIdentityGap>) -> RuntimeIdentityAxis {
   }
 }
 
+// HOW a gap failed, read off the sums themselves. The module used to export `runtime_identity_gap_is_refusal`
+// and friends; they were shadow wrappers over variants the module already exports, had no consumer outside
+// this file, and could drift from the sum they paraphrased -- so they are gone and the pattern matching
+// lives here, where a drift would be a compile error rather than a silent disagreement.
+fn gap_is_refusal(gap: RuntimeIdentityGap) -> Bool {
+  match gap.absence {
+    ControllerRefused { refusal: _ } => true
+    Unread { reason: _ } => false
+  }
+}
+
+fn gap_detail(gap: RuntimeIdentityGap) -> NonEmptyStr {
+  match gap.absence {
+    ControllerRefused { refusal: f } => match f {
+      QueryUnsupported { detail: d } => d
+      AuthenticationFailed { detail: d } => d
+      ReplyUnreadable { detail: d } => d
+    }
+    Unread { reason: r } => r
+  }
+}
+
 fn first_gap_detail(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
   match gaps.first() {
-    Present { value: g } => runtime_identity_gap_detail(gap: g)
+    Present { value: g } => gap_detail(gap: g)
     Absent => "none"
   }
 }
 
 fn first_gap_is_refusal(gaps: List<RuntimeIdentityGap>) -> Bool {
   match gaps.first() {
-    Present { value: g } => runtime_identity_gap_is_refusal(gap: g)
+    Present { value: g } => gap_is_refusal(gap: g)
     Absent => false
   }
 }
 
 fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
   match gaps.first() {
-    Present { value: g } => match runtime_identity_gap_refusal(gap: g) {
-      Present { value: f } => match f {
+    Present { value: g } => match g.absence {
+      ControllerRefused { refusal: f } => match f {
         QueryUnsupported { detail: _ } => "query-unsupported"
         AuthenticationFailed { detail: _ } => "authentication-failed"
         ReplyUnreadable { detail: _ } => "reply-unreadable"
       }
-      Absent => "unread"
+      Unread { reason: _ } => "unread"
     }
     Absent => "none"
   }
@@ -667,20 +709,29 @@ fn first_gap_side(gaps: List<RuntimeIdentityGap>) -> IdentitySide {
 // agree, a text axis could be blessed by an address comparison and the fold would never tell us. The rows
 // come from the module's own table, not from copies here, so the witness cannot drift from the policy it
 // is testing.
-test fn test_an_axis_never_agrees_on_evidence_its_comparison_does_not_name() -> Bool {
-  let text_rows = runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: ModelAxis))
-  let address_rows = runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: NicSetAxis))
-  let same_text = TextPair { pre_text: fixture_model, post_text: fixture_model }
-  let shared_addresses = AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_b()] }
-  // the table still holds exactly one row per axis, or the quantifiers below are vacuous
-  text_rows.length() == 1
-    && address_rows.length() == 1
-    // each rule agrees on its own evidence...
-    && text_rows.all(row => axes_agree(row: row, pair: same_text))
-    && address_rows.all(row => axes_agree(row: row, pair: shared_addresses))
-    // ...and neither agrees on the other's, however well that evidence would satisfy it.
-    && text_rows.all(row => !axes_agree(row: row, pair: shared_addresses))
-    && address_rows.all(row => !axes_agree(row: row, pair: same_text))
+// THE RULE THAT RUNS FOLLOWS THE EVIDENCE, NOT THE TABLE. `axes_agree` takes ONLY the pair: there is no
+// row argument and no `comparison` field on a row any more, because a table row that could name a rule its
+// axis cannot exercise fabricated a Mismatch out of nothing (give the address axis a string policy and every
+// unit whose addresses agreed was reported as diverging -- DESIGN section 5: no fabricated output, and the
+// wrong state should be unwritable rather than caught). The signature is the proof, and this witness is
+// written against it: no row is passed, so no row can overrule the rule.
+//
+// The four assertions are the whole dispatch: two for each rule, agreeing and not. The locally administered
+// case is here so the address rule cannot pass by accepting any shared octets, which is the widen review
+// 81767 found.
+test fn test_the_agreement_rule_follows_the_evidence_not_the_table() -> Bool {
+  axes_agree(pair: TextPair { pre_text: fixture_model, post_text: fixture_model })
+    && !axes_agree(pair: TextPair { pre_text: fixture_model, post_text: fixture_other_model })
+    && axes_agree(pair: AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_b()] })
+    && !axes_agree(pair: AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_c()] })
+    && !axes_agree(pair: AddressSetPair {
+      pre_addresses: [fixture_mac_locally_administered()],
+      post_addresses: [fixture_mac_locally_administered()],
+    })
+    && !axes_agree(pair: AddressSetPair {
+      pre_addresses: [fixture_mac_group()],
+      post_addresses: [fixture_mac_group()],
+    })
 }
 
 test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bool {
