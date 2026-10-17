@@ -1,21 +1,182 @@
 module v2.compiler.target_serialize
 
-import std.types { List }
-import std.occurrence_identity { OccurrenceSynthetic }
-import v2.extdeps.languages.dag { dag_surface_operator_canonicalization_member, dag_value_expression_projection, dag_surface_edge_label }
-import extdeps.communication.medium { Medium }
-import v2.compiler.target_carriers { target_source_medium }
-import v2.std.compilers.target_model { TargetBodiedArrowStatementScaffold, TargetModel, TargetValueExpression, bodied_arrow_scaffold_from_grammar_relation_row, canonical_operation_from_wire_node, target_bodied_arrow_compose_statement_tokens, target_project_arrow_body_to_value_expression, target_project_transform_primitive_apply_in_arrow_scope, target_project_transform_callable_apply_in_arrow_scope, target_transform_operator_child, target_value_expr_arrow_has_value_expression_body, target_value_expr_diagnostic, target_value_expression_projection_from_target, target_value_expression_tokens_from_target, TypeExprKindAuthority, TypeExprKindNotEmitted, ConcreteSyntaxToken, TargetFunctionTypeShape, TargetGenericApply, TargetSumTypeShape, TargetTypeExprArrowParamSlot, TargetTypeExpression, TargetTypeExpressionProjection, TargetTypeExprAtom, TargetTypeExprArrow, TargetTypeExprOccupancy, TargetTypeExprInstantiation, TargetTypeExprRecord, TargetTypeExprSum, target_type_expr_arrow_labeled_codomain, target_type_expr_arrow_labeled_param_slots, target_type_expr_arrow_wire_shape, TargetTypeExprArrowLabeledWire, TargetTypeExprArrowPositionalWire, target_type_expr_emitted_labeled_slot_edges, target_type_expr_emitted_labeled_slot_nodes, target_type_expr_emitted_wire_decode, target_type_expr_emitted_kind, type_expression_projection_from_target, lex_rules_literal, bound_tokens_source_text_with_transforms, TargetText, text_atom, target_text_seq, target_text_empty, target_text_is_empty, render_target_text, token_text_from_decoded, LexLiteralIndex, lex_literal_index, target_text_nested, concrete_syntax_token_from_node, target_binding_spelling_lookup, serialize_type_expr_arrow_param_spelling, TargetFunctionSignatureRealization, FunctionBoundarySite, FunctionBoundaryParam, FunctionBoundaryReturn, target_function_signature_realization_lookup_in_catalog_node, TargetOwnershipUseSite, TargetReferenceLayerTokens, OwnershipAtFunctionReturn, OwnershipAtFunctionParameter, WrapByValue, WrapByReference, WrapDecisionGate, WrapGateInapplicable, WrapGateDecided, target_reference_layer_tokens_from_node, target_reference_layer_apply_type_emitted, import_value_from_carrier, module_import_projection_from_target, target_import_to_concrete_tokens }
-import v2.compiler.wrap_decision { wrap_decision_gate }
-import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, NonEmptyDiagnostics, node_locus, Outcome, None, Rejected, Unavailable, bind_outcome, bind_outcome_accepted, diagnostics_merge, diagnostics_singleton, outcome_accepted, outcome_rejected, rejected_with_pending, diagnostics_fatal_reason }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode, node_subtree_count, Arrow, Occupancy, ComputationNode, Disj, Instantiation }
-import v2.std.type_binder { type_param_names }
-import v2.std.node_query { find_named_child, node_positional_child_targets, find_labeled_child }
+import std.types { Bool, List }
+import std.occurrence_identity {
+  OccurrenceSynthetic
+}
+import v2.compiler.inferred_tree {
+  InferredFacts,
+  InferredTree
+}
+import v2.compiler.infer { infer_nullary_zero_param_coproduct_arm_use }
+import v2.extdeps.languages.dag {
+  dag_surface_operator_canonicalization_member,
+  dag_value_expression_projection,
+  dag_surface_edge_label,
+}
+import extdeps.communication.medium {
+  Medium
+}
+import v2.compiler.target_carriers {
+  target_source_medium
+}
+import v2.std.compilers.target_model {
+  TargetBodiedArrowStatementScaffold,
+  TargetModel,
+  TargetValueExpression,
+  bodied_arrow_scaffold_from_grammar_relation_row,
+  canonical_operation_from_wire_node,
+  target_bodied_arrow_compose_statement_tokens,
+  target_project_arrow_body_to_value_expression,
+  target_value_expr_project_body_subexpression,
+  target_value_expression_binding_ref,
+  target_value_expression_conditional,
+  target_project_transform_primitive_apply_in_arrow_scope,
+  target_project_transform_callable_apply_in_arrow_scope,
+  target_transform_operator_child,
+  target_value_expr_arrow_has_value_expression_body,
+  target_value_expr_diagnostic,
+  target_value_expression_projection_from_target,
+  target_value_expression_tokens_from_target,
+  TypeExprKindAuthority,
+  TypeExprKindNotEmitted
+}
+import v2.compiler.wrap_decision {
+  wrap_decision_gate
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  node_locus,
+  Outcome,
+  None,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  bind_outcome_accepted,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_accepted,
+  outcome_rejected,
+  rejected_with_pending,
+  diagnostics_fatal_reason
+}
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  declaration_reference_body_marked,
+  node_subtree_count,
+  Arrow,
+  Occupancy,
+  Branch,
+  ComputationNode,
+  Disj,
+  Instantiation,
+  symbol_intern_lexeme,
+  symbol_lexeme
+}
+import v2.std.qualified_name {
+  declaration_reference_path_optional,
+  qualified_name_init,
+  qualified_name_last_segment
+}
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.type_binder {
+  type_param_names
+}
+import v2.std.node_query {
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets,
+  find_labeled_child,
+}
+import v2.std.compilers.target_model {
+  ConcreteSyntaxToken,
+  TargetValueExpression,
+  TargetFunctionTypeShape,
+  TargetGenericApply,
+  TargetSumTypeShape,
+  TargetTypeExprArrowParamSlot,
+  TargetTypeExpression,
+  TargetTypeExpressionProjection,
+  TargetTypeExprAtom,
+  TargetTypeExprArrow,
+  TargetTypeExprOccupancy,
+  TargetTypeExprInstantiation,
+  TargetTypeExprRecord,
+  TargetTypeExprSum,
+  target_type_expr_arrow_labeled_codomain,
+  target_type_expr_arrow_labeled_param_slots,
+  target_type_expr_arrow_wire_shape,
+  TargetTypeExprArrowLabeledWire,
+  TargetTypeExprArrowPositionalWire,
+  target_type_expr_emitted_labeled_slot_edges,
+  target_type_expr_emitted_labeled_slot_nodes,
+  target_type_expr_emitted_wire_decode,
+  target_type_expr_emitted_kind,
+  type_expression_projection_from_target,
+  lex_rules_literal,
+  bound_tokens_source_text_with_transforms,
+  TargetText,
+  text_atom,
+  target_text_seq,
+  target_text_empty,
+  target_text_is_empty,
+  render_target_text,
+  token_text_from_decoded,
+  LexLiteralIndex,
+  lex_literal_index,
+  target_text_nested,
+  concrete_syntax_token_from_node,
+  target_binding_spelling_lookup,
+  serialize_type_expr_arrow_param_spelling
+}
+import v2.std.compilers.target_model {
+  TargetFunctionSignatureRealization,
+  FunctionBoundarySite,
+  FunctionBoundaryParam,
+  FunctionBoundaryReturn,
+  target_function_signature_realization_lookup_in_catalog_node,
+  TargetOwnershipUseSite,
+  TargetReferenceLayerTokens,
+  OwnershipAtFunctionReturn,
+  OwnershipAtFunctionParameter,
+  WrapByValue,
+  WrapByReference,
+  WrapDecisionGate,
+  WrapGateInapplicable,
+  WrapGateDecided,
+  target_reference_layer_tokens_from_node,
+  target_reference_layer_apply_type_emitted,
+  import_value_from_carrier,
+  module_import_projection_from_target,
+  target_import_to_concrete_tokens
+}
 import v2.std.witness { map_get_checked }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { Empty, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional }
-import v2.std.text { String }
-import v2.std.grammar { grammar_relation_row_reverse_parse_selection, node_atom_identity_optional }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional }
+import v2.std.text {
+  String
+}
+import v2.std.grammar {
+  grammar_relation_row_reverse_parse_selection,
+  node_atom_identity_optional
+}
 
 // THE SOURCE SERIALIZER, APART FROM THE TRANSLATE STAGE. Serializing an emitted node against a
 // TargetModel is a grammar fold over the target's relation rows and concrete-syntax projections: it
@@ -603,13 +764,364 @@ fn translate_generic_arrow_not_rendered_diagnostic(arrow: Node) -> Diagnostic {
   }
 }
 
+// DECLARED GAP: this serialize entry is given an emitted Node, not an InferredTree. Nullary-arm
+// stamp lookup therefore cannot fire here; a declaration-reference body refuses
+// emit_declaration_reference_inferred_facts_absent rather than guessing. The module-emit path
+// carries the real tree. empty_symbol_index at these call sites is the same gap: no resolve index
+// is in scope at relation-row serialize.
+fn serialize_facts_absent_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: PartialFunction {
+      lookup: fn(_key) {
+        Absent
+      }
+    }
+  }
+}
+
+fn emit_declaration_reference_facts_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_inferred_facts_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_declaration_reference_not_nullary_arm_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_declaration_reference_not_nullary_coproduct_arm,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn emit_nullary_coproduct_arm_path_absent_diagnostic(body: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_nullary_coproduct_arm_path_absent,
+    at: node_locus(node: body),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn nullary_coproduct_arm_binding_spelling(body: Node) -> Optional<Symbol> {
+  match declaration_reference_path_optional(node: body) {
+    Absent => Absent
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Absent => Absent
+        Present { value: leaf } =>
+          match qualified_name_last_segment(qn: qualified_name_init(qn: path)) {
+            Absent => Present { value: leaf }
+            Present { value: parent } =>
+              Present {
+                value: symbol_intern_lexeme(
+                  lexeme: concat(symbol_lexeme(sym: parent), concat("::", symbol_lexeme(sym: leaf)))
+                )
+              }
+          }
+      }
+  }
+}
+
+fn inferred_facts_for_projected_node(tree: InferredTree, node: Node) -> Optional<InferredFacts> {
+  tree.facts.lookup(node)
+}
+
+fn project_nullary_arm_binding(node: Node) -> Outcome<TargetValueExpression> {
+  match nullary_coproduct_arm_binding_spelling(body: node) {
+    Present { value: binding } =>
+      outcome_accepted(target_value_expression_binding_ref(binding: binding))
+    Absent =>
+      outcome_rejected(d: emit_nullary_coproduct_arm_path_absent_diagnostic(body: node))
+  }
+}
+
+fn project_value_node_from_inferred_facts(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match inferred_facts_for_projected_node(tree: tree, node: node) {
+    Present { value: facts } =>
+      if infer_nullary_zero_param_coproduct_arm_use(
+        node: node,
+        index: declarations,
+        facts: facts
+      ) {
+        project_nullary_arm_binding(node: node)
+      } else {
+        project_value_node_structurally(
+          arrow: arrow,
+          node: node,
+          target: target,
+          tree: tree,
+          declarations: declarations,
+          handle_transform: handle_transform
+        )
+      }
+    Absent =>
+      project_value_node_structurally(
+        arrow: arrow,
+        node: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_occupancy_carrier_from_inferred_facts(
+  arrow: Node,
+  occupancy: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match fold_list(
+    xs: node_positional_child_targets(node: occupancy),
+    empty: Absent,
+    cons: fn(_acc, child) { Present { value: child } }
+  ) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_arrow_body_form_unsupported,
+          node: occupancy
+        )
+      )
+    Present { value: inner } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: inner,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_branch_from_inferred_facts(
+  arrow: Node,
+  body: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+    Present { value: cond } =>
+      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+        Absent =>
+          outcome_rejected(
+            d: target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: body
+            )
+          )
+        Present { value: then_arm } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
+            Absent =>
+              outcome_rejected(
+                d: target_value_expr_diagnostic(
+                  reason: ^target_value_expr_reason_transform_shape_invalid,
+                  node: body
+                )
+              )
+            Present { value: else_arm } =>
+              bind_outcome(
+                o: project_value_node_from_inferred_facts(
+                  arrow: arrow,
+                  node: cond,
+                  target: target,
+                  tree: tree,
+                  declarations: declarations,
+                  handle_transform: handle_transform
+                ),
+                f: fn(projected_cond) {
+                  bind_outcome(
+                    o: project_value_node_from_inferred_facts(
+                      arrow: arrow,
+                      node: then_arm,
+                      target: target,
+                      tree: tree,
+                      declarations: declarations,
+                      handle_transform: handle_transform
+                    ),
+                    f: fn(projected_then) {
+                      bind_outcome(
+                        o: project_value_node_from_inferred_facts(
+                          arrow: arrow,
+                          node: else_arm,
+                          target: target,
+                          tree: tree,
+                          declarations: declarations,
+                          handle_transform: handle_transform
+                        ),
+                        f: fn(projected_else) {
+                          outcome_accepted(
+                            target_value_expression_conditional(
+                              condition: projected_cond,
+                              then_arm: projected_then,
+                              else_arm: projected_else
+                            )
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+          }
+      }
+  }
+}
+
+fn project_value_node_structurally(
+  arrow: Node,
+  node: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match node.kind {
+    ComputationNode { behavior: Branch } =>
+      project_branch_from_inferred_facts(
+        arrow: arrow,
+        body: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Occupancy } =>
+      project_occupancy_carrier_from_inferred_facts(
+        arrow: arrow,
+        occupancy: node,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Conj } =>
+      if declaration_reference_body_marked(target: node) {
+        match inferred_facts_for_projected_node(tree: tree, node: node) {
+          Absent =>
+            outcome_rejected(d: emit_declaration_reference_facts_absent_diagnostic(body: node))
+          Present { value: _ } =>
+            outcome_rejected(d: emit_declaration_reference_not_nullary_arm_diagnostic(body: node))
+        }
+      } else {
+        target_value_expr_project_body_subexpression(
+          arrow: arrow,
+          node: node,
+          target: target,
+          source_bool_form: dag_value_expression_projection().bool_literal_form,
+          handle_transform: handle_transform
+        )
+      }
+    ComputationNode { behavior: _ } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Atom { identity: _ } } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Disj } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Arrow } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+    TypeNode { connective: Instantiation } =>
+      target_value_expr_project_body_subexpression(
+        arrow: arrow,
+        node: node,
+        target: target,
+        source_bool_form: dag_value_expression_projection().bool_literal_form,
+        handle_transform: handle_transform
+      )
+  }
+}
+
+fn project_arrow_body_from_inferred_facts(
+  arrow: Node,
+  target: TargetModel,
+  tree: InferredTree,
+  declarations: SymbolIndex,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match find_arrow_body_child(root: arrow) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: body, diagnostics: _ } =>
+      project_value_node_from_inferred_facts(
+        arrow: arrow,
+        node: body,
+        target: target,
+        tree: tree,
+        declarations: declarations,
+        handle_transform: handle_transform
+      )
+  }
+}
+
 fn target_serialize_bodied_arrow_from_model(
   target: TargetModel,
-  emitted: Node
+  emitted: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex
 ) -> Outcome<TargetText> {
   if count(type_param_names(n: emitted)) > 0 {
     outcome_rejected(d: translate_generic_arrow_not_rendered_diagnostic(arrow: emitted))
   } else {
+    target_serialize_bodied_arrow_with_scaffolded_header(target: target, emitted: emitted, tree: tree, declarations: declarations)
+  }
+}
+
+// THE SERIALIZATION AFTER THE GENERIC GUARD. The fixed-scaffold routes (the declared-gap callers that
+// reach target_serialize_bodied_arrow_from_model with the ground-row `add` scaffold) cannot render a
+// type-parameter list and keep the guard above; the produced-declaration route builds its scaffold
+// from the target's own rows, which may carry a type-parameter segment, so it enters here directly
+// (v2.compiler.emit_produced emit_produced_decl_with_target).
+fn target_serialize_bodied_arrow_with_scaffolded_header(
+  target: TargetModel,
+  emitted: Node,
+  tree: InferredTree,
+  declarations: SymbolIndex
+) -> Outcome<TargetText> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
     f: fn(rules) {
@@ -620,10 +1132,11 @@ fn target_serialize_bodied_arrow_from_model(
             o: target_value_expression_projection_from_target(target: target),
             f: fn(projection) {
               bind_outcome(
-                o: target_project_arrow_body_to_value_expression(
+                o: project_arrow_body_from_inferred_facts(
                   arrow: emitted,
                   target: target,
-                  source_bool_form: dag_value_expression_projection().bool_literal_form,
+                  tree: tree,
+                  declarations: declarations,
                   handle_transform: fn(a, b, t) {
                     translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
                   }
@@ -653,7 +1166,6 @@ fn target_serialize_bodied_arrow_from_model(
       )
     }
   )
-  }
 }
 
 fn target_serialize_relation_row_from_model_bounded(
@@ -678,7 +1190,7 @@ fn target_serialize_relation_row_with_lex_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else {
     bind_outcome(
       o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -822,7 +1334,7 @@ fn target_serialize_source_from_model_bounded(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
-    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+    target_serialize_bodied_arrow_from_model(target: target, emitted: emitted, tree: serialize_facts_absent_tree(root: emitted), declarations: empty_symbol_index())
   } else if is_dag_import_carrier(emitted: emitted) {
     bind_outcome(
       o: module_import_projection_from_target(target: target),

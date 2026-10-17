@@ -107,14 +107,14 @@ import gunbc.runner.runner_microvm {
   gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused, runner_microvm_shape_refusal_text,
 }
 import gunbc.runner.runner_microvm_shakedown {
-  microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer,
+  microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer, microvm_shakedown_attempt_id,
 }
 import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
 import gunbc.fabric.fabric_required_build_cell {
   RequiredBuildCellSnapshot, RequiredBuildCellObservation, RequiredBuildCellObserved,
   ReservationAbsent, ReservationUnreadable, ReservationPayloadUndecodable, ReservationPayloadWorkMismatch,
-  SelectedOfferCellMismatch, CellSubstrateNotConverged, UnownedCell,
-  observe_required_build_cell_wet,
+  ReservationHeldPreCutover, SelectedOfferCellMismatch, CellSubstrateNotConverged, UnownedCell,
+  observe_granted_cell_wet,
 }
 import gunbc.runner.runner_microvm_attempt {
   MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned, bind_microvm_to_cell,
@@ -133,7 +133,7 @@ import gunbc.github_effect_perform {
   read_runner_groups_with,
 }
 import gunbc.runner.runner_attempt_launch {
-  AttemptLaunchPlan, plan_attempt_launch_reservation_authorized, attempt_jail_chroot_root, jail_jit_path,
+  AttemptLaunchPlan, plan_attempt_launch_cell_granted, attempt_jail_chroot_root, jail_jit_path,
 }
 import gunbc.runner.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
@@ -257,7 +257,8 @@ fn path_exists(path: String) -> Bool
 }
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
-// deploy (gunbc.live_deploy.emit microvm_controller_vmm_install_steps). The job-user copy under
+// deploy (gunbc.host.host_effect_realize, the typed microVM controller install fold). The job-user
+// copy under
 // the executor's HOME (gunbc.runner.runner_microvm_host_ready) is never read here, which is what this
 // reference buys: the VMM the controller launches is the locus's, not a binary sitting in the
 // executor's writable HOME. It is NOT a claim that the job user cannot reach the locus -- ghrunner's
@@ -291,17 +292,21 @@ fn guest_image_sources(spec: RunnerHostSpec) -> GuestImageSources {
 
 // ── stage 3: the reservation, re-read from the host CAS ─────────────────────────────────────────
 
-// THE DEMAND AND OFFER ARE DERIVED, NOT REMEMBERED (gunbc.runner.runner_microvm_shakedown): the same
-// authority the placer used, so the hold owner the CAS carries is one this process can name.
+// THE DEMAND, OFFER AND ATTEMPT ARE DERIVED, NOT REMEMBERED (gunbc.runner.runner_microvm_shakedown):
+// the same authority the broker used, so the grant key the CAS carries as the hold owner is one this
+// process re-derives. Only a cell held by exactly this attempt's grant, at the generation read, is
+// observed; a cell still held under the pre-cutover reservation owner is ReservationHeldPreCutover
+// and nothing is planned over it.
 fn observe_reservation(slot: RunnerSlotIdentity) -> RequiredBuildCellObservation
   uses net: Network, fs: Filesystem
 {
-  observe_required_build_cell_wet(
+  observe_granted_cell_wet(
     root: fabric_control_plane_store_root(),
     host: slot.host,
     slot: slot,
     demand: microvm_shakedown_demand(slot: slot),
     offer: microvm_shakedown_offer(slot: slot),
+    attempt: microvm_shakedown_attempt_id(slot: slot),
   )
 }
 
@@ -571,7 +576,7 @@ fn slot_controller_launch(
 ) -> SlotControllerOutcome
   uses net: Network, fs: Filesystem
 {
-  let plan = plan_attempt_launch_reservation_authorized(
+  let plan = plan_attempt_launch_cell_granted(
     snapshot: snapshot,
     work: microvm_shakedown_work(),
     allocation_generation: snapshot.generation,
@@ -633,6 +638,7 @@ fn reservation_observation_text(o: RequiredBuildCellObservation) -> String {
     ReservationUnreadable { slot_key: k, cause: c } => join(["the allocation store could not be read for ", k as String, ": ", cas_unreadable_slot_detail(cause: c)], "")
     ReservationPayloadUndecodable { slot_key: k, detail: d } => join(["the hold payload for ", k as String, " did not decode: ", d as String], "")
     ReservationPayloadWorkMismatch { slot_key: k } => join(["the hold on ", k as String, " belongs to a different demand/offer than the shakedown's"], "")
+    ReservationHeldPreCutover { slot_key: k, generation: g } => join(["the hold on ", k as String, " at generation ", to_string(g), " is a pre-cutover reservation, not a grant; it is not planned over until released or proven ended"], "")
     SelectedOfferCellMismatch { slot_key: k, executor: e } => join(["the shakedown offer's executor ", e as String, " is not the slot key ", k as String], "")
     CellSubstrateNotConverged { cell: c } => join(["the cell substrate for ", c as String, " is not converged"], "")
     UnownedCell { cell: c } => join(["the cell ", c as String, " is not owned"], "")
@@ -902,6 +908,7 @@ fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: Fa
           ReservationUnreadable { slot_key: k, cause: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationUnreadable { slot_key: k, cause: c } } }
           ReservationPayloadUndecodable { slot_key: k, detail: d } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationPayloadUndecodable { slot_key: k, detail: d } } }
           ReservationPayloadWorkMismatch { slot_key: k } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationPayloadWorkMismatch { slot_key: k } } }
+          ReservationHeldPreCutover { slot_key: k, generation: g } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationHeldPreCutover { slot_key: k, generation: g } } }
           SelectedOfferCellMismatch { slot_key: k, executor: e } => SlotControllerRefused { refusal: ReservationNotObserved { observation: SelectedOfferCellMismatch { slot_key: k, executor: e } } }
           CellSubstrateNotConverged { cell: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: CellSubstrateNotConverged { cell: c } } }
           UnownedCell { cell: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: UnownedCell { cell: c } } }

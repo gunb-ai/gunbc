@@ -571,6 +571,42 @@ service systemd.Systemctl {
     }
   }
 
+  operation StopUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user stop failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.StopUserUnit"
+    }
+  }
+
+  operation ResetFailedUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUserUnit"
+    }
+  }
+
   operation ResetFailedUnit {
     requires Network
     input { unit: NonEmptyStr }

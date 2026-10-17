@@ -3,6 +3,8 @@ module gunbc.codex_supervised_turn
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.algebra { trim }
 import std.content_hash { ContentHash, content_hash_of_value }
+import std.optional { Present, Absent }
+import std.durable_compare_and_set { cas_generation_following }
 import std.temporal_effect {
   HeldLease,
   LeaseEpoch,
@@ -11,7 +13,7 @@ import std.temporal_effect {
   HeldLeaseObservedState,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
   TemporalEffectPolicy,
@@ -248,27 +250,30 @@ fn codex_supervised_turn_binding(
   prior_generation: Int,
   observed: HeldLeaseObservedState,
   standing_receipt: CodexAccountStandingReceipt?,
-) -> CodexSupervisedTurnBinding {
+) -> CodexSupervisedTurnBinding? {
   let lease_key = codex_supervised_turn_lease_key(
     attempt_key: turn.attempt_key,
     turn_key: turn.turn_key,
   )
-  CodexSupervisedTurnBinding {
-    turn: turn,
-    lease: held_lease(
-      epoch: LeaseEpoch {
-        lease_key: lease_key,
-        resource_fingerprint: codex_supervised_turn_resource_fingerprint(
-          credential: credential,
-          attempt_key: turn.attempt_key,
-        ),
-        owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
-        generation: prior_generation + 1,
-      },
-      observed: observed,
-    ),
-    execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
-    standing_receipt: standing_receipt,
+  match cas_generation_following(prior: prior_generation) {
+    Absent => none
+    Present { value: g } => Present { value: CodexSupervisedTurnBinding {
+      turn: turn,
+      lease: held_lease(
+        epoch: LeaseEpoch {
+          lease_key: lease_key,
+          resource_fingerprint: codex_supervised_turn_resource_fingerprint(
+            credential: credential,
+            attempt_key: turn.attempt_key,
+          ),
+          owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
+          generation: g,
+        },
+        observed: observed,
+      ),
+      execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
+      standing_receipt: standing_receipt,
+    } }
   }
 }
 
@@ -401,14 +406,17 @@ fn prepare_codex_supervised_turn_binding(
         GenerationStoreMalformed { content: _ } => 0
         GenerationStoreNegative { value: _ } => 0
       }
-      CodexSupervisedTurnBindingPrepared {
-        binding: codex_supervised_turn_binding(
-          turn: turn,
-          credential: credential,
-          prior_generation: prior_generation,
-          observed: observed,
-          standing_receipt: standing_receipt,
-        ),
+      match codex_supervised_turn_binding(
+        turn: turn,
+        credential: credential,
+        prior_generation: prior_generation,
+        observed: observed,
+        standing_receipt: standing_receipt,
+      ) {
+        Absent => CodexSupervisedTurnBindingPrepareRefused {
+          reason: "lease generation successor refused" as NonEmptyStr,
+        }
+        Present { value: binding } => CodexSupervisedTurnBindingPrepared { binding: binding }
       }
     }
     CodexTurnStartRefusedDuplicateExecution { reason: r } =>

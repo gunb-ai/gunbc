@@ -7,6 +7,7 @@ use self::TypeNodeDeclarationReading::*;
 use self::TypeNodeUnidentifiedCause::*;
 use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
+pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_coercion::TextRepresentation::{
     CodePointSequence, HostText, NotText, TextRepresentationUnidentified,
@@ -22,6 +23,9 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_literal_elaboration::kernel_mint_declaration_for;
+pub use crate::std_literal_elaboration::KernelMintDeclarationLookup;
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_operator_realization::OperandDeclaration;
@@ -49,7 +53,8 @@ use crate::v1_std_core::ParsedModuleItemKind::*;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, empty_intern_table, find_child_named, intern,
     intern_find, intern_str, kernel_span, merge_intern_tables, module_path_segments,
-    param_node_name_at, param_node_type_expr, qualified_last_segment, source_text_at,
+    param_node_name_at, param_node_type_expr, qualified_last_segment,
+    resolved_node_is_kernel_identity_for_name, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ExprData, InferredNode,
@@ -2130,6 +2135,66 @@ pub fn lookup_unit_variant_phantom_type(
     }
 }
 
+pub fn static_width_index_arm_name() -> String {
+    "StaticWidthIndex".to_string()
+}
+
+pub fn width_resolution_qualified_name() -> String {
+    "std.machine_constraints.WidthResolution".to_string()
+}
+
+pub fn width_resolution_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match symbol_index_lookup(env.symbol_index.clone(), width_resolution_qualified_name()) {
+        Some(decl) => {
+            if {
+                let mut __found = false;
+                for v in decl.children.clone().iter().cloned() {
+                    if (is_unit_variant_node(v.clone())
+                        && (crate::v1_std_core::authored_name_at(
+                            env.source_indices.clone(),
+                            v.clone(),
+                        ) == static_width_index_arm_name()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Some(decl.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn is_static_width_index_arm(
+    env: Rc<TypeEnv>,
+    coproduct: Rc<Node>,
+    variant_name: String,
+) -> bool {
+    ((variant_name.clone() == static_width_index_arm_name())
+        && match width_resolution_declaration(env.clone()) {
+            Some(decl) => {
+                ((decl.span.clone().file.clone() == coproduct.span.clone().file.clone())
+                    && (decl.span.clone().start.clone() == coproduct.span.clone().start.clone()))
+            }
+            std::option::Option::None => false,
+        })
+}
+
+pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
+    match width_resolution_declaration(env.clone()) {
+        Some(decl) => v1_rt::map_get(
+            &env.symbol_index.clone().file_modules.clone(),
+            decl.span.clone().file.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
         Some(_) => true,
@@ -2841,6 +2906,27 @@ pub fn declaration_ref_of_declaration_node(
         );
         if (decl_name.clone() == "".to_string()) {
             return std::option::Option::None;
+        }
+        let minted = if crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
+            decl.clone(),
+            decl_name.clone(),
+        ) {
+            match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+                kernel_mint_declaration_rows(),
+                decl_name.clone(),
+            ))
+            .clone()
+            {
+                KernelMintDeclarationLookup::KernelMintDeclarationFound {
+                    declaration: d, ..
+                } => Some(d.clone()),
+                _ => std::option::Option::None,
+            }
+        } else {
+            std::option::Option::None
+        };
+        if (minted.clone() != std::option::Option::None) {
+            return minted.clone();
         }
         match decl.ident_span.clone() {
             std::option::Option::None => std::option::Option::None,

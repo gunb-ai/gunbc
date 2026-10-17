@@ -7,11 +7,11 @@ import std.decl_ref { decl_ref }
 import v2.compiler.compile {
   CompileOutput,
   CompileLens,
-  CompileLensRoot,
-  TranslateTo,
   Validated,
   compile_lens_gate_rejected_diagnostic,
-  validate_then_compile
+  validate_then_compile,
+  CompileLensRoot,
+  TranslateTo
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.compilers.target_model {

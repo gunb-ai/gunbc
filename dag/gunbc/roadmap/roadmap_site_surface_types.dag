@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_site_surface_types
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, HttpStatus }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 
@@ -70,8 +70,25 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // structural. The other four remain ordering-by-discipline inside
 // gunbc.live_deploy.readiness healthz_body_verdict; the annotation on that fold names the four
 // that remain rather than all five.
+// THE ONE HEALTHZ READ, in the three shapes a probe can leave it in. A body is read, an error reply is
+// read WITH ITS STATUS, or the probe could not be made at all.
+//
+// HealthzAnsweredUnhealthy IS THE THIRD SHAPE, and it exists because a 5xx used to arrive as the
+// third: indistinguishable from a transport failure. That collapse is the harm
+// gunbc.recurring_failure_mode a_deploy_that_observes_its_own_service_cannot_repair_it names -- the
+// only modeled route to repair a service required the service to be healthy. The arm is not a
+// readiness verdict and carries no judgement about what to DO: it records that the process answered,
+// at what status, and with no release identity in the body. What observed-unhealthy means for a plan
+// is the domain's decision (DESIGN 6b, D14), taken in gunbc.live_deploy.member_identity over the
+// member's expected revision -- never by a generic "is this response ok" boolean here.
+//
+// IT IS REACHED ONLY FROM extdeps.http.client GetWithinWithStatus, whose curl exit -- not a status
+// comparison -- separates "answered 503" from "answered nothing". A server that never answered stays
+// HealthzProbeRefused, and a reply that identifies a release stays HealthzBodyRead even at 5xx: the
+// release identity is the authority, the status is context around it.
 type HealthzEffectiveRead
   = HealthzBodyRead { body: String }
+  | HealthzAnsweredUnhealthy { status: HttpStatus, detail: String }
   | HealthzProbeRefused { probe_error: String }
 
 type RoadmapSiteSurfaceArtifact {

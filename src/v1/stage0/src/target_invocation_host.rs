@@ -326,6 +326,12 @@ pub enum TargetProducer {
     NativeServeProgram {
         entry: &'static str,
     },
+    /// `CliWireProgramProducer { entry, function }`: wet interpreter eval of a CliWireResponse
+    /// fold. Generic over entry and function so a second such instrument is a registry row.
+    CliWireProgram {
+        entry: &'static str,
+        function: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -472,6 +478,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("brand-mark-assets"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -546,6 +558,43 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("regen-round-cost"),
             TargetProducer::RegenRoundCost,
+        ),
+        (
+            instrument_label("compute-run-unit-cold"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_exit",
+            },
+        ),
+        (
+            instrument_label("compute-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
+            // C5: the dependency-only arm of the C1 instrument. Same entry file, its own entry
+            // function -- one body of logic (wrong_capture_run) behind both labels.
+            instrument_label("compute-dependency-wrong-capture"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
+                function: "compute_dependency_wrong_capture_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-sccache-probe"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_sccache_probe_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-cold-same-path"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_same_path_exit",
+            },
         ),
     ]
 }
@@ -945,6 +994,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         } => run_native_process_memory(&self_host_source_roots(), workload),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
+        TargetProducer::CliWireProgram { entry, function } => run_cli_wire_program(entry, function),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -996,6 +1046,12 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             "required_lane_resolution_census_exit",
         ),
     }
+}
+
+/// Generic CliWireProgramProducer realization: entry and function are the binding's, never a
+/// string-match inside NativeClaimProgram.
+fn run_cli_wire_program(entry: &'static str, function: &'static str) -> InvocationOutcome {
+    run_cli_wire_census(function, entry, function)
 }
 
 /// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
@@ -1265,7 +1321,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
 }
 
 /// THE NATIVE FRONTIER PRODUCER: did one complete native run keep the debt
-/// `gunbc.native_frontier_roster` records. The verdict is `gunbc.native_frontier_ratchet`'s, decided
+/// `v2.workflow.native_frontier_roster` records. The verdict is `v2.workflow.native_frontier_ratchet`'s, decided
 /// inside the emitted binary; this arm only maps its word to a termination, and that map is closed:
 /// an unknown word is a harness defect, never a pass.
 ///
@@ -1292,7 +1348,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
                         termination: Termination::SubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
-                             gunbc.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
+                             v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
                         ),
                     }
                 }
@@ -2636,7 +2692,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
     }
 }
 
-/// `gunbc.witness.v2_native_route` `native_route_default_pattern`, READ from the file rendered from
+/// `gunbc.native_route_universe` `native_route_default_pattern`, READ from the file rendered from
 /// it: the native test route's whole universe. An operand CONTAINED in it belongs to that route.
 ///
 /// THIS SEED HAS NO SPELLING OF THAT UNIVERSE. `NATIVE_ROUTE_DEFAULT_PATTERN` is a constant of
@@ -2649,7 +2705,7 @@ fn render_target_pattern(pattern: &TargetPattern) -> String {
 /// parse is a refusal the caller reports, never a panic and never a fallback to some other universe.
 ///
 /// The universe the EMITTED binary adjudicates by default is the same declaration read inside the
-/// compiler (`v2.compiler.compile`, `adjudicate` without `--pattern`); the seed passes it a pattern
+/// compiler (`v2.compiler.source_root_eval`, `adjudicate` without `--pattern`); the seed passes it a pattern
 /// only when the operator wrote one, so nothing here is handed to it as text.
 fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal> {
     parse_target_pattern(crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN)
@@ -2669,7 +2725,7 @@ fn native_route_default_pattern() -> Result<TargetPattern, TargetPatternRefusal>
 /// `gunbc.recurring_failure_mode` `route_scoped_qualification_read_as_one_members_verdict`.
 ///
 /// The route now folds the population it actually emitted through
-/// `gunbc.instrument_targets` `native_route_member_termination`, mirrored in the runner, so this
+/// `v2.workflow.native_route_member_termination` `native_route_member_termination`, mirrored in the runner, so this
 /// caller receives a MEMBER-SCOPED standing and reads it directly. The lane's qualification is
 /// still carried and still reported, because a route-integrity refusal is something an operator
 /// needs to see -- but it no longer decides this verb's exit status.
@@ -2727,7 +2783,7 @@ fn native_member_outcome(
         }
         cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
     };
-    // `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored: the
+    // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
     // what establish the verdict surface is trustworthy at all -- the false and true controls, and
     // MalformedSpecimenAccepted, whose own note says that when they fail every verdict in the
@@ -3799,7 +3855,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
-                     gunbc.witness.v2_native_route native_route_default_pattern by \
+                     gunbc.native_route_universe native_route_default_pattern by \
                      gunbc.native_route_seed_boundary_emit, so regenerate it rather than route without a boundary\n  cause: {}",
                     crate::native_route_seed_boundary_generated::NATIVE_ROUTE_DEFAULT_PATTERN,
                     target_pattern_refusal_text(&cause)
@@ -4138,7 +4194,7 @@ mod native_route_termination_tests {
         assert!(!within("//gunbc/instruments:self-host"));
     }
 
-    /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
+    /// `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
     /// A REFUSED QUALIFICATION CANNOT YIELD A PASS (review 70107). Several qualification clauses
@@ -4735,7 +4791,7 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
 /// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
 /// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
 /// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// the exit are decided by `v2.compiler.source_root_eval` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
 /// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the

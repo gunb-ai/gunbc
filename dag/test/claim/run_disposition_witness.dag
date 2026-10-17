@@ -19,7 +19,6 @@ import gunbc.compile_permit_scope {
   HostCancellationObserved,
   HostCancellationUnreadable,
   HostCancellationUnobserved,
-  BorrowerHeldCooperativeHostFifo,
   InvocationLocalCargo,
   fleet_cancellation_standing,
   producer_absent_standing,
@@ -701,25 +700,6 @@ test fn w_a_single_unreadable_host_holds_the_containment() -> Bool {
       HostCancellationUnreadable {
         host: "srv2" as HostIdentity,
         cause: "systemctl show returned no Environment property" as NonEmptyStr,
-      },
-    ]),
-  ) {
-    NeverSupersedeRunning => true
-    SupersedeRunningForEvent { event: _ } => false
-  }
-}
-
-// A READBACK THAT CLAIMS SAFE WHILE CARRYING A LOSING DISPOSITION IS A CONTRADICTION, and joins the
-// unsafe side rather than being believed. Without this arm the safe constructor is self-certifying.
-test fn w_a_host_still_running_the_cooperative_fifo_is_derived_unsafe() -> Bool {
-  match running_supersession_for_fleet_standing(
-    standing: fleet_cancellation_standing(eligible_hosts: two_host_fleet(), observations: [
-      HostCancellationObserved {
-        host: "srv1" as HostIdentity,
-        realization: BorrowerHeldCooperativeHostFifo {
-          fifo_path: "/var/lib/ctrl/jobserver/host.fifo" as NonEmptyStr,
-          daemon_service: "ctrl-jobserver.service" as NonEmptyStr,
-        },
       },
     ]),
   ) {
