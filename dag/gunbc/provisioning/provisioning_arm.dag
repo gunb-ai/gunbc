@@ -86,89 +86,94 @@ type ArmRefusalCause
   | SecureBootStandingRefused { why: NonEmptyStr }
   | VirtualMediaNotAvailable { cause: NonEmptyStr }
 
-// THE ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. There is NO field holding
-// alternates, fallbacks or an ordered list of strategies, and no constructor wraps another arm, so
-// "try PXE, then virtual media" is unwritable. An attempt that cannot proceed is Unobserved or
-// Refused; the next arm is produced by new evidence or a human choosing a strategy, never by this
-// value retrying itself.
-type ProvisioningArm
+// THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
+// (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the
+// derivation cannot see a host name to select on. There is NO field holding alternates, fallbacks or an
+// ordered list of strategies, and no constructor wraps another shape, so "try PXE, then virtual media"
+// is unwritable. An attempt that cannot proceed is Unobserved or Refused; the next arm is produced by
+// new evidence or a human choosing a strategy, never by this value retrying itself.
+type ArmShape
   = ArmedPxeOrUefiHttp {
-      attempt: AttemptBinding
       chainloader: SitePxeEdgeChainloaderBuildReceipt
       firmware: FirmwarePreparation
       origin: UbuntuNetworkOrigin
       seed: AltraAutoinstallSeedBinding
     }
   | ArmedVirtualMedia {
-      attempt: AttemptBinding
       media_observation: DeclarationRef
       origin: UbuntuNetworkOrigin
       seed: AltraAutoinstallSeedBinding
     }
-  | ArmUnobserved { attempt: AttemptBinding, missing: ArmMissingEvidence }
-  | ArmRefused { attempt: AttemptBinding, cause: ArmRefusalCause }
+  | ArmUnobserved { missing: ArmMissingEvidence }
+  | ArmRefused { cause: ArmRefusalCause }
 
-// THE DERIVATION. Total over (strategy, evidence); the match is on the STRATEGY and the evidence
-// fields, and `attempt` is only copied into the result. Evidence is checked in a fixed order so the
-// same evidence always yields the same missing/refused cause. There is no attempt-time fallback: a
-// Refused or Unobserved arm ends the attempt.
+// THE ARM = WHOM IT COVERS (data) + WHAT WAS DERIVED. The two are separate fields so the identity is
+// attached after the shape is fixed: provisioning_arm_derive never passes the attempt into the
+// derivation, which makes a per-host selection unwritable rather than merely tested for.
+type ProvisioningArm {
+  attempt: AttemptBinding
+  shape: ArmShape
+}
+
+// THE DERIVATION. Total over (strategy, evidence). The attempt is bound to the result and is not an
+// argument of any deriving fn. Evidence is checked in a fixed order so the same evidence always yields
+// the same missing/refused cause. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
 fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  ProvisioningArm { attempt: attempt, shape: arm_shape_derive(strategy: strategy, evidence: evidence) }
+}
+
+fn arm_shape_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> ArmShape {
   match strategy {
-    PxeOrUefiHttp => derive_pxe(evidence: evidence, attempt: attempt)
-    VirtualMedia => derive_virtual_media(evidence: evidence, attempt: attempt)
+    PxeOrUefiHttp => derive_pxe(evidence: evidence)
+    VirtualMedia => derive_virtual_media(evidence: evidence)
   }
 }
 
-fn derive_pxe(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
   match evidence.firmware {
-    Unobserved { unanswered: _ } => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
-    Refused { cause: _ } => ArmRefused { attempt: attempt, cause: FirmwareProbeRefused { standing: evidence.firmware } }
-    Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwareAlreadyReady)
-    NeedsPreparation { route: r, blocking: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
+    Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
+    Refused { cause: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
+    Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
+    NeedsPreparation { route: r, blocking: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r })
   }
 }
 
-fn derive_pxe_with(evidence: DeliveryEvidence, attempt: AttemptBinding, firmware: FirmwarePreparation) -> ProvisioningArm {
+fn derive_pxe_with(evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
   match evidence.chainloader {
-    SitePxeEdgeChainloaderUnpinned { obligation: o } => ArmUnobserved { attempt: attempt, missing: ChainloaderNotPinned { obligation: o } }
+    SitePxeEdgeChainloaderUnpinned { obligation: o } => ArmUnobserved { missing: ChainloaderNotPinned { obligation: o } }
     SitePxeEdgeChainloaderPinned { build: b } => match b.secure_boot {
-      SecureBootUnobserved { why: w } => ArmUnobserved { attempt: attempt, missing: SecureBootStandingNotObserved { why: w } }
-      SecureBootRefused { why: w } => ArmRefused { attempt: attempt, cause: SecureBootStandingRefused { why: w } }
-      SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: e } => ArmRefused { attempt: attempt, cause: SecureBootRejectsChainloader { evidence: e } }
-      SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: _ } => bind_origin_and_seed(evidence: evidence, attempt: attempt, build: b, firmware: firmware)
+      SecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
+      SecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
+      SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
+      SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: _ } => bind_origin_and_seed(evidence: evidence, build: b, firmware: firmware)
     }
   }
 }
 
-fn bind_origin_and_seed(evidence: DeliveryEvidence, attempt: AttemptBinding, build: SitePxeEdgeChainloaderBuildReceipt, firmware: FirmwarePreparation) -> ProvisioningArm {
+fn bind_origin_and_seed(evidence: DeliveryEvidence, build: SitePxeEdgeChainloaderBuildReceipt, firmware: FirmwarePreparation) -> ArmShape {
   match evidence.origin {
-    Absent => ArmUnobserved { attempt: attempt, missing: OriginNotObserved }
+    Absent => ArmUnobserved { missing: OriginNotObserved }
     Present { value: o } => match evidence.seed {
-      Absent => ArmUnobserved { attempt: attempt, missing: SeedBindingNotObserved }
-      Present { value: s } => ArmedPxeOrUefiHttp { attempt: attempt, chainloader: build, firmware: firmware, origin: o, seed: s }
+      Absent => ArmUnobserved { missing: SeedBindingNotObserved }
+      Present { value: s } => ArmedPxeOrUefiHttp { chainloader: build, firmware: firmware, origin: o, seed: s }
     }
   }
 }
 
-fn derive_virtual_media(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+fn derive_virtual_media(evidence: DeliveryEvidence) -> ArmShape {
   match evidence.virtual_media {
-    VirtualMediaUnobserved => ArmUnobserved { attempt: attempt, missing: VirtualMediaStandingNotObserved }
-    VirtualMediaUnavailable { cause: c } => ArmRefused { attempt: attempt, cause: VirtualMediaNotAvailable { cause: c } }
+    VirtualMediaUnobserved => ArmUnobserved { missing: VirtualMediaStandingNotObserved }
+    VirtualMediaUnavailable { cause: c } => ArmRefused { cause: VirtualMediaNotAvailable { cause: c } }
     VirtualMediaAvailable { capability_observation: m } => match evidence.origin {
-      Absent => ArmUnobserved { attempt: attempt, missing: OriginNotObserved }
+      Absent => ArmUnobserved { missing: OriginNotObserved }
       Present { value: o } => match evidence.seed {
-        Absent => ArmUnobserved { attempt: attempt, missing: SeedBindingNotObserved }
-        Present { value: s } => ArmedVirtualMedia { attempt: attempt, media_observation: m, origin: o, seed: s }
+        Absent => ArmUnobserved { missing: SeedBindingNotObserved }
+        Present { value: s } => ArmedVirtualMedia { media_observation: m, origin: o, seed: s }
       }
     }
   }
 }
 
 fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
-  match arm {
-    ArmedPxeOrUefiHttp { attempt: a, chainloader: _, firmware: _, origin: _, seed: _ } => a
-    ArmedVirtualMedia { attempt: a, media_observation: _, origin: _, seed: _ } => a
-    ArmUnobserved { attempt: a, missing: _ } => a
-    ArmRefused { attempt: a, cause: _ } => a
-  }
+  arm.attempt
 }

@@ -19,6 +19,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_chainloader_build_receipt,
 }
 import gunbc.provisioning.provisioning_arm {
+  ArmShape,
   DeliveryStrategy,
   PxeOrUefiHttp,
   VirtualMedia,
@@ -124,62 +125,68 @@ fn attempt(unit: String) -> AttemptBinding {
   AttemptBinding { unit: unit as UnitKey, attempt: "attempt-1" }
 }
 
-fn derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ProvisioningArm {
+fn arm_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ProvisioningArm {
   provisioning_arm_derive(strategy: strategy, evidence: evidence, attempt: attempt(unit: unit))
 }
 
-// The carried identity is the only thing allowed to differ: rebinding B's arm to A's attempt must give A's arm.
-fn rebound(arm: ProvisioningArm, to: AttemptBinding) -> ProvisioningArm {
-  match arm {
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: c, firmware: f, origin: o, seed: s } => ArmedPxeOrUefiHttp { attempt: to, chainloader: c, firmware: f, origin: o, seed: s }
-    ArmedVirtualMedia { attempt: _, media_observation: m, origin: o, seed: s } => ArmedVirtualMedia { attempt: to, media_observation: m, origin: o, seed: s }
-    ArmUnobserved { attempt: _, missing: m } => ArmUnobserved { attempt: to, missing: m }
-    ArmRefused { attempt: _, cause: c } => ArmRefused { attempt: to, cause: c }
-  }
+fn derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ArmShape {
+  arm_for(strategy: strategy, evidence: evidence, unit: unit).shape
 }
 
-fn is_unobserved_as(arm: ProvisioningArm, expected: ArmMissingEvidence) -> Bool {
+fn is_unobserved_as(arm: ArmShape, expected: ArmMissingEvidence) -> Bool {
   match arm {
-    ArmUnobserved { attempt: _, missing: m } => m == expected
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmRefused { attempt: _, cause: _ } => false
+    ArmUnobserved { missing: m } => m == expected
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmRefused { cause: _ } => false
   }
 }
 
 // Every field of every variant is named here, so adding an `alternates`/`fallback` field to any arm
 // stops this witness compiling: the type's whole field set is pinned at this one site.
-fn arm_field_set_is_closed(arm: ProvisioningArm) -> Bool {
+fn arm_field_set_is_closed(arm: ArmShape) -> Bool {
   match arm {
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => true
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => true
-    ArmUnobserved { attempt: _, missing: _ } => true
-    ArmRefused { attempt: _, cause: _ } => true
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => true
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
+    ArmUnobserved { missing: _ } => true
+    ArmRefused { cause: _ } => true
   }
 }
 
-test fn two_units_with_the_same_evidence_derive_the_same_pxe_arm() -> Bool {
-  let a = derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
-  let b = derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-bravo")
-  rebound(arm: b, to: provisioning_arm_attempt(arm: a)) == a
+// The unit identity reaches the arm as the `attempt` field and nowhere else: provisioning_arm_derive
+// computes `shape` from (strategy, evidence) alone, so these witnesses compare shapes for identities no
+// test names a rule for. They are not an allowlist of fleet hostnames.
+fn same_shape_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> Bool {
+  arm_for(strategy: strategy, evidence: evidence, unit: unit).shape == arm_for(strategy: strategy, evidence: evidence, unit: "unit-alpha").shape
 }
 
-test fn two_units_with_the_same_evidence_derive_the_same_virtual_media_arm() -> Bool {
-  let a = derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
-  let b = derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-bravo")
-  rebound(arm: b, to: provisioning_arm_attempt(arm: a)) == a
+fn shape_is_identity_independent(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> Bool {
+  same_shape_for(strategy: strategy, evidence: evidence, unit: "unit-bravo")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "owen")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "mtcollins1")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "srv4")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "BRD-0042")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "x")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "unit-alpha-2")
+    && same_shape_for(strategy: strategy, evidence: evidence, unit: "0")
+}
+
+test fn many_units_with_the_same_evidence_derive_the_same_pxe_shape() -> Bool {
+  shape_is_identity_independent(strategy: PxeOrUefiHttp, evidence: full_evidence())
+}
+
+test fn many_units_with_the_same_evidence_derive_the_same_virtual_media_shape() -> Bool {
+  shape_is_identity_independent(strategy: VirtualMedia, evidence: full_evidence())
+}
+
+test fn many_units_with_unobserving_evidence_derive_the_same_unobserved_shape() -> Bool {
+  shape_is_identity_independent(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available()))
 }
 
 test fn the_carried_identity_is_the_identity_given() -> Bool {
-  let a = derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+  let a = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
   provisioning_arm_attempt(arm: a) == attempt(unit: "unit-alpha")
-}
-
-test fn two_units_with_the_same_unobserving_evidence_derive_the_same_unobserved_arm() -> Bool {
-  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: pinned(), virtual_media: media_available())
-  let a = derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha")
-  let b = derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-bravo")
-  rebound(arm: b, to: provisioning_arm_attempt(arm: a)) == a
+    && provisioning_arm_attempt(arm: arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-bravo")) != provisioning_arm_attempt(arm: a)
 }
 
 test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
@@ -190,10 +197,10 @@ test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
 
 test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -> Bool {
   match derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr } }
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmUnobserved { attempt: _, missing: _ } => false
-    ArmRefused { attempt: _, cause: _ } => false
+    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr } }
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmUnobserved { missing: _ } => false
+    ArmRefused { cause: _ } => false
   }
 }
 
@@ -206,10 +213,10 @@ test fn the_firmware_route_comes_from_the_standing_not_from_a_default() -> Bool 
 test fn virtual_media_arm_does_not_need_a_pinned_chainloader() -> Bool {
   let e = evidence_with(firmware: Unobserved { unanswered: [] }, chainloader: SitePxeEdgeChainloaderUnpinned { obligation: "fixture" }, virtual_media: media_available())
   match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => true
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmUnobserved { attempt: _, missing: _ } => false
-    ArmRefused { attempt: _, cause: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => true
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmUnobserved { missing: _ } => false
+    ArmRefused { cause: _ } => false
   }
 }
 
@@ -238,56 +245,44 @@ test fn a_missing_seed_is_an_unobserved_arm_for_both_strategies() -> Bool {
 test fn a_secure_boot_rejection_is_a_refused_arm() -> Bool {
   let e = evidence_with(firmware: fixture_firmware_needs_ipmi(), chainloader: pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "fixture: rejected" }), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
-    ArmRefused { attempt: _, cause: c } => c == SecureBootRejectsChainloader { evidence: "fixture: rejected" }
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmUnobserved { attempt: _, missing: _ } => false
+    ArmRefused { cause: c } => c == SecureBootRejectsChainloader { evidence: "fixture: rejected" }
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn unobserved_secure_boot_is_not_armed() -> Bool {
   let e = evidence_with(firmware: fixture_firmware_needs_ipmi(), chainloader: pin_with(secure_boot: SecureBootUnobserved { why: "not booted yet" }), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
-    ArmUnobserved { attempt: _, missing: _ } => true
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmRefused { attempt: _, cause: _ } => false
+    ArmUnobserved { missing: _ } => true
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmRefused { cause: _ } => false
   }
 }
 
 test fn unavailable_virtual_media_is_refused_not_rerouted_to_pxe() -> Bool {
   let e = evidence_with(firmware: fixture_firmware_needs_ipmi(), chainloader: pinned(), virtual_media: VirtualMediaUnavailable { cause: "catalog row lacks the capability" })
   match derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha") {
-    ArmRefused { attempt: _, cause: _ } => true
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmUnobserved { attempt: _, missing: _ } => false
+    ArmRefused { cause: _ } => true
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn the_refused_firmware_standing_is_terminal() -> Bool {
   let e = evidence_with(firmware: Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: "fixture" as NonEmptyStr } } }, chainloader: pinned(), virtual_media: media_available())
   match derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
-    ArmRefused { attempt: _, cause: _ } => true
-    ArmedPxeOrUefiHttp { attempt: _, chainloader: _, firmware: _, origin: _, seed: _ } => false
-    ArmedVirtualMedia { attempt: _, media_observation: _, origin: _, seed: _ } => false
-    ArmUnobserved { attempt: _, missing: _ } => false
+    ArmRefused { cause: _ } => true
+    ArmedPxeOrUefiHttp { chainloader: _, firmware: _, origin: _, seed: _ } => false
+    ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
+    ArmUnobserved { missing: _ } => false
   }
 }
 
 test fn an_arm_has_no_alternates_field_and_the_field_set_is_closed() -> Bool {
   arm_field_set_is_closed(arm: derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha"))
     && arm_field_set_is_closed(arm: derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha"))
-}
-
-// Hostnames the fleet actually uses, among them the ones a per-host table would key on. Each strategy must
-// derive the same arm shape for every one of them given the same evidence.
-fn same_shape_for(strategy: DeliveryStrategy, unit: String) -> Bool {
-  let base = derive(strategy: strategy, evidence: full_evidence(), unit: "unit-alpha")
-  let other = derive(strategy: strategy, evidence: full_evidence(), unit: unit)
-  rebound(arm: other, to: provisioning_arm_attempt(arm: base)) == base
-}
-
-test fn no_fleet_hostname_changes_the_arm_shape_for_either_strategy() -> Bool {
-  same_shape_for(strategy: PxeOrUefiHttp, unit: "owen") && same_shape_for(strategy: VirtualMedia, unit: "owen") && same_shape_for(strategy: PxeOrUefiHttp, unit: "mtcollins1") && same_shape_for(strategy: VirtualMedia, unit: "mtcollins1") && same_shape_for(strategy: PxeOrUefiHttp, unit: "srv4") && same_shape_for(strategy: VirtualMedia, unit: "srv4")
 }
