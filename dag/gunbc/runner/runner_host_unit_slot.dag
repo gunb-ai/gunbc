@@ -298,6 +298,23 @@ fn service_slot_population_over(host: HostControlStanding, width: RunnerWidthRes
   }
 }
 
+// THE UNITS OF THE CURRENT POPULATION, or nothing when the population is not derivable. A population
+// that cannot be derived -- width unresolved, host not controlled, or any slot refused (a host with no
+// offer refuses every slot's labels) -- yields no membership at all, never an empty one: an empty
+// member set would read every current-boot name as a stranger.
+// CONSUMER FRONTIER (DESIGN section 3c): consumed by lost_boot_sweep (gunbc.runner.runner_jit_deregistration),
+// whose own consumer is the fleet-converge mode waiting on operator answer Q3.
+fn service_slot_member_units(population: ServiceSlotPopulation) -> List<NonEmptyStr>? {
+  match population {
+    ServiceSlotsWidthUnresolved { cause: _ } => none
+    ServiceSlotsHostNotControlled { refusal: _ } => none
+    ServiceSlotsDerived { slots: slots } => {
+      let units = fold(slots, init: [], f: (acc, st) => match st { HostUnitSlotBound { slot: s } => concat([s.unit], acc) _ => acc })
+      if count(units) == count(slots) { Present { value: reverse(units) } } else { none }
+    }
+  }
+}
+
 fn service_slot_indices(from: Int, count: Int) -> List<Int> {
   service_slot_indices_down(next: count - 1, floor: from, acc: [])
 }

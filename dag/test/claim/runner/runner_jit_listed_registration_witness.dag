@@ -20,13 +20,13 @@ import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit,
 import gunbc.runner.runner_host_unit_slot {
   AttemptSlot, ServiceSlot, ServiceBootId, HostUnitSlotStanding, ServiceSlotPopulation, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRegistrationLabelsRefused, HostUnitSlotHostNotControlled,
   ServiceSlotsDerived, ServiceSlotsWidthUnresolved, ServiceSlotsHostNotControlled, host_unit_slot_for, host_unit_slot_over, service_slot_unit, service_slot_name_parse,
-  service_slot_population, service_slot_population_over, service_boot_id_of, service_slot_selected_workflow,
+  service_slot_population, service_slot_population_over, service_slot_member_units, service_boot_id_of, service_slot_selected_workflow,
 }
 import gunbc.runner.runner_jit_deregistration {
-  ListedRegistrationAdmitted, ListedRegistrationRefused, AdmittedBootRegistration, RecoveredReservedServiceRegistration, ListedNameOutsideServiceGrammar, ListedNameDoesNotRoundTrip,
+  ListedCurrentPopulationMember, ListedRecoveredReserved, ListedRegistrationRefused, RecoveredReservedServiceRegistration, ListedNameOutsideServiceGrammar, ListedNameDoesNotRoundTrip,
   ListedSlotRefused, ListedAuthorityNamesNoInstallation,
-  LostBootSweepSelected, LostBootSweepRefused, SweepListingUnreadable, SweepRegistrationRefused,
-  LostBootSweep, ListedRegistrationStanding, jit_registration_of_listed, lost_boot_sweep,
+  LostBootSweepSelected, LostBootSweepRefused, SweepListingUnreadable, SweepRegistrationRefused, SweepPopulationNotDerived,
+  LostBootSweep, ListedRegistrationStanding, listed_deregistration_subject_of, lost_boot_sweep,
 }
 import gunbc.runner.runner_jit_deregistration { JitListingPageIncomplete }
 
@@ -101,13 +101,13 @@ fn listing(names: List<String>, total: Int) -> RestResult<OrganizationRunnerList
   } }
 }
 
+fn sweep_over_population(m: ManagedHost, population: ServiceSlotPopulation, names: List<String>, total: Int) -> LostBootSweep {
+  lost_boot_sweep(organization: org, host: controlled(m: m), population: population, authority: authority,
+    registration_labels: supplied_labels, listing: listing(names: names, total: total))
+}
+
 fn sweep(m: ManagedHost, current: String, names: List<String>, total: Int) -> LostBootSweep {
-  match service_boot_id_of(run: kernel_boot(id: current)) {
-    Present { value: b } =>
-      lost_boot_sweep(organization: org, host: controlled(m: m), current: b, authority: authority,
-        registration_labels: supplied_labels, listing: listing(names: names, total: total))
-    Absent => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedAuthorityNamesNoInstallation } }
-  }
+  sweep_over_population(m: m, population: population_over(m: m, width: RunnerWidthDerived { slots: 5 }, id: current), names: names, total: total)
 }
 
 // THE QUALIFICATION PATH IS ONE ARM OF THE SAME FOLD: an attempt slot's unit and labels are still the
@@ -184,15 +184,19 @@ test fn the_population_follows_the_width() -> Bool {
   }
 }
 
-fn reg(m: ManagedHost, listed: String) -> ListedRegistrationStanding {
-  reg_with(m: m, listed: listed, labels: supplied_labels)
+fn members_of(m: ManagedHost, width: RunnerWidthResolution, id: String) -> List<NonEmptyStr> {
+  match service_slot_member_units(population: population_over(m: m, width: width, id: id)) {
+    Present { value: us } => us
+    Absent => []
+  }
 }
 
-fn reg_with(m: ManagedHost, listed: String, labels: RunnerRegistrationLabelsResolution) -> ListedRegistrationStanding {
-  match service_boot_id_of(run: kernel_boot(id: "adm-0")) {
-    Present { value: b } => jit_registration_of_listed(organization: org, host: controlled(m: m), admitted: b, listed: listed, authority: authority, registration_labels: labels)
-    Absent => ListedRegistrationRefused { refusal: ListedAuthorityNamesNoInstallation }
-  }
+fn reg(m: ManagedHost, listed: String) -> ListedRegistrationStanding {
+  reg_with(m: m, listed: listed, members: members_of(m: m, width: RunnerWidthDerived { slots: 5 }, id: "adm-0"), labels: supplied_labels)
+}
+
+fn reg_with(m: ManagedHost, listed: String, members: List<NonEmptyStr>, labels: RunnerRegistrationLabelsResolution) -> ListedRegistrationStanding {
+  listed_deregistration_subject_of(organization: org, host: controlled(m: m), members: members, listed: listed, authority: authority, registration_labels: labels)
 }
 
 fn prefix(m: ManagedHost) -> String { concat("gunbc-service-", m.host as String, "-") }
@@ -214,14 +218,14 @@ test fn a_listed_name_is_admitted_only_by_exact_round_trip() -> Bool {
     Present { value: m } => {
       let good = unit(m: m, id: "boot-7f-a", index: 12)
       (match reg(m: m, listed: good) {
-        ListedRegistrationAdmitted { registration: r, origin: RecoveredReservedServiceRegistration } => r.installation == installation
+        ListedRecoveredReserved { subject: RecoveredReservedServiceRegistration { recovered: r } } => r.installation == installation
         _ => false
       })
         && is_no_round_trip(m: m, listed: concat(prefix(m: m), "boot-7f-a-012.service"))
         && all(["actions-runner@srv1-3.service", concat(good, ".bak"), "gunbc-service-other-host-boot-1-2.service",
                 concat(prefix(m: m), "boot-x2.service"), concat(prefix(m: m), "boot-+2.service"), concat(prefix(m: m), "-2.service"), ""],
                n => is_outside_grammar(m: m, listed: n))
-        && (match reg_with(m: m, listed: good, labels: RegistrationLabelsRefused { host: m.host, cause: "no offer" as NonEmptyStr }) {
+        && (match reg_with(m: m, listed: good, members: [], labels: RegistrationLabelsRefused { host: m.host, cause: "no offer" as NonEmptyStr }) {
           ListedRegistrationRefused { refusal: ListedSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: _, cause: _ } } } => true
           _ => false
         })
@@ -237,10 +241,10 @@ test fn the_sweep_selects_stale_incarnations_only() -> Bool {
     Present { value: m } => {
       let names = [unit(m: m, id: "old", index: 0), unit(m: m, id: "old", index: 1), unit(m: m, id: "new", index: 0), "actions-runner@srv1-3.service"]
       (match sweep(m: m, current: "new", names: names, total: 4) {
-        LostBootSweepSelected { registrations: rs, untouched: u } => count(rs) == 2 && count(u) == 2
+        LostBootSweepSelected { subjects: rs, untouched: u } => count(rs) == 2 && count(u) == 2
         _ => false
       }) && (match sweep(m: m, current: "old", names: names, total: 4) {
-        LostBootSweepSelected { registrations: rs, untouched: u } => count(rs) == 1 && count(u) == 3
+        LostBootSweepSelected { subjects: rs, untouched: u } => count(rs) == 1 && count(u) == 3
         _ => false
       }) && (match sweep(m: m, current: "new", names: names, total: 9) {
         LostBootSweepRefused { refusal: SweepListingUnreadable { reason: JitListingPageIncomplete { listed: _, total: _ }, cause: _ } } => true
@@ -269,38 +273,93 @@ test fn an_uncontrolled_host_refuses_the_sweep_rather_than_selecting_nothing() -
   match the_host() {
     Absent => false
     Present { value: m } =>
-      match service_boot_id_of(run: kernel_boot(id: "b-2")) {
-        Absent => false
-        Present { value: cur } =>
-      match lost_boot_sweep(organization: org, host: HostControlRefused { refusal: NoOutOfBandRoute { host: m.host } }, current: cur,
+      match lost_boot_sweep(organization: org, host: HostControlRefused { refusal: NoOutOfBandRoute { host: m.host } },
+        population: population_over(m: m, width: RunnerWidthDerived { slots: 5 }, id: "b-2"),
         authority: authority, registration_labels: supplied_labels, listing: listing(names: [unit(m: m, id: "b-1", index: 0)], total: 1)) {
         LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: _, refusal: ListedSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: _ } } } } => true
         _ => false
       }
-      }
   }
 }
 
-// A CANONICAL NAME IS NOT AN OBSERVED BOOT. The round trip proves spelling only, so a canonical name
-// whose boot was never admitted (here a boot id nothing ever minted) is admitted ONLY as a recovered
-// reserved-namespace registration, with the typed reason; the admitted boot's own name is the other
-// arm. The sweep deletes the former and leaves the latter, and a wrong-host name stays outside.
-test fn a_never_observed_canonical_name_is_admitted_only_as_a_reserved_namespace_recovery() -> Bool {
+// A CANONICAL NAME IS NOT AN OBSERVED BOOT, AND THERE IS NO MINT RECEIPT: the only fact a canonical name
+// can have is membership of the CURRENT population. A name whose boot was never admitted is a
+// reserved-namespace recovery (selected, as a subject that is no JitRegistration); a population member
+// is the only name that is not.
+test fn a_never_observed_canonical_name_is_a_reserved_namespace_recovery_and_only_a_member_is_not() -> Bool {
   match the_host() {
     Absent => false
     Present { value: m } => {
       let never = unit(m: m, id: "never-observed", index: 0)
       let own = unit(m: m, id: "adm-0", index: 0)
       (match reg(m: m, listed: never) {
-        ListedRegistrationAdmitted { registration: _, origin: RecoveredReservedServiceRegistration } => true
+        ListedRecoveredReserved { subject: RecoveredReservedServiceRegistration { recovered: _ } } => true
         _ => false
       }) && (match reg(m: m, listed: own) {
-        ListedRegistrationAdmitted { registration: _, origin: AdmittedBootRegistration { boot: _ } } => true
+        ListedCurrentPopulationMember => true
         _ => false
       }) && (match sweep(m: m, current: "adm-0", names: [never, own], total: 2) {
-        LostBootSweepSelected { registrations: rs, untouched: u } => count(rs) == 1 && count(u) == 1
+        LostBootSweepSelected { subjects: rs, untouched: u } => count(rs) == 1 && count(u) == 1
         _ => false
       })
+    }
+  }
+}
+
+// MEMBERSHIP IS THE BOUND SLOT SET, NOT THE BOOT STRING. Same boot with an index inside 0..N-1 is a
+// member; the same boot with index N, or 999, or an index nobody was assigned, is NOT and is selected;
+// shrinking the offer's width removes a member; and a synthesized current-boot name gets the member
+// arm only through the membership join (an empty member set grants it to none).
+test fn a_current_boot_name_is_a_member_only_inside_the_bound_slot_set() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let inside = [0, 1, 2, 3, 4] |> map(i => unit(m: m, id: "adm-0", index: i))
+      let outside = [5, 6, 999] |> map(i => unit(m: m, id: "adm-0", index: i))
+      all(inside, n => match reg(m: m, listed: n) { ListedCurrentPopulationMember => true _ => false })
+        && all(outside, n => match reg(m: m, listed: n) { ListedRecoveredReserved { subject: _ } => true _ => false })
+        && (match sweep(m: m, current: "adm-0", names: concat(inside, outside), total: 8) {
+          LostBootSweepSelected { subjects: rs, untouched: u } => count(rs) == 3 && count(u) == 5
+          _ => false
+        })
+        && (match reg_with(m: m, listed: unit(m: m, id: "adm-0", index: 3), members: members_of(m: m, width: RunnerWidthDerived { slots: 3 }, id: "adm-0"), labels: supplied_labels) {
+          ListedRecoveredReserved { subject: _ } => true
+          _ => false
+        })
+        && all(inside, n => match reg_with(m: m, listed: n, members: [], labels: supplied_labels) { ListedRecoveredReserved { subject: _ } => true _ => false })
+    }
+  }
+}
+
+// A POPULATION THAT CANNOT BE DERIVED REFUSES THE SWEEP. Unresolved width, an uncontrolled host, and a
+// derived width whose slots all refused their labels each yield no membership; none may read as "nothing
+// is a member" and select the current boot's runners. The real producer for this host (no fleet offer)
+// is one of the three.
+test fn an_underivable_population_refuses_the_sweep_and_never_selects_the_current_boot() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let names = [unit(m: m, id: "adm-0", index: 0), unit(m: m, id: "old", index: 0)]
+      let unresolved = population_over(m: m, width: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: m.host } }, id: "adm-0")
+      let labels_refused = match service_boot_id_of(run: kernel_boot(id: "adm-0")) {
+        Present { value: cur } =>
+          service_slot_population_over(host: controlled(m: m), width: RunnerWidthDerived { slots: 5 },
+            registration_labels: RegistrationLabelsRefused { host: m.host, cause: "no offer" as NonEmptyStr }, boot: cur)
+        Absent => ServiceSlotsHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } }
+      }
+      (match sweep_over_population(m: m, population: unresolved, names: names, total: 2) {
+        LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: ServiceSlotsWidthUnresolved { cause: _ } } } => true
+        _ => false
+      }) && (match sweep_over_population(m: m, population: labels_refused, names: names, total: 2) {
+        LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: ServiceSlotsDerived { slots: _ } } } => true
+        _ => false
+      }) && (match sweep_over_population(m: m, population: ServiceSlotsHostNotControlled { refusal: NoOutOfBandRoute { host: m.host } }, names: names, total: 2) {
+        LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: ServiceSlotsHostNotControlled { refusal: _ } } } => true
+        _ => false
+      }) && (has_offer(m: m) || (match sweep_over_population(m: m, population: population_real(m: m, id: "adm-0"), names: names, total: 2) {
+        LostBootSweepRefused { refusal: SweepPopulationNotDerived { population: _ } } => true
+        _ => false
+      }))
     }
   }
 }

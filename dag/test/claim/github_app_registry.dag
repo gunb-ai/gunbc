@@ -69,7 +69,7 @@ import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_command }
-import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, JitDeregistrationSubject, AuthorizedDispatchRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.host.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, AttemptSlot, host_unit_slot_listener_argv,
@@ -1473,7 +1473,7 @@ test fn witness_a_deregistration_subject_exists_only_for_an_authorized_dispatch(
 // `other-name` -- or one taken in another organization or with another installation's token -- must
 // refuse before its answer is read, and the registration's own subject must pass.
 fn readback_for_another_subject_refuses(reg: JitRegistration, org: NonEmptyStr, name: NonEmptyStr, app: DeclaredGitHubApp, i: GitHubAppInstallationId) -> Bool {
-  match readback_subject_refusal(registration: reg, organization: org, name: name, app: app, installation: i) {
+  match readback_subject_refusal(subject: AuthorizedDispatchRegistration { registration: reg }, organization: org, name: name, app: app, installation: i) {
     Present { value: DeregistrationReadbackForAnotherSubject { organization: _, name: _, app: _, installation: _ } } => true
     _ => false
   }
@@ -1483,7 +1483,7 @@ test fn witness_a_readback_for_another_subject_is_refused() -> Bool {
   match jit_registration_of(dispatch: dispatched(owned: true, perms: runner_grant)) {
     Absent => false
     Present { value: reg } =>
-      (match readback_subject_refusal(registration: reg, organization: reg.organization.login, name: reg.name.value, app: reg.app, installation: reg.installation) {
+      (match readback_subject_refusal(subject: AuthorizedDispatchRegistration { registration: reg }, organization: reg.organization.login, name: reg.name.value, app: reg.app, installation: reg.installation) {
         Absent => true
         Present { value: _ } => false
       })
