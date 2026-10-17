@@ -6,22 +6,19 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_restore_action }
-import gunbc.ci.ci_failure_class { wrap_command_is_renderable }
+import gunbc.ci.ci_failure_class { wrap_command_is_renderable, wrap_command_with_floor_attempt_receipt }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
-  parse_compiler_sha_identity_blob_dir,
-  parse_compiler_sha_identity_blob_path,
   parse_compiler_sha_identity_cache_key,
 }
 import gunbc.parse_verdict_publish {
   materialization_gha_cache_key_prefix,
-  parse_verdict_receipt_dir,
-  parse_verdict_publish_step_id,
-  parse_verdict_compiler_output,
-  parse_verdict_parser_bin_output,
+  parse_verdict_compiler_expr,
+  parse_verdict_generation_one_bin,
+  parse_verdict_identity_blob_file,
+  parse_verdict_receipts_file,
   parse_verdict_publish_memory_env,
-  parse_verdict_wrapped_script,
   source_root_argv,
 }
 
@@ -31,7 +28,8 @@ import gunbc.parse_verdict_publish {
 // TRANSITION: PRs based on a main sha older than PR-1's first main publish of
 // gunbc-parse-identity-<sha> refuse BaseIdentityUnobserved (typed, names base.sha)
 // until they merge main. The identity write is PR-1; this module only restores
-// and consumes.
+// and consumes. Paths match gunbc.parse_verdict_publish: runner.temp identity
+// file, receipts file, generation-one argv — never a second blob directory.
 
 data parse_verdict_pr2_pre_identity_publish_transition: String = "PRs based on a main sha older than the first main publish of gunbc-parse-identity-<sha> (PR-1 landing) refuse BaseIdentityUnobserved until they merge main; the refusal is typed and names base.sha."
 fn materialization_restore_if() -> String {
@@ -49,11 +47,8 @@ fn parse_verdict_restore_exact_key() -> String {
   join(
     [
       materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
-      "${{ steps.",
-      parse_verdict_publish_step_id,
-      ".outputs.",
-      parse_verdict_compiler_output,
-      " }}-${{ github.event.pull_request.base.sha }}"
+      parse_verdict_compiler_expr(),
+      "-${{ github.event.pull_request.base.sha }}"
     ],
     ""
   )
@@ -66,7 +61,7 @@ fn parse_verdict_identity_restore_step() -> Step {
     uses: cache_restore_action,
     with: Present {
       value: [
-        kv(key: "path", value: yaml_string(s: parse_compiler_sha_identity_blob_dir)),
+        kv(key: "path", value: yaml_string(s: parse_verdict_identity_blob_file)),
         kv(key: "key", value: yaml_string(s: parse_compiler_sha_identity_cache_key(sha: "${{ github.event.pull_request.base.sha }}")))
       ]
     },
@@ -84,7 +79,7 @@ fn parse_verdict_restore_step() -> Step {
     uses: cache_restore_action,
     with: Present {
       value: [
-        kv(key: "path", value: yaml_string(s: parse_verdict_receipt_dir)),
+        kv(key: "path", value: yaml_string(s: parse_verdict_receipts_file)),
         kv(key: "key", value: yaml_string(s: parse_verdict_restore_exact_key()))
       ]
     },
@@ -105,22 +100,20 @@ fn parse_verdict_restore_consume_command() -> String {
       "base_sha=\"${{ github.event.pull_request.base.sha }}\"",
       join(["idhit=\"${{ steps.", parse_verdict_identity_restore_step_id, ".outputs.", parse_verdict_cache_hit_output, " }}\""], ""),
       join(["hit=\"${{ steps.", parse_verdict_restore_step_id, ".outputs.", parse_verdict_cache_hit_output, " }}\""], ""),
-      join(["bin=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_parser_bin_output, " }}\""], ""),
-      join(["compiler=\"${{ steps.", parse_verdict_publish_step_id, ".outputs.", parse_verdict_compiler_output, " }}\""], ""),
-      "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after the identity step\"; exit 1; fi",
-      join(["idfile=\"", parse_compiler_sha_identity_blob_path(), "\""], ""),
-      join(["receipts=\"", parse_verdict_receipt_dir, "/receipts.tsv\""], ""),
+      join(["bin=\"", parse_verdict_generation_one_bin(), "\""], ""),
+      join(["compiler=\"", parse_verdict_compiler_expr(), "\""], ""),
+      "if [ -z \"$bin\" ] || [ ! -x \"$bin\" ] || [ -z \"$compiler\" ]; then echo \"::error::IdentityUnknown: parser identity or generation-one executable missing after emit-build\"; exit 1; fi",
+      join(["idfile=\"", parse_verdict_identity_blob_file, "\""], ""),
+      join(["receipts=\"", parse_verdict_receipts_file, "\""], ""),
       "if [ \"$idhit\" != \"true\" ] || [ ! -s \"$idfile\" ]; then echo \"::error::BaseIdentityUnobserved: no parse-compiler identity for base.sha=$base_sha\"; exit 1; fi",
       "i_base=$(cat \"$idfile\")",
       join(
         [
-          "if [ \"$compiler\" != \"$i_base\" ]; then mkdir -p \"",
-          parse_verdict_receipt_dir,
-          "\"; \"$bin\" ",
+          "if [ \"$compiler\" != \"$i_base\" ]; then \"$bin\" ",
           cli_verb_parse_population,
-          " --compiler \"$compiler\"",
+          " --compiler \"$compiler\" --receipts \"$receipts\"",
           source_root_argv(),
-          " > \"$receipts\"; echo \"parse-verdict reuse=FreshIdentityWalked compiler=$compiler\"; elif [ \"$hit\" = \"true\" ] && [ -s \"$receipts\" ]; then echo \"parse-verdict reuse=Reused compiler=$compiler\"; else echo \"::error::EvictedRefused: I_head equals I_base but receipts for base.sha=$base_sha are missing or empty\"; exit 1; fi"
+          "; echo \"parse-verdict reuse=FreshIdentityWalked compiler=$compiler\"; elif [ \"$hit\" = \"true\" ] && [ -s \"$receipts\" ]; then echo \"parse-verdict reuse=Reused compiler=$compiler\"; else echo \"::error::EvictedRefused: I_head equals I_base but receipts for base.sha=$base_sha are missing or empty\"; exit 1; fi"
         ],
         ""
       )
@@ -133,7 +126,7 @@ fn parse_verdict_restore_consume_step() -> Step {
   RunStep {
     name: Present { value: parse_verdict_restore_consume_step_name },
     id: none,
-    run: parse_verdict_wrapped_script(command: parse_verdict_restore_consume_command()),
+    run: wrap_command_with_floor_attempt_receipt(command: parse_verdict_restore_consume_command()),
     shell: none,
     env: Present { value: parse_verdict_publish_memory_env() },
     working_directory: none,
