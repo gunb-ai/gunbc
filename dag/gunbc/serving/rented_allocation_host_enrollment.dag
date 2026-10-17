@@ -4,7 +4,7 @@ import std.types { String, Bool, NonEmptyStr, List }
 import product.fabric.supply { SupplierOffer }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.integer { int_to_decimal_string }
+import product.fabric.flex_vast_shadow { flex_vast_offer_key_of_id }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import product.host_identity { HostIdentity }
@@ -52,14 +52,11 @@ data rented_acquisition_names_another_resource_obligation: NonEmptyStr = "the su
 
 data rented_host_resources_mismatch_obligation: NonEmptyStr = "the supplied Vast host resources are read from another offer than the allocation's accepted contract offer (offer id differs, or the contract offer's key is not a Vast offer id), so they describe another machine" as NonEmptyStr
 
-// THE BINDING IS OFFER IDENTITY. A Vast offer is keyed by its decimal id exactly as
-// product.fabric.flex_vast_shadow flex_vast_offer_key keys it (int_to_decimal_string of VastAiOffer.id), so the
-// contract offer's key equals the row's id rendered the same way; a key that is not that rendering is not a
-// Vast offer id and refuses. STATED DIVERGENCE: that rule is restated here as one comparison because
-// flex_vast_offer_key takes the whole VastAiOffer, which the allocation does not carry; hoisting it to take the Int
-// is the follow-up that removes the restatement.
+// THE BINDING IS OFFER IDENTITY. A Vast offer is keyed by its decimal id, the rule
+// product.fabric.flex_vast_shadow flex_vast_offer_key_of_id holds once, so the contract offer's key must equal the
+// host row's id keyed that way; a key that is not that rendering is not a Vast offer id and refuses.
 fn rented_host_matches_contract(offer: SupplierOffer<NonEmptyStr>, host: VastAiOfferHostResources) -> Bool {
-  int_to_decimal_string(value: host.id) == (offer.id.key as String)
+  flex_vast_offer_key_of_id(id: host.id) == offer.id.key
 }
 
 fn rented_resource_binding(a: RentedServingAllocation, acquisition: ProviderResourceAcquisition?) -> ProviderResourceBinding? {

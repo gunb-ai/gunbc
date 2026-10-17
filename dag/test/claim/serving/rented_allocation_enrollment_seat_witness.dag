@@ -7,8 +7,8 @@ import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, 
 import gunbc.host.host_assimilation_program { assimilation_program_for }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, inference_serving_enrollment_participation }
 import std.optional { Present, Absent }
-import std.integer { int_to_decimal_string }
-import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.flex_vast_shadow { flex_vast_offer_key_of_id }
+import product.fabric.identity { FabricIdentity }
 import product.fabric.supply { SupplierOffer }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { byte_size_count, hardware_thread_count_value }
@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn s_offer() -> SupplierOffer<NonEmptyStr> {
   let o = i_instance(gpus: 1)
   SupplierOffer {
-    id: FabricIdentity { principal: o.id.principal, key: int_to_decimal_string(value: 4242) as OfferKey },
+    id: FabricIdentity { principal: o.id.principal, key: flex_vast_offer_key_of_id(id: 4242) },
     executor: o.executor, route: o.route, shape: o.shape, capabilities: o.capabilities, trust_domain: o.trust_domain,
     isolation: o.isolation, quantity_bound: o.quantity_bound, ready_at: o.ready_at, quote: o.quote,
     billing_quantum: o.billing_quantum, evidence: o.evidence,
@@ -174,7 +174,7 @@ test fn a_non_amd64_offer_refuses_on_architecture() -> Bool {
 
 // THE HOST RESOURCES ARE BOUND BY OFFER IDENTITY: the contract offer's key is the decimal offer id the host row
 // carries (4242), and a host read from offer 4243 with identical figures refuses. s_offer is the pairing for the
-// route: its key is built the way flex_vast_offer_key builds one.
+// route: its key is built by flex_vast_offer_key_of_id, the rule flex_vast_offer_key calls.
 test fn host_resources_of_another_machine_refuse() -> Bool {
   let other = VastAiOfferHostResources { id: 4243, cpu_arch: "amd64", cpu_cores: 64, cpu_ram: 65536, disk_space: ExactDecimal { units: 20485, fraction_digits: 1 } }
   s_refusal_text(r: rented_allocation_host_enrollment(a: s_read_allocation(), host: other, host_decl: s_host_decl(), standings: s_documented_standings(), acquisition: Absent))
