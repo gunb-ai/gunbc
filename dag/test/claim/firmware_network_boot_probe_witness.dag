@@ -3,12 +3,13 @@ module test.claim.firmware_network_boot_probe_witness
 import std.types { Bool, List }
 import gunbc.firmware_network_boot_standing {
   FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
-  BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+  boot_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
 }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
 }
 import std.optional { Present, Absent }
+import extdeps.bmc.types { BootTargetPxe }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.external_authority { TranscribedUncited }
 import gunbc.firmware_network_boot_probe {
@@ -125,7 +126,7 @@ test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
     route: MegaRacRestGetRoute,
     coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
   )
-  match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: ["pxe"] }, ReplySecureBootEnabled] }) {
+  match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_entry(kind: BootTargetPxe, label: "pxe")] }, ReplySecureBootEnabled] }) {
     BmcObserved { subject: _, observation: o } => is_unobserved_secure_boot(o: o) && is_observed_boot_order(o: o)
     BmcUnreachable { subject: _, attempt: _ } => false
   }
@@ -155,7 +156,7 @@ test fn a_sixth_family_probes_without_touching_the_instrument() -> Bool {
     route: OpenBmcRedfishGetRoute,
     coverage: [TransportAnswers { axis: BootOrderAxis }]
   )
-  match probe(row: sixth, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: ["net"] }] }) {
+  match probe(row: sixth, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_entry(kind: BootTargetPxe, label: "net")] }] }) {
     BmcObserved { subject: _, observation: o } => is_observed_boot_order(o: o)
     BmcUnreachable { subject: _, attempt: _ } => false
   }
