@@ -86,10 +86,7 @@ restating it, not sweeping it.
 
 ### (2) No receipt anywhere records an applied power limit
 
-The three committed fixtures are the only bench evidence in the tree — no other `.jsonl` or
-`auto.log` exists under any fixture path — and none carries a watt figure. They are committed on
-`serving-bench-p3-receipts` (P3), not yet on `main`, where `fixtures/gpu_bench/` is empty; sizes
-and counts below are measured at that branch.
+undefined
 
 - `fixtures/gpu_bench/pro6000ws_600w_v2/warm_ninfer_nvfp4_pro6000ws_600w.jsonl` (91,935 B; 268
   records) has 15 keys per record: `completion_tokens, error, max_tokens, n_active, phase,
@@ -358,19 +355,24 @@ re-checks the binding at use time rather than trusting it.
 its CEILING as *"through the admitted receipt constructor, an observation with a proved capacity
 violation or other established warm-policy failure cannot become eligible warm-performance
 evidence"*, and names its NEXT TRIGGER as *"P4 selection consumes only `WarmValid` as a funded
-axis"*. The machinery that CEILING clause names does not exist in the tree. `GpuBenchWarmStanding`
-is an **unsealed coproduct**; `WarmValid` appears outside its own module only ever as a match
-pattern (both witnesses, ~20 sites, zero value constructions); and the module's minting functions
-carry **no `admit_callers`** (grep: 0 hits in the file). So nothing in the compiler today stops a
-P4 module from writing `WarmValid { working_set_tokens: …, measured_kv_tokens: … }` literally and
+axis"*. The machinery that CEILING clause names does not exist in the tree.
+`GpuBenchWarmStanding` is an **unsealed coproduct**; `WarmValid` appears outside its own module only
+ever as a match pattern or in prose — 24 occurrences in
+`dag/test/claim/gpu_bench_warm_standing_witness.dag`, 2 in
+`dag/test/claim/gpu_bench_v2_receipt_inhabitance_witness.dag`, and one prose mention inside the
+failure-mode row's own text — with **zero value constructions** anywhere (the one
+`WarmValid { working_set_tokens: w, measured_kv_tokens: k }` at
+`gpu_bench_warm_standing_witness.dag:280` is a match arm: it ends in `=>`); and the module's minting
+functions carry **no `admit_callers`** (grep: 0 hits in the file). So nothing in the compiler today
+stops a P4 module from writing `WarmValid { working_set_tokens: …, measured_kv_tokens: … }` literally and
 pairing it with a subject it made up. The existing claims
 (`the_capacity_fit_becomes_evidence_only_when_the_counter_is_faced`,
 `a_replayed_prefix_refuses_what_an_unreplayed_one_funds`) prove the gate discriminates when the
-value arrives through those folds; they cannot say anything about a hand-typed arm. The row's own
-witness comments say the near-true thing from the other side — *"`WarmValid` IS reachable, and only
+value arrives through those folds; they cannot say anything about a hand-typed arm. The witness comment at
+`dag/test/claim/gpu_bench_warm_standing_witness.dag:260` says the near-true thing from the other side — *"`WarmValid` IS reachable, and only
 by carrying the reuse evidence into stage 3"* — which is true of the folds and silent about the
-literal. (That row is authored at `de0fedf0005`, `gunbai-bot[bot]`, 2026-10-14 — P1's squash. The
-gap belongs to nobody in particular, and naming it is not an accusation.)
+literal. (The failure-mode row itself is authored at `de0fedf0005`, `gunbai-bot[bot]`, 2026-10-14 —
+P1's squash. The gap belongs to nobody in particular, and naming it is not an accusation.)
 
 Why the seal has to be a **record with one admitted mint**, not the coproduct arm: DAG coproduct
 arms are not sealed, and I read the enforcement rather than trusting the error text.
@@ -398,8 +400,7 @@ in-corpus bytes, per `observed_receipt`'s admission requirement, with the honest
 `external_authority.dag:28-32` respected: a fold over transcribed bytes is a boundary transcription,
 so name the seam and its trigger rather than claiming the substrate checks it.
 
-## Facts, with where each was checked
-
+undefined
 1. `GpuModelCatalogRow.tdp_watts: Watt?` — `extdeps/gpu/types.dag:120`.
 2. `ServingAcceleratorRealization.applied_power_limit: Watt?` — `gunbc/spark/serving_performance_subject.dag:126`; the type has 4 fields (`sku`, `count`, `host_link`, `applied_power_limit`).
 3. No `applied ≤ tdp` rule exists — `git grep -i tdp origin/main -- dag/gunbc/spark dag/gunbc/serving` → 0 hits.
@@ -412,8 +413,7 @@ so name the seam and its trigger rather than claiming the substrate checks it.
    (`completion_tokens, error, max_tokens, n_active, phase, prompt_tokens, retained, round, run,
    schema, session, status, t_end, t_first, t_start`), none power-related. "600" occurs 542 times:
    536 inside the run name (268 × 2 — the name carries `600` twice, in `pro6000ws` and `600w`) and 6
-   digit-runs inside epoch timestamps; none is a measurement. Fixtures are on the P3 branch
-   (`origin/serving-bench-p3-receipts`), not yet on main, where `fixtures/gpu_bench/` is empty.
+undefined
 10. `auto.log` and `results_ninfer_nvfp4_pro6000ws_600w.txt` contain no `watt|power|tdp` match.
 11. `extdeps/nvidia/management_library.dag` contains no "power"; its observations are `DeviceMemoryObservation`.
 12. Neither home-serving list has a consumer beyond `w_purchase_candidates_are_add_in_cards_and_sxm_are_references` (`dag/test/claim/home_serving_extdeps_facts_witness.dag:129`).
@@ -428,6 +428,6 @@ so name the seam and its trigger rather than claiming the substrate checks it.
 21. Standing coproduct and its entry points — `gunbc/serving/gpu_bench_warm_standing.dag:53-57`; `gpu_bench_warm_run_admission` `:208`, `gpu_bench_warm_capacity_check` `:280`, `_from_capacity_ok` `:303`, `gpu_bench_warm_standing_after_replay` `:320`, `gpu_bench_warm_standing_with_ninfer_log` `:362`. `ServingPerformanceSubject` is `sole_constructor` at `gunbc/spark/serving_performance_subject.dag:77`; `AxisNotApplicable | AxisUnread` at `:321-322`.
 22. Subject-bound-verdict precedent — `SubjectBoundCacheFit { subject_key, allocation_plan, verdict }` at `gunbc/spark/serving_promotion.dag:120`; `ServingPromotionEvidence` `:162`; `ServingPromotionReceipts` `:177`; `promotion_evidence` `:193`; `serving_promotion_standing` `:217`; `cache_bound_to_resolved_plan` `:267`.
 23. Seal binds records, not arms — `src/v1/stage0/src/compiler_tests.rs:3119` `sole_constructor_violation_outside_module` and `:3167` `constructor_call_admission_refuses_unlisted_cross_module_caller`; the module's own comment at `extdeps/external_authority.dag:25-26` says *"a seal binds records, not coproduct arms"*. Arms are constructed across module boundaries in the corpus today — `Present { value: … }` at `dag/gunbc/ollama_runtime_bundle.dag:81`, `:83`, `:209` against `type Optional` / `Present` declared at `std/optional.dag:3`/`:5`. (snappy's note cited these two tests as `:3118`/`:3168`; those lines are a bare `#[test]` and a `thread::Builder` — the fns are at `:3119`/`:3167`.)
-24. `WarmValid` outside its module appears ONLY as match patterns (both witnesses, ~20 sites; zero value constructions), `GpuBenchWarmStanding` is not `sole_constructor`, and `gpu_bench_warm_standing.dag` contains 0 `admit_callers` — measured at `a7724b72999`.
+24. `WarmValid` outside its module: 24 occurrences in `dag/test/claim/gpu_bench_warm_standing_witness.dag`, 2 in `dag/test/claim/gpu_bench_v2_receipt_inhabitance_witness.dag`, 1 prose mention in the failure-mode row — ALL match arms or prose, zero value constructions (`gpu_bench_warm_standing_witness.dag:280` ends in `=>`, a match arm). `GpuBenchWarmStanding` is not `sole_constructor`; `gpu_bench_warm_standing.dag` contains 0 `sole_constructor`/`admit_callers` hits. Measured at `a7724b72999` and re-confirmed at `origin/main` `c4dc2576872`.
 25. Seal enforcement compares file paths, not module paths — `sole_constructor_construction_diags` at `src/v1/stage0/src/v1_compiler_infer.rs:17224` tests `decl.span.file == span.file`, while the diagnostic text says "defining module" (`src/v1/stage0/src/v1_std_core.rs:1119`). `admit_callers` instead gates by caller declaration coordinates — `constructor_admission_diags_from_lookup`, `v1_compiler_infer.rs:1737`, `caller_decl_coords` vs `admit_callers_entry_coords`. Today every `.dag` file holds exactly one module declaration (6,730 files / 6,730 declarations; the lone regex hit at `annotation_authored_at_a_grain_the_model_does_not_carry.dag:19` is prose inside a comment).
 26. The warm-capacity failure-mode row — `dag/gunbc/recurring_failure_mode/benchmark_warm_capacity_violation_read_as_engine_performance.dag`, authored `de0fedf0005`, `gunbai-bot[bot]`, 2026-10-14 — states its CEILING as "through the admitted receipt constructor …" and its NEXT TRIGGER as "P4 selection consumes only WarmValid as a funded axis". (snappy's note put `cited_figure_read_obligation` at `external_authority.dag:68-74`; it is at `:57` — `:68-74` is the `ExternalModelScope` "no revision field" comment.)
