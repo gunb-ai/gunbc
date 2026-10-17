@@ -15683,7 +15683,13 @@ fn dbg6_box_tag(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<S
         TypeDeclKernelSpellingUndecided { leaf: l } => concat("undecided ", l)
         TypeDeclNotDeclared => "notdeclared"
       }
-      concat(layer, " ", res, " name=", authored_name_at(source_indices: scope.type_env.source_indices, node: ft))
+      let si6 = scope.type_env.source_indices
+      let spelled6 = rust_fn_sig_leaf_name(source_indices: si6, n: ft)
+      let ks = !is_container_type(name: spelled6) && (is_kernel_type(name: spelled6) || realized_checkpoint(decision: type_reference_realization(n: ft, dag_name: spelled6, target: Rust)) != none)
+      let hop = rust_operand_alias_or_refinement_continue(rt: ft, scope: emit_alias_hop_scope(source_indices: si6), fuel: 1)
+      let hopleaf = match hop { Present { value: nx } => rust_fn_sig_leaf_name(source_indices: si6, n: nx)  Absent => "-" }
+      let km = match type_reference_provenance(n: ft) { KernelMinted { minted_name: _ } => "km"  _ => "nokm" }
+      concat(layer, " ", res, " spelled=", spelled6, " kscalar=", if ks { "t" } else { "f" }, " hop=", hopleaf, " ", km, " arrow=", if rust_type_node_is_arrow(n: ft) { "t" } else { "f" })
     Absent => "nofield"
   }
 }
