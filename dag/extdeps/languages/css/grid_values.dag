@@ -1,0 +1,82 @@
+module extdeps.languages.css.grid_values
+
+import std.types { Int, String, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.values { CssLength, css_length_wire, CssVarRef, css_var_ref_wire }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/css-grid-2"
+  }
+}
+
+// Cited upstream: W3C CSS Grid Layout Module Level 2.
+// §7.1 track-listing: <track-list> = [ <track-size> | <line-name> ]+ , and the repeat() notation
+//   repeat( [ <integer [1,∞]> | auto-fill | auto-fit ] , <track-list> ).
+// §7.2.3 the minmax() notation: minmax( <inflexible-breadth> , <track-size> ) — an asymmetric
+//   production, which is why the two positions are separate fields below rather than one list of
+//   two: the min position may not itself be a minmax(), and a wire that took "two of anything"
+//   would let a spec-invalid nesting through while still looking right.
+// §7.2.3 <flex> = <number [0,∞]>fr, and <length-percentage>. A flex factor is NOT a <length>
+//   (§6.1 of css-values-4 puts fr in its own <flex> type), so it is its own arm here rather than a
+//   CssLength unit — modelling "1fr" as a length with unit Fr would be a nicknaming (§3) and would
+//   make every length-carrying wire silently accept a fraction.
+// The strings below are SERIALIZATIONS of these rows, never the stored fact (§2, decompress the
+// string). Before this module, grid track lists existed only as hand-joined strings at each call
+// site — the shape of "repeat(auto-fill, minmax(var(--card-min), 1fr))" was re-typed per consumer,
+// so a mis-closed paren or a swapped minmax pair was a shape bug nobody checked.
+//
+// DELIBERATELY NOT MODELLED, with what would bring them: min-content / max-content / none and the
+// auto-fit keyword (no consumer constructs them today; §3c forbids modelling "for later"). Their
+// trigger is the first consumer that asks for a track of that shape — each is one arm plus one
+// wire case, and the arms must come with a constructor, not ahead of one.
+// var() in a track: allowed because §7.2.3's <length-percentage> position can be a var()
+// substitution. The reference itself is modelled in extdeps.languages.css.values (css-values-4
+// §3.10) — one grammar for the shape, reused here rather than restated.
+
+// A <flex> factor: <number>fr. Integers only, because that is what consumers construct; a
+// fractional factor (0.5fr) needs the number model widened deliberately, not silently.
+type CssTrackBreadth
+  = FlexTracks { factor: Int }
+  | LengthTrack { length: CssLength }
+  | VarTrack { reference: CssVarRef }
+
+fn css_track_breadth_wire(b: CssTrackBreadth) -> String {
+  match b {
+    FlexTracks { factor: f } => join([to_string(f), "fr"], "")
+    LengthTrack { length: l } => css_length_wire(l: l)
+    VarTrack { reference: r } => css_var_ref_wire(v: r)
+  }
+}
+
+// A <track-size>. minmax() carries its two positions separately for the asymmetry above.
+type CssTrackSize
+  = TrackBreadth { breadth: CssTrackBreadth }
+  | TrackMinMax { min: CssTrackBreadth, max: CssTrackBreadth }
+
+fn css_track_size_wire(t: CssTrackSize) -> String {
+  match t {
+    TrackBreadth { breadth: b } => css_track_breadth_wire(b: b)
+    TrackMinMax { min: lo, max: hi } =>
+      join(["minmax(", css_track_breadth_wire(b: lo), ", ", css_track_breadth_wire(b: hi), ")"], "")
+  }
+}
+
+// <track-list>, in the three notations consumers actually use.
+type CssTrackList
+  = TrackList { tracks: List<CssTrackSize> }
+  | RepeatCount { count: Int, tracks: List<CssTrackSize> }
+  | RepeatAutoFill { tracks: List<CssTrackSize> }
+
+fn css_track_list_wire(l: CssTrackList) -> String {
+  match l {
+    TrackList { tracks: ts } =>
+      join(map(ts, t => css_track_size_wire(t: t)), " ")
+    RepeatCount { count: c, tracks: ts } =>
+      join(["repeat(", to_string(c), ", ", join(map(ts, t => css_track_size_wire(t: t)), " "), ")"], "")
+    RepeatAutoFill { tracks: ts } =>
+      join(["repeat(auto-fill, ", join(map(ts, t => css_track_size_wire(t: t)), " "), ")"], "")
+  }
+}

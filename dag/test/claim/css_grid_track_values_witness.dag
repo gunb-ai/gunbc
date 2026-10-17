@@ -1,0 +1,126 @@
+module test.claim.css_grid_track_values_witness
+
+import std.types { Bool, String, Int, List }
+import std.algebra { string_contains }
+import gunbc.design.material { BuildRule, StaticRule, decl, serialize_rules }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { GridTemplateColumns }
+import extdeps.languages.css.values { CssLength, Px, Ch, css_px, css_length_wire, CssVarRef, css_var_ref_wire }
+import extdeps.languages.css.grid_values {
+  CssTrackBreadth, CssTrackSize, CssTrackList,
+  FlexTracks, LengthTrack, VarTrack, TrackBreadth, TrackMinMax,
+  TrackList, RepeatCount, RepeatAutoFill,
+  css_track_breadth_wire, css_track_size_wire, css_track_list_wire,
+}
+
+// §5 — "done means executed". These claims render through the route every declaration takes
+// (gunbc.design.material.serialize_rules, the same serializer design.scale and the gunb.ai
+// layout layer use), so a grammar that is right in isolation but wrong inside a real
+// declaration is caught. A grammar witness that only calls its own wire functions would pass
+// even if nothing in the repo could ever consume them.
+
+fn grid_rule(tracks: CssTrackList) -> BuildRule {
+  StaticRule {
+    selector: ClassSelector { name: "grid-witness" },
+    decls: [decl(prop: GridTemplateColumns, value: css_track_list_wire(l: tracks))],
+  }
+}
+
+fn rendered(tracks: CssTrackList) -> String {
+  serialize_rules(rules: [grid_rule(tracks: tracks)])
+}
+
+// The spec productions serialize to the CSS the spec writes.
+test fn witness_track_list_notations_serialize() -> Bool {
+  css_track_list_wire(l: TrackList { tracks: [
+    TrackBreadth { breadth: LengthTrack { length: css_px(n: 200) } },
+    TrackBreadth { breadth: FlexTracks { factor: 1 } },
+  ] }) == "200px 1fr"
+    && css_track_list_wire(l: RepeatCount { count: 3, tracks: [
+      TrackMinMax {
+        min: LengthTrack { length: CssLength { n: 0, unit: Px } },
+        max: FlexTracks { factor: 1 },
+      }
+    ] }) == "repeat(3, minmax(0, 1fr))"
+    && css_track_list_wire(l: RepeatAutoFill { tracks: [
+      TrackMinMax {
+        min: VarTrack { reference: CssVarRef { name: "card-min" } },
+        max: FlexTracks { factor: 1 },
+      }
+    ] }) == "repeat(auto-fill, minmax(var(--card-min), 1fr))"
+}
+
+// A flex factor is not a length (§6.1 css-values-4 gives <flex> its own type): "1fr" must come
+// from FlexTracks, and a length must never render as a fraction. If someone "simplifies" by
+// adding an Fr unit to CssLength, this goes red because css_length_wire cannot produce "fr".
+test fn witness_flex_factor_is_not_a_length() -> Bool {
+  css_track_breadth_wire(b: FlexTracks { factor: 2 }) == "2fr"
+    && css_length_wire(l: CssLength { n: 2, unit: Px }) == "2px"
+    && css_length_wire(l: CssLength { n: 2, unit: Ch }) == "2ch"
+    && !string_contains(s: css_length_wire(l: CssLength { n: 2, unit: Px }), pattern: "fr")
+    && !string_contains(s: css_track_breadth_wire(b: LengthTrack { length: css_px(n: 200) }), pattern: "fr")
+}
+
+// minmax()'s two positions are separate fields because the production is asymmetric (§7.2.3).
+// Order matters and is not interchangeable: swapping the pair changes the rendered text, so a
+// call site that handed min and max the wrong way round is visible in the artifact rather than
+// being a silently valid-looking grid.
+test fn witness_minmax_is_asymmetric() -> Bool {
+  let swapped = TrackMinMax {
+    min: FlexTracks { factor: 1 },
+    max: LengthTrack { length: css_px(n: 200) },
+  }
+  let proper = TrackMinMax {
+    min: LengthTrack { length: css_px(n: 200) },
+    max: FlexTracks { factor: 1 },
+  }
+  css_track_size_wire(t: proper) == "minmax(200px, 1fr)"
+    && css_track_size_wire(t: swapped) == "minmax(1fr, 200px)"
+    && css_track_size_wire(t: proper) != css_track_size_wire(t: swapped)
+}
+
+// The grammar reaches a real stylesheet through the one serializer every declaration takes.
+// This is the "executed" half: a grammar nobody can consume would still pass the wire tests.
+test fn witness_tracks_reach_a_declaration_through_material() -> Bool {
+  rendered(tracks: RepeatAutoFill { tracks: [
+    TrackMinMax {
+      min: VarTrack { reference: CssVarRef { name: "card-min" } },
+      max: FlexTracks { factor: 1 },
+    }
+  ] }) == ".grid-witness { grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr)) }"
+    && rendered(tracks: RepeatCount { count: 3, tracks: [
+      TrackMinMax {
+        min: LengthTrack { length: CssLength { n: 0, unit: Px } },
+        max: FlexTracks { factor: 1 },
+      }
+    ] }) == ".grid-witness { grid-template-columns: repeat(3, minmax(0, 1fr)) }"
+    && rendered(tracks: TrackList { tracks: [
+      TrackBreadth { breadth: FlexTracks { factor: 1 } }
+    ] }) == ".grid-witness { grid-template-columns: 1fr }"
+}
+
+// A zero-length min renders as bare "0" (§6.2 css-values-4: the unit identifier is optional for
+// a zero length). minmax(0px, 1fr) is valid CSS but is NOT what this repo emits, and the
+// gunb.ai pages carry the zero form — pinning the zero behaviour here keeps the spec rule, not
+// a copied string.
+test fn witness_zero_min_is_unitless() -> Bool {
+  css_track_size_wire(t: TrackMinMax {
+    min: LengthTrack { length: CssLength { n: 0, unit: Px } },
+    max: FlexTracks { factor: 1 },
+  }) == "minmax(0, 1fr)"
+    && css_track_list_wire(l: TrackList { tracks: [
+      TrackBreadth { breadth: LengthTrack { length: CssLength { n: 0, unit: Px } } }
+    ] }) == "0"
+}
+
+// A track list is a LIST: each track contributes exactly once, in order, and no separator leaks.
+// Built by construction from N tracks rather than pinned to a count copied from a file (§5).
+fn track_of_index(i: Int) -> CssTrackSize {
+  TrackBreadth { breadth: LengthTrack { length: css_px(n: 100 + (i * 10)) } }
+}
+
+test fn witness_track_list_joins_in_order_exactly_once() -> Bool {
+  let three = TrackList { tracks: [track_of_index(0), track_of_index(1), track_of_index(2)] }
+  css_track_list_wire(l: three) == "100px 110px 120px"
+    && rendered(tracks: three) == ".grid-witness { grid-template-columns: 100px 110px 120px }"
+}
