@@ -770,9 +770,10 @@ type AttemptHeadReceiptsSource
   = AttemptHeadReceiptsListed { sources: List<ExactVerificationReceiptSource> }
   | AttemptHeadReceiptsUnreadable { detail: String }
 
-data attempt_receipt_stands_for_terminality: Int = 2
-data attempt_receipt_unreadable: Int = 1
-data attempt_receipt_irrelevant: Int = 0
+type AttemptReceiptStanding
+  = ReceiptStandsForTerminality
+  | ReceiptUnreadable { detail: String }
+  | ReceiptIrrelevant
 
 fn attempt_receipt_subject_names_same_hand_in(expected: VerificationSubject, found: VerificationSubject) -> Bool {
   (found.node_identity as String) == (expected.node_identity as String)
@@ -781,60 +782,81 @@ fn attempt_receipt_subject_names_same_hand_in(expected: VerificationSubject, fou
     && (found.head_sha as String) == (expected.head_sha as String)
 }
 
-fn attempt_receipt_terminality_class(expected: VerificationSubject, source: ExactVerificationReceiptSource) -> Int {
+fn attempt_receipt_standing_of(expected: VerificationSubject, found: VerificationSubject, verdict: ValidationVerdict) -> AttemptReceiptStanding {
+  if attempt_receipt_subject_names_same_hand_in(expected: expected, found: found) {
+    match verdict {
+      ValidationRefused { cause: _ } => ReceiptStandsForTerminality
+      ValidationNotRun => ReceiptIrrelevant
+      ValidationPassed { command: _, oracle_identity: _ } => ReceiptStandsForTerminality
+      ValidationFailed { command: _, exit_code: _, detail: _ } => ReceiptStandsForTerminality
+    }
+  } else {
+    ReceiptIrrelevant
+  }
+}
+
+fn attempt_receipt_terminality_class(expected: VerificationSubject, source: ExactVerificationReceiptSource) -> AttemptReceiptStanding {
   match source {
-    ExactVerificationReceiptAbsent => attempt_receipt_irrelevant
-    ExactVerificationReceiptUnreadable { detail: _ } => attempt_receipt_unreadable
+    ExactVerificationReceiptAbsent => ReceiptIrrelevant
+    ExactVerificationReceiptUnreadable { detail } => ReceiptUnreadable { detail: detail }
     ExactVerificationReceiptPresent { text } =>
       match verification_receipt_text_classify(receipt: text) {
         VerificationReceiptTextV2 { receipt } =>
-          if attempt_receipt_subject_names_same_hand_in(expected: expected, found: receipt.subject) {
-            match receipt.verdict {
-              ValidationRefused { cause: _ } => attempt_receipt_stands_for_terminality
-              ValidationNotRun => attempt_receipt_irrelevant
-              ValidationPassed { command: _, oracle_identity: _ } => attempt_receipt_stands_for_terminality
-              ValidationFailed { command: _, exit_code: _, detail: _ } => attempt_receipt_stands_for_terminality
-            }
-          } else {
-            attempt_receipt_irrelevant
-          }
+          attempt_receipt_standing_of(expected: expected, found: receipt.subject, verdict: receipt.verdict)
         VerificationReceiptTextV1ExactHead { legacy } =>
-          if attempt_receipt_subject_names_same_hand_in(expected: expected, found: legacy.subject) {
-            match legacy.verdict {
-              ValidationRefused { cause: _ } => attempt_receipt_stands_for_terminality
-              ValidationNotRun => attempt_receipt_irrelevant
-              ValidationPassed { command: _, oracle_identity: _ } => attempt_receipt_stands_for_terminality
-              ValidationFailed { command: _, exit_code: _, detail: _ } => attempt_receipt_stands_for_terminality
-            }
-          } else {
-            attempt_receipt_irrelevant
-          }
-        VerificationReceiptTextUndecodable { reason: _ } => attempt_receipt_unreadable
-        VerificationReceiptTextLegacyAttempt { verdict_key: _ } => attempt_receipt_unreadable
+          attempt_receipt_standing_of(expected: expected, found: legacy.subject, verdict: legacy.verdict)
+        VerificationReceiptTextUndecodable { reason } => ReceiptUnreadable { detail: reason }
+        VerificationReceiptTextLegacyAttempt { verdict_key } =>
+          ReceiptUnreadable { detail: join(["an attempt-level receipt (verdict ", verdict_key, ") sits among exact-head receipts"], "") }
       }
+  }
+}
+
+fn attempt_receipt_stands(standing: AttemptReceiptStanding) -> Bool {
+  match standing {
+    ReceiptStandsForTerminality => true
+    ReceiptUnreadable { detail: _ } => false
+    ReceiptIrrelevant => false
+  }
+}
+
+fn attempt_receipt_unreadable_detail(standing: AttemptReceiptStanding) -> String {
+  match standing {
+    ReceiptStandsForTerminality => ""
+    ReceiptUnreadable { detail } => detail
+    ReceiptIrrelevant => ""
   }
 }
 
 fn belt_attempt_terminality_evidence(expected: VerificationSubject, source: AttemptHeadReceiptsSource) -> AttemptTerminalityEvidence {
   match source {
     AttemptHeadReceiptsUnreadable { detail } => AttemptTerminalityEvidenceUnreadable { detail: detail }
-    AttemptHeadReceiptsListed { sources } =>
-      if sources.any(s => attempt_receipt_terminality_class(expected: expected, source: s) == attempt_receipt_stands_for_terminality) {
+    AttemptHeadReceiptsListed { sources } => {
+      let standings = sources.map(s => attempt_receipt_terminality_class(expected: expected, source: s))
+      if standings.any(st => attempt_receipt_stands(standing: st)) {
         AttemptTerminalityEstablished
-      } else if sources.any(s => attempt_receipt_terminality_class(expected: expected, source: s) == attempt_receipt_unreadable) {
-        AttemptTerminalityEvidenceUnreadable {
-          detail: "a verification receipt for this head could not be read or decoded, so whether the worker ended is not established",
-        }
       } else {
-        AttemptTerminalityNotEstablished
+        match standings.map(st => attempt_receipt_unreadable_detail(standing: st)).filter(d => d != "").first() {
+          Present { value: detail } => AttemptTerminalityEvidenceUnreadable { detail: detail }
+          Absent => AttemptTerminalityNotEstablished
+        }
       }
+    }
   }
 }
 
+// A receipt's name is exactly exact_verification_receipt_basename(head, window_hex): the one basename
+// relation the writer uses, so the diff-window files, the current-selection pointer and any other file in
+// the directory are not receipts. The diff-window file has four parts and the selection file carries no window identity.
 fn attempt_head_receipt_name_is_a_receipt(name: String, head_sha: String) -> Bool {
-  name.starts_with(prefix: join([head_sha, "."], ""))
-    && name.ends_with(suffix: ".json")
-    && name != current_verification_selection_basename(head_sha: head_sha)
+  let parts = name.split(delimiter: ".")
+  match parts.get(1) {
+    Absent => false
+    Present { value: window_hex } =>
+      length(xs: parts) == 3
+        && window_hex != "current-selection"
+        && name == exact_verification_receipt_basename(head_sha: head_sha, window_identity_hex: window_hex)
+  }
 }
 
 fn attempt_head_receipts_read_names(verification_dir: String, names: List<String>, index: Int) -> List<ExactVerificationReceiptSource> {
