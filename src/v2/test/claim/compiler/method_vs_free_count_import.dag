@@ -35,3 +35,12 @@ test fn native_bare_count_without_import_is_unbound() -> Bool {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
   }
 }
+
+data mfc_free_count_imported: String = "module p\n\nimport std.algebra { FreeMonoid, collection_count_shape }\n\nfn f(xs: FreeMonoid<Int>) -> Int {\n  count(xs)\n}\n"
+
+test fn native_bare_count_with_shape_import_resolves() -> Bool {
+  match fmi_infer(src: mfc_free_count_imported) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ok, diagnostics: _ } => ok
+  }
+}
