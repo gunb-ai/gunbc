@@ -87,3 +87,51 @@ data control_mismatch_source: String = "module probe_alias_ctl_bad\nimport std.t
 test fn w_control_genuine_mismatch_is_counted() -> Bool {
   refusal_count(source: control_mismatch_source) >= 1
 }
+
+data bare_if_source: String = "module probe_alias_bare_bare_if\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(c: Bool, a: RecAlias, b: Rec) -> Rec { if c { a } else { b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_if() -> Bool {
+  refusal_count(source: bare_if_source) == 0
+}
+
+data bare_match_arm_source: String = "module probe_alias_bare_bare_match_arm\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(c: Bool, a: RecAlias, b: Rec) -> Rec { match c { true => a\n false => b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_match_arm() -> Bool {
+  refusal_count(source: bare_match_arm_source) == 0
+}
+
+data bare_argument_source: String = "module probe_alias_bare_bare_argument\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn take(x: RecAlias) -> Int { x.v }\nfn p(b: Rec) -> Int { take(x: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_argument() -> Bool {
+  refusal_count(source: bare_argument_source) == 0
+}
+
+data bare_record_field_source: String = "module probe_alias_bare_bare_record_field\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\ntype R { f: RecAlias }\nfn p(b: Rec) -> R { R { f: b } }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_record_field() -> Bool {
+  refusal_count(source: bare_record_field_source) == 0
+}
+
+data bare_return_source: String = "module probe_alias_bare_bare_return\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: Rec) -> RecAlias { b }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_return() -> Bool {
+  refusal_count(source: bare_return_source) == 0
+}
+
+data bare_list_element_source: String = "module probe_alias_bare_bare_list_element\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: Rec) -> List<RecAlias> { [b] }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_list_element() -> Bool {
+  refusal_count(source: bare_list_element_source) == 0
+}
+
+data bare_nested_container_source: String = "module probe_alias_bare_bare_nested_container\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn p(b: List<List<Rec>>) -> List<List<RecAlias>> { b }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_nested_container() -> Bool {
+  refusal_count(source: bare_nested_container_source) == 0
+}
+
+data bare_function_type_source: String = "module probe_alias_bare_bare_function_type\nimport std.types { Int, Bool }\ntype Rec { v: Int }\ntype RecAlias = Rec\nfn use(f: fn(RecAlias) -> Int, b: Rec) -> Int { f(b) }\nfn g(x: Rec) -> Int { x.v }\nfn p(b: Rec) -> Int { use(f: g, b: b) }\n"
+
+test fn w_alias_and_expansion_agree_at_bare_function_type() -> Bool {
+  refusal_count(source: bare_function_type_source) == 0
+}
