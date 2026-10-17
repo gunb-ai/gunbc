@@ -3,7 +3,7 @@ module gunbc.parse_verdict_publish
 import std.types { String, List }
 import std.optional { Present }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
-import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_save_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import gunbc.instrument_targets { v2_native_cli_source_roots }
@@ -19,18 +19,60 @@ import gunbc.host.memory_envelope {
   memory_envelope_required_ci_contract,
 }
 import std.algebra { list_map }
+import extdeps.cache.github_actions {
+  GhaCacheEntryScope,
+  GhaCacheDefaultBranchScope,
+  GhaCachePullRequestMergeRefScope,
+  gha_cache_entry_restorable_by,
+}
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  Github,
+  Steps,
+  StringLiteral,
+  Equals,
+  LogicalAnd,
+  ExpressionTemplate,
+  LiteralText,
+  Interpolation,
+  serialize_expression,
+  serialize_template,
+  runner_temp,
+}
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
   parse_compiler_sha_identity_cache_key,
 }
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
-// only from a push of refs/heads/main. A pull-request run may restore a default-branch entry
-// (extdeps.cache.github_actions gha_cache_entry_restorable_by) and must never save one.
-data materialization_publish_ref: String = "refs/heads/main"
+// from the default-branch scope only. A pull-request run restores a default-branch entry
+// (gha_cache_entry_restorable_by) and never saves one. The save guard is derived from the scope
+// the entry is saved under, so the policy reads the cache model rather than restating it.
+data materialization_default_branch_ref: String = "refs/heads/main"
+
+fn materialization_publish_scope() -> GhaCacheEntryScope { GhaCacheDefaultBranchScope }
+
+fn materialization_publish_restorable_by_pull_request() -> Bool {
+  gha_cache_entry_restorable_by(saved: materialization_publish_scope(), restorer: GhaCachePullRequestMergeRefScope)
+}
+
+fn github_context_value(name: String) -> Expression { ContextAccess { context: Github, path: [name] } }
+
+fn materialization_scope_guard(scope: GhaCacheEntryScope) -> Expression {
+  match scope {
+    GhaCacheDefaultBranchScope =>
+      LogicalAnd {
+        left: Equals { left: github_context_value(name: "event_name"), right: StringLiteral { value: github_event_name_push } },
+        right: Equals { left: github_context_value(name: "ref"), right: StringLiteral { value: materialization_default_branch_ref } }
+      }
+    GhaCachePullRequestMergeRefScope =>
+      Equals { left: github_context_value(name: "event_name"), right: StringLiteral { value: github_event_name_pull_request } }
+  }
+}
 
 fn materialization_publish_if() -> String {
-  join(["github.event_name == '", github_event_name_push, "' && github.ref == '", materialization_publish_ref, "'"], "")
+  serialize_expression(expression: materialization_scope_guard(scope: materialization_publish_scope()))
 }
 
 fn materialization_gha_cache_key_prefix(family: String) -> String {
@@ -48,16 +90,32 @@ fn parse_verdict_identity_blob_save_step_name() -> String {
 data parse_verdict_compiler_output: String = "compiler_identity"
 data parse_verdict_generation_one_basename: String = "v2-native-cli-gen-one"
 
-fn parse_verdict_generation_one_bin() -> String {
-  join(["${{ runner.temp }}/", parse_verdict_generation_one_basename], "")
+fn runner_temp_file(basename: String) -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: runner_temp() }, LiteralText { text: join(["/", basename], "") }]
+  })
+}
+
+fn parse_verdict_generation_one_bin() -> String { runner_temp_file(basename: parse_verdict_generation_one_basename) }
+
+fn parse_verdict_compiler_output_expression() -> Expression {
+  ContextAccess { context: Steps, path: [emitted_subject_v2_native_cli_step_id, "outputs", parse_verdict_compiler_output] }
 }
 
 fn parse_verdict_compiler_expr() -> String {
-  join(["${{ steps.", emitted_subject_v2_native_cli_step_id, ".outputs.", parse_verdict_compiler_output, " }}"], "")
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: parse_verdict_compiler_output_expression() }]
+  })
 }
 
-data parse_verdict_identity_blob_file: String = "${{ runner.temp }}/gunbc-parse-compiler-identity"
-data parse_verdict_receipts_file: String = "${{ runner.temp }}/gunbc-parse-verdict-receipts.tsv"
+fn parse_verdict_identity_blob_file() -> String { runner_temp_file(basename: "gunbc-parse-compiler-identity") }
+fn parse_verdict_receipts_file() -> String { runner_temp_file(basename: "gunbc-parse-verdict-receipts.tsv") }
+
+fn github_sha_expr() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation { expression: github_context_value(name: "sha") }]
+  })
+}
 
 fn source_root_argv() -> String {
   join(
@@ -75,9 +133,9 @@ fn parse_verdict_publish_command() -> String {
       " --compiler ",
       parse_verdict_compiler_expr(),
       " --write-identity ",
-      parse_verdict_identity_blob_file,
+      parse_verdict_identity_blob_file(),
       " --receipts ",
-      parse_verdict_receipts_file,
+      parse_verdict_receipts_file(),
       source_root_argv()
     ],
     ""
@@ -115,7 +173,7 @@ fn parse_verdict_publish_cache_key() -> String {
     [
       materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
       parse_verdict_compiler_expr(),
-      "-${{ github.sha }}"
+      "-", github_sha_expr()
     ],
     ""
   )
@@ -142,7 +200,7 @@ fn materialization_family_cache_save_step(family: String, path: String, cache_ke
 fn parse_verdict_publish_save_step() -> Step {
   materialization_family_cache_save_step(
     family: parse_verdict_request_family,
-    path: parse_verdict_receipts_file,
+    path: parse_verdict_receipts_file(),
     cache_key: parse_verdict_publish_cache_key()
   )
 }
@@ -154,8 +212,8 @@ fn parse_verdict_identity_blob_save_step() -> Step {
     uses: cache_save_action,
     with: Present {
       value: [
-        kv(key: "path", value: yaml_string(s: parse_verdict_identity_blob_file)),
-        kv(key: "key", value: yaml_string(s: parse_compiler_sha_identity_cache_key(sha: "${{ github.sha }}")))
+        kv(key: "path", value: yaml_string(s: parse_verdict_identity_blob_file())),
+        kv(key: "key", value: yaml_string(s: parse_compiler_sha_identity_cache_key(sha: github_sha_expr())))
       ]
     },
     env: none,

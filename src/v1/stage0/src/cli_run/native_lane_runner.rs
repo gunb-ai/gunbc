@@ -3486,11 +3486,22 @@ fn feed_identity_file(hasher: &mut sha2::Sha256, rel: &str, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
-fn dag_module_name(source: &str) -> Option<String> {
-    source.lines().find_map(|line| {
-        line.strip_prefix("module ")
-            .map(|rest| rest.trim().to_string())
-            .filter(|name| !name.is_empty())
+/// Module `a.b.c` is stored at `<root(a)>/b/c.dag` (`gunbc.source_layout`: `v2` under `src/v2`,
+/// every other top-level namespace under `dag/`), so the name is read from the path, never from
+/// the file's text.
+fn dag_module_name_from_path(rel: &str) -> Option<String> {
+    let (prefix, rest) = match rel.strip_prefix("src/v2/") {
+        Some(rest) => (Some("v2"), rest),
+        None => (None, rel.strip_prefix("dag/")?),
+    };
+    let stem = rest.strip_suffix(".dag")?;
+    if stem.is_empty() {
+        return None;
+    }
+    let dotted = stem.replace('/', ".");
+    Some(match prefix {
+        Some(p) => format!("{p}.{dotted}"),
+        None => dotted,
     })
 }
 
@@ -3577,13 +3588,9 @@ fn parse_compiler_identity_digest(
         })?;
         feed_identity_file(&mut hasher, rel, &bytes);
         if let Some(emitted) = emitted {
-            let Some(module_name) = std::fs::read_to_string(&path)
-                .ok()
-                .as_deref()
-                .and_then(dag_module_name)
-            else {
+            let Some(module_name) = dag_module_name_from_path(rel) else {
                 return Err(format!(
-                    "V2-NATIVE REFUSAL cause=IdentityUnknown: {rel} has no module line"
+                    "V2-NATIVE REFUSAL cause=IdentityUnknown: {rel} is outside the source layout"
                 ));
             };
             let want = format!(
