@@ -3,7 +3,7 @@ module gunbc.fleet.site_pxe_edge_converge
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { ContentHash, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_content_hash }
 import extdeps.uri { Uri }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
@@ -111,24 +111,88 @@ data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc"
 // THE CHAINLOADER PIN IS A BUILD RECEIPT, and the gate checks every field of it. A filename and a digest
 // alone admit any binary that happens to share a basename, including an x86 build; the receipt names
 // the upstream revision it was built from, the exact extdeps.firmware.ipxe build target, the
-// architecture, the digest of the built file and the name it is installed under in the TFTP root.
-// Unpinned is today's state and names what would ground it. The chainloader is THIS edge's artifact
-// (the global boot origin carries kernel, initrd and images, not the chainloader); a guessed URL or
-// filename with no digest is exactly what may not be served.
-type SitePxeEdgeChainloaderBuildReceipt {
+// architecture, the digest of the built file, the name it is installed under in the TFTP root and the
+// standing of the Secure Boot check. The chainloader is THIS edge's artifact (the global boot origin
+// carries kernel, initrd and images, not the chainloader); a guessed URL or filename with no digest is
+// exactly what may not be served. Unpinned stays a variant for the day a rebuild invalidates a pin.
+
+// SECURE BOOT IS A CHECK WITH THREE STANDINGS, NOT A BOOL. "Not accepted because nobody signed it or
+// looked" and "not accepted because a firmware was observed refusing it" have different remedies (observe
+// vs. sign/enroll), and a Bool cannot tell them apart. Observed carries the verdict AND the evidence that
+// settled it (a firmware observed refusing the image is Observed with SecureBootVerdictRejected, never
+// Refused); Unobserved is the honest default for an artifact no firmware has been shown; Refused means
+// only that the operator declines to attempt the check, so no firmware was shown the image by choice.
+// There is no stored or parallel Bool: acceptance IS the absence of a Secure Boot cause in
+// site_pxe_edge_gate_causes, the one fold that decides it. A new settling source
+// (an enrolled certificate, a second firmware family) is a new evidence value, not a new variant.
+type SitePxeEdgeSecureBootVerdict
+  = SecureBootVerdictBooted
+  | SecureBootVerdictRejected
+
+type SitePxeEdgeSecureBootStanding
+  = SecureBootObserved { verdict: SitePxeEdgeSecureBootVerdict, evidence: NonEmptyStr }
+  | SecureBootUnobserved { why: NonEmptyStr }
+  | SecureBootRefused { why: NonEmptyStr }
+
+type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
   upstream_revision: NonEmptyStr
   build_target: IpxeBuildTarget
   architecture: Architecture
   digest: ContentHash
   installed_filename: NonEmptyStr
+  build_command: NonEmptyStr
+  toolchain: NonEmptyStr
+  secure_boot: SitePxeEdgeSecureBootStanding
+}
+
+fn site_pxe_edge_chainloader_build_receipt(
+  upstream_revision: NonEmptyStr,
+  build_target: IpxeBuildTarget,
+  architecture: Architecture,
+  digest: ContentHash,
+  installed_filename: NonEmptyStr,
+  build_command: NonEmptyStr,
+  toolchain: NonEmptyStr,
+  secure_boot: SitePxeEdgeSecureBootStanding,
+) -> SitePxeEdgeChainloaderBuildReceipt {
+  SitePxeEdgeChainloaderBuildReceipt {
+    upstream_revision: upstream_revision,
+    build_target: build_target,
+    architecture: architecture,
+    digest: digest,
+    installed_filename: installed_filename,
+    build_command: build_command,
+    toolchain: toolchain,
+    secure_boot: secure_boot,
+  }
 }
 
 type SitePxeEdgeChainloaderPin
   = SitePxeEdgeChainloaderPinned { build: SitePxeEdgeChainloaderBuildReceipt }
   | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
 
-data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderUnpinned {
-  obligation: "build iPXE extdeps.firmware.ipxe ipxe_arm64_efi_snponly for Aarch64 at a recorded upstream revision, pin a SitePxeEdgeChainloaderBuildReceipt with its sha256 and installed filename here, and place the file in site_pxe_edge_tftp_root",
+// BUILT, NOT YET PLACED. The committed image's consumer is the wet placement step (the srv4 TFTP write run
+// by swift-wren-451 after operator approval), which must verify its sha256 against this pin before copying;
+// that step is the declared later change, triggered by operator approval of the srv4 write. Until it lands the
+// pin and the blob are cross-checked by `sha256sum artifacts/ipxe/snponly-arm64.efi` alone.
+// Evidence: the receipt's own build_command and toolchain fields, and the sha256 (337920 bytes) of the committed artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
+// documented `make <platform>/<image>` grammar (extdeps.firmware.ipxe). The file is NOT on srv4: the
+// gate still closes on the chainloader observation until a wet step places it at
+// site_pxe_edge_chainloader_path and the post-placement sha256 agrees with this digest.
+// Secure Boot is Unobserved: the image is self-built, signed by no key a firmware trusts by default, and
+// no Altra board's Secure Boot state has been read. Settling it takes an enrolled certificate or an
+// observed boot attempt, recorded as SecureBootObserved evidence.
+data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderPinned {
+  build: site_pxe_edge_chainloader_build_receipt(
+    upstream_revision: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
+    build_target: ipxe_arm64_efi_snponly,
+    architecture: Aarch64,
+    digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
+    installed_filename: ipxe_arm64_efi_snponly.image,
+    build_command: "make -j4 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- bin-arm64-efi/snponly.efi",
+    toolchain: "aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0; GNU Make 4.4.1; GNU ld (GNU Binutils for Debian) 2.44",
+    secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
+  ),
 }
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildReceipt? {
@@ -272,6 +336,9 @@ type SitePxeEdgeGateCause
   | ChainloaderNotTheIpxeArm64Build { pinned: NonEmptyStr, expected: NonEmptyStr }
   | ChainloaderBuildTargetNotIpxeArm64 { pinned: IpxeBuildTarget, expected: IpxeBuildTarget }
   | ChainloaderArchitectureNotAarch64 { architecture: Architecture }
+  | ChainloaderSecureBootUnobserved { why: NonEmptyStr }
+  | ChainloaderSecureBootRefused { why: NonEmptyStr }
+  | ChainloaderSecureBootRejected { evidence: NonEmptyStr }
   | DnsmasqBinaryAbsent { reason: String }
   | DnsmasqBinaryUnobservable { reason: String }
   | AdministratorPrivilegeRefused { reason: String }
@@ -314,6 +381,14 @@ fn site_pxe_edge_gate_causes(
         []
       } else {
         [ChainloaderNotTheIpxeArm64Build { pinned: b.installed_filename, expected: ipxe_arm64_efi_snponly.image }]
+      }) + (match b.secure_boot {
+        SecureBootObserved { verdict: v, evidence: e } =>
+          match v {
+            SecureBootVerdictBooted => []
+            SecureBootVerdictRejected => [ChainloaderSecureBootRejected { evidence: e }]
+          }
+        SecureBootUnobserved { why: w } => [ChainloaderSecureBootUnobserved { why: w }]
+        SecureBootRefused { why: w } => [ChainloaderSecureBootRefused { why: w }]
       })
   }) + (match dnsmasq_binary {
     SitePxeEdgeProbeHeld => []
@@ -335,6 +410,8 @@ fn site_pxe_edge_gate_causes(
 // the type is shared and the match must be total, not because the producer can reach it. What it may
 // never do is mint an ObservedNegative -- a leg that never ran is not a leg that ran and said no,
 // which is the distinction the gate is here to keep.
+// The three Secure Boot causes are false here: they are a property of the pinned receipt, not a leg that
+// failed to execute, so observe reports them as findings.
 // WHICH GATE CAUSES MEAN THE RUN COULD NOT LOOK, as opposed to what it saw when it did. Only the three
 // Unobservable arms are true: a leg that never executed. A sudo -n that RAN and answered no privilege,
 // like an absent dnsmasq or an unpinned chainloader, is a finding an observe dispatch reports and
@@ -353,6 +430,9 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
     ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
     ChainloaderArchitectureNotAarch64 { architecture: _ } => false
+    ChainloaderSecureBootUnobserved { why: _ } => false
+    ChainloaderSecureBootRefused { why: _ } => false
+    ChainloaderSecureBootRejected { evidence: _ } => false
     DnsmasqBinaryAbsent { reason: _ } => false
   }
 }
@@ -368,6 +448,9 @@ fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
     ChainloaderNotTheIpxeArm64Build { pinned: p, expected: e } => join(["chainloader-not-the-ipxe-arm64-build: pinned ", p as String, ", expected ", e as String], "")
     ChainloaderBuildTargetNotIpxeArm64 { pinned: p, expected: e } => join(["chainloader-build-target-not-ipxe-arm64: pinned ", ipxe_build_target_path(target: p) as String, ", expected ", ipxe_build_target_path(target: e) as String], "")
     ChainloaderArchitectureNotAarch64 { architecture: _ } => "chainloader-architecture-not-aarch64: the pinned build is not an Aarch64 build"
+    ChainloaderSecureBootUnobserved { why: w } => concat("chainloader-secure-boot-unobserved: ", w as String)
+    ChainloaderSecureBootRefused { why: w } => concat("chainloader-secure-boot-refused: ", w as String)
+    ChainloaderSecureBootRejected { evidence: e } => concat("chainloader-secure-boot-rejected: ", e as String)
     DnsmasqBinaryAbsent { reason: r } => concat("dnsmasq-binary-absent: ", r)
     DnsmasqBinaryUnobservable { reason: r } => concat("dnsmasq-binary-unobservable: ", r)
     AdministratorPrivilegeRefused { reason: r } => concat("administrator-privilege-refused: ", r)
