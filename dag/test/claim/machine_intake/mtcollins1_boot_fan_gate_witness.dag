@@ -5,10 +5,9 @@ import std.algebra { string_contains }
 import std.process { ExitSuccess, ExitFailure }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
-import extdeps.bmc.megarac_fan_policy { CoolingManagerAutomatic, CoolingManagerDisabledManual }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
-import gunbc.machine_intake.post_power_fan_gate_outcome { FanManagerReadStanding, FanManagerUnread, FanManagerRead, FanManagerReadRefused, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
+import gunbc.machine_intake.post_power_fan_gate_outcome { FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
 
 // SUPPLIED ROUNDS at the verdict and outcome boundaries. The effectful route (settle, read, write-before-stop,
@@ -112,10 +111,8 @@ fn with_manager(m: FanManagerReadStanding) -> String {
   post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: FittedHeaderMissing { header: "H" as NonEmptyStr }, observation: round(on: true, lines: []), manager: m)
 }
 
-test fn a_manager_read_standing_is_rendered_by_its_arm() -> Bool {
-  string_contains(s: with_manager(m: FanManagerRead { observed_at: "t0" as NonEmptyStr, standing: CoolingManagerAutomatic }), pattern: "cooling manager read automatic at t0")
-    && string_contains(s: with_manager(m: FanManagerRead { observed_at: "t1" as NonEmptyStr, standing: CoolingManagerDisabledManual }), pattern: "disabled (manual PWM) at t1")
-    && string_contains(s: with_manager(m: FanManagerReadRefused { cause: "denied" as NonEmptyStr }), pattern: "read refused: denied")
+test fn the_unread_manager_standing_renders_what_would_read_it() -> Bool {
+  string_contains(s: with_manager(m: FanManagerUnread { read_obligation: "a REST session" as NonEmptyStr }), pattern: "cooling manager standing unread: a REST session")
 }
 
 test fn an_unreached_gate_reads_not_reached() -> Bool {

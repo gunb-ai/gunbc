@@ -4,7 +4,6 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text, chassis_observation_is_off }
-import extdeps.bmc.megarac_fan_policy { MegaRacFanManagerStanding, CoolingManagerAutomatic, CoolingManagerDisabledManual }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetNotEstablished, FittedFanSetEstablished, FittedFanSetOperatorAssumed, PostPowerFanRefusal, FittedSetUnestablished, PostPowerChassisNotOn, PostPowerChassisUnreadable, PostPowerChassisUndecodable, FanReadUnreadable, FanRowsUndecoded, FittedHeaderMissing, FittedHeaderDuplicated, FittedHeaderStatusRefused, FittedHeaderZeroRpm, FittedHeaderNoReading, FittedHeaderDutyOnly, FittedHeaderReadingUnrecognised }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, render_round_block }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -14,12 +13,10 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 // (which records it) share one declaration without an import cycle.
 
 // WHERE THE COOLING MANAGER STANDS. Wraps the existing MegaRacFanManagerStanding domain; the gate has no REST
-// session, so it constructs only FanManagerUnread, and says what would read it. No fan-control write exists on
+// session, so the only standing is FanManagerUnread, which says what would read it; a Read arm joins when that REST read does. No fan-control write exists on
 // this path (ruling gunbc#14243).
 type FanManagerReadStanding
   = FanManagerUnread { read_obligation: NonEmptyStr }
-  | FanManagerRead { observed_at: NonEmptyStr, standing: MegaRacFanManagerStanding }
-  | FanManagerReadRefused { cause: NonEmptyStr }
 
 // EACH POWER-OFF READBACK IS KEPT, for each PowerDown attempt, never only the last.
 type FanGateRepeat
@@ -102,11 +99,6 @@ fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
 fn fan_manager_standing_text(manager: FanManagerReadStanding) -> String {
   match manager {
     FanManagerUnread { read_obligation: o } => concat("cooling manager standing unread: ", o as String)
-    FanManagerRead { observed_at: at, standing: st } => match st {
-      CoolingManagerAutomatic => concat("cooling manager read automatic at ", at as String)
-      CoolingManagerDisabledManual => concat("cooling manager read disabled (manual PWM) at ", at as String)
-    }
-    FanManagerReadRefused { cause: c } => concat("cooling manager read refused: ", c as String)
   }
 }
 
