@@ -179,47 +179,81 @@ fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> 
 // module: a roadmap may not spell find's flags for find. They are also where the SHAPE of a subtree
 // grant is decided once, for every consumer, so no roadmap can compose an unbounded or unsafe walk by
 // hand. THE FIVE PROPERTIES, each a word in the argv below:
-//   ONE, BOUNDED. `-maxdepth 32`: an object store nests two levels (fan-out dir + object) and a git
-//     ref nest is `refs/heads/<branch>` plus its reflog mirror; 32 is nowhere near a real depth and
-//     far from unbounded, so a symlink loop or a pathological tree cannot hang the apply.
-//   TWO, CONFINED NAMES PRUNED BEFORE THE WALK. hooks, info, branches and pack -- each with its
-//     contents -- are pruned, so a subtree grant can never reach a path #13942 confines to root even
-//     if the grant list is later widened. The prune precedes the predicate rather than filtering after
-//     it, so those directories are not descended into at all.
+//   ONE, BOUNDED. `-maxdepth`: an object store nests two levels (fan-out dir + object) and a git ref
+//     nest is `refs/heads/<branch>` plus its reflog mirror, so a few dozen levels bounds the walk
+//     against a symlink loop or a pathological tree while staying nowhere near a real depth. The bound
+//     is a word the builder owns, not a knob a caller may drop.
+//   TWO, THE CALLER'S PRUNED SUBTREES ARE PRUNED BEFORE THE PREDICATE. `pruned` names entries
+//     RELATIVE TO THE TARGET, and each is spliced as `<target>/<name>`; the prune precedes the
+//     predicate rather than filtering after it, so a confined directory is never descended into at
+//     all -- not merely excluded from the action.
+//     ANCHORED, NEVER A BARE PATTERN: a bare `*/pack` (or a nameless `-name pack`) matches at ANY
+//     depth, and then a perfectly legal ref whose last segment is pack, info, hooks or branches
+//     (refs/heads/pack, refs/heads/branches) is pruned out of the walk and its owner can never update
+//     it. The caller says which children of THIS target are confined; the builder refuses to guess.
 //   THREE, NO SYMLINKS. `-not -type l` keeps the walk off links entirely: chgrp --no-dereference
 //     alone would not do it, because chmod -R follows, and a link under objects/ would then carry a
 //     mode change to a file outside the repository.
 //   FOUR, ONE PATH PER ARGUMENT, `{} +`: batched, and never through a shell, so no path can be split
 //     or reinterpreted.
-//   FIVE, GROUP ONLY, never an owner. The chgrp form carries --no-dereference and NO user field, so
-//     the owner of every path in the repository stays exactly who it was.
-data dashboard_git_subtree_pruned_names: List<String> = [
-  "*/hooks", "*/hooks/*", "*/info", "*/info/*", "*/branches", "*/branches/*", "*/pack", "*/pack/*",
-]
-
+//   FIVE, GROUP AND MODE ONLY, never an owner. The chgrp form carries --no-dereference and NO user
+//     field, so the owner of every path in the repository stays exactly who it was.
+// THE EXPRESSION'S SHAPE, which is why the parenthesisation below is load-bearing: the prunes are one
+// OR-group followed by `-prune -o`, and the predicate and the actions form the right operand of that
+// `-o`. `-exec`/`-type` are ANDed (juxtaposition is an implicit `-a`, which binds tighter than `-o`),
+// so an unbalanced `(` is not a cosmetic defect -- find aborts with "Expected a )" and the migration's
+// chmod simply never runs, while the argv still LOOKS like a grant (caught at 2dc2b8de; the executed
+// claim in test.claim.roadmap.worker_dedicated_account_witness is what pins it).
 data dashboard_git_subtree_max_depth: String = "32"
 
-fn find_subtree_confined_prune_words() -> List<String> {
-  fold(
-    dashboard_git_subtree_pruned_names,
-    init: [] as List<String>,
-    f: (acc, name) => concat(concat(acc, ["(", "-path", name, ")", "-prune", "-o"]), []),
-  )
+// THE PRUNE GROUP, `<target>/<name>` for each RELATIVE name the caller declares. Empty pruned list
+// means no prune group at all -- an empty OR-group would be a syntax error, so the words are simply
+// absent. The names come from the consumer because WHICH child is confined is the consumer's fact
+// (#13942's confinement list, in gunbc.roadmap.roadmap_dashboard_instance), not find's.
+fn find_subtree_prune_words(target: String, pruned: List<String>) -> List<String> {
+  if is_empty(xs: pruned) {
+    []
+  } else {
+    concat(
+      fold(
+        pruned,
+        init: ["("] as List<String>,
+        f: (acc, name) =>
+          concat(
+            acc,
+            if find_subtree_prune_group_is_open(acc: acc) {
+              ["-path", concat(target, concat("/", name))]
+            } else {
+              ["-o", "-path", concat(target, concat("/", name))]
+            },
+          ),
+      ),
+      [")", "-prune", "-o"],
+    )
+  }
 }
 
-fn find_subtree_walk_words(target: String) -> List<String> {
+// IS THE GROUP STILL OPEN, i.e. only "(" has been emitted so far. Fold's accumulator shape question:
+// after the separator and the first term the next term needs a leading "-o".
+fn find_subtree_prune_group_is_open(acc: List<String>) -> Bool {
+  count(filter(xs: acc, predicate: w => w == "-o")) == 0
+}
+
+// THE WALK, up to and including the predicate: target, depth bound, prunes, no symlinks. Every one of
+// the three builders below hangs its action(s) off this, so all three walk the same set of paths.
+fn find_subtree_walk_words(target: String, pruned: List<String>) -> List<String> {
   concat(
-    concat([target, "-maxdepth", dashboard_git_subtree_max_depth], find_subtree_confined_prune_words()),
+    concat([target, "-maxdepth", dashboard_git_subtree_max_depth], find_subtree_prune_words(target: target, pruned: pruned)),
     ["-not", "-type", "l"],
   )
 }
 
 // Re-group a subtree to one group. No user field: this cannot re-own anything.
-fn find_subtree_regroup_command(target: String, group: String) -> ArgvCommand {
+fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target),
+      find_subtree_walk_words(target: target, pruned: pruned),
       ["-exec", "chgrp", "--no-dereference", group, "{}", "+"],
     ),
   )
@@ -228,13 +262,18 @@ fn find_subtree_regroup_command(target: String, group: String) -> ArgvCommand {
 // Group-writable on everything the walk reaches, and setgid on DIRECTORIES ONLY. The `-type d` guard on
 // the second action is the whole point: setgid on a file is a privilege shape (and RestrictSUIDSGID
 // would refuse it anyway), while setgid on a directory is what makes a fan-out directory git creates
-// later inherit the group rather than the creating process's primary group.
-fn find_subtree_group_writable_command(target: String) -> ArgvCommand {
+// later inherit the group rather than the creating process's primary group. BOTH actions and their
+// guards are inside the walk's right operand, and the `(` that opens `-type d` is CLOSED: an action
+// list that opens a group and never closes it makes find refuse the whole expression.
+fn find_subtree_group_writable_command(target: String, pruned: List<String>) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target),
-      ["-exec", "chmod", "g+w", "{}", "+", "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+"],
+      find_subtree_walk_words(target: target, pruned: pruned),
+      [
+        "-exec", "chmod", "g+w", "{}", "+",
+        "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+", ")",
+      ],
     ),
   )
 }
@@ -245,9 +284,9 @@ fn find_subtree_group_writable_command(target: String) -> ArgvCommand {
 // (dashboard_git_worker_directory_mode_is_granted / _file_mode_is_granted) decide whether it is a
 // grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather
 // than a thing a person asserts.
-fn find_subtree_mode_readback_command(target: String) -> ArgvCommand {
+fn find_subtree_mode_readback_command(target: String, pruned: List<String>) -> ArgvCommand {
   argv_command(
     program: find_program(),
-    arguments: concat(find_subtree_walk_words(target: target), ["-printf", "%m %P\n"]),
+    arguments: concat(find_subtree_walk_words(target: target, pruned: pruned), ["-printf", "%m %P\\n"]),
   )
 }

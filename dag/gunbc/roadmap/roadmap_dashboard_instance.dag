@@ -7,7 +7,7 @@ import extdeps.tools.findutils {
   find_subtree_mode_readback_command,
 }
 import extdeps.git {
-  git_program, git_shared_repository_group_config_argv, git_repack_quiet_command, git_pack_refs_all_command,
+  git_repack_quiet_command, git_pack_refs_all_command,
   git_core_shared_repository_config_key, git_gc_auto_config_key, git_maintenance_auto_config_key,
 }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
@@ -1945,14 +1945,27 @@ fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstanc
 // subtree is never under one of those names, so the walk cannot reach hooks, info, branches or pack
 // whatever the grant list says, and a later reader cannot "simplify" a prune away without the
 // confinement claim noticing.
-fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr) -> ArgvCommand {
-  find_subtree_regroup_command(target: target, group: group as String)
+// WHICH CHILDREN OF A GRANTED SUBTREE ARE CONFINED, named RELATIVE to that subtree itself. objects
+// carries the two confined children #13942 hands to root; refs and logs carry NONE, and that is
+// load-bearing: a prune name in refs would be a pattern, and a pattern prunes real refs (a branch
+// named pack or branches) out of the walk forever. The builder splices each name under the target, so
+// what is pruned is exactly <target>/pack and <target>/info and nothing at any other depth.
+fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<String> {
+  if (child as String) == ".git/objects" {
+    ["pack", "info"]
+  } else {
+    []
+  }
+}
+
+fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, pruned: List<String>) -> ArgvCommand {
+  find_subtree_regroup_command(target: target, group: group as String, pruned: pruned)
 }
 
 // Group-writable on everything in ONE subtree, and setgid on its DIRECTORIES ONLY -- the bit that
 // makes a fan-out directory git creates later inherit the attempt group.
-fn dashboard_git_worker_subtree_chmod_command(target: String) -> ArgvCommand {
-  find_subtree_group_writable_command(target: target)
+fn dashboard_git_worker_subtree_chmod_command(target: String, pruned: List<String>) -> ArgvCommand {
+  find_subtree_group_writable_command(target: target, pruned: pruned)
 }
 
 fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: NonEmptyStr) -> String {
@@ -1972,12 +1985,14 @@ fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstan
         child => dashboard_git_worker_subtree_chgrp_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           group: fleet_posix_worker_shared_group_name,
+          pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
       map(
         dashboard_git_worker_directory_children,
         child => dashboard_git_worker_subtree_chmod_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+          pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
     )

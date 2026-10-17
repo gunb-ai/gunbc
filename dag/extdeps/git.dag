@@ -3,9 +3,10 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command, shell_quote }
+import extdeps.exec.command { ArgvCommand, argv_command, shell_quote, env_prefixed_command }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, Unit }
+import std.env_binding { EnvBinding, EnvSet }
 import std.algebra { length, skip, trim }
 import std.resources { Network }
 
@@ -19,6 +20,16 @@ import std.resources { Network }
 // GIT_TERMINAL_PROMPT=0 refuses a prompt if the netrc is missing instead of hanging.
 data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
 data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
+
+// THE SAME TWO REFUSALS AS TYPED BINDINGS, the form env_prefixed_command composes. Words and bindings
+// are the two spellings of ONE fact, so they sit together and are named to say which is which: the
+// word form is for a caller that already owns an env program and puts the words in its OWN argv
+// (gunbc.roadmap.roadmap_belt_actuate belt_commit_git runs program "/usr/bin/env" and splices these
+// words after it -- which is why this function returns the two words and MUST NOT prepend "env"
+// itself, or the belt's argv becomes `/usr/bin/env env git ...`); the binding form is for a caller that
+// delegates the env prefix to the minted composition route.
+data git_config_global_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" }
+data git_config_nosystem_env_binding: EnvBinding = EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" }
 data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
 
 // core.sharedRepository is git's OWN answer to "this repository has more than one POSIX identity
@@ -37,87 +48,114 @@ data git_gc_auto_config_key: String = "gc.auto"
 data git_disabled_config_value: String = "0"
 data git_maintenance_auto_config_key: String = "maintenance.auto"
 
-// The argv for the ONE local write this roadmap's shared-repository posture needs, pinned the same
-// way every other managed git invocation is pinned: `GIT_CONFIG_GLOBAL=/dev/null` and
-// `GIT_CONFIG_NOSYSTEM=1` mean an ambient global or system config can neither aim the write nor
-// supply the value, and `--replace-all` makes the root-owned step idempotent (it runs on every
-// attempt, and an earlier line for the same key is replaced rather than duplicated).
-fn git_shared_repository_group_config_argv(repo: FilePath) -> List<String> {
-  concat(
-    git_untrusted_config_env_words(),
-    [
-      "git", "-C", repo as String, "config", "--local", "--replace-all",
-      git_core_shared_repository_config_key, git_core_shared_repository_group_value,
-    ],
-  )
+// THE ENVIRONMENT THE CONFIG WRITES RUN UNDER, as TYPED BINDINGS (std.env_binding EnvBinding), not
+// as spelled argv words: `GIT_CONFIG_GLOBAL=/dev/null` is git's override of ~/.gitconfig and
+// $XDG_CONFIG_HOME/git/config, `GIT_CONFIG_NOSYSTEM=1` refuses /etc/gitconfig (extdeps/git, top of
+// module). Typed bindings mean the ONE env composition route (extdeps.exec.command
+// env_prefixed_command) owns the `env` program and its flag order -- a builder that spelled the words
+// itself was the defect bright-moth-475 caught at 2dc2b8de: argv_words is [program] ++ arguments, so
+// an argv beginning with "env" under program=git rendered `git env GIT_CONFIG_GLOBAL=... git config`,
+// which exits 1 with "git: 'env' is not a git command". Every one of the five builders here was
+// unrunnable that way.
+fn git_untrusted_config_env_bindings() -> List<EnvBinding> {
+  [git_config_global_env_binding, git_config_nosystem_env_binding]
 }
 
-// The two keys that hand the automatic repack to root (see
-// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_git_repository_maintenance). `git
-// commit` spawns `git maintenance run --auto`, and the automatic sweep reaches for
-// packed-refs.lock IN .git ITSELF -- a path #13942 confines to root. Measured: the commit still
-// lands (exit 0, the child's failure is stderr noise), which is exactly the kind of noise that
-// teaches an operator to ignore a confined write. The keys are written by the same root-owned step
-// and read by the maintenance unit it names.
-fn git_repository_maintenance_deferred_config_argv(repo: FilePath) -> List<String> {
-  concat(
-    git_untrusted_config_env_words(),
-    [
-      "git", "-C", repo as String, "config", "--local", "--replace-all",
-      git_gc_auto_config_key, git_disabled_config_value,
-    ],
-  )
+// THE TAIL of the ONE local write this roadmap's shared-repository posture needs: `git -C <repo>
+// config --local --replace-all core.sharedRepository group`. `--replace-all` makes the root-owned step
+// idempotent (it runs on every attempt, and an earlier line for the same key is replaced rather than
+// duplicated). The environment is NOT here; it is bound by the sealed builder below.
+fn git_shared_repository_group_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_core_shared_repository_config_key, git_core_shared_repository_group_value]
 }
 
-fn git_maintenance_auto_disabled_config_argv(repo: FilePath) -> List<String> {
-  concat(
-    git_untrusted_config_env_words(),
-    [
-      "git", "-C", repo as String, "config", "--local", "--replace-all",
-      git_maintenance_auto_config_key, git_disabled_config_value,
-    ],
-  )
+// THE TAILS of the two keys that hand the automatic repack to root (see
+// gunbc.roadmap.roadmap_dashboard_instance dashboard_git_maintenance_exec_commands). `git commit`
+// spawns `git maintenance run --auto`, and the automatic sweep reaches for packed-refs.lock IN .git
+// ITSELF -- a path #13942 confines to root. Measured: the commit still lands (exit 0, the child's
+// failure is stderr noise), which is exactly the kind of noise that teaches an operator to ignore a
+// confined write. The keys are written by the same root-owned step and read by the maintenance unit.
+fn git_gc_auto_disabled_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_gc_auto_config_key, git_disabled_config_value]
+}
+
+fn git_maintenance_auto_disabled_config_tail(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "config", "--local", "--replace-all",
+   git_maintenance_auto_config_key, git_disabled_config_value]
 }
 
 // THE FIVE SEALED BUILDERS for the shared-repository posture and the root maintenance it defers to.
 // They live HERE, beside git's other argv builders, because the mint of extdeps.exec.command
 // ArgvCommand admits only named builders homed in the tool's own module: which program runs and with
 // what flags is one row, cited, and a roadmap may not spell git's flags for git.
+// THE ROUTE IS env_prefixed_command OVER A PLAIN GIT TAIL: the env prefix, the `env` program and its
+// flag order are composed once by extdeps.exec.command over typed EnvBindings, so this module spells
+// git's flags and nothing else. The three config commands write the repo's OWN .git/config as ROOT,
+// which is why they take no HOME: root's global config is refused by GIT_CONFIG_GLOBAL=/dev/null, and
+// a HOME pointed at the repository would invite git to read a .gitconfig out of the tree it is
+// configuring.
 fn git_shared_repository_group_config_command(repo: FilePath) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: git_shared_repository_group_config_argv(repo: repo))
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_shared_repository_group_config_tail(repo: repo)),
+  )
 }
 
 fn git_gc_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: git_repository_maintenance_deferred_config_argv(repo: repo))
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_gc_auto_disabled_config_tail(repo: repo)),
+  )
 }
 
 fn git_maintenance_auto_disabled_config_command(repo: FilePath) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: git_maintenance_auto_disabled_config_argv(repo: repo))
+  env_prefixed_command(
+    bindings: git_untrusted_config_env_bindings(),
+    command: argv_command(program: git_program(), arguments: git_maintenance_auto_disabled_config_tail(repo: repo)),
+  )
 }
 
 // THE ROOT REPACK PAIR, the argv of the maintenance unit
-// (gunbc.roadmap.roadmap_dashboard_instance dashboard_git_maintenance_exec_commands). `gc` WITHOUT
-// --auto: the nightly job is the unconditional sweep, because the automatic trigger -- which `git
-// commit` spawns from inside a confined attempt -- is switched off for the repository precisely so a
-// confined worker never produces its packed-refs.lock noise.
+// (gunbc.roadmap.roadmap_dashboard_instance dashboard_git_maintenance_exec_commands). THESE RUN AS
+// ROOT, which is what makes them safe to give HOME: HOME must sit inside the repository so git's
+// credential helper looks in <repo>/.git (the gitdir of a bare repo is itself) and finds the publish
+// token in .netrc, and it can be the repository precisely because only root can write there -- the
+// confined worker has no write to .git itself (#13942), so it cannot plant a netrc for root to read.
+// `gc` WITHOUT --auto and WITHOUT a `-c gc.auto=...` word: the nightly job is the unconditional sweep,
+// because the automatic trigger -- which `git commit` spawns from inside a confined attempt -- is
+// switched off for the repository by the two keys above. A `-c` was also once spelled as FOUR argv
+// words ("-c","gc.auto","=","0"), which runs as `git -c gc.auto = 0 gc` and dies with "git: '=' is not
+// a git command"; the key=value is ONE word, or absent, and here it is absent.
 fn git_repack_quiet_command(repo: FilePath) -> ArgvCommand {
-  argv_command(
-    program: git_program(),
-    arguments: concat(
-      git_isolated_home_env_argv(home: repo),
-      ["-C", repo as String, "-c", git_gc_auto_config_key, "=", git_disabled_config_value, "gc", "--quiet"],
-    ),
+  env_prefixed_command(
+    bindings: git_maintenance_env_bindings(home: repo),
+    command: argv_command(program: git_program(), arguments: ["-C", repo as String, "gc", "--quiet"]),
   )
 }
 
+// THE REF PACKER. This is the ONLY principal that may rewrite packed-refs: it runs as root, outside the
+// worker's confinement, which is what the worker lacks -- an update of packed-refs takes
+// packed-refs.lock IN .git ITSELF (#13942 confines .git itself to root), so no grant of the FILE can
+// let the worker rewrite it.
 fn git_pack_refs_all_command(repo: FilePath) -> ArgvCommand {
-  argv_command(
-    program: git_program(),
-    arguments: concat(
-      git_isolated_home_env_argv(home: repo),
-      ["-C", repo as String, "pack-refs", "--all"],
-    ),
+  env_prefixed_command(
+    bindings: git_maintenance_env_bindings(home: repo),
+    command: argv_command(program: git_program(), arguments: ["-C", repo as String, "pack-refs", "--all"]),
   )
+}
+
+// THE MAINTENANCE ENVIRONMENT: the isolated HOME inside the repository plus the two config refusals
+// and the prompt refusal, as TYPED BINDINGS. See git_repack_quiet_command for why root may own a HOME
+// here and the worker may not.
+fn git_maintenance_env_bindings(home: FilePath) -> List<EnvBinding> {
+  [
+    EnvSet { name: "HOME", value: home as String },
+    EnvSet { name: "GIT_CONFIG_GLOBAL", value: "/dev/null" },
+    EnvSet { name: "GIT_CONFIG_NOSYSTEM", value: "1" },
+    EnvSet { name: "GIT_TERMINAL_PROMPT", value: "0" },
+  ]
 }
 
 // What a repository is configured to hold locally before it is packed (git's own default is 6700
@@ -128,7 +166,7 @@ data git_dir_flag_prefix: String = "--git-dir="
 data git_work_tree_flag_prefix: String = "--work-tree="
 
 fn git_untrusted_config_env_words() -> List<String> {
-  concat(["env"], [git_config_global_null_env, git_config_nosystem_env])
+  [git_config_global_null_env, git_config_nosystem_env]
 }
 
 fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {

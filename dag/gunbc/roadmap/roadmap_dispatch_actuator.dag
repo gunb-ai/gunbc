@@ -3151,9 +3151,15 @@ fn dispatch_attempt_worker_git_entry_migration(instance: HostDashboardInstance, 
       dashboard_git_worker_subtree_chgrp_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         group: fleet_posix_worker_shared_group_name,
+        // NOTHING UNDER THE ENTRY IS CONFINED: a worktree private gitdir holds commondir, gitdir,
+        // index, HEAD, ORIG_HEAD, COMMIT_EDITMSG and logs/. It has no pack, no info, no hooks, so the
+        // prune group is empty -- and the builder then emits NO prune words at all rather than an
+        // empty OR-group, which find would refuse as a syntax error.
+        pruned: [],
       ),
       dashboard_git_worker_subtree_chmod_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
+        pruned: [],
       ),
     ]
   }
@@ -3191,8 +3197,8 @@ fn dispatch_repository_shared_posture_commands(instance: HostDashboardInstance) 
 // it was issued; the claim compares THESE readings against
 // dashboard_git_worker_directory_mode_is_granted / dashboard_git_worker_file_mode_is_granted, and the
 // state srv1 measured (0775, no setgid) fails them.
-fn dispatch_worker_git_subtree_readback_command(target: String) -> ArgvCommand {
-  find_subtree_mode_readback_command(target: target)
+fn dispatch_worker_git_subtree_readback_command(target: String, pruned: List<String>) -> ArgvCommand {
+  find_subtree_mode_readback_command(target: target, pruned: pruned)
 }
 
 // THE SHARED REF STORE IS A DECLARED RESIDUAL, NOT CONFINED. refs/ and logs/ stay writable as wholes
