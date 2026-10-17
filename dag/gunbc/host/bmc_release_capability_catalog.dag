@@ -337,12 +337,44 @@ data megarac_0_45_3_operator_attestation_instant: ObservationInstant = Observati
 // failed claim capabilities it never exercised.
 type MegaRacReleaseCapabilityEntry {
   standing: MegaRacVersionStanding,
-  capabilities: List<BmcCapability>,
-  // THE RUN THAT EXERCISED THEM, when a run did. Absent is a fact, not a gap: the 0.32 row rests on a
-  // committed readback and there is no run to name, and inventing one is what the first draft of this
-  // module did when a `run` field was required.
-  run: MegaRacRunEvidence?,
+  // THE CAPABILITIES AND THEIR PROVENANCE ARE ONE VALUE, not a list sitting beside a run that may or may
+  // not have exercised it (manager HOLD 2026-10-17). The old shape authored a capability list on the entry
+  // AND kept run.exercised, the lookup read only the entry's copy, and nothing related the two but a
+  // witness checking a count -- DESIGN.md Sec 5's second representation of one constraint, with the two
+  // copies free to drift. The arm a row is written in is now the answer to "where did these capabilities
+  // come from", and the list is authored in exactly one of the two arms.
+  evidence: MegaRacReleaseCapabilityEvidence,
   citations: List<FactCitation>,
+}
+
+// THE TWO WAYS A RELEASE CAN BE KNOWN TO CARRY A CAPABILITY, declared as a coproduct so that the pairing of
+// a capability set with its justification is enforced by WHICH ARM IS WRITTEN rather than checked after the
+// fact -- DESIGN.md Sec 5: "correctness by construction, not validation".
+//   FromExecutedRun -- a specific Actions run pressed these capabilities. The row's list IS run.exercised,
+//     read through the accessor below, so the run is the single authority and there is no second list to
+//     disagree with it. This is the arm that makes the old drift RED unnecessary: there is no field in which
+//     to write a capability set the run did not exercise.
+//   FromCommittedReadback -- no run pressed them; committed readings did. The list is what those readings
+//     recorded, with the artifact paths and the dates named so the claim is checkable rather than asserted.
+// A build nobody read is not an arm here at all: the lookup resolves it to nothing, never to a default.
+type MegaRacReleaseCapabilityEvidence
+  = MegaRacCapabilitiesFromExecutedRun { run: MegaRacRunEvidence }
+  | MegaRacCapabilitiesFromCommittedReadback {
+      capabilities: List<BmcCapability>,
+      artifact_paths: List<NonEmptyStr>,
+      observed_on: NonEmptyStr,
+    }
+
+// THE ONE PLACE a row's capability list is read out of its evidence. Both arms yield a list, so every
+// downstream consumer reads capabilities through here and no path can reach a field that no longer exists.
+fn megarac_release_capabilities_of(evidence: MegaRacReleaseCapabilityEvidence) -> List<BmcCapability> {
+  match evidence {
+    // DERIVED, not copied: the run is the authority on its own exercise list.
+    MegaRacCapabilitiesFromExecutedRun { run: run } => run.exercised
+    MegaRacCapabilitiesFromCommittedReadback {
+      capabilities: capabilities, artifact_paths: _, observed_on: _,
+    } => capabilities
+  }
 }
 
 // THE CATALOG WE ESTABLISH. Two rows today, and the asymmetry between them is the point: the 0.32 row
@@ -363,14 +395,25 @@ data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
       component: "APP",
       stdout: ipmitool_hpm_check_bmc0_32,
     },
-    capabilities: [
-      CapabilityBootSourceOverride,
-      CapabilityPowerControl,
-      CapabilityOemRemoteMedia,
-    ],
-    // NO RUN BEHIND THIS ROW, which is a fact rather than a gap: the row rests on the 2026-10-02 bring-up
-    // readback, and no boot run exercised these capabilities at this build.
-    run: none,
+    // THE READBACK ARM, and the artifacts are named so the list is checkable rather than asserted. The
+    // unit ran 0.32 from intake to the 2026-10-02 reflash; three committed readings inside that window
+    // ground the three capabilities: the 2026-09-05 write-exercise (ipmitool chassis power cycle, and
+    // chassis bootdev pxe with bootparam 5 read back) grounds power control and the boot-source override,
+    // and the 2026-09-12 media-independence probe (operator-side attach, reset, detach of the virtual
+    // medium) grounds remote media. No run exercised these at this build, which is a fact, not a gap -- and
+    // the arm says so by being this arm rather than the run arm.
+    evidence: MegaRacCapabilitiesFromCommittedReadback {
+      capabilities: [
+        CapabilityBootSourceOverride,
+        CapabilityPowerControl,
+        CapabilityOemRemoteMedia,
+      ],
+      artifact_paths: [
+        "artifacts/bmc/mtcollins1-intake-write-exercise.json",
+        "artifacts/bmc/mtcollins1-media-independence-probe.log",
+      ],
+      observed_on: "2026-09-05 power + boot-dev, 2026-09-12 remote media; both before the 2026-10-02 reflash",
+    },
     citations: [
       bmc_capability_observation_citation(decl_name: "megarac_release_capability_catalog"),
     ],
@@ -392,12 +435,10 @@ data megarac_release_capability_catalog: List<MegaRacReleaseCapabilityEntry> = [
       detail: "operator read of the BMC web UI firmware page: build 'Dec 27 2023 09:36:21 CDT', Image 1; BIOS version 0ACOD014; SCP version shown blank",
       upgrade_read: "the next boot names an attempt receipt and produces the machine-read pre-power hpm check (ipmitool hpm check, APP component Active column), which upgrades this standing",
     },
-    capabilities: [
-      CapabilityBootSourceOverride,
-      CapabilityPowerControl,
-      CapabilityOemRemoteMedia,
-    ],
-    run: megarac_run_38789347052_evidence,
+    // THE EXECUTED-RUN ARM, which carries NO capability list to author: the row's capabilities are derived
+    // from run.exercised by megarac_release_capabilities_of, so the three are written in exactly one place
+    // in this file and cannot drift from the run that exercised them. Boot #14215 pressed all three.
+    evidence: MegaRacCapabilitiesFromExecutedRun { run: megarac_run_38789347052_evidence },
     citations: [
       bmc_capability_observation_citation(decl_name: "megarac_run_38789347052_evidence"),
     ],
@@ -456,10 +497,16 @@ fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> M
       // Neither is stored as a second copy on the entry, so neither can disagree with the other.
       Present { value: entry } => match megarac_version_establishment(standing: entry.standing) {
         MegaRacReleaseEstablishedByRead { firmware: derived } => MegaRacReleaseCapabilityKnown {
-          row: BmcFirmwareReleaseCapabilityRow { firmware: derived, capabilities: entry.capabilities },
+          row: BmcFirmwareReleaseCapabilityRow {
+            firmware: derived,
+            capabilities: megarac_release_capabilities_of(evidence: entry.evidence),
+          },
         }
         MegaRacReleaseEstablishedByAttestation { firmware: derived } => MegaRacReleaseCapabilityKnown {
-          row: BmcFirmwareReleaseCapabilityRow { firmware: derived, capabilities: entry.capabilities },
+          row: BmcFirmwareReleaseCapabilityRow {
+            firmware: derived,
+            capabilities: megarac_release_capabilities_of(evidence: entry.evidence),
+          },
         }
         // Unreachable on this path -- a refused standing was filtered out above -- written out rather than
         // defaulted, because a total match is what stops a future arm being folded in silently.
