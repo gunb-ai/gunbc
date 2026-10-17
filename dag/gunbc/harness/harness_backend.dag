@@ -43,7 +43,7 @@ import extdeps.http.client
 import extdeps.http.header_dump { HeaderDumpRead, http_header_dump_status }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.harness.harness_operator_route {
-  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
+  harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
   OperatorRoundFault, OperatorCertificateNotPinned, OperatorNoCapacity, operator_round_fault, operator_pinned_ca_file, operator_pinned_pubkey_file,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
@@ -329,7 +329,7 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
     Absent => OperatorFrontUnanswered { url: "the operator endpoint URL could not be composed" }
     Present { value: models } =>
       match operator_open_header(route: route, session: harness_operator_probe_session) {
-        OperatorHeaderRefused { detail: d } => OperatorFrontCertificateRefused { url: models as String, detail: d }
+        OperatorHeaderRefused { detail: d } => OperatorProbeNotSent { url: models as String, detail: d }
         OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
           let headers_file = join([dir as String, "/probe-response-headers"], "") as NonEmptyStr
           let read = http.Client.GetBoundedWithHeaderFilePinned(

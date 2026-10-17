@@ -9,6 +9,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
+import extdeps.tools.curl { curl_exit_outcome, CurlPeerNotVerified }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   pool_front_origin, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
@@ -268,17 +269,19 @@ type OperatorRoundFault
 fn operator_round_fault(success: Bool, curl_exit: Int, status: HttpStatus?) -> OperatorRoundFault? {
   if success {
     none
-  } else if curl_exit == 51 || curl_exit == 60 || curl_exit == 90 {
-    Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
   } else {
-    match status {
-      Absent => none
-      Present { value: st } =>
-        match pool_front_status_meaning(status: st) {
-          PoolFrontNoTlsCardServing => Present { value: OperatorNoCapacity }
-          PoolFrontAnswered => none
-          PoolFrontKeyRejected => none
-          PoolFrontRefused { status: _ } => none
+    match curl_exit_outcome(code: curl_exit) {
+      CurlPeerNotVerified => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
+      _ =>
+        match status {
+          Absent => none
+          Present { value: st } =>
+            match pool_front_status_meaning(status: st) {
+              PoolFrontNoTlsCardServing => Present { value: OperatorNoCapacity }
+              PoolFrontAnswered => none
+              PoolFrontKeyRejected => none
+              PoolFrontRefused { status: _ } => none
+            }
         }
     }
   }
@@ -292,6 +295,7 @@ fn operator_round_fault(success: Bool, curl_exit: Int, status: HttpStatus?) -> O
 type OperatorModelsReading
   = OperatorFrontUnanswered { url: String }
   | OperatorFrontCertificateRefused { url: String, detail: String }
+  | OperatorProbeNotSent { url: String, detail: String }
   | OperatorModelsRefused { url: String, status: String }
   | OperatorModelsAnswered { body: String }
 
@@ -305,6 +309,7 @@ fn operator_route_standing(route: HarnessOperatorRoute, reading: OperatorModelsR
   match reading {
     OperatorFrontUnanswered { url: u } => OperatorRouteUnreachable { url: u }
     OperatorFrontCertificateRefused { url: u, detail: d } => OperatorRouteUnreadable { cause: join(["the certificate ", u, " presented is not the pinned pool front certificate (", d, "); nothing was sent"], "") }
+    OperatorProbeNotSent { url: u, detail: d } => OperatorRouteUnreadable { cause: join(["the probe of ", u, " was not sent: ", d], "") }
     OperatorModelsRefused { url: u, status: st } => OperatorRouteUnreadable { cause: join(["the pool front answered ", u, " with HTTP status ", st, " (401 is the client key being rejected)"], "") }
     OperatorModelsAnswered { body: b } =>
       match parse_json_document(s: b) {
