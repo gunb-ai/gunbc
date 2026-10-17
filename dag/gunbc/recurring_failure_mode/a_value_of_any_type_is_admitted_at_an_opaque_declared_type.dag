@@ -16,6 +16,8 @@ data a_value_of_any_type_is_admitted_at_an_opaque_declared_type: RecurringFailur
 
     "Rung found at: below the ladder (silent) on the seed path for bodiless declared types. Ceiling: structurally guaranteed, because the relation is decidable once it can tell a host-realized opaque type (inhabitants given by a realization binding) from a declaration with no constructor and no realization. The Never position is one leaf, refused by identity (v1.compiler.infer value_at_never_declared_type, gunbc#14022); that arm is to be folded into the general relation when this class is fixed, not extended into a parallel one.",
 
+    "POPULATION ADDED (gunbc#14022, measured at a986d9211c by claim_batch): a TYPE VARIABLE at the Never parameter, `fn f<T>(x: T) -> Int { absurd(x) }`, is ADMITTED (the probe claim reported FAIL, so zero blocking rows). v1.compiler.infer value_at_never_declared_type deliberately skips a generic or type-variable produced type, because the seed does not distinguish a rigid declared T from a callee formal still awaiting instantiation at this seam, and refusing the latter would fabricate a refusal (DESIGN section 5, both readings). It is one more member of this class and folds into the same trigger. The unnamed-callable shape is refused by the Never arm (see test.claim.never_eliminator_witness).",
+
     "NEXT-RUNG TRIGGER, a capability: the seed's inhabitance relation distinguishing host-realized opaque types (whose inhabitants are given by a realization binding) from declarations with no constructor, and refusing a value of an unrelated type at the latter. Not built; the wider leniency is untouched by gunbc#14022.",
   ],
 

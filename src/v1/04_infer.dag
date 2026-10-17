@@ -4743,7 +4743,7 @@ fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScop
   }
   node_is_never_declaration(resolved: declared_resolved, env: env)
     && !produced_is_generic
-    && authored_name_at(source_indices: env.source_indices, node: produced) != ""
+    && (authored_name_at(source_indices: env.source_indices, node: produced) != "" || type_node_is_arrow(n: produced))
     && !node_is_never_declaration(resolved: produced_resolved, env: env)
 }
 
