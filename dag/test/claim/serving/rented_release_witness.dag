@@ -13,7 +13,7 @@ import product.fabric.flex_policy { flex_vast_actuation_mode }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire }
 import gunbc.serving.rented_release {
-  RentedDrainNotListening, RentedAnchorAbsent, RentedStoreNoPartials, RentedStorePartials,
+  RentedDrainNotListening, RentedDrainUnreadable, RentedAnchorAbsent, RentedAnchorPresent, RentedLegOutcomeNotReached, RentedStoreNoPartials, RentedStorePartials,
   RentedInstanceObserved, RentedInstanceAbsent, RentedInstanceReading, RentedDestroyDecision, RentedReleaseReadings,
   RentedLegNothingToUndo, RentedLegRefused, RentedLegOutcomeNothingToUndo,
   RentedDestroyPlanned, RentedDestroyAuthorized, RentedDestroyRefusedIdMismatch, RentedDestroyRefusedLabel,
@@ -200,4 +200,23 @@ test fn the_receipt_is_bound_to_the_real_carriers_identity_and_instance_id() -> 
   let r = rented_release_receipt(allocation: a, roots: w_roots, protected: w_protected, required_label: w_label, mode: Plan, readings: w_readings(before: RentedInstanceAbsent, after: RentedInstanceAbsent))
   (r.allocation as String) == (rented_allocation_wire(id: a.identity) as String)
     && (rented_bound_instance_id(allocation: a) as String) == (a.identity.contract as String)
+}
+
+// A refused leg stops the line: the later legs are NotReached, never planned past it.
+test fn a_refused_drain_leaves_the_later_legs_not_reached() -> Bool {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: none) }
+  let readings = RentedReleaseReadings {
+    drain: RentedDrainUnreadable { cause: "ssh timed out" as NonEmptyStr }, authorizations: [],
+    anchor: RentedAnchorPresent { path: "target/fleet-ssh-attempt-1-known-hosts-x" as NonEmptyStr },
+    store: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] }, before: listed, after: listed,
+  }
+  let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings)
+  match r.anchor {
+    RentedLegOutcomeNotReached =>
+      match r.clean {
+        RentedLegOutcomeNotReached => true
+        _ => false
+      }
+    _ => false
+  }
 }

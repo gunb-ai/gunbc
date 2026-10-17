@@ -330,8 +330,24 @@ fn rented_release_receipt(
   readings: RentedReleaseReadings,
 ) -> RentedReleaseReceiptV1 {
   let drain = rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: readings.drain))
-  let anchor = rented_leg_outcome_of_commands(decision: rented_anchor_decision(reading: readings.anchor))
-  let clean = rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: readings.store))
+  let drain_refused = match rented_leg_refusal(outcome: drain) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let anchor = if drain_refused {
+    RentedLegOutcomeNotReached
+  } else {
+    rented_leg_outcome_of_commands(decision: rented_anchor_decision(reading: readings.anchor))
+  }
+  let anchor_refused = match rented_leg_refusal(outcome: anchor) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let clean = if drain_refused || anchor_refused {
+    RentedLegOutcomeNotReached
+  } else {
+    rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: readings.store))
+  }
   let grant = rented_grant_standing(allocation: allocation, authorizations: readings.authorizations)
   let held = match rented_leg_refusal(outcome: drain) {
     Present { value: r } => Present { value: RentedReleaseHeld { leg: "drain", reason: r } }
