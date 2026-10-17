@@ -27,7 +27,7 @@ usage: hooks.py control|treatment|treatmentB <gap_block.rs> [infer.rs] [compile.
 import re
 import sys
 
-BLOCK_MARKER = "pub(crate) mod gap_instrument {"
+BLOCK_MARKER = "pub mod gap_instrument {"
 DUMP_MARK = "crate::v1_compiler_infer::gap_instrument::dump();"
 
 RE_BLOCK_DEF = re.compile(r"^[ \t]*(?:pub )?fn call_needs_generic_rebinding_pass\(", re.M)

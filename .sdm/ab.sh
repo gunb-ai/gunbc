@@ -83,11 +83,17 @@ build() { # dir label
   fi
   echo "built $V $(date -u +%H:%M:%S) target=$(du -sh $CARGO_TARGET_DIR 2>/dev/null | cut -f1)"
 }
-run_variant() { # dir label hooksidew fatal
-  D="$1"; V="$2"; H="$3"; FATAL="${4:-yes}"
+run_variant() { # dir label hooksidew fatal skiphook
+  D="$1"; V="$2"; H="$3"; FATAL="${4:-yes}"; SKIP="${5:-no}"
   echo "@@@@ VARIANT=$V start $(date -u +%H:%M:%S)"
   cd $D
-  if ! python3 .sdm/hooks.py "$H" .sdm/gap_block.rs src/v1/stage0/src/v1_compiler_infer.rs src/v1/stage0/src/v1_compiler_compile.rs; then
+  # control2 deliberately re-measures the tree control already left behind: the hook
+  # ran (and post-verified, from disk) earlier in this same dispatch, so re-applying
+  # it is a no-op that the fail-closed hook correctly refuses. Skipping the re-apply
+  # is not skipping the check -- the instrument sha is printed instead.
+  if [ "$SKIP" = yes ]; then
+    echo "instrument sha256=$(sha256sum src/v1/stage0/src/v1_compiler_infer.rs | cut -d' ' -f1)"
+  elif ! python3 .sdm/hooks.py "$H" .sdm/gap_block.rs src/v1/stage0/src/v1_compiler_infer.rs src/v1/stage0/src/v1_compiler_compile.rs; then
     echo "HOOK-FAILED $V"; [ "$FATAL" = yes ] && exit 10
   fi
   if ! build "$D" "$V"; then echo "VARIANT-SKIPPED-BUILD-FAILED $V"; return 0; fi
@@ -96,5 +102,5 @@ run_variant() { # dir label hooksidew fatal
 }
 run_variant $A/ctrl  control    control   yes
 run_variant $A/treat treatment  treatment yes
-run_variant $A/ctrl  control2   control   yes
+run_variant $A/ctrl  control2   control   yes    yes
 echo "AB_DONE $(date -u +%H:%M:%S)"

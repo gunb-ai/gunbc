@@ -29,7 +29,7 @@
 // binary that ships. Counts are thread_local Cell increments and are unaffected by the
 // timing calls; the ms columns include the Instant cost.
 #[allow(dead_code)]
-pub(crate) mod gap_instrument {
+pub mod gap_instrument {
     use std::cell::{Cell, RefCell};
     use std::time::Instant;
 
