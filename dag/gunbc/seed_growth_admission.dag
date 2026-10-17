@@ -72,6 +72,7 @@ import gunbc.shared_type_leaf_collision_census_seed_growth { shared_type_leaf_co
 import gunbc.cardinality_realization_seed_growth { cardinality_realization_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
+import gunbc.runtime_calibration_suite_seed_growth { runtime_calibration_suite_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
 import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
@@ -329,6 +330,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     cardinality_realization_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
+    runtime_calibration_suite_seed_growth_justification,
     census_memo_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
     fixture_closure_union_emit_seed_growth_justification,
