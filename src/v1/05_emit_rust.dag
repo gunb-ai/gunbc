@@ -2,7 +2,7 @@ module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -14,7 +14,8 @@ import std.repair_input_origin {
   qualified_item_emit_surface_compatibility_names,
 }
 import std.primitive_projection {
-  primitive_identity_runtime_name, primitive_projection_row_for_declaration
+  primitive_identity_runtime_name, primitive_projection_row_for_declaration,
+  never_type_declaration, never_eliminator_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -534,6 +535,7 @@ fn rust_shared_wrap_ctor(inner_expr: String) -> String {
   if starts_with(s: inner_expr, prefix: "panic!(")
     || starts_with(s: inner_expr, prefix: "compile_error!(")
     || starts_with(s: inner_expr, prefix: "unreachable!(")
+    || starts_with(s: inner_expr, prefix: "v1_rt::pure_dag_seam_unreachable(")
   {
     inner_expr
   } else {
@@ -5962,13 +5964,39 @@ fn emit_import_name(owner_module: String, n: String, registry: Map<String, ItemI
 // filename is what the emitted path needs; the PATH is what the registry is keyed on, and deriving
 // one from the other by re-spelling would be a second reduction of the same fact. Both read the same
 // re-export resolution, so they cannot disagree about which module owns the name.
+// THE DECLARING MODULE OF ANY IMPORTED ITEM, not only a type: the module whose own items carry the
+// name, reached by following the specific-import hop from the importing module. A relay that merely
+// imports a data item declares nothing, so the walk continues to the module that does.
+fn item_declaring_module_name(name: String, import_module: String, visited: List<String>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
+  if visited |> any(v => v == import_module) {
+    Absent
+  } else {
+    match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+      Absent => Absent
+      Present { value: tm } =>
+        if tm.items |> any(item => authored_name_at(source_indices: source_indices, node: item) == name) {
+          Present { value: import_module }
+        } else {
+          match explicit_import_source_module_for_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            Present { value: hop } => item_declaring_module_name(name: name, import_module: hop, visited: concat(visited, [import_module]), typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+            Absent => Absent
+          }
+        }
+    }
+  }
+}
+
 fn graph_type_import_module_path(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     import_module
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => src
-      Absent => import_module
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
     }
   }
 }
@@ -6390,7 +6418,11 @@ fn graph_type_import_module_filename(name: String, import_module: String, mod_na
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => module_to_filename(name: src)
-      Absent => mod_name
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => module_to_filename(name: src)
+          Absent => mod_name
+        }
     }
   }
 }
@@ -6773,13 +6805,27 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
     )
 }
 
-fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
+  declaration_ref_eq(a: decl_ref(module_path: module_path, decl_name: name), b: never_type_declaration)
+}
+
+fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+  let here = decl_ref(module_path: module_path, decl_name: name)
+  if declaration_ref_eq(a: here, b: never_eliminator_declaration) {
+    "#[allow(unreachable_code)]\n"
+  } else {
+    ""
+  }
+}
+
+fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, module_path: String, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
-  concat(
-    concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
-    rust_visibility_prefix(),
-    rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);"
-  )
+  let derive = concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n")
+  if rust_uninhabited_empty_enum_decl(module_path: module_path, name: item_text) {
+    concat(derive, rust_visibility_prefix(), "enum ", item_text, " {}")
+  } else {
+    concat(derive, rust_visibility_prefix(), rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);")
+  }
 }
 
 fn emit_parametric_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
@@ -7100,17 +7146,11 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       ) == false
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
-    let type_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
-    )
-    let other_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) == false
-    )
-    let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
+    let direct_mods = unique_strings(items: merged_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     ))
-    let type_direct_lines = type_direct_mods |> flat_map(def_mod =>
-      let group = type_direct_names |> filter(n =>
+    let direct_lines = direct_mods |> flat_map(def_mod =>
+      let group = merged_direct_names |> filter(n =>
         graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
       )
       if group |> count > 0 {
@@ -7120,13 +7160,6 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
       } else { [] }
     )
-    let other_direct_line = if other_direct_names |> count > 0 {
-      let names_str = other_direct_names |> map(n =>
-        emit_import_name(owner_module: import_module, n: n, registry: registry)
-      ) |> join(separator: ", ")
-      [RustUseLine { target_module: mod_name, text: concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};") }]
-    } else { [] }
-    let direct_lines = concat(type_direct_lines, other_direct_line)
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
         match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -7734,7 +7767,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), module_path: env.module_path, source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -10070,7 +10103,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   }
   if realized_seam && (value_params |> count) == 0 {
     let kw = rust_items().func_keyword
-    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
+    return concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
       make_indent(level: 1), "v1_rt::", emit_ident(name: rust_runtime_bridge_name(function_name: rust_seam_primitive_name(module_path: scope.module_name, name: name)), target: Rust), "()\n}")
   }
   if use_tco {
@@ -10083,7 +10116,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+    concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit))
   }
 }
 
@@ -12144,10 +12177,15 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
 // parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
 // head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   n.children |> any(c =>
     let t = child_type_node(ch: c)
-    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
 }
 
@@ -19547,10 +19585,10 @@ fn emit_host_acquisition_rs(crate_name: String) -> String {
     "    }\n",
     "}\n",
     "\n",
-    "// THE SCOPED CENSUS ASKS FOR A SUBJECT'S CLOSURE, acquired around its blocks (native_lane_census_scoped_ingest).\n",
-    "fn read_census_scoped_ingest(subject: &str, source_roots: &[String]) -> Rc<NativeCensusScoped> {\n",
+    "// THE SCOPED CENSUS ASKS FOR THE UNION OF ITS SUBJECTS' CLOSURES, acquired once around its blocks (native_lane_census_scoped_ingest).\n",
+    "fn read_census_scoped_ingest(subject: &str, subjects_rest: &[String], source_roots: &[String]) -> Rc<NativeCensusScoped> {\n",
     "    let filesystem = host_filesystem();\n",
-    "    let observed = host_executor().block_on(native_lane_census_scoped_ingest(subject.to_string(), Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
+    "    let observed = host_executor().block_on(native_lane_census_scoped_ingest(subject.to_string(), Rc::new(subjects_rest.iter().cloned().collect()), Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n",
     "    match observed {\n",
     "        Ok(outcome) => match &*outcome {\n",
     "            Outcome::Accepted { value, .. } => value.clone(),\n",
@@ -20198,7 +20236,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::", native_route_mod, "::\{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
       "    native_census_module_completeness, native_census_module_resolution, native_census_modules,", "\n",
-      "    native_census_module_inference, native_census_infer_type_contribution,", "\n",
+      "    native_census_module_inference, native_census_infer_type_contribution, native_census_infer_binding_lines,", "\n",
       "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module, native_census_module_paths,", "\n",
       "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,", "\n",
       "    native_census_residual_rows,", "\n",
@@ -20625,15 +20663,21 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    scope: Rc<NativeCensusScope>,", "\n",
       "    digests: Vec<String>,", "\n",
       "    against: Option<String>,", "\n",
+      "    subjects_rest: Vec<String>,", "\n",
       "\}", "\n",
       "", "\n",
-      "fn run_census_scoped(subject: &str, against: Option<String>, source_roots: &[String]) \{", "\n",
+      "fn run_census_scoped(subject: &str, subjects_rest: &[String], against: Option<String>, source_roots: &[String]) \{", "\n",
       "    if source_roots.is_empty() \{", "\n",
       "        eprintln!(\"REFUSED: no source roots given\");", "\n",
       "        std::process::exit(2);", "\n",
       "    \}", "\n",
-      "    let scoped = read_census_scoped_ingest(subject, source_roots);", "\n",
+      "    let scoped = read_census_scoped_ingest(subject, subjects_rest, source_roots);", "\n",
       "    println!(\"\{\}\", serde_json::json!(\{ \"census_scope\": scoped.scope.clone() \}));", "\n",
+      "    // WHICH SUBJECT OBSERVED EACH MEMBER (NativeCensusScoped.reach): one line per (subject, member), so a", "\n",
+      "    // union run that read a member once still says which closures it belongs to.", "\n",
+      "    for reach in scoped.reach.iter() \{", "\n",
+      "        for member in reach.members.iter() \{ println!(\"binding_subject\\t\{\}\\t\{\}\", reach.subject, member); \}", "\n",
+      "    \}", "\n",
       "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM: one", "\n",
       "    // member line per acquired read, its bytes digested (v1_rt bytes_identity_hash) from the string every stage consumes,", "\n",
       "    // so the run record's identity is the content that was censused and never a second read of the roots.", "\n",
@@ -20643,7 +20687,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"\{\}\", serde_json::json!(\{ \"census_member\": \{ \"compilation_unit\": read.compilation_unit.clone(), \"bytes\": read.source.carried.len(), \"fnv1a64\": digest.clone() \} \}));", "\n",
       "        digests.push(digest);", "\n",
       "    \}", "\n",
-      "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some(CensusScopedWalk \{ label: subject.to_string(), scope: scoped.scope.clone(), digests, against \}));", "\n",
+      "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some(CensusScopedWalk \{ label: subject.to_string(), scope: scoped.scope.clone(), digests, against, subjects_rest: subjects_rest.to_vec() \}));", "\n",
       "\}", "\n",
       "", "\n",
       "// THE WALK BOTH CENSUS-INFER MODES SHARE. Every decision is a .dag fold: the per-module step (v2.compiler.compile", "\n",
@@ -20712,6 +20756,11 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                obligation_rows.push(row.clone());", "\n",
       "            \}", "\n",
       "        \}", "\n",
+      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_binding_census), one line each, in", "\n",
+      "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.", "\n",
+      "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() \{", "\n",
+      "            println!(\"\{\}\", line);", "\n",
+      "        \}", "\n",
       "        if scope.is_none() \{", "\n",
       "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());", "\n",
       "            run = type_census_run_add(run, contribution);", "\n",
@@ -20741,6 +20790,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            NativeCensusScope::NativeCensusScopeBlocked \{ subject, blocked_rest, .. \} => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),", "\n",
       "        \};", "\n",
       "        // THE RUN'S OWN RECORD, decided by v2.compiler.source_root_eval census_scoped_run_record from what this walk held.", "\n",
+      "        // A record names ONE subject (CensusRunRecord.subject), so a union run over several prints none: its", "\n",
+      "        // population is not that subject's closure, and a record claiming it would be a second meaning of the name.", "\n",
+      "        let diff = if !walk.subjects_rest.is_empty() \{ \"union\" \} else \{", "\n",
       "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));", "\n",
       "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_record\": record.clone() \}));", "\n",
       "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes", "\n",
@@ -20749,7 +20801,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        println!(\"\{\}\", serde_json::json!(\{ \"census_run_comparable\": comparable.clone() \}));", "\n",
       "        // THE COMPARISON, when a baseline was named: census_run_diff decides every finding. A baseline that", "\n",
       "        // cannot be read as a completed record is reported as no comparison, never as an empty one.", "\n",
-      "        let diff = match &walk.against \{", "\n",
+      "        match &walk.against \{", "\n",
       "            None => \"none\",", "\n",
       "            Some(path) => match census_baseline_record(path) \{", "\n",
       "                Err(cause) => \{", "\n",
@@ -20765,6 +20817,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                    \}", "\n",
       "                \}", "\n",
       "            \},", "\n",
+      "        \}", "\n",
       "        \};", "\n",
       "        println!(\"\{\}\", serde_json::json!(\{", "\n",
       "            \"_terminal\": \"complete\",", "\n",
@@ -20773,6 +20826,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"diff\": diff,", "\n",
       "            \"subject_label\": subject_label,", "\n",
       "            \"subject\": subject,", "\n",
+      "            \"subjects_rest\": walk.subjects_rest.clone(),", "\n",
       "            \"acquisition\": acquisition,", "\n",
       "            \"blocks\": blocks,", "\n",
       "            \"corpus_reads\": corpus_reads,", "\n",
@@ -21524,7 +21578,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                NativeDriverVerb::NativeDriverCensusResolve \{ .. \} => run_census_resolve(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverCensusInfer \{ .. \} => run_census_infer(&source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverDemandCensus \{ .. \} => run_demand_census(&source_roots),", "\n",
-      "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, against, .. \} => run_census_scoped(subject, against.clone(), &source_roots),", "\n",
+      "                NativeDriverVerb::NativeDriverCensusScoped \{ subject, subjects_rest, against, .. \} => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),", "\n",
       "                NativeDriverVerb::NativeDriverAdjudicate \{ facts_path, pattern, .. \} => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),", "\n",
       "            \}", "\n",
       "        \}", "\n",

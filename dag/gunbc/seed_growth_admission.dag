@@ -62,6 +62,7 @@ import gunbc.pool_reading_attribution_seed_growth { pool_reading_attribution_see
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.memory_envelope_receipt_seed_growth { memory_envelope_receipt_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.parse_compiler_identity_seed_growth { parse_compiler_identity_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
@@ -320,6 +321,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     source_root_eval_driver_seed_growth_justification,
     memory_envelope_receipt_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    parse_compiler_identity_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,

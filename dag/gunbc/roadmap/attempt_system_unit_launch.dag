@@ -87,6 +87,7 @@ import gunbc.executor_privileged_operation {
   gunbc_entry_run_argv, sudoers_argument_word, executor_sudoers_run_as,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance,
   dashboard_instance_for_instance_root,
   DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
@@ -243,7 +244,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
             unit: name,
             node_id: request.node_id,
             attempt_key: request.attempt_key,
-            user: instance.directory_owner.user as NonEmptyStr,
+            user: dashboard_instance_worker_user(instance: instance),
             working_directory: dispatch_pane_working_directory(provider: GunbcHarnessProvider, instance: instance, worktree_path: worktree),
             attempt_worktree: worktree,
             stdout_path: log,
@@ -273,8 +274,8 @@ type AttemptSystemUnitAdmission
   | AttemptSystemUnitRefused { reason: String }
 
 fn attempt_system_unit_start_admitted(instance: HostDashboardInstance, facts: AttemptSystemUnitStartFacts) -> AttemptSystemUnitAdmission {
-  if (facts.user as String) != (instance.directory_owner.user as String) {
-    AttemptSystemUnitRefused { reason: "User= is not the instance service user" }
+  if (facts.user as String) != (dashboard_instance_worker_user(instance: instance) as String) {
+    AttemptSystemUnitRefused { reason: "User= is not the instance worker user" }
   } else {
     match facts.inner_argv.first() {
       Absent => AttemptSystemUnitRefused { reason: "ExecStart argv is empty" }
