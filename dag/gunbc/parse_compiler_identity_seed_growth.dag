@@ -12,7 +12,7 @@ data parse_compiler_identity_seed_growth_justification: SeedGrowthJustification 
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "parse_compiler_identity_entries", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "feed_identity_file", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "dag_module_name", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "dag_module_name_from_path", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "feed_runtime_crate", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "parse_compiler_identity_digest", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.native_lane_runner", decl_name: "write_parse_verdict_github_outputs", field: WholeDeclaration }
