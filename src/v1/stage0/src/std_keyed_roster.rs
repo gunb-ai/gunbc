@@ -119,7 +119,7 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRow<K, V>>> {
     rows.iter().cloned().fold(
         std::option::Option::None,
-        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
@@ -138,7 +138,7 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRosterDuplicateEvidence<K, V>>> {
     rows.clone().iter().cloned().fold(
         std::option::Option::None,
-        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             std::option::Option::None => {
                 if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
