@@ -10,7 +10,14 @@ import extdeps.github.actions_environment { github_output_variable_name }
 import extdeps.github.workflow_runs
 import extdeps.transports.rest { RestAnswered, RestRefused }
 import gunbc.repository { gunbc_repository }
-import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.actions_run_binding {
+  actions_variable_trimmed,
+  observe_actions_run_binding,
+  ActionsRunBinding,
+  ActionsRunBindingObservation,
+  ActionsRunBound,
+  ActionsRunUnbound,
+}
 import gunbc.running_release_identity { release_revision_text_valid }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
@@ -156,14 +163,39 @@ fn resolve_plan_revision() -> ProcessExit {
   }
 }
 
-// THE SECOND CONSUMER: apply and dashboard_deploy call this before executing, so the tree they run
-// is the tree the resolver admitted.
+// THE RUN BINDING OF A JOB THAT EXECUTES AT THE PLAN'S REVISION. GITHUB_SHA is the dispatched
+// commit, which is main's head and not the tree these jobs check out, so a binding that carried it
+// would record a revision nobody built. The binding carries the checked-out HEAD instead, read from
+// git; every downstream comparison (admit_apply_plan_binding against the plan receipt, the typed
+// expected_revision cross-check) is then a check of the plan's revision against the tree that runs.
+// Consumers: fleet_converge_plan_cli fleet_converge_apply_wet and live_deploy.apply's dashboard
+// transaction.
+fn observe_actions_run_binding_at_checkout() -> ActionsRunBindingObservation {
+  match observe_actions_run_binding() {
+    ActionsRunUnbound { variable: v, detail: d } => ActionsRunUnbound { variable: v, detail: d }
+    ActionsRunBound { binding: b } => match observe_checkout_head() {
+      CheckoutHeadAdmitted { revision: head } =>
+        if release_revision_text_valid(text: head) {
+          ActionsRunBound {
+            binding: ActionsRunBinding { repository: b.repository, workflow_ref: b.workflow_ref, run_id: b.run_id, run_revision: head },
+          }
+        } else {
+          ActionsRunUnbound { variable: "HEAD", detail: join(["not a 40-digit lower-hex revision: ", head], "") }
+        }
+      refused => ActionsRunUnbound { variable: "HEAD", detail: checkout_head_admission_text(a: refused) }
+    }
+  }
+}
+
+// THE SECOND CONSUMER: apply and dashboard_deploy run this before executing, so the tree they run
+// is the tree the plan receipt names. The receipt was tied to GitHub by the plan-revision job that
+// chose this checkout; this step is the independent readback of what the checkout actually is.
 fn verify_checkout_at_plan_revision() -> ProcessExit {
-  match resolve_plan_revision_admission() {
-    PlanRevisionAdmitted { revision: r } => match admit_checkout_at(expected: r) {
+  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: PlanRunUnreadable { cause: r })], ""))
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => match admit_checkout_at(expected: receipt.run.run_revision) {
       CheckoutHeadAdmitted { revision: _ } => ExitSuccess
       refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", checkout_head_admission_text(a: refused)], ""))
     }
-    refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: refused)], ""))
   }
 }

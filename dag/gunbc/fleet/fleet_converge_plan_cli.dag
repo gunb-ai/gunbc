@@ -1,5 +1,6 @@
 module gunbc.fleet.fleet_converge_plan_cli
 
+import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
 import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
@@ -1001,7 +1002,7 @@ fn fleet_converge_plan_scoped_bound_wet(
 // final join can pair them without re-deriving anything.
 fn fleet_converge_apply_wet() -> ProcessExit
 {
-  match observe_actions_run_binding() {
+  match observe_actions_run_binding_at_checkout() {
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
