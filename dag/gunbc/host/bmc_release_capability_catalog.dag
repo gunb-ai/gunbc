@@ -230,9 +230,8 @@ fn bmc_capability_observation_citation(decl_name: String) -> FactCitation {
 // PRECISION, stated because the count cannot carry it: the operator's report gave a DATE, not a
 // reading-time. So this is the first instant of 2026-10-16 UTC as an EARLIEST BOUND -- "on or after
 // 2026-10-16T00:00:00Z" -- and not a claim about the hour. A day-resolution reading stored in a
-// nanosecond field is honest only while the field's meaning is recorded, which is what this note and
-// the claim below are for; a consumer that needs sub-day ordering does not have it here and must not
-// invent it.
+// nanosecond field is honest only while the field's meaning is recorded, which is what the note below
+// is for; a consumer that needs sub-day ordering does not have it here and must not invent it.
 data megarac_0_45_3_operator_attestation_instant: ObservationInstant = ObservationInstant {
   domain: SharedMonotonic { origin: "unix-epoch-1970-01-01T00:00:00Z" },
   basis: WallClock,
@@ -242,15 +241,18 @@ data megarac_0_45_3_operator_attestation_instant: ObservationInstant = Observati
   since_origin: nanosecond(count: 1792108800000000000),
 }
 
-// THE READING IS DAY-RESOLUTION, STATED IN THE CONVENTION THIS REPO ALREADY USES FOR A FACT NO FOLD
-// READS: `data <name>_note: String`, as std.measure.measure_clock_basis_note does for a clock basis.
-// Deliberately NOT a field on the standing -- a field nothing reads is the dangling row DESIGN.md Sec 3c
-// names, and no consumer needs sub-day ordering today. The instant above is an EARLIEST BOUND: the
-// 2026-10-16 web UI read gave a DATE, not a reading-time, so nothing may treat it as sub-day
-// resolution, and a question like "was the attestation after run 38789347052?" must come away
-// unresolved rather than pick a side. If a consumer ever needs that ordering, the resolution becomes a
-// fact worth modelling -- and this note is where the reason it was not modelled now is recorded.
-data megarac_0_45_3_operator_attestation_note: String = "day-resolution earliest bound"
+// THE READING IS DAY-RESOLUTION, AND THAT IS A PROPERTY OF THE READING, NOT OF THE FIELD. Recorded
+// here, at the declaration the reader is already looking at, as DESIGN.md Sec 4c requires: a `String`
+// declaration whose only purpose is commentary is misplaced or dead data, and `//` is the explicit
+// quarantine boundary. The operator's 2026-10-16 web UI read gave a DATE, not a reading-time, so the
+// instant above is an EARLIEST BOUND -- "on or after 2026-10-16T00:00:00Z" -- and nothing may treat it
+// as sub-day resolution. A question like "was the attestation after run 38789347052?" must come away
+// unresolved rather than pick a side; no fold asks it today, which is precisely why the fact is a
+// comment rather than a field: a field nothing reads is the dangling row DESIGN.md Sec 3c names, and
+// std.measure.measure_clock_basis_note is earlier debt of the same kind, not a precedent to follow.
+// If a consumer ever does need sub-day ordering, the resolution becomes a fact worth modelling -- on
+// the attestation standing, where an ordering check can read it -- and this comment is where the
+// reason it was not modelled now is recorded (review 81312).
 
 // THE CATALOG WE ESTABLISH, keyed by the release identity upstream names. Two rows today, and the
 // asymmetry between them is the point: the 0.32 row rests on a committed machine read with no run behind

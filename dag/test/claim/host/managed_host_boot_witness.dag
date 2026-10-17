@@ -460,8 +460,5 @@ test fn w_the_operator_attestation_instant_is_coherent_with_its_own_origin() -> 
     Absent => false
   }
   epoch_days && epoch_domain && same_domain_orders && cross_domain_refuses && row_carries_it
-    // The domain name is what carries the resolution honestly: an origin naming the EPOCH, rather
-    // than the day being read, is what stops a date-only reading from implying a time of day it never
-    // claimed. The companion note records that the reading is day-resolution.
-    && ((megarac_0_45_3_operator_attestation_note as String) == "day-resolution earliest bound")
+
 }

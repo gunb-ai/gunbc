@@ -69,7 +69,7 @@ type SmproFacilityStanding
   // The host's board admits no SoC family, so NOTHING is known about the silicon. Not Carried, and
   // not Carried either: there is no family to answer about. The SMpro pass is not taken, and the
   // reason says the family is unknown rather than claiming the platform lacks the facility.
-  | SmproFacilityUnestablished { cause: NonEmptyStr }
+  | SmproFacilityUnestablished { cause: SmproUnestablishedCause }
 
 // WHY THE PLATFORM IS NOT ESTABLISHED, as a CLOSED SET rather than a sentence. Review 81287 F5: a
 // NonEmptyStr reason is uncheckable prose -- a witness can only assert it is non-empty or compare it
@@ -223,7 +223,7 @@ type SmproPlatformStanding
   // The silicon is unknown -- no family bound, or a compatibility roster that mixes carrying and
   // non-carrying families with no installed-silicon observation to select one. No site, and no claim
   // that the platform lacks the interface either.
-  | SmproPlatformUnestablished { cause: NonEmptyStr }
+  | SmproPlatformUnestablished { cause: SmproUnestablishedCause }
 
 // THE PLATFORM STANDING FOR A MACHINE, from its board's SoC families plus (only where the platform
 // carries) the SMpro site standing. Kept as one fn so a consumer never assembles the arms by hand and
@@ -291,7 +291,7 @@ type SmproSubjectOutcome
   // Only a genuine subject: the mint's own refusals are their own arms below, never folded in here.
   = SmproSubjectMinted { subject: SmproPassSubject }
   | SmproSubjectNotCarried { family: SoCFamily }
-  | SmproSubjectUnestablished { cause: NonEmptyStr }
+  | SmproSubjectUnestablished { cause: SmproUnestablishedCause }
   | SmproSubjectSiteRefused { cause: SmproSiteRefusal }
   // The site is evidence about a DIFFERENT controller than the bound one: both endpoints survive, since
   // naming them is the whole value of the refusal.
@@ -311,8 +311,8 @@ fn smpro_subject_absence_reason(outcome: SmproSubjectOutcome) -> NonEmptyStr {
       join(["the platform does not carry the SMpro interface: the bound board's SoC family ",
         (family.name as String),
         " is not among the cited SMpro-carrying families, so there is no pass to take"], "") as NonEmptyStr
-    SmproSubjectUnestablished { cause: cause } =>
-      join(["no SMpro pass was taken: ", smpro_unestablished_cause_text(cause: cause)], "") as NonEmptyStr
+    SmproSubjectUnestablished { cause: reason } =>
+      join(["no SMpro pass was taken: ", smpro_unestablished_cause_text(cause: reason)], "") as NonEmptyStr
     SmproSubjectSiteRefused { cause: cause } =>
       join(["the platform carries SMpro and a controller is bound, but the SMpro site was refused: ",
         smpro_site_refusal_text(cause: cause)], "") as NonEmptyStr
