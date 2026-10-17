@@ -44,7 +44,7 @@ import extdeps.http.header_dump { HeaderDumpRead, http_header_dump_status }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.harness.harness_operator_route {
   harness_operator_route, HarnessOperatorRoute, OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorProbeNotSent, OperatorModelsRefused, OperatorModelsAnswered,
-  OperatorRoundFault, OperatorCertificateNotPinned, OperatorNoCapacity, operator_round_fault, operator_pin_plan,
+  OperatorRoundFault, OperatorCertificateNotPinned, OperatorNoCapacity, operator_round_fault, operator_pinned_probe_request,
   OperatorRouteStanding, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_route_standing, operator_open_header, OperatorHeaderOpened, OperatorHeaderRefused, operator_close_header,
   operator_models_url, operator_endpoint_origin,
@@ -331,16 +331,16 @@ fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorMode
       match operator_open_header(route: route, session: harness_operator_probe_session) {
         OperatorHeaderRefused { detail: d } => OperatorProbeNotSent { url: models as String, detail: d }
         OperatorHeaderOpened { header_dir: dir, header_file: hf } => {
-          let headers_file = join([dir as String, "/probe-response-headers"], "") as NonEmptyStr
+          let req = operator_pinned_probe_request(url: models, dir: dir, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr, hf: hf)
           let read = http.Client.GetBoundedWithHeaderFilePinned(
-            url: models,
-            header_file: hf,
-            response_headers_file: headers_file,
-            ca_file: operator_pin_plan(header_file: hf).ca_file,
-            pinned_pubkey_file: operator_pin_plan(header_file: hf).pubkey_file,
-            max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr,
+            url: req.url,
+            header_file: req.header_file,
+            response_headers_file: req.response_headers_file,
+            ca_file: req.ca_file,
+            pinned_pubkey_file: req.pinned_pubkey_file,
+            max_seconds: req.max_seconds,
           )
-          let dump = Filesystem.Read(path: headers_file as String)
+          let dump = Filesystem.Read(path: req.response_headers_file as String)
           let status = if dump.success { http_header_dump_status(dump: HeaderDumpRead { text: dump.content }) } else { none }
           let closed = operator_close_header(header_dir: dir)
           if read.success {

@@ -181,6 +181,53 @@ fn operator_pin_plan(header_file: NonEmptyStr) -> OperatorPinPlan {
   }
 }
 
+// THE ARGUMENTS EACH PINNED REQUEST IS HANDED, built once and purely. Both call sites (the turn's POST and the
+// front-door probe) take every field of the effect call from these records, and the claims materialize the real
+// client argv from the same records, so a call site cannot spell a path the claims did not see.
+type OperatorPinnedPostRequest {
+  url: NonEmptyStr
+  request_body_file: NonEmptyStr
+  header_file: NonEmptyStr
+  response_headers_file: NonEmptyStr
+  ca_file: NonEmptyStr
+  pinned_pubkey_file: NonEmptyStr
+  max_seconds: NonEmptyStr
+}
+
+fn operator_pinned_post_request(url: NonEmptyStr, request_body_file: NonEmptyStr, response_headers_file: NonEmptyStr, max_seconds: NonEmptyStr, hf: NonEmptyStr) -> OperatorPinnedPostRequest {
+  let plan = operator_pin_plan(header_file: hf)
+  OperatorPinnedPostRequest {
+    url: url,
+    request_body_file: request_body_file,
+    header_file: hf,
+    response_headers_file: response_headers_file,
+    ca_file: plan.ca_file,
+    pinned_pubkey_file: plan.pubkey_file,
+    max_seconds: max_seconds,
+  }
+}
+
+type OperatorPinnedProbeRequest {
+  url: NonEmptyStr
+  header_file: NonEmptyStr
+  response_headers_file: NonEmptyStr
+  ca_file: NonEmptyStr
+  pinned_pubkey_file: NonEmptyStr
+  max_seconds: NonEmptyStr
+}
+
+fn operator_pinned_probe_request(url: NonEmptyStr, dir: NonEmptyStr, max_seconds: NonEmptyStr, hf: NonEmptyStr) -> OperatorPinnedProbeRequest {
+  let plan = operator_pin_plan(header_file: hf)
+  OperatorPinnedProbeRequest {
+    url: url,
+    header_file: hf,
+    response_headers_file: join([dir as String, "/probe-response-headers"], "") as NonEmptyStr,
+    ca_file: plan.ca_file,
+    pinned_pubkey_file: plan.pubkey_file,
+    max_seconds: max_seconds,
+  }
+}
+
 type OperatorHeaderOpen
   = OperatorHeaderOpened { header_dir: NonEmptyStr, header_file: NonEmptyStr }
   | OperatorHeaderRefused { detail: String }
