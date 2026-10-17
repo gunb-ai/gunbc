@@ -82,7 +82,7 @@ test fn w_control_without_alias_crossing_is_clean() -> Bool {
   refusal_count(source: control_clean_source) == 0
 }
 
-data control_mismatch_source: String = "module probe_alias_ctl_bad\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> Int { b }\n"
+data control_mismatch_source: String = "module probe_alias_ctl_bad\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\ntype Other { w: Int }\nfn p(b: Boxed<Int>) -> Other { b }\n"
 
 test fn w_control_genuine_mismatch_is_counted() -> Bool {
   refusal_count(source: control_mismatch_source) >= 1
