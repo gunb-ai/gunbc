@@ -2,7 +2,7 @@ module gunbc.live_deploy.belt_cadence
 
 import std.measure { Second, second, second_count }
 import gunbc.roadmap.roadmap_belt_obligation {
-  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+  BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation,
   belt_attempt_obligation_order,
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation,
   MeteringObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
@@ -38,6 +38,8 @@ data capture_obligation_run_bound: Second = second(count: 2700)
 data verify_obligation_run_bound: Second = second(count: 2700)
 data review_obligation_run_bound: Second = second(count: 2700)
 data audit_obligation_run_bound: Second = second(count: 2700)
+data acceptance_outcome_obligation_run_bound: Second = second(count: 2700)
+data acceptance_outcome_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
@@ -47,6 +49,7 @@ fn attempt_obligation_run_bound(kind: BeltAttemptObligationKind) -> Second {
     VerifyObligation => verify_obligation_run_bound
     ReviewObligation => review_obligation_run_bound
     AuditObligation => audit_obligation_run_bound
+    AcceptanceOutcomeObligation => acceptance_outcome_obligation_run_bound
     PublishObligation => publish_obligation_run_bound
   }
 }
