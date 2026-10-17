@@ -72,6 +72,7 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom,
   dag_string_literal_node,
   dag_string_literal_value_symbol_optional,
+  dag_float_literal_lexeme_optional,
   string_template_optional,
   StringTemplate,
   StringTemplateSegment,
@@ -145,7 +146,7 @@ import v2.std.compilers.lowered_shape {
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, parse_production_emitted_identity_optional }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -1573,7 +1574,7 @@ fn body_lower_positional_payload(payload_shell: Node) -> Outcome<Node> {
 
 type VariantPayloadShell
   = VariantPayloadAbsent
-  | VariantPayloadShell { shell: Node }
+  | VariantPayloadCarries { shell: Node }
   | VariantPayloadUnrecognized
 
 fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
@@ -1584,7 +1585,7 @@ fn body_lower_variant_payload_shell(suffix: Node) -> VariantPayloadShell {
     match parse_production_emitted_identity_optional(node: stripped) {
       Present { value: id } =>
         if (id == ^dag_surface_field_decl_block) || (id == ^dag_surface_positional_variant_payload) {
-          VariantPayloadShell { shell: stripped }
+          VariantPayloadCarries { shell: stripped }
         } else {
           VariantPayloadUnrecognized
         }
@@ -1658,7 +1659,7 @@ fn body_lower_type_variant(shell: Node) -> Outcome<Node> {
             Absent => outcome_accepted(value: shell)
             Present { value: suffixes } =>
               match body_lower_variant_payload_shell(suffix: suffixes.right) {
-                VariantPayloadShell { shell: payload_shell } =>
+                VariantPayloadCarries { shell: payload_shell } =>
                   if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: suffixes.left)) {
                     body_lower_fielded_type_variant(shell: shell, head: pair.left, payload_shell: payload_shell)
                   } else {
@@ -1810,7 +1811,7 @@ fn body_lower_operand_from_shell_read(shell: Node) -> OperandRefRead {
 // a refusal here too, carrying that reader's cause at its position.
 fn body_lower_operand_ref_sequence_read(node: Node) -> OperandRefRead {
   match body_lower_read_operator_expression(node: node) {
-    OperatorExpressionRead { lowered: lowered } => OperandRefLowered { lowered: lowered }
+    OperatorExpressionCarries { lowered: lowered } => OperandRefLowered { lowered: lowered }
     OperatorExpressionRefused { diagnostics: d } => OperandRefRefused { diagnostics: d }
     OperatorExpressionAbsent => OperandRefAbsent
   }
@@ -2022,7 +2023,7 @@ fn body_lower_unwrap_captured(shell: Node) -> Optional<Node> {
 // operand is lowered and an unreadable position is a located refusal.
 type OperatorExpressionRead
   = OperatorExpressionAbsent
-  | OperatorExpressionRead { lowered: Node }
+  | OperatorExpressionCarries { lowered: Node }
   | OperatorExpressionRefused { diagnostics: NonEmptyDiagnostics }
 
 // THE OPERATOR SETS ARE READ OFF THE GRAMMAR, NOT LISTED BESIDE IT. Every terminal of
@@ -2142,7 +2143,7 @@ fn body_lower_operator_refusal(reason: Symbol, at: Node) -> OperatorExpressionRe
 fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
   let operand = body_lower_strip_empty_tails(node: node)
   match body_lower_read_operator_expression(node: operand) {
-    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: lowered)
+    OperatorExpressionCarries { lowered: lowered } => outcome_accepted(value: lowered)
     OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
     OperatorExpressionAbsent =>
       match body_term_of(node: operand) {
@@ -2267,7 +2268,7 @@ fn body_lower_read_infix_application(app: InfixApplication) -> OperatorExpressio
         Accepted { value: left, diagnostics: _ } =>
           match body_lower_binary_apply(acc: left, operator: operator, right: app.right) {
             Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
-            Accepted { value: applied, diagnostics: _ } => OperatorExpressionRead { lowered: applied }
+            Accepted { value: applied, diagnostics: _ } => OperatorExpressionCarries { lowered: applied }
           }
       }
   }
@@ -2288,7 +2289,7 @@ fn body_lower_read_operator_expression(node: Node) -> OperatorExpressionRead {
               match body_lower_operator_operand(node: pair.right) {
                 Rejected { diagnostics: r } => OperatorExpressionRefused { diagnostics: r }
                 Accepted { value: operand, diagnostics: _ } =>
-                  OperatorExpressionRead { lowered: lower_unary_prefix(operator: operator, operand: operand) }
+                  OperatorExpressionCarries { lowered: lower_unary_prefix(operator: operator, operand: operand) }
               }
             Absent => OperatorExpressionAbsent
           }
@@ -2299,7 +2300,7 @@ fn body_lower_read_operator_expression(node: Node) -> OperatorExpressionRead {
 fn body_lower_try_infix_transform(node: Node) -> Outcome<Optional<Node>> {
   match body_lower_read_operator_expression(node: node) {
     OperatorExpressionAbsent => outcome_accepted(value: optional_absent())
-    OperatorExpressionRead { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
+    OperatorExpressionCarries { lowered: lowered } => outcome_accepted(value: optional_present(value: lowered))
     OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
@@ -3579,7 +3580,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
 fn body_lower_fold_raw(node: Node) -> Outcome<Node> {
   if body_lower_application_pipes_into_fold(node: node) {
     match body_lower_read_operator_expression(node: node) {
-      OperatorExpressionRead { lowered: lowered } => body_term_sealed_outcome(o: outcome_accepted(value: lowered), shape: LoweredOperatorExpression)
+      OperatorExpressionCarries { lowered: lowered } => body_term_sealed_outcome(o: outcome_accepted(value: lowered), shape: LoweredOperatorExpression)
       OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
       OperatorExpressionAbsent => body_lower_fold_by_identity(node: node)
     }
@@ -5415,7 +5416,7 @@ fn body_lower_value_read(value: Node) -> Outcome<Node> {
 // this reader for every nested argument, so a call nested d deep is folded on the order of 5^d
 // times. The instrument that re-derives this is the native lane's per-file phase clock: the
 // emitted driver's `adjudicate` (std.compiler_entry SourceRootEvalDriver, absorbed by
-// v2.compiler.compile native_test_context_absorb) prints one row per ingested file carrying
+// v2.compiler.source_root_eval native_test_context_absorb) prints one row per ingested file carrying
 // `normalize_nanos`; sum and sort it over the workload closure, baseline against candidate.
 //
 // A FOLD THAT REFUSES IS THE VALUE'S REFUSAL, AND IT PROPAGATES. It used to hand the value to the
@@ -7298,6 +7299,9 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
   match body_lower_string_literal_value_optional(node: stripped) {
     Present { value: literal } => optional_present(value: literal)
     Absent =>
+  match body_lower_float_literal_value_optional(node: stripped) {
+    Present { value: literal } => optional_present(value: literal)
+    Absent =>
   match dag_node_is_int_literal_atom(node: stripped) {
     true => body_lower_int_literal_with_magnitude_optional(node: stripped)
     false =>
@@ -7320,6 +7324,17 @@ fn body_lower_atom_node_lowered_optional(stripped: Node) -> Optional<Node> {
       }
   }
   }
+  }
+  }
+}
+
+// A FLOAT LITERAL IS READ WHOLE, lexeme payload and occurrence kept, for the reason a string literal is:
+// the parser built it carrying its exact source digits (dag_float_literal_node_from_lexeme), and
+// rebuilding it as a bare atom drops them, leaving a float no later stage can tell from any other.
+fn body_lower_float_literal_value_optional(node: Node) -> Optional<Node> {
+  match dag_float_literal_lexeme_optional(node: node) {
+    Present { value: _ } => optional_present(value: node)
+    Absent => optional_absent()
   }
 }
 
@@ -9510,18 +9525,9 @@ fn body_lower_match_arm_items_on_lbrace_token(id: Symbol, right: Node) -> Outcom
       match body_lower_match_arm_items_from_brace_interior(interior: right) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms, diagnostics: d } =>
-          if count(arms) > 0 {
-            Accepted {
-              value: optional_present(value: arms),
-              diagnostics: d
-            }
-          } else {
-            outcome_rejected(
-              d: body_lower_diagnostic(
-                reason: ^body_lowering_reason_match_arm_navigation_refused,
-                n: right
-              )
-            )
+          Accepted {
+            value: optional_present(value: arms),
+            diagnostics: d
           }
       }
     false => body_lower_match_arm_items_after_lbrace_optional(spine: right)
@@ -9584,18 +9590,9 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
         Accepted { value: arms_opt, diagnostics: d } =>
           match arms_opt {
             Present { value: arms } =>
-              if count(arms) > 0 {
-                Accepted {
-                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: d
-                }
-              } else {
-                outcome_rejected(
-                  d: body_lower_diagnostic(
-                    reason: ^body_lowering_reason_match_arm_navigation_refused,
-                    n: captured
-                  )
-                )
+              Accepted {
+                value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                diagnostics: d
               }
             Absent =>
               outcome_rejected(
@@ -10934,16 +10931,16 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
 }
 
 type TypeDeclModifiersRead
-  = TypeDeclModifiersRead { modifiers: FreeMonoid<TypeDeclModifier> }
+  = TypeDeclModifiersCarries { modifiers: FreeMonoid<TypeDeclModifier> }
   | TypeDeclModifiersUnreadable { at: Node }
 
 fn body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead, slot: Node) -> TypeDeclModifiersRead {
   match acc {
     TypeDeclModifiersUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
-    TypeDeclModifiersRead { modifiers: ms } =>
+    TypeDeclModifiersCarries { modifiers: ms } =>
       match body_lower_type_decl_modifier_slot(slot: slot) {
-        TypeDeclModifierSlotEmpty => TypeDeclModifiersRead { modifiers: ms }
-        TypeDeclModifierSlotCarries { modifier: m } => TypeDeclModifiersRead { modifiers: list_snoc_item(xs: ms, item: m) }
+        TypeDeclModifierSlotEmpty => TypeDeclModifiersCarries { modifiers: ms }
+        TypeDeclModifierSlotCarries { modifier: m } => TypeDeclModifiersCarries { modifiers: list_snoc_item(xs: ms, item: m) }
         TypeDeclModifierSlotUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
       }
   }
@@ -10969,7 +10966,7 @@ fn body_lower_type_decl_modifiers_read(shell: Node, captured: Node) -> TypeDeclM
                     Absent => TypeDeclModifiersUnreadable { at: slot_and_body.left }
                     Present { value: slots } =>
                       body_lower_type_decl_modifier_snoc(
-                        acc: body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead { modifiers: Empty }, slot: slots.left),
+                        acc: body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersCarries { modifiers: Empty }, slot: slots.left),
                         slot: slots.right
                       )
                   }
@@ -11003,7 +11000,7 @@ fn body_lower_type_decl_declared_modifiers(shell: Node) -> Outcome<DeclaredTypeM
           match body_lower_type_decl_modifiers_read(shell: shell, captured: captured) {
             TypeDeclModifiersUnreadable { at: a } =>
               Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_decl_modifiers_unreadable_diagnostic(at: a)) }
-            TypeDeclModifiersRead { modifiers: ms } =>
+            TypeDeclModifiersCarries { modifiers: ms } =>
               match ms {
                 Empty => outcome_accepted(value: DeclaredTypeModifiersAbsent)
                 Cons { head: _, tail: _ } =>

@@ -51,12 +51,8 @@ import gunbc.auth.approval_keyring_pins {
   approval_store_receipt_mac_access_url,
   approval_store_receipt_mac_key_path_env,
 }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix,
-  mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_sol_activation_suffix,
-  mtcollins1_boot_sol_capture_path_env,
-  mtcollins1_boot_sol_pid_path_env,
-}
+import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix, mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_notice_file_infix, mtcollins1_sol_notice_final_allowance, mtcollins1_sol_notice_token_env, mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_activation_suffix }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
 import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_release_script, mtcollins1_sol_hold_owned_check_script, mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import v2.std.node { Node }
@@ -68,7 +64,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_subshell_from_stmts, bash_build_stmt_list_from_nodes, bash_build_exit,
 }
 import gunbc.machine_intake.mtcollins1_sol_notice { mtcollins1_sol_notice_stop_suffix }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
+import gunbc.machine_intake.fan_observe { fan_boot_phase_taken_prefix }
+import extdeps.github.actions_environment { github_output_variable_name }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed, mtcollins1_fan_boot_phase_outcome_refused, mtcollins1_fan_credential_fetch_status_suffix, mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 import gunbc.fabric.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
@@ -1080,6 +1078,12 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
+  function: "mtcollins1_fan_observe_boot_phase_wet",
+}
+
+
 data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_kvm_observer_observe.dag",
   function: "mtcollins1_kvm_observer_observe_wet",
@@ -1371,6 +1375,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_fan_observe_boot_phase_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
     gunbc_ci_mtcollins1_census_image_publish_target,
@@ -1941,34 +1946,144 @@ fn gunbc_ci_mtcollins1_probe_root_statement() -> Node {
   bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"]))))
 }
 
-fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String) -> List<Node> {
-  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")])], set_e: false)
-  [
+fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_failure: Bool) -> List<Node> {
+  // The status file exists only in the typed lane: the strict lanes' trap never mentions it, so
+  // nothing fetch-status-related rides into the KVM observer's script (control:
+  // fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict).
+  let trap_rm_words = if typed_fetch_failure {
+    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE"), bv(name: "STATUS_FILE")]
+  } else {
+    [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE"), bv(name: "DEST_FILE")]
+  }
+  let trap_body = gunbc_ci_mtcollins1_probe_rendered(stmts: [bcmd(words: trap_rm_words)], set_e: false)
+  // THE TYPED FORM (reviews 81077 and 81090 finding B): the bounded Secret Manager read and the payload
+  // decode keep their bounds and still fail LOUDLY on a hang (a timeout kills the step under set -e),
+  // but a refused fetch - non-zero curl, undecodable payload - reports itself through a SIBLING STATUS
+  // FILE ("ok" / "fetch-failed") and DELETES the credential file on refusal. The credential carrier
+  // never holds anything but a credential: a fabricated value inside it would let the observer confuse
+  // "the controller could not be reached" with "the password is this word". The boot-phase entry folds
+  // the status into FanObserveBootPhaseRefused credential=fetch-failed with ExitSuccess, so the step
+  // needs no continue-on-error to keep the boot honest. The status file's name is
+  // mtcollins1_fan_credential_fetch_status_suffix on the module that READS it - writer and reader
+  // share one authority. The untyped form is what the strict lanes -- the KVM observer -- keep: there,
+  // a missing credential must still fail the step by name.
+  let fetch = bcmd(words: [
+    bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
+    bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
+    bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
+  ])
+  let decode = bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")])
+  let chmod = bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")])
+  let rm_dest = bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "DEST_FILE")])
+  // THE CREDENTIAL IS NOT A STATUS CARRIER: on refusal the credential file is removed and only the
+  // status file says why, so no consumer can read a value this run did not fetch. The success arm
+  // carries its own chmod and its "ok": a chmod left to run unconditionally would die under set -e on
+  // the refused path, where the credential file was just removed, and the step would fail before the
+  // entry could write a receipt.
+  let fetch_pair = if typed_fetch_failure {
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: rm_dest,
+        right: bash_build_and_then(
+          left: fetch,
+          right: bash_build_and_then(
+            left: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")),
+            right: bash_build_and_then(
+              left: chmod,
+              right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "ok")]), path: bv(name: "STATUS_FILE")),
+            ),
+          ),
+        ),
+      ),
+      right: bash_build_and_then(
+        left: rm_dest,
+        right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "fetch-failed")]), path: bv(name: "STATUS_FILE")),
+      ),
+    )
+  } else {
+    bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bv(name: "DEST_FILE")))
+  }
+  let head = [
     bcmdl(lits: ["set", "-euo", "pipefail"]),
     bcmdl(lits: ["umask", "077"]),
     bash_build_assign(name: "HDR_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-sm.json"))])),
     bash_build_assign(name: "DEST_FILE", value: bcat(parts: [bv(name: "RUNNER_TEMP"), bl(text: concat(concat("/", stem), "-bmc-credential"))])),
+  ]
+  // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
+  // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
+  // aborts the trap BEFORE rm runs - and the window between the trap and the header write is exactly
+  // where a bearer-token temp file exists. So every name the trap reads is assigned first, the status
+  // included, and any status file a previous attempt left behind is removed at the start of this
+  // attempt, so a stale "ok"/"fetch-failed" can never answer for a fetch that has not run yet. The
+  // strict (KVM) lane names no STATUS_FILE anywhere - trap included.
+  let typed_head = concat(head, [
+    bash_build_assign(name: "STATUS_FILE", value: bcat(parts: [bv(name: "DEST_FILE"), bl(text: mtcollins1_fan_credential_fetch_status_suffix)])),
+    bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
+    bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "STATUS_FILE")]),
+    bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
+  ])
+  let strict_head = concat(head, [
     bcmd(words: [bl(text: "trap"), bl(text: trap_body), bl(text: "EXIT")]),
     bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: gunbc_ci_auth_header_format), bv(name: "WIF_ACCESS_TOKEN")]), path: bv(name: "HDR_FILE")),
-    bash_build_and_then(
-      left: bcmd(words: [
-        bl(text: "curl"), bl(text: "-sSf"), bl(text: "--connect-timeout"), bl(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
-        bl(text: "--max-time"), bl(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bl(text: "-o"), bv(name: "RESP_FILE"),
-        bl(text: "-H"), bcat(parts: [bl(text: "@"), bv(name: "HDR_FILE")]), bl(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
-      ]),
-      right: bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "python3"), bl(text: "-c"), bl(text: gunbc_ci_sm_decode_payload_program), bv(name: "RESP_FILE")]), path: bv(name: "DEST_FILE")),
-    ),
-    bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "DEST_FILE")]),
+  ])
+  // The status assignment now lives in the typed head, before the trap; past the head the typed lane
+  // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
+  let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
+  let tail = [
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bv(name: "DEST_FILE")])]),
     gunbc_ci_mtcollins1_probe_root_statement(),
   ]
+  if typed_fetch_failure {
+    concat(concat(typed_head, middle), tail)
+  } else {
+    concat(concat(strict_head, middle), tail)
+  }
 }
 
 fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) -> String {
+  gunbc_ci_mtcollins1_probe_invoke_typed(stem: stem, target: target, typed_fetch_failure: false)
+}
+
+fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
   join([
-    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem), set_e: false), "\n",
+    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
     gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n",
+  ], "")
+}
+
+// THE OUTCOME TAIL (operator ruling 2026-10-16): observed only when the receipt's FIRST LINE EQUALS the
+// taken tag exactly (a prefix or any-line search would admit a refused receipt whose verbatim controller
+// answer carries a forged line); every other state - refused, absent, unrecognized - writes refused to the step
+// output and fails the step, so the boot is ineligible and the job stops. The receipt upload runs
+// under always(), so the refused receipt is still kept.
+fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
+  let output_line = bv(name: github_output_variable_name)
+  let receipt = bl(text: mtcollins1_fan_observation_receipt_path)
+  [bash_build_assign(name: "first_line", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmd(words: [bl(text: "head"), bl(text: "-n"), bl(text: "1"), receipt])), right: bcmdl(lits: ["true"])))),
+  bif_else(
+    cond: bash_build_and_then(
+      left: btest(words: [bl(text: "-f"), receipt]),
+      right: btest(words: [bv(name: "first_line"), bl(text: "="), bl(text: fan_boot_phase_taken_prefix)]),
+    ),
+    then_stmts: [bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
+    else_stmts: [
+      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "printf"), bl(text: "%s\n"), bl(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
+      bash_build_with_redir_to_file(inner: bcmd(words: [bl(text: "cat"), receipt]), path: bv(name: "GITHUB_STEP_SUMMARY")),
+      bcmd(words: [bl(text: "echo"), bl(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
+      bash_build_exit(code: "1"),
+    ],
+  )]
+}
+
+fn gunbc_ci_fan_outcome_line(outcome: String) -> String {
+  join([mtcollins1_fan_boot_phase_outcome_output, "=", outcome], "")
+}
+
+fn gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() -> String {
+  join([
+    gunbc_ci_mtcollins1_probe_invoke_typed(stem: "mtcollins1-fan-boot-phase", target: gunbc_ci_mtcollins1_fan_observe_boot_phase_target, typed_fetch_failure: true),
+    gunbc_ci_mtcollins1_probe_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false), "\n",
   ], "")
 }
 

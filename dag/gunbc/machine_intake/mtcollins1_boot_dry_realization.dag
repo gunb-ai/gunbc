@@ -24,7 +24,8 @@ import extdeps.ssh.openssh_client_commands { ssh_add_list_identities_command }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_sol_activate_preamble }
 import extdeps.bmc.ipmi { ipmitool_sol_operational_banner }
 import gunbc.machine_intake.sol_hold { sol_hold_exit_record_prefix }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_watcher_path, mtcollins1_sol_notice_token_env }
+import gunbc.machine_intake.mtcollins1_sol_notice_facts { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_sol_notice_watcher_path }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
 import gunbc.remote_host_model { ModeledRemoteHost, remote_host_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings, wall_clock_unix }

@@ -1,7 +1,7 @@
 module test.claim.host.host_budget_source_witness
 
 import std.logic { Bool }
-import std.types { String, List }
+import std.types { String, List, NonEmptyStr }
 import std.measure { byte_size, byte_size_count }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.linux.cgroup_v2 { kernel_provides_cgroup_v2 }
@@ -32,6 +32,7 @@ import gunbc.host.host_budget_source {
   HostBudgetObserved,
   HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
+  HostBudgetExternallyBounded,
   KernelBudgetSourcing,
   SourcedStatically,
   SourcedAtRuntimeOrRefused,
@@ -47,6 +48,11 @@ import gunbc.host.host_budget_source {
   host_budget_unreadable_on_kernel,
   host_budget_source_label,
   effective_planning_budget,
+  host_budget_with_external_executor,
+}
+import gunbc.compute.unit_bounds {
+  ExternallyBoundedExecutor,
+  CgroupUnreadable,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -375,6 +381,7 @@ test fn RED_operator_request_cannot_widen_an_observed_limit() -> Bool {
     HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
     HostBudgetUnreadable { reason: _ } => false
+    HostBudgetExternallyBounded { run_id: _ } => false
   }
 }
 
@@ -396,6 +403,7 @@ test fn operator_request_may_narrow_an_observed_limit() -> Bool {
     HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
     HostBudgetUnreadable { reason: _ } => false
+    HostBudgetExternallyBounded { run_id: _ } => false
   }
 }
 
@@ -443,6 +451,51 @@ test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> B
             && string_contains(s: r as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
         HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
         HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
+        HostBudgetExternallyBounded { run_id: _ } => false
       }
   )
+}
+
+test fn RED_externally_bounded_executor_carries_the_run_id_and_no_number() -> Bool {
+  match host_budget_resolution_bytes(
+    r: host_budget_with_external_executor(
+      resolution: HostBudgetUnreadable { reason: "no planning request or observed memory limit" },
+      standing: ExternallyBoundedExecutor { run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548" }
+    )
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn an_unreadable_budget_without_an_executor_run_id_stays_unreadable() -> Bool {
+  match host_budget_with_external_executor(
+    resolution: HostBudgetUnreadable { reason: "no planning request or observed memory limit" },
+    standing: CgroupUnreadable
+  ) {
+    HostBudgetUnreadable { reason: _ } => true
+    HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => false
+    HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
+    HostBudgetExternallyBounded { run_id: _ } => false
+  }
+}
+
+test fn an_observed_budget_is_not_replaced_by_an_executor_run_id() -> Bool {
+  match host_budget_with_external_executor(
+    resolution: HostBudgetResolved {
+      effective_bytes: byte_size(8589934592),
+      requested_bytes: none,
+      observation: HostBudgetObserved {
+        source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/runner.slice" },
+        bytes: byte_size(8589934592)
+      }
+    },
+    standing: ExternallyBoundedExecutor { run_id: "bb77f2ae-888b-4f04-9bef-6dab045b1548" }
+  ) {
+    HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } =>
+      byte_size_count(b: b) == 8589934592
+    HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => false
+    HostBudgetUnreadable { reason: _ } => false
+    HostBudgetExternallyBounded { run_id: _ } => false
+  }
 }

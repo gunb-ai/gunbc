@@ -13,15 +13,15 @@ import v2.compiler.self_host.generation {
 import v2.compiler.compile {
   CompileLens,
   CompileLensGrain,
-  CompileLensRoot,
-  CompileLensSubtree,
   compile_lens_grain_eq,
   RequiredLensCoverage,
-  RequiredLensCoverageClosed,
-  RequiredLensCoverageRefused,
   RequiredLensCoverageRow,
   required_lens_join_cause_reason,
-  required_lens_roster_digest_of
+  required_lens_roster_digest_of,
+  CompileLensRoot,
+  CompileLensSubtree,
+  RequiredLensCoverageClosed,
+  RequiredLensCoverageRefused
 }
 import std.decl_ref { declaration_ref_display_key }
 import std.content_hash { content_hash_atom }

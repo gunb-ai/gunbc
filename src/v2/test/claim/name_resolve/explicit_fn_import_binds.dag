@@ -1,15 +1,15 @@
 module v2.test.claim.name_resolve.explicit_fn_import_binds
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
+  NativeModuleResolveImportTargetFileRefused,
+  NativeModuleResolveRefused,
+  NativeModuleResolveAccepted,
   native_test_context_from_ingest,
   native_test_resolve_module,
   native_module_resolve_verdict,
   native_lane_file_refusal_index,
   NativeTestContext,
-  NativeModuleResolveVerdict,
-  NativeModuleResolveImportTargetFileRefused,
-  NativeModuleResolveRefused,
-  NativeModuleResolveAccepted
+  NativeModuleResolveVerdict
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
@@ -26,7 +26,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // test importing v2.compiler.tokenize { tokenize } refused `resolve_reason_unbound_symbol @ tokenize`,
 // and the cause was v2.compiler.tokenize's own file, refused by body lowering before it reached the
 // index. The fixtures are SUPPLIED reads run through the real prepare route
-// (v2.compiler.compile native_test_context_from_ingest, native_module_resolve_verdict), so they
+// (v2.compiler.source_root_eval native_test_context_from_ingest, native_module_resolve_verdict), so they
 // discriminate at the route's interface and not through the corpus's current refusal set.
 
 data same_name_decl_source: String = "module v2.test.efib.probe\n\nimport std.types { Bool }\n\nfn probe() -> Bool { true }\n"

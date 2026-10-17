@@ -1,0 +1,76 @@
+module test.claim.width_type_arg_identity_refusal_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// rust_type_arg_identity_spelling used to render a width Nat literal and a Word8–128 type-arg
+// token as `()`, collapsing every such argument to one Rust type. A literal is now the
+// StaticWidthIndex<N> const-generic marker; a Word token is a located compile_error! (same shape
+// as UnitVariantPhantomEvidenceUnavailable); a negative literal is refused at parse. PointerWidth stays a
+// unit-variant marker, not this arm.
+
+fn w_word_token_type_arg_is_located_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module word_token_type_arg\n\ntype Word8 { bytes: Int }\n\ntype Wrapper<M> { count: Int }\n\ntype Held = Wrapper<Word8>\n",
+    "src/word_token_type_arg.rs",
+    ["width type argument has no Rust type identity at", "compile_error!"],
+    ["Wrapper<()>"]
+  )
+}
+
+test fn word_token_type_arg_refuses_rather_than_erasing_to_unit() -> Bool {
+  w_word_token_type_arg_is_located_refusal()
+}
+
+fn w_pointer_width_type_arg_keeps_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module pointer_width_type_arg\n\ntype WidthResolution = StaticWidthIndex | PointerWidth\n\ntype MachineWidth<bits: WidthResolution>\n\ntype Held = MachineWidth<PointerWidth>\n",
+    "src/pointer_width_type_arg.rs",
+    ["MachineWidth<PointerWidth>"],
+    ["width type argument has no Rust type identity at", "MachineWidth<()>"]
+  )
+}
+
+test fn pointer_width_type_arg_is_not_the_width_nat_refusal() -> Bool {
+  w_pointer_width_type_arg_keeps_marker_identity()
+}
+
+fn w_width_nat_literals_are_distinct_const_generic_types() -> Bool {
+  compile_dag_rust_emit_check(
+    "module width_nat_literals\n\nimport std.machine_constraints { MachineWidth }\n\ntype Narrow = MachineWidth<8>\n\ntype Wide = MachineWidth<16>\n",
+    "src/width_nat_literals.rs",
+    ["MachineWidth<crate::std_machine_constraints::StaticWidthIndex<8>>", "MachineWidth<crate::std_machine_constraints::StaticWidthIndex<16>>"],
+    ["MachineWidth<()>", "width type argument has no Rust type identity at"]
+  )
+}
+
+test fn machine_width_8_and_16_are_distinct_types() -> Bool {
+  w_width_nat_literals_are_distinct_const_generic_types()
+}
+
+fn w_unrelated_static_width_index_spelling_stays_unit_marker() -> Bool {
+  compile_dag_rust_emit_check(
+    "module unrelated_static_width_index\n\ntype Other = StaticWidthIndex | PointerWidth\n\ntype Holder<bits: Other>\n\ntype Held = Holder<StaticWidthIndex>\n",
+    "src/unrelated_static_width_index.rs",
+    ["pub struct StaticWidthIndex;", "Holder<StaticWidthIndex>"],
+    ["<const N: u128>", "StaticWidthIndex<"]
+  )
+}
+
+test fn unrelated_static_width_index_spelling_is_not_the_const_generic_arm() -> Bool {
+  w_unrelated_static_width_index_spelling_stays_unit_marker()
+}
+
+fn w_literal_in_a_non_width_kinded_position_is_refused() -> Bool {
+  compile_dag_rust_emit_check(
+    "module non_width_literal\n\ntype SomethingElse = First | Second\n\ntype Other<n: SomethingElse>\n\ntype Held = Other<8>\n",
+    "src/non_width_literal.rs",
+    ["width type argument has no Rust type identity at", "compile_error!"],
+    ["StaticWidthIndex", "Other<()>"]
+  )
+}
+
+test fn literal_in_a_non_width_kinded_position_gets_no_width_marker() -> Bool {
+  w_literal_in_a_non_width_kinded_position_is_refused()
+}

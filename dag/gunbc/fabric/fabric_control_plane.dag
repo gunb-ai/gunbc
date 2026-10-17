@@ -30,7 +30,7 @@ import product.fabric.provider_admission {
   PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
 }
 import product.fabric.selection {
-  ResourceBudgetPolicy, ResourceBudgetSelection, select_resource_budget_supply, select_supply, CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
+  ResourceBudgetPolicy, ResourceBudgetSelection, select_resource_budget_supply, select_supply, CandidateOffer, SelectedOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
   OfferPriced, OfferNotFungible, OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferNotPriceable,
   OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder, OfferRevocationNotAdmitted,
 }
@@ -507,14 +507,14 @@ fn broker_reserve_for_requirements(
 ) -> CellReservation {
   match broker_select_for_requirements(demand: demand, requirements: requirements, duration: duration,
     currency: currency, roster: roster, sanctions: sanctions, maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
-    CellSelectedForDemand { offer, cost } => reserve_priced_cell(root: root, demand_id: demand.id, offer: offer, cost: cost, account: account)
+    CellSelectedForDemand { offer, selected: _, cost } => reserve_priced_cell(root: root, demand_id: demand.id, offer: offer, cost: cost, account: account)
     CellSelectionRefused { refusal } => refusal
   }
 }
 
 // Selection remains one authority; convergence may persist its decision before acquisition.
 type CellSelectionForDemand
-  = CellSelectedForDemand { offer: SupplierOffer<NonEmptyStr>, cost: SelectionCost }
+  = CellSelectedForDemand { offer: SupplierOffer<NonEmptyStr>, selected: SelectedOffer<NonEmptyStr>, cost: SelectionCost }
   | CellSelectionRefused { refusal: CellReservation }
 
 fn broker_select_for_requirements(
@@ -564,7 +564,7 @@ fn broker_select_for_requirements(
         CellSelectionRefused { refusal: PermitNamesAnotherUseForCell {
           standing: PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } } }
       PermitAuthorizesUse =>
-        CellSelectedForDemand { offer: winner.offer, cost: k }
+        CellSelectedForDemand { offer: winner.offer, selected: selected, cost: k }
       }
     }
   }

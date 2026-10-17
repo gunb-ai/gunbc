@@ -7,13 +7,25 @@ import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ExitFailure, ExitSuccess }
 import extdeps.bazel.target_pattern { render_target_pattern }
-import gunbc.witness.v2_native_route { native_route_default_pattern }
+import gunbc.native_route_universe { native_route_default_pattern }
 import extdeps.process.gnu_bash_exit { exit_code_misuse }
-import v2.compiler.compile {
-  NativeDriverAdjudicate, NativeDriverCensus, NativeDriverCensusResolve, NativeDriverCensusInfer, NativeDriverCensusScoped, NativeDriverDemandCensus,
-  NativeDriverPlanRefused, NativeDriverPlanned,
-  native_driver_adjudicate_needs_facts, native_driver_adjudicate_needs_pattern, native_driver_parse, native_driver_plan_exit,
-  native_driver_plan_source_roots, native_driver_usage, native_driver_census_scoped_needs_subject, native_driver_census_scoped_needs_against,
+import v2.compiler.source_root_eval {
+  NativeDriverAdjudicate,
+  NativeDriverCensus,
+  NativeDriverCensusResolve,
+  NativeDriverCensusInfer,
+  NativeDriverCensusScoped,
+  NativeDriverDemandCensus,
+  NativeDriverPlanRefused,
+  NativeDriverPlanned,
+  native_driver_adjudicate_needs_facts,
+  native_driver_adjudicate_needs_pattern,
+  native_driver_census_scoped_needs_subject,
+  native_driver_census_scoped_needs_against,
+  native_driver_parse,
+  native_driver_plan_exit,
+  native_driver_plan_source_roots,
+  native_driver_usage
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

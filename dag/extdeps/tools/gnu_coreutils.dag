@@ -64,6 +64,14 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
   argv_command(program: ls_program(), arguments: ["-1", path])
 }
 
+// -1 -A: ONE ENTRY PER LINE, INCLUDING DOTFILES. ls(1) `-A, --almost-all`: do not ignore entries
+// starting with `.`, but omit the implied `.` and `..`. A caller asking "does this directory hold an
+// entry named N" must see a dot-prefixed N, or a hidden entry reads as absent. `--` ends options so a
+// directory path beginning with `-` is an operand.
+fn ls_almost_all_one_per_line_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-1", "-A", "--", path])
+}
+
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
 // X's replaced), mode 0700, and prints its path; it refuses rather than reuse an existing name
 // (coreutils manual, "mktemp invocation"). That exclusive creation is what makes the directory one

@@ -1,27 +1,27 @@
 module v2.test.claim.native_census.infer_cascade
 
 import v2.compiler.native_test_vocabulary { FileRefusalAtUnresolvedNode }
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusCascadeMemberOf,
   NativeCensusCascadeNone,
   NativeCensusCascadeUnattributed,
   NativeCensusCascadeRoot,
   NativeCensusCauseFrontEnd,
   NativeCensusCauseInfer,
-  NativeCensusCauseMember,
   NativeCensusCauseResolve,
-  NativeCensusCauseStage,
   NativeCensusClosureFanOutAtLeast,
   NativeCensusClosureFanOutCounted,
   NativeCensusClosureFanOutUnavailable,
   NativeCensusClosureIndexRead,
   NativeCensusInSubjectClosure,
-  NativeCensusModule,
   NativeCensusOutsideSubjectClosure,
-  NativeCensusSubjectMembership,
   NativeCensusSubjectMembershipUnavailable,
-  NativeImportTargetAttribution,
   NativeImportTargetsAdmitted,
+  NativeCensusCauseMember,
+  NativeCensusCauseStage,
+  NativeCensusModule,
+  NativeCensusSubjectMembership,
+  NativeImportTargetAttribution,
   native_census_infer_cascade_of,
   native_census_cause_group_rows,
   native_census_cause_groups_add_infer_module,

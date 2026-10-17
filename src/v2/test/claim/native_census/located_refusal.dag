@@ -1,6 +1,6 @@
 module v2.test.claim.native_census.located_refusal
 
-import v2.compiler.compile {
+import v2.compiler.source_root_eval {
   NativeCensusModule,
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,

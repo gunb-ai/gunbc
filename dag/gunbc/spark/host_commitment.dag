@@ -31,7 +31,7 @@ import gunbc.spark.host_effect_quiescence {
   ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, ClaimantStanding, parse_claimant_standing,
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused, fleet_locus_ssh_target }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
@@ -990,9 +990,13 @@ fn release_host_effect_over(handle: HostEffectHandle, evidence: HostQuiescenceEv
 data host_effect_release_attempt_raw: String = "host-effect-release"
 
 fn fleet_argv_run(context: FleetSshExecutionContext, host: HostIdentity, argv: List<String>) -> ArgvRun {
-  match typed_argv_exec_over_fleet_ssh(target: fleet_locus_ssh_target(host: host), context: context, argv: argv) {
-    TypedArgvExecRefused { reason: why } => ArgvLegDidNotRun { cause: why }
-    TypedArgvExecConverged { result: r } => ArgvRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+  match fleet_locus_ssh_target(host: host) {
+    SshTargetRefused { endpoint: e, refusal: why } => ArgvLegDidNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+    SshTargetResolved { target: target } =>
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+        TypedArgvExecRefused { reason: why } => ArgvLegDidNotRun { cause: why }
+        TypedArgvExecConverged { result: r } => ArgvRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+      }
   }
 }
 

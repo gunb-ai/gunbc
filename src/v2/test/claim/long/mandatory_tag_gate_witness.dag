@@ -4,7 +4,11 @@ import std.types { List }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.normalize { normalize }
-import v2.compiler.compile { CompileLens, CompileLensRoot, required_lenses_at_grain }
+import v2.compiler.compile {
+  CompileLens,
+  required_lenses_at_grain,
+  CompileLensRoot
+}
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate_with_provenance }

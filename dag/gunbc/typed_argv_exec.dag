@@ -16,8 +16,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_words,
-  shape_ssh_shell_exec,
-}
+  shape_ssh_shell_exec, ssh_target_wire }
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal,
   BootstrapCredentialInRunEnvironment,
@@ -191,7 +190,7 @@ fn typed_argv_exec_over_fleet_ssh(
     Absent => TypedArgvExecRefused {
       reason: concat(
         "remote words are not portable under the far-side shell re-parse, so the leg was NOT attempted for ",
-        target.endpoint as String,
+        ssh_target_wire(target: target) as String,
       ),
     }
     Present { value: words } =>

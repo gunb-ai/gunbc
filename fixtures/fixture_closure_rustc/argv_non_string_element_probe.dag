@@ -1,0 +1,32 @@
+module fixture.closure.rustc_argv_non_string_element_probe
+
+import std.types { Bool, String, Int }
+import fixture.closure.rustc_argv_collision_list_alias { ListCollisionKeep }
+
+// Same leaf CollisionLeaf as the imported List<String> alias. This module's
+// CollisionLeaf is Int. A leaf-name first-match can splice as .args and rustc
+// then answers E0277; identity hop plus arg.inferred must still emit the located
+// argv compile_error. ListCollisionKeep pulls the other declarer into the closure.
+type CollisionLeaf = Int
+
+fn keep_list_collision(xs: ListCollisionKeep) -> ListCollisionKeep {
+  xs
+}
+
+// A non-list non-string argv element must refuse at emit (located compile_error), never
+// emit_simple_expr leftover. rustc compiling this probe is the RED of that class.
+service fixture.NonStringArgv {
+  operation IntWord {
+    input { n: CollisionLeaf }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["echo", n] }
+    exit {
+      0 => Unit
+      1 => String "echo failed"
+    }
+  }
+}

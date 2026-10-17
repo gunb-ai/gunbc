@@ -35,7 +35,7 @@ import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -398,11 +398,10 @@ fn site_pxe_edge_subject(host: HostIdentity) -> SitePxeEdgeSubjectAdmission {
       cause: join(["site_pxe_edge_converge: ", host as String, " is not the site edge host (", site_pxe_edge_host as String, "); the edge lives on one executor per segment"], ""),
     }
   } else {
-    SitePxeEdgeSubjectAdmitted {
-      target: SshTarget {
-        endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-        principal: executor_bootstrap_principal.login,
-      },
+    match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login) {
+      SshTargetRefused { endpoint: e, refusal: why } =>
+        SitePxeEdgeSubjectRefused { cause: join(["site_pxe_edge_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], "") }
+      SshTargetResolved { target: target } => SitePxeEdgeSubjectAdmitted { target: target }
     }
   }
 }

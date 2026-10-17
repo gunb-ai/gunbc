@@ -3,6 +3,7 @@ module v2.test.claim.resolve.qualified_module_projection_resolve
 import std.occurrence_identity { LexicalValueOccurrence, OccurrenceSynthetic }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.compiler.resolve {
+  empty_module_outcome_index,
   NotDeclaring,
   Namespace,
   ResolveContext,
@@ -102,7 +103,7 @@ fn qmpr_namespace(index: SymbolIndex) -> Namespace {
     test_code: test_code_index_empty(),
     declared_in: qmpr_consumer_qn,
     imported_origins: empty_map(),
-    module_outcomes: []
+    module_outcomes: empty_module_outcome_index()
   }
 }
 

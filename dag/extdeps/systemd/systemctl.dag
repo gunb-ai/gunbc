@@ -5,6 +5,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.algebra { trim }
+import std.optional { Absent, Present }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -227,6 +228,13 @@ fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
 }
 
+// MASK WITHOUT --now IS THE INHIBIT ALONE: the unit can no longer be started or restarted, and a
+// process it already runs keeps running. That is what a drain needs -- stop new admission, let the
+// admitted job finish -- where `mask --now` would also stop the unit and kill that job.
+fn systemctl_mask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, unit as String]
+}
+
 fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_unmask_verb as String, unit as String]
 }
@@ -419,6 +427,23 @@ type UnitFileState
   | UnitTransient
   | UnitBad
 
+// THE WIRE WORDS systemctl(1) `is-enabled` / the UnitFileState property print for each arm. A unit the
+// manager does not know reports an empty UnitFileState, which is not a state and parses to nothing;
+// so does any word outside this table (e.g. a newer systemd's `alias`), and the caller refuses it.
+fn parse_unit_file_state(raw: String) -> UnitFileState? {
+  if raw == "enabled" { Present { value: UnitEnabled } }
+  else { if raw == "enabled-runtime" { Present { value: UnitEnabledRuntime } }
+  else { if raw == "linked" { Present { value: UnitLinked } }
+  else { if raw == "masked" { Present { value: UnitMasked } }
+  else { if raw == "static" { Present { value: UnitStatic } }
+  else { if raw == "disabled" { Present { value: UnitDisabled } }
+  else { if raw == "indirect" { Present { value: UnitIndirect } }
+  else { if raw == "generated" { Present { value: UnitGenerated } }
+  else { if raw == "transient" { Present { value: UnitTransient } }
+  else { if raw == "bad" { Present { value: UnitBad } }
+  else { none } } } } } } } } } }
+}
+
 // THE GRACEFUL ASK IS ONE OPERATION, NOT A SIGNAL PARAMETER, and the reason is extdeps.posix.signal's:
 // a service that accepts an arbitrary signal name accepts every signal anyone ever wants. There is
 // deliberately no SIGKILL sibling here. A caller that needs a forced end wants the CGROUP's subtree
@@ -543,6 +568,42 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
+    }
+  }
+
+  operation StopUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "stop", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user stop failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.StopUserUnit"
+    }
+  }
+
+  operation ResetFailedUserUnit {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "--user", "reset-failed", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user reset-failed failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.ResetFailedUserUnit"
     }
   }
 

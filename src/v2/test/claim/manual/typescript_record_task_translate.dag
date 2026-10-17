@@ -3,9 +3,9 @@ module v2.test.claim.manual.typescript_record_task_translate
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
   CompileOutput,
+  compile_inferred,
   TranslateResult,
-  TranslateTo,
-  compile_inferred
+  TranslateTo
 }
 import v2.compiler.eval {
   TestClaimEvalSubject,

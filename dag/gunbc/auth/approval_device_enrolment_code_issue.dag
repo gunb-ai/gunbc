@@ -8,7 +8,7 @@ import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_system_scope_command,
   systemd_run_option_words_refused_cause_detail,
 }
@@ -30,7 +30,7 @@ import gunbc.actions_run_binding {
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root }
@@ -80,11 +80,8 @@ fn enrolment_code_issue_placement_under(realization: ProdRoleRealization) -> Enr
   }
 }
 
-fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
-  }
+fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
 }
 
 // The remote argv: as the operator's user, the release's own binary over the release's own tree,
@@ -114,8 +111,8 @@ fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTarget {
 // joining would split one budget between the running broker and this run and put the broker at risk.
 fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
   [
-    SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
-    SystemdRunProperty { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
   ]
 }
 
@@ -162,15 +159,20 @@ fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding, host: NonEmptyS
         SystemdRunCommandRefused { cause: why } =>
           CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + systemd_run_option_words_refused_cause_detail(cause: why)) as NonEmptyStr }
         SystemdRunCommandReady { command: command } =>
-          match typed_argv_exec_over_fleet_ssh(
-            target: enrolment_code_issue_ssh_target(host: host),
-            context: context,
-            argv: sudo_elevate_words(command: command),
-          ) {
-            TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
-            TypedArgvExecConverged { result: r } =>
-              if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
-              else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
+          match enrolment_code_issue_ssh_target(host: host) {
+            SshTargetRefused { endpoint: e, refusal: why } =>
+              CliWireUnprintable { cause: ("approval device enrolment code: " + ssh_target_refusal_text(endpoint: e, refusal: why)) as NonEmptyStr }
+            SshTargetResolved { target: target } =>
+              match typed_argv_exec_over_fleet_ssh(
+                target: target,
+                context: context,
+                argv: sudo_elevate_words(command: command),
+              ) {
+                TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
+                TypedArgvExecConverged { result: r } =>
+                  if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
+                  else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
+              }
           }
       }
   }

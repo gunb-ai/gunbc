@@ -4,10 +4,10 @@ import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile {
-  CompileLensSubtree,
   LensGateWitness,
   required_lenses_at_grain,
-  run_required_lens_gates_on_subtree
+  run_required_lens_gates_on_subtree,
+  CompileLensSubtree
 }
 import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.normalize { normalize }

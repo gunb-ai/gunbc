@@ -29,7 +29,11 @@ import v2.compiler.source_authority { DagTree, ReferenceCrossTreeDenied, V2Tree 
 // exist; behind is reachable only through broken; outside is imported by nothing. The compiler's door
 // refuses this closure at its first refusal; the census door must acquire around both blocks, name
 // them, and never report behind or outside -- behind is UNKNOWN, not absent, and only the Blocked arm
-// can say so (gunbc.plans.census_scoped_run).
+// can say so.
+// NOT YET A CONTROL HERE, DECLARED (DESIGN §4b): a member reachable ONLY through a qualified reference
+// (no import) acquired into the scoped population, with the import-edge fan-out shown short of it
+// (v2.compiler.source_root_eval NativeCensusCascadeRoot). Trigger: the planted fixture gains a
+// qualified-reference-only member, which is also the fan-out frontier's discriminating red.
 
 fn planted_bindings() -> List<SourceRootBinding> {
   [

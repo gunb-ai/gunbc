@@ -5,7 +5,8 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.decl_ref { decl_ref }
 import std.measure { second, money_amount_micro, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey, ExecutionAttemptKey }
+import product.fabric.execution { Attempt, InitialAttempt }
 import product.fabric.work {
   Work, WorkContract, WorkStep, ReceiptSatisfiable, OpaqueEffects, MaterializedProgram,
   declared_output_obligations_from_manifests, work_for,
@@ -95,6 +96,27 @@ fn microvm_shakedown_offer_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmp
   FabricIdentity {
     principal: microvm_shakedown_principal,
     key: join(["microvm-shakedown-offer-", runner_slot_instance_name(slot: slot)], "") as OfferKey,
+  }
+}
+
+// THE ATTEMPT THE CELL IS GRANTED TO, derived like the demand and the offer so the broker that
+// issues the grant and the controller that re-reads it name the same attempt without passing it.
+// One attempt per slot: a later grant on the same slot is a different grant because its lease
+// generation differs (product.fabric.grant_issue derive_grant_key), not because the attempt does.
+fn microvm_shakedown_attempt_id(slot: RunnerSlotIdentity) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity {
+    principal: microvm_shakedown_principal,
+    key: join(["microvm-shakedown-attempt-", runner_slot_instance_name(slot: slot)], "") as ExecutionAttemptKey,
+  }
+}
+
+fn microvm_shakedown_attempt(slot: RunnerSlotIdentity) -> Attempt<NonEmptyStr> {
+  let demand = microvm_shakedown_demand(slot: slot)
+  Attempt {
+    id: microvm_shakedown_attempt_id(slot: slot),
+    work: demand.work,
+    lineage: InitialAttempt { initiating_demand: demand.id },
+    created_at: demand.submitted_at,
   }
 }
 

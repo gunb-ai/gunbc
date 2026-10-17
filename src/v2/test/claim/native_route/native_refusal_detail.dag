@@ -1,18 +1,7 @@
 module v2.test.claim.native_route.native_refusal_detail
 
-import gunbc.witness.v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
-import v2.compiler.compile {
-  NativeLaneModuleContextRowsDecided,
-  NativeLaneModuleResolution,
-  NativeLaneModuleResolveRowsDecided,
-  NativeLaneModuleResolved,
-  NativeLaneUniverseModule,
-  NativeTestContext,
-  native_lane_file_refusal_index,
-  native_lane_module_resolution,
-  native_test_context_from_ingest
-}
 import v2.compiler.native_test_vocabulary {
+  NativeRouteMemberRow, native_route_member_row_text,
   NativeTestFileRefusal,
   NativeTestPassed,
   NativeTestRefused,
@@ -24,6 +13,17 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestStagePrepare,
   NativeTestVerdict
+}
+import v2.compiler.source_root_eval {
+  NativeLaneModuleContextRowsDecided,
+  NativeLaneModuleResolveRowsDecided,
+  NativeLaneModuleResolved,
+  NativeLaneModuleResolution,
+  NativeLaneUniverseModule,
+  NativeTestContext,
+  native_lane_file_refusal_index,
+  native_lane_module_resolution,
+  native_test_context_from_ingest
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 

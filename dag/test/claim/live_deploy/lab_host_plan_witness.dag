@@ -1,0 +1,303 @@
+module test.claim.live_deploy.lab_host_plan_witness
+
+import std.types { Bool, String, FilePath }
+import std.optional { Absent, Present }
+import std.os.types { Apt, Winget, HomebrewDeFacto }
+import gunbc.fleet.fleet_intent { srv1_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.host.host_software_surface {
+  srv1_software_surface,
+  software_surface,
+  unobserved_software_surface,
+  blank_kernel,
+  blank_cgroup,
+  HostSysctlFact,
+  host_os_package_manager,
+  HostPackageManagerKnown,
+  HostPackageManagerUnobserved,
+  UserManagerDoesNotEnforceSandbox,
+  UserManagerSandboxUnobserved,
+  UserManagerSandboxEnforcementUnobserved,
+  UserManagerSandboxSysctlUnreadable,
+}
+import gunbc.live_deploy.lab_host_plan {
+  lab_deploy_plan_from_software,
+  lab_deploy_plan_for_compute_host,
+  srv1_lab_deploy_plan,
+  LabPlanReady,
+  LabPlanRefused,
+  LabOsUnobserved,
+  LabSandbox,
+  LabToolchainUnobserved,
+  SystemManagerLauncherSelected,
+  lab_plan_refusal_reason,
+  system_manager_launcher_wiring_frontier,
+}
+import std.dissolution { dissolution_is_bound }
+import extdeps.tailscale.serve {
+  ScopedRemovalUnobserved,
+  ScopedRemovalSupported,
+  ScopedRemovalUnsupported,
+}
+import gunbc.host.srv1_software_inhabitance_receipt { srv1_software_inhabitance_receipt }
+import extdeps.external_authority { ObservedByReceipt, CitedToAuthority, TranscribedUncited }
+import gunbc.live_deploy.spec { deployment_srv1_target }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, deployment_srv2_target }
+import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn srv1_lab_plan_reads_the_observed_receipt_standing() -> Bool {
+  match srv1_lab_deploy_plan() {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match srv1_software_surface().os_release.value.standing {
+        ObservedByReceipt { observed: _ } =>
+          (srv1_software_inhabitance_receipt.observed_at as String) == "2026-10-15T12:11:17Z"
+        CitedToAuthority { authority: _ } => false
+        TranscribedUncited { read_obligation: _ } => false
+      }
+  }
+}
+
+test fn srv1_as_data_yields_apt_and_receipt_toolchain_paths() -> Bool {
+  let r = srv1_software_inhabitance_receipt
+  match srv1_lab_deploy_plan() {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: m, tailscale_client: _, git_path: git, jq_path: jq, timeout_path: timeout, worker_sandbox: _ } =>
+      match m {
+        Apt =>
+          git == r.git_path
+            && jq == r.jq_path
+            && timeout == r.timeout_path
+            && match deployment_srv1_target().os_package_manager {
+              Present { value: pm } =>
+                match pm {
+                  Apt => srv1_lab_desired_deployment().target.host.identity == srv1_host.identity
+                  Winget => false
+                  HomebrewDeFacto => false
+                }
+              Absent => false
+            }
+        Winget => false
+        HomebrewDeFacto => false
+      }
+  }
+}
+
+test fn srv1_plan_selects_system_manager_launcher() -> Bool {
+  match lab_deploy_plan_for_compute_host(host: srv1_host) {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: choice } =>
+      match choice {
+        SystemManagerLauncherSelected => true
+      }
+  }
+}
+
+test fn a_sysctl_zero_host_refuses_and_does_not_claim_protect_home() -> Bool {
+  let surface = software_surface(
+    host: srv1_software_surface().host,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 0 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandbox { cause: e } =>
+          match e {
+            UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
+            UserManagerSandboxUnobserved { obligation: _ } => false
+            UserManagerSandboxSysctlUnreadable { value: _ } => false
+            UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+          }
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn unobserved_os_refuses_and_does_not_keep_srv1_apt() -> Bool {
+  match lab_deploy_plan_from_software(surface: unobserved_software_surface(host: operator_host_srv2)) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabOsUnobserved { obligation: _ } =>
+          match host_os_package_manager(surface: srv1_software_surface()) {
+            HostPackageManagerKnown { manager: m } =>
+              match m {
+                Apt => true
+                Winget => false
+                HomebrewDeFacto => false
+              }
+            HostPackageManagerUnobserved { obligation: _ } => false
+          }
+        LabSandbox { cause: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn a_non_srv1_host_with_sysctl_one_does_not_get_a_ready_sandbox_from_srv1s_receipt() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandbox { cause: e } =>
+          match e {
+            UserManagerSandboxEnforcementUnobserved { obligation: _ } => true
+            UserManagerSandboxUnobserved { obligation: _ } => false
+            UserManagerSandboxSysctlUnreadable { value: _ } => false
+            UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+          }
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn unobserved_apparmor_with_known_os_refuses_sandbox_rather_than_defaulting() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: srv1_software_surface().apparmor_userns.value,
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  let cleared = software_surface(
+    host: operator_host_srv2,
+    os: surface.os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: none,
+      standing: unobserved_software_surface(host: operator_host_srv2).apparmor_userns.value.standing,
+    },
+    programs: surface.programs.value,
+    sudo_policy: surface.sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: cleared) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandbox { cause: e } =>
+          match e {
+            UserManagerSandboxUnobserved { obligation: _ } => true
+            UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+            UserManagerSandboxSysctlUnreadable { value: _ } => false
+            UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+          }
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn unreadable_apparmor_sysctl_refuses_as_sysctl_unreadable_not_unobserved() -> Bool {
+  let surface = software_surface(
+    host: operator_host_srv2,
+    os: srv1_software_surface().os_release.value,
+    kernel: blank_kernel(),
+    apparmor: HostSysctlFact {
+      name: apparmor_restrict_unprivileged_userns_sysctl_name,
+      value: Present { value: 2 },
+      standing: srv1_software_surface().apparmor_userns.value.standing,
+    },
+    programs: srv1_software_surface().programs.value,
+    sudo_policy: srv1_software_surface().sudo_policy.value,
+    cgroup: blank_cgroup(),
+    toolchain: srv1_software_surface().toolchain_paths.value,
+  )
+  match lab_deploy_plan_from_software(surface: surface) {
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabSandbox { cause: e } =>
+          match e {
+            UserManagerSandboxSysctlUnreadable { value: n } => n == 2
+            UserManagerSandboxUnobserved { obligation: _ } => false
+            UserManagerSandboxEnforcementUnobserved { obligation: _ } => false
+            UserManagerDoesNotEnforceSandbox { wrote_into_home: _ } => false
+          }
+        LabOsUnobserved { obligation: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+  }
+}
+
+test fn refused_plan_is_carried_on_the_target_not_as_an_unobserved_client() -> Bool {
+  let t = deployment_srv2_target()
+  match t.lab_plan {
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } => false
+    LabPlanRefused { cause: c } =>
+      match c {
+        LabOsUnobserved { obligation: o } =>
+          match t.tailscale_client {
+            ScopedRemovalUnobserved { reason: r } =>
+              (lab_plan_refusal_reason(cause: c) as String) == (o as String)
+                && (r as String) != (o as String)
+            ScopedRemovalSupported { observed: _ } => false
+            ScopedRemovalUnsupported { observed: _ } => false
+          }
+        LabSandbox { cause: _ } => false
+        LabToolchainUnobserved { obligation: _ } => false
+      }
+  }
+}
+
+test fn srv1_deploy_target_carries_the_ready_plan() -> Bool {
+  match deployment_srv1_target().lab_plan {
+    LabPlanRefused { cause: _ } => false
+    LabPlanReady { host: _, os_package_manager: _, tailscale_client: _, git_path: _, jq_path: _, timeout_path: _, worker_sandbox: _ } =>
+      match deployment_srv1_target().os_package_manager {
+        Absent => false
+        Present { value: pm } =>
+          match pm {
+            Winget => false
+            HomebrewDeFacto => false
+            Apt =>
+              match deployment_srv1_target().tailscale_client {
+                ScopedRemovalSupported { observed: _ } => true
+                ScopedRemovalUnsupported { observed: _ } => false
+                ScopedRemovalUnobserved { reason: _ } => false
+              }
+          }
+      }
+  }
+}
+
+test fn system_manager_launcher_wiring_is_bound_to_the_apply_emitter() -> Bool {
+  dissolution_is_bound(condition: system_manager_launcher_wiring_frontier)
+}
+
+test fn srv2_deploy_target_does_not_invent_a_package_manager() -> Bool {
+  match deployment_srv2_target().os_package_manager {
+    Present { value: _ } => false
+    Absent => true
+  }
+}

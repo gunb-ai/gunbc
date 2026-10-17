@@ -10994,6 +10994,15 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.fn_arrow_decl_facts_live" { "fn_arrow_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_fn_arrow_decl_facts_live($ctx, &$args),
             }
+            // std.host_text chars (operator ruling H4): a HostRealizedSeam reached by DECLARATION, the
+            // module literal below, never by the bare spelling -- `is_v4_bridge_family` admits the arm
+            // only when the item registry says the called `chars` IS std.host_text's. Unicode scalar
+            // values in source order: a Rust `char` is exactly one scalar value.
+            family STD_HOST_TEXT_BRIDGE_FNS "std.host_text"
+                lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
+                arm "v4_bridge.host_text_chars" { "chars" } =>
+                    eval_host_text_chars(&$args),
+            }
             family STD_DATA_INDEX_BRIDGE_FNS "v2.std.data_index"
                 lookup_eval_call_bridge_std_data_index eval_call_bridge__v2_std_data_index_arm {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
@@ -11031,6 +11040,14 @@ macro_rules! v1_bridge_dispatch {
             }
         )*
     };
+}
+
+/// std.host_text chars: the host text's Unicode scalar values, in source order, as the
+/// `List<Char>` it is declared to return (a `Char` is an `Int` scalar on this carrier).
+fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
+    let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
+    Ok(list_value(items))
 }
 
 /// One guard for every bridge family.
@@ -15783,6 +15800,7 @@ fn reference_derived_closure_admission_value(
             T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
             T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
             T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+            T::NoDagReachableNativeOccurrenceTransportProducer => "NoDagReachableNativeOccurrenceTransportProducer",
         };
         nullary("ReferenceDerivedClosureTrigger", name.to_string())
     };

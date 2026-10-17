@@ -11,11 +11,11 @@ import v2.workflow.namespace_step0_strip_producer {
   Step0StripProductionRefusalCause,
   namespace_step0_strip_source
 }
-import v2.compiler.compile {
-  NativeCensusModule,
+import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
+  NativeCensusModule,
   NativeTestContext,
   native_census_module_resolution,
   native_census_modules,

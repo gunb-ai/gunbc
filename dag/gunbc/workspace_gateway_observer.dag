@@ -31,13 +31,10 @@ type WorkspaceGatewayObservation
 fn workspace_observe_gateway_wet(slot: RunnerSlotIdentity, trust: FleetOpenSshTrustPolicy, agent_socket: NonEmptyStr) -> WorkspaceGatewayObservation {
   match workspace_gateway_subject(slot: slot) {
     Absent => WorkspaceGatewayUnobserved { reason: "fleet gateway subject is unresolved" }
-    Present { value: subject } => match render_network_host(host: subject.relay) {
-      Absent => WorkspaceGatewayUnobserved { reason: "gateway relay has no concrete name" }
-      Present { value: relay_name } => match fleet_openssh_known_host_line(policy: trust, host: relay_name) {
-        Absent => WorkspaceGatewayUnobserved { reason: "gateway FQDN has no uniquely enrolled public host-key row" }
-        Present { value: enrolled_host_key } => workspace_observe_gateway_subject_wet(
-          subject: subject, enrolled_host_key: enrolled_host_key, trust: trust, agent_socket: agent_socket)
-      }
+    Present { value: subject } => match fleet_openssh_known_host_line(policy: trust, host: render_network_host(host: subject.relay)) {
+      Absent => WorkspaceGatewayUnobserved { reason: "gateway FQDN has no uniquely enrolled public host-key row" }
+      Present { value: enrolled_host_key } => workspace_observe_gateway_subject_wet(
+        subject: subject, enrolled_host_key: enrolled_host_key, trust: trust, agent_socket: agent_socket)
     }
   }
 }

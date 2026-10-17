@@ -10,6 +10,7 @@ import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
+import v2.std.inhabitance { TypeVariableInstance }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside
@@ -48,10 +49,20 @@ type NodeGrounding
 //
 // Absent is the ordinary case: only a node that denotes a declaration carries one, and a node that
 // denotes nothing is not thereby defective.
+//
+// TYPE_INSTANCES IS THE INSTANTIATION INFER SOLVED FOR THIS CALL: the same TypeVariableInstance
+// list infer_type_instantiated substituted into the result type, binder by name. A node that is not
+// a generic application carries the EMPTY list, never a missing read. What exists today is the
+// recording, verified by A0-1a's kti claims (kinded_type_param_instances). Eval does not read it yet:
+// that consumption is the declared next cut (held on session/fierce-newt-112-a0-eval-held, owner
+// sunny-crab-777, trigger: eval runs record constructors, acceptance
+// kpe_kinded_parameter_value_is_the_applied_literal), where eval would bind each kinded binder from
+// it and refuse a binder it does not hold or whose instance is not a literal.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>
   denotation: Optional<Node>
+  type_instances: List<TypeVariableInstance>
 }
 
 type InferredTree {
@@ -94,7 +105,7 @@ type ObligatedInferredTree {
 // sound only if no tree holds two DIFFERENT nodes under one authored occurrence. This walk measures
 // exactly that and nothing else; a synthetic node has no authored occurrence and is not counted. It is
 // the one authority a later key admission would refuse with, so the census and the refusal cannot
-// disagree. The native lane reports it per module (v2.compiler.compile native_lane_occurrence_census).
+// disagree. The native lane reports it per module (v2.compiler.source_root_eval native_lane_occurrence_census).
 fn authored_occurrence_id(n: Node) -> Optional<OccurrenceId> {
   match n.occurrence_id {
     OccurrenceMinted { id: id } => Present { value: id }

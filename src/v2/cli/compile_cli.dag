@@ -825,7 +825,7 @@ fn v2_cli_entry_locus(entry: String) -> Node {
 // representation of the verdict, free to disagree with the outcome it was derived from.
 // A plan refusal exits `exit_code_misuse` (2) and an emit refusal `exit_code_general_error` (1):
 // "the invocation was not usable" and "the subject did not emit" ask the caller for different
-// fixes, which is the split `v2.compiler.compile` `native_driver_plan_exit` already makes.
+// fixes, which is the split `v2.compiler.source_root_eval` `native_driver_plan_exit` already makes.
 // A MEMBER'S REFUSAL IS CARRIED IN THE EMISSION AND STILL FAILS THE PROCESS: the text is written so a
 // reader sees every member's arm, and the status says the closure did not wholly emit.
 fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {

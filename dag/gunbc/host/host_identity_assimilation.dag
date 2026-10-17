@@ -1,5 +1,7 @@
 module gunbc.host.host_identity_assimilation
 
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+
 
 type HostIdentityAssimilationTarget {
   fleet_slot: HostIdentity

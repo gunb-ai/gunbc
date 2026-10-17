@@ -64,7 +64,7 @@ import gunbc.runner.runner_registration_labels { runner_registration_labels, Reg
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
@@ -1110,7 +1110,7 @@ fn run_ok(command: ArgvCommand) -> Bool {
 // step is `mv -T <stage> <root>`, which fails if anything occupies <root> by then -- a competing
 // converge that published first -- and the readback then judges that converge's tree.
 fn publish_staged_wet(location: RunnerBrowserToolchainLocation, staging: String) -> Bool {
-  publish_staged_tree_wet(staging: staging, root: location.root as String)
+  publish_staged_tree_wet(staging: staging, root: location.root as String, transport: LocalShell)
 }
 
 // EVERY CONVERGE OWNS ITS SCRATCH AND ITS STAGING: manifests in a temporary directory of its own,
@@ -1128,7 +1128,7 @@ fn place_toolchain_wet(location: RunnerBrowserToolchainLocation, archives: List<
 }
 
 fn stage_and_publish_wet(location: RunnerBrowserToolchainLocation, archives: List<StagedArchive>, pinned: NonEmptyStr, scratch: String, staging: String) -> ToolchainPlacement {
-  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives)
+  let staged = stage_archives_wet(archives_dir: location.archives as String, staging: staging, archives: archives, transport: LocalShell)
   if archives_all_staged(ps: staged, archives: archives) == false {
     ToolchainPlacementRefused { archives: staged, cause: "an archive did not verify or extract into staging; nothing was published" }
   } else {
@@ -1386,14 +1386,12 @@ data runner_browser_toolchain_converge_attempt_raw: String = "runner-browser-too
 
 data runner_browser_toolchain_converge_receipt_path: String = "target/runner-browser-toolchain-converge-receipt.txt"
 
-fn browser_toolchain_admin_transport(host: NonEmptyStr, context: FleetSshExecutionContext) -> HostEffectTransport {
-  FleetSsh {
-    target: SshTarget {
-      endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-      principal: executor_bootstrap_principal.login,
-    },
-    context: context,
-  }
+fn browser_toolchain_admin_target(host: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
+}
+
+fn browser_toolchain_admin_transport(target: SshTarget, context: FleetSshExecutionContext) -> HostEffectTransport {
+  FleetSsh { target: target, context: context }
 }
 
 // ONE HOST PER RUN, the host the dispatch selected and the machine confirms (the sealed binding of
@@ -1413,8 +1411,12 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
         BrowserToolchainHostAdmitted { deploy: _, location: location } =>
           match prepare_fleet_ssh_agent_context(attempt_raw: runner_browser_toolchain_converge_attempt_raw) {
             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
-            FleetSshContextReady { context: context, receipt: context_receipt } => {
-              let apt = converge_browser_toolchain_apt(transport: browser_toolchain_admin_transport(host: host, context: context))
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              match browser_toolchain_admin_target(host: host) {
+              SshTargetRefused { endpoint: e, refusal: why } =>
+                exit_failure(reason: join(["runner_browser_toolchain_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
+              SshTargetResolved { target: admin } => {
+              let apt = converge_browser_toolchain_apt(transport: browser_toolchain_admin_transport(target: admin, context: context))
               let apt_ok = fold(apt, init: true, f: (ok, o) => ok && apt_outcome_holds(o: o))
               let placement = if apt_ok {
                 place_toolchain_wet(location: location, archives: runner_browser_toolchain_archives, pinned: runner_browser_toolchain_tree_sha256)
@@ -1427,7 +1429,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 none
               }
               let ready = match standing { Present { value: st } => runner_browser_toolchain_ready(s: st)  Absent => false }
-              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(host: host, context: context), target: browser_ready_labels_production_target)
+              let labels = browser_ready_labels_converge_wet(host: host, ready: ready, transport: browser_toolchain_admin_transport(target: admin, context: context), target: browser_ready_labels_production_target)
               let retirement_text = superseded_trees_text(r: observe_superseded_trees_wet(location: location))
               let readback_text = match standing {
                 Present { value: st } => runner_browser_toolchain_standing_text(s: st)
@@ -1453,6 +1455,7 @@ fn runner_browser_toolchain_converge_ci_wet() -> ProcessExit
                 exit_failure(reason: body)
               }
             }
+              }
           }
       }
   }

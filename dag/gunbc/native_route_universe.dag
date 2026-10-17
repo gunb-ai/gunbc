@@ -1,0 +1,52 @@
+module gunbc.native_route_universe
+
+import std.algebra { fold_list }
+import std.types { NonEmptyStr, String }
+import extdeps.bazel.label {
+  LabelParse,
+  LabelParsed,
+  LabelRefused,
+  PackagePath,
+  parse_label,
+}
+import extdeps.bazel.target_pattern {
+  SubtreeTargets,
+  TargetPattern,
+  target_pattern_matches,
+}
+
+// THE UNIVERSE IS THE MARKED DECLARATIONS THE LANE ACQUIRES, BOUNDED BY ONE TARGET PATTERN.
+// Homed here so dag consumers (the compile-obligation census, the seed-boundary emitter) can
+// name membership and the default pattern without importing v2.workflow. The pattern is `//v2/...`:
+// a test is a marked declaration, not a namespace, so the boundary is the v2 tree the native
+// lane binds, not `v2.test.`. Prefix-as-membership is deleted: `v22` is not in `//v2/...`.
+
+fn native_route_default_pattern() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["v2" as NonEmptyStr] } }
+}
+
+data native_route_module_probe_declaration: String = "any_declaration"
+
+fn native_route_module_package_text(module_qn: String) -> String {
+  fold_list(
+    xs: split(s: module_qn, delimiter: "."),
+    empty: "",
+    cons: fn(acc, segment) {
+      if acc == "" { concat("", segment) } else { concat(concat(acc, "/"), segment) }
+    }
+  )
+}
+
+fn native_route_label_in_package(package_text: String, declaration: String) -> LabelParse {
+  parse_label(text: concat(concat(concat("//", package_text), ":"), declaration))
+}
+
+fn native_route_universe_member(module_qn: String) -> Bool {
+  match native_route_label_in_package(
+    package_text: native_route_module_package_text(module_qn: module_qn),
+    declaration: native_route_module_probe_declaration
+  ) {
+    LabelRefused { cause: _ } => false
+    LabelParsed { label: label } => target_pattern_matches(pattern: native_route_default_pattern(), target: label)
+  }
+}

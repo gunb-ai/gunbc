@@ -6,15 +6,16 @@ use self::SubjectBuild::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
-pub use crate::v1_compiler_compile::compile_to_resolved;
-pub use crate::v1_compiler_compile::SourceFile;
+pub use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
 pub use crate::v1_compiler_emit_rust::maybe_mark_shared_type;
 pub use crate::v1_compiler_infer::build_emit_graph_info;
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
-pub use crate::v1_compiler_infer_emit_info::{type_decl_identities_of_leaf, type_summary_at_key};
-pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeSummaryLookup};
+pub use crate::v1_compiler_infer_emit_info::{
+    type_decl_identities_of_leaf, type_summary_at_key, EmitGraphInfo, TypeSummary,
+    TypeSummaryLookup,
+};
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
 pub use crate::v1_compiler_languages::sharing_for_target;
 use crate::v1_rt;

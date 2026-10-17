@@ -45,6 +45,17 @@ fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> Ar
 }
 
 
+// A RELEASE BUILD OF ONE BIN OF ONE PACKAGE THAT CANNOT FETCH. One bin, because a caller that runs one
+// binary should not pay the memory and time of building the package's every target. `--locked` refuses a Cargo.lock that would have to
+// change, and `--offline` refuses any network access, so a dependency the vendored source does not
+// hold is a build failure rather than a download; cargo verifies each vendored crate against its
+// .cargo-checksum.json, so a vendor set that does not match the lockfile refuses too. The source
+// replacement that points cargo at the vendor directory is configuration (a .cargo/config.toml the
+// caller places), not an argument here.
+fn cargo_build_release_bin_offline_command(package: String, bin: String) -> ArgvCommand {
+  argv_command(program: cargo_program(), arguments: ["build", "--release", "-p", package, "--bin", bin, "--locked", "--offline"])
+}
+
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]
 }

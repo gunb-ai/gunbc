@@ -1,0 +1,62 @@
+module extdeps.procps.kill
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// procps-ng kill(1): a negative PGID must be separated from options by `--`. In procps-ng 4.0.4,
+// `kill -TERM -<pgid>` returns 0 and signals nothing — the `-<pgid>` token is consumed as another
+// option, not as a process-group operand. The form that reaches the group is
+// `kill -TERM -- -<pgid>`. THIS MODULE OWNS THAT UPSTREAM BEHAVIOUR. A host row says which procps-ng
+// version that host has.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "gitlab.com/procps-ng/procps/-/blob/master/man/kill.1"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.procps.kill",
+      decl_name: "procps_ng_kill_term_pgid_argv",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn procps_kill_standing() -> CitedFigureStanding {
+  CitedToAuthority { authority: extdeps_external_authority_anchor }
+}
+
+fn kill_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/kill")
+
+// THE QUIRK IS A REALIZATION FACT, NOT "THE HOST'S kill". A shell builtin named kill (bash
+// `kill -V` is "invalid signal specification") is not procps-ng. ProcpsNgArgvKill IS execve of
+// kill_program (`/usr/bin/kill`); the arm cannot hold another program.
+type KillSignalRealization
+  = ProcpsNgArgvKill
+  | ShellBuiltinKill
+
+fn procps_ng_kill_term_pgid_argv(pgid: Int) -> List<String> {
+  [kill_program().invocation as String, "-TERM", "--", concat("-", to_string(pgid))]
+}
+
+fn procps_ng_kill_term_pgid_form(realization: KillSignalRealization, pgid: Int) -> List<String>? {
+  match realization {
+    ProcpsNgArgvKill => Present { value: procps_ng_kill_term_pgid_argv(pgid: pgid) }
+    ShellBuiltinKill => none
+  }
+}
+
+data procps_pgid_signal_host_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: an executing host effect that signals a process group consumes procps_ng_kill_term_pgid_argv from a HostSoftwareSurface that has observed kill_program, and does not emit argv when that program is unobserved. NOT satisfied by a claim comparing argv lists. Trigger: host_effect or slice teardown argv is that fold." as NonEmptyStr,
+)

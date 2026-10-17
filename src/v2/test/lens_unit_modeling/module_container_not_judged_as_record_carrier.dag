@@ -2,9 +2,9 @@ module v2.test.lens_unit_modeling.module_container_not_judged_as_record_carrier
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.compile {
-  CompileLensSubtree,
   required_lenses_at_grain,
-  run_required_lens_gates_on_subtree
+  run_required_lens_gates_on_subtree,
+  CompileLensSubtree
 }
 import v2.compiler.infer { InferredTree }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }

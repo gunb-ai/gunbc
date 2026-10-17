@@ -18,15 +18,13 @@ use crate::std_induction::SubValueRelation::{
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::{
-    occurrence_id_allocator_initial, occurrence_transport_refusal,
-};
-pub use crate::std_occurrence_identity::{
-    NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
+    occurrence_id_allocator_initial, occurrence_transport_refusal, NodeOccurrenceIdentity,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
 pub use crate::std_source_annotation::{
-    source_annotation_graph_concat, source_annotation_graph_empty,
+    source_annotation_graph_concat, source_annotation_graph_empty, SourceAnnotationGraph,
+    UnboundAnnotationCapture,
 };
-pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
@@ -37,43 +35,37 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::bind_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
 use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
-pub use crate::v1_compiler_artifact::{default_artifact_plan, selected_artifact_plan};
 pub use crate::v1_compiler_artifact::{
-    Artifact, ArtifactPlan, RenderTarget, RustModuleRenderSelection,
+    default_artifact_plan, selected_artifact_plan, Artifact, ArtifactPlan, RenderTarget,
+    RustModuleRenderSelection,
 };
-pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
 pub use crate::v1_compiler_complexity::{
-    ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
+    build_complexity_report, empty_complexity_report, ComplexityReport, ComplexityViolation,
+    FuncEntry, RecursionContext,
 };
 pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
-pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
-pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
+pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote, DagCollectAcc};
 pub use crate::v1_compiler_emit::{
     unmodeled_file_transport_diagnostics, unmodeled_rest_transport_diagnostics,
     unmodeled_shell_transport_diagnostics,
 };
-pub use crate::v1_compiler_emit_core_support::escape_json_string;
-pub use crate::v1_compiler_emit_core_support::EmitResult;
+pub use crate::v1_compiler_emit_core_support::{escape_json_string, EmitResult};
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust_selected;
 pub use crate::v1_compiler_infer::reconcile;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
-pub use crate::v1_compiler_normalize::normalize_graph;
-pub use crate::v1_compiler_normalize::NormalizeResult;
-pub use crate::v1_compiler_ownership::analyze_ownership;
+pub use crate::v1_compiler_normalize::{normalize_graph, NormalizeResult};
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
-pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
-pub use crate::v1_compiler_parse::ParseResult;
+pub use crate::v1_compiler_ownership::{analyze_ownership, OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::{
-    census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope,
+    census_heads_body_stand_in, parse_with_table, parse_with_table_in_occurrence_scope, ParseResult,
 };
 pub use crate::v1_compiler_resolve::{
     module_occurrence_input, module_occurrence_input_node, module_occurrence_input_transport,
-    resolve_modules_with_occurrence_transport,
+    resolve_modules_with_occurrence_transport, ModuleGraph, ModuleOccurrenceInput,
 };
-pub use crate::v1_compiler_resolve::{ModuleGraph, ModuleOccurrenceInput};
 pub use crate::v1_compiler_tokenize::tokenize_artifact;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -115,10 +107,8 @@ pub use crate::v1_std_core::{
     is_error_diagnostic, is_interpreter_blocking_diagnostic, lambda_param_names_at,
     make_error_node, module_imports, module_items, no_span, param_node_default_value,
     param_node_name_at, param_node_span, param_node_type_expr, pre_intern_tokens,
-    record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-};
-pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, CallSemantics,
+    CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
     DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
     FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,

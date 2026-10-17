@@ -51,7 +51,7 @@
 //! none, so the emitted compiler crate compiled clean locally and refused with status 101 in
 //! CI — and the required v2-native lane's receipt could not say which environment its
 //! "compiled" was true of. The lane now records the flags, the argv and rustc's identity on its
-//! receipt (`gunbc.witness.v2_native_route` `NativeRouteEmittedBuild`) and admission compares
+//! receipt (`v2.workflow.v2_native_route` `NativeRouteEmittedBuild`) and admission compares
 //! the flags against that same row.
 
 // CLIPPY ROSTER -- 7 finding(s) this module trips today, listed one lint per line with
@@ -2259,6 +2259,26 @@ const FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH: &str =
 const FIXTURE_ARGV_WORD_LIST_GREEN_PATH: &str =
     "fixtures/fixture_closure_rustc/argv_word_list_splice_probe.dag";
 
+/// THE RED FOR THE LOCATED ARGV-TYPE REFUSAL: an Int in a shell argv must emit compile_error!,
+/// never emit_simple_expr leftover. rustc refusing this fixture's emitted module with that
+/// sentence is the class; E0308 is a different subject (the route's text-boundary red).
+///
+/// SEED DELTA (ctrl hand-Rust receipt): test-only items in this existing host
+/// (`FIXTURE_ARGV_NON_STRING_RED_PATH`, `FIXTURE_ARGV_NON_STRING_EXPECTED`,
+/// `fixture_argv_non_string_discrimination_passed`). No new production route; no deleted
+/// scaffold. WHY RUST: the discriminator is rustc-on-emitted-crate; a `.dag` claim cannot be
+/// that verdict. PURPOSE: `gunbc.v1.v1_maintenance_standing` `v1_seed_standing` — the argv
+/// splice has to stay an executed RED for native emit. Lane `v1-hand-queue-drain`. Deferral:
+/// delete these three with the rest of this file's fixture pairs when the native compiler
+/// owns `v1.compiler.emit_rust` `emit_shell_call` argv classification and this pair is a v2
+/// claim on the emitted crate.
+#[cfg(test)]
+const FIXTURE_ARGV_NON_STRING_RED_PATH: &str =
+    "fixtures/fixture_closure_rustc/argv_non_string_element_probe.dag";
+
+#[cfg(test)]
+const FIXTURE_ARGV_NON_STRING_EXPECTED: &str = "argv element is not String or List<String>";
+
 /// See `FIXTURE_EMPTY_MAP_TURBOFISH_GREEN_PATH`.
 #[cfg(test)]
 const FIXTURE_APPEND_CONCAT_GREEN_PATH: &str =
@@ -2276,14 +2296,54 @@ pub(crate) fn run_empty_map_turbofish_discrimination(
 }
 
 /// The argv word-list splice pair -- subject `v1.compiler.emit_rust` `emit_shell_call`.
+/// Green: List<String> splices compile. Red: a non-string argv element is a located compile_error!
+/// in the fixture's own emitted module (not the route's E0308 text-boundary red).
 #[cfg(test)]
 pub(crate) fn run_argv_word_list_splice_discrimination(
     probe_root: &PrivateProbeRoot,
 ) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_ARGV_WORD_LIST_GREEN_PATH, probe_root),
-        red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
+        red: fixture_arm_verdict(FIXTURE_ARGV_NON_STRING_RED_PATH, probe_root),
     }
+}
+
+#[cfg(test)]
+fn fixture_dir_rs_contains(dir: &std::path::Path, needle: &str) -> bool {
+    let Ok(walker) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    walker.filter_map(|e| e.ok()).any(|e| {
+        let path = e.path();
+        if path.is_dir() {
+            fixture_dir_rs_contains(&path, needle)
+        } else {
+            path.extension().is_some_and(|x| x == "rs")
+                && std::fs::read_to_string(&path).is_ok_and(|s| s.contains(needle))
+        }
+    })
+}
+
+#[cfg(test)]
+fn fixture_emitted_rs_contains(outcome: &FixtureClosureOutcome, needle: &str) -> bool {
+    match outcome {
+        FixtureClosureOutcome::Measured { crate_dir, .. } => {
+            fixture_dir_rs_contains(std::path::Path::new(crate_dir), needle)
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_argv_non_string_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
+    fixture_closure_compiled(&pair.green)
+        && !fixture_emitted_rs_contains(&pair.green, "unsupported simple expr")
+        && fixture_emitted_rs_contains(&pair.green, "range_words_named")
+        && fixture_closure_reached_rustc(&pair.red)
+        && !fixture_closure_compiled(&pair.red)
+        && fixture_closure_attributed_line(&pair.red).is_some()
+        && fixture_closure_attributed_diagnostic(&pair.red)
+            .is_some_and(|diagnostic| diagnostic.contains(FIXTURE_ARGV_NON_STRING_EXPECTED))
 }
 
 /// The append concat-form pair -- subject `v1.compiler.emit_rust`

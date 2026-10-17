@@ -4,6 +4,8 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { trim }
 import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { render_ipv4_address }
+import extdeps.network.endpoint { socket_address, host_by_ipv4 }
+import extdeps.ssh.known_hosts { openssh_standard_port }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_read_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -65,7 +67,7 @@ fn fabric_rail_known_host_rows() -> List<KnownHostKeyRow> {
       Absent => [] as List<KnownHostKeyRow>
       Present { value: o } => [KnownHostKeyRow {
         host: k.host,
-        endpoint: render_ipv4_address(addr: fabric_rail_address_of(o: o)) as String,
+        address: socket_address(host: host_by_ipv4(addr: fabric_rail_address_of(o: o)), port: openssh_standard_port),
         key_type: k.key_type,
         public_key_base64: k.public_key_base64,
         sha256_fingerprint: k.sha256_fingerprint,

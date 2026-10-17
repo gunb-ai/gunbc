@@ -11,7 +11,7 @@ import std.optional { Absent, Present, optional_absent, optional_present }
 import std.types { Map }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import v2.compiler.infer { ConstructIsRecord, ConstructIsVariantArm, ConstructNotARecord, ConstructVariantArmIdentityUnavailable, ConstructVariantArmIdentityContested, ConstructVariantArmBodyUnavailable, infer, infer_record_construct_read, inferred_facts_resolved_type }
-import v2.compiler.resolve { LexicalBinding, LexicalDeclared, ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, LexicalBinding, LexicalDeclared, ResolvedTree }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
@@ -127,7 +127,7 @@ fn nvar_tree_with_bindings(
     symbol_index: index,
     resolved_declarations: index,
     lexical_bindings: bindings,
-    module_outcomes: [],
+    module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
     constructing_module: optional_absent()

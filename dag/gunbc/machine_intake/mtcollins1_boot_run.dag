@@ -8,7 +8,7 @@ import std.temporal_effect {
   HeldLeaseObservedState,
   LeaseAbsent,
   LeaseRunningExpected,
-  LeaseRunningStale,
+  LeaseRunningPastExpiry,
   LeasePortForeign,
   LeaseInaccessible,
   held_lease_observed_verdict,
@@ -18,11 +18,12 @@ import std.measure { Second, second, second_count, Millisecond, millisecond, mil
 import std.checked_arithmetic { checked_int_to_nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake.mtcollins1_census_medium_readback {
-  mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
+  census_medium_readback, census_readback_refusal_before_filing, census_readback_refusal_before_attach,
 }
 import gunbc.host.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export }
 import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image_stem }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, mtcollins1_census_image_stem, mtcollins1_census_machine }
+import gunbc.machine_intake.mtcollins1_census_medium_readback { mtcollins1_census_readback_attempt_raw }
 import gunbc.host.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
   boot_subject_admission_for, boot_subject_refusal_cause_text, boot_subject_machine,
@@ -132,11 +133,16 @@ import gunbc.machine_intake.megarac_kvm_still {
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
+import gunbc.machine_intake.mtcollins1_sol_notice_facts {
+  mtcollins1_sol_incident_suffix, mtcollins1_sol_client_suffix, mtcollins1_sol_workflow_suffix,
+  mtcollins1_sol_delivery_suffix, mtcollins1_sol_workflow_event_prefix, mtcollins1_sol_notice_file_infix,
+  mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_token_env, mtcollins1_sol_notice_final_allowance,
+  mtcollins1_boot_sol_capture_path_env, mtcollins1_boot_sol_pid_path_env,
+  mtcollins1_sol_client_diagnostic_path, mtcollins1_sol_incident_path, mtcollins1_sol_workflow_events_path,
+}
 data mtcollins1_boot_label: String = "mtcollins1 boot"
 
-data mtcollins1_boot_sol_capture_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_CAPTURE"
 
-data mtcollins1_boot_sol_pid_path_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_PID_FILE"
 
 // The collector executable the hold starts: resolved on the runner's PATH, as every extdeps.bmc.ipmi
 // operation's `ipmitool` is. On srv1 that is /usr/bin/ipmitool 1.8.19 (gunbc.machine_intake.sol_hold).
@@ -170,7 +176,6 @@ data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 // result before recording it as not finished.
 data mtcollins1_sol_notice_ready_allowance: Second = second(count: 900)
 
-data mtcollins1_sol_notice_final_allowance: Second = second(count: 10)
 
 // THE SHARE THIS UNIT BOOTS FROM, derived from its authorities rather than typed: srv2's LAN
 // address (gunbc.fleet.fleet_reach) and the export this lane publishes into
@@ -338,7 +343,7 @@ fn mtcollins1_sol_collector_observe(pid_path: String) -> SolCollectorObservation
 fn held_lease_of_collector(observation: SolCollectorObservation) -> HeldLeaseObservedState {
   match observation {
     SolCollectorHeld => LeaseRunningExpected
-    SolCollectorExited { evidence: _ } => LeaseRunningStale
+    SolCollectorExited { evidence: _ } => LeaseRunningPastExpiry
     SolCollectorUnrecorded => LeaseAbsent
     SolCollectorUnobservable { cause: _ } => LeaseInaccessible
     SolCollectorPathUnset => LeaseInaccessible
@@ -437,45 +442,14 @@ fn mtcollins1_sol_bind_capture_to_attempt(capture_path: String) -> Bool {
     && Filesystem.Write(path: mtcollins1_sol_workflow_events_path(capture_path: capture_path), content: "").success
 }
 
-// THE COLLECTOR'S OWN WORDS LIVE BESIDE THE HOST'S, NEVER AMONG THEM. gunbc.machine_intake.sol_hold
-// sends the collector's stdout (the host console) to the capture and its stderr plus the hold's exit
-// record to this file; both carry the capture's name so the boot's artifact glob keeps them together.
-fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
-  concat(capture_path, mtcollins1_sol_client_suffix)
-}
 
-// Where a lost observation channel is frozen the moment it is observed (mtcollins1_sol_loss_freeze).
-// Bound to the attempt with the capture, so an earlier attempt's incident is never read as this one's.
-// THIS FILE IS THE OPERATOR ROUTE'S SOURCE (operator ruling 2026-09-27: no ntfy, no new credential):
-// the boot step (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
-// within a second of it becoming non-empty, prints it as one Actions `::error::` annotation in the
-// live run log and appends it to the step summary -- so the notice leaves the runner while the watch
-// is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
-// row both sides read.
-data mtcollins1_sol_incident_suffix: String = ".loss"
 
-// THE WORKFLOW'S OWN SOL ACTS, RECORDED APART FROM EVERYTHING THE COLLECTOR SAYS. When this run
-// deactivates the session, the client's next words ("SOL session closed by BMC", then an exit) are
-// the CONSEQUENCE of that act, not evidence the BMC dropped the session -- in both failed runs of
-// #12423 (runs 36333687404 and 36335369059) the workflow deactivated at the watch timeout before
-// re-reading the collector, so their untimestamped close line cannot be dated before that act. Only
-// this module writes this file (no racing append with the supervisor), one timestamped line per act.
-data mtcollins1_sol_workflow_suffix: String = ".workflow"
 
-data mtcollins1_sol_client_suffix: String = ".client"
 
-// Where the step's watcher records every notice delivery outcome (gunbc.ci.ci_spec), beside the capture.
-data mtcollins1_sol_delivery_suffix: String = ".delivery"
 
-// Every line the workflow writes to its events file starts with this, so a reader -- the step's exit
-// notice included -- can say which of this run's own acts preceded an exit, at requested strength.
-data mtcollins1_sol_workflow_event_prefix: String = "gunbc-workflow: "
 
 data mtcollins1_sol_teardown_act: String = "SOL deactivate requested by this run's teardown"
 
-fn mtcollins1_sol_workflow_events_path(capture_path: String) -> String {
-  concat(capture_path, mtcollins1_sol_workflow_suffix)
-}
 
 data mtcollins1_sol_pre_teardown_suffix: String = ".pre-teardown"
 
@@ -495,9 +469,6 @@ fn mtcollins1_sol_teardown_record(capture_path: String, act: String) -> Bool {
     && Filesystem.Write(path: events_path, content: concat(if events.success { events.content } else { "" }, concat(mtcollins1_sol_workflow_event_prefix, concat(act, concat(" at=", concat(clock_now_probed_at_or_unknown() as String, "\n")))))).success
 }
 
-fn mtcollins1_sol_incident_path(capture_path: String) -> String {
-  concat(capture_path, mtcollins1_sol_incident_suffix)
-}
 
 fn mtcollins1_sol_acquire_under_unit_hold(
   proof: UnitHoldProof,
@@ -1691,21 +1662,8 @@ fn sol_supervision_refusal_reason(outcome: ProcessExit) -> NonEmptyStr {
   }
 }
 
-// THE NOTICE WATCHER IS A REQUIRED OBSERVER, SUPERVISED AS ONE OWNED SIBLING. The step records the
-// watcher it started as "<pid> <starttime>" at capture + mtcollins1_sol_notice_file_infix + "watcher".
-// Before each further hardware effect -- the attach and the handoff, the two checkpoints
-// mtcollins1_sol_supervised guards -- the boot requires that record to name a live, non-zombie process
-// with that start time. A gone, replaced or unobservable watcher refuses the effect: no further BMC
-// write is made without the observer that would report the collector's loss. This stops effects; it
-// does not power the machine off. The step's trap separately collects the watcher's exit status.
-data mtcollins1_sol_notice_file_infix: String = ".notice."
 
-// READINESS IS BOUND TO THIS STEP'S OWNED PROCESS. The step starts the watcher with a fresh token in
-// mtcollins1_sol_notice_token_env and records the child it started; the watcher writes that token to
-// capture + mtcollins1_sol_notice_ready_suffix once it is polling. The boot waits for both (below).
-data mtcollins1_sol_notice_ready_suffix: String = concat(mtcollins1_sol_notice_file_infix, "ready")
 
-data mtcollins1_sol_notice_token_env: NonEmptyStr = "GUNBC_MTCOLLINS1_SOL_NOTICE_TOKEN"
 
 // THE BOOT WAITS FOR ITS OBSERVER BEFORE ANY BMC CONTACT, here and not in the step's shell: the wait
 // is a bounded loop, and the step's shell grammar has none. Ready means the readiness file holds this
@@ -2468,7 +2426,7 @@ fn mtcollins1_boot_actuate(
       let media = match before_attach {
         SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
-          match mtcollins1_census_readback_refusal_before_attach(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+          match census_readback_refusal_before_attach(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
             Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
@@ -2970,7 +2928,7 @@ fn mtcollins1_boot_on_srv1_resolving_toolchain(resolve_toolchain: fn() -> Runner
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
-  match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: mtcollins1_boot_medium)) {
+  match census_readback_refusal_before_filing(subject: mtcollins1_census_machine, readback: census_medium_readback(medium: mtcollins1_boot_medium, image: mtcollins1_census_image, attempt: mtcollins1_census_readback_attempt_raw)) {
     Present { value: why } => return mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: why))
     Absent => {}
   }
@@ -3004,3 +2962,4 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "mtcollins1_sol_await_observer" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "sol_await_establishment_until" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
+

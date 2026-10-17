@@ -457,13 +457,13 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // 2026-09-30 (step 2): the .issue-rail-link rule -- the rail's relation counts open the
 // Dependencies tab as a text-styled button. Derived by execution (roadmap_css_derived_digest).
 // 2026-09-30 (robot mark): the .site-avatar-mark rule sizes the Fabric chip's robot mark
-// (gunbc.site.robot_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
+// (gunbc.design.brand_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
 // 2026-09-30 (rail containment): issue-field-label no longer shrinks under a long value, and
 // issue-field-value takes the remaining width and wraps unbroken tokens instead of running past
 // the rail. Derived by execution (roadmap_css_derived_digest).
 // 2026-09-30 (badge colour): the Fabric chip paints the owner's badge stone (#f4f1ec) under the
 // frontend's ink robot mark, routed through the --fabric-badge-bg/--fabric-badge-ink theme
-// properties (both schemes) from gunbc.site.robot_mark's swatches. Derived by execution.
+// properties (both schemes) from gunbc.design.brand_mark's swatches. Derived by execution.
 // 2026-10-03 (sign-in surface restored over main's stylesheet): the .header-account-signin,
 // .header-account-menu, .header-account-menu-item and .header-account-signout rules return with
 // their consumers. Derived by execution (roadmap_css_derived_digest).

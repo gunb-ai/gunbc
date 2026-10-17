@@ -19,11 +19,14 @@ import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, Material
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
   FleetSshCredentialBinding,
   fleet_ssh_execution_context_of,
+  materialize_fleet_ssh_multiplex_directory,
+  fleet_ssh_multiplex_receipt,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   SshTarget,
@@ -185,12 +188,12 @@ fn privileged_leg(
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: admin_principal as NonEmptyStr) {
+      SshTargetRefused { endpoint: e, refusal: why } => ApplyRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+      SshTargetResolved { target: target } =>
       match exec_as_fleet_principal_with_stdin(
         context: context,
-        target: SshTarget {
-          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-          principal: admin_principal as NonEmptyStr,
-        },
+        target: target,
         words: words,
         stdin_payload: join([admin_credential as String, "\n", script, "\n"], ""),
         credential: BootstrapCredentialFileHeld { path: admin_credential_file },
@@ -202,6 +205,7 @@ fn privileged_leg(
           } else {
             ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
           }
+      }
       }
   }
 }
@@ -229,12 +233,12 @@ fn managed_principal_leg(
   match portable_remote_words(raws: raw_words) {
     Absent => ApplyRefused { cause: "non-portable remote word" }
     Present { value: words } =>
+      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: managed_principal as NonEmptyStr) {
+      SshTargetRefused { endpoint: e, refusal: why } => ApplyRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
+      SshTargetResolved { target: target } =>
       match exec_as_fleet_principal_with_stdin(
         context: context,
-        target: SshTarget {
-          endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-          principal: managed_principal as NonEmptyStr,
-        },
+        target: target,
         words: words,
         stdin_payload: "",
         credential: BootstrapCredentialNotHeld,
@@ -246,6 +250,7 @@ fn managed_principal_leg(
           } else {
             ApplyRefused { cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
           }
+      }
       }
   }
 }
@@ -406,9 +411,10 @@ fn spark_managed_access_apply_with_resolved_credentials(
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
+      let multiplex = materialize_fleet_ssh_multiplex_directory()
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding, multiplex: multiplex) {
         Absent => ApplyNotAttempted {
-          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization), " ", fleet_ssh_multiplex_receipt(preparation: multiplex)], ""),
         }
         Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
           Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }

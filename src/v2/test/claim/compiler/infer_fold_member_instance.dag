@@ -216,7 +216,7 @@ fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
                     lexical_bindings: tree.lexical_bindings,
-                    module_outcomes: tree.module_outcomes,
+                    module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index,
     member_kinds: tree.member_kinds,
                     type_declaration_modifiers: tree.type_declaration_modifiers,
                     constructing_module: tree.constructing_module

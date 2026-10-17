@@ -10,18 +10,19 @@ use self::ResolvedFormals::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_env::TypeBinding;
-pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
-pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    module_path_owner_binding_decide, ModulePathBindingProjection,
+};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
-pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
-    NewlineIndex, Node, ResolvedFormal,
+    authored_name_at, expr_call_func_at, make_error_node, no_span, CompilerDiagnostic,
+    DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    ResolvedFormal,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -345,6 +346,55 @@ pub fn parent_closure_callable_candidates(
             std::option::Option::None => acc.clone(),
         },
     )
+}
+
+pub fn owner_module_leaf_callable_candidates(
+    env: Rc<ResolvedFuncEnv>,
+    owner: String,
+    leaf: String,
+) -> Rc<Vec<Rc<CallableCandidate>>> {
+    {
+        let self_hits = if (env.name.clone() == owner.clone()) {
+            match v1_rt::map_get(&env.local.clone(), leaf.clone()) {
+                Some(sig) => Rc::new(vec![Rc::new(CallableCandidate {
+                    identity: Rc::new(CallableIdentity::DeclaredCallable {
+                        identity: Rc::new(DeclaredCallableIdentity {
+                            owner_module_path: owner.clone(),
+                            decl_name: leaf.clone(),
+                        }),
+                    }),
+                    sig: sig.clone(),
+                })]),
+                std::option::Option::None => Rc::new(vec![]),
+            }
+        } else {
+            Rc::new(vec![])
+        };
+        env.parents.clone().iter().cloned().fold(
+            self_hits.clone(),
+            |acc: Rc<Vec<Rc<CallableCandidate>>>, p: Rc<ResolvedFuncEnv>| {
+                if (p.name.clone() == owner.clone()) {
+                    match v1_rt::map_get(&p.local.clone(), leaf.clone()) {
+                        Some(sig) => v1_rt::concat(
+                            acc.clone(),
+                            Rc::new(vec![Rc::new(CallableCandidate {
+                                identity: Rc::new(CallableIdentity::DeclaredCallable {
+                                    identity: Rc::new(DeclaredCallableIdentity {
+                                        owner_module_path: owner.clone(),
+                                        decl_name: leaf.clone(),
+                                    }),
+                                }),
+                                sig: sig.clone(),
+                            })]),
+                        ),
+                        std::option::Option::None => acc.clone(),
+                    }
+                } else {
+                    acc.clone()
+                }
+            },
+        )
+    }
 }
 
 pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) -> Rc<FuncSigLookup> {

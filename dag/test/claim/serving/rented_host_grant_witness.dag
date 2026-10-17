@@ -37,7 +37,7 @@ fn g_grant(subject: RentedHostSubject, attempt: String, expires_at: String) -> S
 }
 
 fn g_decl() -> RentedHostAccessDeclaration {
-  e_access(endpoint: "203.0.113.7")
+  e_access(octet4: 7)
 }
 
 fn g_now() -> RentedHostClock {
@@ -77,7 +77,7 @@ test fn an_expired_grant_refuses() -> Bool {
 
 test fn a_grant_for_another_node_refuses() -> Bool {
   let other = RentedHostAccessDeclaration {
-    node: "rental-2" as NonEmptyStr, endpoint: g_decl().endpoint, principal: g_decl().principal,
+    node: "rental-2" as NonEmptyStr, address: g_decl().address, principal: g_decl().principal,
     host_key: g_decl().host_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
   }
   g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
@@ -86,11 +86,11 @@ test fn a_grant_for_another_node_refuses() -> Bool {
 test fn a_grant_for_another_host_key_refuses() -> Bool {
   let hk = g_decl().host_key
   let other_key = KnownHostKeyRow {
-    host: hk.host, endpoint: hk.endpoint, key_type: hk.key_type, public_key_base64: "AAAAdifferenthostkey",
+    host: hk.host, address: hk.address, key_type: hk.key_type, public_key_base64: "AAAAdifferenthostkey",
     sha256_fingerprint: hk.sha256_fingerprint, provenance: hk.provenance,
   }
   let other = RentedHostAccessDeclaration {
-    node: g_decl().node, endpoint: g_decl().endpoint, principal: g_decl().principal,
+    node: g_decl().node, address: g_decl().address, principal: g_decl().principal,
     host_key: other_key, operator_key: g_decl().operator_key, operator_key_fingerprint: g_decl().operator_key_fingerprint,
   }
   g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")
@@ -99,7 +99,7 @@ test fn a_grant_for_another_host_key_refuses() -> Bool {
 
 test fn a_grant_for_another_key_fingerprint_refuses() -> Bool {
   let other = RentedHostAccessDeclaration {
-    node: g_decl().node, endpoint: g_decl().endpoint, principal: g_decl().principal,
+    node: g_decl().node, address: g_decl().address, principal: g_decl().principal,
     host_key: g_decl().host_key, operator_key: g_decl().operator_key, operator_key_fingerprint: "SHA256:another" as NonEmptyStr,
   }
   g_refused_naming(p: rented_host_permit(authorizations: [g_live(attempt: "run-1")], declaration: other, attempt_raw: "run-1", clock: g_now()), needle: "no operator authorization")

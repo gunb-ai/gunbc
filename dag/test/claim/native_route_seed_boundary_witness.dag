@@ -8,7 +8,7 @@ import extdeps.bazel.target_pattern {
 import gunbc.native_route_seed_boundary_emit {
   expected_native_route_seed_boundary_generated_rs, native_route_seed_boundary_generated_rs
 }
-import gunbc.witness.v2_native_route { native_route_default_pattern }
+import gunbc.native_route_universe { native_route_default_pattern }
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE AUTHORITY-MOVEMENT CLAIM FOR THE SEED'S COPY OF THE NATIVE ROUTE'S BOUNDARY.
 //
 // The seed routes `gunbc test <operand>` before any binary exists, so it needs the boundary
-// `gunbc.witness.v2_native_route` `native_route_default_pattern` at a point where the declaration
+// `gunbc.native_route_universe` `native_route_default_pattern` at a point where the declaration
 // cannot be evaluated. The seed therefore reads a constant that `gunbc.native_route_seed_boundary_emit`
 // renders from that declaration, and the join between the two is the generated-artifact drift wall:
 // move the declaration and the committed file stops equalling `expected_native_route_seed_boundary_generated_rs`,

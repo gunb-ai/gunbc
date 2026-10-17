@@ -120,6 +120,41 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
 }
 
+data megarac_op_fan_get_manager_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/fan_control/get_manager_status",
+  contract_note: "cited, not executed by this repository (operator-session curl only, 2026-10-14); not a megarac_api_operations row; Foxconn Mt. Collins MegaRAC 0.32 served UI source.min.js (gzip sha256 prefix ee9b14cbf7141b78, AMI copyright, off-tree); JSON manager_disabled 0 or 1; 1 is manual PWM, 0 is Cooling Manager automatic",
+}
+
+data megarac_op_fan_get_fan_info: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/fan_control/get_fan_info",
+  contract_note: "cited, not executed by this repository (operator-session curl only); not a megarac_api_operations row; same UI bundle; JSON list of id, fan_number, fan_speed, fan_pwm; UI labels speed as PWM percentage",
+}
+
+// §3c frontier: megarac_op_fan_get_manager_status and megarac_op_fan_get_fan_info. Consumer: a
+// wet fold that opens a MegaRAC session, GETs those two paths, and closes the session — the
+// inhabitance claim that turns gunbc.machine_intake.megarac_fan_mode_observation receipts into
+// a reading of the route, not only of the answer. Until that fold exists, megarac.FanControl
+// is not declared: a shell transport with no caller is the dangling pub. The boot-job
+// fan_policy_phase still runs the IPMI SDR series (gunbc_ci_mtcollins1_fan_observe_invoke).
+
+// UI-CITED FAN ROWS (THE TWO GETs ABOVE AND THE TWO POSTs BELOW), NOT MEMBERS OF megarac_api_operations.
+// That list is the SP-X shape this repository's code has executed. The two fan GETs were run only by an
+// operator session's curl (2026-10-14 21:50Z, 22:09Z, 22:23Z), never by repository code; the POSTs are read from the served UI bundle and have no wet caller in this repository
+// (megarac_fan_converge_route stays Unbound until one exists). A cited path is not an executed POST.
+data megarac_op_fan_set_manager_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/fan_control/set_manager_status",
+  contract_note: "same UI bundle; JSON manager_disabled r with r in 0 or 1; UI confirms before both directions; cited as the write that enables or disables the Cooling Manager, not yet executed by this repository; not a megarac_api_operations row",
+}
+
+data megarac_op_fan_set_fan_speed: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/fan_control/set_fan_speed",
+  contract_note: "FanControlView updateFanPWMs in source.min.js (gzip sha256 prefix ee9b14cbf7141b78): JSON.stringify fan_pwm_all r where r is the string from select#fan_all_speed (example fan_pwm_all: \"25\"); no per-fan write; UI offers 20..100 step 5; takes effect only while manager_disabled is 1; success handler re-reads get_fan_info; not yet executed by this repository; not a megarac_api_operations row",
+}
+
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
 // ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
 // interval while the images listing goes from refusing to listing the image; POST start-media WITH
