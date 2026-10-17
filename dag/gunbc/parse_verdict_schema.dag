@@ -101,7 +101,8 @@ fn parse_verdict_standing(
   }
 }
 
-// The directory a pull-request run restores both base-sha entries into; the verb reads these two
-// names under it, so the workflow's restore paths and the reader share one spelling.
-data parse_verdict_restore_identity_basename: String = "identity"
-data parse_verdict_restore_receipts_basename: String = "receipts.tsv"
+// THE TWO BLOB FILES, ONE SPELLING. The publisher saves these basenames under the runner temp
+// directory, the restore step puts the base-sha entries back at the same paths, and the verb reads
+// them from that directory, so publish, restore and read cannot disagree on a name.
+data parse_verdict_restore_identity_basename: String = "gunbc-parse-compiler-identity"
+data parse_verdict_restore_receipts_basename: String = "gunbc-parse-verdict-receipts.tsv"

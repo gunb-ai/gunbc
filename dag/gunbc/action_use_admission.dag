@@ -20,7 +20,7 @@ import extdeps.github.action_runtime_policy {
 import extdeps.github.action.upload_artifact { upload_artifact_manifest_readings, upload_artifact_v6_0_0 }
 import extdeps.github.action.download_artifact { download_artifact_manifest_readings, download_artifact_v7_0_0 }
 import extdeps.github.action.checkout { checkout_manifest_readings, checkout_v5_1_0 }
-import extdeps.github.action.cache { cache_manifest_readings, cache_v5_1_0, cache_save_v5_1_0 }
+import extdeps.github.action.cache { cache_manifest_readings, cache_v5_1_0, cache_save_v5_1_0, cache_restore_v5_1_0 }
 import extdeps.github.action.github_script { github_script_manifest_readings }
 import extdeps.github.action.google_auth { google_auth_manifest_readings, google_auth_v3_0_0 }
 import extdeps.github.action.setup_rust_toolchain { setup_rust_toolchain_manifest_readings, setup_rust_toolchain_v1_16_0 }
@@ -76,6 +76,7 @@ data checkout_action: ActionRelease = checkout_v5_1_0
 data setup_rust_action: ActionRelease = setup_rust_toolchain_v1_16_0
 data cache_action: ActionRelease = cache_v5_1_0
 data cache_save_action: ActionRelease = cache_save_v5_1_0
+data cache_restore_action: ActionRelease = cache_restore_v5_1_0
 data google_auth_action: ActionRelease = google_auth_v3_0_0
 data upload_artifact_action: ActionRelease = upload_artifact_v6_0_0
 data download_artifact_action: ActionRelease = download_artifact_v7_0_0
@@ -88,6 +89,7 @@ data repository_action_selections: List<ActionRelease> = [
   setup_rust_action,
   cache_action,
   cache_save_action,
+  cache_restore_action,
   google_auth_action,
   upload_artifact_action,
   download_artifact_action,
