@@ -472,7 +472,19 @@ type IpmiCompletionCode {
 // failure: the command was accepted, understood, and refused on policy.
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
-data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data field in request" as NonEmptyStr
+// NO `as NonEmptyStr` on the literal (review 81294/81308 asked which of the two sibling spellings was
+// wrong). NEITHER IS A COMPILE ERROR -- both rows sit at this head today, and the whole tree spells
+// `data ... : NonEmptyStr = "literal"` BOTH ways (measured at this head: 1,430 rows without the cast,
+// 732 with). So this is not a broken-row fix; it is a choice, and the reason is §4c: "an annotation must
+// not restate what the declaration says". The declared type already says NonEmptyStr, and the cast
+// consults the SAME predicate (`string_non_empty`, std/types.dag:257) the declared type consults, so it
+// cannot make a non-empty literal safer nor make an empty one fail any earlier. It is a second
+// statement of a constraint the declaration carries, and §2 says model it once.
+//
+// WHY THE SIBLING ROW MATTERS MORE THAN THE CAST: the two codes' English lives in exactly one row each,
+// which is what the claim below checks. Whether the literal carries a redundant cast does not affect
+// that; two rows naming the SAME byte different strings would, and that is what is guarded.
+data ipmi_completion_code_invalid_data_field_text: NonEmptyStr = "Invalid data field in request"
 
 // 0xC7 -- "Request data length invalid". Carried here because it is the code a reader confuses with
 // 0xCC when a password-related write is refused: length versus content, which is the difference
