@@ -109,11 +109,11 @@ test fn a_subject_importing_a_record_sees_the_declarers_record_in_its_resolved_d
 // module is observed with Rec DeclarationAvailable beside it. The closure index is derived from the same
 // per-declaration outcome (v2.compiler.name_resolve closure_available_names), so Rec is indexed and
 // `broken` is not. `fixed` is the all-resolving positive control with the same shape.
-data cdp_part_broken_source: String = "module v2.test.cdp.part\n\nimport std.types { Int }\n\ntype Rec { value: Int }\nfn broken() -> Int { cdp_unbound_name }\n"
+data cdp_part_broken_source: String = "module v2.test.cdp.part\n\ntype Unit = | U\ntype Rec { value: Unit }\nfn broken() -> Unit { cdp_unbound_name }\n"
 
-data cdp_part_fixed_source: String = "module v2.test.cdp.part\n\nimport std.types { Int }\n\ntype Rec { value: Int }\nfn broken() -> Int { 1 }\n"
+data cdp_part_fixed_source: String = "module v2.test.cdp.part\n\ntype Unit = | U\ntype Rec { value: Unit }\nfn broken() -> Unit { U }\n"
 
-data cdp_part_user_source: String = "module v2.test.cdp.partuser\n\nimport std.types { Int }\nimport v2.test.cdp.part { Rec }\nfn mk() -> Rec { Rec { value: 1 } }\n"
+data cdp_part_user_source: String = "module v2.test.cdp.partuser\n\nimport v2.test.cdp.part { Rec, Unit }\nfn mk(x: Unit) -> Rec { Rec { value: x } }\n"
 
 fn cdp_part_ingest(declarer: String) -> List<DagSourceReadWitness> {
   [
