@@ -1,5 +1,7 @@
 use crate::helpers::{assert_parses_strict, compile_dag, diagnostic_messages};
+use std::rc::Rc;
 use v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic;
+use v1_compiler::v1_std_core::{Connective, ExprData, Node, NodeOccurrenceIdentity};
 
 fn blocking_messages(source: &str) -> Vec<String> {
     let result = compile_dag(source);

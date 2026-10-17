@@ -14530,8 +14530,8 @@ fn generic_types_unify(left: Node, right: Node, source_indices: Map<String, Newl
   } else if generic_types_are_the_text_pair(left: left_u, right: right_u, source_indices: source_indices) {
     true
   } else {
-    generic_head_matches_application(left: left_u, right: right_u, source_indices: source_indices)
-      || generic_head_matches_application(left: right_u, right: left_u, source_indices: source_indices)
+    generic_head_matches_application(head: left_u, applied: right_u, source_indices: source_indices)
+      || generic_head_matches_application(head: right_u, applied: left_u, source_indices: source_indices)
   }
 }
 
