@@ -242,12 +242,20 @@ type IdentitySide
   = PreBootFirmwareSide
   | PostBootOsSide
 
-// A divergence, with BOTH readings. The pair is what makes a Mismatch actionable: "the serials differ" is
-// an accusation, "the BMC says X and the OS says Y" is a diagnosis.
+// A divergence, carrying BOTH readings as the pair that was actually compared -- not as two renderings.
+// The pair is what makes a Mismatch actionable ("the BMC says X and the OS says Y" is a diagnosis where
+// "the serials differ" is an accusation), and carrying the pair rather than a rendering is what keeps this
+// total: the address axis can diverge because one side reported NO addresses at all, and a rendering of that
+// side into a `NonEmptyStr` would have to be fabricated -- either a refinement cast that asserts something
+// unproven, or a sentinel string standing in for absence. Both are forbidden (DESIGN section 5: no
+// fabricated output; absence uses the language's absence type). So the divergence stores what the sides
+// SAID, and `divergence_pre_side` / `divergence_post_side` render it for a report into a LIST, where "I was
+// told nothing" is a length rather than a lie. Adding an axis that reports something other than text or
+// addresses adds an arm to that pair and to those two fns -- the compiler asks, rather than a cast
+// silently agreeing to produce a string of whatever length it gets.
 type RuntimeIdentityDivergence {
   axis: RuntimeIdentityAxis
-  pre_boot: NonEmptyStr
-  post_boot: NonEmptyStr
+  readings: AxisReadingPair
 }
 
 // ---------------------------------------------------------------------------
@@ -364,10 +372,7 @@ fn divergence_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, 
     Present { value: pair } => if axes_agree(row: row, pair: pair) {
       []
     } else {
-      match pair {
-        TextPair { pre_text: pt, post_text: po } => [RuntimeIdentityDivergence { axis: row.axis, pre_boot: pt, post_boot: po }]
-        AddressSetPair { pre_addresses: pa, post_addresses: po } => [RuntimeIdentityDivergence { axis: row.axis, pre_boot: render_mac_set(addresses: pa), post_boot: render_mac_set(addresses: po) }]
-      }
+      [RuntimeIdentityDivergence { axis: row.axis, readings: pair }]
     }
     Absent => []
   }
@@ -413,11 +418,9 @@ type AxisReadingPair
   | AddressSetPair { pre_addresses: List<Eui48Address>, post_addresses: List<Eui48Address> }
 
 // THE ONLY PLACE A READING IS EXTRACTED from either side, per axis. One place, so the fold cannot compare
-// one side's field against the other side's different field -- the bug this shape exists to prevent.
-//
-// The MAC axis decides on addresses and REPORTS a rendering: `render_mac_address` never enters a
-// comparison, only a divergence's two texts. So the divergence an address-set axis produces carries the
-// two sets themselves (what was actually compared) plus the renderings (what an operator reads).
+// one side's field against the other side's different field -- the bug this shape exists to prevent. The
+// pair extracted here is BOTH what is compared and what a divergence reports, so a report can never
+// describe a reading other than the one that decided.
 fn axis_pair(
   row: RuntimeIdentityAxisRow,
   pre: PreBootIdentityStanding,
@@ -501,11 +504,34 @@ fn same_mac_address(left: Eui48Address, right: Eui48Address) -> Bool {
     && left.octet6 == right.octet6
 }
 
-// The rendering of an address set, for REPORTING only -- never for deciding: a divergence is reported in
-// the same spelling an operator sees on the wire, but the comparison above reads addresses.
-// `render_mac_address` is the single authority for how one address is written.
-fn render_mac_set(addresses: List<Eui48Address>) -> NonEmptyStr {
-  join(addresses.map(a => render_mac_address(addr: a)), ",") as NonEmptyStr
+// THE TWO SIDES OF A DIVERGENCE, rendered for a report. Reporting only -- never deciding: the comparison
+// reads addresses and octets, and `render_mac_address` is the single authority for how one is written.
+//
+// Each side is a LIST of renderings, not a joined string, because a side is entitled to have said nothing:
+// an empty address set is a reading (the side reported no addresses), and turning that into a `NonEmptyStr`
+// means fabricating content to satisfy a refinement. As a list, the empty case is a length, which is true,
+// and a consumer that wants one string must decide what absence means for its reader -- a decision this
+// module refuses to make on its behalf. Both sides are exposed because a report that showed only one side
+// would recreate the accusation-without-diagnosis this type exists to prevent.
+//
+// What is reported is what each side REPORTED, addresses the binding rule refused included: an operator
+// diagnosing a divergence needs to see that a side's only address was a locally administered one, not a
+// list that quietly dropped it and looked like silence.
+//
+// Consumed by this module's witness and by the S10 wet half's operator report (DESIGN section 3c: named
+// later change, with its trigger).
+fn divergence_pre_side(divergence: RuntimeIdentityDivergence) -> List<NonEmptyStr> {
+  match divergence.readings {
+    TextPair { pre_text: pt, post_text: _ } => [pt]
+    AddressSetPair { pre_addresses: pa, post_addresses: _ } => pa.map(a => render_mac_address(addr: a))
+  }
+}
+
+fn divergence_post_side(divergence: RuntimeIdentityDivergence) -> List<NonEmptyStr> {
+  match divergence.readings {
+    TextPair { pre_text: _, post_text: po } => [po]
+    AddressSetPair { pre_addresses: _, post_addresses: po } => po.map(a => render_mac_address(addr: a))
+  }
 }
 
 // Which side stayed quiet, and what it said. Both sides are checked so an Unprovable is located rather than
