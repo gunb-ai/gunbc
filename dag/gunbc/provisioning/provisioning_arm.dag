@@ -2,7 +2,7 @@ module gunbc.provisioning.provisioning_arm
 
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef }
-import product.host_identity { HostIdentity }
+import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -18,7 +18,7 @@ import gunbc.fleet.site_pxe_edge_converge {
 
 // ── Sibling imports (cut 6): ONE block. These modules are not on origin/main when this lands; the
 // paths are the integration contract, reconciled by the cut-6 parent (swift-wren-451). ──
-// S0, owner nimble-koi-194: the preparation route and the standing a firmware probe answers.
+// S0, gunbc.firmware_network_boot_standing (drafted on session/swift-wren-451): the preparation route and the standing a firmware probe answers.
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootPreparationRoute,
   FirmwareNetworkBootStanding,
@@ -27,8 +27,8 @@ import gunbc.firmware_network_boot_standing {
   Unobserved,
   Refused,
 }
-// S3, owner quick-stag-169: the Ubuntu arm64 network origin an attempt fetches from.
-import extdeps.provisioning.ubuntu_arm64_network_origin { UbuntuArm64NetworkOrigin }
+// S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
+import extdeps.provisioning.ubuntu_arm64_network_origin { UbuntuNetworkOrigin }
 // S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
 
@@ -52,7 +52,7 @@ type VirtualMediaStanding
 // the attempt was for; no fn in this module matches on it, and the derivation's evidence record has no
 // field a host name could hide in.
 type AttemptBinding {
-  unit: HostIdentity
+  unit: UnitKey
   attempt: NonEmptyStr
 }
 
@@ -62,7 +62,7 @@ type DeliveryEvidence {
   firmware: FirmwareNetworkBootStanding
   chainloader: SitePxeEdgeChainloaderPin
   virtual_media: VirtualMediaStanding
-  origin: UbuntuArm64NetworkOrigin?
+  origin: UbuntuNetworkOrigin?
   seed: AltraAutoinstallSeedBinding?
 }
 
@@ -96,13 +96,13 @@ type ProvisioningArm
       attempt: AttemptBinding
       chainloader: SitePxeEdgeChainloaderBuildReceipt
       firmware: FirmwarePreparation
-      origin: UbuntuArm64NetworkOrigin
+      origin: UbuntuNetworkOrigin
       seed: AltraAutoinstallSeedBinding
     }
   | ArmedVirtualMedia {
       attempt: AttemptBinding
       media_observation: DeclarationRef
-      origin: UbuntuArm64NetworkOrigin
+      origin: UbuntuNetworkOrigin
       seed: AltraAutoinstallSeedBinding
     }
   | ArmUnobserved { attempt: AttemptBinding, missing: ArmMissingEvidence }
@@ -121,10 +121,10 @@ fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidenc
 
 fn derive_pxe(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
   match evidence.firmware {
-    Unobserved => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
+    Unobserved { gaps: _ } => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
     Refused { cause: _ } => ArmRefused { attempt: attempt, cause: FirmwareProbeRefused { standing: evidence.firmware } }
     Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwareAlreadyReady)
-    NeedsPreparation { route: r } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
+    NeedsPreparation { route: r, missing: _, obligation: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
   }
 }
 
