@@ -58,6 +58,44 @@ fn type_variable_node(id: String) -> Node {
   Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
+// THE TYPED READ OF A NODE'S inferred SLOT. resolved_type below collapses every non-Resolved state
+// into the nameless error_type node, so an unbound TypeVariable, a carried CompilerError and a
+// never-inferred node all read as the same fabricated "type" (DESIGN section 5). This read keeps the
+// four states apart. FROZEN: resolved_type takes no new callers; S6 of the nameless-type-leaf cutover
+// (work item adhoc-6584a70b-cf3) migrates the rest and deletes it.
+type TypeRead
+  = ReadResolved { node: Node }
+  | ReadUnbound { id: String }
+  | ReadErrored { message: String, span: SourceSpan }
+  | ReadDivergent
+  | ReadUninferred
+
+fn type_read(n: Node) -> TypeRead {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => ReadResolved { node: rt }
+    Present { value: TypeVariable { id: id } } => ReadUnbound { id: id }
+    Present { value: CompilerError { message: m, span: sp } } => ReadErrored { message: m, span: sp }
+    Present { value: Divergent } => ReadDivergent
+    Absent => ReadUninferred
+  }
+}
+
+// A child's verdict reads the typed slot: an unbound variable is UnderResolved, not the
+// FullyResolved a fabricated nameless node answered.
+fn child_resolution_verdict(ch: Node, source_indices: Map<String, NewlineIndex>) -> TypeResolutionVerdict {
+  if ch.inferred == none || (ch.connective == Arrow) {
+    type_resolution_verdict(n: ch, source_indices: source_indices)
+  } else {
+    match type_read(n: ch) {
+      ReadResolved { node: rt } => type_resolution_verdict(n: rt, source_indices: source_indices)
+      ReadUnbound { id: _ } => UnderResolved
+      ReadErrored { message: _, span: _ } => UnderResolved
+      ReadDivergent => DivergentExpression
+      ReadUninferred => UnderResolved
+    }
+  }
+}
+
 fn resolved_type(n: Node) -> Node {
   match n.inferred {
     Present { value: Resolved { node: rt } } => rt
@@ -266,7 +304,7 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
           fold(n.children, init: FullyResolved, f: (acc, ch) =>
             combine_resolution_verdicts(
               acc: acc,
-              next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+              next: child_resolution_verdict(ch: ch, source_indices: source_indices)
             )
           )
         }
@@ -274,7 +312,7 @@ fn type_resolution_verdict(n: Node, source_indices: Map<String, NewlineIndex>) -
         fold(n.children, init: FullyResolved, f: (acc, ch) =>
           combine_resolution_verdicts(
             acc: acc,
-            next: type_resolution_verdict(n: child_type_node(ch: ch), source_indices: source_indices)
+            next: child_resolution_verdict(ch: ch, source_indices: source_indices)
           )
         )
     }
