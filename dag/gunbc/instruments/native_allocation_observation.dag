@@ -2,7 +2,7 @@ module gunbc.instruments.native_allocation_observation
 
 import std.types { Bool, Int, List }
 import std.optional { Optional, Present, Absent }
-import std.realization_measurement { AllocationCounter, AllocationObservation, AllocationObserved, AllocationUnobservable, allocation_span_observation, allocation_provider_not_selected }
+import std.realization_measurement { AllocationCounter, AllocationObservation, AllocationObserved, AllocationOperationsRanBackwards, AllocationBytesRequestedRanBackwards, AllocationProviderNotSelected, allocation_span_observation, allocation_provider_not_selected }
 import std.measure { byte_size_count }
 import std.nat { Nat, nat_to_decimal_string }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
@@ -125,7 +125,9 @@ type AllocationCase {
 fn span_operations(o: AllocationObservation) -> Nat? {
   match o {
     AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
-    AllocationUnobservable { axis: _, reason: _ } => none
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
   }
 }
 
@@ -139,14 +141,18 @@ fn is_observed(o: AllocationObservation) -> Bool {
 fn span_is_zero(o: AllocationObservation) -> Bool {
   match o {
     AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
-    AllocationUnobservable { axis: _, reason: _ } => false
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
   }
 }
 
 fn span_at_least(o: AllocationObservation, operations: Nat, bytes: Nat) -> Bool {
   match o {
     AllocationObserved { operations: n, bytes_requested: b } => n >= operations && byte_size_count(b: b) >= bytes
-    AllocationUnobservable { axis: _, reason: _ } => false
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
   }
 }
 
@@ -177,7 +183,9 @@ fn count_text(label: String, n: Int) -> String {
 fn span_text(label: String, o: AllocationObservation) -> String {
   match o {
     AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
-    AllocationUnobservable { axis: axis, reason: reason } => concat(label, "=unobservable(", axis, ": ", reason, ")")
+    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
+    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
+    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
   }
 }
 

@@ -104,7 +104,7 @@ type ResidencyObservation
 // The demand is a resource, not a flag: an entry that `uses` AllocationCounter is the entry whose
 // emitted binary carries the counting allocator, and no other binary does (v1.compiler.emit_rust
 // NativeEffectRealizationAdmission, the claim route's denominator). A binary without it reads
-// AllocationUnobservable -- the process refuses rather than report zero.
+// AllocationProviderNotSelected -- the process refuses rather than report zero.
 resource AllocationCounter {
   kind: Observation
   mode: Read
@@ -113,11 +113,14 @@ resource AllocationCounter {
 }
 
 // AllocationObserved IS A SPAN: the operations and requested bytes between two readings of the monotone
-// counters. AllocationUnobservable names which axis could not be taken and why; it is the only arm a
-// process that selected no counting allocator can produce, and it carries no number.
+// counters. Every other arm is one closed CAUSE a span could not be taken, carries no number, and is
+// matched on rather than read as prose: a counter that ran backwards names its axis in the arm, and a
+// process that selected no counting allocator can produce only AllocationProviderNotSelected.
 type AllocationObservation
   = AllocationObserved { operations: Nat, bytes_requested: ByteSize }
-  | AllocationUnobservable { axis: String, reason: String }
+  | AllocationOperationsRanBackwards
+  | AllocationBytesRequestedRanBackwards
+  | AllocationProviderNotSelected
 
 // THE ONE FOLD FROM RAW READINGS TO THE TYPED OBSERVATION. A caller reads the counters only after
 // observed_allocation_available answered true -- the realization's own statement that the selected main
@@ -128,16 +131,16 @@ fn allocation_span_observation(operations_before: Int, operations_after: Int, by
   match checked_int_to_nat(n: operations_after - operations_before) {
     Present { value: ops } => match checked_int_to_nat(n: bytes_after - bytes_before) {
       Present { value: n } => AllocationObserved { operations: ops, bytes_requested: byte_size(count: n) }
-      Absent => AllocationUnobservable { axis: "bytes_requested", reason: "the byte counter read lower than its earlier reading" }
+      Absent => AllocationBytesRequestedRanBackwards
     }
-    Absent => AllocationUnobservable { axis: "operations", reason: "the operation counter read lower than its earlier reading" }
+    Absent => AllocationOperationsRanBackwards
   }
 }
 
 // The answer for a process whose selection did not register the counting allocator. It carries no number,
 // so a process that still allocates reads unobservable, not zero.
 fn allocation_provider_not_selected() -> AllocationObservation {
-  AllocationUnobservable { axis: "allocation", reason: "this process did not select the counting allocator" }
+  AllocationProviderNotSelected
 }
 
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
