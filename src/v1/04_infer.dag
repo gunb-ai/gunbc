@@ -11317,8 +11317,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           }
       }
     }
-    let expected_optional_parent = Present { value: "Optional" }
-    let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
+    // THE PAYLOAD ARM OF THE KERNEL OPTIONAL, BY THE DECLARATION IT RESOLVES TO: the owner the kernel
+    // scope binds for `Optional`, never the parent's spelling.
+    let is_present_ctor = type_name.value == "Present" && type_is_kernel_optional_declaration(t: raw_resolved, owner: kernel_optional_owner_declaring(env: scope.type_env, name: type_name.value))
     let applied_expected_owner = if is_present_ctor { none } else {
       variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
     }
