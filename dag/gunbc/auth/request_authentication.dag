@@ -605,6 +605,10 @@ fn human_action_authorization_decision(
 // CSRF IS A SEPARATE PROOF, never implied by the cookie. A mutation without the session's token
 // refuses even with a valid session -- login state != CSRF token -- and the service arm refuses
 // here because service writes present service evidence, not browser CSRF.
+//
+// CSRF defends an ambient browser credential (a cookie) against a forged cross-site request. A
+// kernel-attested unix-socket peer carries no ambient credential a browser can be made to
+// present: the conjunct has no subject here, and the proof is the peer itself.
 fn csrf_write_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
@@ -623,9 +627,6 @@ fn csrf_write_decision(
             cause: AccessEvidenceRejected { evidence: "csrf-token", reason: csrf_refusal_reason(c: c) },
           )
       }
-    // CSRF defends an ambient browser credential (a cookie) against a forged cross-site request. A
-    // kernel-attested unix-socket peer carries no ambient credential a browser can be made to
-    // present: the conjunct has no subject here, and the proof is the peer itself.
     HostAccountPeerEvidence { account: _, principal: _ } => Permit
     FabricServiceEvidence { kind: _, authenticated_at: _ } =>
       write_refused(
