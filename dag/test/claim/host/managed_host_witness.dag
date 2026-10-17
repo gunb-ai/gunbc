@@ -34,6 +34,8 @@ import gunbc.host.smpro_platform_capability {
   smpro_facility, smpro_facility_of_families, SmproFacilityStanding, SmproFacilityCarried,
   SmproFacilityNotCarried, SmproFacilityUnestablished, smpro_facility_licenses_read,
   SmproUnestablishedCause, BoardAdmitsNoSocFamily, NoBoardRowBound, SmproPlatformSiteRefused,
+  smpro_platform_join_obligation, SmproJoinOwesEndpoint, SmproJoinNoEndpointOwed, SmproJoinRefused,
+  SmproJoinRefusal, SmproJoinSiteRefused, SmproJoinPlatformUnestablished,
   MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
@@ -606,6 +608,68 @@ data amd_7950x3d_soc_family: SoCFamily = SoCFamily {
 // that was fine. If the mint ever folds SmproPlatformSiteRefused into NotCarried or Unestablished —
 // indistinguishable from a platform whose silicon does not carry the interface at all — this goes red,
 // which is what makes that gauntlet row able to go red at all.
+// RED (this is the claim review 81478 asked for, and the one the boot-run gauntlet row
+// MUT-SITE-AS-NEGATIVE is measured against): THE ADMISSION JOIN REFUSES THE ARMS THAT FAILED TO READ,
+// AND ADMITS ONLY THE ARM THAT NEVER HAD AN INTERFACE. Three of the four platform arms answer "no
+// endpoint" to the same question, and they are three different facts. The join used to ask one Optional
+// and answer its Absent branch `true`, which put a host whose SMpro READ FAILED on the roster next to a
+// host whose board has no such interface -- DESIGN Sec 5: "a failure arm refuses, never widens". The
+// obligation is now a declared sum with one arm per fact, so widening any single arm to true is a
+// one-line mutation this claim goes red on:
+//   SmproJoinRefused => true                     (both refusals vanish; this claim AND the boot-run
+//                                                 gauntlet row go red -- the boot row covers the subject
+//                                                 leg, this one covers the roster leg)
+//   SmproJoinNoEndpointOwed => false             (x86 cannot be managed; blocker 2's RED goes red)
+//   SmproJoinOwesEndpoint arm returning true     (the endpoint mismatch stops being a refusal; the
+//                                                 BmcControlBinding mismatch RED covers the route leg)
+// Mutating the OTHER file's arms cannot hide it: the obligation is computed here and matched here.
+test fn w_only_an_absent_interface_joins_the_roster_a_failed_read_does_not() -> Bool {
+  // THE ARM THAT OWES NOTHING IS THE ONE WITH NO INTERFACE: an x86 family the cited set answers
+  // negatively. This is the single arm blocker 2 opened, and opening it is what the reviewer's widen
+  // accusation was about -- so the claim asserts both halves: this arm passes AND nothing else does.
+  let not_carried_joins = match smpro_platform_join_obligation(
+    standing: SmproPlatformNotCarried { family: amd_7950x3d_soc_family }) {
+    SmproJoinNoEndpointOwed => true
+    SmproJoinOwesEndpoint { host: _ } => false
+    SmproJoinRefused { cause: _ } => false
+  }
+  // A REFUSED SITE REFUSES, and carries its cause so the refusal is checkable rather than anonymous.
+  // Pre-cut-2 this arm failed admission through an Option's Absent; it must still fail, and for the
+  // reason a site really was read and really was refused.
+  let site_refused_refuses = match smpro_platform_join_obligation(
+    standing: SmproPlatformSiteRefused { family: ampere_altra_soc_family, cause: SiteHasNoTargets }) {
+    SmproJoinRefused { cause: cause } => match cause {
+      SmproJoinSiteRefused { cause: SiteHasNoTargets } => true
+      SmproJoinSiteRefused { cause: SiteControlNotATarget { socket: _ } } => false
+      SmproJoinSiteRefused { cause: SiteControlAmbiguous { socket: _, matches: _ } } => false
+      SmproJoinSiteRefused { cause: SiteSocketRepeated { socket: _ } } => false
+      SmproJoinSiteRefused { cause: SiteAddressRepeated { seven_bit_address: _ } } => false
+      SmproJoinPlatformUnestablished { cause: _ } => false
+    }
+    SmproJoinNoEndpointOwed => false
+    SmproJoinOwesEndpoint { host: _ } => false
+  }
+  // UNKNOWN SILICON REFUSES TOO. Nothing was read and nothing is claimed about what the board admits;
+  // a compatibility roster is not a place to guess a platform into membership.
+  let unestablished_refuses = match smpro_platform_join_obligation(
+    standing: SmproPlatformUnestablished { cause: BoardAdmitsNoSocFamily }) {
+    SmproJoinRefused { cause: SmproJoinPlatformUnestablished { cause: BoardAdmitsNoSocFamily } } => true
+    _ => false
+  }
+  // AND THE CARRIED ARM STILL OWES THE JOIN, naming the endpoint it read. Dropping this to true would
+  // make the mismatch a member; the route-level RED covers the same refusal from the binding side.
+  let carried_owes_its_endpoint = managed_hosts() |> all(h =>
+    match h.smpro {
+      SmproPlatformCarried { family: _, site: s } => match smpro_platform_join_obligation(standing: h.smpro) {
+        SmproJoinOwesEndpoint { host: joined } => (joined as String) == (s.endpoint.host as String)
+        SmproJoinNoEndpointOwed => false
+        SmproJoinRefused { cause: _ } => false
+      }
+      _ => false
+    }) && count(managed_hosts()) == 1
+  not_carried_joins && site_refused_refuses && unestablished_refuses && carried_owes_its_endpoint
+}
+
 test fn w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller() -> Bool {
   managed_hosts() |> all(h => {
     let refused = managed_host_fixture(
