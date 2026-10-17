@@ -37,7 +37,7 @@ type ThermalGuardRole
 // that may trip toward automatic and may never justify LOWER cooling.
 type GuardTrip
   = AbsoluteTrip { trip: Celsius, standing: CitedFigureStanding }
-  | MarginBelowCeiling { margin: CelsiusDelta }
+  | MarginBelowCeiling { margin: CelsiusDelta, standing: CitedFigureStanding }
 
 // ONE TRIP PER ROLE, BY CONSTRUCTION: a guard with a duplicated or missing role is not writable.
 type FleetFanGuard {
@@ -53,10 +53,11 @@ type FleetFanPolicy {
   unreadable_sensor_trips: Bool
 }
 
-// POLICY MARGIN, NOT A DATASHEET FIGURE. A trip at the junction maximum is too late for held duty;
-// fifteen degrees is the span the fleet quiet curve uses between emergency full duty (85C) and the
-// Ampere junction maximum.
 data fleet_fan_soc_trip_margin: CelsiusDelta = celsius_delta(15)
+
+data fleet_fan_soc_margin_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Fleet thermal-engineering basis for the margin below a part's continuous junction maximum at which held duty must return to automatic. Fifteen degrees is a policy bet, not a datasheet figure; the ceiling it is taken from is the machine row's cited figure.",
+}
 
 data fleet_fan_dimm_trip_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "JEDEC or DIMM-vendor operating-temperature ceiling for the parts fitted. The 85C trip is policy toward restoring automatic control, not a cited wall against cooling.",
@@ -71,7 +72,7 @@ data fleet_fan_outlet_trip_standing: CitedFigureStanding = TranscribedUncited {
 }
 
 data fleet_fan_guard: FleetFanGuard = FleetFanGuard {
-  soc: MarginBelowCeiling { margin: fleet_fan_soc_trip_margin },
+  soc: MarginBelowCeiling { margin: fleet_fan_soc_trip_margin, standing: fleet_fan_soc_margin_standing },
   dimm: AbsoluteTrip { trip: celsius(85), standing: fleet_fan_dimm_trip_standing },
   vrd: AbsoluteTrip { trip: celsius(90), standing: fleet_fan_vrd_trip_standing },
   outlet: AbsoluteTrip { trip: celsius(70), standing: fleet_fan_outlet_trip_standing },
@@ -100,7 +101,7 @@ fn fleet_fan_guard_trip_for(guard: FleetFanGuard, role: ThermalGuardRole) -> Gua
 fn fleet_fan_trip_for(policy: FleetFanPolicy, role: ThermalGuardRole, component_ceiling: Celsius?) -> Celsius? {
   match fleet_fan_guard_trip_for(guard: policy.guard, role: role) {
     AbsoluteTrip { trip: t, standing: _ } => Present { value: t }
-    MarginBelowCeiling { margin: m } => match component_ceiling {
+    MarginBelowCeiling { margin: m, standing: _ } => match component_ceiling {
       Absent => Absent
       Present { value: c } => Present { value: celsius(celsius_count(c) - celsius_delta_count(m)) }
     }

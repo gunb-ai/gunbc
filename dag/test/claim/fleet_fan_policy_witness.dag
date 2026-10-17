@@ -108,13 +108,17 @@ fn is_bet(t: GuardTrip) -> Bool {
       CitedToAuthority { authority: _ } => false
       ObservedByReceipt { observed: _ } => false
     }
-    MarginBelowCeiling { margin: _ } => false
+    MarginBelowCeiling { margin: _, standing: st2 } => match st2 {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
+    }
   }
 }
 
 test fn witness_guard_standing_cited_versus_bet() -> Bool {
   let soc_margin = match fleet_fan_policy.guard.soc {
-    MarginBelowCeiling { margin: m } => celsius_delta_count(m) == 15
+    MarginBelowCeiling { margin: m, standing: _ } => celsius_delta_count(m) == 15
     AbsoluteTrip { trip: _, standing: _ } => false
   }
   soc_margin && is_bet(fleet_fan_policy.guard.dimm) && is_bet(fleet_fan_policy.guard.vrd) && is_bet(fleet_fan_policy.guard.outlet)
