@@ -96,7 +96,10 @@ fn ambient_census_fixture_expected() -> List<String> {
     "binding\texamples.uses\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
     "binding\texamples.uses\tInt\t1\tambient:kernel_type_spelling\tkernel:dag_binding_type_int",
     "binding\texamples.uses\tstd.algebra.FreeMonoid\t0\tgenerated\tstd.algebra.FreeMonoid",
-    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid"
+    "binding\tstd.algebra\tFreeMonoid\t0\tdeclared\tstd.algebra.FreeMonoid",
+    "binding_unanswered\tstd.algebra\tstd.algebra.FreeMonoid\tdeclared_order",
+    "binding_unanswered\texamples.decls\tstd.algebra.FreeMonoid\tdeclared_order",
+    "binding_unanswered\texamples.uses\tstd.algebra.FreeMonoid\tdeclared_order"
   ]
 }
 
@@ -129,7 +132,7 @@ fn field_at(line: String, index: Int) -> String {
 }
 
 fn fixture_join_failure(stdout: String) -> Optional<String> {
-  let lines = binding_lines(stdout: stdout)
+  let lines = split(s: stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unanswered\t"))
   let expected = ambient_census_fixture_expected()
   let missing = expected |> filter(e => count(lines |> filter(l => l == e)) == 0)
   let unexpected = lines |> filter(l => count(expected |> filter(e => e == l)) == 0)
@@ -264,9 +267,14 @@ fn ambient_name_census_standing(
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
     |> map(l => "rewritten\t" + l + "\t" + module_subjects_text(attribution: attribution, module: field_at(line: l, index: 0)))
   let subject_lines = map_keys(observed) |> map(m => "module_subjects\t" + m + "\t" + module_subjects_text(attribution: attribution, module: m))
+  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_binding_census UnrecordedSplit): declared-order
+  // heads no one resolves, printed by module and path and counted, never refused and never hidden.
+  let unanswered = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unanswered\t")))
   let bytes = (tree_rows |> join(separator: "\n")) + "\n"
     + (subject_lines |> join(separator: "\n")) + "\n"
     + (unreached |> join(separator: "\n")) + "\n"
+    + (unanswered |> join(separator: "\n")) + "\n"
+    + "unanswered_declared_order_count\t" + to_string(count(unanswered)) + "\n"
     + (rewritten_lines |> join(separator: "\n")) + "\n"
     + (refused_rewritten |> map(m => "refused_rewritten\t" + m + "\t" + (match map_get(refused_modules, m) { Present { value: stage } => stage  Absent => "-" })) |> join(separator: "\n")) + "\n"
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"

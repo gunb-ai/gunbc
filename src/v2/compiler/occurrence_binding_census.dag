@@ -7,7 +7,7 @@ import std.types { List, Map }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.node { Node, Symbol, symbol_lexeme, node_subtree_nodes }
+import v2.std.node { Node, Symbol, symbol_lexeme, Edge, ArrowSignatureOrderEdge, edge_is_core }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
 import v2.compiler.resolve {
   ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, ResolvedReferenceIdentity,
@@ -57,6 +57,21 @@ type OccurrenceBindingContribution {
   unreadable_spellings: Int
   unrecorded_references: Int
   unrecorded_paths: List<String>
+  unanswered_declared_order: List<String>
+}
+
+// THE ONE SET-ASIDE CATEGORY OF THE EXACTLY-ONE-SOURCE CONTROL, named, typed and counted, never a silent
+// skip (tidy-ant-251's ruling on PR #14112). An Arrow's declared order (^arrow_signature_order_edge) is
+// a list introduction, so its first positional child is a compiler-generated reference to
+// std.algebra.FreeMonoid; resolve carries the whole edge unwalked (resolve_arrow_node_admitted,
+// resolve_type_params_conj: the binder atoms are labels, not references), so nothing answers that head.
+// It is a reference NO ONE RESOLVES, printed as `binding_unanswered <module> <path> declared_order` and
+// not refused. Every other unrecorded reference still refuses. It dissolves when resolve answers the
+// head through resolve_generated_declaration_reference, which waits on N2b's provider acquisition
+// (#14266) so that answering it does not newly refuse closures that lack std.algebra.
+type UnrecordedSplit {
+  other: List<String>
+  declared_order: List<String>
 }
 
 fn ambient_binding_table_label(table: AmbientBindingTable) -> String {
@@ -123,7 +138,8 @@ type BindingCensusFold {
 
 fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> OccurrenceBindingContribution {
   let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_bindings), key: fn(id) { id.value }, order: int_total_order())
-  let unrecorded = unrecorded_declaration_reference_paths(tree: tree)
+  let split = unrecorded_split_walk(tree: tree, n: tree.root, order_head: false, acc: UnrecordedSplit { other: [], declared_order: [] })
+  let unrecorded = split.other
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
     match map_lookup(m: tree.occurrence_bindings, key: id) {
       Absent => acc
@@ -136,7 +152,8 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> Occurr
     duplicate_records: length(xs: tree.duplicate_binding_records),
     unreadable_spellings: folded.unreadable,
     unrecorded_references: length(xs: unrecorded),
-    unrecorded_paths: unrecorded
+    unrecorded_paths: unrecorded,
+    unanswered_declared_order: split.declared_order
   }
 }
 
@@ -145,17 +162,58 @@ fn occurrence_binding_contribution(module: String, tree: ResolvedTree) -> Occurr
 // a resolved corpus reference and writes the record as it mints, so this is zero unless some other
 // door minted a reference without passing through it -- which is the defect it exists to name.
 // Each one is named by the path it references, so the refusal says which reference escaped the record.
-fn unrecorded_declaration_reference_paths(tree: ResolvedTree) -> List<String> {
-  fold_list(xs: node_subtree_nodes(root: tree.root), empty: [], cons: fn(acc, n) {
-    if declaration_reference_unrecorded(tree: tree, n: n) {
-      match declaration_reference_path_optional(node: n) {
-        Present { value: p } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: p))
-        Absent => acc
-      }
-    } else {
-      acc
+fn unrecorded_split_walk(tree: ResolvedTree, n: Node, order_head: Bool, acc: UnrecordedSplit) -> UnrecordedSplit {
+  let here = if declaration_reference_unrecorded(tree: tree, n: n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } =>
+        if order_head {
+          UnrecordedSplit { other: acc.other, declared_order: list_snoc_item(xs: acc.declared_order, item: qualified_name_to_dotted_string(qn: p)) }
+        } else {
+          UnrecordedSplit { other: list_snoc_item(xs: acc.other, item: qualified_name_to_dotted_string(qn: p)), declared_order: acc.declared_order }
+        }
+      Absent => acc
     }
-  })
+  } else {
+    acc
+  }
+  unrecorded_split_edges(tree: tree, edges: n.children, in_order: false, first: true, acc: here)
+}
+
+// in_order: these are the children of a declared-order node, whose FIRST positional child is its head.
+fn unrecorded_split_edges(tree: ResolvedTree, edges: List<Edge>, in_order: Bool, first: Bool, acc: UnrecordedSplit) -> UnrecordedSplit {
+  match edges {
+    Empty => acc
+    Cons { head: e, tail: rest } =>
+      unrecorded_split_edges(
+        tree: tree,
+        edges: rest,
+        in_order: in_order,
+        first: false,
+        acc: if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+          unrecorded_split_order(tree: tree, order: census_edge_target(e: e), acc: acc)
+        } else {
+          unrecorded_split_walk(tree: tree, n: census_edge_target(e: e), order_head: in_order && first, acc: acc)
+        }
+      )
+  }
+}
+
+fn unrecorded_split_order(tree: ResolvedTree, order: Node, acc: UnrecordedSplit) -> UnrecordedSplit {
+  let here = if declaration_reference_unrecorded(tree: tree, n: order) {
+    match declaration_reference_path_optional(node: order) {
+      Present { value: p } => UnrecordedSplit { other: list_snoc_item(xs: acc.other, item: qualified_name_to_dotted_string(qn: p)), declared_order: acc.declared_order }
+      Absent => acc
+    }
+  } else {
+    acc
+  }
+  unrecorded_split_edges(tree: tree, edges: order.children, in_order: true, first: true, acc: here)
+}
+
+// A typed door to an edge's target: the seed's Rust emitter does not carry the element type of a
+// Cons-destructured List<Edge> to a field access on it (no field 'target' on type 'T').
+fn census_edge_target(e: Edge) -> Node {
+  e.target
 }
 
 fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
@@ -244,7 +302,11 @@ fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
 fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
   let rows = fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_binding_census_line(row: row)) })
   list_snoc_item(
-    xs: fold_list(xs: c.unrecorded_paths, empty: rows, cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unrecorded\t" + c.module + "\t" + p) }),
+    xs: fold_list(
+      xs: c.unanswered_declared_order,
+      empty: fold_list(xs: c.unrecorded_paths, empty: rows, cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unrecorded\t" + c.module + "\t" + p) }),
+      cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unanswered\t" + c.module + "\t" + p + "\tdeclared_order") }
+    ),
     item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings) + "\t" + to_string(c.unrecorded_references)
   )
 }
