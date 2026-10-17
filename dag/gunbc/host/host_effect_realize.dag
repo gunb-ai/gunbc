@@ -3786,12 +3786,13 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // the exit status here, where the ShellExecObserved carrier requires it -- the same derivation
 // every RunArgv caller makes.
 //
-// FleetSsh and EmitArtifactThenThinRun refuse where run_shell_transport refuses them, but the
-// REFUSAL TEXT changes with the carrier and says so: the old text blamed the script body's shape (a
-// command string where the fleet path admits portable words); a typed argv has no such shape
-// problem, so what remains is the transport's own authority -- the fleet seam executes through its
-// own session type and trust policy, and admitting shape_fleet_ssh_exec as a host-effect transport
-// arm is its own change with its own analysis, not a rider on this conversion.
+// FleetSsh is the same typed-argv mapping as run_typed_argv_transport: portable words through
+// typed_argv_exec_over_fleet_ssh (sealed known-hosts context and bound credential). The old
+// refusal was fail-closed until that seam existed; it exists, and SshShell already mapped the
+// same way through typed_argv_exec_over_ssh. A second path that called the fleet seam from a
+// leaf while this dispatcher still refused is the parallel-authority tell. EmitArtifactThenThinRun
+// still refuses: it is not a typed argv transport. The stdin sibling stays refused until its own
+// portable-words-with-stdin admit (browser_ready_labels_fleet_route_stall).
 fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
@@ -3808,18 +3809,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
     }
     SshShell { ssh_host: h } =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
-    FleetSsh { target: t, context: _ } =>
-      RunArgvTransportRefused {
-        reason: join([
-          "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          known_hosts_host_field(address: t.address) as String,
-          ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
-          " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
-          " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
-          " as a host-effect transport arm is its own change with its own analysis. Fail-closed until that",
-          " change names itself.",
-        ], ""),
-      }
+    FleetSsh { target: t, context: c } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",

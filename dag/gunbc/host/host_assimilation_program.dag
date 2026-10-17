@@ -21,6 +21,7 @@ import gunbc.host.host_standup {
   ComputeFabricEnroll,
   GreenPlaceReadiness,
   SessionPlacementEnrollment,
+  InferenceServingProvision,
   StandupAssimilationComplete,
   host_standup_spine,
   AssimilationCompleteInput,
@@ -42,6 +43,9 @@ import gunbc.host.host_standup {
   host_standup_p3_gunbc_pinned_tree_landed,
   assimilation_input_is_required,
 }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, BmcVirtualMediaInstall, ApplianceFirstBoot, ProviderGuest }
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
@@ -117,7 +121,9 @@ fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool
 // GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an
 // sccache build cache, a pinned Codex provider-runtime bundle, dashboard green-place pinning and
 // session placement are all facts about executing CI work, and an inference appliance that acquired
-// them would be competing with its own serving.
+// them would be competing with its own serving. InferenceServingProvision is the converse: installing and
+// starting the serving engine is owed by an inference-serving host, whether rented or owned, and by no CI
+// runner, so a CI-only program stays byte-identical.
 
 fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<FleetParticipation> {
   match p {
@@ -129,6 +135,7 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
     ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
     GreenPlaceReadiness => [CiRunnerParticipation]
     SessionPlacementEnrollment => [InteractiveSessionParticipation]
+    InferenceServingProvision => [InferenceServingParticipation]
     StandupAssimilationComplete => [CiRunnerParticipation, InferenceServingParticipation]
   }
 }
@@ -158,6 +165,26 @@ fn step_in_program(step: HostStandupStep, intent: HostEnrollmentIntent) -> Bool 
     Assimilation { phase: _ } => step_serves_any(step: step, wanted: intent.participation)
   }
 }
+
+// Phases whose participation is modeled but that no REAL fleet enrollment carries yet. This is the
+// set the spine-claimed claim keys on (by phase, never by label or count); its frontier row below is
+// the declaration that admits them, and deleting the row's phase from this list is how it dissolves.
+data phases_awaiting_a_real_enrollment: List<HostStandupAssimilationPhase> = [InferenceServingProvision]
+
+fn step_phase_awaits_a_real_enrollment(step: HostStandupStep, awaiting: List<HostStandupAssimilationPhase>) -> Bool {
+  match step.phase {
+    Prefix { phase: _ } => false
+    Assimilation { phase: p } => any(awaiting, q => q == p)
+  }
+}
+
+data host_assimilation_program_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.host_assimilation_program", decl_name: "phases_awaiting_a_real_enrollment"),
+    reason: "InferenceServingProvision maps to InferenceServingParticipation, and no real gunbc.fleet.fleet_enrollment fleet_enrollments entry carries that participation (the Sparks were sold), so the phase is in no real host program; the spine-claimed claim admits it only through this row",
+    dissolution: unbound_dissolution(description: "a real enrollment carries InferenceServingParticipation: #13989 lands with the current card, whose allocation gunbc.serving.rented_allocation_host_enrollment derives the intent from, or the owned RTX PRO 6000 enrollment lands. SUFFICIENT FOR deleting this row and the phase from phases_awaiting_a_real_enrollment, after which witness_every_spine_step_is_claimed_by_some_participation needs no exception"),
+  ),
+]
 
 type HostAssimilationProgram {
   identity: NonEmptyStr

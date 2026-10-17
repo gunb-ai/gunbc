@@ -3,13 +3,11 @@
 
 pub use crate::v1_compiler_dag_collect_support::{
     dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_collect_slot_seq,
-    dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo,
+    dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo, DagCollectAcc, DagCollectSlot,
 };
-pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::import_is_all;
 use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::ExprCall;
@@ -17,7 +15,7 @@ use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::ResolvedCallFormal;
 pub use crate::v1_std_core::{
-    CallSemantics, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
+    import_is_all, CallSemantics, Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

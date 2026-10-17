@@ -490,17 +490,17 @@ data serving_recipe_frontier: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_qwen3_8_27b_nvfp4_ninfer"),
-    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The recipe's model placement, engine release (ninfer_serve_81c8ce09_sm120_release), port, start source (serving_start_source) and settings have no production reader: the S3 InferenceServingProvision phase (deep-bear-539) has not landed.",
-    dissolution: unbound_dissolution(description: "feature:inference-serving-provision — the S3 provision phase derives the model placement, engine release, published port, start source (serving_start_source) and cache sizes (serving_cache_bytes) from the ServingRecipe it is handed; plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
+    reason: "Throughput and cache tiers are unread (unit cost is UnitCostThroughputUnread, not a guess); disk, cache and port settings are operator policy (flex_operator_template_v2). The driver floor 580 is TranscribedUncited, so serving_driver_verdict returns CardScreenedOnUncitedFloor rather than an established acceptance or refusal. The disk, cache and setting standings have no production reader: the derivation gunbc.serving.serving_provision_derivation reads the placement, engine release, port, start source and served model id but is itself run only by witnesses (see its frontier row), and nothing reads disk, cache sizes or settings.",
+    dissolution: unbound_dissolution(description: "a consumer reads the recipe's cache sizes (serving_cache_bytes), disk and setting standings, plus an operator or measured throughput reading. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.vllm.local_inference_lab_build", decl_name: "local_inference_lab_vllm_release"),
     reason: "The lab vLLM release row is read only by test.claim.fabric.serving_recipe_witness (flash_next_engine_ref_names_the_lab_release_row) through the Flash-Next recipe's engine reference; no production code resolves an engine reference to its release.",
-    dissolution: unbound_dissolution(description: "feature:inference-serving-provision — the S3 provision phase resolves ServingRecipe.engine to the release row and installs it; its source and flags stay TranscribedUncited until read. SUFFICIENT FOR deleting this row."),
+    dissolution: unbound_dissolution(description: "a vllm launch argv is modeled, after which the provision derivation (gunbc.serving.serving_provision_derivation serving_provision_derive) resolves ServingRecipe.engine to this release row instead of refusing typed; its source and flags stay TranscribedUncited until read. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_card_hourly"),
     reason: "serving_card_hourly, serving_cost_per_million_tokens, serving_cache_bytes and serving_recipes_interchangeable are called only by test.claim.fabric.serving_recipe_witness. The Vast shadow field (flex_offer_in_shadow_field) screens by recipe but does not yet price a card's disk or quote it to select_supply, and nothing yet reads cache sizes or recipe interchangeability. Disk-in-cost is therefore a witnessed model, not an executing route.",
-    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_wet_create_release_consumer_frontier), and the host-convergence provision phase reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
+    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_select_supply_consumer_frontier), and a consumer reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
   ),
 ]
