@@ -39,7 +39,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // limits below): the pool operator's own statement of 2026-10-17 (ctrl #2375; ctrl #2376 is the TLS card whose
 // absence makes 503 the live answer), passed on by that operator's session. Nothing at the service has been read
 // yet, so this is a bet typed as a bet (DESIGN 4d), TranscribedUncited, naming what would ground it; the lab
-// qualification's first live replies promote each figure to ObservedByReceipt. The two reasoning figures below
+// qualification's first live replies promote each figure to ObservedByReceipt. EVERYTHING in this module under
+// this standing is a consumed bet discharged at that qualification; CitedFigure gates only the figures for which
+// the lab has a policy fallback (the limits) or a refusal to project (the reasoning spellings), because only those
+// have a consumer that can act differently before the read. The two reasoning figures below
 // carry their own standing and are read only through cited_figure_read.
 data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read the path, model ids, limits and 503 semantics from live replies of the front (GET /pool/v1/models, a chat completion, a 503)" as NonEmptyStr

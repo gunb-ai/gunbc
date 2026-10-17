@@ -7,7 +7,7 @@ import gunbc.harness.harness_operator_route { operator_pin_plan, operator_pinned
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
-  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned,
+  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
 }
 import gunbc.harness.harness_backend {
@@ -239,10 +239,11 @@ test fn a_certificate_with_another_fingerprint_is_not_pinned() -> Bool {
     && !(operator_certificate_pin_decision(fingerprint_stdout: "no fingerprint here"))
 }
 
-test fn a_curl_peer_verification_exit_is_a_certificate_refusal_and_is_never_retried() -> Bool {
+test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_different_certificate_and_is_never_retried() -> Bool {
   let p = w_post(success: false, exit_code: 60, status_line: "", body: "")
   (match p.fault {
-    Present { value: OperatorCertificateNotPinned { curl_exit: x } } => x == 60
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: x } } => x == 60
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorNoCapacity } => false
     Absent => false
   }) && !harness_post_is_retryable(posted: p)
@@ -255,17 +256,19 @@ test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> 
   (match p.fault {
     Present { value: OperatorNoCapacity } => true
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
   }) && harness_post_is_retryable(posted: p)
     && (harness_outcome_label(outcome: TurnPoolNoCapacity { retries: 3, steps_taken: 2 }) == "pool-no-capacity")
 }
 
-test fn a_503_with_an_empty_body_is_not_classified_as_an_unexplained_engine_refusal_only_because_the_fault_is_typed() -> Bool {
-  // the classifier alone WOULD read an empty-body non-success on a fleet-engine route as unexplained; the turn
-  // path consults the typed fault first, which is the property under test.
+test fn a_503_with_an_empty_body_carries_the_typed_no_capacity_fault() -> Bool {
+  // asserts the fault the post carries, which the turn path consults before the unexplained-refusal classifier.
   let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 503 Service Unavailable\r\n", body: "")
   match p.fault {
-    Present { value: _ } => true
+    Present { value: OperatorNoCapacity } => true
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
   }
 }
@@ -396,5 +399,4 @@ test fn the_pin_plan_is_the_files_curl_is_handed_and_lies_beside_the_header_file
   (plan.ca_file as String) == "/s/d/pinned-ca.pem"
     && (plan.pubkey_file as String) == "/s/d/pinned-pubkey.pem"
     && !string_contains(s: plan.ca_file as String, pattern: "gunbc-pool-front")
-    && the_real_client_argv_inhabits_the_pool_request_shape()
 }
