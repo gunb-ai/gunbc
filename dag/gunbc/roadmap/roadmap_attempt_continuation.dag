@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, session_resume_bound,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_resume_bound,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
@@ -118,6 +118,10 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
   match prior.recovery {
     SessionRecoveryNone =>
       continuation_ended(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended")
+    SessionRecoveryMalformed { mismatch: mismatch } =>
+      ContinuationRefused {
+        reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
+      }
     SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
       if list_length(items: interrupted) > 0 {
         ContinuationHold {

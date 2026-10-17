@@ -30,7 +30,7 @@ import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnre
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
   session_validation_resumable, session_event_recovery_needed, session_cause_text,
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, session_recovery_of_events, session_conversation_from_request,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
 }
 import gunbc.harness.hosted_failure {
@@ -2098,6 +2098,7 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
     let lines = split(s: prior.content, delimiter: "\n") |> filter(l => trim(l) != "")
     match session_recovery_of_events(lines: lines) {
       SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
+      SessionRecoveryMalformed { mismatch: mismatch } => TurnResumeRefused { cause: join(["the session's recovery record is unreadable, so it is not resumable: ", mismatch], "") }
       SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: round } =>
         if made >= session_resume_bound {
           TurnResumeRefused { cause: join(["the session has already been resumed ", to_string(value: made), " times, the bound; causes: ", join(causes, " | ")], "") }

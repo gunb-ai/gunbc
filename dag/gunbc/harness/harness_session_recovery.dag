@@ -95,96 +95,161 @@ type SessionValidation
   | SessionInterrupted { unrecorded_call_ids: List<String> }
   | SessionUnresumable { cause: String }
 
-fn session_member_text(v: JsonValue, key: String) -> String? {
+// A MEMBER READ HAS THREE STANDINGS, NOT TWO. Present; absent where the wire protocol allows it
+// (a chat assistant message with no tool_calls, a content that is a plain string); or MALFORMED,
+// which carries the JSON mismatch. A duplicated member, a non-object parent or a value of the wrong
+// type is never "absent": reading it as absent answered SessionValidated over a call whose effect
+// was never established (review 81292), so the mismatch travels to the validation and refuses it.
+type SessionText
+  = SessionTextFound { value: String }
+  | SessionTextAbsent
+  | SessionTextMalformed { mismatch: String }
+
+type SessionElements
+  = SessionElementsFound { elements: List<JsonValue> }
+  | SessionElementsAbsent
+  | SessionElementsMalformed { mismatch: String }
+
+type SessionIds
+  = SessionIdsRead { ids: List<String> }
+  | SessionIdsMalformed { mismatch: String }
+
+fn session_member_text(v: JsonValue, key: String) -> SessionText {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } =>
       match found {
-        JsonString { value: s } => Present { value: s }
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonNumber { lexeme: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
+        JsonString { value: s } => SessionTextFound { value: s }
+        JsonNull => SessionTextMalformed { mismatch: join(["member ", key, " is null, not a string"], "") }
+        JsonBool { value: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is a boolean, not a string"], "") }
+        JsonNumber { lexeme: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is a number, not a string"], "") }
+        JsonArray { elements: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is an array, not a string"], "") }
+        JsonObject { members: _ } => SessionTextMalformed { mismatch: join(["member ", key, " is an object, not a string"], "") }
       }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    JsonMemberAbsent => SessionTextAbsent
+    JsonMemberDuplicated { count: _ } => SessionTextMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
+    JsonMemberNotAnObject => SessionTextMalformed { mismatch: join(["the value carrying member ", key, " is not a JSON object"], "") }
   }
 }
 
-fn session_member_elements(v: JsonValue, key: String) -> List<JsonValue> {
+// A string or null content is the chat shape's plain content and carries no blocks; any other
+// non-array is malformed.
+fn session_member_elements(v: JsonValue, key: String) -> SessionElements {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } =>
       match found {
-        JsonArray { elements: es } => es
-        JsonNull => [] as List<JsonValue>
-        JsonBool { value: _ } => [] as List<JsonValue>
-        JsonNumber { lexeme: _ } => [] as List<JsonValue>
-        JsonString { value: _ } => [] as List<JsonValue>
-        JsonObject { members: _ } => [] as List<JsonValue>
+        JsonArray { elements: es } => SessionElementsFound { elements: es }
+        JsonNull => SessionElementsAbsent
+        JsonString { value: _ } => SessionElementsAbsent
+        JsonBool { value: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is a boolean, not an array"], "") }
+        JsonNumber { lexeme: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is a number, not an array"], "") }
+        JsonObject { members: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " is an object, not an array"], "") }
       }
-    JsonMemberAbsent => [] as List<JsonValue>
-    JsonMemberDuplicated { count: _ } => [] as List<JsonValue>
-    JsonMemberNotAnObject => [] as List<JsonValue>
+    JsonMemberAbsent => SessionElementsAbsent
+    JsonMemberDuplicated { count: _ } => SessionElementsMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
+    JsonMemberNotAnObject => SessionElementsMalformed { mismatch: join(["the value carrying member ", key, " is not a JSON object"], "") }
   }
 }
 
 fn session_message_role(m: JsonValue) -> String {
   match session_member_text(v: m, key: "role") {
-    Present { value: r } => r
-    Absent => ""
+    SessionTextFound { value: r } => r
+    SessionTextAbsent => ""
+    SessionTextMalformed { mismatch: _ } => ""
+  }
+}
+
+fn session_role_readable(m: JsonValue) -> Bool {
+  match session_member_text(v: m, key: "role") {
+    SessionTextFound { value: _ } => true
+    SessionTextAbsent => false
+    SessionTextMalformed { mismatch: _ } => false
+  }
+}
+
+fn session_ids_combine(parts: List<SessionIds>) -> SessionIds {
+  let bad = parts |> flat_map(p => match p {
+    SessionIdsMalformed { mismatch } => [mismatch]
+    SessionIdsRead { ids: _ } => [] as List<String>
+  })
+  match bad.first() {
+    Present { value: mismatch } => SessionIdsMalformed { mismatch: mismatch }
+    Absent => SessionIdsRead { ids: flat_map(parts, p => match p { SessionIdsRead { ids } => ids SessionIdsMalformed { mismatch: _ } => [] as List<String> }) }
+  }
+}
+
+// THE ID A CALL OR RESULT CARRIES: a missing or non-string id is malformed, never dropped.
+fn session_id_of(v: JsonValue, key: String) -> SessionIds {
+  match session_member_text(v: v, key: key) {
+    SessionTextFound { value: id } => SessionIdsRead { ids: [id] }
+    SessionTextAbsent => SessionIdsMalformed { mismatch: join(["an entry carries no ", key], "") }
+    SessionTextMalformed { mismatch: m } => SessionIdsMalformed { mismatch: m }
+  }
+}
+
+fn session_block_ids(m: JsonValue, block_type: String, id_key: String) -> SessionIds {
+  match session_member_elements(v: m, key: "content") {
+    SessionElementsMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
+    SessionElementsAbsent => SessionIdsRead { ids: [] as List<String> }
+    SessionElementsFound { elements: blocks } =>
+      session_ids_combine(parts: blocks |> map(b =>
+        match session_member_text(v: b, key: "type") {
+          SessionTextFound { value: t } => if t == block_type { session_id_of(v: b, key: id_key) } else { SessionIdsRead { ids: [] as List<String> } }
+          SessionTextAbsent => SessionIdsRead { ids: [] as List<String> }
+          SessionTextMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
+        }))
   }
 }
 
 // A CALL IS NAMED BY THE ID THE ENGINE ASSIGNED IT, in either of the two shapes this harness speaks:
-// the chat shape's assistant.tool_calls[].id and the messages shape's tool_use content block id. A
-// message of one shape carries nothing of the other, so reading both is one reading.
-fn session_assistant_call_ids(m: JsonValue) -> List<String> {
-  concat(
-    flat_map(session_member_elements(v: m, key: "tool_calls"), c =>
-      match session_member_text(v: c, key: "id") { Present { value: id } => [id] Absent => [] as List<String> }),
-    flat_map(session_member_elements(v: m, key: "content"), b =>
-      if session_member_text(v: b, key: "type") == Present { value: "tool_use" } {
-        match session_member_text(v: b, key: "id") { Present { value: id } => [id] Absent => [] as List<String> }
-      } else {
-        [] as List<String>
-      }),
-  )
+// the chat shape's assistant.tool_calls[].id and the messages shape's tool_use content block id.
+fn session_assistant_call_ids(m: JsonValue) -> SessionIds {
+  session_ids_combine(parts: [
+    match session_member_elements(v: m, key: "tool_calls") {
+      SessionElementsMalformed { mismatch: x } => SessionIdsMalformed { mismatch: x }
+      SessionElementsAbsent => SessionIdsRead { ids: [] as List<String> }
+      SessionElementsFound { elements: calls } => session_ids_combine(parts: calls |> map(c => session_id_of(v: c, key: "id")))
+    },
+    session_block_ids(m: m, block_type: "tool_use", id_key: "id"),
+  ])
 }
 
 // A RESULT IS NAMED BY THE CALL IT ANSWERS: the chat shape's tool message tool_call_id, the messages
 // shape's tool_result block tool_use_id.
-fn session_result_ids(m: JsonValue) -> List<String> {
-  concat(
-    if session_message_role(m: m) == "tool" {
-      match session_member_text(v: m, key: "tool_call_id") { Present { value: id } => [id] Absent => [] as List<String> }
-    } else {
-      [] as List<String>
-    },
-    flat_map(session_member_elements(v: m, key: "content"), b =>
-      if session_member_text(v: b, key: "type") == Present { value: "tool_result" } {
-        match session_member_text(v: b, key: "tool_use_id") { Present { value: id } => [id] Absent => [] as List<String> }
-      } else {
-        [] as List<String>
-      }),
-  )
+fn session_result_ids(m: JsonValue) -> SessionIds {
+  session_ids_combine(parts: [
+    if session_message_role(m: m) == "tool" { session_id_of(v: m, key: "tool_call_id") } else { SessionIdsRead { ids: [] as List<String> } },
+    session_block_ids(m: m, block_type: "tool_result", id_key: "tool_use_id"),
+  ])
 }
 
 fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
   let indexed = enumerate(messages)
-  match indexed |> filter(p => session_message_role(m: p.second) == "assistant") |> last() {
-    Absent => SessionValidated
-    Present { value: assistant } => {
-      let after = indexed |> filter(p => p.first > assistant.first) |> map(p => p.second)
-      let recorded = flat_map(after, m => session_result_ids(m: m))
-      let unrecorded = session_assistant_call_ids(m: assistant.second)
-        |> filter(id => list_length(items: filter(recorded, r => r == id)) == 0)
-      if list_length(items: unrecorded) > 0 {
-        SessionInterrupted { unrecorded_call_ids: unrecorded }
-      } else if list_length(items: after) == 0 {
-        SessionUnresumable { cause: "the conversation ends on an assistant message, which the engine is not asked to answer" }
-      } else {
-        SessionValidated
+  if list_length(items: messages) == 0 {
+    SessionUnresumable { cause: "the request carries no messages" }
+  } else if list_length(items: messages |> filter(m => !session_role_readable(m: m))) > 0 {
+    SessionUnresumable { cause: "a message carries no readable string role, so the conversation's state is not established" }
+  } else {
+    match indexed |> filter(p => session_message_role(m: p.second) == "assistant") |> last() {
+      Absent => SessionUnresumable { cause: "the conversation carries no assistant message, so no answered state was persisted" }
+      Present { value: assistant } => {
+        let after = indexed |> filter(p => p.first > assistant.first) |> map(p => p.second)
+        match session_assistant_call_ids(m: assistant.second) {
+          SessionIdsMalformed { mismatch: x } => SessionUnresumable { cause: join(["the last assistant message's calls are unreadable: ", x], "") }
+          SessionIdsRead { ids: called } =>
+            match session_ids_combine(parts: after |> map(m => session_result_ids(m: m))) {
+              SessionIdsMalformed { mismatch: x } => SessionUnresumable { cause: join(["a recorded result is unreadable: ", x], "") }
+              SessionIdsRead { ids: recorded } => {
+                let unrecorded = called |> filter(id => list_length(items: filter(recorded, r => r == id)) == 0)
+                if list_length(items: unrecorded) > 0 {
+                  SessionInterrupted { unrecorded_call_ids: unrecorded }
+                } else if list_length(items: after) == 0 {
+                  SessionUnresumable { cause: "the conversation ends on an assistant message, which the engine is not asked to answer" }
+                } else {
+                  SessionValidated
+                }
+              }
+            }
+        }
       }
     }
   }
@@ -213,7 +278,10 @@ fn session_conversation_from_request(request_body: String, leading_system: Bool)
   match parse_json_document(s: request_body) {
     JsonDocumentUnreadable { gap: _ } => none
     JsonDocumentParsed { value: doc } => {
-      let all = session_member_elements(v: doc, key: "messages")
+      match session_member_elements(v: doc, key: "messages") {
+        SessionElementsAbsent => none
+        SessionElementsMalformed { mismatch: _ } => none
+        SessionElementsFound { elements: all } =>
       if list_length(items: all) == 0 {
         none
       } else if leading_system {
@@ -224,6 +292,7 @@ fn session_conversation_from_request(request_body: String, leading_system: Bool)
         }
       } else {
         Present { value: json_array(elements: all) }
+      }
       }
     }
   }
@@ -283,26 +352,72 @@ fn session_event_resumed(ordinal: Int, round: Int, cause: String) -> String {
 type SessionRecovery
   = SessionRecoveryNone
   | SessionRecoveryPending { causes: List<String>, resumes_made: Int, interrupted_calls: List<String>, resume_round: Int }
+  | SessionRecoveryMalformed { mismatch: String }
 
 type SessionRecoveryEvent
   = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
   | RecoveryEventResumed
   | RecoveryEventOther
+  | RecoveryEventMalformed { mismatch: String }
 
-fn session_int_member(v: JsonValue, key: String) -> Int? {
+// AN INTEGER MEMBER, WITH THE MISMATCH WHEN IT IS NOT ONE.
+type SessionInt
+  = SessionIntFound { value: Int }
+  | SessionIntMalformed { mismatch: String }
+
+fn session_int_member(v: JsonValue, key: String) -> SessionInt {
   match json_object_unique_member(v: v, key: key) {
     JsonMemberFound { value: found } =>
       match found {
-        JsonNumber { lexeme: l } => parse_int(text: serialize_json(v: JsonNumber { lexeme: l }))
-        JsonNull => none
-        JsonBool { value: _ } => none
-        JsonString { value: _ } => none
-        JsonArray { elements: _ } => none
-        JsonObject { members: _ } => none
+        JsonNumber { lexeme: l } =>
+          match parse_int(text: serialize_json(v: JsonNumber { lexeme: l })) {
+            Present { value: n } => SessionIntFound { value: n }
+            Absent => SessionIntMalformed { mismatch: join(["member ", key, " is not an integer"], "") }
+          }
+        JsonNull => SessionIntMalformed { mismatch: join(["member ", key, " is null, not an integer"], "") }
+        JsonBool { value: _ } => SessionIntMalformed { mismatch: join(["member ", key, " is a boolean, not an integer"], "") }
+        JsonString { value: _ } => SessionIntMalformed { mismatch: join(["member ", key, " is a string, not an integer"], "") }
+        JsonArray { elements: _ } => SessionIntMalformed { mismatch: join(["member ", key, " is an array, not an integer"], "") }
+        JsonObject { members: _ } => SessionIntMalformed { mismatch: join(["member ", key, " is an object, not an integer"], "") }
       }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    JsonMemberAbsent => SessionIntMalformed { mismatch: join(["member ", key, " is absent"], "") }
+    JsonMemberDuplicated { count: _ } => SessionIntMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
+    JsonMemberNotAnObject => SessionIntMalformed { mismatch: join(["the value carrying member ", key, " is not a JSON object"], "") }
+  }
+}
+
+fn session_string_elements(es: List<JsonValue>) -> SessionIds {
+  session_ids_combine(parts: es |> map(c => match c {
+    JsonString { value: id } => SessionIdsRead { ids: [id] }
+    JsonNull => SessionIdsMalformed { mismatch: "an interrupted_calls entry is null, not a string" }
+    JsonBool { value: _ } => SessionIdsMalformed { mismatch: "an interrupted_calls entry is a boolean, not a string" }
+    JsonNumber { lexeme: _ } => SessionIdsMalformed { mismatch: "an interrupted_calls entry is a number, not a string" }
+    JsonArray { elements: _ } => SessionIdsMalformed { mismatch: "an interrupted_calls entry is an array, not a string" }
+    JsonObject { members: _ } => SessionIdsMalformed { mismatch: "an interrupted_calls entry is an object, not a string" }
+  }))
+}
+
+// A recovery_needed line that cannot be read in full is MALFORMED, never defaulted: a missing cause
+// is not "no cause recorded", a missing round is not a line to skip, and an unreadable
+// interrupted_calls is not an empty one (which would read the session as resumable).
+fn session_needed_event_of(doc: JsonValue) -> SessionRecoveryEvent {
+  match session_int_member(v: doc, key: "round") {
+    SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+    SessionIntFound { value: round } =>
+      match session_member_text(v: doc, key: "cause") {
+        SessionTextAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member cause is absent" }
+        SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+        SessionTextFound { value: cause } =>
+          match session_member_elements(v: doc, key: "interrupted_calls") {
+            SessionElementsMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+            SessionElementsAbsent => RecoveryEventMalformed { mismatch: "turn.recovery_needed: member interrupted_calls is absent" }
+            SessionElementsFound { elements: es } =>
+              match session_string_elements(es: es) {
+                SessionIdsMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.recovery_needed: ", m], "") }
+                SessionIdsRead { ids: ids } => RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: ids }
+              }
+          }
+      }
   }
 }
 
@@ -311,21 +426,13 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
     JsonDocumentUnreadable { gap: _ } => RecoveryEventOther
     JsonDocumentParsed { value: doc } =>
       match session_member_text(v: doc, key: "type") {
-        Absent => RecoveryEventOther
-        Present { value: kind } =>
+        SessionTextAbsent => RecoveryEventOther
+        SessionTextMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["an event line's type: ", m], "") }
+        SessionTextFound { value: kind } =>
           if kind == "turn.resumed" {
             RecoveryEventResumed
           } else if kind == "turn.recovery_needed" {
-            match session_int_member(v: doc, key: "round") {
-              Absent => RecoveryEventOther
-              Present { value: round } =>
-                RecoveryEventNeeded {
-                  cause: match session_member_text(v: doc, key: "cause") { Present { value: c } => c Absent => "no cause recorded" },
-                  round: round,
-                  interrupted_calls: flat_map(session_member_elements(v: doc, key: "interrupted_calls"), c =>
-                    match c { JsonString { value: id } => [id] JsonNull => [] as List<String> JsonBool { value: _ } => [] as List<String> JsonNumber { lexeme: _ } => [] as List<String> JsonArray { elements: _ } => [] as List<String> JsonObject { members: _ } => [] as List<String> }),
-                }
-            }
+            session_needed_event_of(doc: doc)
           } else {
             RecoveryEventOther
           }
@@ -333,17 +440,32 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
   }
 }
 
-// A LINE THE READER CANNOT PARSE IS NOT A RECOVERY: it reads as no recovery event, which leaves the
-// session ended exactly as it was before this slice. An unreadable stream can lose a resume; it
-// cannot manufacture one.
+// A LINE THAT IS NOT JSON, OR IS NOT A RECOVERY EVENT, reads as no recovery event, which leaves the
+// session ended exactly as it was before this slice: an unreadable stream can lose a resume, it
+// cannot manufacture one. A line that CLAIMS to be a recovery event and cannot be read in full is
+// not that: it is Malformed, and the decision refuses on it.
 fn session_recovery_of_events(lines: List<String>) -> SessionRecovery {
   let events = lines |> map(l => session_recovery_event_of_line(line: l))
+  let malformed = events |> flat_map(e => match e {
+    RecoveryEventMalformed { mismatch } => [mismatch]
+    RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => [] as List<String>
+    RecoveryEventResumed => [] as List<String>
+    RecoveryEventOther => [] as List<String>
+  })
+  match malformed.first() {
+    Present { value: mismatch } => SessionRecoveryMalformed { mismatch: mismatch }
+    Absent => session_recovery_of_read_events(events: events)
+  }
+}
+
+fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> SessionRecovery {
   let needed = events |> flat_map(e => match e {
     RecoveryEventNeeded { cause, round, interrupted_calls } => [RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: interrupted_calls }]
     RecoveryEventResumed => [] as List<SessionRecoveryEvent>
     RecoveryEventOther => [] as List<SessionRecoveryEvent>
+    RecoveryEventMalformed { mismatch: _ } => [] as List<SessionRecoveryEvent>
   })
-  let resumed = list_length(items: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false }))
+  let resumed = list_length(items: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false RecoveryEventMalformed { mismatch: _ } => false }))
   if list_length(items: needed) <= resumed {
     SessionRecoveryNone
   } else {
@@ -353,13 +475,14 @@ fn session_recovery_of_events(lines: List<String>) -> SessionRecovery {
         match latest {
           RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
             SessionRecoveryPending {
-              causes: needed |> map(e => match e { RecoveryEventNeeded { cause, round: _, interrupted_calls: _ } => cause RecoveryEventResumed => "" RecoveryEventOther => "" }),
+              causes: needed |> map(e => match e { RecoveryEventNeeded { cause, round: _, interrupted_calls: _ } => cause RecoveryEventResumed => "" RecoveryEventOther => "" RecoveryEventMalformed { mismatch: _ } => "" }),
               resumes_made: resumed,
               interrupted_calls: interrupted_calls,
               resume_round: round,
             }
           RecoveryEventResumed => SessionRecoveryNone
           RecoveryEventOther => SessionRecoveryNone
+          RecoveryEventMalformed { mismatch: _ } => SessionRecoveryNone
         }
     }
   }
