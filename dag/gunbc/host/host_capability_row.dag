@@ -37,7 +37,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import std.types { Int, List }
 import gunbc.host.megarac_operation_standing {
   MegaRacOperationEvidence,
-  MegaRacCurrentBuildStanding,
+  MegaRacCurrentBuild,
   CurrentBuildRead,
   CurrentBuildKnownUnread,
   CurrentBuildUnobserved,

@@ -29,7 +29,7 @@ import gunbc.host.virtual_media_boot_selection {
   VirtualMediaUnestablished,
 }
 import gunbc.host.host_capability_row {
-  host_capability_row, HostCapabilityRowKnown,
+  host_capability_row, HostCapabilityRowKnown, HostCapabilityRowNoCurrentRelease,
 }
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, megarac_release_capability_row_for,

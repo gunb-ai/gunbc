@@ -845,7 +845,7 @@ data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_p
   // here would be the host-name branch DESIGN forbids. The registry is the aggregate of committed
   // operation evidence and the current-build fold keys it by the controller endpoint inside, so one
   // value answers for every unit the roster contains.
-  subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
+  subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence())),
   peer_roster: reset_observer_peer_roster(),
 )
 
