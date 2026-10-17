@@ -1,6 +1,8 @@
 module gunbc.parse_verdict_schema
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, Map, NonEmptyStr }
+import std.optional { Absent, Optional, Present }
+import std.algebra { map_lookup }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -33,7 +35,7 @@ data parse_verdict_pr2_restore_frontier: ParseVerdictLaterConsumer = ParseVerdic
     field: WholeDeclaration
   },
   named_consumer: "gunbc.parse_verdict_restore — PR-2 restores the GHA prefix gunbc-materialization-parse-verdict-<compiler>- on pull_request and reads receipts.tsv",
-  trigger: unbound_dissolution(description: "dissolves when the PR-2 consumer step restores that prefix on pull_request heads and refuses EvictedRefused when the blob is absent")
+  trigger: unbound_dissolution(description: "dissolves when the PR-2 consumer step restores that prefix on pull_request heads and the parse step reuses a receipt only on exact identity, counting every miss by its typed standing")
 }
 
 // Named roots of the parse-compiler identity (not the member list). Members are
@@ -60,30 +62,46 @@ fn parse_compiler_sha_identity_blob_path() -> String {
   join([parse_compiler_sha_identity_blob_dir, "/identity"], "")
 }
 
-// I_head vs I_base by the same identity fold; prefix restore of the GHA blob.
-type ParseVerdictReuse
-  = Reused { compiler: String }
-  | FreshIdentityWalked { compiler: String }
-  | EvictedRefused { compiler: String }
+// THE PER-MODULE REUSE STANDING. A pull-request run reuses a stored Accepted receipt only on EXACT
+// identity: the restored base identity equals the head's compiler identity AND the module's own
+// receipt line (digest stamped with that identity) is in the restored receipts. Every other state is
+// a typed, countable miss that re-parses; none is widened to a near identity, and an absent
+// (evicted or never restored) entry is a miss, never Accepted (DESIGN.md section 5). The absence
+// misses are one arm each because they ask for different fixes: a missing identity blob means the
+// base sha never published, a missing receipts blob means the entry was evicted (GHA caches are
+// released after idle and capped per repository, extdeps.cache.github_actions).
+type ParseVerdictStanding
+  = Reused
+  | MissIdentityAbsent
+  | MissIdentityMismatch
+  | MissEntryAbsent
+  | MissDigestUnseen
 
-fn parse_verdict_reuse_from(i_head: String, i_base: String, restore_hit: Bool) -> ParseVerdictReuse {
-  if i_head != i_base {
-    FreshIdentityWalked { compiler: i_head }
-  } else if restore_hit {
-    Reused { compiler: i_head }
-  } else {
-    EvictedRefused { compiler: i_head }
+fn parse_verdict_standing(
+  i_head: String,
+  i_base: Optional<String>,
+  receipt_lines: Optional<Map<String, Bool>>,
+  source_digest: String
+) -> ParseVerdictStanding {
+  match i_base {
+    Absent => MissIdentityAbsent
+    Present { value: base } =>
+      if base != i_head {
+        MissIdentityMismatch
+      } else {
+        match receipt_lines {
+          Absent => MissEntryAbsent
+          Present { value: lines } =>
+            match map_lookup(m: lines, key: parse_verdict_stored_accepted_line(source_digest: source_digest, compiler: i_head)) {
+              Present { value: _ } => Reused
+              Absent => MissDigestUnseen
+            }
+        }
+      }
   }
 }
 
-fn parse_verdict_reuse_may_save(standing: ParseVerdictReuse, is_main_push: Bool) -> Bool {
-  if is_main_push {
-    true
-  } else {
-    match standing {
-      Reused { compiler: _ } => false
-      FreshIdentityWalked { compiler: _ } => false
-      EvictedRefused { compiler: _ } => false
-    }
-  }
-}
+// The directory a pull-request run restores both base-sha entries into; the verb reads these two
+// names under it, so the workflow's restore paths and the reader share one spelling.
+data parse_verdict_restore_identity_basename: String = "identity"
+data parse_verdict_restore_receipts_basename: String = "receipts.tsv"

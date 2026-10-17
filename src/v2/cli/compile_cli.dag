@@ -184,7 +184,8 @@ type CliVerb
       source_roots: FreeMonoid<String>,
       compiler: Optional<String>,
       write_identity: Optional<String>,
-      receipts: Optional<String>
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
 
 // THE VERBS WHOSE ONLY OPTION IS --source-root. They parse identically and differ in spelling, usage
@@ -241,7 +242,8 @@ fn cli_roots_verb_selected(
         source_roots: roots,
         compiler: compiler,
         write_identity: write_identity,
-        receipts: receipts
+        receipts: receipts,
+        reuse_from: reuse_from
       }
   }
 }
@@ -271,32 +273,45 @@ type CliParseState
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
       write_identity: Optional<String>,
-      receipts: Optional<String>
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
   | CliParseSeekRootsValue {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
       write_identity: Optional<String>,
-      receipts: Optional<String>
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
   | CliParseSeekCompilerValue {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
       write_identity: Optional<String>,
-      receipts: Optional<String>
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
   | CliParseSeekWriteIdentityValue {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
-      receipts: Optional<String>
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
   | CliParseSeekReceiptsValue {
       kind: CliRootsVerb,
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
-      write_identity: Optional<String>
+      write_identity: Optional<String>,
+      reuse_from: Optional<String>
+    }
+  | CliParseSeekReuseFromValue {
+      kind: CliRootsVerb,
+      roots: FreeMonoid<String>,
+      compiler: Optional<String>,
+      write_identity: Optional<String>,
+      receipts: Optional<String>,
+      reuse_from: Optional<String>
     }
   | CliParseFailed { reason: Symbol, detail: String }
 
@@ -343,7 +358,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
               roots: Empty,
               compiler: optional_absent(),
               write_identity: optional_absent(),
-              receipts: optional_absent()
+              receipts: optional_absent(),
+              reuse_from: optional_absent()
             }
           Absent =>
             CliParseFailed {
@@ -352,14 +368,15 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
             }
         }
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if arg == cli_option_source_root {
         CliParseSeekRootsValue {
           kind: kind,
           roots: roots,
           compiler: compiler,
           write_identity: write_identity,
-          receipts: receipts
+          receipts: receipts,
+          reuse_from: reuse_from
         }
       } else {
         if arg == cli_option_compiler {
@@ -369,7 +386,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                 kind: kind,
                 roots: roots,
                 write_identity: write_identity,
-                receipts: receipts
+                receipts: receipts,
+                reuse_from: reuse_from
               }
             CliRootsDifferential =>
               CliParseFailed {
@@ -390,7 +408,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                   kind: kind,
                   roots: roots,
                   compiler: compiler,
-                  receipts: receipts
+                  receipts: receipts,
+                  reuse_from: reuse_from
                 }
               CliRootsDifferential =>
                 CliParseFailed {
@@ -411,7 +430,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                     kind: kind,
                     roots: roots,
                     compiler: compiler,
-                    write_identity: write_identity
+                    write_identity: write_identity,
+                    reuse_from: reuse_from
                   }
                 CliRootsDifferential =>
                   CliParseFailed {
@@ -433,7 +453,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           }
         }
       }
-    CliParseSeekCompilerValue { kind: kind, roots: roots, write_identity: write_identity, receipts: receipts } =>
+    CliParseSeekCompilerValue { kind: kind, roots: roots, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_compiler_missing_value,
@@ -445,10 +465,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           roots: roots,
           compiler: optional_present(value: arg),
           write_identity: write_identity,
-          receipts: receipts
+          receipts: receipts,
+          reuse_from: reuse_from
         }
       }
-    CliParseSeekWriteIdentityValue { kind: kind, roots: roots, compiler: compiler, receipts: receipts } =>
+    CliParseSeekWriteIdentityValue { kind: kind, roots: roots, compiler: compiler, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_write_identity_missing_value,
@@ -460,10 +481,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           roots: roots,
           compiler: compiler,
           write_identity: optional_present(value: arg),
-          receipts: receipts
+          receipts: receipts,
+          reuse_from: reuse_from
         }
       }
-    CliParseSeekReceiptsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity } =>
+    CliParseSeekReceiptsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_receipts_missing_value,
@@ -475,10 +497,11 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           roots: roots,
           compiler: compiler,
           write_identity: write_identity,
-          receipts: optional_present(value: arg)
+          receipts: optional_present(value: arg),
+          reuse_from: reuse_from
         }
       }
-    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+    CliParseSeekRootsValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if cli_arg_is_option(arg: arg) {
         CliParseFailed {
           reason: ^cli_source_root_missing_value,
@@ -490,7 +513,8 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
           roots: Cons { head: arg, tail: roots },
           compiler: compiler,
           write_identity: write_identity,
-          receipts: receipts
+          receipts: receipts,
+          reuse_from: reuse_from
         }
       }
     CliParseSeekRootValue { entry: entry, roots: roots, target: target } =>
@@ -580,27 +604,27 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
       }
-    CliParseSeekCompilerValue { kind: _, roots: _, write_identity: _, receipts: _ } =>
+    CliParseSeekCompilerValue { kind: _, roots: _, write_identity: _, receipts: _, reuse_from: _ } =>
       CliPlanRefused {
         reason: ^cli_compiler_missing_value,
         detail: concat(cli_option_compiler, " takes the parse-compiler identity, and none followed it")
       }
-    CliParseSeekWriteIdentityValue { kind: _, roots: _, compiler: _, receipts: _ } =>
+    CliParseSeekWriteIdentityValue { kind: _, roots: _, compiler: _, receipts: _, reuse_from: _ } =>
       CliPlanRefused {
         reason: ^cli_write_identity_missing_value,
         detail: concat(cli_option_write_identity, " takes a path, and none followed it")
       }
-    CliParseSeekReceiptsValue { kind: _, roots: _, compiler: _, write_identity: _ } =>
+    CliParseSeekReceiptsValue { kind: _, roots: _, compiler: _, write_identity: _, reuse_from: _ } =>
       CliPlanRefused {
         reason: ^cli_receipts_missing_value,
         detail: concat(cli_option_receipts, " takes a path, and none followed it")
       }
-    CliParseSeekRootsValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _ } =>
+    CliParseSeekRootsValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
       CliPlanRefused {
         reason: ^cli_source_root_missing_value,
         detail: concat(cli_option_source_root, " takes a directory, and none followed it")
       }
-    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+    CliParseSeekRootsOption { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
@@ -656,7 +680,7 @@ fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
         CliEmitClosure { entry: _, source_roots: roots, target: _ } => roots
         CliIfArmReaderDifferential { source_roots: roots } => roots
         CliCheckLayout { source_roots: roots } => roots
-        CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _ } => roots
+        CliParsePopulation { source_roots: roots, compiler: _, write_identity: _, receipts: _, reuse_from: _ } => roots
       }
   }
 }
@@ -715,7 +739,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
             cli_if_arm_reader_differential_outcome(census: if_arm_reader_differential(ingest: ingest))
           }
         CliCheckLayout { source_roots: _ } => cli_verb_takes_no_ingest(verb: cli_verb_check_layout)
-        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _ } =>
+        CliParsePopulation { source_roots: _, compiler: _, write_identity: _, receipts: _, reuse_from: _ } =>
           cli_verb_takes_no_ingest(verb: cli_verb_parse_population)
         CliEmitClosure { entry: entry, source_roots: _, target: target } =>
           if length(xs: ingest) == 0 {
@@ -945,7 +969,7 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
       cli_run_acquired(plan: plan, bindings: bindings, entries: [entry])
     CliIfArmReaderDifferential { source_roots: _ } => cli_run_differential(plan: plan, bindings: bindings)
     CliCheckLayout { source_roots: _ } => cli_population_reported(report: check_layout(bindings: bindings))
-    CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+    CliParsePopulation { source_roots: _, compiler: compiler, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
       cli_population_reported(
         report: parse_population_written(
           bindings: bindings,
