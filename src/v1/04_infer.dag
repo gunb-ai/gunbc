@@ -9779,7 +9779,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) {
+          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
             []
           } else {
             [inference_error(
@@ -15569,6 +15569,73 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     } else {
       qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
     }
+}
+
+// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
+// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
+// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
+// target refused here although they are one type. Resolution already carries the answer:
+// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
+// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
+// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
+// matches, and every applied argument agrees pairwise. transparent_alias_identity_agrees cannot
+// answer this: it admits only bare-name aliases and deliberately records no edge for `type A = B<C>`.
+// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
+// parameter's declared type reference carries none today, so `if c { a } else { b }` over
+// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
+// itself still judges by spelling (gunbc.recurring_failure_mode
+// carrier_alias_refuses_its_own_carriers_constructor).
+fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  if left_opt != right_opt { false }
+  else {
+    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
+    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
+    let left_args = left_inner.children
+    let right_args = right_inner.children
+    let same_declaration = match whole_declaration_carried(n: left_inner) {
+      Present { value: l } =>
+        match whole_declaration_carried(n: right_inner) {
+          Present { value: r } => declaration_ref_eq(a: l, b: r)
+          Absent => false
+        }
+      Absent => false
+    }
+    same_declaration
+      && (left_args |> count) == (right_args |> count)
+      && if_branch_type_arguments_agree(left_args: left_args, right_args: right_args, scope: scope)
+  }
+}
+
+fn if_branch_type_arguments_agree(left_args: List<Node>, right_args: List<Node>, scope: InferScope) -> Bool {
+  match left_args |> first {
+    Present { value: l } =>
+      match right_args |> first {
+        Present { value: r } =>
+          if_branch_argument_types_agree(left: child_type_node(ch: l), right: child_type_node(ch: r), scope: scope)
+            && if_branch_type_arguments_agree(left_args: left_args |> skip(1), right_args: right_args |> skip(1), scope: scope)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+// AN ARGUMENT AGREES BY ITS WHOLE STRUCTURE, NOT ITS HEAD. node_type_compatible reads a non-container
+// application's head name and none of its arguments, so Inner<Int> and Inner<Bool> agree there; this
+// relation recurses through every applied argument so the alias admission cannot extend that. The
+// head-only reading itself is node_type_compatible's and is untouched here: `if c { a } else { b }` over
+// `a: Boxed<Int>, b: Boxed<Bool>` is admitted on main without any alias.
+fn if_branch_argument_types_agree(left: Node, right: Node, scope: InferScope) -> Bool {
+  let heads_agree = node_type_compatible(
+    left: left,
+    right: right,
+    source_indices: scope.type_env.source_indices,
+    text: TextJudgedIn { env: scope.type_env })
+    || if_branch_types_agree_through_alias_identity(left: left, right: right, scope: scope)
+  heads_agree
+    && (left.children |> count) == (right.children |> count)
+    && if_branch_type_arguments_agree(left_args: left.children, right_args: right.children, scope: scope)
 }
 
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the

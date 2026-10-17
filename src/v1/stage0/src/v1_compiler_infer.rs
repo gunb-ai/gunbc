@@ -15316,14 +15316,18 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         else_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     );
-                    let branch_diags = if crate::v1_compiler_infer_types::node_type_compatible(
+                    let branch_diags = if (crate::v1_compiler_infer_types::node_type_compatible(
                         then_rt.clone(),
                         else_rt.clone(),
                         scope.type_env.clone().source_indices.clone(),
                         Rc::new(TextJudgment::TextJudgedIn {
                             env: scope.type_env.clone(),
                         }),
-                    ) {
+                    ) || if_branch_types_agree_through_alias_identity(
+                        then_rt.clone(),
+                        else_rt.clone(),
+                        scope.clone(),
+                    )) {
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![inference_error(
@@ -26851,6 +26855,103 @@ pub fn transparent_alias_identity_agrees(
                 (crate::v1_std_core::qualified_last_segment(left_rep.clone())
                     == crate::v1_std_core::qualified_last_segment(right_rep.clone()))
             })
+    }
+}
+
+pub fn if_branch_types_agree_through_alias_identity(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        if (left_opt.clone() != right_opt.clone()) {
+            false
+        } else {
+            {
+                let left_inner = if left_opt.clone() {
+                    crate::v1_std_core::with_required_cardinality(left.clone())
+                } else {
+                    left.clone()
+                };
+                let right_inner = if right_opt.clone() {
+                    crate::v1_std_core::with_required_cardinality(right.clone())
+                } else {
+                    right.clone()
+                };
+                let left_args = left_inner.children.clone();
+                let right_args = right_inner.children.clone();
+                let same_declaration = match whole_declaration_carried(left_inner.clone()) {
+                    Some(l) => match whole_declaration_carried(right_inner.clone()) {
+                        Some(r) => crate::std_decl_ref::declaration_ref_eq(l.clone(), r.clone()),
+                        std::option::Option::None => false,
+                    },
+                    std::option::Option::None => false,
+                };
+                ((same_declaration.clone()
+                    && ((left_args.clone().len() as i64) == (right_args.clone().len() as i64)))
+                    && if_branch_type_arguments_agree(
+                        left_args.clone(),
+                        right_args.clone(),
+                        scope.clone(),
+                    ))
+            }
+        }
+    }
+}
+
+pub fn if_branch_type_arguments_agree(
+    left_args: Rc<Vec<Rc<Node>>>,
+    right_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match left_args.clone().first().cloned() {
+            Some(l) => match right_args.clone().first().cloned() {
+                Some(r) => {
+                    (if_branch_argument_types_agree(
+                        crate::v1_compiler_infer_types::child_type_node(l.clone()),
+                        crate::v1_compiler_infer_types::child_type_node(r.clone()),
+                        scope.clone(),
+                    ) && if_branch_type_arguments_agree(
+                        Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
+                        Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
+                        scope.clone(),
+                    ))
+                }
+                std::option::Option::None => false,
+            },
+            std::option::Option::None => true,
+        }
+    })
+}
+
+pub fn if_branch_argument_types_agree(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let heads_agree = (crate::v1_compiler_infer_types::node_type_compatible(
+            left.clone(),
+            right.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            Rc::new(TextJudgment::TextJudgedIn {
+                env: scope.type_env.clone(),
+            }),
+        ) || if_branch_types_agree_through_alias_identity(
+            left.clone(),
+            right.clone(),
+            scope.clone(),
+        ));
+        ((heads_agree.clone()
+            && ((left.children.clone().len() as i64) == (right.children.clone().len() as i64)))
+            && if_branch_type_arguments_agree(
+                left.children.clone(),
+                right.children.clone(),
+                scope.clone(),
+            ))
     }
 }
 
