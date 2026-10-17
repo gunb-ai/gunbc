@@ -10,7 +10,7 @@ JSON document, and it carries no firmware/version context -- the 3.22 figures be
 either, those files govern. Response bodies for the privileged writes were not saved as bytes.
 
 PRECONDITION (the load-bearing fact): a reachable host OS with an in-band IPMI system interface (SSIF on this board).
-  A rescue Ubuntu live USB (user installer / password rescue, passwordless sudo) booted on the host
+  A rescue Ubuntu live USB (operator-prepared; its login is not recorded here) booted on the host
   and took a DHCP lease at 192.168.1.251 (hostname came up as `ubuntu-server`, not `rescue`).
   Host NIC MAC 9c:6b:00:e7:ca:9b — adjacent to the BMC MAC on the same board.
   ipmitool installed from Ubuntu archive; kernel modules ipmi_devintf/ipmi_ssif/ipmi_msghandler loaded;
