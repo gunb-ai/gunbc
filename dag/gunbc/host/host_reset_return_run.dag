@@ -1,5 +1,6 @@
 module gunbc.host.host_reset_return_run
 
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import std.optional { Absent, Present }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
@@ -416,6 +417,7 @@ fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) 
 }
 
 fn host_reset_return_attempt(
+  evidence: MegaRacOperationEvidence,
   proof: UnitHoldProof?,
   candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
@@ -426,7 +428,7 @@ fn host_reset_return_attempt(
 {
   let subject = candidate.host.host as NonEmptyStr
   let selection = select_reset_observer(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
@@ -635,6 +637,7 @@ fn host_reset_return_dispatch_admission_wet() -> ProcessExit
 data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
 fn host_reset_return_attempt_exit(
+  evidence: MegaRacOperationEvidence,
   proof: UnitHoldProof?,
   candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
@@ -647,6 +650,7 @@ fn host_reset_return_attempt_exit(
   host_reset_return_exit(
     verdict: reset_return_verdict_of_mint(
       mint: host_reset_return_attempt(
+        evidence: evidence,
         proof: proof,
         candidate: candidate,
         observer: observer,
@@ -660,7 +664,7 @@ fn host_reset_return_attempt_exit(
   )
 }
 
-fn host_reset_return_wet() -> ProcessExit
+fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
 {
   let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
   let password_file_raw = match credential {
@@ -694,7 +698,7 @@ fn host_reset_return_wet() -> ProcessExit
     RouteEstablished { route: r } => r
   }
   let assignment = reset_dispatch_pairings(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
     peer_roster: reset_observer_peer_roster(),
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
@@ -704,7 +708,7 @@ fn host_reset_return_wet() -> ProcessExit
         remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
-      match reset_lookup_subject(lookup: reset_subject_for(host: subject)) {
+      match reset_lookup_subject(lookup: reset_subject_for(evidence: evidence, host: subject)) {
         Absent =>
           host_reset_return_preflight_exit(
             refusal: SubjectHasNoRosterRow { subject: subject },

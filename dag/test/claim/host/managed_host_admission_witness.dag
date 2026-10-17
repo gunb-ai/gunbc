@@ -43,6 +43,7 @@ import gunbc.host.host_reset_subject_roster {
 import gunbc.host.smpro_platform_capability { SmproPlatformNotCarried }
 import extdeps.cpu.types { SoCFamily }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.auth.managed_host_boot_federation {
   boot_federation_for, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
 }
@@ -72,8 +73,8 @@ test fn w_reset_roster_and_boot_federation_match_the_declared_drop_arm() -> Bool
         MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
           (d.identity as String) == (mtcollins1_bmc_secure_standing_predates_reflash.identity as String)
             && (h.host as String) == (operator_host_mtcollins1 as String)
-            && count(reset_subject_roster()) == 1
-            && reset_subject_roster() |> all(e => match e {
+            && count(reset_subject_roster(evidence: megarac_operation_evidence())) == 1
+            && reset_subject_roster(evidence: megarac_operation_evidence()) |> all(e => match e {
               OrdinaryResetRosterHost { host: _ } => false
               ResetRosterHostUnderDeclaredDrop { host: rh, drop: rd } =>
                 (rh as String) == (operator_host_mtcollins1 as String)
@@ -157,7 +158,7 @@ test fn w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties() -> Bo
             records: [without],
             allocations: gunbc_fleet_hostname_allocations,
           )
-          count(hosts) == 0 && count(reset_subject_roster_of(hosts: hosts)) == 0
+          count(hosts) == 0 && count(reset_subject_roster_of(evidence: megarac_operation_evidence(), hosts: hosts)) == 0
         }
       }
   }

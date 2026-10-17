@@ -4,6 +4,7 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.host.managed_host { ManagedHost }
 import gunbc.host.board_platform_facts { host_board_architecture }
 import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowKnown }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
@@ -22,10 +23,13 @@ import gunbc.host.virtual_media_boot_selection {
 // board establishes and the controller's virtual-media capability — with no host-name branch. A
 // host that cannot have a selection decided for it is not a reset subject, however capable its
 // controller.
-fn reset_boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
+fn reset_boot_selection(
+  evidence: MegaRacOperationEvidence,
+  host: ManagedHost,
+) -> VirtualMediaBootSelectionOutcome {
   let arch = host_board_architecture(access: host.access)
   let media =
-    match host_capability_row(access: host.access) {
+    match host_capability_row(evidence: evidence, access: host.access) {
       HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
       _ => CapabilityUnestablished
     }

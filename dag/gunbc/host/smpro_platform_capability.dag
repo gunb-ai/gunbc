@@ -362,22 +362,4 @@ fn smpro_site_refusal_text(cause: SmproSiteRefusal) -> String {
   }
 }
 
-// WHETHER A STANDING LICENSES AN SMpro READ. Kept separate from the standing so a consumer that only
-// gates on it cannot pattern-match its way into treating Unestablished as NotCarried.
-fn smpro_facility_licenses_read(standing: SmproFacilityStanding) -> Bool {
-  match standing {
-    SmproFacilityCarried { family: _ } => true
-    SmproFacilityNotCarried { family: _ } => false
-    SmproFacilityUnestablished { cause: _ } => false
-  }
-}
 
-// WHETHER A READING WAS TAKEN. Independent of the facility standing above, by construction: a
-// NotTaken reading on a Carried platform is a skipped pass, and on a NotCarried platform there is no
-// pass to take.
-fn smpro_reading_taken(reading: SmproReading) -> Bool {
-  match reading {
-    SmproProbed { observation: _ } => true
-    SmproNotTaken { reason: _ } => false
-  }
-}
