@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 // S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
@@ -366,23 +365,13 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
 // probe's file would be a second owner of that surface that cannot be reviewed as transport work.
 // The inhabitation claim stays Uninhabited, as a value rather than prose, until a captured reply has
 // been decoded, so a reader cannot mistake "tested on schema-shaped bodies" for "emits what a BMC says".
-// The frontier status below is a pure function of the declarations it is handed; the witness that
-// the real reader declaration exists is the readers witness composing it into probe().
-data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution {
-  trigger: DeclarationAppears { ref: firmware_boot_axis_reader_ref() },
-}
-
-// THE NAME IS A COMMITMENT, NOT A DISCOVERY: this ref names the declaration the reader module
-// introduces (gunbc.firmware_network_boot_readers, fn
-// redfish_axis_replies, returning List<AxisReply>). The witness pins the literal; renaming the
-// future decoder means editing this one fn and that pin, and until then the status stays Pending
-// on purpose rather than reporting a discharge nobody earned.
+// The reader frontier (a DeclarationAppears trigger on redfish_axis_replies) is DISCHARGED: the
+// declaration landed with the readers module, so no condition is kept that could only be satisfied
+// by a caller-supplied list. What remains owed is the capture, carried by the inhabitation value below.
+// The decoder this inhabitation claim is owed by: gunbc.firmware_network_boot_readers,
+// redfish_axis_replies, returning List<AxisReply>. The witness pins the literal.
 fn firmware_boot_axis_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
-}
-
-fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
-  dissolution_status(condition: firmware_boot_axis_reader_frontier, present_decls: present_decls)
 }
 
 type AxisReplyInhabitation
