@@ -1604,7 +1604,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
+    render_rust_shared_type_if_needed(type_name: base_name, rendered: concat(base, "<", args, ">"), shared_types: shared_types, type_decl_items: type_decl_items)
       }
       ClosedAliasBindingAbsent => {
     let base = match rust_seed_host_container_base(name: base_name) {
@@ -1619,7 +1619,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
         render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, type_decl_items: type_decl_items)
       }
     ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
+    render_rust_shared_type_if_needed(type_name: base_name, rendered: concat(base, "<", args, ">"), shared_types: shared_types, type_decl_items: type_decl_items)
       }
     }
     }
@@ -16102,7 +16102,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Present { value: f } => emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           Absent => "compile_error!(\"FreeMonoid Cons missing tail field\")"
         }
-        return rust_shared_wrap_ctor(inner_expr: concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }"))
+        return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
       let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
       let rust_tn = if optional_variant {
