@@ -151,6 +151,7 @@ import v2.std.compilers.target_model {
   FunctionTypeSugarRows,
   ProducedSignatureFixed,
   ProducedSignatureDeclName,
+  ProducedSignatureTypeParams,
   ProducedSignatureParams,
   ProducedSignatureReturnType,
   ProducedParamFixed,
@@ -1310,6 +1311,12 @@ data rust_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRender
   signature: [
     ProducedSignatureFixed { token_class: ^rust_token_kw_fn },
     ProducedSignatureDeclName { token_class: ^rust_token_ident },
+    ProducedSignatureTypeParams {
+      open: ^rust_token_generic_lt,
+      separator: ^rust_token_comma,
+      close: ^rust_token_generic_gt,
+      name_class: ^rust_token_ident
+    },
     ProducedSignatureFixed { token_class: ^rust_token_lparen },
     ProducedSignatureParams,
     ProducedSignatureFixed { token_class: ^rust_token_rparen },
@@ -2396,7 +2403,9 @@ fn rust_fn_add_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_token_comma, text: ", "),
         rust_lex_rule(token_class: ^rust_token_colon, text: ": "),
         rust_lex_rule(token_class: ^rust_token_dot, text: "."),
-        rust_lex_rule(token_class: ^rust_token_pipe, text: " | ")
+        rust_lex_rule(token_class: ^rust_token_pipe, text: " | "),
+        rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
+        rust_lex_rule(token_class: ^rust_token_generic_gt, text: ">")
       ],
       right: rust_binop_operator_lex_rules()
     ),

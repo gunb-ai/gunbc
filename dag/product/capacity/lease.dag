@@ -1,7 +1,14 @@
 module product.capacity.lease
 
-import std.types { String, Bool, Int, NonEmptyStr, EpochSecs, brand }
+import std.types { String, Bool, NonEmptyStr, EpochSecs, brand }
 import std.nat { Nat }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import std.resource_release_law {
+  ReleaseLaw, CapacityAfterExpiry, resource_capacity_after_expiry,
+}
+import std.durable_exclusive_hold {
+  DurableHoldHolderLiveness, HolderObservedDead, HolderLivenessUnobservable,
+}
 import product.capacity.event_chain { EventId }
 
 // THE LEASE SEPARATES THREE FACTS THE OLD CARRIERS FUSED: which write won (the chain's append
@@ -19,23 +26,23 @@ type GrantIdentity = NonEmptyStr where brand("GrantIdentity")
 
 type LeaseFence {
   grant: GrantIdentity
-  generation: Nat
+  generation: CasGeneration
 }
 
-fn lease_fence_of(admitting_event: EventId, generation: Nat) -> LeaseFence {
+fn lease_fence_of(admitting_event: EventId, generation: CasGeneration) -> LeaseFence {
   LeaseFence { grant: (admitting_event as String) as GrantIdentity, generation: generation }
 }
 
 type FenceVerdict
   = FenceCurrent
-  | FenceObsolete { presented: Nat, current: Nat }
-  | FenceAhead { presented: Nat, current: Nat }
+  | FenceObsolete { presented: CasGeneration, current: CasGeneration }
+  | FenceAhead { presented: CasGeneration, current: CasGeneration }
   | FenceForeignGrant { presented: GrantIdentity, current: GrantIdentity }
 
 fn fence_verdict(current: LeaseFence, presented: LeaseFence) -> FenceVerdict {
-  if presented.generation < current.generation {
+  if cas_generation_count(g: presented.generation) < cas_generation_count(g: current.generation) {
     FenceObsolete { presented: presented.generation, current: current.generation }
-  } else if presented.generation > current.generation {
+  } else if cas_generation_count(g: presented.generation) > cas_generation_count(g: current.generation) {
     FenceAhead { presented: presented.generation, current: current.generation }
   } else if (presented.grant as String) != (current.grant as String) {
     FenceForeignGrant { presented: presented.grant, current: current.grant }
@@ -75,52 +82,22 @@ fn lease_grant_expired_at(grant: LeaseGrant, at: EpochSecs) -> Bool {
   grant.expires_at <= at
 }
 
-// EXPIRY ENDS THE AUTHORIZATION; IT FREES THE CAPACITY ONLY WHEN STALE USE IS IMPOSSIBLE. Under a
-// fenced resource, an expired holder's next touch is rejected by the fence, so the seat is free
-// the moment the term ends. Under a resource that cannot fence, the seat stays held until the old
-// effect is observed quiescent, or a timed lease would turn a stuck worker into oversubscription.
-type ReleaseLaw
-  = FencedResource
-  | QuiescenceRequired
-
-type QuiescenceFact
-  = Quiescent { observed_at: EpochSecs }
-  | QuiescenceUnobserved
-
-type CapacityAfterExpiry
-  = LeaseNotExpired { until: EpochSecs }
-  | CapacityFreed
-  | CapacityHeldPendingQuiescence
-
-fn capacity_after_expiry(law: ReleaseLaw, grant: LeaseGrant, at: EpochSecs, quiescence: QuiescenceFact) -> CapacityAfterExpiry {
-  if !lease_grant_expired_at(grant: grant, at: at) {
-    LeaseNotExpired { until: grant.expires_at }
+// EXPIRY ENDS THE AUTHORIZATION; IT FREES THE CAPACITY ONLY WHEN STALE USE IS IMPOSSIBLE. The law
+// itself lives in std.resource_release_law. QuiescenceFact is deleted: it was DurableHoldHolderLiveness
+// with two of the three arms. Callers that still have only a quiet/unobserved bit map it here.
+fn quiescence_as_holder_liveness(quiescent: Bool, evidence: NonEmptyStr) -> DurableHoldHolderLiveness {
+  if quiescent {
+    HolderObservedDead { evidence: evidence }
   } else {
-    match law {
-      FencedResource => CapacityFreed
-      QuiescenceRequired =>
-        match quiescence {
-          Quiescent { observed_at: _ } => CapacityFreed
-          QuiescenceUnobserved => CapacityHeldPendingQuiescence
-        }
-    }
+    HolderLivenessUnobservable { cause: evidence }
   }
 }
 
-// EQUALITY LIVES BESIDE THE TYPE, exactly as head_expectation_eq does in event_chain. It was first
-// written at a consumer that needed to compare a pool's law with a caller's, which is how one concept
-// grows two spellings: the next consumer writes it again, and the two are free to disagree about a
-// safety law.
-fn release_law_eq(left: ReleaseLaw, right: ReleaseLaw) -> Bool {
-  match left {
-    FencedResource => match right { FencedResource => true  QuiescenceRequired => false }
-    QuiescenceRequired => match right { QuiescenceRequired => true  FencedResource => false }
-  }
-}
-
-fn release_law_wire(law: ReleaseLaw) -> String {
-  match law {
-    FencedResource => "fenced-resource"
-    QuiescenceRequired => "quiescence-required"
-  }
+fn capacity_after_expiry(
+  law: ReleaseLaw,
+  grant: LeaseGrant,
+  at: EpochSecs,
+  holder: DurableHoldHolderLiveness,
+) -> CapacityAfterExpiry {
+  resource_capacity_after_expiry(law: law, expires_at: grant.expires_at, at: at, holder: holder)
 }

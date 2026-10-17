@@ -588,6 +588,12 @@ fn every_declarer_is_grounded_coproduct_native_alias(decls: TypeDeclIndex, name:
   )
 }
 
+// A coproduct that realizes as a Rust native alias (`pub type Bool = bool`) has no enum module to glob,
+// whichever module the importer reached it through: the import module's own declarations and every declarer count.
+fn name_realizes_as_native_alias(import_module: String, decls: TypeDeclIndex, name: String) -> Bool {
+  declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: name) || every_declarer_is_grounded_coproduct_native_alias(decls: decls, name: name) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: name)
+}
+
 // A TypeSummary key is `<module>.<name>`: the identity type_decl_identity minted for it.
 fn summary_declares_grounded_coproduct_native_alias(summary: TypeSummary) -> Bool {
   let segments = summary.key |> split(delimiter: ".")
@@ -7132,7 +7138,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let main_lines = concat(direct_lines, parent_main_lines)
     let variant_lines = parent_list |> flat_map(parent =>
-      if declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: parent) || every_declarer_is_grounded_coproduct_native_alias(decls: emit_info.type_decl_items, name: parent) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: parent) { [] } else {
+      if name_realizes_as_native_alias(import_module: import_module, decls: emit_info.type_decl_items, name: parent) { [] } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -7165,11 +7171,17 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
-      |> filter(en => parent_list |> any(p => p == en) == false
-        && !declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: en)
-        && !rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: en)
+      |> filter(en =>
+        let declaring_module = match reexport_source_module_name(name: en, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
+        parent_list |> any(p => p == en) == false
+        && !name_realizes_as_native_alias(import_module: declaring_module, decls: emit_info.type_decl_items, name: en)
         && rust_kernel_grounded_type_decl(module_name: import_module, item_text: en) == none)
-      |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
+      |> map(en =>
+        let declaring_mod = graph_type_import_module_filename(name: en, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+        RustUseLine { target_module: declaring_mod, text: concat("use crate::", declaring_mod, "::", en, "::*;") })
     concat(main_lines, variant_lines, wildcard_enum_lines)
   }
 }
@@ -12096,12 +12108,46 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
+// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
+// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
+// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
+// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
+// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
+// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
+// alone, with or without the shared wrap, whatever children the projected node still carries.
+fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
+    false
+  } else {
+    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
+    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    rendered == head || rendered == concat("Rc<", head, ">")
+  }
+}
+
+fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: binding } => (binding.params |> count) > 0
+    Absent => false
+  }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
+    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
@@ -13785,7 +13831,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
+  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {

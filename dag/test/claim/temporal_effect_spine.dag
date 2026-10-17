@@ -64,7 +64,7 @@ data foreign_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
-    generation: 1,
+    generation: cas_generation_first(),
   },
   observed: LeasePortForeign,
 )
@@ -74,9 +74,9 @@ data stale_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-    generation: 2,
+    generation: match cas_generation(n: 2) { Present { value: g } => g  Absent => cas_generation_first() },
   },
-  observed: LeaseRunningStale,
+  observed: LeaseRunningPastExpiry,
 )
 
 data expected_lease: HeldLease = held_lease(
@@ -84,7 +84,7 @@ data expected_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
-    generation: 3,
+    generation: match cas_generation(n: 3) { Present { value: g } => g  Absent => cas_generation_first() },
   },
   observed: LeaseRunningExpected,
 )
@@ -94,7 +94,7 @@ data absent_lease: HeldLease = held_lease(
     lease_key: witness_lease_key,
     resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
     owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-    generation: 0,
+    generation: cas_generation_first(),
   },
   observed: LeaseAbsent,
 )
@@ -346,7 +346,7 @@ test fn inaccessible_lease_refuses() -> Bool {
         lease_key: witness_lease_key,
         resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
         owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
-        generation: 0,
+        generation: cas_generation_first(),
       },
       observed: LeaseInaccessible,
     ),
@@ -361,7 +361,7 @@ test fn inaccessible_lease_refuses() -> Bool {
 test fn held_lease_observed_verdict_is_a_5_element_bijection_onto_observation_verdict() -> Bool {
   let absent = held_lease_observed_verdict(observed: LeaseAbsent)
   let expected = held_lease_observed_verdict(observed: LeaseRunningExpected)
-  let stale = held_lease_observed_verdict(observed: LeaseRunningStale)
+  let stale = held_lease_observed_verdict(observed: LeaseRunningPastExpiry)
   let foreign = held_lease_observed_verdict(observed: LeasePortForeign)
   let inaccessible = held_lease_observed_verdict(observed: LeaseInaccessible)
   match absent {
@@ -398,7 +398,7 @@ test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
     pending_step_id: witness_step_serve,
   )
   let drain_decision = decision_for_held_lease_verdict(
-    verdict: held_lease_observed_verdict(observed: LeaseRunningStale),
+    verdict: held_lease_observed_verdict(observed: LeaseRunningPastExpiry),
     lease: stale_lease,
     pending_step_id: witness_step_serve,
   )

@@ -42,6 +42,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.text { String }
 import v2.std.node {
   Ambiguous,
+  NotFound,
   Arrow,
   Atom,
   Occupancy,
