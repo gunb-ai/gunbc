@@ -18,6 +18,7 @@ import gunbc.parse_verdict_schema {
   MissIdentityAbsent,
   MissIdentityMismatch,
   MissEntryAbsent,
+  MissDeclaredRefused,
   MissDigestUnseen,
   ParseVerdictStanding,
   parse_verdict_restore_identity_basename,
@@ -86,6 +87,7 @@ type ParseVerdictReuseCounts {
   miss_identity_mismatch: Int
   miss_entry_absent: Int
   miss_digest_unseen: Int
+  miss_declared_refused: Int
 }
 
 fn parse_verdict_reuse_counts_zero() -> ParseVerdictReuseCounts {
@@ -94,7 +96,8 @@ fn parse_verdict_reuse_counts_zero() -> ParseVerdictReuseCounts {
     miss_identity_absent: 0,
     miss_identity_mismatch: 0,
     miss_entry_absent: 0,
-    miss_digest_unseen: 0
+    miss_digest_unseen: 0,
+    miss_declared_refused: 0
   }
 }
 
@@ -105,35 +108,48 @@ fn parse_verdict_reuse_counts_add(counts: ParseVerdictReuseCounts, standing: Par
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
       miss_entry_absent: counts.miss_entry_absent,
-      miss_digest_unseen: counts.miss_digest_unseen
+      miss_digest_unseen: counts.miss_digest_unseen,
+      miss_declared_refused: counts.miss_declared_refused
     }
     MissIdentityAbsent => ParseVerdictReuseCounts {
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent + 1,
       miss_identity_mismatch: counts.miss_identity_mismatch,
       miss_entry_absent: counts.miss_entry_absent,
-      miss_digest_unseen: counts.miss_digest_unseen
+      miss_digest_unseen: counts.miss_digest_unseen,
+      miss_declared_refused: counts.miss_declared_refused
     }
     MissIdentityMismatch => ParseVerdictReuseCounts {
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch + 1,
       miss_entry_absent: counts.miss_entry_absent,
-      miss_digest_unseen: counts.miss_digest_unseen
+      miss_digest_unseen: counts.miss_digest_unseen,
+      miss_declared_refused: counts.miss_declared_refused
     }
     MissEntryAbsent => ParseVerdictReuseCounts {
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
       miss_entry_absent: counts.miss_entry_absent + 1,
-      miss_digest_unseen: counts.miss_digest_unseen
+      miss_digest_unseen: counts.miss_digest_unseen,
+      miss_declared_refused: counts.miss_declared_refused
     }
     MissDigestUnseen => ParseVerdictReuseCounts {
       reused: counts.reused,
       miss_identity_absent: counts.miss_identity_absent,
       miss_identity_mismatch: counts.miss_identity_mismatch,
       miss_entry_absent: counts.miss_entry_absent,
-      miss_digest_unseen: counts.miss_digest_unseen + 1
+      miss_digest_unseen: counts.miss_digest_unseen + 1,
+      miss_declared_refused: counts.miss_declared_refused
+    }
+    MissDeclaredRefused => ParseVerdictReuseCounts {
+      reused: counts.reused,
+      miss_identity_absent: counts.miss_identity_absent,
+      miss_identity_mismatch: counts.miss_identity_mismatch,
+      miss_entry_absent: counts.miss_entry_absent,
+      miss_digest_unseen: counts.miss_digest_unseen,
+      miss_declared_refused: counts.miss_declared_refused + 1
     }
   }
 }
@@ -145,7 +161,8 @@ fn parse_verdict_reuse_counts_text(counts: ParseVerdictReuseCounts) -> String {
       " miss_identity_absent=", int_to_decimal_string(value: counts.miss_identity_absent),
       " miss_identity_mismatch=", int_to_decimal_string(value: counts.miss_identity_mismatch),
       " miss_entry_absent=", int_to_decimal_string(value: counts.miss_entry_absent),
-      " miss_digest_unseen=", int_to_decimal_string(value: counts.miss_digest_unseen)
+      " miss_digest_unseen=", int_to_decimal_string(value: counts.miss_digest_unseen),
+      " miss_declared_refused=", int_to_decimal_string(value: counts.miss_declared_refused)
     ],
     ""
   )

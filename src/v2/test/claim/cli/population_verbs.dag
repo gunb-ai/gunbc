@@ -14,6 +14,7 @@ import gunbc.parse_verdict_schema {
   MissIdentityMismatch,
   MissEntryAbsent,
   MissDigestUnseen,
+  MissDeclaredRefused,
 }
 import v2.cli.population_verbs {
   ParseVerdictReuse,
@@ -333,7 +334,7 @@ test fn parse_verdict_exact_identity_hit_is_reused_holds() -> Bool {
   reuse_standing_is(reuse: reuse, digest: fixture_source_digest, expected: Reused)
     && parse_verdict_reuse_counts_text(
       counts: population_parse_counted(tally: reuse_tally(reuse: reuse), standing: population_parse_standing(tally: reuse_tally(reuse: reuse), key: "dag:a/four.dag", source_digest: fixture_source_digest)).reuse.counts
-    ) == "parse-verdict reuse: reused=1 miss_identity_absent=0 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0"
+    ) == "parse-verdict reuse: reused=1 miss_identity_absent=0 miss_identity_mismatch=0 miss_entry_absent=0 miss_digest_unseen=0 miss_declared_refused=0"
 }
 
 // RED: a different base identity refuses reuse even though the digest's line is present.
@@ -355,6 +356,24 @@ test fn parse_verdict_unseen_digest_is_a_typed_miss_holds() -> Bool {
     digest: "edited-digest",
     expected: MissDigestUnseen
   )
+}
+
+// A module the declaration names refused has a matching stored line, yet reuse is withheld under its
+// OWN standing: counting it as an unseen digest would send a reader looking for a missing receipt.
+test fn parse_verdict_declared_refused_module_is_its_own_miss_holds() -> Bool {
+  let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: reuse_receipts_text()))
+  match population_parse_begin(
+    classes: [RefusalClass { drop: "fixture_drop_a", cause: "parse_g0_tokens_remain", keys: ["dag:a/four.dag"] }],
+    compiler: optional_present(value: fixture_compiler),
+    reuse: reuse
+  ) {
+    PopulationBegun { tally: tally } =>
+      match population_parse_standing(tally: tally, key: "dag:a/four.dag", source_digest: fixture_source_digest) {
+        Present { value: got } => got == MissDeclaredRefused
+        Absent => false
+      }
+    PopulationDeclarationDuplicated { keys: _ } => false
+  }
 }
 
 // Reuse off yields no standing at all: every module parses, as before.

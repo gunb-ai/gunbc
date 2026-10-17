@@ -9,7 +9,7 @@ import gunbc.parse_population_refusals { RefusalClass, parse_population_declared
 import gunbc.parse_verdict_schema {
   ParseVerdictStanding,
   Reused,
-  MissDigestUnseen,
+  MissDeclaredRefused,
   parse_verdict_standing,
   parse_verdict_stored_accepted_line,
   parse_verdict_receipts_empty_detail,
@@ -370,7 +370,7 @@ fn population_parse_standing(tally: PopulationParse, key: String, source_digest:
           match parse_verdict_standing(i_head: i_head, i_base: base.i_base, receipt_lines: base.receipt_lines, source_digest: source_digest) {
             Reused =>
               match roster_cause(roster: tally.roster, key: key) {
-                Present { value: _ } => Present { value: MissDigestUnseen }
+                Present { value: _ } => Present { value: MissDeclaredRefused }
                 Absent => Present { value: Reused }
               }
             miss => Present { value: miss }

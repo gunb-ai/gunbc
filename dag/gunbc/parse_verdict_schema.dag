@@ -76,6 +76,7 @@ type ParseVerdictStanding
   | MissIdentityMismatch
   | MissEntryAbsent
   | MissDigestUnseen
+  | MissDeclaredRefused
 
 fn parse_verdict_standing(
   i_head: String,
