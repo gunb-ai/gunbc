@@ -1485,11 +1485,11 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
 // recorded policy as a request that drew no response, and when that budget ends the turn is TurnPoolNoCapacity --
 // typed, resumable, not ended. A refused certificate is never retried: the same certificate fails the same way.
 fn harness_post_is_retryable(posted: HarnessPostOutcome) -> Bool {
-  harness_post_drew_no_response(posted: posted) || (match posted.fault {
+  match posted.fault {
     Present { value: OperatorNoCapacity } => true
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
-    Absent => false
-  })
+    Absent => harness_post_drew_no_response(posted: posted)
+  }
 }
 
 fn harness_post_retry_reason(posted: HarnessPostOutcome) -> String {
