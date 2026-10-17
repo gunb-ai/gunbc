@@ -80,7 +80,9 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
 ) -> Option<Rc<KeyedRow<K, V>>> {
     match (*rows.iter().cloned().fold(
         Rc::new(KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent),
-        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone()).clone() {
+        |acc: Rc<KeyedRosterSecondRowScan<K, V>>, row: Rc<KeyedRow<K, V>>| match (*acc.clone())
+            .clone()
+        {
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: _, .. } => acc.clone(),
             KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
