@@ -10,8 +10,7 @@ import gunbc.recurring_failure_mode { RecurringFailureMode }
 // reporting on. The harm was searched for before it was written: the five nearest rows are named below
 // and each is refused on a located difference, none of them is this.
 data a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red: RecurringFailureMode = RecurringFailureMode {
-    identity:
-      "a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red" as NonEmptyStr,
+    identity: "a_claim_that_runtime_errors_is_dropped_as_no_verdict_rather_than_red" as NonEmptyStr,
 
     receipts: [
       "**a claim whose evaluation raises a runtime error is dropped instead of reported, and the run that dropped it reports the claims it did execute as a complete pass** (INVALID STATE: an executor prints one verdict line per claim it FINISHED evaluating and treats a claim that died mid-evaluation as a claim that was never in the batch, so the reported total is the population of survivors.",
