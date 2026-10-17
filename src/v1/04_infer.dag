@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { overlay_skips_kernel_name,
+import v1.compiler.infer_env { probe_settle_state, overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -9797,6 +9797,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             text: TextJudgedIn { env: scope.type_env }
           ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
             []
+          } else if probe_settle_state(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices, env: scope.type_env) == 1 {
+            [type_mismatch_error(expected: "dbg1", got: "dbg1", span: span, module_name: scope.module_name)]
+          } else if probe_settle_state(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices, env: scope.type_env) == 2 {
+            [make_error_node(diagnostic: DeclaredTypeNotInhabited { position: "dbg", expected: "dbg", got: "dbg", span: span }, module_name: scope.module_name)]
           } else {
             [inference_error(
               message: concat(

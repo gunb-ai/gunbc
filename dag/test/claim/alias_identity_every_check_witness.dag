@@ -154,6 +154,8 @@ test fn dbg_bb() -> Bool { class_count(source: dbgsrc_bb, wanted: "InternalError
 
 data dbgsrc_ba: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> Boxed<Int> { if c { b } else { a } }\n"
 test fn dbg_ba() -> Bool { class_count(source: dbgsrc_ba, wanted: "InternalError") == 0 }
+test fn dbg_ba_tm() -> Bool { class_count(source: dbgsrc_ba, wanted: "TypeMismatch") == 0 }
+test fn dbg_ba_dt() -> Bool { class_count(source: dbgsrc_ba, wanted: "DeclaredTypeNotInhabited") == 0 }
 
 data dbgsrc_retalias: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> IntBox { if c { a } else { b } }\n"
 test fn dbg_retalias() -> Bool { class_count(source: dbgsrc_retalias, wanted: "InternalError") == 0 }
