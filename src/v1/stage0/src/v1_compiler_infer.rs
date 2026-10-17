@@ -6672,7 +6672,8 @@ pub fn value_at_never_declared_type(
                 Some(r) => r.clone(),
                 std::option::Option::None => produced.clone(),
             };
-        let produced_is_generic = (((produced.params.clone().len() as i64) > 0)
+        let produced_is_generic = ((!type_node_is_arrow(produced.clone())
+            && ((produced.params.clone().len() as i64) > 0))
             || match produced.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
                 _ => false,

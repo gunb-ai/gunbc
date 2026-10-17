@@ -4737,7 +4737,7 @@ fn value_at_never_declared_type(declared: Node, produced: Node, scope: InferScop
     Present { value: r } => r
     Absent => produced
   }
-  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
+  let produced_is_generic = (!type_node_is_arrow(n: produced) && (produced.params |> count) > 0) || match produced.inferred {
     Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
