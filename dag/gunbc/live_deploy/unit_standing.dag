@@ -159,6 +159,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })
@@ -195,6 +196,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })
@@ -231,6 +233,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceKillMode { mode: _ } => none
       RestartSec { duration: _ } => none
       ServiceTasksMax { count: _ } => none
+      ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
     }
   })
@@ -362,6 +365,8 @@ type LaunchUnitStanding {
   dashboard: DashboardServiceStanding
   exit_path: BeltEventPathStanding
   answer_path: BeltEventPathStanding
+  publication_path: BeltEventPathStanding
+  publication_helper: BeltOneshotStanding
   oneshot: BeltOneshotStanding
 }
 
@@ -394,6 +399,8 @@ fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
     dashboard_service_standing_text(s: s.dashboard), "; ",
     belt_event_path_standing_text(s: s.exit_path), "; ",
     belt_event_path_standing_text(s: s.answer_path), "; ",
+    belt_event_path_standing_text(s: s.publication_path), "; ",
+    belt_oneshot_standing_text(s: s.publication_helper), "; ",
     belt_oneshot_standing_text(s: s.oneshot),
   ], "")
 }

@@ -1,0 +1,104 @@
+module v2.test.claim.name_resolve.closure_declarations_published
+
+import v2.compiler.source_root_eval {
+  native_test_context_from_ingest,
+  native_lane_file_refusal_index,
+  native_module_resolve_verdict,
+  NativeModuleResolveAccepted
+}
+import v2.compiler.name_resolve { closure_declarations_demand }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.symbol_index { symbol_index_lookup }
+import std.types { Bool, List }
+import std.optional { Absent, Present }
+import v2.std.text { String }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A DOTTED module (three spine segments) and a single-segment one, each declaring a sum type and a record
+// that names it. Every dotted name is a spine of Authored edges above the module body.
+data cdp_decl_source: String = "module v2.test.cdp.decl\n\ntype Unit = | U\ntype Rec { value: Unit }\n"
+
+data cdp_user_source: String = "module v2.test.cdp.user\n\nimport v2.test.cdp.decl { Rec }\nfn f(x: Rec) -> Rec { x }\n"
+
+data cdp_flat_source: String = "module cdpflat\n\ntype Unit = | U\ntype Rec { value: Unit }\n"
+
+fn cdp_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: id,
+    source_root: root
+  }
+}
+
+fn cdp_ingest() -> List<DagSourceReadWitness> {
+  [
+    cdp_read(text: cdp_decl_source, id: ^cdp_decl, path: "src/v2/test/fixture/cdp/decl.dag", root: DagTree),
+    cdp_read(text: cdp_user_source, id: ^cdp_user, path: "src/v2/test/fixture/cdp/user.dag", root: DagTree),
+    cdp_read(text: cdp_flat_source, id: ^cdp_flat, path: "src/v2/test/fixture/cdp/flat.dag", root: DagTree)
+  ]
+}
+
+fn cdp_closure_has(path: QualifiedName) -> Bool {
+  match native_test_context_from_ingest(ingest: cdp_ingest()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match c.resolution {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: shared, diagnostics: _ } =>
+          match symbol_index_lookup(index: closure_declarations_demand(shared: shared).declarations, qualified_path: path) {
+            Absent => false
+            Present { value: _ } => true
+          }
+      }
+  }
+}
+
+// The closure index is the product of closure_publish_module's fill over the filtered root. A root whose
+// shell or spine was filtered away has no readable module name, so the fill indexed nothing.
+test fn the_closure_index_carries_a_dotted_modules_record() -> Bool {
+  cdp_closure_has(path: [^v2, ^test, ^cdp, ^decl, ^Rec])
+}
+
+test fn the_closure_index_carries_a_dotted_modules_record_field() -> Bool {
+  cdp_closure_has(path: [^v2, ^test, ^cdp, ^decl, ^Rec, ^value])
+}
+
+test fn the_closure_index_carries_a_dotted_modules_sum_type() -> Bool {
+  cdp_closure_has(path: [^v2, ^test, ^cdp, ^decl, ^Unit])
+}
+
+test fn the_closure_index_carries_a_single_segment_modules_record() -> Bool {
+  cdp_closure_has(path: [^cdpflat, ^Rec])
+}
+
+// THE CONSUMER. resolved_tree_of fills the closure index with the subject's own declarations
+// (resolved_declarations_over), so a subject that imports Rec sees the declarer's Rec only if the closure
+// published it.
+test fn a_subject_importing_a_record_sees_the_declarers_record_in_its_resolved_declarations() -> Bool {
+  match native_test_context_from_ingest(ingest: cdp_ingest()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: c, diagnostics: _ } =>
+      match native_module_resolve_verdict(
+        context: c,
+        refusal_index: native_lane_file_refusal_index(refusals: c.file_refusals),
+        module: "v2.test.cdp.user",
+        path: ^cdp_user
+      ).verdict {
+        NativeModuleResolveAccepted { resolved: r } =>
+          match symbol_index_lookup(index: r.resolved_declarations, qualified_path: [^v2, ^test, ^cdp, ^decl, ^Rec]) {
+            Absent => false
+            Present { value: _ } => true
+          }
+        _ => false
+      }
+  }
+}

@@ -46,6 +46,8 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
+  Match,
+  NotFound,
   Authored,
   Node,
   NodeFold,

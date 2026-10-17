@@ -25,6 +25,7 @@ import gunbc.bmc.bmc_intent {
   fleet_bmc_fan_graceful_restart_boundary,
   fleet_bmc_valid_state,
 }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_bmc_3_22_00_manifest_machine_name }
 import gunbc.bmc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityAdmission,
@@ -97,6 +98,7 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_
   publication_protocol: srv4_bmc_fan_publication_protocol,
   durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
   required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+  controller_machine: asrock_altrad8ud_bmc_3_22_00_manifest_machine_name,
 )
 
 data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {

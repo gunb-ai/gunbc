@@ -1,0 +1,264 @@
+module gunbc.runner.runner_claim_set_results
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup, Cons, Empty }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_combine_structural,
+  content_hash_tagged_structural, as_content_hash_structural, serialize_content_hash,
+}
+import extdeps.bazel.label { Label, render_label }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
+import std.decimal { decimal_digits_only }
+import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, claim_route_verdict_of_exit }
+
+// THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
+//
+// The guest is the job's executor and the host trusts nothing it writes. So the results drive is
+// NEVER a filesystem the host mounts (a guest-crafted filesystem image is kernel attack surface):
+// it is one fixed-size file the host staged zeroed for this attempt, attached to the guest as a raw
+// block device, and read back after the VMM exits as ONE framed text stream:
+//
+//   GUNBC-CLAIMSET-RESULTS 1\n                       magic and version
+//   claims <n>\n                                     the declared length, in records
+//   claim <label> <exit> <commit-hex> <tree-hex>\n   n records, one per claim
+//   digest <outputs digest>\n                        claim_set_outputs_digest over the n records
+//   NUL ... NUL                                      the untouched remainder of the zeroed drive
+//
+// Every framing fault refuses as a typed ClaimSetResultsUndecodable: the attempt stays unreceipted
+// and visible, never a synthesized receipt or an empty digest. The drive is zeroed by the host for
+// each attempt, so an earlier attempt's bytes cannot decode as this one's. A drive whose readback
+// is not exactly the staged size refuses before it is interpreted (oversize is refused, never
+// truncated), and so does text after the frame that is not the zeroed remainder.
+//
+// THE DIGEST IS RECOMPUTED, NOT TRUSTED. The guest's digest line is a framing check -- a frame whose
+// stated digest disagrees with its own records is torn or forged and refuses -- and the receipt's
+// outputs digest is the host's own fold over the records it read (claim_set_outputs_digest), in the
+// Work's declared claim order. Hash family: std.content_hash's structural FNV-1a-64, tagged and
+// folded with content_hash_combine_structural, the corpus's idiom for an ordered sequence.
+//
+// THE RESULTS NAME THEIR TREE. Each record carries the commit and tree the guest verified before it
+// ran anything, and admission refuses a record whose commit or tree is not the job's admitted
+// revision: a result about another tree is not a result about this job.
+//
+// CONSUMED, AND WHAT REMAINS (DESIGN 3c). The writer-to-reader join is executed: the guest's frame
+// writer (gunbc.runner.runner_claim_set_guest write_claim_set_frame) writes a zeroed device and this
+// decoder admits it by real execution (test.claim.runner.runner_claim_set_guest_wet_witness). What
+// remains is the full guest run -- the unit installed in an image, launched, running the claims --
+// whose TRIGGER is S4b-3's stand-in inhabitance claim, in which the revision-job guest unit runs claim_set_guest_main over staged inputs and the controller settles the receipt.
+
+data claim_set_results_magic_line: String = "GUNBC-CLAIMSET-RESULTS 1"
+
+data claim_set_results_digest_tag: NonEmptyStr = "gunbc.claim-set-results.v1"
+
+data claim_set_results_nul: String = "\u{0}"
+
+// A RESULT RECORD, AS THE GUEST WROTE IT. The guest writes the claim's own `gunbc test` exit; the
+// record holds the claim's verdict (gunbc.target_invocation ClaimRouteVerdict), so only held, did not
+// hold and unobserved are constructible and a record cannot carry any other value.
+type ClaimSetResult {
+  label: NonEmptyStr
+  verdict: ClaimRouteVerdict
+  commit: NonEmptyStr
+  tree: NonEmptyStr
+}
+
+type ClaimSetResultsUndecodable
+  = ResultsDriveSizeMismatch { staged: ByteSize, observed: ByteSize }
+  // The drive's size or text could not be read at all: not a size, so not a mismatch.
+  | ResultsDriveUnobserved { detail: String }
+  | ResultsDriveUnwritten
+  | ResultsMagicMismatch
+  | ResultsCountMissing
+  | ResultsCountMalformed { line: String }
+  | ResultsRecordMalformed { index: Int, line: String }
+  // A well-formed record whose exit is not a `gunbc test` standing (0 held, 1 did not hold, 2 no
+  // observation). The host trusts nothing the guest writes, so an exit outside that closed set is a
+  // refusal here and never reaches the standing, where it could be mistaken for a pass.
+  | ResultsExitNotAStanding { index: Int, exit: Int }
+  | ResultsTruncated { declared: Int, present: Int }
+  | ResultsDigestMissing
+  | ResultsDigestMismatch { stated: String, recomputed: String }
+  | ResultsTrailingBytes
+
+type ClaimSetResultsDecode
+  = ClaimSetResultsDecoded { results: List<ClaimSetResult>, stated_digest: String }
+  | ClaimSetResultsRefused { cause: ClaimSetResultsUndecodable }
+
+fn claim_set_result_line(r: ClaimSetResult) -> String {
+  join(["claim ", r.label as String, " ", to_string(claim_route_verdict_exit(v: r.verdict)), " ", r.commit as String, " ", r.tree as String], "")
+}
+
+// THE OUTPUTS DIGEST: a tagged structural fold over the records' canonical lines, in order.
+fn claim_set_outputs_digest(results: List<ClaimSetResult>) -> ContentHash {
+  let folded = fold(results, init: content_hash_atom(value: claim_set_results_digest_tag), f: (acc, r) =>
+    content_hash_combine_structural(left: acc, right: content_hash_atom(value: claim_set_result_line(r: r) as NonEmptyStr)))
+  as_content_hash_structural(structural: content_hash_tagged_structural(tag: claim_set_results_digest_tag, payload: folded))
+}
+
+// THE FRAME, AS THE GUEST PROGRAM WRITES IT. One authority for the spelling: the guest's frame writer
+// (gunbc.runner.runner_claim_set_guest) renders the drive through this function, and the witnesses
+// frame their supplied bytes with it.
+fn claim_set_results_frame(results: List<ClaimSetResult>) -> String {
+  join([
+    claim_set_results_magic_line, "\n",
+    "claims ", to_string(count(results)), "\n",
+    join(map(results, r => concat(claim_set_result_line(r: r), "\n")), ""),
+    "digest ", serialize_content_hash(hash: claim_set_outputs_digest(results: results)) as String, "\n",
+  ], "")
+}
+
+
+// One record line, read three ways: a record, a line that is not a record, or a record whose exit is
+// not a `gunbc test` status -- kept apart because the refusals name different defects.
+type ClaimSetRecordRead
+  = ClaimSetRecordDecoded { result: ClaimSetResult }
+  | ClaimSetRecordMalformed
+  | ClaimSetRecordExitNotAStanding { exit: Int }
+
+fn decode_claim_set_record(line: String) -> ClaimSetRecordRead {
+  let parts: List<String> = line.split(delimiter: " ")
+  if count(parts) != 5 { ClaimSetRecordMalformed } else {
+    match parts {
+      Cons { head: tag, tail: Cons { head: label, tail: Cons { head: exit, tail: Cons { head: commit, tail: Cons { head: tree, tail: _ } } } } } =>
+        if tag != "claim" || label == "" || commit == "" || tree == "" || exit == "" || !decimal_digits_only(s: exit) { ClaimSetRecordMalformed }
+        else { match parse_int(s: exit) {
+          Absent => ClaimSetRecordMalformed
+          Present { value: e } => match claim_route_verdict_of_exit(code: e) {
+            Absent => ClaimSetRecordExitNotAStanding { exit: e }
+            Present { value: st } => ClaimSetRecordDecoded { result: ClaimSetResult { label: label as NonEmptyStr, verdict: st, commit: commit as NonEmptyStr, tree: tree as NonEmptyStr } }
+          }
+        } }
+      _ => ClaimSetRecordMalformed
+    }
+  }
+}
+
+fn decode_claim_set_records(lines: List<String>) -> ClaimSetResultsDecode {
+  fold(lines, init: ClaimSetResultsDecoded { results: [], stated_digest: "" }, f: (acc, line) => match acc {
+    ClaimSetResultsRefused { cause: c } => ClaimSetResultsRefused { cause: c }
+    ClaimSetResultsDecoded { results: rs, stated_digest: d } => match decode_claim_set_record(line: line) {
+      ClaimSetRecordMalformed => ClaimSetResultsRefused { cause: ResultsRecordMalformed { index: count(rs), line: line } }
+      ClaimSetRecordExitNotAStanding { exit: e } => ClaimSetResultsRefused { cause: ResultsExitNotAStanding { index: count(rs), exit: e } }
+      ClaimSetRecordDecoded { result: r } => ClaimSetResultsDecoded { results: rs + [r], stated_digest: d }
+    }
+  })
+}
+
+// THE DECODE, OVER THE DRIVE'S TEXT AND ITS OBSERVED SIZE. `staged_bytes` is the size the host
+// staged; `observed_bytes` the size it read back after exit. The frame ends at the first NUL; what
+// follows must be NUL to the end.
+fn decode_claim_set_results(text: String, staged_bytes: ByteSize, observed_bytes: ByteSize) -> ClaimSetResultsDecode {
+  if byte_size_count(b: observed_bytes) != byte_size_count(b: staged_bytes) {
+    ClaimSetResultsRefused { cause: ResultsDriveSizeMismatch { staged: staged_bytes, observed: observed_bytes } }
+  } else {
+    let pieces: List<String> = text.split(delimiter: claim_set_results_nul)
+    let frame = match pieces.first() { Present { value: f } => f  Absent => "" }
+    let rest = join(skip(pieces, 1), "")
+    if frame == "" { ClaimSetResultsRefused { cause: ResultsDriveUnwritten } }
+    else if rest != "" { ClaimSetResultsRefused { cause: ResultsTrailingBytes } }
+    else { decode_claim_set_frame(frame: frame) }
+  }
+}
+
+fn decode_claim_set_frame(frame: String) -> ClaimSetResultsDecode {
+  let lines: List<String> = frame.split(delimiter: "\n")
+  let n_lines = count(lines)
+  match lines {
+    Empty {} => ClaimSetResultsRefused { cause: ResultsMagicMismatch }
+    Cons { head: magic, tail: after_magic } =>
+      if magic != claim_set_results_magic_line { ClaimSetResultsRefused { cause: ResultsMagicMismatch } }
+      else { match after_magic {
+        Empty {} => ClaimSetResultsRefused { cause: ResultsCountMissing }
+        Cons { head: count_line, tail: body } =>
+          if !count_line.starts_with("claims ") { ClaimSetResultsRefused { cause: ResultsCountMissing } }
+          else {
+            let declared_text = substring(s: count_line, start: length("claims "), end: length(count_line))
+            if declared_text == "" || !decimal_digits_only(s: declared_text) { ClaimSetResultsRefused { cause: ResultsCountMalformed { line: count_line } } }
+            else { match parse_int(s: declared_text) {
+              Absent => ClaimSetResultsRefused { cause: ResultsCountMalformed { line: count_line } }
+              Present { value: declared } => decode_claim_set_body(declared: declared, body: body)
+            } }
+          }
+      } }
+  }
+}
+
+// The body is `declared` records, the digest line, and the empty string after the final newline.
+fn decode_claim_set_body(declared: Int, body: List<String>) -> ClaimSetResultsDecode {
+  if count(body) < declared + 2 {
+    ClaimSetResultsRefused { cause: ResultsTruncated { declared: declared, present: if count(body) >= 2 { count(body) - 2 } else { 0 } } }
+  } else if count(body) > declared + 2 {
+    ClaimSetResultsRefused { cause: ResultsTrailingBytes }
+  } else {
+    let records = take(body, declared)
+    let tail = skip(body, declared)
+    let digest_line = match tail.first() { Present { value: d } => d  Absent => "" }
+    let terminator = match skip(tail, 1).first() { Present { value: t } => t  Absent => "missing" }
+    if !digest_line.starts_with("digest ") || terminator != "" { ClaimSetResultsRefused { cause: ResultsDigestMissing } }
+    else {
+      let stated = substring(s: digest_line, start: length("digest "), end: length(digest_line))
+      match decode_claim_set_records(lines: records) {
+        ClaimSetResultsRefused { cause: c } => ClaimSetResultsRefused { cause: c }
+        ClaimSetResultsDecoded { results: rs, stated_digest: _ } => {
+          let recomputed = serialize_content_hash(hash: claim_set_outputs_digest(results: rs)) as String
+          if stated != recomputed { ClaimSetResultsRefused { cause: ResultsDigestMismatch { stated: stated, recomputed: recomputed } } }
+          else { ClaimSetResultsDecoded { results: rs, stated_digest: stated } }
+        }
+      }
+    }
+  }
+}
+
+// ── admission: the decoded records against the job ─────────────────────────────────────────────
+
+// COMPLETENESS IS AN IDENTITY JOIN, IN ORDER (DESIGN 5): record i is claim i of the Work's declared
+// claims, each exactly once, and every record names the admitted commit and tree.
+type ClaimSetResultsAdmission
+  = ClaimSetResultsAdmitted { results: List<ClaimSetResult>, outputs: ContentHash }
+  | ClaimSetResultsNotDecoded { cause: ClaimSetResultsUndecodable }
+  | ClaimSetResultsClaimMismatch { index: Int, expected: String, observed: String }
+  | ClaimSetResultsCountMismatch { expected: Int, observed: Int }
+  | ClaimSetResultsForAnotherTree { index: Int, commit: String, tree: String }
+
+fn claim_labels(claims: FreeSemigroup<Label>) -> List<String> {
+  [render_label(l: claims.head) as String] + map(claims.tail, l => render_label(l: l) as String)
+}
+
+fn admit_claim_set_results(
+  decode: ClaimSetResultsDecode,
+  claims: FreeSemigroup<Label>,
+  revision: VerifiedGitCommitTree,
+) -> ClaimSetResultsAdmission {
+  match decode {
+    ClaimSetResultsRefused { cause: c } => ClaimSetResultsNotDecoded { cause: c }
+    ClaimSetResultsDecoded { results: rs, stated_digest: _ } => {
+      let expected = claim_labels(claims: claims)
+      if count(rs) != count(expected) {
+        ClaimSetResultsCountMismatch { expected: count(expected), observed: count(rs) }
+      } else {
+        let commit_hex = git_object_id_wire_hex(oid: revision.commit) as String
+        let tree_hex = git_object_id_wire_hex(oid: revision.tree) as String
+        let verdict = fold(rs, init: ClaimSetAdmissionFold { index: 0, verdict: ClaimSetResultsAdmitted { results: rs, outputs: claim_set_outputs_digest(results: rs) } }, f: (acc, r) => match acc.verdict {
+          ClaimSetResultsAdmitted { results: _, outputs: _ } => {
+            let want = match skip(expected, acc.index).first() { Present { value: w } => w  Absent => "" }
+            if (r.label as String) != want {
+              ClaimSetAdmissionFold { index: acc.index + 1, verdict: ClaimSetResultsClaimMismatch { index: acc.index, expected: want, observed: r.label as String } }
+            } else if (r.commit as String) != commit_hex || (r.tree as String) != tree_hex {
+              ClaimSetAdmissionFold { index: acc.index + 1, verdict: ClaimSetResultsForAnotherTree { index: acc.index, commit: r.commit as String, tree: r.tree as String } }
+            } else { ClaimSetAdmissionFold { index: acc.index + 1, verdict: acc.verdict } }
+          }
+          _ => acc
+        })
+        verdict.verdict
+      }
+    }
+  }
+}
+
+type ClaimSetAdmissionFold {
+  index: Int
+  verdict: ClaimSetResultsAdmission
+}

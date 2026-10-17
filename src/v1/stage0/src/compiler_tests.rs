@@ -888,6 +888,313 @@ mod compiler_tests {
     }
 
     #[test]
+    fn optional_nested_list_stamps_the_collection_and_present_list_elements() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "dag/std/optional.dag".to_string(),
+                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
+                });
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_opt_list.dag".to_string(),
+                    content: "module probe.opt_list\nimport std.optional { Optional }\nfn p_a(o: Optional<List<Optional<Int>>>) -> Int { 0 }\nfn p_b(o: List<Optional<Int>>) -> Int { 0 }\nfn xs() -> Optional<List<Optional<Int>>> { Present { value: [Absent, Present { value: 5 }] } }\nfn ys() -> List<Optional<Int>> { [Absent, Present { value: 5 }] }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional.clone(), src.clone()]));
+                let blocking: Vec<_> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+                assert!(blocking.is_empty(), "specimen must typecheck: {:?}", blocking.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect::<Vec<_>>());
+                let graph = resolved.graph.as_ref().expect("typed graph");
+                let typed = graph.modules.iter().find(|m| m.module.name == "probe.opt_list").expect("probe module");
+                let item = |n: &str| typed.items.iter().find(|i| i.name == n).unwrap_or_else(|| panic!("{n}"));
+                let list_inferred = |ty: &std::rc::Rc<crate::v1_std_core::Node>| {
+                    let carrier = if (ty.children.len() as i64) > 0 {
+                        ty.clone()
+                    } else {
+                        match ty.inferred.as_deref() {
+                            Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
+                            other => panic!("no type-application children and no inferred carrier, inferred={other:?} name={}", ty.name),
+                        }
+                    };
+                    assert!((carrier.children.len() as i64) > 0, "type application child on {} n={}", carrier.name, carrier.children.len());
+                    let list = carrier.children.iter().find(|c| {
+                        c.name == "List" || match c.inferred.as_deref() {
+                            Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.name == "List",
+                            _ => false,
+                        }
+                    }).cloned().unwrap_or_else(|| carrier.children[0].clone());
+                    match list.inferred.as_deref() {
+                        Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.name.clone(),
+                        other => panic!("inner List must be stamped Resolved, got {other:?} on {}", list.name),
+                    }
+                };
+                let p_a_ty = crate::v1_std_core::param_node_type_expr(item("p_a").params[0].clone());
+                assert_eq!(list_inferred(&p_a_ty), "List", "p_a's inner List under Optional must be stamped List<...>");
+                let p_b_ty = crate::v1_std_core::param_node_type_expr(item("p_b").params[0].clone());
+                assert!(matches!(p_b_ty.inferred.as_deref(), Some(crate::v1_std_core::InferredNode::Resolved { .. })), "p_b List stamp must stay");
+                let nest = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_opt_nest.dag".to_string(),
+                    content: "module probe.opt_nest\nimport std.optional { Optional }\ntype RecBox {\n  items: Optional<List<Optional<Int>>>\n}\n\ntype Wrap<T> {\n  inner: T\n}\n\nfn p_rec(b: RecBox) -> Int { 0 }\nfn p_wrap(w: Wrap<List<Optional<Int>>>) -> Int { 0 }\n".to_string(),
+                });
+                let nested_resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional.clone(), nest.clone()]));
+                let nested_blocking: Vec<_> = nested_resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).collect();
+                assert!(nested_blocking.is_empty(), "nest specimen must typecheck: {:?}", nested_blocking.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect::<Vec<_>>());
+                let nested_graph = nested_resolved.graph.as_ref().expect("nest typed graph");
+                let nested = nested_graph.modules.iter().find(|m| m.module.name == "probe.opt_nest").expect("nest module");
+                let nest_item = |n: &str| nested.items.iter().find(|i| i.name == n).unwrap_or_else(|| panic!("{n}"));
+                let box_ty = nest_item("RecBox");
+                let items = box_ty.children.iter().find(|c| c.name == "items").expect("RecBox.items");
+                let items_ty = match items.inferred.as_deref() {
+                    Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
+                    _ => crate::v1_std_core::field_node_type_expr(items.clone()),
+                };
+                assert_eq!(list_inferred(&items_ty), "List", "List nested in a record field must be stamped");
+                let wrap_ty = crate::v1_std_core::param_node_type_expr(nest_item("p_wrap").params[0].clone());
+                assert_eq!(list_inferred(&wrap_ty), "List", "List nested in another generic must be stamped");
+                let xs = item("xs");
+                let body = xs.body.as_ref().expect("xs body");
+                let value_init = body.children.iter().find(|c| crate::v1_std_core::field_init_node_name_at((*c).clone(), resolved.source_indices.clone()) == "value").expect("Present.value");
+                let lit = crate::v1_std_core::field_init_node_value(value_init.clone());
+                assert!(matches!(*lit.expr_data, crate::v1_std_core::ExprData::ExprListLit));
+                for el in lit.children.iter() {
+                    match el.inferred.as_deref() {
+                        Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => {
+                            assert_eq!(rt.name, "Optional", "list element must be Optional<Int>, got {}", rt.name);
+                        }
+                        other => panic!("list element untyped: {other:?}"),
+                    }
+                }
+                let emitted = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![std_optional.clone(), src.clone()]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let out = emitted.files.iter().find(|f| f.path.contains("probe_opt_list")).unwrap_or_else(|| panic!("emitted module; files: {:?}", emitted.files.iter().map(|f| f.path.clone()).collect::<Vec<_>>()));
+                // The List under the Optional is carried: the outer carrier is Option<Rc<Vec<..>>>, not the erased Option<()>.
+                assert!(out.content.contains("o: Option<Rc<Vec<") && out.content.contains("-> Option<Rc<Vec<"), "nested List must stay a Vec under the Optional; emitted:\n{}", out.content);
+                assert!(!out.content.contains("o: Option<()>") && !out.content.contains("-> Option<()>"), "unstamped List must not erase the Optional payload to (); emitted:\n{}", out.content);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "optional_nested_list_stamps_the_collection_and_present_list_elements panicked",
+        );
+    }
+
+    #[test]
+    fn user_declared_optional_is_not_stamped_as_std_optional() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_user_opt.dag".to_string(),
+                    content: "module probe.user_opt\ntype Optional {\n  tag: Int\n  items: List<Int>\n}\nfn mk() -> Optional { Optional { tag: 1, items: [1, 2] } }\nfn wrap(o: Optional) -> Optional { o }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!messages.iter().any(|m| m.contains("payload cannot be stamped") || m.contains("rather than leaving its payload unstamped")), "a user-declared Optional is identified, so it must not be refused as unrecovered: {:?}", messages);
+                let graph = resolved.graph.as_ref().expect("typed graph");
+                let typed = graph.modules.iter().find(|m| m.module.name == "probe.user_opt").expect("probe module");
+                let mk = typed.items.iter().find(|i| i.name == "mk").expect("mk");
+                let body = mk.body.as_ref().expect("mk body");
+                let ty = match body.inferred.as_deref() {
+                    Some(crate::v1_std_core::InferredNode::Resolved { node: rt }) => rt.clone(),
+                    other => panic!("mk body untyped: {other:?}"),
+                };
+                let decl_file = ty.ident_span.as_ref().map(|s| s.file.clone()).unwrap_or_default();
+                assert_eq!(decl_file, "probe_user_opt.dag", "a user-declared Optional keeps its own declaration, not std.optional's; typed as {} from {}", ty.name, decl_file);
+                assert!((ty.children.len() as i64) == 2, "user Optional keeps its own two fields, got {}", ty.children.len());
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("user_declared_optional_is_not_stamped_as_std_optional panicked");
+    }
+
+    #[test]
+    fn if_join_admits_a_transparent_alias_of_its_other_branch() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "dag/std/optional.dag".to_string(),
+                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
+                });
+                let blocking_of = |content: &str| -> Vec<String> {
+                    let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: "probe_if_join_alias.dag".to_string(),
+                        content: content.to_string(),
+                    });
+                    let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional.clone(), src]));
+                    resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()
+                };
+                let head = "module probe.if_join_alias\ntype Boxed<T> {\n  v: T\n}\ntype Other<T> {\n  v: T\n}\ntype IntBox = Boxed<Int>\ntype BoolBox = Boxed<Bool>\ntype BoxRow {\n  min: Int\n  ceiling: IntBox\n}\ntype Inner<T> {\n  v: T\n}\ntype NestBox = Boxed<Inner<Int>>\n";
+                let same = format!("{head}fn pick_same(a: IntBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let optional = format!("{head}fn pick_box(acc: IntBox?, row: BoxRow, n: Int) -> IntBox? {{\n  if n >= row.min {{\n    match acc {{\n      Absent => Present {{ value: row.ceiling }}\n      Present {{ value: a }} => Present {{ value: a }}\n    }}\n  }} else {{\n    acc\n  }}\n}}\n");
+                let mismatch = format!("{head}fn pick_mismatch(a: BoolBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let unrelated = format!("{head}fn pick_unrelated(a: Other<Int>, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let nested = format!("{head}fn pick_nested(a: NestBox, b: Boxed<Inner<Bool>>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
+                let join_refused = |m: &Vec<String>| m.iter().any(|s| s.contains("if branches resolve to incompatible types"));
+                let same_msgs = blocking_of(&same);
+                // PINNED, NOT CORRECT: a parameter's declared type reference does not carry its declaration, so the join declines and still refuses. Flips when formal type references carry their DeclarationRef.
+                assert!(join_refused(&same_msgs), "known residual: two parameter-typed branches have no carried declaration to compare; if this now passes, invert this assertion: {:?}", same_msgs);
+                let optional_msgs = blocking_of(&optional);
+                assert!(optional_msgs.is_empty(), "an optional alias and its optional target are one type at an if-join, and the specimen compiles clean: {:?}", optional_msgs);
+                let mismatch_msgs = blocking_of(&mismatch);
+                assert!(join_refused(&mismatch_msgs), "an alias of Boxed<Bool> is not Boxed<Int>; the join must refuse: {:?}", mismatch_msgs);
+                let unrelated_msgs = blocking_of(&unrelated);
+                assert!(join_refused(&unrelated_msgs), "a same-shaped unrelated declaration is not an alias; the join must refuse: {:?}", unrelated_msgs);
+                let nested_msgs = blocking_of(&nested);
+                // NOT YET DISCRIMINATING: refused today because parameter-typed branches carry no declaration (the residual above). When that flips, this is the control that nested arguments agree structurally, not by head name.
+                assert!(join_refused(&nested_msgs), "an alias of Boxed<Inner<Int>> is not Boxed<Inner<Bool>>; nested arguments must agree structurally: {:?}", nested_msgs);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("if_join_admits_a_transparent_alias_of_its_other_branch panicked");
+    }
+
+    #[test]
+    fn if_join_argument_identity_is_strict_where_compatibility_is_permissive() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "dag/std/optional.dag".to_string(),
+                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
+                });
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_if_join_identity.dag".to_string(),
+                    content: "module probe.if_join_identity\ntype Boxed<T> {\n  v: T\n}\ntype Nothing {\n}\nfn p_opt(a: Int?) -> Int { 0 }\nfn p_opt2(a: Int?) -> Int { 0 }\nfn p_unit(a: Nothing) -> Int { 0 }\nfn p_int(a: Int) -> Int { 0 }\nfn p_box_int(a: Boxed<Int>) -> Int { 0 }\nfn p_box_int2(a: Boxed<Int>) -> Int { 0 }\nfn p_box_bool(a: Boxed<Bool>) -> Int { 0 }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional, src]));
+                let blocking: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(blocking.is_empty(), "specimen must typecheck: {:?}", blocking);
+                let graph = resolved.graph.as_ref().expect("typed graph");
+                let typed = graph.modules.iter().find(|m| m.module.name == "probe.if_join_identity").expect("probe module");
+                let ty = |n: &str| crate::v1_std_core::param_node_type_expr(typed.items.iter().find(|i| i.name == n).expect(n).params[0].clone());
+                let si = resolved.source_indices.clone();
+                let identical = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer::if_branch_argument_types_identical(a.clone(), b.clone(), si.clone());
+                let compatible = |a: &std::rc::Rc<crate::v1_std_core::Node>, b: &std::rc::Rc<crate::v1_std_core::Node>| crate::v1_compiler_infer_types::node_type_compatible(a.clone(), b.clone(), si.clone(), std::rc::Rc::new(crate::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }));
+                let with_inferred = |n: &std::rc::Rc<crate::v1_std_core::Node>, inferred: crate::v1_std_core::InferredNode| {
+                    let mut m = (**n).clone();
+                    m.inferred = Some(std::rc::Rc::new(inferred));
+                    std::rc::Rc::new(m)
+                };
+                let opt = ty("p_opt");
+                let opt2 = ty("p_opt2");
+                let unit = ty("p_unit");
+                let int = ty("p_int");
+                let box_int = ty("p_box_int");
+                let box_int2 = ty("p_box_int2");
+                let box_bool = ty("p_box_bool");
+                let tv_t = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
+                let tv_t2 = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "T".to_string() });
+                let tv_u = with_inferred(&int, crate::v1_std_core::InferredNode::TypeVariable { id: "U".to_string() });
+                let with_owner = |n: &std::rc::Rc<crate::v1_std_core::Node>, owner: &str| {
+                    let mut m = (**n).clone();
+                    m.declaration = Some(crate::std_decl_ref::decl_type_parameter_ref("probe.if_join_identity".to_string(), owner.to_string(), "T".to_string()));
+                    std::rc::Rc::new(m)
+                };
+                let t_of_first = with_owner(&tv_t, "First");
+                let t_of_first_again = with_owner(&tv_t2, "First");
+                let t_of_second = with_owner(&tv_t, "Second");
+                let err = with_inferred(&int, crate::v1_std_core::InferredNode::CompilerError { message: "unresolved type".to_string(), span: crate::v1_std_core::no_span() });
+                // Positive controls: identity holds where the instantiations are one.
+                assert!(identical(&opt, &opt2), "Int? is identical to Int?");
+                assert!(identical(&int, &int), "Int is identical to Int");
+                assert!(identical(&box_int, &box_int2), "Boxed<Int> is identical to Boxed<Int>");
+                assert!(identical(&tv_t, &tv_t2), "a type variable is identical to itself");
+                // Each pair node_type_compatible admits must not pass as generic-argument identity.
+                let permissive: Vec<(&str, &std::rc::Rc<crate::v1_std_core::Node>, &std::rc::Rc<crate::v1_std_core::Node>)> = vec![
+                    ("Int? against a unit-like record", &opt, &unit),
+                    ("a type variable against Int", &tv_t, &int),
+                    ("a compiler-error side against Int", &err, &int),
+                    ("Boxed<Int> against Boxed<Bool>", &box_int, &box_bool),
+                ];
+                for (case, a, b) in permissive {
+                    assert!(compatible(a, b), "{} must be a pair node_type_compatible admits, or this witness proves nothing", case);
+                    assert!(!identical(a, b), "{} must not pass as generic-argument identity", case);
+                }
+                assert!(!identical(&tv_t, &tv_u), "two different type variables are not identical");
+                assert!(identical(&t_of_first, &t_of_first_again), "one owner's T is identical to itself");
+                assert!(!identical(&t_of_first, &t_of_second), "two owners' parameters both spelled T are not identical");
+                assert!(!identical(&t_of_first, &tv_t), "an owned parameter is not identical to an unowned variable of the same spelling");
+                assert!(!identical(&err, &err), "a compiler-error side is identical to nothing");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect(
+            "if_join_argument_identity_is_strict_where_compatibility_is_permissive panicked",
+        );
+    }
+
+    #[test]
+    fn present_empty_list_fold_init_emits_no_unit_element() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let mut srcs: Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> = vec![];
+                for (path, content) in [("dag/extdeps/currency/currency.dag", include_str!("../../../../dag/extdeps/currency/currency.dag")), ("dag/extdeps/external_authority.dag", include_str!("../../../../dag/extdeps/external_authority.dag")), ("dag/extdeps/units/dimensionless.dag", include_str!("../../../../dag/extdeps/units/dimensionless.dag")), ("dag/extdeps/units/iec_80000_13.dag", include_str!("../../../../dag/extdeps/units/iec_80000_13.dag")), ("dag/extdeps/units/iso8601.dag", include_str!("../../../../dag/extdeps/units/iso8601.dag")), ("dag/extdeps/units/iso_80000_3.dag", include_str!("../../../../dag/extdeps/units/iso_80000_3.dag")), ("dag/extdeps/uri.dag", include_str!("../../../../dag/extdeps/uri.dag")), ("dag/extdeps/version.dag", include_str!("../../../../dag/extdeps/version.dag")), ("dag/extdeps/version/semver.dag", include_str!("../../../../dag/extdeps/version/semver.dag")), ("dag/std/algebra.dag", include_str!("../../../../dag/std/algebra.dag")), ("dag/std/checked_arithmetic.dag", include_str!("../../../../dag/std/checked_arithmetic.dag")), ("dag/std/coercion.dag", include_str!("../../../../dag/std/coercion.dag")), ("dag/std/computation.dag", include_str!("../../../../dag/std/computation.dag")), ("dag/std/constructors.dag", include_str!("../../../../dag/std/constructors.dag")), ("dag/std/decimal.dag", include_str!("../../../../dag/std/decimal.dag")), ("dag/std/decl_ref.dag", include_str!("../../../../dag/std/decl_ref.dag")), ("dag/std/dissolution.dag", include_str!("../../../../dag/std/dissolution.dag")), ("dag/std/error_primitives.dag", include_str!("../../../../dag/std/error_primitives.dag")), ("dag/std/induction.dag", include_str!("../../../../dag/std/induction.dag")), ("dag/std/integer.dag", include_str!("../../../../dag/std/integer.dag")), ("dag/std/keyed_roster.dag", include_str!("../../../../dag/std/keyed_roster.dag")), ("dag/std/keyed_row.dag", include_str!("../../../../dag/std/keyed_row.dag")), ("dag/std/literal_elaboration.dag", include_str!("../../../../dag/std/literal_elaboration.dag")), ("dag/std/machine_constraints.dag", include_str!("../../../../dag/std/machine_constraints.dag")), ("dag/std/measure.dag", include_str!("../../../../dag/std/measure.dag")), ("dag/std/nat.dag", include_str!("../../../../dag/std/nat.dag")), ("dag/std/optional.dag", include_str!("../../../../dag/std/optional.dag")), ("dag/std/render_repeat_string_bootstrap.dag", include_str!("../../../../dag/std/render_repeat_string_bootstrap.dag")), ("dag/std/roster_frontier.dag", include_str!("../../../../dag/std/roster_frontier.dag")), ("dag/std/syntax.dag", include_str!("../../../../dag/std/syntax.dag")), ("dag/std/termination.dag", include_str!("../../../../dag/std/termination.dag")), ("dag/std/types.dag", include_str!("../../../../dag/std/types.dag")), ("dag/std/unicode/types.dag", include_str!("../../../../dag/std/unicode/types.dag"))] {
+                    srcs.push(std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: path.to_string(), content: content.to_string() }));
+                }
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(srcs.into_iter().collect()), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let out = result.files.iter().find(|f| f.path.contains("semver")).expect("extdeps.version.semver must emit");
+                assert!(!out.content.contains("Vec<()>"), "a Present empty-list fold init (semver_identifier_list_parse) must not erase its element type to (); emitted Rust annotates the fold accumulator with Vec<()>");
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("present_empty_list_fold_init_emits_no_unit_element panicked");
+    }
+
+    #[test]
+    fn kernel_mint_reachable_without_std_optional_refuses_typed() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_no_optional.dag".to_string(),
+                    content: "module probe.no_optional\nfn f() -> Optional<Int> { Present { value: 1 } }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(messages.iter().any(|m| m.contains("refusing rather than leaving its payload unstamped")), "the kernel mint is reachable but std.optional is not in the closure: a typed refusal, never a silent false; got {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("kernel_mint_reachable_without_std_optional_refuses_typed panicked");
+    }
+
+    #[test]
+    fn record_field_under_an_optional_expected_keeps_its_declared_type() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_outer_opt.dag".to_string(),
+                    content: "module probe.outer_opt\ntype Inner { x: Int }\ntype Outer { child: Inner }\nfn f() -> Outer? { Outer { child: Inner { x: 1 } } }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!messages.iter().any(|m| m.contains("Inner")), "a field of a record literal under a T? expected keeps its declared type Inner; refused: {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("record_field_under_an_optional_expected_keeps_its_declared_type panicked");
+    }
+
+    #[test]
+    fn present_list_into_an_optional_marked_list_formal_is_admitted() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_opt_list.dag".to_string(),
+                    content: "module probe.opt_list\ntype Occ { id: Int }\nfn take(xs: List<Occ>?) -> List<Occ>? { xs }\nfn give(occ: Occ, xs: List<Occ>) -> List<Occ>? { take(xs: Present { value: list_push(xs, occ) }) }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![src]));
+                let messages: Vec<String> = resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();
+                assert!(!messages.iter().any(|m| m.contains("type mismatch")), "a Present literal inhabits an optional-marked List formal; refused: {:?}", messages);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("present_list_into_an_optional_marked_list_formal_is_admitted panicked");
+    }
+
+    #[test]
     fn pub_use_crate_lines_are_sorted_and_two_emissions_are_byte_identical() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
@@ -1361,8 +1668,8 @@ mod compiler_tests {
             crate::cli_run::fixture_closure_summary(&pair.red)
         );
         assert!(
-            crate::cli_run::fixture_discrimination_passed(&pair),
-            "the argv-word-list-splice control must COMPILE and the route red must still be refused by rustc in its own emitted module with the claimed error class; control={} red={} attribution={:?} diagnostic={:?}",
+            crate::cli_run::fixture_argv_non_string_discrimination_passed(&pair),
+            "the argv-word-list-splice control must COMPILE and the non-string argv red must be refused by rustc in its own emitted module carrying the located argv-type refusal; control={} red={} attribution={:?} diagnostic={:?}",
             crate::cli_run::fixture_closure_summary(&pair.green),
             crate::cli_run::fixture_closure_summary(&pair.red),
             crate::cli_run::fixture_closure_attributed_line(&pair.red),
