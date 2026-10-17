@@ -70,7 +70,7 @@ fn boot_fan_gate_any_off(readbacks: List<ChassisPowerObservation>) -> Bool {
 // ONE PowerDown + readback; if never read off, ONE repeated PowerDown + readback; never a loop. Both attempts' readbacks are kept.
 fn boot_fan_gate_safe_stop(username: NonEmptyStr, password_file: NonEmptyStr) -> FanGateSafeStopReceipt
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "mtcollins1_boot_fan_gate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "finish_refusal"),
   ]
 {
   let first = boot_fan_gate_power_down(username: username, password_file: password_file)

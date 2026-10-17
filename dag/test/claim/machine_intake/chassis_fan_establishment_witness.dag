@@ -64,7 +64,7 @@ test fn every_fitted_fan_spinning_is_established_on_a_cited_set() -> Bool {
 }
 
 test fn an_unfitted_header_with_no_reading_does_not_refuse() -> Bool {
-  is_established(v: rows_verdict(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "no reading" as NonEmptyStr))))
+  is_established(v: rows_verdict(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "No Reading" as NonEmptyStr))))
 }
 
 test fn an_unestablished_set_refuses_as_fitted_set_unestablished() -> Bool {
@@ -159,7 +159,7 @@ test fn a_fitted_fan_reading_zero_refuses_as_zero_rpm() -> Bool {
 }
 
 test fn a_fitted_fan_with_no_reading_refuses_as_no_reading() -> Bool {
-  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "no reading" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
+  match rows_verdict(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "No Reading" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]) {
     PostPowerFanVerdictRefused { cause: FittedHeaderNoReading { header: h } } => (h as String) == "FAN2"
     _ => false
   }
