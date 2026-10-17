@@ -102,9 +102,6 @@ data iam_observe_service_account: ServiceAccountEmail = "iam-observe@gunbai-secr
 // own policy and no other grant. The provider's condition pins this repository, the fleet-converge
 // workflow file at reviewed main, a workflow_dispatch on main and the gcp-iam-converge environment. That binding is
 // written once by the bootstrap ceremony; iam-converge's own policy is never a converge target.
-// THE ACTUATION TOKEN'S LIFETIME, passed to the impersonating auth step. Ten minutes covers a
-// provisioning run (three creates, one impersonation reconcile, a handful of secret grants, each with
-// readback) and ends before a leaked token is worth much.
 
 // ── The reach of setIamPolicy, bounded in three layers ───────────────────────────────────────
 // 1. FOUR CUSTOM ROLES, EACH BOUND ON THE RESOURCE ITS PERMISSIONS ARE AUTHORIZED AGAINST (HOLD
