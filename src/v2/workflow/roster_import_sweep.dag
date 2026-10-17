@@ -1,0 +1,796 @@
+module v2.workflow.roster_import_sweep
+
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector {
+  HeadLexicallyUnbound,
+  ScopedReferenceSite,
+  collect_scoped_module_reference_sites
+}
+import v2.compiler.resolution_provenance { ReferenceSite }
+import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
+import v2.extdeps.languages.dag {
+  import_decl_target_module,
+  parse_import_block_idents
+}
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.integer { int_to_decimal_string }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.types { List, Bool }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
+import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.qualified_name { QualifiedName }
+
+// RULING-B ROSTER IMPORT SWEEP (#14003 / #14017), computed from the PARSED program, not from text.
+//
+// A bare free call to a collection kernel head binds natively only when its shape is import-visible
+// from std.algebra. This module reads each file the way the compiler does (tokenize, parse, normalize),
+// takes the file's own reference sites with their lexical head classification, and computes the
+// std.algebra import as a VALUE: the names its existing import declaration binds, plus the shape each
+// lexically-unbound roster head needs, deduplicated by Symbol identity. The import declaration is then
+// rendered from that value and addressed by its parsed source extent, so a malformed block has no
+// construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
+//   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
+//   REFUSE <path> <cause>
+// roster_import_sweep_apply_exit is the committed apply step (stale-read check under an apply lock, then Filesystem.Write).
+// This generator plus its apply step is the wave tool of the NAMESPACE-XL sweeps; the N4/N5 work
+// makes its four-row table row-driven (the HOME TABLE rows) and keeps the tool. Driven as
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
+//     --function roster_import_sweep_for_paths --arg paths_csv=<comma-separated paths>
+// and applied with roster_import_sweep_apply_exit --arg root_dir=<absolute worktree root> --arg paths_csv=<paths relative to the root>
+//
+// Pending rows leave the process through roster_import_sweep_exit's reason channel.
+// SCOPE: the ruling-B shapes only (concat/count/map/join). map_get -> map_lookup is NOT swept: map_lookup is not a drop-in for
+// map_get under the seed (dag/std/graph.dag stops resolving: match arms typed String vs List<String>), so the
+// rename is a Map-home question held for the operator's table, with the collection-op signatures. Homes for
+// chars, List, list_push or Map wait for the operator's home table; the table below is the single
+// place a row would be added, and it is data a later row-driven generator replaces.
+
+type RosterHeadRow {
+  call: String
+  import_name: String
+}
+
+type RosterOutcome
+  = RosterClean
+  | RosterEdit { start: Int, end: Int, text: String, own_line: Bool }
+  | RosterRefused { cause: String }
+
+fn roster_head_rows() -> List<RosterHeadRow> {
+  [
+    RosterHeadRow { call: "concat", import_name: "collection_concat_shape" },
+    RosterHeadRow { call: "count", import_name: "collection_count_shape" },
+    RosterHeadRow { call: "map", import_name: "collection_map_shape" },
+    RosterHeadRow { call: "join", import_name: "collection_join_shape" }
+  ]
+}
+
+// THE VERDICT IS CONVERGENCE: no pending rows is ExitSuccess (the post-apply re-run), pending rows
+// are an ExitFailure whose reason IS the rows, so a refused or unconverged sweep cannot read as done.
+fn roster_import_sweep_exit(paths_csv: String) -> ProcessExit {
+  let rows = roster_import_sweep_for_paths(paths_csv: paths_csv)
+  if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+// The grammar and lex rules are prepared ONCE per run and passed down: preparing them per file
+// re-derived the same compiled ground for every path (the cost that made an 83-file run take 25+ minutes).
+fn roster_import_sweep_for_paths(paths_csv: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + roster_sweep_path(path: path, prepared: prepared, lex: lex) }
+  )
+}
+
+fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    roster_render_outcome(path: path, outcome: roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex))
+  } else {
+    "REFUSE " + path + " unreadable\n"
+  }
+}
+
+// THE APPLY STEP, in the same entry family as the generator: the file is read, the outcome computed,
+// the file re-read and required byte-identical to what the outcome was computed from (a stale-read check; the apply
+// holds an exclusive create-new lock file for its whole run, so two appliers cannot interleave, but a writer that is
+// not this applier and writes between the re-read and the write is outside the contract: the worktree must be
+// exclusively owned for the run, std.durable_compare_and_set being a generation-slot store that cannot reach a source file),
+// the extent required to hold what the parsed decl said it holds, and only then written with
+// Filesystem.Write. Anything else is a REFUSE row and the file is untouched. Success is silent, so the
+// exit reason is exactly the refusals.
+fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> ProcessExit {
+  let report = roster_apply_for_paths(root_dir: root_dir, paths_csv: paths_csv)
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+// THE LOCK IDENTITY is derived from the worktree root the caller names (an absolute path with no `.`, `..` or empty
+// segment), never from the working directory: two invocations from different directories on the same root contend for
+// the same file. Every target is a relative path confined under that root (no leading `/`, no `.`, `..` or empty segment);
+// a target that is not is refused before any read. The effectful steps take a RosterHeldLock, whose only constructor is
+// roster_lock_acquire, and roster_apply_edit re-checks that the lock file still exists before it writes, so an entry
+// that never acquired the lock refuses `lock-not-held` and writes nothing. Symlinks inside the root are not resolved
+// (the root is exclusively owned for the run, per the contract above).
+// WHY NOT std.durable_exclusive_hold / std.temporal_effect::HeldLease (DESIGN §3b leasing home): durable_hold_*_assess
+// and held_lease are pure assessments over a caller-supplied observation; none of them takes or releases anything, and no
+// durable store for a source tree exists to observe. Using them first needs that store plus holder-liveness reporting,
+// which is more machinery than the apply they would guard. The cost of the lock file is a stuck lock after a killed run:
+// loud (every later apply refuses `apply-lock-unavailable` naming the root, writing nothing) and cleared by the root's
+// single owner deleting `<root>/.roster_import_sweep.lock`. Expiry and stale-holder recovery are not built.
+// TRIGGER to move onto the hold home: the first apply run by more than one writer or unattended (CI), when the
+// durable-hold store and liveness report exist.
+type RosterHeldLock sole_constructor {
+  root: String
+  nonce: String
+}
+
+type RosterLockAcquisition
+  = RosterLockAcquired { held: RosterHeldLock }
+  | RosterLockRefused { cause: String }
+
+fn roster_segments_admitted(segments: List<String>) -> Bool {
+  fold_list(xs: segments, empty: true, cons: fn(ok, seg) { ok && seg != "" && seg != "." && seg != ".." })
+}
+
+fn roster_root_admitted(root_dir: String) -> Bool {
+  match split(s: root_dir, delimiter: "/") {
+    Cons { head: first, tail: rest } => first == "" && !is_empty(xs: rest) && roster_segments_admitted(segments: rest)
+    Empty => false
+  }
+}
+
+fn roster_path_admitted(path: String) -> Bool {
+  roster_segments_admitted(segments: split(s: path, delimiter: "/"))
+}
+
+fn roster_lock_file(root: String) -> String {
+  root + "/.roster_import_sweep.lock"
+}
+
+fn roster_generation_file(root: String) -> String {
+  root + "/.roster_import_sweep.generation"
+}
+
+fn roster_lock_body(nonce: String) -> String {
+  "roster_import_sweep_apply nonce=" + nonce + "\n"
+}
+
+// The root must be the worktree's git toplevel: its listing carries a `.git` entry (a directory in a primary checkout, a
+// file in a linked worktree). A subdirectory of the tree has none, so `/work/repo` + `src/f.dag` and `/work/repo/src` +
+// `f.dag` cannot take two locks for one file: the second root is refused. No realpath or lstat operation is reachable
+// from a .dag effect, so a symlinked spelling of the toplevel and a symlink inside the tree that escapes it are NOT
+// resolved; they stay inside the exclusively-owned, symlink-free worktree contract.
+fn roster_root_is_toplevel(root_dir: String) -> Bool {
+  let listed = Filesystem.List(path: root_dir)
+  listed.success && filesystem_listing_names_entry(listing: listed.entries, name: ".git")
+}
+
+// ONE NONCE PER ACQUISITION. The generation file is written only while the lock is held, one more character per
+// acquisition, so the nonce is the count of acquisitions on this root and a token from an earlier holder never equals
+// the current lock's nonce. (Neither lock file nor generation file is tracked; both are scratch beside the tree.)
+fn roster_lock_acquire(root_dir: String) -> RosterLockAcquisition {
+  if !roster_root_admitted(root_dir: root_dir) {
+    RosterLockRefused { cause: "root-not-absolute-canonical" }
+  } else if !roster_root_is_toplevel(root_dir: root_dir) {
+    RosterLockRefused { cause: "root-not-git-toplevel" }
+  } else if !Filesystem.WriteCreateNew(path: roster_lock_file(root: root_dir), content: "roster_import_sweep_apply pending\n").success {
+    RosterLockRefused { cause: "apply-lock-unavailable" }
+  } else {
+    let prior = Filesystem.Read(path: roster_generation_file(root: root_dir))
+    let before = if prior.success { prior.content } else { "" }
+    let nonce = int_to_decimal_string(value: string_length(s: before) + 1)
+    if Filesystem.Write(path: roster_generation_file(root: root_dir), content: before + "x").success && Filesystem.Write(path: roster_lock_file(root: root_dir), content: roster_lock_body(nonce: nonce)).success {
+      RosterLockAcquired { held: RosterHeldLock { root: root_dir, nonce: nonce } }
+    } else {
+      let undone = Filesystem.Delete(path: roster_lock_file(root: root_dir))
+      RosterLockRefused { cause: "lock-write-failed" }
+    }
+  }
+}
+
+fn roster_lock_still_held(held: RosterHeldLock) -> Bool {
+  let now = Filesystem.Read(path: roster_lock_file(root: held.root))
+  now.success && now.content == roster_lock_body(nonce: held.nonce)
+}
+
+// Release only what this acquisition owns: a token whose nonce no longer matches the lock file deletes nothing.
+fn roster_lock_release(held: RosterHeldLock) -> Bool {
+  roster_lock_still_held(held: held) && Filesystem.Delete(path: roster_lock_file(root: held.root)).success
+}
+
+fn roster_apply_for_paths(root_dir: String, paths_csv: String) -> String {
+  match roster_lock_acquire(root_dir: root_dir) {
+    RosterLockRefused { cause: cause } => "REFUSE * " + cause + "\n"
+    RosterLockAcquired { held: held } => {
+      let report = roster_apply_locked(held: held, paths_csv: paths_csv)
+      if roster_lock_release(held: held) { report } else { report + "REFUSE * apply-lock-not-released\n" }
+    }
+  }
+}
+
+fn roster_apply_locked(held: RosterHeldLock, paths_csv: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      fold_list(
+        xs: split(s: paths_csv, delimiter: ","),
+        empty: "",
+        cons: fn(acc, path) { acc + roster_apply_path(held: held, path: path, prepared: prepared, lex: dag_prepared_lex()) }
+      )
+  }
+}
+
+fn roster_apply_path(held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  if !roster_path_admitted(path: path) {
+    "REFUSE " + path + " path-outside-root\n"
+  } else {
+    let read = Filesystem.Read(path: held.root + "/" + path)
+    if read.success {
+      match roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex) {
+        RosterClean => ""
+        RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+        RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
+      }
+    } else {
+      "REFUSE " + path + " unreadable\n"
+    }
+  }
+}
+
+fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
+  let now = Filesystem.Read(path: held.root + "/" + path)
+  if !roster_path_admitted(path: path) {
+    "REFUSE " + path + " path-outside-root\n"
+  } else if !roster_lock_still_held(held: held) {
+    "REFUSE " + path + " lock-not-held\n"
+  } else if !now.success || now.content != before {
+    "REFUSE " + path + " stale-read\n"
+  } else {
+    match roster_applied(before: before, outcome: outcome) {
+      RosterApplyRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+      RosterApplyWritten { content: content } =>
+        if content == before {
+          ""
+        } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
+          ""
+        } else {
+          "REFUSE " + path + " write-failed\n"
+        }
+    }
+  }
+}
+
+type RosterApplied
+  = RosterApplyWritten { content: String }
+  | RosterApplyRefused { cause: String }
+
+// THE PURE SPLICE the apply step performs, separate from its filesystem effects so the controls run it on text.
+fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
+  match outcome {
+    RosterClean => RosterApplyWritten { content: before }
+    RosterRefused { cause: cause } => RosterApplyRefused { cause: cause }
+    RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+      roster_splice(before: before, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+  }
+}
+
+fn roster_splice(before: String, start: Int, end: Int, replacement: String) -> RosterApplied {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: before))
+  let from = roster_scalar_boundary(octets: octets, byte: start)
+  let to = roster_scalar_boundary(octets: octets, byte: end)
+  if from < 0 || to < from {
+    RosterApplyRefused { cause: "extent-not-on-char-boundary" }
+  } else if !roster_extent_holds(before: before, start: from, end: to) {
+    RosterApplyRefused { cause: "extent-mismatch" }
+  } else if length(xs: split(s: substring(s: before, start: from, end: to), delimiter: "//")) > 1 {
+    RosterApplyRefused { cause: "extent-has-annotation" }
+  } else {
+    RosterApplyWritten { content: substring(s: before, start: 0, end: from) + replacement + substring(s: before, start: to, end: string_length(s: before)) }
+  }
+}
+
+// ByteRange comes from the parser in UTF-8 bytes; substring indexes Unicode scalars. A byte offset converts to the
+// scalar offset that precedes it (the count of non-continuation octets before it) and is valid only when it falls
+// on a scalar boundary; -1 otherwise.
+fn roster_scalar_boundary(octets: List<Int>, byte: Int) -> Int {
+  let total = length(xs: octets)
+  if byte < 0 || byte > total {
+    0 - 1
+  } else if byte == total {
+    roster_scalar_count(octets: take_prefix(xs: octets, n: byte))
+  } else {
+    match list_at_optional(xs: octets, index: byte) {
+      Present { value: o } => if roster_is_continuation(octet: o) { 0 - 1 } else { roster_scalar_count(octets: take_prefix(xs: octets, n: byte)) }
+      Absent => -1
+    }
+  }
+}
+
+fn roster_scalar_count(octets: List<Int>) -> Int {
+  fold_list(xs: octets, empty: 0, cons: fn(n, o) { if roster_is_continuation(octet: o) { n } else { n + 1 } })
+}
+
+fn roster_is_continuation(octet: Int) -> Bool {
+  octet >= 128 && octet < 192
+}
+
+// A replaced extent is a whole std.algebra import declaration (it opens with the keyword and the module and ends at
+// its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
+fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
+  if start == end {
+    substring(s: before, start: start - 1, end: start) == "}"
+  } else {
+    substring(s: before, start: start, end: start + 18) == "import std.algebra" && substring(s: before, start: end - 1, end: end) == "}"
+  }
+}
+
+// The one rendering of an outcome as protocol rows: replacement newlines are escaped as \n.
+fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
+  match outcome {
+    RosterClean => ""
+    RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+      "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
+        + (if own_line { "\\n" } else { "" }) + text + "\n"
+    RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+  }
+}
+
+fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+        Rejected { diagnostics: _ } => RosterRefused { cause: "tokenize-refused" }
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => RosterRefused { cause: "parse-refused" }
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                Rejected { diagnostics: _ } => RosterRefused { cause: "normalize-refused" }
+                Accepted { value: scoped, diagnostics: _ } =>
+                  roster_sweep_rows(
+                    parse_root: artifact.tree,
+                    spans: artifact.span_index,
+                    normalized_root: scoped.tree.root,
+                    imported: scoped.tree.import_bindings
+                  )
+              }
+          }
+      }
+}
+
+// The roster rows whose call head is lexically unbound in this file: the heads ruling B refuses
+// natively without an import. HeadLexicallyUnbound is the collector's own classification, so a local
+// binding, a module-level declaration or an existing import of the same spelling is never swept.
+fn roster_needed_rows(normalized_root: Node, imported: List<AliasBindingRow>) -> List<RosterHeadRow> {
+  let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: list_map(xs: imported, f: fn(row) { row.binding })).sites
+  fold_list(
+    xs: roster_head_rows(),
+    empty: [],
+    cons: fn(acc, row) {
+      if roster_sites_count(sites: sites, call: row.call) > 0 && !roster_symbol_imported(imported: imported, name: row.import_name) {
+        list_snoc_item(xs: acc, item: row)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// The import binds the SHAPE name, not the call spelling, so the collector keeps classifying the bare call as
+// unbound after the import is present. A row is needed only while its shape name is not yet import-visible.
+// The shape counts as imported only when the binding's declaring module is std.algebra: a same-named shape bound
+// from elsewhere (target not std.algebra.<name>) leaves the std.algebra import required.
+fn roster_symbol_imported(imported: List<AliasBindingRow>, name: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, row) { found || (symbol_lexeme(sym: row.binding) == name && roster_target_is_algebra(qn: row.target, name: name)) })
+}
+
+fn roster_target_is_algebra(qn: QualifiedName, name: String) -> Bool {
+  match qn {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      (symbol_lexeme(sym: a) == "std" && symbol_lexeme(sym: b) == "algebra" && symbol_lexeme(sym: c) == name)
+    _ => false
+  }
+}
+
+fn roster_sites_count(sites: FreeMonoid<ScopedReferenceSite>, call: String) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(n, s) {
+      match s.head {
+        HeadLexicallyUnbound =>
+          if roster_spelling_is(qn: s.site.spelling, call: call) { n + 1 } else { n }
+        _ => n
+      }
+    }
+  )
+}
+
+fn roster_spelling_is(qn: QualifiedName, call: String) -> Bool {
+  match qn {
+    Cons { head: h, tail: Empty } => (symbol_lexeme(sym: h) == call)
+    _ => false
+  }
+}
+
+fn roster_sweep_rows(
+  parse_root: Node,
+  spans: SpanIndex,
+  normalized_root: Node,
+  imported: List<AliasBindingRow>
+) -> RosterOutcome {
+  let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported)
+  if is_empty(xs: needed) {
+    RosterClean
+  } else if roster_any_needed_bound_elsewhere(needed: needed, imported: imported) {
+    RosterRefused { cause: "shape-name-bound-elsewhere" }
+  } else {
+    roster_import_row(parse_root: parse_root, spans: spans, needed: needed)
+  }
+}
+
+// A needed shape name this module already binds to a DIFFERENT declaration: adding the std.algebra import would give one
+// local name two targets, so the sweep names the conflict and leaves the file unchanged.
+fn roster_any_needed_bound_elsewhere(needed: List<RosterHeadRow>, imported: List<AliasBindingRow>) -> Bool {
+  fold_list(
+    xs: needed,
+    empty: false,
+    cons: fn(found, row) {
+      found || fold_list(xs: imported, empty: false, cons: fn(hit, b) { hit || symbol_lexeme(sym: b.binding) == row.import_name })
+    }
+  )
+}
+
+// ONE EXISTING std.algebra IMPORT: its bound names are the value's base. NONE: the value starts empty
+// and the block is inserted after the last import declaration. TWO OR MORE std.algebra imports refuse
+// (a merge would choose which declaration survives).
+type ImportDeclFact {
+  module_name: String
+  names: List<String>
+  start: Int
+  end: Int
+}
+
+fn roster_import_row(parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> RosterOutcome {
+  let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
+  let algebra = roster_filter_module(decls: decls, module_name: "std.algebra")
+  let wanted = list_map(xs: needed, f: fn(r) { r.import_name })
+  match length(xs: algebra) {
+    0 =>
+      match roster_last_decl_end(decls: decls) {
+        Present { value: at } =>
+          RosterEdit { start: at, end: at, text: roster_render_import(names: roster_dedupe(base: [], more: wanted)), own_line: true }
+        Absent => RosterRefused { cause: "no-import-anchor" }
+      }
+    _ =>
+      // Several std.algebra imports make the same names visible; the first one is extended and the rest stay as authored.
+      fold_list(
+        xs: algebra,
+        empty: RosterClean,
+        cons: fn(acc, d) {
+          match acc {
+            RosterClean =>
+              RosterEdit { start: d.start, end: d.end, text: roster_render_import(names: roster_dedupe(base: d.names, more: wanted)), own_line: false }
+            _ => acc
+          }
+        }
+      )
+  }
+}
+
+fn roster_render_import(names: List<String>) -> String {
+  "import std.algebra { " + roster_join(xs: names, sep: ", ") + " }"
+}
+
+// Deduplicated by spelling identity; the existing names keep their order, new names follow.
+fn roster_dedupe(base: List<String>, more: List<String>) -> List<String> {
+  fold_list(
+    xs: more,
+    empty: base,
+    cons: fn(acc, name) {
+      if roster_contains(xs: acc, name: name) { acc } else { list_snoc_item(xs: acc, item: name) }
+    }
+  )
+}
+
+fn roster_contains(xs: List<String>, name: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(found, x) { found || (x == name) })
+}
+
+fn roster_filter_module(decls: List<ImportDeclFact>, module_name: String) -> List<ImportDeclFact> {
+  fold_list(
+    xs: decls,
+    empty: [],
+    cons: fn(acc, d) {
+      if (d.module_name == module_name) { list_snoc_item(xs: acc, item: d) } else { acc }
+    }
+  )
+}
+
+fn roster_last_decl_end(decls: List<ImportDeclFact>) -> Int? {
+  fold_list(
+    xs: decls,
+    empty: Absent,
+    cons: fn(acc, d) { Present { value: d.end } }
+  )
+}
+
+fn roster_import_decl_facts(parse_root: Node, spans: SpanIndex) -> List<ImportDeclFact> {
+  fold_list(
+    xs: node_subtree_nodes(root: parse_root),
+    empty: [],
+    cons: fn(acc, n) {
+      match parse_production_emitted_identity_optional(node: n) {
+        Present { value: id } =>
+          if id == ^dag_surface_import_decl {
+            match roster_import_decl_fact(decl: n, root: parse_root, spans: spans) {
+              Present { value: fact } => list_snoc_item(xs: acc, item: fact)
+              Absent => acc
+            }
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn roster_import_decl_fact(decl: Node, root: Node, spans: SpanIndex) -> ImportDeclFact? {
+  match import_decl_target_module(decl: decl, module_root: root) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: target, diagnostics: _ } =>
+      match parse_import_block_idents(import_decl_node: decl, root: root) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: names, diagnostics: _ } =>
+          match roster_node_byte_range(node: decl, spans: spans) {
+            Present { value: range } =>
+              Present {
+                value: ImportDeclFact {
+                  module_name: roster_join(xs: list_map(xs: target, f: fn(s) { symbol_lexeme(sym: s) }), sep: "."),
+                  names: list_map(xs: names, f: fn(s) { symbol_lexeme(sym: s) }),
+                  start: range.start,
+                  end: range.end
+                }
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+type RosterByteRange {
+  start: Int
+  end: Int
+}
+
+fn roster_node_byte_range(node: Node, spans: SpanIndex) -> RosterByteRange? {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => roster_id_byte_range(id: id, spans: spans)
+    OccurrenceProjected { id: id, caused_by: _ } => roster_id_byte_range(id: id, spans: spans)
+    OccurrenceSynthetic => Absent
+    OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? {
+  match span_index_extent(index: spans, id: id) {
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentKnown { locus: Textual { file: _, extent: ByteRange { start: s, end: e } } } =>
+          Present { value: RosterByteRange { start: s, end: e } }
+        _ => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn roster_join(xs: List<String>, sep: String) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + sep + x } })
+}
+
+// THE CONTROLS, run as `gunbc run --entry src/v2/workflow/roster_import_sweep.dag --function roster_import_sweep_controls_exit`.
+// Each case is source text pushed through the same tokenize/parse/normalize route and the same pure splice the apply step
+// performs, so a divergence between parser coordinates and applier coordinates fails here with the case named.
+//   homonym:  a same-named shape imported from another module does not satisfy the std.algebra import (an EDIT, not Clean).
+//   present:  the std.algebra import already carries the shape (Clean).
+//   multibyte: UTF-8 text before and after the import; byte extents must land on scalar boundaries and everything outside
+//             the extent is preserved byte for byte.
+//   annotation: a `//` inside the replaced import would be erased, so the splice refuses.
+fn roster_import_sweep_controls_exit() -> ProcessExit {
+  let report = roster_controls_report()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_homonym(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/homonym.dag", text: "module c.homonym\n\nimport examples.decoy { collection_concat_shape }\n\nfn f(xs: List<String>, ys: List<String>) -> List<String> {\n  concat(a: xs, b: ys)\n}\n", prepared: prepared, lex: lex) {
+    RosterRefused { cause: cause } =>
+      if cause == "shape-name-bound-elsewhere" { "" } else { "CONTROL-FAIL homonym: refused for " + cause + "\n" }
+    _ => "CONTROL-FAIL homonym: a shape name bound to another declaration was not refused as a conflict\n"
+  }
+}
+
+fn roster_control_present(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/present.dag", text: "module c.present\n\nimport std.algebra { collection_concat_shape }\n\nfn f(xs: List<String>, ys: List<String>) -> List<String> {\n  concat(a: xs, b: ys)\n}\n", prepared: prepared, lex: lex) {
+    RosterClean => ""
+    _ => "CONTROL-FAIL present: an existing std.algebra import was not recognised\n"
+  }
+}
+
+fn roster_control_multibyte(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.multibyte\n\n// 😀 é 日本 before the import\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n\nfn g() -> String {\n  \"tail 😀 é\"\n}\n"
+  let expected = "module c.multibyte\n\n// 😀 é 日本 before the import\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n\nfn g() -> String {\n  \"tail 😀 é\"\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/multibyte.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: content } =>
+      if content == expected { "" } else { "CONTROL-FAIL multibyte: spliced text differs from the expected text outside or inside the extent\n" }
+    RosterApplyRefused { cause: cause } => "CONTROL-FAIL multibyte: refused " + cause + "\n"
+  }
+}
+
+fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.annotation\n\nimport std.algebra {\n  // 😀 kept\n  Cons\n}\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/annotation.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { cause: cause } =>
+      if cause == "extent-has-annotation" { "" } else { "CONTROL-FAIL annotation: refused for " + cause + "\n" }
+    RosterApplyWritten { content: _ } => "CONTROL-FAIL annotation: the splice erased an annotation\n"
+  }
+}
+
+// THE LOCK CONTROLS (effectful), run as `gunbc run … --function roster_import_sweep_lock_controls_exit --arg root_dir=<absolute scratch root>`.
+// The root must be an exclusively owned scratch directory; the controls create and delete only `.roster_control_*`,
+// the lock, generation and a `.git` marker file in it.
+//   unheld:   a token built without roster_lock_acquire (no lock file) refuses `lock-not-held`; the target keeps its bytes.
+//   stale:    a token from an earlier acquisition refuses `lock-not-held` while another acquisition holds the lock.
+//   contend:  with the lock held, a second acquire on the same root is refused.
+//   traversal: roster_apply_edit itself (the write boundary) refuses `../outside.dag` under a held lock and creates nothing.
+//   spellings: a subdirectory spelling of the root is not the toplevel and takes no lock; a relative or non-canonical root is refused.
+fn roster_import_sweep_lock_controls_exit(root_dir: String) -> ProcessExit {
+  let marker = Filesystem.WriteCreateNew(path: root_dir + "/.git", content: "gitdir: scratch\n")
+  let report = roster_lock_controls_report(root_dir: root_dir)
+  let cleaned = Filesystem.Delete(path: root_dir + "/.git")
+  if (report == "" && cleaned.success) { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_lock_controls_report(root_dir: String) -> String {
+  roster_control_unheld(root_dir: root_dir)
+    + roster_control_stale(root_dir: root_dir)
+    + roster_control_contend(root_dir: root_dir)
+    + roster_control_traversal(root_dir: root_dir)
+    + roster_control_spellings(root_dir: root_dir)
+}
+
+fn roster_control_unheld(root_dir: String) -> String {
+  let before = "module c.unheld\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  let target = ".roster_control_unheld.dag"
+  if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
+    "CONTROL-FAIL unheld: scratch target could not be created\n"
+  } else {
+    let refused = roster_apply_edit(
+      held: RosterHeldLock { root: root_dir, nonce: "forged" },
+      path: target,
+      before: before,
+      outcome: RosterEdit { start: 0, end: 0, text: "x", own_line: false }
+    )
+    let after = Filesystem.Read(path: root_dir + "/" + target)
+    let removed = Filesystem.Delete(path: root_dir + "/" + target)
+    if refused != "REFUSE " + target + " lock-not-held\n" {
+      "CONTROL-FAIL unheld: got " + refused
+    } else if !after.success || after.content != before {
+      "CONTROL-FAIL unheld: the target changed without the lock\n"
+    } else {
+      ""
+    }
+  }
+}
+
+fn roster_control_stale(root_dir: String) -> String {
+  let before = "module c.stale\n\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  let target = ".roster_control_stale.dag"
+  match roster_lock_acquire(root_dir: root_dir) {
+    RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: first acquire refused " + cause + "\n"
+    RosterLockAcquired { held: first } =>
+      if !roster_lock_release(held: first) {
+        "CONTROL-FAIL stale: first release failed\n"
+      } else {
+        match roster_lock_acquire(root_dir: root_dir) {
+          RosterLockRefused { cause: cause } => "CONTROL-FAIL stale: second acquire refused " + cause + "\n"
+          RosterLockAcquired { held: second } =>
+            if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
+              "CONTROL-FAIL stale: scratch target could not be created\n"
+            } else {
+              let refused = roster_apply_edit(
+                held: first,
+                path: target,
+                before: before,
+                outcome: RosterEdit { start: 0, end: 0, text: "x", own_line: false }
+              )
+              let after = Filesystem.Read(path: root_dir + "/" + target)
+              let removed = Filesystem.Delete(path: root_dir + "/" + target)
+              let stale_release = roster_lock_release(held: first)
+              let released = roster_lock_release(held: second)
+              if first.nonce == second.nonce {
+                "CONTROL-FAIL stale: two acquisitions shared a nonce\n"
+              } else if refused != "REFUSE " + target + " lock-not-held\n" {
+                "CONTROL-FAIL stale: got " + refused
+              } else if !after.success || after.content != before {
+                "CONTROL-FAIL stale: a stale token changed the target\n"
+              } else if stale_release || !released {
+                "CONTROL-FAIL stale: a stale token released the current holder's lock\n"
+              } else {
+                ""
+              }
+            }
+        }
+      }
+  }
+}
+
+fn roster_control_contend(root_dir: String) -> String {
+  match roster_lock_acquire(root_dir: root_dir) {
+    RosterLockRefused { cause: cause } => "CONTROL-FAIL contend: first acquire refused " + cause + "\n"
+    RosterLockAcquired { held: held } => {
+      let second = match roster_lock_acquire(root_dir: root_dir) {
+        RosterLockRefused { cause: cause } => cause
+        RosterLockAcquired { held: _ } => "acquired"
+      }
+      let released = roster_lock_release(held: held)
+      if second == "apply-lock-unavailable" && released { "" } else { "CONTROL-FAIL contend: second acquire answered " + second + "\n" }
+    }
+  }
+}
+
+fn roster_control_traversal(root_dir: String) -> String {
+  match roster_lock_acquire(root_dir: root_dir) {
+    RosterLockRefused { cause: cause } => "CONTROL-FAIL traversal: acquire refused " + cause + "\n"
+    RosterLockAcquired { held: held } => {
+      let edit = RosterEdit { start: 0, end: 0, text: "x", own_line: false }
+      let up = roster_apply_edit(held: held, path: "../roster_control_outside.dag", before: "", outcome: edit)
+      let abs = roster_apply_edit(held: held, path: "/tmp/roster_control_outside.dag", before: "", outcome: edit)
+      let made = Filesystem.Read(path: root_dir + "/../roster_control_outside.dag")
+      let released = roster_lock_release(held: held)
+      if up == "REFUSE ../roster_control_outside.dag path-outside-root\n" && abs == "REFUSE /tmp/roster_control_outside.dag path-outside-root\n" && !made.success && released {
+        ""
+      } else {
+        "CONTROL-FAIL traversal: got " + up + abs
+      }
+    }
+  }
+}
+
+fn roster_control_spellings(root_dir: String) -> String {
+  let sub = match roster_lock_acquire(root_dir: root_dir + "/src") {
+    RosterLockRefused { cause: cause } => cause
+    RosterLockAcquired { held: _ } => "acquired"
+  }
+  if sub == "root-not-git-toplevel" && !roster_root_admitted(root_dir: "relative/dir") && !roster_root_admitted(root_dir: "/a/../b") && !roster_root_admitted(root_dir: "/a//b") && roster_root_admitted(root_dir: "/a/b") {
+    ""
+  } else {
+    "CONTROL-FAIL spellings: subdirectory root answered " + sub + "\n"
+  }
+}

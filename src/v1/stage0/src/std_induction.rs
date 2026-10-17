@@ -11,7 +11,7 @@ use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{CostShape, Ordering};
+pub use crate::std_algebra::{collection_concat_shape, CostShape, Ordering};
 pub use crate::std_checked_arithmetic::{
     checked_int_add, checked_int_multiply, checked_int_optional,
 };
