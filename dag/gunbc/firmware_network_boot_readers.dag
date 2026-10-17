@@ -1,6 +1,6 @@
 module gunbc.firmware_network_boot_readers
 
-import std.types { Bool, HttpStatus, List, NonEmptyStr, String }
+import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, string_concat_join }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
@@ -201,6 +201,7 @@ fn nics_reply(get: RedfishGet) -> AxisReply {
             Present { value: _ } => refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection continues on another page"))
             Absent =>
               if page.member_links == [] { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection has no members; an empty list is not read as no NICs")) }
+              else if list_length(xs: list_flat_map(xs: page.member_links, f: fn(l) { if l == "" { [l] } else { [] } })) > 0 { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "an EthernetInterfaces member link is the empty string")) }
               else { ReplyNics { nics: list_map(xs: page.member_links, f: fn(l) { l as NonEmptyStr }) } }
           }
       }
