@@ -32,7 +32,7 @@ import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch }
 import std.measure {
   ObservationInstant, SharedMonotonic, ProcessMonotonic, WallClock, nanosecond,
   nanosecond_count, compare_instants, InstantOrder, InstantBefore, InstantSame,
-  InstantAfter, InstantIncomparable, clock_domain_eq,
+  InstantAfter, InstantIncomparable, clock_domain_eq, clock_basis_eq,
 }
 import gunbc.machine_intake.oob_boot_handoff {
   oob_boot_handoff_admission, oob_boot_handoff_admission_in, OobHandoffRowIncoherent,
@@ -444,20 +444,20 @@ test fn w_the_operator_attestation_instant_is_coherent_with_its_own_origin() -> 
   // is carried as a fact rather than left to the nanosecond field to imply: a date-only reading
   // stored at nanosecond scale is an EARLIEST BOUND, and a consumer needing sub-day ordering has to
   // be told it does not have it.
-  // A pipeline cannot feed a match block directly (the parser wants `match <expr> {`), so the lookup
-  // is bound first -- same shape the rest of this file uses.
-  let release_entry = megarac_release_capability_catalog
+  // THE ROW ACTUALLY RESTS ON THIS INSTANT -- the strongest form of the claim, and the only one here
+  // worth having: the 0.45.3 row's attestation is the same instant, in the same domain, down to the
+  // count. (An earlier draft also asserted the row's citation had a non-empty path. That was both
+  // unparseable and, once parseable, a §3c existence assertion with no independent referent -- a
+  // FactCitation carries {fact: DeclarationRef, authority: ExternalAuthority{uri}}, so the path I
+  // named does not even exist. Dropping it loses nothing the claim needs.)
+  let row_carries_it = match megarac_release_capability_catalog
     |> filter(e => bmc_firmware_release_identity_eq(a: e.row.firmware, b: megarac_firmware_0_45_3))
-    |> first()
-  let row_carries_it = match release_entry {
+    |> first() {
     Present { value: e } => match e.version {
       MegaRacVersionOperatorAttested { attested_on: on, detail: _, upgrade_read: _ } =>
         clock_domain_eq(a: on.domain, b: attested.domain)
         && nanosecond_count(n: on.since_origin) == nanosecond_count(n: attested.since_origin)
-        && (e.citations |> first() |> match {
-             Present { value: c } => (c.authority.declaration_ref.path as String) != ""
-             Absent => false
-           })
+        && clock_basis_eq(a: on.basis, b: attested.basis)
       MegaRacVersionMachineRead { read_from: _ } => false
     }
     Absent => false
