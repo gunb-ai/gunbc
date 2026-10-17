@@ -7,6 +7,8 @@ import std.algebra { trim, list_head }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { ExactDecimal }
 import std.measure {
+  MoneyAmountMicro,
+  money_amount_micro,
   DecimalMoneyPerHourConversion,
   exact_decimal_to_money_per_hour_ceil,
 }
@@ -378,7 +380,7 @@ fn vast_ai_charges_refusal(status: Int, error: String) -> VastAiChargesRefusal {
 
 // amount is a float "rounded to 3 decimals" (same page): each row is within half of one thousandth of a
 // dollar of the contract's true total, which is 500 micro-dollars.
-data vast_ai_charge_amount_rounding_micros: Nat = 500
+data vast_ai_charge_amount_rounding: MoneyAmountMicro = money_amount_micro(count: 500)
 
 service vast_ai.Charges {
   config {

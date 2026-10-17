@@ -17,7 +17,7 @@ import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, Trans
 import extdeps.cloud.vast_ai {
   VastAiCharge, VastAiChargeSourceKind, VastAiChargeFromInstance, VastAiChargeSourceUnrecognized,
   VastAiChargesDayRange, VastAiChargesRefusal,
-  vast_ai_charge_source_kind, vast_ai_instance_charge_source, vast_ai_charge_amount_rounding_micros,
+  vast_ai_charge_source_kind, vast_ai_instance_charge_source, vast_ai_charge_amount_rounding,
   vast_ai_quote_currency, vast_ai_show_charges_page,
 }
 import product.fabric.flex_vast_shadow {
@@ -59,14 +59,14 @@ type RentedChargesReading
 // allowance covers bid-rate-versus-billed variance and the uncertainty of the contract's end instant; no Vast
 // document states a figure for it, so it is a transcribed operator policy and says what would ground it.
 type RentedSettlementTolerance {
-  per_row_rounding_micros: Nat
+  per_row_rounding: MoneyAmountMicro
   rounding_standing: CitedFigureStanding
   relative_permille: Nat
   relative_standing: CitedFigureStanding
 }
 
 data rented_settlement_tolerance: RentedSettlementTolerance = RentedSettlementTolerance {
-  per_row_rounding_micros: vast_ai_charge_amount_rounding_micros,
+  per_row_rounding: vast_ai_charge_amount_rounding,
   rounding_standing: CitedToAuthority { authority: vast_ai_show_charges_page },
   relative_permille: 100,
   relative_standing: TranscribedUncited { read_obligation: "an operator figure of 10 percent for how far billed spend may sit from asked_rate x lifetime; ground it with a measured distribution of settled versus expected spend over released allocations" as NonEmptyStr },
@@ -151,21 +151,19 @@ fn rented_charge_exclusion(allocation: RentedServingAllocation, row: VastAiCharg
   }
 }
 
-fn rented_charge_is_ours(allocation: RentedServingAllocation, row: VastAiCharge) -> Bool {
-  match rented_charge_exclusion(allocation: allocation, row: row) {
-    Present { value: _ } => false
-    Absent => true
-  }
+type RentedAttribution {
+  ours: List<VastAiCharge>
+  excluded: List<RentedExcludedCharge>
 }
 
-fn rented_excluded_charges(allocation: RentedServingAllocation, rows: List<VastAiCharge>) -> List<RentedExcludedCharge> {
+fn rented_attribute(allocation: RentedServingAllocation, rows: List<VastAiCharge>) -> RentedAttribution {
   fold(
     rows,
-    init: [],
+    init: RentedAttribution { ours: [], excluded: [] },
     f: (acc, row) =>
       match rented_charge_exclusion(allocation: allocation, row: row) {
-        Present { value: why } => concat(acc, [RentedExcludedCharge { row: row, reason: why }])
-        Absent => acc
+        Present { value: why } => RentedAttribution { ours: acc.ours, excluded: concat(acc.excluded, [RentedExcludedCharge { row: row, reason: why }]) }
+        Absent => RentedAttribution { ours: concat(acc.ours, [row]), excluded: acc.excluded }
       },
   )
 }
@@ -180,7 +178,7 @@ fn rented_charge_sum_step(acc: RentedChargeSum, row: VastAiCharge) -> RentedChar
     RentedChargeSumming { total: t, rounding: g } =>
       match exact_decimal_to_money_amount_micro_ceil(d: row.amount) {
         DecimalMoneyConverted { amount: a } =>
-          RentedChargeSumming { total: measure_add(a: t, b: a), rounding: measure_add(a: g, b: money_amount_micro(count: rented_settlement_tolerance.per_row_rounding_micros)) }
+          RentedChargeSumming { total: measure_add(a: t, b: a), rounding: measure_add(a: g, b: rented_settlement_tolerance.per_row_rounding) }
         DecimalMoneyNegativeRefused { units: u } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyNegativeRefused { units: u } }
         DecimalMoneyScaleRefused { fraction_digits: f } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyScaleRefused { fraction_digits: f } }
         DecimalMoneyUnrepresentable { cause: c } => RentedChargeSumFailed { row: row, conversion: DecimalMoneyUnrepresentable { cause: c } }
@@ -282,11 +280,11 @@ fn rented_settle_roster(
   if window.gte > needed_gte || window.lte < needed_lte {
     RentedSettlementChargesUnread { allocation: id, cause: RentedChargesWindowDoesNotCover { window: window, needed_gte: needed_gte, needed_lte: needed_lte } }
   } else {
-    let ours = filter(roster, row => rented_charge_is_ours(allocation: allocation, row: row))
-    if count(ours) == 0 {
+    let split = rented_attribute(allocation: allocation, rows: roster)
+    if count(split.ours) == 0 {
       RentedSettlementPending { allocation: id, cause: RentedPendingNoAttributableCharge }
     } else {
-      rented_settle_attributed(allocation: allocation, readings: readings, rows: ours, excluded: rented_excluded_charges(allocation: allocation, rows: roster))
+      rented_settle_attributed(allocation: allocation, readings: readings, rows: split.ours, excluded: split.excluded)
     }
   }
 }
