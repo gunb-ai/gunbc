@@ -530,6 +530,19 @@ mod probe {
             // diff the list the numbers were taken from against the one the scan produces today.
             let list: Vec<String> = if mode.trim() == "PERFILE" {
                 candidate_paths.iter().cloned().collect()
+            } else if let Some(rest) = mode.trim().strip_prefix("PERFILE-CHUNK=") {
+                // SHARDING IS PART OF THE MEASUREMENT, not a convenience: the runner caps one invocation
+                // at 60 minutes of wall clock, the census costs ~35s a file because each file is compiled
+                // with its transitive imports, and a measurement that is killed before it prints prints
+                // nothing. `zz-files=PERFILE-CHUNK=2-of-4` takes the 2nd quarter of the committed list.
+                let spec = mode.trim().trim_start_matches("PERFILE-CHUNK=");
+                let (index, parts) = spec.split_once("-of-").unwrap_or(("1", "1"));
+                let index: usize = index.parse().unwrap_or(1).max(1);
+                let parts: usize = parts.parse().unwrap_or(1).max(1);
+                let all: Vec<String> = candidate_paths.iter().cloned().collect();
+                let per = all.len().div_ceil(parts);
+                let start = (index - 1) * per;
+                all.into_iter().skip(start).take(per).collect()
             } else if let Some(rest) = mode.trim().strip_prefix("PERFILE-FILE=") {
                 let text = std::fs::read_to_string(rest)
                     .unwrap_or_else(|e| panic!("probe list {rest}: {e}"));
