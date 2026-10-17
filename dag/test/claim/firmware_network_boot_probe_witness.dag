@@ -1,18 +1,19 @@
 module test.claim.firmware_network_boot_probe_witness
 
 import std.types { Bool, List }
-import gunbc.firmware_network_boot_probe { FirmwareBootFamilyRow, BmcStack, RouteVerdict }
+import gunbc.firmware_network_boot_probe {
+  FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
+  BootOrderObserved, BootOrderRefused, BootOrderUnobserved,
+  FirmwareBootFamilyRow, BmcStack, RouteVerdict,
+}
 import std.optional { Present, Absent }
 import extdeps.external_authority { TranscribedUncited }
-import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation, SecureBootUnobserved, SecureBootObserved, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, SecureBootEnabled,
-}
 import gunbc.firmware_network_boot_probe {
   firmware_boot_family_rows, firmware_boot_family_row, probe, route_for,
   FamilyKey, AmiMegaRacStack, OpenBmcStack, SupermicroRedfishStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
   TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
-  ReplyBootOrder, ReplySecureBoot, ReplyRefusedByBmc,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc,
   BmcResponded, BmcSilent, ConnectTimedOut,
   BmcUnreachable, BmcObserved, ProbeSubject,
   ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
@@ -64,7 +65,8 @@ fn is_observed_boot_order(o: FirmwareBootObservation) -> Bool {
 fn is_unobserved_secure_boot(o: FirmwareBootObservation) -> Bool {
   match o.secure_boot {
     SecureBootUnobserved { reason: _ } => true
-    SecureBootObserved { state: _ } => false
+    SecureBootEnabled => false
+    SecureBootDisabled => false
     SecureBootRefused { refusal: _ } => false
   }
 }
@@ -120,7 +122,7 @@ test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
     route: MegaRacRestGetRoute,
     coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
   )
-  match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: ["pxe"] }, ReplySecureBoot { state: SecureBootEnabled }] }) {
+  match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: ["pxe"] }, ReplySecureBootEnabled] }) {
     BmcObserved { subject: _, observation: o } => is_unobserved_secure_boot(o: o) && is_observed_boot_order(o: o)
     BmcUnreachable { subject: _, attempt: _ } => false
   }

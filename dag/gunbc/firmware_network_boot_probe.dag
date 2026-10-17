@@ -4,16 +4,49 @@ import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
-// S0 IMPORT BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing; this
-// module consumes it and declares none of it. Every S0 name is imported here and nowhere else, so a
-// rename in S0 is a one-block edit.
-import gunbc.firmware_network_boot_standing {
-  FirmwareBootObservation,
-  BootOrderObservation, BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
-  BootOptionsObservation, BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
-  NicsObservation, NicsObserved, NicsUnobserved, NicsRefused,
-  SecureBootState, SecureBootObservation, SecureBootObserved, SecureBootUnobserved, SecureBootRefused,
-  BiosVersionObservation, BiosVersionObserved, BiosVersionUnobserved, BiosVersionRefused,
+// S0 SEAM, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
+// (S0). Until S0 merges, this module carries the five-axis stand-in below so it is witnessed on its
+// own; at integration the stand-in is deleted and the import below is switched on, with the S0 names
+// substituted for the ones here (BootOrderStanding, NetworkInterfaceStanding, SecureBootStanding,
+// BiosStanding). Nothing outside this block names where these types live.
+//
+// import gunbc.firmware_network_boot_standing { FirmwareBootObservation, BootOrderStanding, BootOptionsStanding, NetworkInterfaceStanding, SecureBootStanding, BiosStanding }
+
+type BootOrderObservation
+  = BootOrderObserved { devices: List<NonEmptyStr> }
+  | BootOrderUnobserved { reason: NonEmptyStr }
+  | BootOrderRefused { refusal: NonEmptyStr }
+
+type BootOptionsObservation
+  = BootOptionsObserved { options: List<NonEmptyStr> }
+  | BootOptionsUnobserved { reason: NonEmptyStr }
+  | BootOptionsRefused { refusal: NonEmptyStr }
+
+type NicsObservation
+  = NicsObserved { nics: List<NonEmptyStr> }
+  | NicsUnobserved { reason: NonEmptyStr }
+  | NicsRefused { refusal: NonEmptyStr }
+
+// THE SECURE BOOT STATE AND ITS STANDING ARE ONE UNION. A bool-ish state wrapped in an
+// Observed/Unobserved/Refused envelope lets the envelope and the value disagree; here "on", "off",
+// "not asked" and "BMC refused" are four arms of one type.
+type SecureBootObservation
+  = SecureBootEnabled
+  | SecureBootDisabled
+  | SecureBootUnobserved { reason: NonEmptyStr }
+  | SecureBootRefused { refusal: NonEmptyStr }
+
+type BiosVersionObservation
+  = BiosVersionObserved { version: NonEmptyStr }
+  | BiosVersionUnobserved { reason: NonEmptyStr }
+  | BiosVersionRefused { refusal: NonEmptyStr }
+
+type FirmwareBootObservation {
+  boot_order: BootOrderObservation
+  boot_options: BootOptionsObservation
+  nics: NicsObservation
+  secure_boot: SecureBootObservation
+  bios_version: BiosVersionObservation
 }
 
 // ONE INSTRUMENT, MANY ROWS. A BMC family is a FirmwareBootFamilyRow in firmware_boot_family_rows;
@@ -138,7 +171,8 @@ type AxisReply
   = ReplyBootOrder { devices: List<NonEmptyStr> }
   | ReplyBootOptions { options: List<NonEmptyStr> }
   | ReplyNics { nics: List<NonEmptyStr> }
-  | ReplySecureBoot { state: SecureBootState }
+  | ReplySecureBootEnabled
+  | ReplySecureBootDisabled
   | ReplyBiosVersion { version: NonEmptyStr }
   | ReplyRefusedByBmc { axis: ObservationAxis, refusal: NonEmptyStr }
 
@@ -169,7 +203,8 @@ fn reply_axis(reply: AxisReply) -> ObservationAxis {
     ReplyBootOrder { devices: _ } => BootOrderAxis
     ReplyBootOptions { options: _ } => BootOptionsAxis
     ReplyNics { nics: _ } => NicsAxis
-    ReplySecureBoot { state: _ } => SecureBootAxis
+    ReplySecureBootEnabled => SecureBootAxis
+    ReplySecureBootDisabled => SecureBootAxis
     ReplyBiosVersion { version: _ } => BiosVersionAxis
     ReplyRefusedByBmc { axis: a, refusal: _ } => a
   }
@@ -266,7 +301,8 @@ fn read_secure_boot(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> Sec
   match resolve_axis(row: row, replies: replies, axis: SecureBootAxis) {
     AxisUnanswerable { reason: r } => SecureBootUnobserved { reason: r }
     AxisNoReply => SecureBootUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplySecureBoot { state: s } } => SecureBootObserved { state: s }
+    AxisReplied { reply: ReplySecureBootEnabled } => SecureBootEnabled
+    AxisReplied { reply: ReplySecureBootDisabled } => SecureBootDisabled
     AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => SecureBootRefused { refusal: f }
     AxisReplied { reply: _ } => SecureBootUnobserved { reason: mismatched_reply_reason() }
   }
