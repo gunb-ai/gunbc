@@ -51,7 +51,7 @@ import gunbc.serving.rented_replica { RentedGpuDevice }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { NinferModelRow }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_release {
-  RentedReleaseReadings, RentedReleaseReceiptV1, RentedInstanceReading,
+  RentedReleaseReadings, RentedReleaseReceiptV1, RentedInstanceReading, RentedDestroyRequest,
   RentedReleasePending, rented_release_receipt, rented_bound_instance_id, rented_destroy_perform,
 }
 
@@ -73,13 +73,12 @@ import gunbc.serving.rented_release {
 
 // ---- WET GATE. The key custody is OBSERVED: the pass takes the custody read's own standing
 // (gunbc.fleet.host_credential_custody_converge host_credential_custody) and a wet write needs
-// CustodyHeld. The release leg (a card that never came up must be returnable) is not a row here: it is
-// flex_release_return_wall, an unconditional wall until S5b's unreachable outcome type lands.
+// CustodyHeld. The release leg (a card that never came up must be returnable) is not a row here: it is gated
+// on the typed outcomes of gunbc.serving.rented_release (flex_pass_step), which holds a silent card with an
+// ambiguous vantage and destroys only the allocation's bound id.
 type FlexWetGates {
   custody: CustodyStanding
 }
-
-data flex_release_return_frontier: DissolutionCondition = unbound_dissolution(description: "A card that never came up cannot be returned today (S5 holds release at drain on an unreachable host), so flex_release_return_wall refuses every wet write. TRIGGER: S5b (adhoc-abe32924-7ad) is on main and the release path carries its unreachable-host outcome type. SUFFICIENT FOR deleting this row and replacing flex_release_return_wall with a match on that type.")
 
 data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has no production caller: the executing route is a srv1 fleet-converge entry that reads the custody standing, the Vast instance and charge pages and the sealed readings, feeds the previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation (no planner reads a reconcile verdict yet), loads the key through flex_vast_api_read_grant, and calls it with FlexPolicy.actuation. TRIGGER: that entry exists and executes a DRY pass on srv1. SUFFICIENT FOR deleting this row. NOT satisfied by test.claim.fabric.flex_vast_loop_witness, which exercises the pure planner and flex_created_outcome only.")
 
@@ -191,7 +190,6 @@ type FlexCreateRefusal
   | FlexRefusedChargesUnreadable
   | FlexRefusedBudgetCeiling { spent: MoneyAmountMicro, reservation: MoneyAmountMicro, ceiling: MoneyAmountMicro }
   | FlexRefusedKeyNotLive { custody: FlexKeyCustodyDeclaration, causes: List<String> }
-  | FlexRefusedReleaseReturnUnmodeled
   | FlexRefusedPlacementUnread { obligation: NonEmptyStr }
 
 fn flex_entry_wall(entry: FlexShadowFieldEntry) -> List<FlexCreateRefusal> {
@@ -254,10 +252,6 @@ fn flex_wet_gate_wall(gates: FlexWetGates) -> List<FlexCreateRefusal> {
     CustodyHeld => []
     CustodyNotHeld { causes: cs } => [FlexRefusedKeyNotLive { custody: flex_key_custody_declaration, causes: cs }]
   }
-}
-
-fn flex_release_return_wall() -> List<FlexCreateRefusal> {
-  [FlexRefusedReleaseReturnUnmodeled]
 }
 
 fn flex_placement_wall(placement: FlexPlacementStanding) -> List<FlexCreateRefusal> {
@@ -605,9 +599,42 @@ fn flex_outcome_without_write(plan: FlexPassPlan) -> FlexPassOutcome? {
   }
 }
 
-// THE ENTRY. One pass: plan from the supplied observation, then perform the one write the plan holds.
-// A destroy's authorized request is performed here only after S5's receipt reports it Pending (the id and
-// label guards passed and the card still listed); the gone readback is the next pass's observation.
+// THE PASS STEP. Pure: it plans from the supplied observation and names the one write the plan holds, so a
+// release is witnessed without a transport. A destroy is due only when S5's receipt reports it Pending (the
+// id and label guards passed and the card still listed); every other receipt outcome is final here.
+type FlexPassStep
+  = FlexPassDone { outcome: FlexPassOutcome }
+  | FlexPassCreateDue { request: FlexCreateRequest, intent: FlexCreateIntent }
+  | FlexPassDestroyDue { receipt: RentedReleaseReceiptV1, request: RentedDestroyRequest }
+
+fn flex_pass_step(
+  input: FlexPassInput,
+  roots: ServingStoreRoots,
+  protected: ServingProtectedPaths,
+  readings: RentedReleaseReadings,
+) -> FlexPassStep {
+  let plan = flex_plan_pass(input: input)
+  match flex_outcome_without_write(plan: plan) {
+    Present { value: outcome } => FlexPassDone { outcome: outcome }
+    Absent =>
+      match plan {
+        FlexPlanCreate { request: request, intent: intent } => FlexPassCreateDue { request: request, intent: intent }
+        FlexPlanDestroy { action: _, allocation: allocation } =>
+          match flex_release_card(input: input, allocation: allocation, roots: roots, protected: protected, readings: readings) {
+            FlexPassReleased { receipt: receipt, destroy_status: _ } =>
+              match receipt.outcome {
+                RentedReleasePending { request: q, status: _ } => FlexPassDestroyDue { receipt: receipt, request: q }
+                _ => FlexPassDone { outcome: FlexPassReleased { receipt: receipt, destroy_status: none } }
+              }
+            other => FlexPassDone { outcome: other }
+          }
+        _ => FlexPassDone { outcome: FlexPassStopped { refusal: FlexPassNotAWritePlan } }
+      }
+  }
+}
+
+// THE ENTRY. One pass: step from the supplied observation, then perform the one write the step holds. The
+// destroy's gone readback is the next pass's observation.
 fn flex_run_pass(
   input: FlexPassInput,
   api_key: Secret,
@@ -615,41 +642,10 @@ fn flex_run_pass(
   protected: ServingProtectedPaths,
   readings: RentedReleaseReadings,
 ) -> FlexPassOutcome uses net: Network {
-  let plan = flex_plan_pass(input: input)
-  match flex_outcome_without_write(plan: plan) {
-    Present { value: outcome } => outcome
-    Absent =>
-      match flex_first_refusal(walls: flex_release_return_wall()) {
-        Present { value: refusal } => FlexPassStopped { refusal: FlexPassCreateRefused { refusal: refusal } }
-        Absent => flex_perform_plan(input: input, plan: plan, api_key: api_key, roots: roots, protected: protected, readings: readings)
-      }
-  }
-}
-
-fn flex_perform_plan(
-  input: FlexPassInput,
-  plan: FlexPassPlan,
-  api_key: Secret,
-  roots: ServingStoreRoots,
-  protected: ServingProtectedPaths,
-  readings: RentedReleaseReadings,
-) -> FlexPassOutcome uses net: Network {
-  match plan {
-        FlexPlanCreate { request: request, intent: intent } =>
-          flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
-        FlexPlanDestroy { action: _, allocation: allocation } =>
-          match flex_release_card(input: input, allocation: allocation, roots: roots, protected: protected, readings: readings) {
-            FlexPassReleased { receipt: receipt, destroy_status: _ } =>
-              match receipt.outcome {
-                RentedReleasePending { request: q, status: _ } =>
-                  FlexPassReleased { receipt: receipt, destroy_status: Present { value: rented_destroy_perform(api_key: api_key, request: q) } }
-                _ => FlexPassReleased { receipt: receipt, destroy_status: none }
-              }
-            other => other
-          }
-        FlexPlanRefused { refusal: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
-        FlexPlanIdle => FlexPassStopped { refusal: FlexPassNotAWritePlan }
-        FlexPlanDryCreate { would: _, walls: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
-        FlexPlanDryDestroy { would: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
+  match flex_pass_step(input: input, roots: roots, protected: protected, readings: readings) {
+    FlexPassDone { outcome: outcome } => outcome
+    FlexPassCreateDue { request: request, intent: intent } => flex_run_create(input: input, api_key: api_key, request: request, intent: intent)
+    FlexPassDestroyDue { receipt: receipt, request: q } =>
+      FlexPassReleased { receipt: receipt, destroy_status: Present { value: rented_destroy_perform(api_key: api_key, request: q) } }
   }
 }
