@@ -2163,7 +2163,8 @@ fn alias_settled_agree(left: Node, right: Node, source_indices: Map<String, Newl
         Absent => false
         Present { value: r } =>
           declaration_ref_eq(a: l.head, b: r.head)
-            && true
+            && (l.args |> count) == (r.args |> count)
+            && settled_args_agree(left: l.args, right: r.args, agree: agree)
       }
   }
 }
@@ -2185,17 +2186,6 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
             Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
             Absent => declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
           }
-      }
-  }
-}
-
-fn probe_settle_state(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Int {
-  match settled_type(n: left, source_indices: source_indices, env: env, fuel: 16) {
-    Absent => 0
-    Present { value: l } =>
-      match settled_type(n: right, source_indices: source_indices, env: env, fuel: 16) {
-        Absent => 1
-        Present { value: r } => if declaration_ref_eq(a: l.head, b: r.head) { 3 } else { 2 }
       }
   }
 }
