@@ -91,6 +91,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.fonts",
     "extdeps.formats",
     "extdeps.formats.elf",
+    "extdeps.freedesktop",
     "extdeps.git",
     "extdeps.github",
     "extdeps.github.action",
