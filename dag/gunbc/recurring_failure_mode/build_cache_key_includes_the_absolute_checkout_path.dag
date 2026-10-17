@@ -1,6 +1,6 @@
 module gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path
 
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Int }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 
 data build_cache_key_includes_the_absolute_checkout_path: RecurringFailureMode = RecurringFailureMode {
@@ -35,3 +35,8 @@ data build_cache_residual_manifest_dir_crates: List<String> = [
 data build_cache_residual_out_dir_crates: List<String> = [
   "serde", "serde_core", "serde_json", "im", "toml", "toml_datetime", "toml_edit", "serde_spanned", "ureq",
 ]
+
+// THE REUSE FLOOR, the row's own words: 95 of 111 Rust compiles reused across identities is the attainable
+// ceiling today (runs 38882112700 and 38972144260). An arm that builds nothing has an empty miss set that
+// passes the identity join trivially, so each of B, C and E must also reach this many hits.
+data build_cache_residual_reuse_floor: Int = 95

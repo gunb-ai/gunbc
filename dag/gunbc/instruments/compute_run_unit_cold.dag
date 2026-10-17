@@ -7,7 +7,7 @@ import std.measure {
   ByteSize, Kibibyte, gibibyte, gibibyte_to_byte_size,
   kibibyte_from_byte_size_floor, measure_add,
 }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.env_binding { EnvSet, EnvBinding }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -18,13 +18,13 @@ import extdeps.shell
 import extdeps.rust.cargo { cargo_environment_variable_name, CargoHomeEnv }
 import extdeps.cache.sccache {
   sccache_installed_binary_path, sccache_server_default_tcp_port,
-  SccacheServerUnixSocket, SccacheServerTcpPort,
+  SccacheServerUnixSocket, SccacheServerTcpPort, SccacheRustKeyFacts, sccache_rust_key_facts,
 }
 import extdeps.tools.id { id_binary_path }
 import extdeps.iproute2.ss { ss_binary_path }
 import extdeps.tools.stat { stat_program }
 import extdeps.tools.grep { grep_program }
-import gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path { build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates }
+import gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path { build_cache_residual_reuse_floor, build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates }
 import extdeps.tools.hostname { hostname_program }
 import extdeps.procps.ps { ps_program, ps_user_uid_pid_args_listing_args }
 import extdeps.systemd.systemctl { systemctl_user_manager_probe_command }
@@ -468,8 +468,13 @@ fn miss_set_within(missed: List<String>, declared: List<String>) -> Bool {
   fold(missed, init: true, f: (ok, c) => ok && contains(declared, c))
 }
 
-fn arm_rust_miss_count(text: String) -> Int {
-  match rust_sccache_misses(text: text) { Present { value: m } => m  Absent => 0 }
+// An UNREADABLE miss line is no observation, never zero misses (DESIGN §5: no fabricated default).
+fn arm_rust_misses_are_zero(text: String) -> Bool {
+  match rust_sccache_misses(text: text) { Present { value: m } => m == 0  Absent => false }
+}
+
+fn arm_rust_misses_readable(text: String) -> Bool {
+  match rust_sccache_misses(text: text) { Present { value: _ } => true  Absent => false }
 }
 
 fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchainHomes, frame: Int, identity: String, checkout_at: String?, target_at: String?, stable_at: String?, stop_observation: ComputeUnitStopObservation) -> CliWireResponse {
@@ -847,6 +852,16 @@ fn stable_path_arms(runtime_dir: FilePath, homes: IsolatedJobToolchainHomes, sta
 //   C : identity A at path PC != PA   (same identity, different path)  expect Rust hits = 0 if path is the cause
 // B's checkout is placed at PA through layout_with_checkout; B keeps its own instance root, target
 // and lease. Path-only causation is: A2 > 0, B > 0, C = 0. Exit 0 iff that holds.
+// THE PREMISE OF THE DECLARED RESIDUAL, READ FROM THE UPSTREAM FACT RECORD. The 16 declared misses
+// (gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path) are the attainable
+// ceiling only while sccache hashes CARGO_* env into the Rust key and SCCACHE_BASEDIRS does not strip
+// CARGO_MANIFEST_DIR. If either fact differs (a sccache bump changed the key), the declared residual is
+// stale and a pass over it would certify the wrong ceiling: refuse with exit 2 instead.
+fn same_path_premise_refusal(facts: SccacheRustKeyFacts) -> Optional<String> {
+  if facts.cargo_prefixed_env_enters_key && !facts.basedirs_strips_cargo_manifest_dir { none }
+  else { Present { value: "premise changed: re-derive the residual (extdeps.cache.sccache sccache_rust_key_facts no longer has cargo_prefixed_env_enters_key=true and basedirs_strips_cargo_manifest_dir=false)" } }
+}
+
 fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
   match observe_hermetic_user_session_runtime() {
     HermeticUserSessionRuntimeAbsent =>
@@ -948,13 +963,21 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                                         match arm_miss_set(text: te) {
                                           Absent => no_observation(bytes: bytes, reason: "no observation: E miss set unreadable")
                                           Present { value: miss_e } =>
-                                        if h_a2 > 0 && arm_rust_miss_count(text: ta2) == 0 && arm_rust_miss_count(text: td) == 0
+                                        match same_path_premise_refusal(facts: sccache_rust_key_facts) {
+                                        Present { value: why } => no_observation(bytes: bytes, reason: why)
+                                        Absent =>
+                                        if !arm_rust_misses_readable(text: ta2) || !arm_rust_misses_readable(text: td) {
+                                          no_observation(bytes: bytes, reason: "no observation: A2 or D Rust miss line unreadable")
+                                        } else
+                                        if h_a2 > 0 && arm_rust_misses_are_zero(text: ta2) && arm_rust_misses_are_zero(text: td)
+                                          && h_b >= build_cache_residual_reuse_floor && h_c >= build_cache_residual_reuse_floor && h_e >= build_cache_residual_reuse_floor
                                           && miss_set_within(missed: miss_b, declared: concat(build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates))
                                           && miss_set_within(missed: miss_c, declared: concat(build_cache_residual_manifest_dir_crates, build_cache_residual_out_dir_crates))
                                           && miss_set_within(missed: miss_e, declared: build_cache_residual_manifest_dir_crates) {
                                           CliWirePrintable { bytes: bytes, exit: ExitSuccess }
                                         } else {
-                                          arm_failed(bytes: bytes, reason: "cross-identity Rust reuse regressed: want A2 and D with 0 Rust misses, B and C missing only the declared residual crates, E missing only the declared manifest-dir crates (gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path)")
+                                          arm_failed(bytes: bytes, reason: "cross-identity Rust reuse regressed: want A2 and D with 0 Rust misses, B, C and E each reusing at least the declared floor, B and C missing only the declared residual crates, E missing only the declared manifest-dir crates (gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path)")
+                                        }
                                         }
                                         }
                                         }
