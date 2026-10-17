@@ -522,7 +522,7 @@ mod probe {
         // (gunbc.compile_census_probe's `compile_dag_diagnostic_census` builtin), one file at a time.
         // That is the measurement the corpus's own probes make, so the numbers here are the numbers
         // those probes see; the cost is one compile per file, with imports read from disk.
-        if mode.trim() == "PERFILE" || mode.trim().starts_with("PERFILE:") {
+        if mode.trim().starts_with("PERFILE") {
             // `zz-files=PERFILE` takes the scan's own candidates; `zz-files=PERFILE-FILE=<path>`
             // takes a newline/comma list from a file, which is how the MEASURED candidate list is
             // handed to a run -- 7 KB of paths cannot travel through a shell argument, and a list the
