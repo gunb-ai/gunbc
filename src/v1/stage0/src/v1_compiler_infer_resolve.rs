@@ -1937,7 +1937,7 @@ Rc::new(NodeResolveResult {
                                     name: key_param_name.clone(),
                                     span: key_child_node.span.clone(),
                                     ident_span: key_child_node.ident_span.clone(),
-                                    children: Rc::new(vec![]),
+                                    children: key_child_node.children.clone(),
                                     connective: Connective::NoConnective,
                                     params: Rc::new(vec![]),
                                     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1963,7 +1963,7 @@ Rc::new(NodeResolveResult {
                                     name: val_param_name.clone(),
                                     span: val_child_node.span.clone(),
                                     ident_span: val_child_node.ident_span.clone(),
-                                    children: Rc::new(vec![]),
+                                    children: val_child_node.children.clone(),
                                     connective: Connective::NoConnective,
                                     params: Rc::new(vec![]),
                                     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -2068,7 +2068,7 @@ Rc::new(NodeResolveResult {
                                                 name: el_param_name.clone(),
                                                 span: child_node.span.clone(),
                                                 ident_span: child_node.ident_span.clone(),
-                                                children: Rc::new(vec![]),
+                                                children: child_node.children.clone(),
                                                 connective: Connective::NoConnective,
                                                 params: Rc::new(vec![]),
                                                 inferred: Some(Rc::new(InferredNode::Resolved {
