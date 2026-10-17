@@ -2158,7 +2158,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       }
     }
   } else {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: scope.type_env))
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: emit_info_with_type_decl_items(emit_info: empty_emit_graph_info(), type_decl_items: type_decl_items), generic_param_names: generic_param_names, env: scope.type_env))
   }
 }
 
@@ -8623,9 +8623,9 @@ fn render_rust_type_with_applied_binding_in_scope(n: Node, generic_param_names: 
           render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: env, type_decl_items: type_decl_items)
         }
       } else {
-        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
+        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: emit_info_with_type_decl_items(emit_info: empty_emit_graph_info(), type_decl_items: type_decl_items), generic_param_names: generic_param_names, env: env))
       }
-    Absent => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
+    Absent => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: emit_info_with_type_decl_items(emit_info: empty_emit_graph_info(), type_decl_items: type_decl_items), generic_param_names: generic_param_names, env: env))
   }
 }
 
@@ -8638,7 +8638,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices, env: env, type_decl_items: type_decl_items)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
-    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: emit_info_with_type_decl_items(emit_info: empty_emit_graph_info(), type_decl_items: type_decl_items), generic_param_names: generic_param_names, env: env))
   } else {
     render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices, env: env, type_decl_items: type_decl_items)
   }
