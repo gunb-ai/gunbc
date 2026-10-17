@@ -98,9 +98,28 @@ import gunbc.provisioning.altra_autoinstall_seed {
   ByObservedSerial,
   ByCatalogIdentity,
   NvmeCliDriver,
-  AhciPlatformDriver,
+  LinuxFirmwareDriver,
+  AhciPlatformModule,
+  NvmeBlockModule,
   KipmiSiDriver,
   IpmiWatchdogDriver,
+  ConsoleEntryLocked,
+  ConsoleEntryUnlocked,
+  ClosedQuestion,
+  OpenQuestion,
+  UnclassifiedPrompting,
+  QuestionAnswered,
+  QuestionUnanswered,
+  UnclassifiedPackage,
+  OpenSshServerPackage,
+  PostfixPackage,
+  TzdataPackage,
+  known_prompting_packages,
+  package_prompting_verdict,
+  unexamined_candidate,
+  PackagePromptingUnclassified,
+  PackagePromptingVerdict,
+  AltraLoadableModule,
   audit_altra_autoinstall_seed,
   binding_digest,
   SerialConsoleGettyUnlocked,
@@ -117,7 +136,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   bind_altra_autoinstall_seed,
   build_altra_autoinstall_seed,
   check_binding_against_seed,
-  disk_identity_is_unread,
+
   admin_password_hash_receipt,
   console_stanza_for,
   project_autoinstall_identity,
@@ -255,27 +274,62 @@ data posture_installer_managed: SeedNetworkPosture = SeedNetworkPosture {
   mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
 }
 
+// EVERY PACKAGE HERE DECLARES WHICH OF THE THREE KNOWLEDGE ARMS IT IS IN. openssh-server and postfix both
+// ship debconf config scripts that ask something on a fresh install, so each carries an ANSWER; nothing in the
+// green fixtures is left as an unexamined string, because an unexamined package is a refusal, not a pass.
 data clean_packages: List<PackageIntent> = [
-  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
-  PackageIntent {
-    name: "postfix" as NonEmptyStr,
-    debconf_seed: Present { value: "postfix postfix/main_mailer_type select No configuration" },
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
   },
 ]
 
 // THE SAME TWO PACKAGES, OTHER ORDER. The digest must not move, or it stops meaning "the same
 // configuration" and starts meaning "the same configuration, typed the same way".
 data reversed_packages: List<PackageIntent> = [
-  PackageIntent {
-    name: "postfix" as NonEmptyStr,
-    debconf_seed: Present { value: "postfix postfix/main_mailer_type select No configuration" },
+  QuestionAnswered {
+    package: PostfixPackage,
+    debconf_seed: "postfix postfix/main_mailer_type select No configuration" as NonEmptyStr,
   },
-  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
 ]
 
+// THE ARMS THE AUDIT MUST REFUSE, ONE EACH. QuestionUnanswered is a known question nobody answered;
+// UnclassifiedPackage is a package nobody checked — which the old audit let through as answerless-and-fine.
 data unseeded_tzdata_packages: List<PackageIntent> = [
-  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
-  PackageIntent { name: "tzdata" as NonEmptyStr, debconf_seed: Absent },
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  QuestionUnanswered { package: TzdataPackage },
+]
+
+data unclassified_packages: List<PackageIntent> = [
+  QuestionAnswered {
+    package: OpenSshServerPackage,
+    debconf_seed: "openssh-server/password-authentication boolean false" as NonEmptyStr,
+  },
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Absent,
+  },
+]
+
+// THE SAME UNCHECKED PACKAGE, WITH AN ANSWER ATTACHED. The answer cannot make it classifiable: what is missing
+// is not a value but the knowledge of whether the package asks anything at all, and a seed must not be able to
+// launder that by stuffing a string into the field.
+data unclassified_but_seeded_packages: List<PackageIntent> = [
+  UnclassifiedPackage {
+    name: "some-fleet-exporter" as NonEmptyStr,
+    debconf_seed: Present { value: "some-fleet-exporter/dummy string true" as NonEmptyStr },
+  },
 ]
 
 data pxe_strategy: SeedDeliveryStrategy = PxeStrategy {
@@ -392,9 +446,18 @@ test fn unread_serial_is_reported_as_unexamined_not_as_no_match() -> Bool {
 test fn the_probe_really_did_not_read_that_serial() -> Bool {
   match storage_device_serial(d: serial_unread_disk) {
     Absent =>
-      disk_identity_is_unread(device: serial_unread_disk)
-        && !disk_identity_is_unread(device: unique_disk)
-        && !disk_identity_is_unread(device: bmc_virtual_media_device)
+      match unexamined_candidate(selector: serial_selector, device: serial_unread_disk) {
+        Present { value: _ } =>
+          match unexamined_candidate(selector: serial_selector, device: unique_disk) {
+            Absent =>
+              match unexamined_candidate(selector: serial_selector, device: bmc_virtual_media_device) {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Absent => false
+      }
     Present { value: _ } => false
   }
 }
@@ -440,7 +503,7 @@ test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
     Present { value: entry } =>
       match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
-        SeedRefused { cause: NoEntrypointAtAll { keys: _, console_unlocked: _ } } => false
+        SeedRefused { cause: NoEntrypointAtAll { keys: _, console_entry: _ } } => false
         _ => true
       }
     Absent => false
@@ -852,6 +915,40 @@ fn binding_digest_of_unbound_placeholder() -> Fnv1a64Structural {
   content_hash_atom(value: "no-binding-exists" as NonEmptyStr)
 }
 
+// THE SAME BUILDER, WITH THE MODULE LIST AS A PARAMETER, so one witness can vary ONLY the loadable-module axis.
+// A variant builder rather than a defaulted parameter: the default would silently make every other witness
+// pass with an empty module list, and "empty" is exactly the state this axis is meant to refuse.
+fn build_seed_fixture_with_modules(
+  network: SeedNetworkPosture,
+  packages: List<PackageIntent>,
+  entry_keys: List<SshPublicKey>,
+  console: ConsoleEntryAuthorisation,
+  credential: AdminCredentialPosture,
+  delivery: SeedDeliveryStrategy,
+  target: AltraAutoinstallTarget,
+  modules: List<AltraLoadableModule>,
+) -> Optional<AltraAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
+    Present { value: entry } =>
+      build_altra_autoinstall_seed(
+        target: target,
+        network: network,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: modules,
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: packages,
+        late_packages: [],
+        disk: serial_selector,
+        entry: entry,
+        credential: credential,
+        locale: EnUsUtf8,
+        delivery: delivery,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
 fn build_seed_fixture(
   network: SeedNetworkPosture,
   packages: List<PackageIntent>,
@@ -866,7 +963,8 @@ fn build_seed_fixture(
       build_altra_autoinstall_seed(
         target: target,
         network: network,
-        install_drivers: [NvmeCliDriver, AhciPlatformDriver],
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule],
         late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
         install_packages: packages,
         late_packages: [],
@@ -879,6 +977,129 @@ fn build_seed_fixture(
       )
     Absent => Absent
   }
+}
+
+// THE TWO REFUSALS AN OPERATOR HAS TO TELL APART, held apart deliberately. "No disk matched your rule" and
+// "we could not read the serials" send the operator to different remedies — the first says tighten the rule,
+// the second says go re-probe the board — and a selection path that collapsed them would send someone to
+// tighten a rule that is already correct. Distinguishing them here (rather than only asserting both refuse) is
+// what makes the arms load-bearing.
+test fn unreadable_serial_and_zero_match_are_different_refusals() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: _ } } =>
+      match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+        SelectionRefused { cause: NoDiskMatches { selector: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE HEAD OF THE FIX FOR THE FAIL-OPEN AUDIT. A package nobody has classified used to reach the green arm as
+// "answerless, therefore nothing to answer". It is now a refusal in its own right, and the refusal must NOT
+// carry a question — this module has not observed one, and printing a plausible question is the fabricated
+// output the audit exists to prevent.
+test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: unclassified_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: _ } => false
+    Absent =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: admitted_entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+        _ => false
+      }
+  }
+}
+
+// AN ANSWER CANNOT CLASSIFY A PACKAGE. A caller who does not know whether a package prompts must not be able to
+// launder it into the green arm by stuffing a string into the seed field: what is missing is knowledge, not a
+// value. This is the difference between this audit and a flag.
+test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
+  match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: admitted_entry, strategy: virtual_media_strategy, ) {
+    SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
+    _ => false
+  }
+}
+
+// EVERY ROW OF THE PROMPTING TABLE STATES A QUESTION. The table is the module's claim about the archive; a
+// member added without one would make the refusal print nothing, which is how a table becomes decoration.
+test fn every_known_prompting_package_names_its_question() -> Bool {
+  match known_prompting_packages()
+    .map(pkg => package_prompting_verdict(intent: QuestionUnanswered { package: pkg }))
+    .filter(verdict => verdict_has_no_question(verdict: verdict))
+    .first() {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE MODULE AXIS REACHES THE DIGEST, ON ITS OWN. Two seeds that differ only in which kernel modules they
+// demand are different configurations — one may not be able to see its disk at all — so the digest must move
+// when the module list moves while every package list stays identical. Without this the module axis would be
+// decoration: authorable, rendered nowhere, digested by nothing.
+test fn the_loadable_module_axis_moves_the_digest() -> Bool {
+  match build_seed_fixture_with_modules(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+    modules: [AhciPlatformModule, NvmeBlockModule],
+  ) {
+    Present { value: with_modules } =>
+      match build_seed_fixture_with_modules(
+        network: network_posture,
+        packages: clean_packages,
+        entry_keys: one_key,
+        console: locked_console,
+        credential: seeded_handle,
+        delivery: virtual_media_strategy,
+        target: target_altra,
+        modules: [],
+      ) {
+        Present { value: without_modules } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: with_modules),
+            right: altra_autoinstall_seed_digest(seed: without_modules),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE ARMS ARE THREE, NOT TWO. A closed question, an open one and an unclassified one are different states of
+// knowledge; if two of them rendered alike, an operator reading a seed could not tell "answered" from "nobody
+// looked".
+test fn the_three_package_arms_render_differently() -> Bool {
+  match package_prompting_verdict(intent: QuestionAnswered { package: TzdataPackage, debconf_seed: "answered" as NonEmptyStr }) {
+    ClosedQuestion { name: _, question: _ } =>
+      match package_prompting_verdict(intent: QuestionUnanswered { package: TzdataPackage }) {
+        OpenQuestion { name: _, question: _ } =>
+          match package_prompting_verdict(
+            intent: UnclassifiedPackage { name: "x" as NonEmptyStr, debconf_seed: Absent },
+          ) {
+            UnclassifiedPrompting { name: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn verdict_has_no_question(verdict: PackagePromptingVerdict) -> Bool {
+  match verdict {
+    ClosedQuestion { name: _, question: q } => question_is_empty(token: q)
+    OpenQuestion { name: _, question: q } => question_is_empty(token: q)
+    UnclassifiedPrompting { name: _ } => false
+  }
+}
+
+// THE EMPTINESS TEST THE TABLE WITNESS NEEDS, over the string's own structure rather than a sentinel.
+fn question_is_empty(token: NonEmptyStr) -> Bool {
+  token.length() == 0
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
