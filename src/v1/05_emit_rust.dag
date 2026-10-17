@@ -1773,22 +1773,10 @@ fn rust_carrier_realizes_as_machine_scalar(n: Node, type_name: String) -> Bool {
 // route to and no second layer enum to merge away first.
 fn rust_carrier_shared_layer(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, type_decl_items: TypeDeclIndex, generic_param_names: List<String>) -> SharedLayerAnswer {
   let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
-  if leaf == "" || rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf) || (n.return_cardinality == CardOptional) || type_expr_names_user_alias(type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices) {
+  if leaf == "" || rust_carrier_realizes_as_machine_scalar(n: n, type_name: leaf) || (n.return_cardinality == CardOptional) {
     SharedLayerAtValue
   } else {
     shared_layer_of_type_expr(shared_types: shared_types, type_expr: n, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
-  }
-}
-
-// A TYPE-POSITION reference to a user alias spells the alias name, and the alias declaration's own
-// right-hand side already carries the layer (type Schedule = Rc<Vec<..>>), so wrapping the name again
-// is Rc<Rc<..>>. The operand-position readers (deref/wrap of a value) still take the hop through
-// shared_layer_of_type_expr, because the value there is the declaration's. The alias is read from the
-// routed declaration, not the spelling.
-fn type_expr_names_user_alias(type_expr: Node, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match resolve_type_decl_routed(index: type_decl_items, type_expr: type_expr, source_indices: source_indices).resolution {
-    TypeDeclResolved { identity: _, decl: d } => is_type_alias_item(item: d, source_indices: source_indices)
-    _ => false
   }
 }
 
