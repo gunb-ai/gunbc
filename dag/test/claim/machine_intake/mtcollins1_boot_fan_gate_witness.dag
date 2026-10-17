@@ -1,18 +1,22 @@
 module test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { string_contains }
 import std.process { ExitSuccess, ExitFailure }
-import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine, sdr_decode_lines }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
-import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, FanRowsUndecoded, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable, fan_observation }
 import gunbc.machine_intake.post_power_fan_gate_outcome { FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGatePowerDownAttempt, post_power_fan_gate_stop_section, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
 
 // SUPPLIED ROUNDS at the verdict and outcome boundaries. The effectful route (settle, read, write-before-stop,
 // PowerDown, readback, one repeat, step-summary append) is the live boot step; the pairing inhabitance claim is the
 // boot run's own executed controls. The unit's set is the OperatorAssumed row mtcollins1_fitted_fan_set.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
 fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
   SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
 }
@@ -44,21 +48,56 @@ test fn an_off_chassis_refuses_even_with_the_unit_fans_listed() -> Bool {
   established(round: round(on: false, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr))) == false
 }
 
-// Round 0 of the REAL fan receipt of the last good boot (run 39010930690, 2026-10-17T06:50:59Z, chassis on),
-// every sensor row as observed; fan4_0 is the one variable so the same rows serve the positive control and its RED.
-fn receipt_39010930690_round0(fan4_0: NonEmptyStr) -> List<SdrTypeLine> {
-  let nr = "No Reading" as NonEmptyStr
-  [row(name: "FAN0_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN0_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN4_0_Speed" as NonEmptyStr, reading: fan4_0), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN0_Presence" as NonEmptyStr, reading: nr), row(name: "FAN1_Presence" as NonEmptyStr, reading: nr), row(name: "FAN2_Presence" as NonEmptyStr, reading: nr), row(name: "FAN3_Presence" as NonEmptyStr, reading: nr), row(name: "FAN4_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "FAN5_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "PSU1_FAN_SPEED" as NonEmptyStr, reading: "5000 RPM" as NonEmptyStr), row(name: "PSU2_FAN_SPEED" as NonEmptyStr, reading: nr)]
+// FULL-PATH REPLAY OF REAL RAW STDOUT: the committed `sdr elist` of this controller (powered, artifacts/bmc/mtcollins1-32dimm/06-sdr.txt)
+// goes through sdr_decode_lines, fan_observation, FanObservationRound and the gate; no list is constructed here. In that real text every
+// FANn_Failure line has an EMPTY reading cell, so the decoder leaves it unstructured: the gate must stop on it, carrying its text.
+fn raw_stdout() -> String {
+  Filesystem.Read(path: "artifacts/bmc/mtcollins1-32dimm/06-sdr.txt").content
 }
 
-
-// The gate must not stop a healthy mtcollins1: the last good boot's own reading is Established.
-test fn the_last_good_boots_real_receipt_is_established_and_admits_the_boot() -> Bool {
-  established(round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "5600 RPM" as NonEmptyStr)))
+fn replay_round(stdout: String) -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: true }, chassis_raw: "", thermal: ThermalUnreadable, fans: fan_observation(success: true, results: sdr_decode_lines(stdout: stdout)) }
 }
 
-test fn the_last_good_boots_real_receipt_with_fan4_0_unread_refuses() -> Bool {
-  established(round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "No Reading" as NonEmptyStr))) == false
+fn undecoded_of(stdout: String) -> List<String> {
+  match post_power_fan_verdict(fitted: mtcollins1_fitted_fan_set, chassis: ChassisPowerRead { power_on: true }, fans: replay_round(stdout: stdout).fans) {
+    PostPowerFanVerdictRefused { cause: FanRowsUndecoded { texts: t } } => t
+    _ => []
+  }
+}
+
+fn without_failure_rows(stdout: String) -> String {
+  join(filter(split(s: stdout, delimiter: "\n"), l => string_contains(s: l, pattern: "_Failure") == false), "\n")
+}
+
+fn read_whole() -> Bool { raw_stdout().length() > 1000 }
+
+test fn the_real_stdout_refuses_on_its_failure_rows_carrying_each_text() -> Bool {
+  let t = undecoded_of(stdout: raw_stdout())
+  read_whole() && any(t, x => string_contains(s: x, pattern: "FAN4_Failure")) && any(t, x => string_contains(s: x, pattern: "FAN0_Failure"))
+}
+
+test fn the_refusal_text_and_pre_stop_artifact_carry_each_undecoded_line() -> Bool {
+  let r = replay_round(stdout: raw_stdout())
+  let c = FanRowsUndecoded { texts: undecoded_of(stdout: raw_stdout()) }
+  let pre = post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: c, observation: r, manager: FanManagerUnread { read_obligation: "fixture obligation" as NonEmptyStr })
+  read_whole() && string_contains(s: pre, pattern: "FAN4_Failure") && string_contains(s: pre, pattern: "fan_undecoded_line=[FAN4_Failure") && string_contains(s: post_power_fan_refusal_text(cause: c), pattern: "FAN5_Failure")
+}
+
+// POSITIVE CONTROL: the same real stdout with only its Failure lines removed decodes whole, the four fitted fans spin, the gate admits.
+test fn the_real_stdout_without_its_failure_rows_is_established() -> Bool {
+  read_whole() && undecoded_of(stdout: without_failure_rows(stdout: raw_stdout())).length() == 0
+    && established(round: replay_round(stdout: without_failure_rows(stdout: raw_stdout())))
+}
+
+test fn one_changed_unstructured_line_still_refuses() -> Bool {
+  let s = join(split(s: without_failure_rows(stdout: raw_stdout()), delimiter: "FAN0_Presence    | 0Fh | ok  | 29.0 | Device Present"), "FAN0_Presence    | 0Fh | ok  | 29.0")
+  read_whole() && established(round: replay_round(stdout: s)) == false && any(undecoded_of(stdout: s), x => string_contains(s: x, pattern: "FAN0_Presence"))
+}
+
+test fn one_added_unstructured_line_still_refuses() -> Bool {
+  let s = join([without_failure_rows(stdout: raw_stdout()), "\nFAN9_Failure     | 99h | cr  | 29.0 | "], "")
+  read_whole() && established(round: replay_round(stdout: s)) == false && any(undecoded_of(stdout: s), x => string_contains(s: x, pattern: "FAN9_Failure"))
 }
 
 fn off() -> ChassisPowerObservation { ChassisPowerRead { power_on: false } }

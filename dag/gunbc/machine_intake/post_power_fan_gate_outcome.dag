@@ -95,7 +95,7 @@ fn post_power_fan_refusal_text(cause: PostPowerFanRefusal) -> String {
     PostPowerChassisUnreadable => "the chassis status was unreadable after the settle window"
     PostPowerChassisUndecodable { cause: c } => concat("the chassis status was undecodable after the settle window: ", c as String)
     FanReadUnreadable => "the chassis fan sensors were unreadable after the settle window"
-    FanRowsUndecoded { count: n } => concat("the fan sensor read left undecoded rows: ", to_string(n))
+    FanRowsUndecoded { texts: t } => join(["the fan sensor read left ", to_string(t.length()), " undecoded row(s), each refused unread: ", join(t, " || ")], "")
     FittedHeaderMissing { header: h } => concat(h as String, " (fitted) has no sensor row")
     FittedHeaderDuplicated { header: h } => concat(h as String, " (fitted) names more than one sensor row")
     FittedHeaderStatusRefused { header: h, status: s } => concat(h as String, concat(" (fitted) row status is not ok: ", s as String))

@@ -43,7 +43,7 @@ type PostPowerFanRefusal
   | PostPowerChassisUnreadable
   | PostPowerChassisUndecodable { cause: NonEmptyStr }
   | FanReadUnreadable
-  | FanRowsUndecoded { count: Int }
+  | FanRowsUndecoded { texts: List<String> }
   | FittedHeaderMissing { header: NonEmptyStr }
   | FittedHeaderDuplicated { header: NonEmptyStr }
   | FittedHeaderStatusRefused { header: NonEmptyStr, status: NonEmptyStr }
@@ -137,7 +137,7 @@ fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPow
     FanSensorsUnreadable => Present { value: FanReadUnreadable }
     FanSensorsRead { lines: lines, undecoded_lines: u } =>
       if u.length() > 0 {
-        Present { value: FanRowsUndecoded { count: u.length() } }
+        Present { value: FanRowsUndecoded { texts: u } }
       } else {
         first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
       }
