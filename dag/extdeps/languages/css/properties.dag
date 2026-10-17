@@ -37,6 +37,7 @@ type CssPropertyName
   | BorderLeft
   | BorderRadius
   | BorderStyle
+  | BorderTop
   | BoxShadow
   | BoxSizing
   | ClipPath
@@ -105,6 +106,7 @@ fn css_property_wire(p: CssPropertyName) -> String {
     BorderLeft => "border-left"
     BorderRadius => "border-radius"
     BorderStyle => "border-style"
+    BorderTop => "border-top"
     BoxShadow => "box-shadow"
     BoxSizing => "box-sizing"
     ClipPath => "clip-path"
