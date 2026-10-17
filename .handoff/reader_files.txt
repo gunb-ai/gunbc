@@ -1,7 +1,0 @@
-src/v2/compiler/fold_lowering.dag
-src/v2/compiler/infer.dag
-src/v2/compiler/resolve.dag
-src/v2/std/inhabitance.dag
-src/v2/std/node.dag
-src/v2/std/node_query.dag
-src/v2/std/qualified_name.dag
