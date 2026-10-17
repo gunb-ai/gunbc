@@ -569,15 +569,33 @@ test fn absent_mirror_refuses_the_seed() -> Bool {
   }
 }
 
-// THE MIRROR REFUSAL IS THE MIRROR'S OWN, not one of the other three causes wearing its clothes. "Refuse" is
-// cheap and four causes are available: swapping ArchiveMirrorAbsent for any sibling leaves a witness that only
-// asks "was it refused?" completely green, and the operator is sent to fix addressing when the archive is what
-// is missing. The cause arm is the diagnosis, so the diagnosis is what is asserted.
-test fn the_mirror_refusal_names_the_mirror_as_its_cause() -> Bool {
+// EACH REFUSAL NAMES ITS OWN MECHANISM. "Refused" is cheap and four causes are available, so a witness that
+// only asks "was it refused?" survives a cause being swapped for a sibling — and the cause arm IS the diagnosis:
+// a missing archive and installer-managed addressing send the operator to two different files. Each posture is
+// therefore matched against the one cause it must produce, which makes any swap between the arms fail at least
+// two assertions rather than none. The unclassified arm has its own witness (it must also carry NO question).
+test fn each_refusal_names_its_own_mechanism() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
       match audit_altra_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
-        SeedRefused { cause: ArchiveMirrorAbsent } => true
+        SeedRefused { cause: ArchiveMirrorAbsent } =>
+          match audit_altra_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+            SeedRefused { cause: AddressingIsInstallerManaged } =>
+              match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
+                  match named {
+                    "tzdata" =>
+                      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                        SeedRefused { cause: PackagePromptingUnclassified { name: un } } =>
+                          un == "some-fleet-exporter" as NonEmptyStr
+                        _ => false
+                      }
+                    _ => false
+                  }
+                _ => false
+              }
+            _ => false
+          }
         _ => false
       }
     Absent => false
