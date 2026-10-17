@@ -541,17 +541,22 @@ test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
     observed: recovery_measured_identity(),
   })
   let readback = recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { detail: "no body was saved" })
-  // each refusal yields advice
-  && string_length(s: host) > 0
-  && string_length(s: measure) > 0
-  && string_length(s: filing) > 0
-  && string_length(s: readback) > 0
-  // and all four differ: "go measure this controller" cannot be the sentence you give someone whose own
-  // filing is broken -- different people, different work
-  && host != measure
-  && host != filing
-  && host != readback
-  && measure != filing
-  && measure != readback
-  && filing != readback
+  // The body is a PARENTHESISED expression. Left bare, a leading `&&` after the last `let` is parsed as a
+  // continuation of that let's own initializer -- which is how this claim once failed to resolve with
+  // "undefined variable 'readback'" inside the definition of `readback`.
+  (
+    // each refusal yields advice
+    string_length(s: host) > 0
+      && string_length(s: measure) > 0
+      && string_length(s: filing) > 0
+      && string_length(s: readback) > 0
+      // and all four differ: "go measure this controller" cannot be the sentence you give someone whose own
+      // filing is broken -- different people, different work
+      && host != measure
+      && host != filing
+      && host != readback
+      && measure != filing
+      && measure != readback
+      && filing != readback
+  )
 }
