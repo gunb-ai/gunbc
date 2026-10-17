@@ -452,8 +452,10 @@ data x86_supplied_fixture_board_label: NonEmptyStr = "SUPPLIED-FIXTURE-x86-Board
 
 // THE SUPPLIED SoC ROSTER: one family, the corpus's cited AMD family, so the NotCarried verdict is
 // produced by real silicon facts. Not a fleet claim: no board in the corpus admits it.
-data x86_supplied_fixture_families: FreeSemigroup<SoCFamily> =
-  FreeSemigroup { head: amd_7950x3d_soc_family, tail: [] }
+data x86_supplied_fixture_families: FreeSemigroup<SoCFamily> = FreeSemigroup {
+  head: amd_7950x3d_soc_family,
+  tail: [],
+}
 
 test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set() -> Bool {
   // The supplied roster's verdict comes from the cited carrying set applied to the cited AMD family.
