@@ -22,8 +22,6 @@ import extdeps.apple.app_attest_sample_ios_14_4 {
   sample_attestation_octets, sample_assertion_octets, sample_key_id_b64, sample_client_data,
   sample_team_identifier, sample_bundle_identifier, sample_assertion_counter,
 }
-import std.roster_frontier { FrontierRow, PathSubject }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE NATIVE APP ATTEST PROGRAM: extdeps.apple.app_attest verify_attestation and verify_assertion --
 // the folds #11989 authored, not a second fold -- executed over Apple's published iOS 14.4 sample
@@ -166,24 +164,44 @@ fn no_attestation_refusal() -> AttestationRefusal? {
 }
 
 // SAME CONSTRUCTOR, compared by arm and never by payload text: the owed refusal names which arm of
-// AttestationRefusal the fold must answer. Exhaustive over the owed arm, so a new refusal
-// constructor must be placed here before any row can owe it.
-fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
-  match owed {
-    AttestationFormatUnexpected { declared: _ } => match got { AttestationFormatUnexpected { declared: _ } => true  _ => false }
-    AttestationChainUntrusted { detail: _ } => match got { AttestationChainUntrusted { detail: _ } => true  _ => false }
-    AttestationNonceMismatch => match got { AttestationNonceMismatch => true  _ => false }
-    AttestationKeyIdMismatch { declared: _ } => match got { AttestationKeyIdMismatch { declared: _ } => true  _ => false }
-    AttestationAppIdMismatch { expected_app_id: _ } => match got { AttestationAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AttestationCounterNonZero { counter: _ } => match got { AttestationCounterNonZero { counter: _ } => true  _ => false }
-    AttestationEnvironmentUnexpected { expected: _ } => match got { AttestationEnvironmentUnexpected { expected: _ } => true  _ => false }
-    AttestationCredentialIdMismatch { declared: _ } => match got { AttestationCredentialIdMismatch { declared: _ } => true  _ => false }
-    AttestationValidationCategoryRefused { category: _ } => match got { AttestationValidationCategoryRefused { category: _ } => true  _ => false }
-    AttestationValidationCategoryAbsent => match got { AttestationValidationCategoryAbsent => true  _ => false }
-    AttestationBundleVersionAbsent => match got { AttestationBundleVersionAbsent => true  _ => false }
-    AttestationBundleVersionUnexpected { declared: _ } => match got { AttestationBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AttestationUndecodable { cause: _ } => match got { AttestationUndecodable { cause: _ } => true  _ => false }
+// AttestationRefusal the fold must answer. One total classifier names every constructor; the two
+// refusals agree when those constructors are the same, so a payload string cannot move a verdict
+// and a new constructor is a compile refusal at the classifier.
+type AttestationRefusalConstructor
+  = AttestationRefusalConstructorFormatUnexpected
+  | AttestationRefusalConstructorChainUntrusted
+  | AttestationRefusalConstructorNonceMismatch
+  | AttestationRefusalConstructorKeyIdMismatch
+  | AttestationRefusalConstructorAppIdMismatch
+  | AttestationRefusalConstructorCounterNonZero
+  | AttestationRefusalConstructorEnvironmentUnexpected
+  | AttestationRefusalConstructorCredentialIdMismatch
+  | AttestationRefusalConstructorValidationCategoryRefused
+  | AttestationRefusalConstructorValidationCategoryAbsent
+  | AttestationRefusalConstructorBundleVersionAbsent
+  | AttestationRefusalConstructorBundleVersionUnexpected
+  | AttestationRefusalConstructorUndecodable
+
+fn attestation_refusal_constructor(r: AttestationRefusal) -> AttestationRefusalConstructor {
+  match r {
+    AttestationFormatUnexpected { declared: _ } => AttestationRefusalConstructorFormatUnexpected
+    AttestationChainUntrusted { detail: _ } => AttestationRefusalConstructorChainUntrusted
+    AttestationNonceMismatch => AttestationRefusalConstructorNonceMismatch
+    AttestationKeyIdMismatch { declared: _ } => AttestationRefusalConstructorKeyIdMismatch
+    AttestationAppIdMismatch { expected_app_id: _ } => AttestationRefusalConstructorAppIdMismatch
+    AttestationCounterNonZero { counter: _ } => AttestationRefusalConstructorCounterNonZero
+    AttestationEnvironmentUnexpected { expected: _ } => AttestationRefusalConstructorEnvironmentUnexpected
+    AttestationCredentialIdMismatch { declared: _ } => AttestationRefusalConstructorCredentialIdMismatch
+    AttestationValidationCategoryRefused { category: _ } => AttestationRefusalConstructorValidationCategoryRefused
+    AttestationValidationCategoryAbsent => AttestationRefusalConstructorNonceMismatch
+    AttestationBundleVersionAbsent => AttestationRefusalConstructorBundleVersionAbsent
+    AttestationBundleVersionUnexpected { declared: _ } => AttestationRefusalConstructorBundleVersionUnexpected
+    AttestationUndecodable { cause: _ } => AttestationRefusalConstructorUndecodable
   }
+}
+
+fn same_attestation_arm(owed: AttestationRefusal, got: AttestationRefusal) -> Bool {
+  attestation_refusal_constructor(r: owed) == attestation_refusal_constructor(r: got)
 }
 
 fn refused_with(owed: AttestationRefusal, got: AttestationRefusal?) -> Bool {
@@ -313,16 +331,29 @@ fn assertion_verdict(v: AssertionVerification) -> String {
   }
 }
 
-fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
-  match owed {
-    AssertionSignatureInvalid => match got { AssertionSignatureInvalid => true  _ => false }
-    AssertionAppIdMismatch { expected_app_id: _ } => match got { AssertionAppIdMismatch { expected_app_id: _ } => true  _ => false }
-    AssertionValidationCategoryRefused { category: _ } => match got { AssertionValidationCategoryRefused { category: _ } => true  _ => false }
-    AssertionValidationCategoryAbsent => match got { AssertionValidationCategoryAbsent => true  _ => false }
-    AssertionBundleVersionAbsent => match got { AssertionBundleVersionAbsent => true  _ => false }
-    AssertionBundleVersionUnexpected { declared: _ } => match got { AssertionBundleVersionUnexpected { declared: _ } => true  _ => false }
-    AssertionUndecodable { cause: _ } => match got { AssertionUndecodable { cause: _ } => true  _ => false }
+type AssertionRefusalConstructor
+  = AssertionRefusalConstructorSignatureInvalid
+  | AssertionRefusalConstructorAppIdMismatch
+  | AssertionRefusalConstructorValidationCategoryRefused
+  | AssertionRefusalConstructorValidationCategoryAbsent
+  | AssertionRefusalConstructorBundleVersionAbsent
+  | AssertionRefusalConstructorBundleVersionUnexpected
+  | AssertionRefusalConstructorUndecodable
+
+fn assertion_refusal_constructor(r: AssertionRefusal) -> AssertionRefusalConstructor {
+  match r {
+    AssertionSignatureInvalid => AssertionRefusalConstructorSignatureInvalid
+    AssertionAppIdMismatch { expected_app_id: _ } => AssertionRefusalConstructorAppIdMismatch
+    AssertionValidationCategoryRefused { category: _ } => AssertionRefusalConstructorValidationCategoryRefused
+    AssertionValidationCategoryAbsent => AssertionRefusalConstructorValidationCategoryAbsent
+    AssertionBundleVersionAbsent => AssertionRefusalConstructorBundleVersionAbsent
+    AssertionBundleVersionUnexpected { declared: _ } => AssertionRefusalConstructorBundleVersionUnexpected
+    AssertionUndecodable { cause: _ } => AssertionRefusalConstructorUndecodable
   }
+}
+
+fn same_assertion_arm(owed: AssertionRefusal, got: AssertionRefusal) -> Bool {
+  assertion_refusal_constructor(r: owed) == assertion_refusal_constructor(r: got)
 }
 
 fn assertion_refused_with(owed: AssertionRefusal, v: AssertionVerification) -> Bool {
@@ -432,15 +463,255 @@ fn sample_cases(s: AppAttestSample) -> List<AppAttestCase> {
   }
 }
 
+fn arm_equal_case(identity: String, held: Bool) -> AppAttestCase {
+  AppAttestCase { identity: identity, held: held, observed: if held { "true" } else { "false" } }
+}
+
+fn dummy_key_a() -> AttestKeyId {
+  sample_key_id_b64 as AttestKeyId
+}
+
+fn dummy_key_b() -> AttestKeyId {
+  "other-key" as AttestKeyId
+}
+
+fn dummy_app_id_a() -> NonEmptyStr {
+  "6MURL8TA57.de.demo" as NonEmptyStr
+}
+
+fn dummy_app_id_b() -> NonEmptyStr {
+  "6MURL8TA57.de.other" as NonEmptyStr
+}
+
+fn att_refusal_format_unexpected() -> AttestationRefusal {
+  AttestationFormatUnexpected { declared: "packed" }
+}
+
+fn att_refusal_chain_untrusted() -> AttestationRefusal {
+  AttestationChainUntrusted { detail: "leaf" }
+}
+
+fn att_refusal_nonce_mismatch() -> AttestationRefusal {
+  AttestationNonceMismatch
+}
+
+fn att_refusal_key_id_mismatch() -> AttestationRefusal {
+  AttestationKeyIdMismatch { declared: dummy_key_a() }
+}
+
+fn att_refusal_app_id_mismatch() -> AttestationRefusal {
+  AttestationAppIdMismatch { expected_app_id: dummy_app_id_a() }
+}
+
+fn att_refusal_counter_nonzero() -> AttestationRefusal {
+  AttestationCounterNonZero { counter: 1 }
+}
+
+fn att_refusal_environment_unexpected() -> AttestationRefusal {
+  AttestationEnvironmentUnexpected { expected: AppAttestDevelopment }
+}
+
+fn att_refusal_credential_id_mismatch() -> AttestationRefusal {
+  AttestationCredentialIdMismatch { declared: dummy_key_a() }
+}
+
+fn att_refusal_validation_category_refused() -> AttestationRefusal {
+  AttestationValidationCategoryRefused { category: 1 }
+}
+
+fn att_refusal_validation_category_absent() -> AttestationRefusal {
+  AttestationValidationCategoryAbsent
+}
+
+fn att_refusal_bundle_version_absent() -> AttestationRefusal {
+  AttestationBundleVersionAbsent
+}
+
+fn att_refusal_bundle_version_unexpected() -> AttestationRefusal {
+  AttestationBundleVersionUnexpected { declared: "1" }
+}
+
+fn att_refusal_undecodable() -> AttestationRefusal {
+  AttestationUndecodable { cause: "cbor" }
+}
+
+fn assertion_refusal_signature_invalid() -> AssertionRefusal {
+  AssertionSignatureInvalid
+}
+
+fn assertion_refusal_app_id_mismatch() -> AssertionRefusal {
+  AssertionAppIdMismatch { expected_app_id: dummy_app_id_a() }
+}
+
+fn assertion_refusal_validation_category_refused() -> AssertionRefusal {
+  AssertionValidationCategoryRefused { category: 1 }
+}
+
+fn assertion_refusal_validation_category_absent() -> AssertionRefusal {
+  AssertionValidationCategoryAbsent
+}
+
+fn assertion_refusal_bundle_version_absent() -> AssertionRefusal {
+  AssertionBundleVersionAbsent
+}
+
+fn assertion_refusal_bundle_version_unexpected() -> AssertionRefusal {
+  AssertionBundleVersionUnexpected { declared: "1" }
+}
+
+fn assertion_refusal_undecodable() -> AssertionRefusal {
+  AssertionUndecodable { cause: "cbor" }
+}
+
+fn attestation_arm_equal_every_constructor_agrees() -> Bool {
+  same_attestation_arm(owed: AttestationFormatUnexpected { declared: "packed" }, got: AttestationFormatUnexpected { declared: "cbor" })
+    && same_attestation_arm(owed: AttestationChainUntrusted { detail: "leaf" }, got: AttestationChainUntrusted { detail: "root" })
+    && same_attestation_arm(owed: AttestationNonceMismatch, got: AttestationNonceMismatch)
+    && same_attestation_arm(owed: AttestationKeyIdMismatch { declared: dummy_key_a() }, got: AttestationKeyIdMismatch { declared: dummy_key_b() })
+    && same_attestation_arm(owed: AttestationAppIdMismatch { expected_app_id: dummy_app_id_a() }, got: AttestationAppIdMismatch { expected_app_id: dummy_app_id_b() })
+    && same_attestation_arm(owed: AttestationCounterNonZero { counter: 1 }, got: AttestationCounterNonZero { counter: 9 })
+    && same_attestation_arm(owed: AttestationEnvironmentUnexpected { expected: AppAttestDevelopment }, got: AttestationEnvironmentUnexpected { expected: AppAttestProduction })
+    && same_attestation_arm(owed: AttestationCredentialIdMismatch { declared: dummy_key_a() }, got: AttestationCredentialIdMismatch { declared: dummy_key_b() })
+    && same_attestation_arm(owed: AttestationValidationCategoryRefused { category: 1 }, got: AttestationValidationCategoryRefused { category: 8 })
+    && same_attestation_arm(owed: AttestationValidationCategoryAbsent, got: AttestationValidationCategoryAbsent)
+    && same_attestation_arm(owed: AttestationBundleVersionAbsent, got: AttestationBundleVersionAbsent)
+    && same_attestation_arm(owed: AttestationBundleVersionUnexpected { declared: "1" }, got: AttestationBundleVersionUnexpected { declared: "2" })
+    && same_attestation_arm(owed: AttestationUndecodable { cause: "cbor" }, got: AttestationUndecodable { cause: "auth" })
+}
+
+fn attestation_arm_equal_cross_constructor_disagrees() -> Bool {
+  same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_chain_untrusted()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_nonce_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_format_unexpected(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_nonce_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_chain_untrusted(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_key_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_nonce_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_app_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_key_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_counter_nonzero()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_app_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_environment_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_counter_nonzero(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_credential_id_mismatch()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_environment_unexpected(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_validation_category_refused()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_credential_id_mismatch(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_validation_category_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_refused(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_bundle_version_absent()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_validation_category_absent(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_absent(), got: att_refusal_bundle_version_unexpected()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_absent(), got: att_refusal_undecodable()) == false
+    && same_attestation_arm(owed: att_refusal_bundle_version_unexpected(), got: att_refusal_undecodable()) == false
+}
+
+fn assertion_arm_equal_every_constructor_agrees() -> Bool {
+  same_assertion_arm(owed: AssertionSignatureInvalid, got: AssertionSignatureInvalid)
+    && same_assertion_arm(owed: AssertionAppIdMismatch { expected_app_id: dummy_app_id_a() }, got: AssertionAppIdMismatch { expected_app_id: dummy_app_id_b() })
+    && same_assertion_arm(owed: AssertionValidationCategoryRefused { category: 1 }, got: AssertionValidationCategoryRefused { category: 8 })
+    && same_assertion_arm(owed: AssertionValidationCategoryAbsent, got: AssertionValidationCategoryAbsent)
+    && same_assertion_arm(owed: AssertionBundleVersionAbsent, got: AssertionBundleVersionAbsent)
+    && same_assertion_arm(owed: AssertionBundleVersionUnexpected { declared: "1" }, got: AssertionBundleVersionUnexpected { declared: "2" })
+    && same_assertion_arm(owed: AssertionUndecodable { cause: "cbor" }, got: AssertionUndecodable { cause: "auth" })
+}
+
+fn assertion_arm_equal_cross_constructor_disagrees() -> Bool {
+  same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_app_id_mismatch()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_validation_category_refused()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_signature_invalid(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_validation_category_refused()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_app_id_mismatch(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_validation_category_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_refused(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_bundle_version_absent()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_validation_category_absent(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_absent(), got: assertion_refusal_bundle_version_unexpected()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_absent(), got: assertion_refusal_undecodable()) == false
+    && same_assertion_arm(owed: assertion_refusal_bundle_version_unexpected(), got: assertion_refusal_undecodable()) == false
+}
+
+fn arm_equal_cases() -> List<AppAttestCase> {
+  [
+    arm_equal_case(identity: "same_attestation_arm_every_constructor_agrees", held: attestation_arm_equal_every_constructor_agrees()),
+    arm_equal_case(identity: "same_attestation_arm_cross_constructor_disagrees", held: attestation_arm_equal_cross_constructor_disagrees()),
+    arm_equal_case(identity: "same_assertion_arm_every_constructor_agrees", held: assertion_arm_equal_every_constructor_agrees()),
+    arm_equal_case(identity: "same_assertion_arm_cross_constructor_disagrees", held: assertion_arm_equal_cross_constructor_disagrees()),
+  ]
+}
+
 fn native_app_attest_cases() -> List<AppAttestCase> {
-  app_attest_samples() |> flat_map(s => sample_cases(s: s))
+  concat(app_attest_samples() |> flat_map(s => sample_cases(s: s)), arm_equal_cases())
 }
 
 fn case_row(c: AppAttestCase) -> String {
   concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(c.observed, "\n")))))
 }
 
-// THE EXPECTED IDENTITIES, DECLARED RATHER THAN DERIVED FROM THE CASES (the rule review 5311497200
+// THE EXPECTED IDENTITIES, DECLARED RATHER THAN PROJECTED FROM THE CASES (the rule review 5311497200
 // of gunbc#12250 set for this family). Each sample row owes every one of these, prefixed with its
 // name; the roster is this declaration crossed with app_attest_samples(), never a projection of the
 // computed cases, so a case that is dropped leaves its identity rostered with no row and the run is
@@ -464,8 +735,18 @@ data native_app_attest_expected_case_identities: List<String> = [
   "assertion_counter_is_carried_out_as_published"
 ]
 
+data native_app_attest_arm_equal_case_identities: List<String> = [
+  "same_attestation_arm_every_constructor_agrees",
+  "same_attestation_arm_cross_constructor_disagrees",
+  "same_assertion_arm_every_constructor_agrees",
+  "same_assertion_arm_cross_constructor_disagrees"
+]
+
 fn native_app_attest_expected_identities() -> List<String> {
-  app_attest_samples() |> flat_map(s => native_app_attest_expected_case_identities |> map(i => concat(s.name, concat("_", i))))
+  concat(
+    app_attest_samples() |> flat_map(s => native_app_attest_expected_case_identities |> map(i => concat(s.name, concat("_", i)))),
+    native_app_attest_arm_equal_case_identities
+  )
 }
 
 fn held_terminal() -> NativeClaimTerminal {
@@ -484,11 +765,3 @@ fn native_claim_report() -> NativeClaimReport {
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
 }
 
-data nfr_reason_native_app_attest_arm_equal: String = "same-constructor equality over AttestationRefusal / AssertionRefusal: the outer match on the owed refusal is exhaustive (a new refusal constructor must be placed there), and each inner off-constructor wildcard answers false; enumerating it is the n-squared cross product (169 arms for AttestationRefusal) cloning one false arm, and comparing the name projections instead is wrong because those names carry payload text"
-
-data nfr_dissolve_native_app_attest_arm_equal: DissolutionCondition = unbound_dissolution(description: "a typed constructor-equality capability (derived from inhabitance, dag/std/algebra) can compare AttestationRefusal and AssertionRefusal by arm without cross-product arms, then these rows delete")
-
-data non_fold_residue_frontier: List<FrontierRow> = [
-  FrontierRow { subject: PathSubject { path: "same_assertion_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-  FrontierRow { subject: PathSubject { path: "same_attestation_arm" }, reason: nfr_reason_native_app_attest_arm_equal, dissolution: nfr_dissolve_native_app_attest_arm_equal },
-]
