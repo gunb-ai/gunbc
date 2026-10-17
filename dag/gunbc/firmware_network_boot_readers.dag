@@ -1,6 +1,6 @@
 module gunbc.firmware_network_boot_readers
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, HttpStatus, List, NonEmptyStr, String }
 import std.algebra { list_map, list_flat_map, string_concat_join }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
@@ -42,7 +42,7 @@ import gunbc.firmware_network_boot_probe {
 
 type RedfishGet
   = RedfishGetBody { body: String }
-  | RedfishGetStatus { status: Int, detail: NonEmptyStr }
+  | RedfishGetStatus { status: HttpStatus, detail: NonEmptyStr }
 
 // The GETs a probe performs: the ComputerSystem, its SecureBoot resource and its
 // EthernetInterfaces collection, each as the service answered.
@@ -56,10 +56,13 @@ type RedfishDocRead
   = RedfishDocParsed { doc: JsonValue }
   | RedfishDocRefused { refusal: FirmwareReadRefusal }
 
+// The status is std.types HttpStatus; a caller holding a raw Int admits it with http_status_of and
+// handles the Absent arm there. extdeps.ietf.http_semantics classifies statuses but names no codes,
+// so 401 and 404 are compared as RFC 9110 section 15 literals here.
 // 401 is the only status that means credentials must be established. A 403 means credentials were
 // accepted and the account lacks the privilege, a different remedy (a role grant), and the standing
 // module has no arm for it, so it is VendorCommandRejected carrying the service's own detail.
-fn redfish_status_refusal(status: Int, detail: NonEmptyStr) -> FirmwareReadRefusal {
+fn redfish_status_refusal(status: HttpStatus, detail: NonEmptyStr) -> FirmwareReadRefusal {
   if status == 401 { AuthenticationRequired { detail: detail } }
   else if status == 404 { ResourceNotFound { detail: detail } }
   else { VendorCommandRejected { detail: detail } }
