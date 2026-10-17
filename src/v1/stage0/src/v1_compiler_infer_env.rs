@@ -3669,6 +3669,31 @@ pub fn settled_rhs(
     }
 }
 
+pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
+    if (((((pre.connective.clone() != Connective::NoConnective)
+        || ((pre.params.clone().len() as i64) > 0))
+        || (pre.type_annotation.clone() != std::option::Option::None))
+        || ((pre.children.clone().len() as i64) > 0))
+        || (pre.return_cardinality.clone() != Cardinality::Required))
+    {
+        std::option::Option::None
+    } else {
+        match pre.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if (((rhs.connective.clone() != Connective::NoConnective)
+                    || (rhs.return_cardinality.clone() != Cardinality::Required))
+                    || (rhs.type_annotation.clone() != std::option::Option::None))
+                {
+                    std::option::Option::None
+                } else {
+                    Some(rhs.clone())
+                }
+            }
+            _ => std::option::Option::None,
+        }
+    }
+}
+
 pub fn alias_rhs_of_declaration(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
@@ -3689,7 +3714,7 @@ pub fn alias_rhs_of_declaration(
             .first()
             .cloned()
         };
-        match declaring.clone() {
+        let from_env = match declaring.clone() {
             std::option::Option::None => std::option::Option::None,
             Some(owner) => {
                 match v1_rt::map_get(&owner.str_bindings.clone(), item_ref.decl_name.clone()) {
@@ -3697,6 +3722,25 @@ pub fn alias_rhs_of_declaration(
                     Some(binding) => binding.alias_rhs.clone(),
                 }
             }
+        };
+        match from_env.clone() {
+            Some(rhs) => Some(rhs.clone()),
+            std::option::Option::None => match symbol_index_lookup(
+                env.symbol_index.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+                    item_ref.decl_name.clone(),
+                ),
+            ) {
+                std::option::Option::None => std::option::Option::None,
+                Some(item) => match transparent_alias_rhs(item.clone()) {
+                    Some(rhs) => match rhs.declaration.clone() {
+                        Some(_) => Some(rhs.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    },
+                    std::option::Option::None => std::option::Option::None,
+                },
+            },
         }
     }
 }

@@ -160,8 +160,8 @@ pub use crate::v1_compiler_infer_env::{
     symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
     symbol_index_lookup, text_crossing_by_identity, text_representation_by_identity,
     text_representation_is_text_arm, text_representation_is_unidentified,
-    text_representations_cross, type_names_settle_to_one_declaration, type_reference_declaration,
-    type_reference_declaration_reading, type_reference_declaration_ref,
+    text_representations_cross, transparent_alias_rhs, type_names_settle_to_one_declaration,
+    type_reference_declaration, type_reference_declaration_reading, type_reference_declaration_ref,
     unit_variant_index_shadow_insert, GlobalBareCandidate, GlobalBareLookupState,
     GuardedTypeEnvCacheMerge, ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache,
     TypeEnvCacheMergeConflict, TypeReferenceDeclarationReading, UnitVariantContribution,
@@ -32246,32 +32246,11 @@ pub fn bindings_accum_insert(
 }
 
 pub fn alias_rhs_reference(pre: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    if (((((pre.connective.clone() != Connective::NoConnective)
-        || ((pre.params.clone().len() as i64) > 0))
-        || (pre.type_annotation.clone() != std::option::Option::None))
-        || ((pre.children.clone().len() as i64) > 0))
-        || (pre.return_cardinality.clone() != Cardinality::Required))
-    {
-        std::option::Option::None
-    } else {
-        match pre.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rhs, .. }) => {
-                if (((rhs.connective.clone() != Connective::NoConnective)
-                    || (rhs.return_cardinality.clone() != Cardinality::Required))
-                    || (rhs.type_annotation.clone() != std::option::Option::None))
-                {
-                    std::option::Option::None
-                } else {
-                    Some(
-                        crate::v1_compiler_infer_resolve::reference_with_declaration(
-                            rhs.clone(),
-                            env.clone(),
-                        ),
-                    )
-                }
-            }
-            _ => std::option::Option::None,
-        }
+    match crate::v1_compiler_infer_env::transparent_alias_rhs(pre.clone()) {
+        Some(rhs) => Some(
+            crate::v1_compiler_infer_resolve::reference_with_declaration(rhs.clone(), env.clone()),
+        ),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
