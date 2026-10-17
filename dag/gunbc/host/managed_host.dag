@@ -189,6 +189,10 @@ fn managed_host_admission(
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness", decl_name: "w_without_the_drop_mtcollins1_is_absent_and_reset_roster_empties"),
     decl_ref(module_path: "test.claim.host.managed_host_admission_witness",
       decl_name: "w_admission_permits_a_platform_that_does_not_carry_smpro"),
+    // snappy-seal-211's x86-platform claim (managed_host_witness) constructs this record under the
+    // cut-1 binding shape; its assertions are unchanged, only its record construction reached here.
+    decl_ref(module_path: "test.claim.host.managed_host_witness",
+      decl_name: "w_admission_admits_a_platform_that_carries_no_smpro_interface"),
   ]
 {
   ManagedHostAdmission {
