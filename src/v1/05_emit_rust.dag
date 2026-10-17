@@ -5955,13 +5955,39 @@ fn emit_import_name(owner_module: String, n: String, registry: Map<String, ItemI
 // filename is what the emitted path needs; the PATH is what the registry is keyed on, and deriving
 // one from the other by re-spelling would be a second reduction of the same fact. Both read the same
 // re-export resolution, so they cannot disagree about which module owns the name.
+// THE DECLARING MODULE OF ANY IMPORTED ITEM, not only a type: the module whose own items carry the
+// name, reached by following the specific-import hop from the importing module. A relay that merely
+// imports a data item declares nothing, so the walk continues to the module that does.
+fn item_declaring_module_name(name: String, import_module: String, visited: List<String>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
+  if visited |> any(v => v == import_module) {
+    Absent
+  } else {
+    match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+      Absent => Absent
+      Present { value: tm } =>
+        if tm.items |> any(item => authored_name_at(source_indices: source_indices, node: item) == name) {
+          Present { value: import_module }
+        } else {
+          match explicit_import_source_module_for_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            Present { value: hop } => item_declaring_module_name(name: name, import_module: hop, visited: concat(visited, [import_module]), typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+            Absent => Absent
+          }
+        }
+    }
+  }
+}
+
 fn graph_type_import_module_path(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     import_module
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => src
-      Absent => import_module
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
     }
   }
 }
@@ -6380,7 +6406,11 @@ fn graph_type_import_module_filename(name: String, import_module: String, mod_na
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => module_to_filename(name: src)
-      Absent => mod_name
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => module_to_filename(name: src)
+          Absent => mod_name
+        }
     }
   }
 }
