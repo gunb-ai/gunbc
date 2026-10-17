@@ -73,6 +73,7 @@ fn workspace_http_create_over(
         }
       }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => workspace_http_reason(status: 401, reason: "Sign in to request a workspace")
+      HostAccountPeerEvidence { account: _, principal: _ } => workspace_http_reason(status: 401, reason: "Sign in to request a workspace")
       SessionStandingInvalid { standing: _ } => workspace_http_reason(status: 401, reason: "Sign in to request a workspace")
       AuthAbsent => workspace_http_reason(status: 401, reason: "Sign in to request a workspace")
     }
@@ -90,6 +91,7 @@ fn workspace_http_list_over(request: ServeHttpRequest<RequestAccessPath, Request
       }
     }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
+    HostAccountPeerEvidence { account: _, principal: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
     SessionStandingInvalid { standing: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
     AuthAbsent => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
   }
@@ -112,6 +114,7 @@ fn workspace_http_release_over(
         Permit => workspace_http_write(observed_at: observed_at, result: workspace_request_release_at(store: store, owner: session.principal, idempotency_key: allocation_id, expected_generation: submission.generation, observed_at: observed_at))
       }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
+      HostAccountPeerEvidence { account: _, principal: _ } => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
       SessionStandingInvalid { standing: _ } => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
       AuthAbsent => workspace_http_reason(status: 401, reason: "Sign in to release a workspace")
     }
@@ -158,6 +161,7 @@ fn workspace_http_get_over(request: ServeHttpRequest<RequestAccessPath, RequestA
       }
     }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
+    HostAccountPeerEvidence { account: _, principal: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
     SessionStandingInvalid { standing: _ } => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
     AuthAbsent => workspace_http_reason(status: 401, reason: "Sign in to view workspaces")
   }

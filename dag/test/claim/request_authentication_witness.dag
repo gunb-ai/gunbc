@@ -31,6 +31,7 @@ import gunbc.auth.session {
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
 import gunbc.principal_projection { principal_ref_eq }
+import gunbc.deployment_risk { srv1_lab_codex_feedback_deployment, srv1_daily_workspace_deployment }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
   SessionStandingInvalid,
@@ -39,6 +40,8 @@ import gunbc.auth.request_authentication {
   ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage,
   ServeWriteAuthorizationPolicy,
   tracker_write_authorization_policy, operator_approver_principal,
+  HostAccountPeerEvidence, HostAccountEnrolment, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
+  write_authorization_policy_for, srv1_host_account_enrolments,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -264,7 +267,7 @@ fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<Req
 }
 
 fn open_write_policy() -> ServeWriteAuthorizationPolicy {
-  ServeWriteAuthorizationPolicy { approve_roster: [] }
+  ServeWriteAuthorizationPolicy { approve_roster: [], agent_roster: [] }
 }
 
 // THE GREEN CONTROL: a live Google session + action authorization + the CSRF proof + the
@@ -440,7 +443,7 @@ test fn login_does_not_grant_approval_authority() -> Bool {
           route_path: "/approve/abc" as NonEmptyStr,
           action: ServeActionApproveDecision,
           security: session_security(session: s),
-          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
           observed_at: "2026-09-25T00:05:00Z",
@@ -659,7 +662,7 @@ test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
           route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
           action: ServeActionRetireLineage,
           security: session_security(session: s),
-          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal] },
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
           deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
           csrf_presented: "csrf-1",
           observed_at: "2026-09-25T00:05:00Z",
@@ -673,4 +676,94 @@ test fn the_production_approve_roster_is_exactly_the_enrolled_operator() -> Bool
   let roster = tracker_write_authorization_policy.approve_roster
   any(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
     && all(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+}
+
+// ── LAB-AGENT-OPERATOR-1 (claims 1-4) ───────────────────────────────────────────────────────────
+// The retire admission over SUPPLIED evidence, so each claim varies exactly one term: the policy the
+// deployment selects, or the evidence presented.
+
+fn agent_security() -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: AccessPathLocalDev,
+    authentication: HostAccountPeerEvidence { account: lab_agent_host_account, principal: lab_agent_principal },
+  }
+}
+
+fn retire_admitted_under(policy: ServeWriteAuthorizationPolicy, security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> Bool {
+  human_write_admission(
+    route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+    action: ServeActionRetireLineage,
+    security: security,
+    authorization_policy: policy,
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "",
+    observed_at: "2026-10-17T05:00:00Z",
+  ) == Permit
+}
+
+// CLAIM 1 (RED before this change): the lab deployment's policy admits the authenticated agent.
+test fn claim_1_the_lab_deployment_admits_the_authenticated_agent_to_retire() -> Bool {
+  retire_admitted_under(policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: agent_security())
+}
+
+// CLAIM 2: the same evidence under every other deployment's policy is refused.
+test fn claim_2_a_non_lab_deployment_refuses_the_same_agent_evidence() -> Bool {
+  !retire_admitted_under(policy: write_authorization_policy_for(deployment: srv1_daily_workspace_deployment), security: agent_security())
+    && !retire_admitted_under(policy: tracker_write_authorization_policy, security: agent_security())
+}
+
+// CLAIM 2 (neighbour): the agent is admitted for retire only; any other action stays a human act.
+test fn claim_2_the_agent_is_admitted_for_retire_alone() -> Bool {
+  human_write_admission(
+    route_path: "/approve/abc" as NonEmptyStr,
+    action: ServeActionApproveDecision,
+    security: agent_security(),
+    authorization_policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment),
+    deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+    csrf_presented: "",
+    observed_at: "2026-10-17T05:00:00Z",
+  ) != Permit
+}
+
+// CLAIM 3: the operator's session retires under both policies (the lab grant removes nobody).
+test fn claim_3_the_operator_principal_retires_under_both_policies() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+        action: ServeActionRetireLineage,
+        security: session_security(session: s),
+        authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: "2026-09-25T00:05:00Z",
+      ) {
+        Permit => true
+        Deny { refusal: _ } => false
+      }
+        && any(write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment).approve_roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+        && any(write_authorization_policy_for(deployment: srv1_daily_workspace_deployment).approve_roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+  }
+}
+
+// CLAIM 4: no evidence, and a peer that is not enrolled (a claimed name), authenticate as nothing.
+test fn claim_4_absent_and_unenrolled_identities_are_refused_on_both() -> Bool {
+  let absent = RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent }
+  let lab = write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment)
+  !retire_admitted_under(policy: lab, security: absent)
+    && !retire_admitted_under(policy: tracker_write_authorization_policy, security: absent)
+    && match host_account_evidence_of_ingress(ingress: IngressAttestedPeer { peer_user: "briansrls" }, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match host_account_evidence_of_ingress(ingress: IngressUnattested, enrolments: srv1_host_account_enrolments) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// THE PRODUCTION ROSTER NEVER GAINS AN AGENT: the policy every non-lab deployment selects has no agent.
+test fn the_production_agent_roster_is_empty() -> Bool {
+  all(tracker_write_authorization_policy.agent_roster, p => false)
 }

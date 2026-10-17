@@ -3,10 +3,12 @@ module test.claim.auth.request_cookie_evidence_witness
 import std.types { NonEmptyStr, Bool, FilePath }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.principal_projection { principal_ref_eq }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_serve { roadmap_serve_request_security }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackUntaken }
-import gunbc.auth.request_authentication { TailnetReadbackNotDemanded, IngressUnattested, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
+import gunbc.auth.request_authentication { TailnetReadbackNotDemanded, IngressUnattested, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, IngressAttestedPeer, lab_agent_principal }
 import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent, SessionCookieUnknown, SessionCookieUnread }
 
 // ABSENCE STAYS ABSENCE AT THE COOKIE SEAM (review 74789). A request with no Cookie header field
@@ -28,6 +30,7 @@ fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
     AuthAbsent => true
     GoogleOidcSession { session: _ } => false
     FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+    HostAccountPeerEvidence { account: _, principal: _ } => false
     SessionStandingInvalid { standing: _ } => false
   }
 }
@@ -52,5 +55,20 @@ test fn a_duplicated_session_cookie_is_a_typed_invalid_standing_not_absence() ->
     AuthAbsent => false
     GoogleOidcSession { session: _ } => false
     FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+    HostAccountPeerEvidence { account: _, principal: _ } => false
   }
+}
+
+// CLAIM 6 (inhabitance): the real entry roadmap_serve_request_security, on the lab instance, with the
+// kernel-attested peer the agent door supplies, yields exactly the evidence claim 1 supplies; a
+// briansrls peer on the same door authenticates as nothing (the uid decides, not the socket).
+test fn claim_6_the_agent_door_peer_yields_the_agent_evidence() -> Bool {
+  match roadmap_serve_request_security(instance: srv1_lab_dashboard_instance(), tailscale_identity: "", ingress: IngressAttestedPeer { peer_user: "gunbc-lab-agent" }, readback: no_readback(), decided_at: "").authentication {
+    HostAccountPeerEvidence { account: _, principal: p } => principal_ref_eq(a: p, b: lab_agent_principal)
+    _ => false
+  }
+}
+
+test fn claim_6_an_operator_peer_on_the_agent_door_is_not_the_agent() -> Bool {
+  is_auth_absent(e: roadmap_serve_request_security(instance: srv1_lab_dashboard_instance(), tailscale_identity: "", ingress: IngressAttestedPeer { peer_user: "briansrls" }, readback: no_readback(), decided_at: "").authentication)
 }

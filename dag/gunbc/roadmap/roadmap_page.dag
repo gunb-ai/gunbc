@@ -28,6 +28,7 @@ import std.algebra { empty_map, map_insert, map_lookup }
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 import gunbc.roadmap.roadmap_lineage_retire { LineageRetirePanel, LineageRetirePanelNone, LineageRetirePanelOffer, LineageRetirePanelRecorded, LineageRetirePanelUnreadable }
 
+import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path }
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
@@ -2405,7 +2406,7 @@ fn issue_lineage_retire_panel_nodes(node_id: String, panel: LineageRetirePanel, 
         if command_context.csrf == "" {
           el_class("p", "issue-lineage-retire-signin", [
             txt("You are not signed in, so this lineage cannot be retired from this page. "),
-            el_attrs("a", [ attr(name: "href", value: "/auth/login"), attr(name: "class", value: "issue-lineage-retire-signin-link") ], [ txt("Sign in to retire this lineage") ]),
+            el_attrs("a", [ attr(name: "href", value: auth_login_route_path), attr(name: "class", value: "issue-lineage-retire-signin-link") ], [ txt("Sign in to retire this lineage") ]),
           ])
         } else {
           el_attrs("button", [

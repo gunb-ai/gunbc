@@ -674,6 +674,7 @@ fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpReque
     GoogleOidcSession { session } =>
       session_store_delete(layout: session_store_layout_for_instance(instance: instance), session_id: session.session_id)
     FabricServiceEvidence { kind: _, authenticated_at: _ } => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
+    HostAccountPeerEvidence { account: _, principal: _ } => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
     SessionStandingInvalid { standing: _ } => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
     AuthAbsent => SessionStoreNothingToDelete { session_id: "none" as NonEmptyStr }
   }

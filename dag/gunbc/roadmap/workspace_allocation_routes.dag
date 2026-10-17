@@ -56,6 +56,7 @@ fn workspace_write_unavailable_gap(request: ServeHttpRequest<RequestAccessPath, 
         AccessPathLocalDev => none
       }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => none
+    HostAccountPeerEvidence { account: _, principal: _ } => none
     SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
