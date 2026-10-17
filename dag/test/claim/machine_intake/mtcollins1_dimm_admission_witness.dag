@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_dimm_admission_witness
 
 import std.types { Bool, Int, List }
+import std.measure { megatransfers_per_second }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.machine_intake.mtcollins1_dimm_admission {
   ObservedDimm, Rdimm, NvRdimm, DimmAdmission, DimmPopulationAdmitted, DimmPopulationRefused,
@@ -33,8 +34,8 @@ test fn mtcollins1_mixed_rank_rdimm_population_is_admitted() -> Bool {
 
 test fn mtcollins1_default_same_rank_same_type_any_speed_is_admitted() -> Bool {
   match mtcollins1_dimm_population_admission(modules: [
-    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2666 },
+    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2666) },
   ]) {
     DimmPopulationAdmitted { basis: OperatorDefaultSameRankSameType } => true
     _ => false

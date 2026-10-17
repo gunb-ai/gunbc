@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_dimm_admission
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 
 // THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
 // gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing
@@ -25,12 +26,16 @@ import std.types { Bool, Int, List, NonEmptyStr }
 // differ ONLY in module type of four modules, so the refusal is attributed to the type mixture and the
 // acceptance WIDENS the default on this platform to mixed rank within one module type.
 
+// CONSUMER (DESIGN 3c): consumed here by the witnesses only. A named later change consumes it: the
+// boot-attempt admission join (gunbc.recurring_failure_mode attested_population_never_joined_to_the_firmware_reading),
+// which compares a receipt's declared population with the firmware DRAM-table reading and asks this fold
+// whether that population was expected to train. Trigger: that join landing.
 type DimmModuleType = Rdimm | NvRdimm
 
 type ObservedDimm {
   module_type: DimmModuleType
   rank_count: Int
-  megatransfers: Int
+  megatransfers: MegatransfersPerSecond
 }
 
 type DimmAdmissionBasis
@@ -47,15 +52,8 @@ data mtcollins1_refused_run: NonEmptyStr = "39005709187"
 
 data mtcollins1_accepted_run: NonEmptyStr = "39010930690"
 
-fn dimm_of_type(m: ObservedDimm, t: DimmModuleType) -> Bool {
-  match m.module_type {
-    Rdimm => match t { Rdimm => true  NvRdimm => false }
-    NvRdimm => match t { NvRdimm => true  Rdimm => false }
-  }
-}
-
 fn dimm_population_has_type(modules: List<ObservedDimm>, t: DimmModuleType) -> Bool {
-  any(modules, m => dimm_of_type(m: m, t: t))
+  any(modules, m => m.module_type == t)
 }
 
 fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
@@ -77,23 +75,23 @@ fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmi
 }
 
 data mtcollins1_run_39005709187_population: List<ObservedDimm> = [
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
 ]
 
 data mtcollins1_run_39010930690_population: List<ObservedDimm> = [
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
-  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
 ]
