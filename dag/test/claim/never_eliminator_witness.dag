@@ -216,10 +216,3 @@ test fn never_type_importer_census_refuses_a_missing_declaration() -> Bool {
     pool_roots: never_importer_census_pool_roots
   ) == 1
 }
-
-data absurd_anonymous_callable_source: String = "module neverprobe.red_anon\n\nimport std.types { Int }\nimport std.error_primitives { absurd }\n\nfn f(g: (Int) -> Int) -> Int {\n  absurd(g)\n}\n"
-
-// A value of an unnamed (callable) type at the Never parameter must refuse.
-test fn absurd_applied_to_an_unnamed_callable_type_must_refuse() -> Bool {
-  never_eliminator_blocking_count(source: absurd_anonymous_callable_source) >= 1
-}

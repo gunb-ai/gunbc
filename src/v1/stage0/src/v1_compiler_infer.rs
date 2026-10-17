@@ -6672,8 +6672,7 @@ pub fn value_at_never_declared_type(
                 Some(r) => r.clone(),
                 std::option::Option::None => produced.clone(),
             };
-        let produced_is_generic = ((!type_node_is_arrow(produced.clone())
-            && ((produced.params.clone().len() as i64) > 0))
+        let produced_is_generic = (((produced.params.clone().len() as i64) > 0)
             || match produced.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
                 _ => false,
@@ -6682,11 +6681,10 @@ pub fn value_at_never_declared_type(
             declared_resolved.clone(),
             env.clone(),
         ) && !produced_is_generic.clone())
-            && ((crate::v1_std_core::authored_name_at(
+            && (crate::v1_std_core::authored_name_at(
                 env.source_indices.clone(),
                 produced.clone(),
-            ) != "".to_string())
-                || type_node_is_arrow(produced.clone())))
+            ) != "".to_string()))
             && !crate::v1_compiler_infer_patterns::node_is_never_declaration(
                 produced_resolved.clone(),
                 env.clone(),
