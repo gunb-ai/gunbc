@@ -23,8 +23,8 @@ import gunbc.serving.serving_launch {
   ServingPlacementCommands, ServingStartupProgram, ServingServeKeyUnbound, ServingLaunchRefusedUnmetCauses, serving_startup_program, serving_startup_program_text,
 }
 import gunbc.serving.serving_artifact_placement { ServingLinkAbsent }
-import gunbc.serving.serving_launch { ServingDetachRendered, serving_detach_leg, serving_launch_leg }
-import gunbc.remote_shell_command { RemoteExecCommandBuilt, RemoteExecCommandRefused, remote_exec_command_rendered, remote_exec_command_string, PosixShellInterpreted }
+import gunbc.serving.serving_launch { ServingDetachRendered, ServingDetachRefusedRender, serving_detach_leg, serving_launch_leg, serving_detach_text }
+import gunbc.remote_shell_command { RemoteExecInterpretationUnknown, RemoteExecCommandBuilt, RemoteExecCommandRefused, remote_exec_command_rendered, remote_exec_command_string, PosixShellInterpreted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -233,6 +233,11 @@ test fn the_detach_leg_renders_setsid_fork_with_the_serve_log_redirect() -> Bool
     ServingDetachRendered { remote_command: c } => (c as String) == "'setsid' '--fork' 'true' >|'/root/serve/serve.log' 2>&1"
     _ => false
   }
+}
+
+// A REFUSED RENDER NAMES ITS CAUSE in the text (DESIGN 5: every degradation is typed and located), not only that it refused.
+test fn a_refused_detach_render_text_names_its_cause() -> Bool {
+  string_contains(s: serving_detach_text(detach: ServingDetachRefusedRender { cause: RemoteExecInterpretationUnknown }), pattern: "RemoteExecCommandInterpretation is Unknown")
 }
 
 // THE RED: the same words without the stdio route render no redirect, so dropping the stdio from the leg
