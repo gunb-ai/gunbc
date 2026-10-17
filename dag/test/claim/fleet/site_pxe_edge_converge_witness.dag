@@ -95,8 +95,6 @@ fn build_with(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Arch
     architecture: architecture,
     digest: digest,
     installed_filename: filename,
-    build_command: "fixture build command",
-    toolchain: "fixture toolchain",
     secure_boot: secure_boot,
   )
 }
