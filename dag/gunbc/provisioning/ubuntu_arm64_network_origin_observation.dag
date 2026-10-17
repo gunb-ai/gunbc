@@ -51,14 +51,6 @@ fn ubuntu_arm64_network_origin(edition: UbuntuRelease, kernel: PinnedArtefact, i
   }
 }
 
-fn origin_artefact(origin: UbuntuNetworkOrigin, role: OriginArtefactRole) -> PinnedArtefact {
-  match role {
-    OriginKernel => origin.kernel
-    OriginInitrd => origin.initrd
-    OriginInstallerFilesystem => origin.installer_filesystem
-  }
-}
-
 // WHAT A FETCH-AND-HASH PRODUCED FOR ONE ARTEFACT. Not fetching is a reading, not an error.
 type ArtefactReading
   = ArtefactRead { digest: Digest, size: ByteSize }
