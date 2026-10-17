@@ -1,0 +1,79 @@
+module test.claim.machine_intake.chassis_fan_establishment_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import gunbc.machine_intake.chassis_fan_establishment {
+  ChassisFansEstablished, ChassisFansRefused, FittedFanSetEstablished, FittedFanSetNotEstablished, chassis_fan_verdict,
+}
+
+// SUPPLIED VALUES AT ONE BOUNDARY: the fitted set and the SDR rows are inputs, the verdict is the subject.
+// The fitted headers here are a FIXTURE (FAN1..FAN3), not a statement about any unit; the real unit's set is
+// the cited data row that is still to be established.
+fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
+  SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
+}
+
+fn fitted() -> List<NonEmptyStr> { ["FAN1" as NonEmptyStr, "FAN2" as NonEmptyStr, "FAN3" as NonEmptyStr] }
+
+fn spinning_rows() -> List<SdrTypeLine> {
+  [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]
+}
+
+fn established_with_no_unexpected(rows: List<SdrTypeLine>) -> Bool {
+  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
+    ChassisFansEstablished { unexpected_spinning: u } => u.length() == 0
+    ChassisFansRefused { cause: _ } => false
+  }
+}
+
+fn refused(rows: List<SdrTypeLine>) -> Bool {
+  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
+    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansRefused { cause: _ } => true
+  }
+}
+
+test fn every_fitted_fan_spinning_is_established() -> Bool {
+  established_with_no_unexpected(rows: spinning_rows())
+}
+
+test fn an_unfitted_header_with_no_reading_does_not_refuse() -> Bool {
+  established_with_no_unexpected(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "no reading" as NonEmptyStr)))
+}
+
+test fn a_fitted_fan_reading_zero_refuses() -> Bool {
+  refused(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)])
+}
+
+test fn a_fitted_fan_with_no_reading_refuses() -> Bool {
+  refused(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "no reading" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)])
+}
+
+test fn a_fitted_fan_with_no_sensor_row_refuses() -> Bool {
+  refused(rows: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr)])
+}
+
+test fn no_rows_at_all_refuses() -> Bool {
+  refused(rows: [])
+}
+
+test fn an_unexpected_spinning_header_is_recorded_not_a_pass_or_a_refusal() -> Bool {
+  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: spinning_rows().append(row(name: "FAN5" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr))) {
+    ChassisFansEstablished { unexpected_spinning: u } => u.length() == 1
+    ChassisFansRefused { cause: _ } => false
+  }
+}
+
+test fn an_unestablished_fitted_set_refuses_even_when_every_fan_spins() -> Bool {
+  match chassis_fan_verdict(fitted: FittedFanSetNotEstablished { read_obligation: "operator statement naming the fitted headers" as NonEmptyStr }, lines: spinning_rows()) {
+    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansRefused { cause: _ } => true
+  }
+}
+
+test fn an_empty_fitted_set_refuses() -> Bool {
+  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: [] }, lines: spinning_rows()) {
+    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansRefused { cause: _ } => true
+  }
+}

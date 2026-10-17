@@ -1,0 +1,86 @@
+module gunbc.machine_intake.chassis_fan_establishment
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { rpm_count }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+
+// WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
+//
+// The verdict population is the EXPECTED fitted headers, never "every header the controller lists": a
+// unit with an unpopulated socket has headers that will always read nothing, and a rule over every
+// header would refuse every boot. A fitted header that reads zero, nothing, a duty or an unrecognised
+// text is Refused. A header NOT in the fitted set that reads a spinning speed is a finding recorded
+// beside the verdict, never a pass and never a refusal, because it contradicts the fitted fact and the
+// fact (not this fold) is what needs the operator.
+//
+// THE FITTED SET IS A STANDING FACT, NOT A DEFAULT. Until it is established the only honest verdict is
+// a refusal that names what would establish it (the fan-policy standing's TranscribedUncited move,
+// extdeps.external_authority CitedFigureStanding), so an empty or unestablished set can never read as
+// "all fitted fans spin".
+type FittedFanSet
+  = FittedFanSetNotEstablished { read_obligation: NonEmptyStr }
+  | FittedFanSetEstablished { headers: List<NonEmptyStr> }
+
+type ChassisFanVerdict
+  = ChassisFansEstablished { unexpected_spinning: List<String> }
+  | ChassisFansRefused { cause: NonEmptyStr }
+
+fn fan_line_named(lines: List<SdrTypeLine>, header: NonEmptyStr) -> SdrTypeLine? {
+  fold(lines, init: Absent, f: (acc, line) => match acc {
+    Present { value: l } => Present { value: l }
+    Absent => if (line.name as String) == (header as String) { Present { value: line } } else { Absent }
+  })
+}
+
+fn fan_line_spins(line: SdrTypeLine) -> Bool {
+  match sdr_fan_reading(reading_text: line.reading_text) {
+    SdrFanRpm { speed: s } => (rpm_count(r: s) as Int) > 0
+    SdrFanDuty { duty: _ } => false
+    SdrFanNoReading => false
+    SdrFanReadingUnrecognised { text: _ } => false
+  }
+}
+
+fn fitted_header_failure(lines: List<SdrTypeLine>, header: NonEmptyStr) -> String? {
+  match fan_line_named(lines: lines, header: header) {
+    Absent => Present { value: join([header as String, " (fitted) has no sensor row"], "") }
+    Present { value: line } => if fan_line_spins(line: line) {
+      Absent
+    } else {
+      Present { value: join([header as String, " (fitted) does not spin: ", line.reading_text as String], "") }
+    }
+  }
+}
+
+fn header_is_fitted(headers: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
+  fold(headers, init: false, f: (acc, h) => acc || (h as String) == (name as String))
+}
+
+fn unexpected_spinning_headers(headers: List<NonEmptyStr>, lines: List<SdrTypeLine>) -> List<String> {
+  fold(lines, init: [], f: (acc, line) => if header_is_fitted(headers: headers, name: line.name) == false && fan_line_spins(line: line) {
+    acc.append(join([line.name as String, " (not fitted) reads ", line.reading_text as String], ""))
+  } else {
+    acc
+  })
+}
+
+fn chassis_fan_verdict(fitted: FittedFanSet, lines: List<SdrTypeLine>) -> ChassisFanVerdict {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: why } =>
+      ChassisFansRefused { cause: join(["the fitted fan set is not established: ", why as String], "") as NonEmptyStr }
+    FittedFanSetEstablished { headers: headers } => {
+      let failures = fold(headers, init: [], f: (acc, h) => match fitted_header_failure(lines: lines, header: h) {
+        Absent => acc
+        Present { value: f } => acc.append(f)
+      })
+      if headers.length() == 0 {
+        ChassisFansRefused { cause: "the fitted fan set is established as empty, so no fan can be shown to spin" }
+      } else if failures.length() > 0 {
+        ChassisFansRefused { cause: join(failures, "; ") as NonEmptyStr }
+      } else {
+        ChassisFansEstablished { unexpected_spinning: unexpected_spinning_headers(headers: headers, lines: lines) }
+      }
+    }
+  }
+}
