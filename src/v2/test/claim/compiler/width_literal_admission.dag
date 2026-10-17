@@ -197,6 +197,6 @@ test fn wla_s_uint8_300() -> Bool { wla_verdict(lexeme: "300", carrier: wla_decl
 test fn wla_s_int8_127() -> Bool { wla_verdict(lexeme: "127", carrier: wla_int_carrier(), bits: "8") == ^elaborated }
 test fn wla_s_int8_128() -> Bool { wla_verdict(lexeme: "128", carrier: wla_int_carrier(), bits: "8") == ^infer_reason_literal_outside_machine_width }
 test fn wla_s_bits_read() -> Bool { infer_machine_width_bits(t: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_literal(lexeme: "8")])) == optional_present(value: bit_width(count: 8)) }
-test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat"), declarations: empty_symbol_index(), bindings: empty_symbol_index()) == optional_present(value: Unsigned) }
-test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) == optional_present(value: Signed) }
+test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat")) == optional_present(value: Unsigned) }
+test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier()) == optional_present(value: Signed) }
 
