@@ -190,8 +190,8 @@ fn nics_reply(get: RedfishGet) -> AxisReply {
             Absent =>
               if page.member_links == [] { refused_axis(axis: NicsAxis, refusal: shape_refusal(detail: "the EthernetInterfaces collection has no members; an empty list is not read as no NICs")) }
               else {
-                let none: List<NonEmptyStr> = []
-                ReplyNics { nics: fold(page.member_links, init: none, f: (acc, l) => concat(acc, [l as NonEmptyStr])) }
+                let no_nics: List<NonEmptyStr> = []
+                ReplyNics { nics: fold(page.member_links, init: no_nics, f: (acc, l) => concat(acc, [l as NonEmptyStr])) }
               }
           }
       }
