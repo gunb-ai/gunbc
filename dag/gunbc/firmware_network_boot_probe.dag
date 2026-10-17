@@ -106,7 +106,14 @@ type RouteVerdict
 
 fn route_for(row: FirmwareBootFamilyRow, request: ProbeRequest) -> RouteVerdict {
   match request {
-    ReadAxisRequest { axis: _ } => Routed { route: row.route }
+    // The read window is tied to the row's own coverage: an axis the row cannot answer has no
+    // route, and its reason is the row's, so probe() never invents or drops one.
+    ReadAxisRequest { axis: a } =>
+      match row_coverage_of(row: row, axis: a) {
+        Absent => RequestRefused { why: "the family row neither claims nor disclaims this axis" }
+        Present { value: TransportCannotAnswer { axis: _, why: w } } => RequestRefused { why: w }
+        Present { value: TransportAnswers { axis: _ } } => Routed { route: row.route }
+      }
     SetBootOverrideRequest => RequestRefused { why: "a boot-override write has no read route; this instrument only reads" }
     ChangeBootOrderRequest => RequestRefused { why: "a boot-order change has no read route; this instrument only reads" }
     PowerActionRequest => RequestRefused { why: "a power action has no read route; this instrument only reads" }
@@ -197,10 +204,9 @@ fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> AxisReply?
 }
 
 fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: ObservationAxis) -> AxisResolution {
-  match row_coverage_of(row: row, axis: axis) {
-    Absent => AxisUnanswerable { reason: "the family row neither claims nor disclaims this axis" }
-    Present { value: TransportCannotAnswer { axis: _, why: w } } => AxisUnanswerable { reason: w }
-    Present { value: TransportAnswers { axis: _ } } =>
+  match route_for(row: row, request: ReadAxisRequest { axis: axis }) {
+    RequestRefused { why: w } => AxisUnanswerable { reason: w }
+    Routed { route: _ } =>
       match reply_for_axis(replies: replies, axis: axis) {
         Absent => AxisNoReply
         Present { value: r } => AxisReplied { reply: r }
