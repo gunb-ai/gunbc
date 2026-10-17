@@ -704,7 +704,8 @@ fn symbol_index_fill_module_root(
           index: index,
           root: root,
           record_declarations: record_declarations,
-          resource_declarations: resource_declarations
+          resource_declarations: resource_declarations,
+          admitted: Absent
         ),
         module_qn: module_qn,
         root: root
@@ -741,7 +742,8 @@ fn symbol_index_fill_module_roots(
           index: acc,
           root: tree.root,
           record_declarations: tree.record_declarations,
-          resource_declarations: tree.resource_declarations
+          resource_declarations: tree.resource_declarations,
+          admitted: Absent
         )
       }
     ),
