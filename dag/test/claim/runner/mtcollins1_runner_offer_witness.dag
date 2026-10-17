@@ -227,7 +227,7 @@ test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool
                 HostUsableRamMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "38a57a92-6c58-4b1d-8eed-7a4015a7bc28")
+                    && string_contains(s: p as String, pattern: "292ec1bf-b85c-4a76-81db-cb1247c98370")
                     && string_contains(s: p as String, pattern: "census_meminfo_reading")
                 _ => false
               }
@@ -251,7 +251,7 @@ test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
                 HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "38a57a92-6c58-4b1d-8eed-7a4015a7bc28")
+                    && string_contains(s: p as String, pattern: "292ec1bf-b85c-4a76-81db-cb1247c98370")
                     && string_contains(s: p as String, pattern: "quiescent census boot")
                 _ => false
               }
