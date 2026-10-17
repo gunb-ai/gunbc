@@ -671,8 +671,12 @@ type FlexShadowBidReceipt {
   actuation: ApplyMode
 }
 
+fn flex_vast_offer_key_of_id(id: Int) -> OfferKey {
+  int_to_decimal_string(value: id) as OfferKey
+}
+
 fn flex_vast_offer_key(offer: VastAiOffer) -> OfferKey {
-  int_to_decimal_string(value: offer.id) as OfferKey
+  flex_vast_offer_key_of_id(id: offer.id)
 }
 
 // Search-offers does not carry start, transition, opportunity, readiness, a cited
