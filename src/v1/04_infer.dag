@@ -8681,11 +8681,28 @@ fn expected_type_is_set_collection(exp: Node, scope: InferScope) -> Bool {
   }
 }
 
+fn is_null_literal(n: Node) -> Bool {
+  match n.expr_data {
+    ExprLiteral { value: LitNull } => true
+    _ => false
+  }
+}
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span)
+      // `none` is the Absent arm of the Optional the expected type supplies (operator ruling H3); with no
+      // expected Optional it stays an underived type variable and never defaults to Unit.
+      let literal_type = match lit {
+        LitNull =>
+          match expected_optional_instance(expected: expected, scope: scope) {
+            Present { value: instance } => instance
+            Absent => infer_literal_node(lit: lit)
+          }
+        _ => infer_literal_node(lit: lit)
+      }
+      let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: literal_type } }, span: span)
       match literal_boundary_elaboration(lit: lit, expected: expected, scope: scope) {
         LiteralBoundaryPlain => ok_infer(texpr: plain)
         LiteralBoundaryElaborated { elaboration: e, destination_type: dt } =>
@@ -9761,8 +9778,19 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
       )
       let non_diverging_arm_results = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm)))
+      // A lowered `none` arm is the Absent arm of the Optional a sibling arm supplies (operator ruling H3):
+      // the sibling only SUPPLIES the Optional<payload>, so the null arm joins as that sibling's own type.
+      let null_free_arm_types = non_diverging_arm_results |> filter(ar => !is_null_literal(n: arm_body(n: ar.typed_arm))) |> map(ar => ar.body_type)
+      let supplied_optional = null_free_arm_types |> filter(t => expected_optional_instance(expected: Present { value: t }, scope: scope) != none)
       let arm_body_types = match non_diverging_arm_results |> first {
-        Present { value: _ } => non_diverging_arm_results |> map(ar => ar.body_type)
+        Present { value: _ } => non_diverging_arm_results |> map(ar =>
+          if is_null_literal(n: arm_body(n: ar.typed_arm)) {
+            match supplied_optional |> first {
+              Present { value: sibling } => sibling
+              Absent => ar.body_type
+            }
+          } else { ar.body_type }
+        )
         Absent => match expected {
           Present { value: expected_type } => [expected_type]
           Absent => [divergent_type()]
@@ -9900,18 +9928,24 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
           let then_rt = resolved_type(n: then_result.typed)
           let else_rt = resolved_type(n: else_result.typed)
-          let then_result = if !is_fully_resolved(n: then_rt, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: else_rt, source_indices: scope.type_env.source_indices) {
+          let then_lowered = is_null_literal(n: then_expr) && !is_null_literal(n: else_branch) && expected_optional_instance(expected: Present { value: else_rt }, scope: scope) != none
+          let else_lowered = is_null_literal(n: else_branch) && !is_null_literal(n: then_expr) && expected_optional_instance(expected: Present { value: then_rt }, scope: scope) != none
+          let then_result = if (!is_fully_resolved(n: then_rt, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: else_rt, source_indices: scope.type_env.source_indices)) {
             infer_expr(texpr: then_expr, scope: scope, expected: Present { value: else_rt })
           } else { then_result }
-          let else_result = if !is_fully_resolved(n: else_rt, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: then_rt, source_indices: scope.type_env.source_indices) {
+          let else_result = if (!is_fully_resolved(n: else_rt, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: then_rt, source_indices: scope.type_env.source_indices)) {
             infer_expr(texpr: else_branch, scope: scope, expected: Present { value: then_rt })
           } else { else_result }
           let then_typed = then_result.typed
           let then_diags = then_result.diagnostics
           let else_typed = else_result.typed
           let else_diags = else_result.diagnostics
-          let then_rt = resolved_type(n: then_typed)
-          let else_rt = resolved_type(n: else_typed)
+          // A lowered `none` is the Absent arm of the Optional its sibling supplied, so the join is the
+          // sibling's own type: the sibling only SUPPLIES the expected Optional<payload>, no join rule for LitNull.
+          let sibling_then_rt = resolved_type(n: then_typed)
+          let sibling_else_rt = resolved_type(n: else_typed)
+          let then_rt = if then_lowered { sibling_else_rt } else { sibling_then_rt }
+          let else_rt = if else_lowered { sibling_then_rt } else { sibling_else_rt }
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
           let unified = match inhabited_branch_types |> first {
