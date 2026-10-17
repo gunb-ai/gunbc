@@ -25,7 +25,7 @@ import extdeps.communication.medium { Medium }
 import std.optional { Absent, Present }
 import v2.std.witness { map_get_checked }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, fold_list, FreeMonoid, list_at_optional }
+import std.algebra { Cons, Empty, list_append, list_snoc_item, contains, fold_list, FreeMonoid, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

@@ -4,6 +4,7 @@ import std.optional { Present, Absent }
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
 
 type TypeCheckpoint {
   dag_name: String

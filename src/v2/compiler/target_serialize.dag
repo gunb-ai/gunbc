@@ -169,7 +169,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional }
+import std.algebra { Empty, PartialFunction, list_snoc_item, fold_list, is_empty, list_tail, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.text {
   String
 }

@@ -1,6 +1,6 @@
 module v2.compiler.dependency_demand_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_lookup, collection_concat_shape }
 import v2.compiler.body_lowering_fold {
   body_lower_find_production_shell_optional,
   body_lower_param_binding_optional,

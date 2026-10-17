@@ -8,6 +8,7 @@ import std.measure {
   millisecond,
   millisecond_to_nanosecond
 }
+import std.algebra { collection_map_shape }
 
 // WHICH MODULE IS THE COMPILER PIPELINE ENTRY IS A FACT ABOUT THE MODULE, CARRIED BY IT.
 //

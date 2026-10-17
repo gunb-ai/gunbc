@@ -1,0 +1,372 @@
+module v2.workflow.roster_import_sweep
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector {
+  HeadLexicallyUnbound,
+  ScopedReferenceSite,
+  collect_scoped_module_reference_sites
+}
+import v2.compiler.resolution_provenance { ReferenceSite }
+import v2.compiler.tokenize { PreparedLexRules, tokenize_prepared }
+import v2.extdeps.languages.dag {
+  import_decl_target_module,
+  parse_import_block_idents
+}
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length }
+import std.integer { int_to_decimal_string }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.types { List, Bool }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.grammar { parse_production_emitted_identity_optional }
+import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
+import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
+import v2.std.qualified_name { QualifiedName }
+
+// RULING-B ROSTER IMPORT SWEEP (#14003 / #14017), computed from the PARSED program, not from text.
+//
+// A bare free call to a collection kernel head binds natively only when its shape is import-visible
+// from std.algebra. This module reads each file the way the compiler does (tokenize, parse, normalize),
+// takes the file's own reference sites with their lexical head classification, and computes the
+// std.algebra import as a VALUE: the names its existing import declaration binds, plus the shape each
+// lexically-unbound roster head needs, deduplicated by Symbol identity. The import declaration is then
+// rendered from that value and addressed by its parsed source extent, so a malformed block has no
+// construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
+//   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
+//   REFUSE <path> <cause>
+// The thin applier (tools/roster_import_sweep_apply.sh) compare-and-sets the file digest and applies
+// them; it contains no matching and no semantics. Driven as
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
+//     --function roster_import_sweep_for_paths --arg paths_csv=<comma-separated paths>
+//
+// Pending rows leave the process through roster_import_sweep_exit's reason channel.
+// SCOPE: the ruling-B shapes only (concat/count/map/join). map_get -> map_lookup is NOT swept: map_lookup is not a drop-in for
+// map_get under the seed (dag/std/graph.dag stops resolving: match arms typed String vs List<String>), so the
+// rename is a Map-home question held for the operator's table, with the collection-op signatures. Homes for
+// chars, List, list_push or Map wait for the operator's home table; the table below is the single
+// place a row would be added, and it is data a later row-driven generator replaces.
+
+type RosterHeadRow {
+  call: String
+  import_name: String
+  renames_call: Bool
+}
+
+fn roster_head_rows() -> List<RosterHeadRow> {
+  [
+    RosterHeadRow { call: "concat", import_name: "collection_concat_shape", renames_call: false },
+    RosterHeadRow { call: "count", import_name: "collection_count_shape", renames_call: false },
+    RosterHeadRow { call: "map", import_name: "collection_map_shape", renames_call: false },
+    RosterHeadRow { call: "join", import_name: "collection_join_shape", renames_call: false }
+  ]
+}
+
+// THE VERDICT IS CONVERGENCE: no pending rows is ExitSuccess (the post-apply re-run), pending rows
+// are an ExitFailure whose reason IS the rows, so a refused or unconverged sweep cannot read as done.
+fn roster_import_sweep_exit(paths_csv: String) -> ProcessExit {
+  let rows = roster_import_sweep_for_paths(paths_csv: paths_csv)
+  if (rows == "") { ExitSuccess } else { exit_failure(reason: rows) }
+}
+
+// The grammar and lex rules are prepared ONCE per run and passed down: preparing them per file
+// re-derived the same compiled ground for every path (the cost that made an 83-file run take 25+ minutes).
+fn roster_import_sweep_for_paths(paths_csv: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_sweep_all(paths_csv: paths_csv, prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + roster_sweep_path(path: path, prepared: prepared, lex: lex) }
+  )
+}
+
+fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex)
+  } else {
+    "REFUSE " + path + " unreadable\n"
+  }
+}
+
+fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
+        Rejected { diagnostics: _ } => "REFUSE " + path + " tokenize-refused\n"
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: _ } => "REFUSE " + path + " parse-refused\n"
+            Accepted { value: artifact, diagnostics: _ } =>
+              match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                Rejected { diagnostics: _ } => "REFUSE " + path + " normalize-refused\n"
+                Accepted { value: scoped, diagnostics: _ } =>
+                  roster_sweep_rows(
+                    path: path,
+                    parse_root: artifact.tree,
+                    spans: artifact.span_index,
+                    normalized_root: scoped.tree.root,
+                    imported: list_map(xs: scoped.tree.import_bindings, f: fn(row) { row.binding })
+                  )
+              }
+          }
+      }
+}
+
+// The roster rows whose call head is lexically unbound in this file: the heads ruling B refuses
+// natively without an import. HeadLexicallyUnbound is the collector's own classification, so a local
+// binding, a module-level declaration or an existing import of the same spelling is never swept.
+fn roster_needed_rows(normalized_root: Node, imported: List<Symbol>) -> List<RosterHeadRow> {
+  let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: imported).sites
+  fold_list(
+    xs: roster_head_rows(),
+    empty: [],
+    cons: fn(acc, row) {
+      if roster_sites_count(sites: sites, call: row.call) > 0 && !roster_symbol_imported(imported: imported, name: row.import_name) {
+        list_snoc_item(xs: acc, item: row)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// The import binds the SHAPE name, not the call spelling, so the collector keeps classifying the bare call as
+// unbound after the import is present. A row is needed only while its shape name is not yet import-visible.
+fn roster_symbol_imported(imported: List<Symbol>, name: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, s) { found || (symbol_lexeme(sym: s) == name) })
+}
+
+fn roster_sites_count(sites: FreeMonoid<ScopedReferenceSite>, call: String) -> Int {
+  fold_list(
+    xs: sites,
+    empty: 0,
+    cons: fn(n, s) {
+      match s.head {
+        HeadLexicallyUnbound =>
+          if roster_spelling_is(qn: s.site.spelling, call: call) { n + 1 } else { n }
+        _ => n
+      }
+    }
+  )
+}
+
+fn roster_spelling_is(qn: QualifiedName, call: String) -> Bool {
+  match qn {
+    Cons { head: h, tail: Empty } => (symbol_lexeme(sym: h) == call)
+    _ => false
+  }
+}
+
+fn roster_sweep_rows(
+  path: String,
+  parse_root: Node,
+  spans: SpanIndex,
+  normalized_root: Node,
+  imported: List<Symbol>
+) -> String {
+  let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported)
+  if is_empty(xs: needed) {
+    ""
+  } else {
+    roster_import_row(path: path, parse_root: parse_root, spans: spans, needed: needed)
+      + roster_rename_rows(path: path, parse_root: parse_root, spans: spans, needed: needed)
+  }
+}
+
+// ONE EXISTING std.algebra IMPORT: its bound names are the value's base. NONE: the value starts empty
+// and the block is inserted after the last import declaration. TWO OR MORE std.algebra imports refuse
+// (a merge would choose which declaration survives).
+type ImportDeclFact {
+  module_name: String
+  names: List<String>
+  start: Int
+  end: Int
+}
+
+fn roster_import_row(path: String, parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> String {
+  let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
+  let algebra = roster_filter_module(decls: decls, module_name: "std.algebra")
+  let wanted = list_map(xs: needed, f: fn(r) { r.import_name })
+  match length(xs: algebra) {
+    0 =>
+      match roster_last_decl_end(decls: decls) {
+        Present { value: at } =>
+          "EDIT " + path + " " + int_to_decimal_string(value: at) + " " + int_to_decimal_string(value: at) + " "
+            + "\\n" + roster_render_import(names: roster_dedupe(base: [], more: wanted)) + "\n"
+        Absent => "REFUSE " + path + " no-import-anchor\n"
+      }
+    _ =>
+      // Several std.algebra imports make the same names visible; the first one is extended and the rest stay as authored.
+      fold_list(
+        xs: algebra,
+        empty: "",
+        cons: fn(acc, d) {
+          if acc == "" {
+            "EDIT " + path + " " + int_to_decimal_string(value: d.start) + " " + int_to_decimal_string(value: d.end) + " "
+              + roster_render_import(names: roster_dedupe(base: d.names, more: wanted)) + "\n"
+          } else { acc }
+        }
+      )
+  }
+}
+
+fn roster_render_import(names: List<String>) -> String {
+  "import std.algebra { " + roster_join(xs: names, sep: ", ") + " }"
+}
+
+// Deduplicated by spelling identity; the existing names keep their order, new names follow.
+fn roster_dedupe(base: List<String>, more: List<String>) -> List<String> {
+  fold_list(
+    xs: more,
+    empty: base,
+    cons: fn(acc, name) {
+      if roster_contains(xs: acc, name: name) { acc } else { list_snoc_item(xs: acc, item: name) }
+    }
+  )
+}
+
+fn roster_contains(xs: List<String>, name: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(found, x) { found || (x == name) })
+}
+
+fn roster_filter_module(decls: List<ImportDeclFact>, module_name: String) -> List<ImportDeclFact> {
+  fold_list(
+    xs: decls,
+    empty: [],
+    cons: fn(acc, d) {
+      if (d.module_name == module_name) { list_snoc_item(xs: acc, item: d) } else { acc }
+    }
+  )
+}
+
+fn roster_last_decl_end(decls: List<ImportDeclFact>) -> Int? {
+  fold_list(
+    xs: decls,
+    empty: Absent,
+    cons: fn(acc, d) { Present { value: d.end } }
+  )
+}
+
+fn roster_import_decl_facts(parse_root: Node, spans: SpanIndex) -> List<ImportDeclFact> {
+  fold_list(
+    xs: node_subtree_nodes(root: parse_root),
+    empty: [],
+    cons: fn(acc, n) {
+      match parse_production_emitted_identity_optional(node: n) {
+        Present { value: id } =>
+          if id == ^dag_surface_import_decl {
+            match roster_import_decl_fact(decl: n, root: parse_root, spans: spans) {
+              Present { value: fact } => list_snoc_item(xs: acc, item: fact)
+              Absent => acc
+            }
+          } else {
+            acc
+          }
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn roster_import_decl_fact(decl: Node, root: Node, spans: SpanIndex) -> ImportDeclFact? {
+  match import_decl_target_module(decl: decl, module_root: root) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: target, diagnostics: _ } =>
+      match parse_import_block_idents(import_decl_node: decl, root: root) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: names, diagnostics: _ } =>
+          match roster_node_byte_range(node: decl, spans: spans) {
+            Present { value: range } =>
+              Present {
+                value: ImportDeclFact {
+                  module_name: roster_join(xs: list_map(xs: target, f: fn(s) { symbol_lexeme(sym: s) }), sep: "."),
+                  names: list_map(xs: names, f: fn(s) { symbol_lexeme(sym: s) }),
+                  start: range.start,
+                  end: range.end
+                }
+              }
+            Absent => Absent
+          }
+      }
+  }
+}
+
+type RosterByteRange {
+  start: Int
+  end: Int
+}
+
+fn roster_node_byte_range(node: Node, spans: SpanIndex) -> RosterByteRange? {
+  match node.occurrence_id {
+    OccurrenceMinted { id: id } => roster_id_byte_range(id: id, spans: spans)
+    OccurrenceProjected { id: id, caused_by: _ } => roster_id_byte_range(id: id, spans: spans)
+    OccurrenceSynthetic => Absent
+    OccurrencePending { caused_by: _ } => Absent
+  }
+}
+
+fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? {
+  match span_index_extent(index: spans, id: id) {
+    Present { value: recorded } =>
+      match recorded {
+        SourceExtentKnown { locus: Textual { file: _, extent: ByteRange { start: s, end: e } } } =>
+          Present { value: RosterByteRange { start: s, end: e } }
+        _ => Absent
+      }
+    Absent => Absent
+  }
+}
+
+// A renamed head (map_get -> map_lookup) is rewritten at every parsed occurrence of that atom; the
+// count of parsed occurrences must equal the collector's unbound-site count, else the file refuses
+// (an identity join, not a count the tree was copied from).
+fn roster_rename_rows(path: String, parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> String {
+  fold_list(
+    xs: needed,
+    empty: "",
+    cons: fn(acc, row) {
+      if row.renames_call {
+        acc + roster_rename_row_edits(path: path, parse_root: parse_root, spans: spans, row: row)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn roster_rename_row_edits(path: String, parse_root: Node, spans: SpanIndex, row: RosterHeadRow) -> String {
+  fold_list(
+    xs: node_subtree_nodes(root: parse_root),
+    empty: "",
+    cons: fn(acc, n) { roster_rename_step(acc: acc, n: n, path: path, spans: spans, row: row) }
+  )
+}
+
+fn roster_rename_step(acc: String, n: Node, path: String, spans: SpanIndex, row: RosterHeadRow) -> String {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      if symbol_lexeme(sym: sym) == row.call {
+        match roster_node_byte_range(node: n, spans: spans) {
+          Present { value: r } =>
+            acc + "EDIT " + path + " " + int_to_decimal_string(value: r.start) + " " + int_to_decimal_string(value: r.end) + " " + row.import_name + "\n"
+          Absent => acc + "REFUSE " + path + " rename-site-without-extent\n"
+        }
+      } else {
+        acc
+      }
+    _ => acc
+  }
+}
+
+fn roster_join(xs: List<String>, sep: String) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + sep + x } })
+}

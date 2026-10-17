@@ -1,0 +1,37 @@
+module v2.test.claim.compiler.method_vs_free_count_import
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer }
+import std.types { Bool }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { collection_count_shape, fold_list, free_monoid_collection_templates }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: methods bind by the receiver's inhabitance of free_monoid_collection_templates;
+// free-call roster heads bind only when collection_count_shape is import-visible (Ruling B).
+// BOUNDARY: native resolve/infer of a one-module fixture; seed builtins are not this claim.
+
+test fn free_monoid_collection_templates_include_count() -> Bool {
+  fold_list(xs: free_monoid_collection_templates(), empty: false, cons: fn(acc, t) {
+    acc || t.name == collection_count_shape().name
+  })
+}
+
+data mfc_method_count: String = "module p\n\nimport std.algebra { FreeMonoid }\n\nfn f(xs: FreeMonoid<Int>) -> Int {\n  xs.count()\n}\n"
+
+data mfc_free_count: String = "module p\n\nimport std.algebra { FreeMonoid }\n\nfn f(xs: FreeMonoid<Int>) -> Int {\n  count(xs)\n}\n"
+
+test fn native_method_count_resolves_without_shape_import() -> Bool {
+  match fmi_infer(src: mfc_method_count) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ok, diagnostics: _ } => ok
+  }
+}
+
+test fn native_bare_count_without_import_is_unbound() -> Bool {
+  match fmi_assemble(src: mfc_free_count) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
