@@ -25,7 +25,7 @@ import extdeps.boards.supermicro_h11ssl {
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
   supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
-  supermicro_h11ssl_bmc_reported_inventory, supermicro_h11ssl_reported_inventory_is_hardware, H11sslBmcReportedInventory, ConfirmedPresent, supermicro_h11ssl_attested_hardware, supermicro_h11ssl_power_on_refusal, H11sslAttestedHardware, PowerOnRefusedCpuWithoutHeatsink, PowerOnNotRefused,
+  supermicro_h11ssl_bmc_reported_inventory, supermicro_h11ssl_reported_inventory_is_hardware, H11sslBmcReportedInventory, ConfirmedPresent, supermicro_h11ssl_redfish_read_batches, supermicro_h11ssl_read_batches_on_transcript_basis, H11sslRedfishReadBatch, supermicro_h11ssl_attested_hardware, supermicro_h11ssl_power_on_refusal, H11sslAttestedHardware, PowerOnRefusedCpuWithoutHeatsink, PowerOnNotRefused,
   OperatorHeldCertificate, H11sslObservation, H11sslObservedInstant, BmcClockReading,
   WebLoginObservation, RedfishRootObservation, LicenceActivationObservation,
   ServiceRootRefused, ServiceRootAnswered,
@@ -219,4 +219,11 @@ test fn w_bmc_reported_inventory_is_not_hardware_until_confirmed() -> Bool {
     standing: ConfirmedPresent { confirmed_by: "physical inspection" },
   }
   !supermicro_h11ssl_reported_inventory_is_hardware(i: i) && supermicro_h11ssl_reported_inventory_is_hardware(i: confirmed)
+}
+
+// The BMC read batches are all on the transcript basis; one retimed on the BMC clock is not.
+test fn w_redfish_read_batches_are_on_the_transcript_basis() -> Bool {
+  let bs = supermicro_h11ssl_redfish_read_batches
+  let bad = map(bs, b => H11sslRedfishReadBatch { at: H11sslObservedInstant { at: b.at.at, basis: BmcClockReading }, observed_by: b.observed_by, resources: b.resources })
+  supermicro_h11ssl_read_batches_on_transcript_basis(bs: bs) && !supermicro_h11ssl_read_batches_on_transcript_basis(bs: bad)
 }

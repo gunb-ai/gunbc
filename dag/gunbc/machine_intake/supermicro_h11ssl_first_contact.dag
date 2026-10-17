@@ -233,9 +233,20 @@ fn supermicro_h11ssl_redfish_root_answered_after_activation(r: H11sslFirstContac
   any(r.observations, refused => is_root_refused(o: refused) && any(r.observations, act => is_activation(o: act) && instant_precedes(a: observed_instant(o: refused).at, b: observed_instant(o: act).at) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: observed_instant(o: act).at, b: observed_instant(o: ans).at))))
 }
 
-// ---- Authenticated read-only Redfish GETs, by merry-fox-82, 2026-10-17 at about 05:34Z, host Off,
-// nothing written. The instant is the observer's report ("about"), not a recorded transcript
-// instant, so it is a label and carries no basis. Raw JSON is held in the observer's scratchpad.
+// ---- Authenticated read-only Redfish GETs, by merry-fox-82, 2026-10-17, host Off, nothing
+// written. Raw JSON is held in the observer's scratchpad. The instants are the times the requests
+// were issued, per the observer's session transcript (completion within seconds).
+type H11sslRedfishReadBatch {
+  at: H11sslObservedInstant
+  observed_by: NonEmptyStr
+  resources: List<NonEmptyStr>
+}
+
+data supermicro_h11ssl_redfish_read_batches: List<H11sslRedfishReadBatch> = [
+  H11sslRedfishReadBatch { at: H11sslObservedInstant { at: "2026-10-17T05:33:29Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", resources: ["service root", "Managers", "Systems", "Chassis", "VM collection"] },
+  H11sslRedfishReadBatch { at: H11sslObservedInstant { at: "2026-10-17T05:33:50Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", resources: ["VM1", "Processors", "Memory", "EthernetInterfaces"] },
+  H11sslRedfishReadBatch { at: H11sslObservedInstant { at: "2026-10-17T05:33:57Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", resources: ["Processors/1", "Memory/1"] },
+]
 
 // The BMC clock read 2019-11-18T05:37:00+00:00, which is wrong; a BMC clock is never a time basis.
 type H11sslBmcClockStanding = BmcClockUnsynchronized { read_value: NonEmptyStr }
@@ -298,8 +309,14 @@ data supermicro_h11ssl_attested_hardware: H11sslAttestedHardware = H11sslAtteste
   heatsink_installed: false,
 }
 
-// The corpus has no unit power-on hold vocabulary (searched for hold/embargo/heatsink types), so
-// the hazard is a typed refusal reason on the unit, derived from the attestation.
+// CONSUMPTION, declared frontier (DESIGN section 3c). The unit-hold path every boot takes
+// (gunbc.host.host_boot_attempt_admission, gunbc.host.managed_host_unit_hold, reason variable named
+// by gunbc.host.host_maintenance_hold_reason maintenance_hold_reason_env) is keyed by a
+// HostIdentity enrolled in gunbc.host.managed_host. This unit has neither a HostIdentity nor a
+// managed-host row, and naming is not enrollment (gunbc.fleet.fleet_host_identity), so expressing
+// the hazard there needs an operator decision on enrolling the unit. Until then this refusal
+// reason is the typed statement of the hazard; its trigger is that enrollment, at which the
+// hold's reason is derived from this fn. Consumed by the witness now.
 type H11sslPowerOnRefusal = PowerOnRefusedCpuWithoutHeatsink { cpu: NonEmptyStr } | PowerOnNotRefused
 
 fn supermicro_h11ssl_power_on_refusal(h: H11sslAttestedHardware) -> H11sslPowerOnRefusal {
@@ -329,4 +346,16 @@ fn supermicro_h11ssl_reported_inventory_is_hardware(i: H11sslBmcReportedInventor
     ConfirmedPresent { confirmed_by: _ } => true
     StaleFromPriorLife { contradicted_by: _, refreshed_by: _ } => false
   }
+}
+
+fn batch_on_transcript_basis(b: H11sslRedfishReadBatch) -> Bool {
+  match b.at.basis {
+    RequestIssuedAtFromObserverTranscript => true
+    BmcClockReading => false
+  }
+}
+
+// Every read batch is timed on the one comparable basis, the observer's transcript.
+fn supermicro_h11ssl_read_batches_on_transcript_basis(bs: List<H11sslRedfishReadBatch>) -> Bool {
+  all(bs, b => batch_on_transcript_basis(b: b))
 }
