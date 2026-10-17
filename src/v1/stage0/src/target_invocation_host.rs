@@ -4655,28 +4655,24 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
             .cloned()
             .collect::<Vec<_>>()
     };
-    let independent_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
-    let recursive_sources = select(&[
-        "recursive_chain.dag",
-        "recursive_flat.dag",
-        "recursive_entry.dag",
-    ]);
+    let refuse_sources = select(&["copy_word.dag", "shared_word.dag", "red_entry.dag"]);
+    let silent_sources = select(&["silent_zcopy.dag", "silent_share.dag", "silent_entry.dag"]);
     let green_sources = select(&["green_a.dag", "green_b.dag", "green_entry.dag"]);
-    if independent_sources.len() != 3 {
-        return unreached("independent fixture files missing".to_string());
+    if refuse_sources.len() != 3 {
+        return unreached("refuse fixture files missing".to_string());
     }
-    if recursive_sources.len() != 3 {
-        return unreached("recursive fixture files missing".to_string());
+    if silent_sources.len() != 3 {
+        return unreached("silent fixture files missing".to_string());
     }
     if green_sources.len() != 3 {
         return unreached("green fixture files missing".to_string());
     }
 
-    let independent_report = match classify_sources("stlc.red_entry", independent_sources) {
+    let refuse_report = match classify_sources("stlc.red_entry", refuse_sources) {
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
-    let recursive_report = match classify_sources("stlc.recursive_entry", recursive_sources) {
+    let silent_report = match classify_sources("stlc.silent_entry", silent_sources) {
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
@@ -4684,21 +4680,21 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
         Ok(report) => report,
         Err(e) => return unreached(e),
     };
-    print_report("fixture", "stlc.red_entry", independent_report.clone());
-    print_report("fixture", "stlc.recursive_entry", recursive_report.clone());
+    print_report("fixture", "stlc.red_entry", refuse_report.clone());
+    print_report("fixture", "stlc.silent_entry", silent_report.clone());
     print_report("fixture", "stlc.green_entry", green_report.clone());
 
     let standing = census::fixture_standing(
-        independent_report.clone(),
-        recursive_report.clone(),
+        refuse_report.clone(),
+        silent_report.clone(),
         green_report.clone(),
     );
     for line in standing.lines() {
         println!("{PREFIX}: {line}");
     }
     let held = census::fixture_controls_hold(
-        independent_report.clone(),
-        recursive_report.clone(),
+        refuse_report.clone(),
+        silent_report.clone(),
         green_report.clone(),
     );
 
@@ -4718,9 +4714,9 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     .iter()
     .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
     let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
-    let completed_real_build_control =
-        census::build_is_reportable_finding(independent_report.build.clone())
-            && census::observation_held(held, false);
+    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
+        && census::build_is_reportable_finding(refuse_report.build.clone())
+        && census::observation_held(held, false);
     println!(
         "{PREFIX}: {}",
         census::control_line(
@@ -4731,11 +4727,11 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     println!(
         "{PREFIX}: {}",
         census::control_line(
-            "independent_fixture_cargo_is_a_reportable_finding".to_string(),
-            completed_real_build_control,
+            "completed_nonzero_refusal_does_not_unreach".to_string(),
+            completed_nonzero_control,
         )
     );
-    let mapping_controls_hold = unobserved_live_control && completed_real_build_control;
+    let mapping_controls_hold = unobserved_live_control && completed_nonzero_control;
 
     let mut subjects: Vec<(String, String)> = Vec::new();
     for (label, producer) in instrument_registry() {
