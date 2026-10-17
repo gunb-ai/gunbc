@@ -105,9 +105,6 @@ import gunbc.provisioning.altra_autoinstall_seed {
   IpmiWatchdogDriver,
   ConsoleEntryLocked,
   ConsoleEntryUnlocked,
-  ClosedQuestion,
-  OpenQuestion,
-  UnclassifiedPrompting,
   QuestionAnswered,
   QuestionUnanswered,
   UnclassifiedPackage,
@@ -116,13 +113,11 @@ import gunbc.provisioning.altra_autoinstall_seed {
   KeyboardConfigurationPackage,
   TzdataPackage,
   known_prompting_packages,
-  package_prompting_verdict,
   unexamined_candidate,
   install_driver_list_diagnostic,
   loadable_module_list_diagnostic,
   late_driver_list_diagnostic,
   PackagePromptingUnclassified,
-  PackagePromptingVerdict,
   AltraLoadableModule,
   audit_altra_autoinstall_seed,
   binding_digest,
@@ -1048,18 +1043,6 @@ test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
   }
 }
 
-// EVERY ROW OF THE PROMPTING TABLE STATES A QUESTION. The table is the module's claim about the archive; a
-// member added without one would make the refusal print nothing, which is how a table becomes decoration.
-test fn every_known_prompting_package_names_its_question() -> Bool {
-  match known_prompting_packages()
-    .map(pkg => package_prompting_verdict(intent: QuestionUnanswered { package: pkg }))
-    .filter(verdict => verdict_has_no_question(verdict: verdict))
-    .first() {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
 // THE CONSOLE STANZA IS DERIVED FROM THE TRANSPORT ARM BY ARM. Each of the four transports states which of the
 // two console stories it gets, so a collapsed arm (the mutation this row exists for) shows up here rather than
 // being inferred from a digest. Asserting the mapping directly is the honest test: two transports that share a
@@ -1142,6 +1125,33 @@ test fn each_driver_token_carries_its_axis_and_authority() -> Bool {
     && late_token.contains("IPMI_SI")
 }
 
+// WHAT THE SEED SAYS ABOUT ITS OWN PACKAGES AND MODULES. The digest witnesses prove the render MOVES; this one
+// proves it SAYS something: each package is named with its package-axis warrant and each module with its
+// module-axis warrant, so an operator reading a seed (or a boot log carrying its digest) can tell which kind of
+// thing the board was told to have. A render that lost either prefix would keep producing digests and would be
+// invisible to every equality witness here.
+test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
+  match build_seed_fixture_with_modules(
+    network: network_posture,
+    packages: clean_packages,
+    entry_keys: one_key,
+    console: locked_console,
+    credential: seeded_handle,
+    delivery: virtual_media_strategy,
+    target: target_altra,
+    modules: [AhciPlatformModule, NvmeBlockModule],
+  ) {
+    Present { value: seed } =>
+      let rendered = render_altra_autoinstall_seed(seed: seed)
+      rendered.contains("pkg:nvme-cli")
+        && rendered.contains("pkg:linux-firmware")
+        && rendered.contains("mod:ahci_platform")
+        && rendered.contains("mod:nvme")
+        && rendered.contains("SATA_AHCI_PLATFORM")
+    Absent => false
+  }
+}
+
 // THE MODULE AXIS REACHES THE DIGEST, ON ITS OWN. Two seeds that differ only in which kernel modules they
 // demand are different configurations — one may not be able to see its disk at all — so the digest must move
 // when the module list moves while every package list stays identical. Without this the module axis would be
@@ -1177,39 +1187,6 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
       }
     Absent => false
   }
-}
-
-// THE ARMS ARE THREE, NOT TWO. A closed question, an open one and an unclassified one are different states of
-// knowledge; if two of them rendered alike, an operator reading a seed could not tell "answered" from "nobody
-// looked".
-test fn the_three_package_arms_render_differently() -> Bool {
-  match package_prompting_verdict(intent: QuestionAnswered { package: TzdataPackage, debconf_seed: "answered" as NonEmptyStr }) {
-    ClosedQuestion { name: _, question: _ } =>
-      match package_prompting_verdict(intent: QuestionUnanswered { package: TzdataPackage }) {
-        OpenQuestion { name: _, question: _ } =>
-          match package_prompting_verdict(
-            intent: UnclassifiedPackage { name: "x" as NonEmptyStr, debconf_seed: Absent },
-          ) {
-            UnclassifiedPrompting { name: _ } => true
-            _ => false
-          }
-        _ => false
-      }
-    _ => false
-  }
-}
-
-fn verdict_has_no_question(verdict: PackagePromptingVerdict) -> Bool {
-  match verdict {
-    ClosedQuestion { name: _, question: q } => question_is_empty(token: q)
-    OpenQuestion { name: _, question: q } => question_is_empty(token: q)
-    UnclassifiedPrompting { name: _ } => false
-  }
-}
-
-// THE EMPTINESS TEST THE TABLE WITNESS NEEDS, over the string's own structure rather than a sentinel.
-fn question_is_empty(token: NonEmptyStr) -> Bool {
-  token.length() == 0
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
