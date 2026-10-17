@@ -38,21 +38,39 @@ import gunbc.host.host_effect_realize {
 // path) must still compile. Together they pin that the nonemptiness is carried by the type rather
 // than by a guard someone could delete (DESIGN §5, ruling nonemptiness_is_constructed_or_proved).
 fn host_remove_empty_roster_fixture_source() -> String {
-  "module host_remove.probe.empty\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_empty_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: [] }\n}\n"
+  "module host_remove_empty_probe\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_empty_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: [] }\n}\n"
 }
 
 // THE POSITIVE CONTROL. The correct spelling must still compile, or the refusal above would be
 // satisfied by a checker that refuses everything and measures nothing.
 fn host_remove_one_roster_fixture_source() -> String {
-  "module host_remove.probe.control\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup, non_empty_singleton }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_one_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: non_empty_singleton(item: \"/etc/systemd/system/gunbc-oomd-sessions.slice.service\") }\n}\n"
+  "module host_remove_one_probe\n\nimport std.types { String, NonEmptyStr }\nimport std.algebra { FreeSemigroup, non_empty_singleton }\n\ntype HostRemoveProbeTarget\n  = RemoveForce { paths: FreeSemigroup<NonEmptyStr> }\n\nfn host_remove_probe_one_target() -> HostRemoveProbeTarget {\n  RemoveForce { paths: non_empty_singleton(item: \"/etc/systemd/system/gunbc-oomd-sessions.slice.service\") }\n}\n"
 }
 
+// The fixture's `module` name IS its emitted read path (module foo_bar -> src/foo_bar.rs), so both
+// fixtures are named to match the path handed to the checker; before that, both claims were reading a
+// file that was never emitted and the negative one was passing for the wrong reason.
+//
+// They are a PAIR, and only together do they mean anything: the positive claim below proves the
+// fixture convention works at all (its own function must appear in the emitted Rust, so a fixture that
+// never emitted could not pass it). Given that proof, the negative claim's refusal can only come from
+// the empty roster itself — there is no other way for it to fail to emit.
 test fn an_empty_remove_force_roster_must_not_compile() -> Bool {
-  !compile_dag_rust_emit_check(host_remove_empty_roster_fixture_source(), "src/host_remove_empty_probe.rs", [], [])
+  !compile_dag_rust_emit_check(
+    host_remove_empty_roster_fixture_source(),
+    "src/host_remove_empty_probe.rs",
+    [],
+    [],
+  )
 }
 
 test fn a_one_path_remove_force_roster_still_compiles() -> Bool {
-  compile_dag_rust_emit_check(host_remove_one_roster_fixture_source(), "src/host_remove_one_probe.rs", [], [])
+  compile_dag_rust_emit_check(
+    host_remove_one_roster_fixture_source(),
+    "src/host_remove_one_probe.rs",
+    ["pub fn host_remove_probe_one_target("],
+    [],
+  )
 }
 
 // -- the RED (discriminating): RemoveEmptyDirectory on a NON-EMPTY dir is the loud refusal, never
