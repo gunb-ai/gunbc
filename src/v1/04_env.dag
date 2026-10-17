@@ -2096,7 +2096,11 @@ type SettledType {
 }
 
 fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
-  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: env) {
+  let reading = match n.declaration {
+    Present { value: dn } => TypeReferenceNamesDeclaration { declaration: dn }
+    Absent => type_reference_declaration_reading(n: n, source_indices: source_indices, env: env)
+  }
+  match reading {
     TypeReferenceNamesDeclaration { declaration: d } =>
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         Absent => Present { value: SettledType { head: d, args: n.children } }
