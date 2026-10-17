@@ -5,7 +5,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation,
   belt_attempt_obligation_order,
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation,
-  MeteringObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+  MeteringObligation, DogfoodStartRecordObligation, SnapshotCensusObligation, ComputeSeatSettlementObligation,
 }
 
 // belt_tick_cadence is NOT a timer that walks the frontier. The belt timer was removed (dogfood
@@ -61,6 +61,7 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
     MeteringObligation => belt_tick_run_bound
     DogfoodStartRecordObligation => belt_tick_run_bound
     SnapshotCensusObligation => belt_tick_run_bound
+    ComputeSeatSettlementObligation => belt_tick_run_bound
   }
 }
 

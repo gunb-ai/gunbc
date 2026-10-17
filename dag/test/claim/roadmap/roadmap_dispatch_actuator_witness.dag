@@ -1484,6 +1484,7 @@ fn container_plan_for_node(node_id: String) -> DispatchSessionContainerPlan {
     pane_working_directory: "/wt",
     worktree_path: "/wt",
     provider_inner: ["claude", "-p"],
+    worker_role: AttemptWorkerRole,
   )
 }
 
