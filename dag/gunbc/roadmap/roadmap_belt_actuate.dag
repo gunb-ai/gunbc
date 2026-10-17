@@ -8392,7 +8392,7 @@ fn belt_capture_intent_complete(instance: HostDashboardInstance, worktree: Strin
         WorktreeHeadUnobserved { reason } =>
           IntentCompletionFailed { detail: join(["a capture intent is owed but the head could not be observed: ", reason], "") }
         WorktreeHeadObserved { revision } =>
-          if revision as String == capture.head_sha {
+          if (revision as String) == capture.head_sha {
             IntentNothingOwed
           } else {
             match belt_submission_capture_for_head(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
