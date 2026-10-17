@@ -5215,7 +5215,16 @@ fn referenced_module_paths_of_source(
                  its module-path references cannot be followed (fail-closed)"
             )
         })?;
-    Ok(module_paths_of_references(&refs, module_names))
+    let paths = module_paths_of_references(&refs, module_names);
+    if refs.demands_optional_declaration {
+        let path = crate::gunbc_structural_realization_bindings::optional_declaration_ref()
+            .module_path
+            .clone();
+        if path != self_module && !module_names.contains(&path) {
+            return Err(optional_declaration_acquisition_missing(&file_rel, &path));
+        }
+    }
+    Ok(paths)
 }
 
 fn module_paths_of_references(
@@ -5251,7 +5260,26 @@ fn module_paths_of_references(
             }
         }
     }
+    // Acquisition, not a prelude: `T?` / bare Present|Absent denote the one row
+    // `optional_declaration_ref`. The parse fact lives on ParsedFileReferences; this reader
+    // adds that module path. A missing module refuses at `reference_pull_paths_for_source`.
+    if refs.demands_optional_declaration {
+        let path = crate::gunbc_structural_realization_bindings::optional_declaration_ref()
+            .module_path
+            .clone();
+        out.insert(path);
+    }
     out.into_iter().collect()
+}
+
+/// Typed refusal when a file demands `optional_declaration_ref` and that module is not in the
+/// compile pool. Shared wording so the unit control and the production pull name one cause.
+fn optional_declaration_acquisition_missing(file_rel: &str, module_path: &str) -> String {
+    format!(
+        "optional_declaration_acquisition: '{file_rel}' uses T? or a bare Present/Absent, which \
+         denote gunbc.structural_realization_bindings optional_declaration_ref, but module \
+         '{module_path}' is not in the compile pool"
+    )
 }
 
 const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_diagnostic_policy.dag";
@@ -8487,6 +8515,16 @@ fn reference_pull_paths_for_source(
     let mut pulled_set: HashSet<String> = HashSet::new();
     for module_path in module_paths_of_references(&refs, &pool_module_names(entry_index)) {
         let Some(dep) = index.get(&module_path) else {
+            if refs.demands_optional_declaration
+                && module_path
+                    == crate::gunbc_structural_realization_bindings::optional_declaration_ref()
+                        .module_path
+            {
+                return Err(optional_declaration_acquisition_missing(
+                    &workspace_relative_repo_path(&sf.path),
+                    &module_path,
+                ));
+            }
             continue;
         };
         let dep_rel = workspace_relative_repo_path(&dep.path);
@@ -32170,6 +32208,41 @@ mod annotation_erased_scan_projection {
             &module_names
         )
         .is_err());
+    }
+
+    #[test]
+    fn t_question_is_a_parse_fact_that_demands_optional_declaration() {
+        let names: HashSet<String> = HashSet::new();
+        let src = "module m\nfn f(x: Int?) -> Int { 1 }\n";
+        let refs = entry_resolve::parsed_file_references("fixture/m.dag", src, "m", &names)
+            .unwrap_or_else(|e| panic!("fixture must parse: {e}"));
+        assert!(
+            refs.demands_optional_declaration,
+            "T? must set the parse fact (return_cardinality CardOptional)"
+        );
+        let err = referenced_module_paths_of_source("fixture/m.dag", src, &names)
+            .expect_err("missing std.optional must refuse typed");
+        assert!(
+            err.contains("optional_declaration_acquisition"),
+            "typed cause: {err}"
+        );
+        assert!(
+            err.contains("std.optional"),
+            "names the row's module: {err}"
+        );
+    }
+
+    #[test]
+    fn a_file_without_t_question_or_present_absent_does_not_demand_the_row() {
+        let names: HashSet<String> = HashSet::new();
+        let src = "module m\nfn f(x: Int) -> Int { 1 }\n";
+        let refs = entry_resolve::parsed_file_references("fixture/m.dag", src, "m", &names)
+            .unwrap_or_else(|e| panic!("fixture must parse: {e}"));
+        assert!(!refs.demands_optional_declaration);
+        assert_eq!(
+            referenced_module_paths_of_source("fixture/m.dag", src, &names).unwrap(),
+            Vec::<String>::new()
+        );
     }
 
     /// RED for the dropped span: the closure-load parse refusal must name `file:line:col`.

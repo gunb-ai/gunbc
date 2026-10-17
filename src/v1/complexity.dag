@@ -1,5 +1,7 @@
 module v1.compiler.complexity
 
+import std.optional { Present, Absent, Optional }
+
 import std.types { SourceSpan }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import v1.compiler.emit_core_support { to_string }

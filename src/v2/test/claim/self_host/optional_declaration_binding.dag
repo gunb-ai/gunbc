@@ -1,0 +1,42 @@
+module v2.test.claim.self_host.optional_declaration_binding
+
+import std.types { Bool, Int }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import gunbc.structural_realization_bindings { optional_declaration_ref }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+
+// THE SEED'S `T?` IS std.optional Optional: no kernel mint stands between them. The one row,
+// gunbc.structural_realization_bindings optional_declaration_ref, names the declaration; the seed
+// infer (optional_owner_declaring), the host-option emitter (declaration_owns_host_option) and v2 read it.
+
+test fn the_row_names_the_one_declaration() -> Bool {
+  declaration_ref_eq(a: optional_declaration_ref, b: decl_ref(module_path: "std.optional", decl_name: "Optional"))
+}
+
+fn sugared_present() -> Int? { optional_present(value: 3) }
+fn sugared_absent() -> Int? { optional_absent() }
+fn declared_present() -> Optional<Int> { Present { value: 3 } }
+fn declared_absent() -> Optional<Int> { Absent }
+
+fn value_or_minus_one(o: Optional<Int>) -> Int {
+  match o {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+fn sugared_value_or_minus_one(o: Int?) -> Int {
+  match o {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+// THE REAL PATH, EXECUTED: a value produced under the `T?` sugar is consumed by a match over the
+// declared coproduct and the reverse, in both arms. One Optional, reached two ways.
+test fn sugar_and_declaration_round_trip_through_each_other() -> Bool {
+  value_or_minus_one(o: sugared_present()) == 3
+    && value_or_minus_one(o: sugared_absent()) == 0 - 1
+    && sugared_value_or_minus_one(o: declared_present()) == 3
+    && sugared_value_or_minus_one(o: declared_absent()) == 0 - 1
+}

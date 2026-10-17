@@ -1,5 +1,7 @@
 module v1.compiler.infer_env
 
+import std.optional { Present, Absent, Optional }
+
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import v1.std.core { resolved_node_is_kernel_identity_for_name, Unmarked, TypeVariable, CompilerError, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, NoConnective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
@@ -7,8 +9,6 @@ import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
-import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound }
-import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
@@ -272,9 +272,6 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
   is_kernel_type(name: name)
     || is_container_type(name: name)
     || name == "Unit"
-    || name == "Optional"
-    || name == "Present"
-    || name == "Absent"
 }
 
 // WHAT A BARE NAME DENOTES AT ONE UNSTAMPED OCCURRENCE, in the order the typechecker binds a
@@ -1743,13 +1740,6 @@ fn declaration_reading_of_type_node(rt: Node, source_indices: Map<String, Newlin
 fn declaration_ref_of_declaration_node(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: decl))
   if decl_name == "" { return none }
-  let minted = if resolved_node_is_kernel_identity_for_name(node: decl, name: decl_name) {
-    match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: decl_name) {
-      KernelMintDeclarationFound { declaration: d } => Present { value: d }
-      _ => none
-    }
-  } else { none }
-  if minted != none { return minted }
   match decl.ident_span {
     Absent => none
     Present { value: sp } =>

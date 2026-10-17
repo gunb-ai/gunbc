@@ -27,21 +27,22 @@ pub use crate::gunbc_stage0_stage0_crate_partition_generated::{generated_partiti
 pub use crate::gunbc_stage0_stage0_emitted_population_manifest::{emitted_population_manifest_basename, emitted_population_manifest_line_prefix, emitted_population_manifest_line_separator};
 pub use crate::gunbc_stage0_stage0_executable_assembly_generated::{generated_host_shell_partition_dependencies};
 pub use crate::gunbc_stage0_stage0_partition_package_graph::{stage0_partition_row_is_module_bearing_package};
-pub use crate::gunbc_structural_realization_bindings::{structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name};
+pub use crate::gunbc_structural_realization_bindings::{structural_ordering_rows, kernel_grounding_rows, optional_declaration_ref};
 pub use crate::std_algebra::{AlgebraFieldTemplate};
 pub use crate::std_algebra::{trim};
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 pub use crate::std_compiler_entry::{NativeEffectDenominator};
 pub use crate::std_compiler_entry::{native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator};
 pub use crate::std_decl_ref::{DeclarationRef, DeclField};
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list, declaration_ref_eq};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_literal_elaboration::{LiteralSourceKind, KernelGroundingLookup, KernelMintOwnership, KernelMintDeclarationLookup};
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership, kernel_mint_declaration_for};
+pub use crate::std_literal_elaboration::{LiteralSourceKind, KernelGroundingLookup};
+pub use crate::std_literal_elaboration::{kernel_grounding_for};
 pub use crate::std_measure::{millisecond_count};
 pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity};
 pub use crate::std_operator_realization::{OperatorRealization, OperandRealization, OperandShapeFacts, OperandDeclaration, StructuralOrderingBinding, OrderingTest, OperandDemand, HostRealizationReason};
 pub use crate::std_operator_realization::{operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label};
+pub use crate::std_optional::{Optional};
 pub use crate::std_primitive_projection::{primitive_identity_runtime_name, primitive_projection_row_for_declaration};
 pub use crate::std_repair_input_origin::{repair_input_origin_candidates, repair_input_origin_compatibility_names, qualified_item_emit_surface_compatibility_names};
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -96,8 +97,6 @@ use crate::std_coercion::TypeRealizationDecision::*;
 use crate::std_decl_ref::DeclField::{WholeDeclaration};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
 use crate::std_literal_elaboration::KernelGroundingLookup::{KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous};
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::{KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous};
-use crate::std_literal_elaboration::KernelMintOwnership::{DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous};
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral};
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{OccurrenceSynthetic};
 use crate::std_operator_realization::HostRealizationReason::{KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType, HostTextCarrier};
@@ -808,17 +807,14 @@ pub fn rust_declaration_realizes_as_native_alias(module_path: String, decl_name:
 }
 
 pub fn declaration_owns_host_option(module_path: String, decl_name: String) -> bool {
-    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-        kernel_mint_declaration_rows(),
-        kernel_optional_mint_name(),
+    crate::std_decl_ref::declaration_ref_eq(
+        optional_declaration_ref(),
         crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
-    ))
-    .clone()
-    {
-        KernelMintOwnership::DeclarationOwnsTheMint => true,
-        KernelMintOwnership::DeclarationDoesNotOwnTheMint => false,
-        KernelMintOwnership::KernelMintOwnershipAmbiguous { row_count: _, .. } => false,
-    }
+    )
+}
+
+pub fn optional_declaration_leaf() -> String {
+    optional_declaration_ref().decl_name.clone()
 }
 
 pub fn unstamped_reference_is_host_option(
@@ -852,24 +848,7 @@ pub fn unstamped_reference_is_host_option(
                         env.clone(),
                     ))
             }
-            BareOccurrenceBinding::BareOccurrenceIsKernelName => {
-                match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
-                    kernel_mint_declaration_rows(),
-                    leaf.clone(),
-                ))
-                .clone()
-                {
-                    KernelMintDeclarationLookup::KernelMintDeclarationFound {
-                        declaration: d,
-                        ..
-                    } => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
-                    KernelMintDeclarationLookup::KernelMintDeclarationAbsent => false,
-                    KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
-                        row_count: _,
-                        ..
-                    } => false,
-                }
-            }
+            BareOccurrenceBinding::BareOccurrenceIsKernelName => false,
             BareOccurrenceBinding::BareOccurrenceUndecided => false,
         }
     }
@@ -22231,7 +22210,7 @@ pub fn is_optional_like_parent_name(name: String) -> bool {
                 ))
         }
     } else {
-        ((name.clone() == kernel_optional_mint_name())
+        ((name.clone() == optional_declaration_leaf())
             || is_host_diagnostics_carrier_alias(name.clone()))
     }
 }
@@ -22410,7 +22389,6 @@ pub enum HostOptionArmReading {
     HostOptionArmIsHostOption,
     HostOptionArmIsNot,
     HostOptionArmSpelledWithoutIdentity,
-    HostOptionArmBindingAmbiguous,
 }
 
 pub fn host_option_arm_reading(
@@ -22421,35 +22399,21 @@ pub fn host_option_arm_reading(
 ) -> HostOptionArmReading {
     {
         let inferred_is_kernel_optional =
-            (inferred_parent.clone().as_deref() == Some(kernel_optional_mint_name()).as_deref());
+            (inferred_parent.clone().as_deref() == Some(optional_declaration_leaf()).as_deref());
         match (*identity.clone()).clone() {
             VariantParentIdentity::VariantParentIdentified { key: key, .. } => match (*key.clone())
                 .clone()
             {
                 VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-                        kernel_mint_declaration_rows(),
-                        kernel_optional_mint_name(),
-                        d.clone(),
-                    ))
-                    .clone()
+                    if (declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone())
+                        || crate::std_decl_ref::declaration_ref_in_list(
+                            d.clone(),
+                            rust_host_option_carrier_declarations(),
+                        ))
                     {
-                        KernelMintOwnership::KernelMintOwnershipAmbiguous {
-                            row_count: _, ..
-                        } => HostOptionArmReading::HostOptionArmBindingAmbiguous,
-                        KernelMintOwnership::DeclarationOwnsTheMint => {
-                            HostOptionArmReading::HostOptionArmIsHostOption
-                        }
-                        KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
-                            if crate::std_decl_ref::declaration_ref_in_list(
-                                d.clone(),
-                                rust_host_option_carrier_declarations(),
-                            ) {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            } else {
-                                HostOptionArmReading::HostOptionArmIsNot
-                            }
-                        }
+                        HostOptionArmReading::HostOptionArmIsHostOption
+                    } else {
+                        HostOptionArmReading::HostOptionArmIsNot
                     }
                 }
                 VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
@@ -22537,11 +22501,6 @@ pub fn emit_resolved_variant_pattern(
             parent_enum.clone(),
             resolved_parent.clone(),
         );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
@@ -23246,11 +23205,6 @@ pub fn emit_resolved_variant_pattern_rc_aware(
             parent_enum.clone(),
             resolved_parent.clone(),
         );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
@@ -44672,5 +44626,3 @@ pub struct HostOptionArmIsHostOption;
 pub struct HostOptionArmIsNot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostOptionArmSpelledWithoutIdentity;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmBindingAmbiguous;

@@ -21,8 +21,6 @@ import v1.std.core {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.types { is_kernel_type }
-import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
-import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
 import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
@@ -473,26 +471,6 @@ fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> Strin
   }
 }
 
-// THE KERNEL MINT'S DECLARER. Which corpus declaration the kernel type IS is a modeled fact
-// (gunbc.structural_realization_bindings kernel_mint_declaration_rows, the row the pattern side reads
-// through kernel_mint_ownership), but that answers WHICH declaration a mint stands for, not WHETHER an
-// occurrence denotes it. So this arm is reached only from type_decl_occurrence_identity, and only when
-// the occurrence is on the kernel arm of the resolver's order (v1.compiler.infer_env bare_occurrence_binding). A spelling no row mints, or two rows
-// mint, stays LeafAmbiguous and refuses. Counted as kernel_mint; interim under
-// referencing_module_declarer_route_dissolves_on.
-fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String? {
-  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
-    KernelMintDeclarationFound { declaration: d } =>
-      let identity = type_decl_identity(owner_module: d.module_path as String, decl_name: d.decl_name as String)
-      match map_get(index.by_identity, identity) {
-        Present { value: _ } => Present { value: identity }
-        Absent => none
-      }
-    KernelMintDeclarationAbsent => none
-    KernelMintDeclarationAmbiguous { row_count: _ } => none
-  }
-}
-
 fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String, reference: Node) -> TypeDeclReferenceRoute {
   if authored != leaf { RouteQualifiedSpelling }
   else {
@@ -510,7 +488,7 @@ fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String
 fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
   match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
     OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
-    OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
+    OccurrenceIsKernelName => none
     OccurrenceImported { identity: identity } => Present { value: identity }
     OccurrenceUndecided => none
   }
