@@ -215,6 +215,8 @@ data infrastructure_refusal_is_retried_to_a_bound: DesignRuling = DesignRuling {
   decided: "2026-10-16",
   section: "5",
   provenance: "Operator escalation msg_a35bb568-294c-4ad6-88d7-5cfa0a5fad05, approved by default (option A). An acceptance stage refused because its ENVIRONMENT failed (compute refused_by_infrastructure) is retried by the belt on its existing wake events, to a bound, each retry a recorded event with its cause; past the bound the lineage reaches a typed RetryExhausted terminal the operator sees and resumes. This amends the 2026-10-03 manual-resume ruling for infrastructure refusals only: a refusal about the candidate keeps manual resume, and a FAILED stage is a verdict and is never retried.",
+}
+
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
@@ -273,7 +275,6 @@ fn design_rulings() -> List<DesignRuling> {
     physical_and_guest_control_remain_distinct,
     production_is_main_only_lab_admits_integration,
     v1_seed_emitted_byte_write_exception,
-    production_is_main_only_lab_admits_integration,
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,

@@ -1080,6 +1080,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_harness_shell_job_wet_reason,
     dissolution: excl_harness_shell_job_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "observed_unhealthy_probe_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_observed_unhealthy_probe_reason,
