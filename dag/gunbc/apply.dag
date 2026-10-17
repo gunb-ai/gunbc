@@ -1,6 +1,7 @@
 module gunbc.apply
 
 import std.types { String, Bool, List }
+import std.apply_mode { Plan, Apply, ModeParsed, ModeParseRefused, parse_apply_mode }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.apply { live_deploy_apply_prod_role_wet, approval_broker_dark_install_wet }
 import gunbc.runner.runner_capacity_plan {
@@ -28,17 +29,9 @@ type ApplyWorkflow
   | RunnerCapacity
   | ApprovalBrokerDark
 
-type ApplyMode
-  = Plan
-  | Apply
-
 type ApplyWorkflowParse
   = WorkflowParsed { workflow: ApplyWorkflow }
   | WorkflowParseRefused { reason: String }
-
-type ApplyModeParse
-  = ModeParsed { mode: ApplyMode }
-  | ModeParseRefused { reason: String }
 
 fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
   if value == "runner-capacity" {
@@ -49,16 +42,6 @@ fn parse_apply_workflow(value: String) -> ApplyWorkflowParse {
     WorkflowParsed { workflow: ApprovalBrokerDark }
   } else {
     WorkflowParseRefused { reason: concat("unknown apply workflow: ", value) }
-  }
-}
-
-fn parse_apply_mode(value: String) -> ApplyModeParse {
-  if value == "plan" {
-    ModeParsed { mode: Plan }
-  } else if value == "apply" {
-    ModeParsed { mode: Apply }
-  } else {
-    ModeParseRefused { reason: concat("unknown apply mode: ", value) }
   }
 }
 

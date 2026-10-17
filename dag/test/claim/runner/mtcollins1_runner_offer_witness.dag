@@ -6,9 +6,9 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import product.host_identity { HostIdentity }
 import gunbc.ci.ci_fleet {
   mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu,
-  mtcollins1_socket0_cpu_part_standing,
+  mtcollins1_socket0_cpu_part_standing, cpu_bios_line_names_part,
 }
-import extdeps.external_authority { cited_figure_read_obligation }
+import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.host_capture_envelope {
@@ -24,7 +24,9 @@ import gunbc.host.host_memory_observation {
   HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
   gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for,
   mtcollins1_census_boot_capture_path,
-  mtcollins1_census_envelope_attempt, census_envelope_from_capture_text, census_envelope_from_read,
+  mtcollins1_census_envelope_attempt, census_cpu_bios_model_reading, CensusLscpuSectionAbsent, CensusLscpuSectionPending,
+  CensusLscpuSectionMalformed, CensusLscpuExitNonzero, CensusLscpuNoBiosModelLine, CensusLscpuAmbiguousBiosModelLines,
+  CensusLscpuCaptureUnread, census_envelope_from_capture_text, census_envelope_from_read,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
@@ -128,13 +130,37 @@ fn one_socket_boot_reads_width(b: MtCollins1Socket1InvestigationBoot, width: Int
   }
 }
 
-test fn mtcollins1_socket0_cpu_part_is_a_typed_bet_not_a_deduced_catalog_row() -> Bool {
-  match cited_figure_read_obligation(standing: mtcollins1_socket0_cpu_part_standing) {
-    Absent => false
-    Present { value: o } =>
-      string_contains(s: o as String, pattern: "census")
-        && string_contains(s: o as String, pattern: "model number")
+test fn mtcollins1_socket0_cpu_part_is_observed_by_the_census_capture() -> Bool {
+  match mtcollins1_socket0_cpu_part_standing() {
+    ObservedByReceipt { observed: o } =>
+      (observed_receipt_ref(observed: o).decl_name as String) == "mtcollins1_census_cpu_bios_model"
+    _ => false
   }
+}
+
+test fn mtcollins1_RED_a_bios_line_naming_another_part_keeps_no_citation() -> Bool {
+  cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30 CPU @ 3.0GHz", model_number: "Q80-30")
+    && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q64-30 CPU @ 3.0GHz", model_number: "Q80-30") == false
+    && cpu_bios_line_names_part(line: "BIOS Model name:      Ampere(R) Altra(R) Processor Q80-30X CPU", model_number: "Q80-30") == false
+}
+
+test fn mtcollins1_RED_missing_lscpu_refuses_the_cpu_reading_with_its_own_cause_while_ram_stays_measured() -> Bool {
+  let e = census_envelope(meminfo_body: concat(meminfo_argv, "MemTotal: 134217728 kB\nMemAvailable: 130000000 kB\n----EXIT meminfo: 0\n"))
+  let ram_ok = measured_bytes(a: host_usable_ram_from_capture(envelope: e)) > 0
+  let cpu_cause_ok = match census_cpu_bios_model_reading(envelope: e) {
+    ObservationRefused { cause: c } =>
+      match c {
+        CensusLscpuSectionAbsent => true
+        CensusLscpuSectionPending => false
+        CensusLscpuSectionMalformed { reason: _ } => false
+        CensusLscpuExitNonzero { exit_code: _ } => false
+        CensusLscpuNoBiosModelLine => false
+        CensusLscpuAmbiguousBiosModelLines => false
+        CensusLscpuCaptureUnread { cause: _ } => false
+      }
+    ObservationEstablished { observed: _ } => false
+  }
+  ram_ok && cpu_cause_ok
 }
 
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
@@ -176,9 +202,9 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
 }
 
 test fn mtcollins1_census_capture_file_is_the_committed_receipt() -> Bool {
-  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path)
+  let read = Filesystem.Read(path: mtcollins1_census_boot_capture_path())
   read.success
-    && string_contains(s: mtcollins1_census_boot_capture_path, pattern: "38789347052")
+    && string_contains(s: mtcollins1_census_boot_capture_path(), pattern: "38979496315")
     && string_contains(s: read.content, pattern: "MemTotal:")
 }
 
@@ -196,7 +222,7 @@ test fn mtcollins1_production_usable_ram_is_the_census_capture_reading() -> Bool
                 HostUsableRamMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "38a57a92-6c58-4b1d-8eed-7a4015a7bc28")
                     && string_contains(s: p as String, pattern: "census_meminfo_reading")
                 _ => false
               }
@@ -220,7 +246,7 @@ test fn mtcollins1_production_overhead_is_the_census_capture_reading() -> Bool {
                 HostFixedOverheadMeasured { bytes: pb, provenance: pp } =>
                   byte_size_count(b: b) == byte_size_count(b: pb)
                     && (p as String) == (pp as String)
-                    && string_contains(s: p as String, pattern: "66141451-278b-4eb0-bc57-595563e1247b")
+                    && string_contains(s: p as String, pattern: "38a57a92-6c58-4b1d-8eed-7a4015a7bc28")
                     && string_contains(s: p as String, pattern: "quiescent census boot")
                 _ => false
               }
