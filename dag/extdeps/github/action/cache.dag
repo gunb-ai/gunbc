@@ -38,6 +38,10 @@ data cache_save_v5_1_0: ActionRelease = ActionRelease {
   owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25", subdirectory: Present { value: "save" as NonEmptyStr }
 }
 
+data cache_restore_v5_1_0: ActionRelease = ActionRelease {
+  owner: "actions", repo: "cache", tag: "v5.1.0", commit: "caa296126883cff596d87d8935842f9db880ef25", subdirectory: Present { value: "restore" as NonEmptyStr }
+}
+
 // Each declaration below was read from the action.yml blob at the release's commit
 // (extdeps.github.action_release action_manifest_of), 2026-09-18.
 data cache_manifest_readings: List<ActionManifestReading> = [
@@ -47,6 +51,10 @@ data cache_manifest_readings: List<ActionManifestReading> = [
   },
   ActionManifestReading {
     action_release: cache_save_v5_1_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+  ActionManifestReading {
+    action_release: cache_restore_v5_1_0,
     declared: JavaScriptAction { node_major: 24 },
   },
 ]

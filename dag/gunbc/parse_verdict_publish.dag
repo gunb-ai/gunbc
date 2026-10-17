@@ -43,6 +43,8 @@ import extdeps.github.expressions {
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
   parse_compiler_sha_identity_cache_key,
+  parse_verdict_restore_identity_basename,
+  parse_verdict_restore_receipts_basename,
 }
 
 // POLICY (not the GitHub cache interface): this repository publishes materialization receipts
@@ -108,8 +110,8 @@ fn parse_verdict_compiler_expr() -> String {
   })
 }
 
-fn parse_verdict_identity_blob_file() -> String { runner_temp_file(basename: "gunbc-parse-compiler-identity") }
-fn parse_verdict_receipts_file() -> String { runner_temp_file(basename: "gunbc-parse-verdict-receipts.tsv") }
+fn parse_verdict_identity_blob_file() -> String { runner_temp_file(basename: parse_verdict_restore_identity_basename) }
+fn parse_verdict_receipts_file() -> String { runner_temp_file(basename: parse_verdict_restore_receipts_basename) }
 
 fn github_sha_expr() -> String {
   serialize_template(template: ExpressionTemplate {

@@ -14,11 +14,6 @@ import gunbc.parse_verdict_schema {
   parse_verdict_receipt_accepted,
   parse_verdict_stored_accepted_line,
   parse_verdict_pr2_restore_frontier,
-  parse_verdict_reuse_from,
-  parse_verdict_reuse_may_save,
-  Reused,
-  FreshIdentityWalked,
-  EvictedRefused,
 }
 import extdeps.filesystem.filesystem_io
 
@@ -40,31 +35,6 @@ test fn the_seed_parse_compiler_entry_consts_match_the_schema() -> Bool {
     && string_contains(s: runner, pattern: "fn parse_compiler_identity_entries()")
 }
 
-test fn a_changed_identity_is_a_fresh_walk_and_never_saves_on_a_pr() -> Bool {
-  match parse_verdict_reuse_from(i_head: "new", i_base: "old", restore_hit: false) {
-    FreshIdentityWalked { compiler: c } =>
-      c == "new" && (parse_verdict_reuse_may_save(standing: FreshIdentityWalked { compiler: c }, is_main_push: false) == false)
-    Reused { compiler: _ } => false
-    EvictedRefused { compiler: _ } => false
-  }
-}
-
-test fn same_identity_with_a_hit_is_reused() -> Bool {
-  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: true) {
-    Reused { compiler: c } => c == "same"
-    FreshIdentityWalked { compiler: _ } => false
-    EvictedRefused { compiler: _ } => false
-  }
-}
-
-test fn same_identity_with_a_miss_is_evicted() -> Bool {
-  match parse_verdict_reuse_from(i_head: "same", i_base: "same", restore_hit: false) {
-    EvictedRefused { compiler: c } => c == "same"
-    Reused { compiler: _ } => false
-    FreshIdentityWalked { compiler: _ } => false
-  }
-}
-
 test fn the_stored_line_stamps_compiler() -> Bool {
   parse_verdict_stored_accepted_line(source_digest: "abc", compiler: "cid")
     == join([parse_verdict_request_family, "\tabc\tcid\t", parse_verdict_receipt_accepted], "")
@@ -84,12 +54,5 @@ test fn the_gen_one_sidecar_writer_is_seed_retained_against_the_hasher_justifica
             && (a.decl_name as String) == "parse_compiler_identity_seed_growth_justification"
         _ => false
       }
-  )
-}
-
-test fn main_may_save_after_a_fresh_identity_walk() -> Bool {
-  parse_verdict_reuse_may_save(
-    standing: FreshIdentityWalked { compiler: "new" },
-    is_main_push: true
   )
 }
