@@ -1,5 +1,6 @@
 module test.claim.machine_intake.mtcollins1_boot_run_witness
 
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_still_allowance }
 import gunbc.machine_intake.mtcollins1_sol_notice { SolNotice, SolNoticeCollectorExited, sol_loss_notice_of, sol_exit_notices_of, sol_notice_annotation, SolSourceRead, SolSourceAbsent, SolSourceUnreadable }
 import gunbc.machine_intake.mtcollins1_boot_run { sol_observer_refusal_of, ProcRead, ProcReadRefused, sol_establishment_deadline, sol_establishment_gate, SolEstablishmentGate, GateEstablish, GateExpired, GateContinue, sol_establishment_pace, PaceAdvanced, PaceRefused, PaceClockStalled }
@@ -746,12 +747,12 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
+  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
     stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
@@ -760,7 +761,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
       stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-      timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+      timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
 }

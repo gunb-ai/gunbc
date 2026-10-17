@@ -1,76 +1,49 @@
 module test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
 
-import std.types { Bool, List, NonEmptyStr }
-import extdeps.bmc.ipmi_sdr { SdrTypeLine }
-import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { string_contains }
-import extdeps.external_authority { TranscribedUncited }
-import gunbc.machine_intake.chassis_fan_establishment { ChassisFanVerdict, ChassisFansEstablished, ChassisFansRefused, FittedFanSet, FittedFanSetEstablished }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
 import std.measure { sdr_undecoded_line_count }
-import gunbc.machine_intake.mtcollins1_boot_fan_gate { boot_fan_gate_verdict, boot_fan_gate_stop_text, mtcollins1_fitted_fan_set }
+import std.process { ExitSuccess, ExitFailure }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
+import extdeps.bmc.megarac_fan_policy { CoolingManagerAutomatic, CoolingManagerDisabledManual }
+import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetEstablished, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, FittedHeaderZeroRpm, FittedHeaderMissing, post_power_fan_verdict }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
+import gunbc.machine_intake.post_power_fan_gate_outcome { FanManagerReadStanding, FanManagerUnread, FanManagerRead, FanManagerReadRefused, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, PostPowerFanGateReading, PostPowerFanGateReached, PostPowerFanGateNotReached, post_power_fan_gate_exit, post_power_fan_gate_text, post_power_fan_gate_pre_stop_text, post_power_fan_refusal_text }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set }
 
-// SUPPLIED ROUNDS at the verdict boundary (fixture fitted set FAN1..FAN2; the unit's real set is the cited,
-// still-unestablished data row). The effectful route (settle, read, PowerDown, readback, one repeat) is the
-// live boot step; the pairing inhabitance claim is the boot run's own executed controls.
+// SUPPLIED ROUNDS at the verdict and outcome boundaries. The effectful route (settle, read, write-before-stop,
+// PowerDown, readback, one repeat, step-summary append) is the live boot step; the pairing inhabitance claim is the
+// boot run's own executed controls. The unit's set is the OperatorAssumed row mtcollins1_fitted_fan_set.
 fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
   SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
 }
-
-fn fitted() -> FittedFanSet { FittedFanSetEstablished { first: "FAN1" as NonEmptyStr, rest: ["FAN2" as NonEmptyStr], standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } } }
 
 fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
   FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsRead { lines: lines, undecoded_line_count: sdr_undecoded_line_count(count: 0) } }
 }
 
-fn spinning() -> List<SdrTypeLine> { [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr)] }
 
-fn refused(v: ChassisFanVerdict) -> Bool {
-  match v { ChassisFansRefused { cause: _ } => true  ChassisFansEstablished => false }
-}
 
-test fn an_on_chassis_with_fitted_fans_reading_is_established() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: spinning()))) == false
-}
-
-test fn an_on_chassis_with_no_fan_readings_after_the_window_refuses() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: [])))
-}
-
-test fn an_off_chassis_refuses_even_with_fans_listed() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: false, lines: spinning())))
-}
-
-test fn an_unreadable_chassis_refuses() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }))
-}
-
-test fn a_mixed_chassis_with_one_fitted_fan_at_zero_refuses() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr)])))
+fn established(round: FanObservationRound) -> Bool {
+  match post_power_fan_verdict(fitted: mtcollins1_fitted_fan_set, chassis: round.chassis, fans: round.fans) { PostPowerFanVerdictEstablished => true  PostPowerFanVerdictRefused { cause: _ } => false }
 }
 
 fn unit_rows(fan5_1: NonEmptyStr) -> List<SdrTypeLine> {
   [row(name: "FAN4_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: fan5_1), row(name: "FAN0_0_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr)]
 }
 
-// The unit's own fixed set against the observed 05:25:07Z shape: the four observed rotors spin and the empty
-// headers read nothing, so it is established; one fitted rotor at zero refuses.
+
 test fn the_unit_fitted_set_is_established_on_the_observed_reading() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)))) == false
+  established(round: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)))
 }
 
 test fn the_unit_fitted_set_refuses_when_one_fitted_rotor_reads_zero() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr))))
+  established(round: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr))) == false
 }
 
-test fn a_stop_that_read_back_off_carries_the_manager_standing() -> Bool {
-  let t = boot_fan_gate_stop_text(cause: "c" as NonEmptyStr, first_off: true, repeated: false, second_off: true, last_readback: "off")
-  string_contains(s: t, pattern: "power-off read back as off") && string_contains(s: t, pattern: "cooling manager standing unread") && string_contains(s: t, pattern: "NOT automatic")
-}
-
-test fn a_stop_whose_repeat_did_not_read_off_reports_power_off_unconfirmed() -> Bool {
-  let t = boot_fan_gate_stop_text(cause: "c" as NonEmptyStr, first_off: false, repeated: true, second_off: false, last_readback: "unreadable")
-  string_contains(s: t, pattern: "power-off unconfirmed") && string_contains(s: t, pattern: "cooling manager standing unread")
+test fn an_off_chassis_refuses_even_with_the_unit_fans_listed() -> Bool {
+  established(round: round(on: false, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr))) == false
 }
 
 // Round 0 of the REAL fan receipt of the last good boot (run 39010930690, 2026-10-17T06:50:59Z, chassis on),
@@ -80,11 +53,72 @@ fn receipt_39010930690_round0(fan4_0: NonEmptyStr) -> List<SdrTypeLine> {
   [row(name: "FAN0_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN0_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN1_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN2_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_0_Speed" as NonEmptyStr, reading: nr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: nr), row(name: "FAN4_0_Speed" as NonEmptyStr, reading: fan4_0), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN0_Presence" as NonEmptyStr, reading: nr), row(name: "FAN1_Presence" as NonEmptyStr, reading: nr), row(name: "FAN2_Presence" as NonEmptyStr, reading: nr), row(name: "FAN3_Presence" as NonEmptyStr, reading: nr), row(name: "FAN4_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "FAN5_Presence" as NonEmptyStr, reading: "Device Present" as NonEmptyStr), row(name: "PSU1_FAN_SPEED" as NonEmptyStr, reading: "5000 RPM" as NonEmptyStr), row(name: "PSU2_FAN_SPEED" as NonEmptyStr, reading: nr)]
 }
 
+
 // The gate must not stop a healthy mtcollins1: the last good boot's own reading is Established.
 test fn the_last_good_boots_real_receipt_is_established_and_admits_the_boot() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "5600 RPM" as NonEmptyStr)))) == false
+  established(round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "5600 RPM" as NonEmptyStr)))
 }
 
 test fn the_last_good_boots_real_receipt_with_fan4_0_unread_refuses() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "No Reading" as NonEmptyStr))))
+  established(round: round(on: true, lines: receipt_39010930690_round0(fan4_0: "No Reading" as NonEmptyStr))) == false
+}
+
+fn off() -> ChassisPowerObservation { ChassisPowerRead { power_on: false } }
+fn still_on() -> ChassisPowerObservation { ChassisPowerRead { power_on: true } }
+
+fn refused_outcome(stop: FanGateSafeStopReceipt) -> PostPowerFanGateOutcome {
+  PostPowerFanRefused {
+    cause: FittedHeaderZeroRpm { header: "FAN4_0_Speed" as NonEmptyStr },
+    observation: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr)),
+    stop: stop,
+    manager: FanManagerUnread { read_obligation: "fixture obligation" as NonEmptyStr },
+    evidence: FanGateEvidence { observation_file: FanGateWritten { path: "artifacts/f.txt" as NonEmptyStr }, step_summary: FanGateWriteFailed { path: "GITHUB_STEP_SUMMARY" as NonEmptyStr, error: "unset" } },
+  }
+}
+
+fn stopped_off() -> FanGateSafeStopReceipt { FanGateSafeStopReceipt { first_readbacks: [still_on(), off()], repeat: FanGateRepeatNotNeeded } }
+
+fn exit_text(outcome: PostPowerFanGateOutcome) -> String {
+  match post_power_fan_gate_exit(fitted: mtcollins1_fitted_fan_set, outcome: outcome) { ExitSuccess => "success"  ExitFailure { code: _, reason: r } => r }
+}
+
+test fn an_established_outcome_exits_success() -> Bool {
+  exit_text(outcome: PostPowerFanEstablished { observation: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)) }) == "success"
+}
+
+test fn a_refused_outcome_stops_with_the_typed_cause_the_assumed_set_and_the_evidence_pointers() -> Bool {
+  let t = exit_text(outcome: refused_outcome(stop: stopped_off()))
+  string_contains(s: t, pattern: "FAN4_0_Speed") && string_contains(s: t, pattern: "reads zero RPM") && string_contains(s: t, pattern: "OPERATOR'S ASSUMPTION")
+    && string_contains(s: t, pattern: "power-off read back as off") && string_contains(s: t, pattern: "cooling manager standing unread")
+    && string_contains(s: t, pattern: "written to artifacts/f.txt") && string_contains(s: t, pattern: "NOT written to GITHUB_STEP_SUMMARY")
+}
+
+test fn a_stop_whose_repeat_never_read_off_reports_power_off_unconfirmed_with_both_attempts_kept() -> Bool {
+  let stop = FanGateSafeStopReceipt { first_readbacks: [still_on(), still_on()], repeat: FanGateRepeated { readbacks: [still_on(), ChassisUnreadable] } }
+  let full = post_power_fan_gate_text(reading: PostPowerFanGateReached { fitted: mtcollins1_fitted_fan_set, outcome: refused_outcome(stop: stop) })
+  string_contains(s: exit_text(outcome: refused_outcome(stop: stop)), pattern: "power-off unconfirmed") && string_contains(s: full, pattern: "one repeated PowerDown; readbacks") && string_contains(s: full, pattern: "PowerDown readbacks (first): 2")
+}
+
+test fn a_repeat_that_read_off_says_so() -> Bool {
+  let stop = FanGateSafeStopReceipt { first_readbacks: [still_on()], repeat: FanGateRepeated { readbacks: [off()] } }
+  string_contains(s: exit_text(outcome: refused_outcome(stop: stop)), pattern: "only after one repeated PowerDown")
+}
+
+test fn the_stopping_observation_is_in_the_pre_stop_text_not_a_later_reread() -> Bool {
+  let t = post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: FittedHeaderMissing { header: "FAN4_0_Speed" as NonEmptyStr }, observation: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr)), manager: FanManagerUnread { read_obligation: "o" as NonEmptyStr })
+  string_contains(s: t, pattern: "observation that stopped the boot") && string_contains(s: t, pattern: "FAN5_1_Speed")
+}
+
+fn with_manager(m: FanManagerReadStanding) -> String {
+  post_power_fan_gate_pre_stop_text(fitted: mtcollins1_fitted_fan_set, cause: FittedHeaderMissing { header: "H" as NonEmptyStr }, observation: round(on: true, lines: []), manager: m)
+}
+
+test fn a_manager_read_standing_is_rendered_by_its_arm() -> Bool {
+  string_contains(s: with_manager(m: FanManagerRead { observed_at: "t0" as NonEmptyStr, standing: CoolingManagerAutomatic }), pattern: "cooling manager read automatic at t0")
+    && string_contains(s: with_manager(m: FanManagerRead { observed_at: "t1" as NonEmptyStr, standing: CoolingManagerDisabledManual }), pattern: "disabled (manual PWM) at t1")
+    && string_contains(s: with_manager(m: FanManagerReadRefused { cause: "denied" as NonEmptyStr }), pattern: "read refused: denied")
+}
+
+test fn an_unreached_gate_reads_not_reached() -> Bool {
+  string_contains(s: post_power_fan_gate_text(reading: PostPowerFanGateNotReached { reason: "r" as NonEmptyStr }), pattern: "not reached: r")
 }

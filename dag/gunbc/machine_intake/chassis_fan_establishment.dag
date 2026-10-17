@@ -2,9 +2,11 @@ module gunbc.machine_intake.chassis_fan_establishment
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { rpm_count }
-import extdeps.external_authority { CitedFigureStanding }
+import std.measure { rpm_count, sdr_undecoded_line_count_value }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { FanSensorObservation, FanSensorsRead, FanSensorsUnreadable }
 
 // WHETHER THE CHASSIS FANS SPIN, JUDGED OVER THE FANS THE UNIT IS FITTED WITH AND NO OTHER.
 //
@@ -22,34 +24,71 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReadin
 type FittedFanSet
   = FittedFanSetNotEstablished { read_obligation: NonEmptyStr }
   | FittedFanSetEstablished { first: NonEmptyStr, rest: List<NonEmptyStr>, standing: CitedFigureStanding }
+  | FittedFanSetOperatorAssumed { first: NonEmptyStr, rest: List<NonEmptyStr>, assumption: NonEmptyStr }
 
-type ChassisFanVerdict
-  = ChassisFansEstablished
-  | ChassisFansRefused { cause: NonEmptyStr }
+// THE VERDICT CONSUMES THE STANDING (operator ruling via the side chat, 2026-10-17). FittedFanSetEstablished admits
+// only when its standing is cited to an authority or observed by a receipt; a TranscribedUncited standing is a bet
+// and refuses as FittedSetUnestablished. The ONE arm that admits on an operator's say-so is FittedFanSetOperatorAssumed,
+// whose `assumption` states what the verdict rests on and is read into every stop text, so the admission is never
+// hidden inside Established.
+//
+// THE CLOSED REFUSAL SET. The first refusal in this order is the cause (the observation receipt keeps every row):
+// fitted set, chassis, fan read, undecoded rows, then each fitted header in set order. The chassis arms carry a
+// PostPower prefix because extdeps.bmc.ipmi_chassis_control already declares ChassisUnreadable and
+// ChassisStatusUndecodable: a homonym variant resolves to the wrong declaration
+// (gunbc.recurring_failure_mode a_local_variant_resolves_to_another_modules_homonym_type).
+type PostPowerFanRefusal
+  = FittedSetUnestablished { read_obligation: NonEmptyStr }
+  | PostPowerChassisNotOn
+  | PostPowerChassisUnreadable
+  | PostPowerChassisUndecodable { cause: NonEmptyStr }
+  | FanReadUnreadable
+  | FanRowsUndecoded { count: Int }
+  | FittedHeaderMissing { header: NonEmptyStr }
+  | FittedHeaderDuplicated { header: NonEmptyStr }
+  | FittedHeaderStatusRefused { header: NonEmptyStr, status: NonEmptyStr }
+  | FittedHeaderZeroRpm { header: NonEmptyStr }
+  | FittedHeaderNoReading { header: NonEmptyStr }
+  | FittedHeaderDutyOnly { header: NonEmptyStr }
+  | FittedHeaderReadingUnrecognised { header: NonEmptyStr, text: NonEmptyStr }
 
-fn fan_line_named(lines: List<SdrTypeLine>, header: NonEmptyStr) -> SdrTypeLine? {
-  fold(lines, init: Absent, f: (acc, line) => match acc {
-    Present { value: l } => Present { value: l }
-    Absent => if (line.name as String) == (header as String) { Present { value: line } } else { Absent }
-  })
-}
+type PostPowerFanVerdict
+  = PostPowerFanVerdictEstablished
+  | PostPowerFanVerdictRefused { cause: PostPowerFanRefusal }
 
-fn fan_line_spins(line: SdrTypeLine) -> Bool {
-  match sdr_fan_reading(reading_text: line.reading_text) {
-    SdrFanRpm { speed: s } => (rpm_count(r: s) as Int) > 0
-    SdrFanDuty { duty: _ } => false
-    SdrFanNoReading => false
-    SdrFanReadingUnrecognised { text: _ } => false
-  }
-}
+// A LOOKUP THAT CANNOT BE WON BY ORDER: absent, unique or duplicate, never first-match.
+type FanHeaderLookup
+  = FanHeaderAbsent
+  | FanHeaderUnique { line: SdrTypeLine }
+  | FanHeaderDuplicate
 
-fn fitted_header_failure(lines: List<SdrTypeLine>, header: NonEmptyStr) -> String? {
-  match fan_line_named(lines: lines, header: header) {
-    Absent => Present { value: join([header as String, " (fitted) has no sensor row"], "") }
-    Present { value: line } => match fan_line_spins(line: line) {
-      true => Absent
-      false => Present { value: join([header as String, " (fitted) does not spin: ", line.reading_text as String], "") }
+fn fan_header_lookup(lines: List<SdrTypeLine>, header: NonEmptyStr) -> FanHeaderLookup {
+  fold(lines, init: FanHeaderAbsent, f: (acc, line) => if (line.name as String) == (header as String) {
+    match acc {
+      FanHeaderAbsent => FanHeaderUnique { line: line }
+      FanHeaderUnique { line: _ } => FanHeaderDuplicate
+      FanHeaderDuplicate => FanHeaderDuplicate
     }
+  } else { acc })
+}
+
+data fan_row_status_ok: String = "ok"
+
+fn fitted_header_refusal(lines: List<SdrTypeLine>, header: NonEmptyStr) -> PostPowerFanRefusal? {
+  match fan_header_lookup(lines: lines, header: header) {
+    FanHeaderAbsent => Present { value: FittedHeaderMissing { header: header } }
+    FanHeaderDuplicate => Present { value: FittedHeaderDuplicated { header: header } }
+    FanHeaderUnique { line: line } =>
+      if (line.status as String) != fan_row_status_ok {
+        Present { value: FittedHeaderStatusRefused { header: header, status: line.status } }
+      } else {
+        match sdr_fan_reading(reading_text: line.reading_text) {
+          SdrFanRpm { speed: s } => if (rpm_count(r: s) as Int) > 0 { Absent } else { Present { value: FittedHeaderZeroRpm { header: header } } }
+          SdrFanDuty { duty: _ } => Present { value: FittedHeaderDutyOnly { header: header } }
+          SdrFanNoReading => Present { value: FittedHeaderNoReading { header: header } }
+          SdrFanReadingUnrecognised { text: _ } => Present { value: FittedHeaderReadingUnrecognised { header: header, text: line.reading_text } }
+        }
+      }
   }
 }
 
@@ -58,19 +97,61 @@ fn fitted_headers(first: NonEmptyStr, rest: List<NonEmptyStr>) -> List<NonEmptyS
   fold(rest, init: [first], f: (acc, h) => acc.append(h))
 }
 
-fn chassis_fan_verdict(fitted: FittedFanSet, lines: List<SdrTypeLine>) -> ChassisFanVerdict {
+fn first_fitted_header_refusal(lines: List<SdrTypeLine>, headers: List<NonEmptyStr>) -> PostPowerFanRefusal? {
+  fold(headers, init: Absent, f: (acc, h) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent => fitted_header_refusal(lines: lines, header: h)
+  })
+}
+
+fn fitted_set_refusal(fitted: FittedFanSet) -> PostPowerFanRefusal? {
   match fitted {
-    FittedFanSetNotEstablished { read_obligation: why } =>
-      ChassisFansRefused { cause: join(["the fitted fan set is not established: ", why as String], "") as NonEmptyStr }
-    FittedFanSetEstablished { first: first, rest: rest, standing: _ } => {
-      let failures = fold(fitted_headers(first: first, rest: rest), init: [], f: (acc, h) => match fitted_header_failure(lines: lines, header: h) {
-        Absent => acc
-        Present { value: f } => acc.append(f)
-      })
-      if failures.length() > 0 {
-        ChassisFansRefused { cause: join(failures, "; ") as NonEmptyStr }
+    FittedFanSetNotEstablished { read_obligation: o } => Present { value: FittedSetUnestablished { read_obligation: o } }
+    FittedFanSetOperatorAssumed { first: _, rest: _, assumption: _ } => Absent
+    FittedFanSetEstablished { first: _, rest: _, standing: st } => match st {
+      CitedToAuthority { authority: _ } => Absent
+      ObservedByReceipt { observed: _ } => Absent
+      TranscribedUncited { read_obligation: o } => Present { value: FittedSetUnestablished { read_obligation: o } }
+    }
+  }
+}
+
+fn fitted_set_headers(fitted: FittedFanSet) -> List<NonEmptyStr> {
+  match fitted {
+    FittedFanSetNotEstablished { read_obligation: _ } => []
+    FittedFanSetEstablished { first: f, rest: r, standing: _ } => fitted_headers(first: f, rest: r)
+    FittedFanSetOperatorAssumed { first: f, rest: r, assumption: _ } => fitted_headers(first: f, rest: r)
+  }
+}
+
+fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
+  match chassis {
+    ChassisPowerRead { power_on: on } => if on { Absent } else { Present { value: PostPowerChassisNotOn } }
+    ChassisStatusUndecodable { cause: c } => Present { value: PostPowerChassisUndecodable { cause: c } }
+    ChassisUnreadable => Present { value: PostPowerChassisUnreadable }
+  }
+}
+
+fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPowerFanRefusal? {
+  match fans {
+    FanSensorsUnreadable => Present { value: FanReadUnreadable }
+    FanSensorsRead { lines: lines, undecoded_line_count: u } =>
+      if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
+        Present { value: FanRowsUndecoded { count: sdr_undecoded_line_count_value(c: u) as Int } }
       } else {
-        ChassisFansEstablished
+        first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
+      }
+  }
+}
+
+fn post_power_fan_verdict(fitted: FittedFanSet, chassis: ChassisPowerObservation, fans: FanSensorObservation) -> PostPowerFanVerdict {
+  match fitted_set_refusal(fitted: fitted) {
+    Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+    Absent => match chassis_refusal(chassis: chassis) {
+      Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+      Absent => match fan_read_refusal(fans: fans, fitted: fitted) {
+        Present { value: r } => PostPowerFanVerdictRefused { cause: r }
+        Absent => PostPowerFanVerdictEstablished
       }
     }
   }
