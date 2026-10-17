@@ -51,17 +51,6 @@ data noble_numbat_2404_5_live_server_arm64: UbuntuInstallMediaArtifactRow = Ubun
   sha256sums_authority: noble_numbat_2404_3_live_server_arm64_sha256sums_authority,
 }
 
-// The kernel and initrd are members of that ISO's casper directory, a layout Canonical authors.
-// Their DIGESTS are not Canonical's (no upstream file lists them), so those pins live in the
-// gunbc module.
-fn ubuntu_casper_kernel_member_path() -> NonEmptyStr {
-  "casper/vmlinuz"
-}
-
-fn ubuntu_casper_initrd_member_path() -> NonEmptyStr {
-  "casper/initrd"
-}
-
 // An origin over aarch64 netboot artefacts admits only the aarch64 row: a row for another
 // architecture is absence, not a pin the origin could be built over.
 fn ubuntu_install_media_row_for_aarch64(row: UbuntuInstallMediaArtifactRow) -> UbuntuInstallMediaArtifactRow? {
