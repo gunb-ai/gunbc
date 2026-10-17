@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
-import std.types { String, NonEmptyStr }
+import std.types { String, List, NonEmptyStr }
 import gunbc.dispatch_credential_acquisition {
   credential_acquisition_slots_root,
   credential_recover_root,
@@ -21,7 +21,9 @@ import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
-import gunbc.host.host_layout { belt_spawn_workdir_env_var }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_dir }
+import std.algebra { trim }
+import gunbc.roadmap.roadmap_publish { publication_receipt_decode, ReceiptDecoded, ReceiptUndecodable }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_production_spawn_mode }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -49,6 +51,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_attempt_obligations_run, belt_attempt_obligation_receipt_write, belt_attempt_obligation_run_json, belt_attempt_obligation_run_failure,
   belt_exit_entries_settle, belt_exit_entries_claim, belt_exit_entries_pending_at, BeltExitClaimed, BeltExitClaimRefused, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
   belt_discover_for_instance, belt_discovery_json, belt_discovery_pass_outcome,
+  belt_attempt_obligations_enqueue,
   belt_attempt_panes_observe_for_instance, attempt_process_for_node,
   belt_metering_attempts_for_instance, belt_metering_pass_outcome_from,
 }
@@ -574,6 +577,36 @@ fn belt_discover_once_cli() -> ProcessExit {
       BeltPassFailed { reason } => exit_failure(reason: join([serialize_json(v: belt_discovery_json(discovery: discovered)), "\n", reason], ""))
       BeltPassDeferred { reason } => exit_failure(reason: reason)
       BeltPassRefused { reason } => exit_failure(reason: reason)
+    }
+  })
+}
+
+fn belt_publication_answer_drain_cli() -> ProcessExit {
+  belt_instance_from_env(entry: "belt_publication_answer_drain_cli", continuation: instance => {
+    let dir = publication_answer_dir(instance_root: instance.instance_root as String)
+    let listing = Filesystem.List(path: dir)
+    if !listing.success {
+      exit_failure(reason: join(["belt_publication_answer_drain_cli: publication answer directory unreadable: ", dir, " (", listing.error, ")"], ""))
+    } else {
+      let names = filter(xs: split(s: listing.entries, delimiter: "\n"), f: e => trim(e) != "")
+      let failures = names |> flat_map(n => {
+        let path = join([dir, "/", trim(n)], "")
+        let read = Filesystem.Read(path: path)
+        if !read.success {
+          [join(["unreadable answer ", path, ": ", read.error], "")]
+        } else {
+          match publication_receipt_decode(receipt: read.content) {
+            ReceiptUndecodable { reason } => [join(["undecodable answer ", path, ": ", reason], "")]
+            ReceiptDecoded { receipt } =>
+              match belt_attempt_obligations_enqueue(instance: instance, node_id: receipt.subject.node_id, attempt_key: receipt.subject.attempt_key) {
+                BeltObligationEnqueueRefused { unit: u, reason: r } => [join([u as String, ": ", r], "")]
+                BeltObligationStarted { unit: _ } => [] as List<String>
+                BeltObligationHeld { unit: _ } => [] as List<String>
+              }
+          }
+        }
+      })
+      if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
     }
   })
 }

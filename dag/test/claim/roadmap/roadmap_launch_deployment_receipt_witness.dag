@@ -274,6 +274,8 @@ fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding) -> 
     dashboard: DashboardServiceConverged { unit: "gunbc-roadmap.service" },
     exit_path: exit_path,
     answer_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-discovery.path" },
+    publication_path: BeltEventPathConverged { unit: "gunbc-roadmap-publication.path" },
+    publication_helper: BeltOneshotConverged { unit: "gunbc-roadmap-publication.service", active_state: "inactive" },
     oneshot: oneshot,
   }
 }

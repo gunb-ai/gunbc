@@ -15,6 +15,13 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_listing_names_entry,
   filesystem_read_outcome,
+  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied,
+  FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
+}
+import gunbc.durable_handoff_host {
+  HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
+  HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
+  host_spool_enqueue_assess,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -338,13 +345,44 @@ fn publication_answer_read(
   }
 }
 
-// THE ENQUEUE IS IDEMPOTENT BY ADDRESS, not by a check. The request's name is the subject's own
-// identity, and its content is a pure function of that subject, so writing it twice writes the same
-// bytes to the same path -- there is no `already queued` state to observe and get wrong, and a
-// re-enqueue while the helper is mid-answer costs one identical write.
+// ENQUEUE IS CREATE-ONLY. The request's name is the subject's identity; a second write of the
+// same key is refused rather than overwritten (gunbc.durable_handoff_host host_spool_enqueue_assess
+// over Filesystem.WriteCreateNew). Already-present means the helper was already asked, not that
+// the bytes may be replaced.
 type PublicationRequestEnqueue
   = RequestEnqueued { path: String }
+  | RequestAlreadyPresent { path: String }
   | RequestNotEnqueued { detail: String }
+
+fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
+  match created {
+    FilesystemCreated { path: p } =>
+      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameAbsent) {
+        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
+        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
+        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
+      }
+    FilesystemCreateTargetOccupied { path: p } =>
+      match host_spool_enqueue_assess(name: p, observed: HostSpoolNamePresent) {
+        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
+        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
+        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
+      }
+    FilesystemCreateRefused { path: p, kind: _, error: e } =>
+      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameUnreadable { detail: e }) {
+        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
+          detail: join([
+            "the publication request could not be written, so nothing was asked of the publication helper: ",
+            n, " (", d, ")",
+          ], ""),
+        }
+        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
+        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
+      }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      RequestNotEnqueued { detail: join([p, ": ", o, ": ", e], "") }
+  }
+}
 
 fn publication_request_enqueue(
   instance_root: String,
@@ -353,20 +391,13 @@ fn publication_request_enqueue(
   worktree: String,
 ) -> PublicationRequestEnqueue {
   let path = publication_request_path_for(instance_root: instance_root, key: key)
-  let write = Filesystem.Write(
+  let write = Filesystem.WriteCreateNew(
     path: path,
     content: publication_request_json(subject: subject, worktree: worktree),
   )
-  if write.success {
-    RequestEnqueued { path: path }
-  } else {
-    RequestNotEnqueued {
-      detail: join([
-        "the publication request could not be written, so nothing was asked of the publication helper: ",
-        path, " (", write.error, ")",
-      ], ""),
-    }
-  }
+  publication_request_from_create(
+    created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
+  )
 }
 
 // THREE STATES, BECAUSE THREE REMEDIES. An answer that is ready, a request that is now waiting, and
@@ -429,6 +460,12 @@ fn publication_answer_standing(
   )
   match asked {
     RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
+    RequestAlreadyPresent { path } =>
+      match found {
+        AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
+        AnswerPresent { receipt } => AnswerReady { receipt: receipt }
+        AnswerAbsent => AnswerAwaited { request_path: path }
+      }
     RequestEnqueued { path } =>
       match found {
         AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
