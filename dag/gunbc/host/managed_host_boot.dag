@@ -27,7 +27,6 @@ import gunbc.host.managed_host {
   managed_membership_for,
 }
 import gunbc.host.bmc_control_binding {
-import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityUncatalogued, MegaRacReleaseCapabilityAmbiguous }
   BmcControlStanding,
   BmcControlBound,
   BmcControlBoundRoute,
@@ -36,6 +35,7 @@ import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown
   BmcControlEndpointMismatch,
   bmc_control_binding,
 }
+import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityUncatalogued, MegaRacReleaseCapabilityAmbiguous }
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
 // never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither
