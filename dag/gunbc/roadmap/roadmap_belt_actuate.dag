@@ -8292,15 +8292,134 @@ fn belt_scm_persist_capture(mint: BeltScmMint) -> BeltScmCapture {
   }
 }
 
-// THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
-// identity is minted into the project's envelope from the tree as it stands THEN, descending from
-// the seeded intake base, and only after that binding exists does the belt create the git commit
-// that realizes the same tree at the edge (verification checkout and, later, the publication
-// push). A failure anywhere is not swallowed into a checkpoint -- a git commit with no SCM
-// binding, or an SCM commit with no capture record, is a defect to stop on, typed, never a silent
-// unbound candidate. Because the SCM capture precedes the git commit and nothing is persisted
-// mid-sequence until the final save, a failure leaves the tree dirty and the envelope without the
-// candidate, so the next tick re-attempts the whole sequence cleanly.
+// THE CAPTURE INTENT. The candidate capture is two durable writes around one git commit (the SCM envelope
+// save, and the head-addressed capture record), so a kill between any two leaves a half: after the SCM save
+// the rerun mints a SECOND commit (double capture); after the git commit the tree is clean, the decision sees
+// nothing owed, and the capture record is never written (lost capture). The intent is written BEFORE the SCM
+// save, carries the minted ordinal and root locator plus the pre-commit head, and lives beside the capture
+// directory (not in it: the roster reads every file there as a capture of its own head). A rerun reads it:
+// head still at the recorded base means the commit has not happened (resume: reuse the persisted SCM commit if
+// the envelope already advanced past the intent's ordinal, else persist it); head moved means the commit
+// happened and the capture record is owed (complete it at the new head). The intent is cleared after the
+// capture record is written. Retirement: when the capture record, the SCM save and the git commit are one
+// settled transition in the substrate (the attempt-resources slice-4 settlement), this file goes.
+type BeltCaptureIntent
+  = IntentAbsent
+  | IntentRead { capture: SubmissionCapture }
+  | IntentUnreadable { reason: String }
+
+type BeltIntentCompletion
+  = IntentNothingOwed
+  | IntentCompleted { head_sha: String }
+  | IntentCompletionFailed { detail: String }
+
+fn belt_capture_intent_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "-intent"], "")
+}
+
+fn belt_capture_intent_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  join([belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/intent.json"], "")
+}
+
+fn belt_capture_intent_read(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltCaptureIntent {
+  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_attempt_submission_dir_ensure(instance: instance, worktree: worktree, dir: dir) {
+    ExecFailed { program, exit_code, stderr } =>
+      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      IntentUnreadable { reason: belt_commit_exec_detail(step: "capture-intent-directory", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout: _ } => {
+      let listing = Filesystem.List(path: dir)
+      if !listing.success {
+        IntentUnreadable { reason: join(["the capture intent directory could not be listed: ", dir, " (", listing.error, ")"], "") }
+      } else if !filesystem_listing_names_entry(listing: listing.entries, name: "intent.json") {
+        IntentAbsent
+      } else {
+        let read = Filesystem.Read(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error } => IntentUnreadable { reason: join(["the capture intent was listed and then could not be read: ", error], "") }
+          FilesystemReadSucceeded { content } =>
+            match submission_capture_decode(text: content) {
+              CaptureNotDecodable { reason } => IntentUnreadable { reason: join(["the capture intent does not decode: ", reason], "") }
+              CaptureDecoded { capture } => IntentRead { capture: capture }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn belt_capture_intent_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, capture: SubmissionCapture) -> String? {
+  let write = Filesystem.Write(
+    path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    content: submission_capture_text(capture: capture),
+  )
+  if write.success { Absent } else { Present { value: write.error } }
+}
+
+fn belt_capture_intent_clear(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
+  let gone = Filesystem.Delete(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
+  if gone.success { Absent } else { Present { value: gone.error } }
+}
+
+fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String, intent: SubmissionCapture) -> String? {
+  let write = Filesystem.Write(
+    path: join([
+      belt_attempt_submission_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      "/",
+      submission_capture_basename(head_sha: head),
+    ], ""),
+    content: submission_capture_text(capture: SubmissionCapture {
+      head_sha: head,
+      scm_repository: intent.scm_repository,
+      scm_commit_ordinal: intent.scm_commit_ordinal,
+      scm_root_locator: intent.scm_root_locator,
+      digest: intent.digest,
+      submission: intent.submission,
+    }),
+  )
+  if write.success { Absent } else { Present { value: write.error } }
+}
+
+// A rerun's first move: if an intent names a base head the worktree has moved past, the git commit happened
+// and the capture record is owed at the new head (or already written, then only the intent is stale).
+fn belt_capture_intent_complete(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String) -> BeltIntentCompletion {
+  match belt_capture_intent_read(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key) {
+    IntentAbsent => IntentNothingOwed
+    IntentUnreadable { reason } => IntentCompletionFailed { detail: reason }
+    IntentRead { capture } =>
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadUnobserved { reason } =>
+          IntentCompletionFailed { detail: join(["a capture intent is owed but the head could not be observed: ", reason], "") }
+        WorktreeHeadObserved { revision } =>
+          if revision as String == capture.head_sha {
+            IntentNothingOwed
+          } else {
+            match belt_submission_capture_for_head(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
+              CaptureUnreadable { reason } => IntentCompletionFailed { detail: reason }
+              CaptureForHead { capture: _ } =>
+                match belt_capture_intent_clear(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+                  Present { value: e } => IntentCompletionFailed { detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                  Absent => IntentNothingOwed
+                }
+              _ =>
+                match belt_capture_record_write(instance: instance, node_id: node_id, attempt_key: attempt_key, head: revision as String, intent: capture) {
+                  Present { value: e } => IntentCompletionFailed { detail: join(["the commit exists at ", revision as String, " but its capture record could not be written: ", e], "") }
+                  Absent =>
+                    match belt_capture_intent_clear(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+                      Present { value: e } => IntentCompletionFailed { detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                      Absent => IntentCompleted { head_sha: revision as String }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE CANDIDATE CAPTURE SEQUENCE: head observe, mint (pure), intent, SCM save, git commit, head observe,
+// capture record, clear intent. A rerun after a kill at any seam resumes from the intent
+// (belt_capture_intent_complete for the post-commit half; here for the pre-commit half).
 fn belt_commit_capture_candidate(
   instance: HostDashboardInstance,
   worktree: String,
@@ -8310,68 +8429,120 @@ fn belt_commit_capture_candidate(
   submission: WorkerSubmission,
   digest: String,
 ) -> BeltCommitOutcome {
-  match belt_scm_persist_capture(
-    mint: belt_scm_capture_candidate_tree(
-      instance: instance,
-      worktree: worktree,
-      node_id: node_id as RoadmapNodeId,
-      attempt_key: attempt_key,
-      message: message as String,
-      committed_revision: none,
-    ),
+  let nid = node_id as RoadmapNodeId
+  match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+    WorktreeHeadUnobserved { reason } =>
+      CommitFailed { node_id: node_id, detail: join(["the pre-commit head could not be observed, so no capture intent can name its base: ", reason], "") }
+    WorktreeHeadObserved { revision: base } =>
+      match belt_capture_intent_read(instance: instance, worktree: worktree, node_id: nid, attempt_key: attempt_key) {
+        IntentUnreadable { reason } => CommitFailed { node_id: node_id, detail: reason }
+        IntentAbsent =>
+          belt_capture_candidate_mint(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, submission: submission, digest: digest, base: base as String, prior: Absent)
+        IntentRead { capture } =>
+          belt_capture_candidate_mint(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, submission: submission, digest: digest, base: base as String, prior: Present { value: capture })
+      }
+  }
+}
+
+fn belt_capture_candidate_mint(
+  instance: HostDashboardInstance,
+  worktree: String,
+  node_id: String,
+  attempt_key: String,
+  message: NonEmptyStr,
+  submission: WorkerSubmission,
+  digest: String,
+  base: String,
+  prior: SubmissionCapture?,
+) -> BeltCommitOutcome {
+  match belt_scm_capture_candidate_tree(
+    instance: instance,
+    worktree: worktree,
+    node_id: node_id as RoadmapNodeId,
+    attempt_key: attempt_key,
+    message: message as String,
+    committed_revision: none,
   ) {
-    ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
-    ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
-    ScmCandidateCaptured { repository_path, commit_ordinal, commit_root_locator } =>
-      match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
-        StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
-        StagedCommitRecorded =>
-          match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-            WorktreeHeadUnobserved { reason } =>
+    ScmCaptureMintRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+    ScmCaptureMintPoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
+    ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } => {
+      let minted = SubmissionCapture {
+        head_sha: base,
+        scm_repository: path,
+        scm_commit_ordinal: commit_ordinal,
+        scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
+        digest: digest,
+        submission: submission,
+      }
+      let persisted_before = match prior {
+        Present { value: p } => commit_ordinal > p.scm_commit_ordinal && p.head_sha == base
+        Absent => false
+      }
+      if persisted_before {
+        match prior {
+          Present { value: p } => belt_capture_candidate_commit(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, intent: p)
+          Absent => CommitFailed { node_id: node_id, detail: "unreachable: a persisted capture without an intent" }
+        }
+      } else {
+        match belt_capture_intent_write(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, capture: minted) {
+          Present { value: e } =>
+            CommitFailed { node_id: node_id, detail: join(["the capture intent could not be written, so the SCM capture was not taken: ", e], "") }
+          Absent =>
+            match belt_scm_persist_capture(mint: ScmCandidateMinted {
+              repository: repository,
+              generation: generation,
+              path: path,
+              commit_ordinal: commit_ordinal,
+              commit_root_locator: commit_root_locator,
+            }) {
+              ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
+              ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
+              ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
+                belt_capture_candidate_commit(instance: instance, worktree: worktree, node_id: node_id, attempt_key: attempt_key, message: message, intent: minted)
+            }
+        }
+      }
+    }
+  }
+}
+
+fn belt_capture_candidate_commit(
+  instance: HostDashboardInstance,
+  worktree: String,
+  node_id: String,
+  attempt_key: String,
+  message: NonEmptyStr,
+  intent: SubmissionCapture,
+) -> BeltCommitOutcome {
+  match belt_commit_staged(instance: instance, worktree: worktree, message: message) {
+    StagedCommitFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+    StagedCommitRecorded =>
+      match belt_worktree_head_observe(instance: instance, worktree: worktree) {
+        WorktreeHeadUnobserved { reason } =>
+          CommitFailed {
+            node_id: node_id,
+            detail: join([
+              "the candidate commit was created but its head could not be observed; the capture intent is kept and the next pass completes it: ",
+              reason,
+            ], ""),
+          }
+        WorktreeHeadObserved { revision } =>
+          match belt_capture_record_write(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, head: revision as String, intent: intent) {
+            Present { value: e } =>
               CommitFailed {
                 node_id: node_id,
                 detail: join([
-                  "the candidate commit was created but its head could not be observed, so no capture record binds it and it must not advance silently: ",
-                  reason,
+                  "the candidate commit ", revision as String,
+                  " was created but its capture record could not be written (", e,
+                  "); the capture intent is kept and the next pass completes it",
                 ], ""),
               }
-            WorktreeHeadObserved { revision } => {
-              let write = Filesystem.Write(
-                path: join([
-                  belt_attempt_submission_dir_for_instance(
-                    instance: instance,
-                    node_id: node_id,
-                    attempt_key: attempt_key,
-                  ),
-                  "/",
-                  submission_capture_basename(head_sha: revision as String),
-                ], ""),
-                content: submission_capture_text(capture: SubmissionCapture {
-                  head_sha: revision as String,
-                  scm_repository: repository_path,
-                  scm_commit_ordinal: commit_ordinal,
-                  scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator },
-                  digest: digest,
-                  submission: submission,
-                }),
-              )
-              if write.success {
-                CandidateCaptured {
-                  node_id: node_id,
-                  head_sha: revision as String,
-                  message: message as String,
-                }
-              } else {
-                CommitFailed {
-                  node_id: node_id,
-                  detail: join([
-                    "the candidate commit ", revision as String,
-                    " was created but its capture record could not be written (", write.error,
-                    "): the head is a candidate with no binding, and the belt refuses to let it advance silently",
-                  ], ""),
-                }
+            Absent =>
+              match belt_capture_intent_clear(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key) {
+                Present { value: e } =>
+                  CommitFailed { node_id: node_id, detail: join(["the capture is recorded but its intent could not be cleared: ", e], "") }
+                Absent => CandidateCaptured { node_id: node_id, head_sha: revision as String, message: message as String }
               }
-            }
           }
       }
   }
@@ -8731,6 +8902,25 @@ fn belt_commit_attempt_compute_for_instance(
     node_id: node_id,
     attempt_key: progress.attempt_key,
   )
+  match belt_capture_intent_complete(instance: instance, worktree: worktree, node_id: node_id, attempt_key: progress.attempt_key) {
+    IntentCompleted { head_sha } =>
+      CandidateCaptured {
+        node_id: node_id,
+        head_sha: head_sha,
+        message: belt_candidate_commit_message(node_id: node_id as String, attempt_key: progress.attempt_key) as String,
+      }
+    IntentCompletionFailed { detail } => CommitFailed { node_id: node_id, detail: detail }
+    IntentNothingOwed => belt_commit_attempt_decide(instance: instance, progress: progress, worktree: worktree)
+  }
+  }
+}
+
+fn belt_commit_attempt_decide(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+  worktree: String,
+) -> BeltCommitOutcome {
+  let node_id = progress.node_id
   match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
     ExecFailed { program, exit_code, stderr } =>
       CommitFailed { node_id: node_id, detail: belt_commit_exec_detail(step: "status", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
@@ -8786,7 +8976,6 @@ fn belt_commit_attempt_compute_for_instance(
               }
           }
       }
-  }
   }
 }
 
