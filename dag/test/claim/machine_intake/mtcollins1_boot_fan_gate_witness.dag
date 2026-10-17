@@ -1,0 +1,64 @@
+module test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
+import std.algebra { string_contains }
+import gunbc.machine_intake.chassis_fan_establishment { ChassisFanVerdict, ChassisFansEstablished, ChassisFansRefused, FittedFanSet, FittedFanSetEstablished }
+import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsRead, FanSensorsUnreadable }
+import std.measure { sdr_undecoded_line_count }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { boot_fan_gate_verdict, boot_fan_gate_stop_text, mtcollins1_fitted_fan_set }
+
+// SUPPLIED ROUNDS at the verdict boundary (fixture fitted set FAN1..FAN2; the unit's real set is the cited,
+// still-unestablished data row). The effectful route (settle, read, PowerDown, readback, one repeat) is the
+// live boot step; the pairing inhabitance claim is the boot run's own executed controls.
+fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
+  SdrTypeLine { name: name, sensor_number: "0x00" as NonEmptyStr, status: "ok" as NonEmptyStr, entity_id: "29.1" as NonEmptyStr, reading_text: reading }
+}
+
+fn fitted() -> FittedFanSet { FittedFanSetEstablished { headers: ["FAN1" as NonEmptyStr, "FAN2" as NonEmptyStr] } }
+
+fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsRead { lines: lines, undecoded_line_count: sdr_undecoded_line_count(count: 0) } }
+}
+
+fn spinning() -> List<SdrTypeLine> { [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr)] }
+
+fn refused(v: ChassisFanVerdict) -> Bool {
+  match v { ChassisFansRefused { cause: _ } => true  ChassisFansEstablished { unexpected_spinning: _ } => false }
+}
+
+test fn an_on_chassis_with_fitted_fans_reading_is_established() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: spinning()))) == false
+}
+
+test fn an_on_chassis_with_no_fan_readings_after_the_window_refuses() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: [])))
+}
+
+test fn an_off_chassis_refuses_even_with_fans_listed() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: false, lines: spinning())))
+}
+
+test fn an_unreadable_chassis_refuses() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }))
+}
+
+test fn a_mixed_chassis_with_one_fitted_fan_at_zero_refuses() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr)])))
+}
+
+// The unit's own fitted set is still unestablished: the gate refuses, naming the obligation, rather than guess.
+test fn the_unestablished_unit_fitted_set_refuses_even_with_every_fan_spinning() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: spinning())))
+}
+
+test fn a_stop_that_read_back_off_carries_the_manager_standing() -> Bool {
+  let t = boot_fan_gate_stop_text(cause: "c" as NonEmptyStr, first_off: true, repeated: false, second_off: true, last_readback: "off")
+  string_contains(s: t, pattern: "power-off read back as off") && string_contains(s: t, pattern: "cooling manager standing unread") && string_contains(s: t, pattern: "NOT automatic")
+}
+
+test fn a_stop_whose_repeat_did_not_read_off_reports_power_off_unconfirmed() -> Bool {
+  let t = boot_fan_gate_stop_text(cause: "c" as NonEmptyStr, first_off: false, repeated: true, second_off: false, last_readback: "unreadable")
+  string_contains(s: t, pattern: "power-off unconfirmed") && string_contains(s: t, pattern: "cooling manager standing unread")
+}

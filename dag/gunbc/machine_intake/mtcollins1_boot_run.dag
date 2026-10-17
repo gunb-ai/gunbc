@@ -75,6 +75,7 @@ import extdeps.bootloader.grub {
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import std.optional { Present }
+import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_boot_fan_gate }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -2479,6 +2480,19 @@ fn mtcollins1_boot_actuate(
           let _screen_at_power_on = kvm_observer_trigger(start: screen, order: 1, reason: "power-on-verified")
           let at_power_on = mtcollins1_boot_smpro_pass(password_file: password_file)
           let smpro_read = proc_uptime_read()
+          let fan_gate = match mtcollins1_bmc_username {
+            Present { value: user } => mtcollins1_boot_fan_gate(username: user, password_file: password_file as NonEmptyStr)
+            Absent => exit_failure(reason: "mtcollins1 boot stopped: no BMC account is modeled, so chassis fan function could not be read after power-on")
+          }
+          match fan_gate {
+            ExitFailure { code: c, reason: r } => ActuationWatch {
+              outcome: ExitFailure { code: c, reason: r },
+              stage: ActuationPoweredOn { selection: subject.selection, smpro_power_on: at_power_on, smpro_census: SmproNotTaken { reason: "the post-power-on chassis-fan gate stopped the boot before the census was watched" } },
+              smpro_step: PhaseStepRan { result: smpro_phase_result(reading: at_power_on), end: smpro_read },
+              terminal_step: PhaseStepSkipped { reason: "the post-power-on chassis-fan gate stopped the boot" },
+              runner_host: none,
+            }
+            ExitSuccess => {
           let watch = mtcollins1_boot_await_capture_terminal(
             remaining: mtcollins1_boot_terminal_tick_budget(),
             capture_path: sol_capture_path,
@@ -2492,6 +2506,8 @@ fn mtcollins1_boot_actuate(
           )
           let terminal_read = proc_uptime_read()
           actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: at_power_on, smpro_read: smpro_read, terminal_read: terminal_read)
+            }
+          }
         }
         other => ActuationWatch {
           outcome: other,
