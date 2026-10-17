@@ -233,7 +233,8 @@ fn cli_roots_verb_selected(
   roots: FreeMonoid<String>,
   compiler: Optional<String>,
   write_identity: Optional<String>,
-  receipts: Optional<String>
+  receipts: Optional<String>,
+  reuse_from: Optional<String>
 ) -> CliVerb {
   match kind {
     CliRootsDifferential => CliIfArmReaderDifferential { source_roots: roots }
@@ -311,8 +312,7 @@ type CliParseState
       roots: FreeMonoid<String>,
       compiler: Optional<String>,
       write_identity: Optional<String>,
-      receipts: Optional<String>,
-      reuse_from: Optional<String>
+      receipts: Optional<String>
     }
   | CliParseFailed { reason: Symbol, detail: String }
 
@@ -684,7 +684,8 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
             roots: list_reverse(xs: roots),
             compiler: compiler,
             write_identity: write_identity,
-            receipts: receipts
+            receipts: receipts,
+            reuse_from: reuse_from
           )
         }
       }

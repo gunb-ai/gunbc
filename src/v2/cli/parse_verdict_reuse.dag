@@ -71,8 +71,8 @@ fn parse_verdict_base_from(identity: FilesystemReadOutcome, receipts: Filesystem
 fn parse_verdict_restored_path(dir: String, basename: String) -> String { join([dir, "/", basename], "") }
 
 fn parse_verdict_base_read(dir: String) -> ParseVerdictBase {
-  let identity = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_identity_basename), expect: ExpectSuccess)
-  let receipts = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_receipts_basename), expect: ExpectSuccess)
+  let identity = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_identity_basename))
+  let receipts = Filesystem.Read(path: parse_verdict_restored_path(dir: dir, basename: parse_verdict_restore_receipts_basename))
   parse_verdict_base_from(
     identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
     receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
