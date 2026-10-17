@@ -63,7 +63,7 @@ type FlexWriteDecision
   | FlexWriteBlockedCurrencyMismatch { left: CurrencyCode, right: CurrencyCode }
   | FlexWriteBlockedPartialRoster
   | FlexWriteBlockedOverCap
-  | FlexWriteWetUnwired
+  | FlexWriteWetAdmitted
 
 type FlexCompleteInstanceRoster sole_constructor {
   instances: List<VastAiInstance>
@@ -366,7 +366,7 @@ fn flex_write_decision(policy: FlexPolicy, roster: FlexInstancesStanding) -> Fle
         FlexCapCurrencyMismatch { left: l, right: r } => FlexWriteBlockedCurrencyMismatch { left: l, right: r }
         FlexCapOver { occupied: _, cap: _ } => FlexWriteBlockedOverCap
         FlexCapAtLimit { occupied: _, cap: _ } => FlexWriteBlockedOverCap
-        FlexCapUnder { occupied: _, cap: _ } => FlexWriteWetUnwired
+        FlexCapUnder { occupied: _, cap: _ } => FlexWriteWetAdmitted
       }
   }
 }

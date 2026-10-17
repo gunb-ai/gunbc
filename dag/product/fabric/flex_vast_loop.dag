@@ -32,7 +32,7 @@ import product.fabric.serving_recipe { ServingSelectionQuote, SelectionQuoteEsta
 import product.fabric.flex_vast_shadow {
   flex_roster_restrict,
   FlexInstancesStanding, FlexInstancesComplete, FlexChargesStanding, FlexChargesComplete,
-  FlexCompleteInstanceRoster, FlexWriteDecision, FlexWriteHeldDry, FlexWriteWetUnwired,
+  FlexCompleteInstanceRoster, FlexWriteDecision, FlexWriteHeldDry, FlexWriteWetAdmitted,
   FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded,
   FlexCreateStanding, FlexCreateAnswered, FlexCreateLost, FlexCreateRefused,
   FlexReconcileVerdict, FlexAlreadyHeld, FlexAcquisitionUnknown, FlexMayAcquire, FlexReconcileNeedsExhaustedRoster,
@@ -493,7 +493,7 @@ fn flex_plan_create(input: FlexPassInput, intent: FlexCreateIntent) -> FlexPassP
 fn flex_plan_create_if_writable(input: FlexPassInput, intent: FlexCreateIntent, decision: FlexWriteDecision) -> FlexPassPlan {
   match decision {
     FlexWriteHeldDry => flex_plan_create(input: input, intent: intent)
-    FlexWriteWetUnwired => flex_plan_create(input: input, intent: intent)
+    FlexWriteWetAdmitted => flex_plan_create(input: input, intent: intent)
     other => FlexPlanRefused { refusal: FlexPassRosterNotComplete { decision: other } }
   }
 }

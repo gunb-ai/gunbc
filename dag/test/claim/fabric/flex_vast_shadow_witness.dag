@@ -62,7 +62,7 @@ import product.fabric.flex_vast_shadow {
   flex_reconcile_acquisition,
   flex_write_decision, FlexWriteHeldDry, FlexWriteBlockedUnreadable, FlexWriteBlockedUnobserved,
   FlexWriteBlockedRateUnconverted, FlexWriteBlockedCurrencyMismatch,
-  FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
+  FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetAdmitted,
   FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable,
   flex_search_offers_inhabitance_frontier, flex_trial_fleet_rate_cap_authority,
   flex_record_pass,
@@ -400,7 +400,7 @@ fn write_gate_conjunction() -> Bool {
               ) {
                 FlexWriteBlockedOverCap =>
                   match flex_write_decision(policy: live_policy(), roster: exhausted(rows: [])) {
-                    FlexWriteWetUnwired => true
+                    FlexWriteWetAdmitted => true
                     _ => false
                   }
                 _ => false
