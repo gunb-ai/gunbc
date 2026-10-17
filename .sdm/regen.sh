@@ -7,7 +7,15 @@ set -e
 # committed verbatim, and the printed sha256 is what the A/B asserts on.
 R=/root/workspace/repo-root
 SHA="$1"; TARGET="$2"
-export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-/root/sd503_target}
+# DO NOT set CARGO_TARGET_DIR here. heal.yml:94 runs the producer as
+# `target/release/claim_executor --regen-round-cost ...`, and the fixed-point writer
+# re-reads that executable by relative path during its seed-build round. With a shared
+# target dir the round fails with
+#   StageOutputExecutableUnbound: read .../target/release/claim_executor: No such file
+# and the whole regen REFUSES (rc=1) while still printing phase ticks -- easy to mistake
+# for a no-op. The runner is stateless per dispatch, so an in-tree target costs nothing
+# extra. (The A/B dispatch DOES use a shared target dir, because it reads binaries by
+# absolute path and reuses dependency compilation across variants.)
 D=/root/regen
 git -C $R worktree prune >/dev/null 2>&1 || true
 git -C $R fetch --quiet --force origin "$SHA:refs/sd503/regen" || { echo "FETCH-FAILED"; exit 6; }
@@ -18,10 +26,10 @@ echo "regen HEAD=$(git rev-parse HEAD)"
 echo "BEFORE sha256=$(sha256sum $TARGET | cut -d' ' -f1) lines=$(wc -l < $TARGET)"
 cargo build --release -p v1-compiler --bin gunbc --bin claim_executor > /tmp/regenbuild.log 2>&1 || { echo "BUILD-FAILED"; tail -30 /tmp/regenbuild.log; exit 11; }
 echo "built $(date -u +%H:%M:%S)"
-CE="$CARGO_TARGET_DIR/release/claim_executor"
+CE="target/release/claim_executor"
 # With a shared CARGO_TARGET_DIR the binaries are NOT under ./target (that path gave
 # rc=127 -- a "command not found" that looked like a regen failure). Assert it exists.
-if [ ! -x "$CE" ]; then echo "NO-CLAIM-EXECUTOR at $CE (built? shared target dir?)"; ls -la $CARGO_TARGET_DIR/release 2>/dev/null | head -20; exit 13; fi
+if [ ! -x "$CE" ]; then echo "NO-CLAIM-EXECUTOR at $CE"; ls -la target/release 2>/dev/null | head -20; exit 13; fi
 set +e
 "$CE" --regen-round-cost --source-root dag --source-root src/v2 > /tmp/regen.log 2>&1
 echo "regen_rc=$?"
