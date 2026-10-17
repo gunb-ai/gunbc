@@ -1,0 +1,168 @@
+module gunbc.fleet.fleet_fan_converge
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import std.optional { Absent, Present }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.machine_intake.fan_observe { FanObserveHost }
+import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor }
+
+// THE FLEET FAN CONVERGENCE FOLD: desired (product.fleet_fan_policy) against observed, deciding
+// Noop / Refuse, then a standing read from an INDEPENDENT second observation.
+//
+// SELECTION PRECEDES CONVERGENCE (DESIGN 3d): this fold takes ONE host's family and ONE
+// observation. Which hosts exist comes from the managed-host registry, not from here.
+//
+// BOOT IS A CONSUMER AND NEVER A WRITER. Nothing here is imported by a boot path in this change; the
+// admission gate that reads FleetFanConvergenceStanding is a separate change that waits on the
+// post-power-on fan read.
+//
+// NO WRITE EXISTS HERE, SO THERE IS NO APPLY ARM. A divergence refuses with a typed "no projection
+// from FleetFanControl to the family's writer target" cause for BOTH families. The write change
+// derives the OpenBMC config (OpenBmcFanConfigDesired) and the MegaRAC plan from FleetFanPolicy
+// and, in that same change, retires the overlapping authorities: gunbc.bmc.bmc_intent
+// fleet_bmc_valid_state's fan fields (it becomes derived), and megarac_fan_boot_phase_desire (the boot
+// change deletes it). Until then this fold is the single policy and those are the named leftovers.
+//
+// ADMISSION PRECEDES EVERYTHING: the desired control is admitted for the family first, so an
+// inexpressible target can never be Noop or Converged by happening to equal an observation.
+// SUBJECT IDENTITY IS THE BOUND HOST, NOT A CALLER STRING: an observation is sealed and carries the
+// gunbc.machine_intake.fan_observe FanObserveHost (host identity, controller endpoint, observed firmware
+// family, account) plus a read receipt (attempt ordinal and the raw response hash). The family comes off
+// the subject, never a separate argument. A decision is sealed and carries its subject, desired control
+// and deciding receipt; the standing CONSUMES the decision, so no separately authored deciding id
+// exists. Every standing arm names its host. Remaining frontier: the adapter that mints the receipt
+// from a wire read (its mint is the one place a receipt is created); until it lands the observation
+// mint is the only constructor and takes the receipt as the producer's input.
+
+type FleetFanReadReceipt {
+  attempt: Int
+  raw_response: ContentHash
+}
+
+type FleetFanReading
+  = FleetFanControlObserved { control: FleetFanControl }
+  | FleetFanControlUnobservable { cause: NonEmptyStr }
+
+type FleetFanObserved sole_constructor {
+  subject: FanObserveHost
+  receipt: FleetFanReadReceipt
+  reading: FleetFanReading
+}
+
+fn fleet_fan_observed(subject: FanObserveHost, receipt: FleetFanReadReceipt, reading: FleetFanReading) -> FleetFanObserved {
+  FleetFanObserved { subject: subject, receipt: receipt, reading: reading }
+}
+
+type FleetFanOutcome
+  = FleetFanNoop
+  | FleetFanRefuse { cause: NonEmptyStr }
+
+type FleetFanDecision sole_constructor {
+  subject: FanObserveHost
+  desired: FleetFanControl
+  deciding: FleetFanReadReceipt
+  outcome: FleetFanOutcome
+}
+
+type FleetFanConvergenceStanding
+  = FleetFanConverged { host: HostIdentity, control: FleetFanControl, readback: FleetFanReadReceipt }
+  | FleetFanDiverged { host: HostIdentity, observed: FleetFanControl }
+  | FleetFanUnobservable { host: HostIdentity, cause: NonEmptyStr }
+  | FleetFanRefused { host: HostIdentity, cause: NonEmptyStr }
+
+fn fleet_fan_family_of(subject: FanObserveHost) -> BmcFirmwareFamily {
+  subject.observation.identity.firmware.family
+}
+
+// WHAT A FAMILY'S UPSTREAM CAN EXPRESS. Automatic is the firmware default and every family has it.
+// A held floor is refused unless the family's upstream is read to express it: MegaRAC by its closed
+// admitted-wire set, OpenBMC until its phosphor zone-floor expressibility is read (a typed bet,
+// DESIGN 4d, so the answer is a refusal and not a guess).
+fn fleet_fan_family_refusal(family: BmcFirmwareFamily, control: FleetFanControl) -> NonEmptyStr? {
+  match control {
+    FirmwareAutomatic => Absent
+    HeldAtDutyFloor { floor: f } => match family {
+      AmiMegaRac => match megarac_fan_pwm_all_of(duty: f) {
+        MegaRacFanPwmAllAdmitted { wire: _ } => Absent
+        MegaRacFanPwmAllRefused { duty: _ } =>
+          Present { value: "MegaRAC fan_pwm_all admits only the closed 20..100 step-5 duty set" as NonEmptyStr }
+      }
+      OpenBmc =>
+        Present { value: "read obligation: whether phosphor-fan zone config expresses a held duty floor on this board is unread" as NonEmptyStr }
+    }
+  }
+}
+
+// SAME SUBJECT = same host identity, same controller endpoint, same observed family.
+fn fleet_fan_same_subject(a: FanObserveHost, b: FanObserveHost) -> Bool {
+  host_identity_eq(a: a.host, b: b.host)
+    && a.observation.endpoint == b.observation.endpoint
+    && fleet_fan_family_of(subject: a) == fleet_fan_family_of(subject: b)
+}
+
+fn fleet_fan_no_projection() -> NonEmptyStr {
+  "no projection from FleetFanControl to the family writer target exists yet" as NonEmptyStr
+}
+
+fn fleet_fan_outcome(policy: FleetFanPolicy, subject: FanObserveHost, observed: FleetFanObserved) -> FleetFanOutcome {
+  match fleet_fan_family_refusal(family: fleet_fan_family_of(subject: subject), control: policy.control) {
+    Present { value: why } => FleetFanRefuse { cause: why }
+    Absent =>
+      if !fleet_fan_same_subject(a: subject, b: observed.subject) {
+        FleetFanRefuse { cause: "observation is for a different host, controller or family than the one being converged" as NonEmptyStr }
+      } else {
+        match observed.reading {
+          FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
+          FleetFanControlObserved { control: seen } =>
+            if seen == policy.control {
+              FleetFanNoop
+            } else {
+              FleetFanRefuse { cause: fleet_fan_no_projection() }
+            }
+        }
+      }
+  }
+}
+
+fn fleet_fan_decide(policy: FleetFanPolicy, subject: FanObserveHost, observed: FleetFanObserved) -> FleetFanDecision {
+  FleetFanDecision {
+    subject: subject,
+    desired: policy.control,
+    deciding: observed.receipt,
+    outcome: fleet_fan_outcome(policy: policy, subject: subject, observed: observed),
+  }
+}
+
+fn fleet_fan_refusal_standing(decision: FleetFanDecision, cause: NonEmptyStr) -> FleetFanConvergenceStanding {
+  FleetFanRefused { host: decision.subject.host, cause: cause }
+}
+
+// THE STANDING CONSUMES THE DECISION AND A READBACK. There is no parameter an apply result could be
+// passed in, and no separately authored deciding id: independence is the readback's attempt ordinal
+// strictly after the decision's own receipt, for the same subject.
+fn fleet_fan_standing(decision: FleetFanDecision, readback: FleetFanObserved) -> FleetFanConvergenceStanding {
+  match fleet_fan_family_refusal(family: fleet_fan_family_of(subject: decision.subject), control: decision.desired) {
+    Present { value: why } => fleet_fan_refusal_standing(decision: decision, cause: why)
+    Absent =>
+      if !fleet_fan_same_subject(a: decision.subject, b: readback.subject) {
+        fleet_fan_refusal_standing(decision: decision, cause: "readback is for a different host, controller or family than the decision" as NonEmptyStr)
+      } else {
+        if readback.receipt.attempt <= decision.deciding.attempt {
+          fleet_fan_refusal_standing(decision: decision, cause: "readback is not a later read than the deciding observation" as NonEmptyStr)
+        } else {
+          match readback.reading {
+            FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { host: decision.subject.host, cause: c }
+            FleetFanControlObserved { control: seen } =>
+              if seen == decision.desired {
+                FleetFanConverged { host: decision.subject.host, control: decision.desired, readback: readback.receipt }
+              } else {
+                FleetFanDiverged { host: decision.subject.host, observed: seen }
+              }
+          }
+        }
+      }
+  }
+}
