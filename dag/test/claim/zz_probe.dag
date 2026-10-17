@@ -1,11 +1,11 @@
 module test.claim.zz_probe
 
 test fn p0() -> Bool {
-  compile_dag_rust_emit_check("module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_fn \}\n\nfn iar_plain_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n", "src/iar_plain.rs", ["crate::test_fixture_imported_arms_provider::\\{arm_plain_fn"], [])
+  compile_dag_rust_emit_check("module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_fn \}\n\nfn iar_plain_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n", "src/iar_plain.rs", ["crate::test_fixture_imported_arms_provider::\{arm_plain_fn"], [])
 }
 
 test fn p1() -> Bool {
-  compile_dag_rust_emit_check("module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_fn \}\n\nfn iar_plain_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n", "src/iar_plain.rs", ["crate::test_fixture_imported_arms_provider::\\{"], [])
+  compile_dag_rust_emit_check("module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_fn \}\n\nfn iar_plain_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n", "src/iar_plain.rs", ["crate::test_fixture_imported_arms_provider::\{"], [])
 }
 
 test fn p2() -> Bool {
