@@ -9844,13 +9844,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
+          let optional_representations = optional_representations_join(left: then_rt, right: else_rt, scope: scope)
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
-          let unified = match inhabited_branch_types |> first {
-            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
-            Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          let unified = match optional_representations {
+            Present { value: joined } => joined
+            Absent =>
+              match inhabited_branch_types |> first {
+                Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
+                Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+              }
           }
-          let branch_diags = if branch_declaration_yields || node_type_compatible(
+          let branch_diags = if optional_representations != none || branch_declaration_yields || node_type_compatible(
             left: then_rt,
             right: else_rt,
             source_indices: scope.type_env.source_indices,
@@ -11137,6 +11142,18 @@ fn std_optional_declaration_ref() -> DeclarationRef {
 // module-path or name part is compared on its own.
 fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
   d == std_optional_declaration_ref()
+}
+
+// ONE OPTIONAL, TWO REPRESENTATIONS AT AN `if` JOIN (declared_type_conformance_note class 1): `Absent`
+// reads as the std.optional coproduct while `Present { value: v }` under an expected `T?` keeps the
+// expected node's CardOptional. The pair joins as the `T?` side; any other pairing answers none and the
+// ordinary compatibility judgment stands.
+fn optional_representations_join(left: Node, right: Node, scope: InferScope) -> Node? {
+  if left.return_cardinality == CardOptional && right.return_cardinality != CardOptional && node_is_std_optional(n: right, scope: scope) {
+    Present { value: left }
+  } else if right.return_cardinality == CardOptional && left.return_cardinality != CardOptional && node_is_std_optional(n: left, scope: scope) {
+    Present { value: right }
+  } else { none }
 }
 
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
