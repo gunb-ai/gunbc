@@ -6681,10 +6681,11 @@ pub fn value_at_never_declared_type(
             declared_resolved.clone(),
             env.clone(),
         ) && !produced_is_generic.clone())
-            && (crate::v1_std_core::authored_name_at(
+            && ((crate::v1_std_core::authored_name_at(
                 env.source_indices.clone(),
                 produced.clone(),
-            ) != "".to_string()))
+            ) != "".to_string())
+                || type_node_is_arrow(produced.clone())))
             && !crate::v1_compiler_infer_patterns::node_is_never_declaration(
                 produced_resolved.clone(),
                 env.clone(),
