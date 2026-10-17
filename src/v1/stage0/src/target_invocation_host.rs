@@ -595,6 +595,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
                 function: "compute_run_unit_sccache_probe_exit",
             },
         ),
+        (
+            instrument_label("compute-run-unit-cold-same-path"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_same_path_exit",
+            },
+        ),
     ]
 }
 

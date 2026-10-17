@@ -1,0 +1,26 @@
+module std.apply_mode
+
+import std.types { String }
+
+// THE DRY/WET AXIS OF AN OPERATOR ACTUATION, a leaf with std imports only so an actuation realization can take
+// the mode as a parameter without its import closure reaching the workflow that happens to dispatch on it.
+// Plan produces the typed request and performs nothing; Apply performs it. It is not std.execution_mode
+// ExecutionMode (Hermetic | Wet | Record), which is how a witness harness treats effects it did not choose,
+// and not gunbc.host.host_converge ConvergeApplyMode, which is how a host is reloaded. Re-homed from gunbc.apply.
+type ApplyMode
+  = Plan
+  | Apply
+
+type ApplyModeParse
+  = ModeParsed { mode: ApplyMode }
+  | ModeParseRefused { reason: String }
+
+fn parse_apply_mode(value: String) -> ApplyModeParse {
+  if value == "plan" {
+    ModeParsed { mode: Plan }
+  } else if value == "apply" {
+    ModeParsed { mode: Apply }
+  } else {
+    ModeParseRefused { reason: concat("unknown apply mode: ", value) }
+  }
+}

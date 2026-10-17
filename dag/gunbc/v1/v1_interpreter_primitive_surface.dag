@@ -2026,6 +2026,15 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
+      arm: InterpreterPrimitiveArmId { identity: "v4_bridge.host_text_chars" },
+      form: FreeCall,
+      authored_spelling: "chars",
+      realization_module: "v1_interpreter",
+      dispatch_symbol: "eval_call",
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "std.host_text") },
+      enumeration: AuthoredInRoster,
+    },
+    InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "v4_bridge.qualified_name_from_dotted_string" },
       form: FreeCall,
       authored_spelling: "qualified_name_from_dotted_string",

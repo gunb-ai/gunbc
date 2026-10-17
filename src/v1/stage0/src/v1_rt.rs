@@ -373,6 +373,13 @@ pub fn substring(s: &str, start: i64, end: i64) -> String {
     s.chars().skip(start).take(take_len).collect()
 }
 
+// std.host_text chars: the Unicode scalar values of host text, in source order. A Rust `char`
+// is exactly one Unicode scalar value, so `str::chars` is the declared semantics, not an
+// approximation of it (never bytes, graphemes or UTF-16 code units).
+pub fn chars(text: &str) -> Rc<Vec<i64>> {
+    Rc::new(text.chars().map(|c| c as i64).collect())
+}
+
 pub fn string_contains(s: &str, sub: String) -> bool {
     s.contains(&*sub)
 }

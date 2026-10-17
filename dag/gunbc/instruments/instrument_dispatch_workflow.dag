@@ -30,7 +30,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  type_declaration_use_census_label, dependency_demand_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -137,7 +137,7 @@ fn instrument_dispatch_labels() -> List<Label> {
   [
     dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
-    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_wrong_capture_label(),
+    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
   ]
 }
@@ -191,6 +191,7 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
   [
     InstrumentDispatchMemoryDemand { label: regen_round_cost_label(), demand: instrument_dispatch_stage0_regen_memory_demand },
     InstrumentDispatchMemoryDemand { label: compute_run_unit_cold_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
+    InstrumentDispatchMemoryDemand { label: compute_run_unit_cold_same_path_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: compute_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     // The dependency arm is the same subject at the same price: two clean release builds of the
     // same work_default_build() operation and two captures. It shares the compute row, not the

@@ -8,7 +8,9 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
-import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
+import std.durable_compare_and_set { cas_generation, cas_generation_first }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeaseGrant, LeasePolicy, lease_grant, lease_fence_of }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
@@ -89,7 +91,7 @@ fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
     group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}), transaction: "tx-real" as NonEmptyStr, authorization_binding: h,
-    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: cas_generation_first() }, observed: LeaseRunningExpected),
   }
 }
 
@@ -99,13 +101,13 @@ fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
 // sees it stale. A grant whose fence names another event, or another transaction, is refused
 // BEFORE anything is appended.
 fn alr_w_grant(admitting: EventId, reference: NonEmptyStr, generation: Int) -> LeaseGrant {
-  lease_grant(reference: reference, fence: lease_fence_of(admitting_event: admitting, generation: generation), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: QuiescenceRequired })
+  lease_grant(reference: reference, fence: lease_fence_of(admitting_event: admitting, generation: match cas_generation(n: generation) { Present { value: g } => g  Absent => cas_generation_first() }), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: QuiescenceRequired })
 }
 
 fn alr_w_suspended(h: ContentHash) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
     group: FabricGroupB {}, hosts: fabric_group_hosts(g: FabricGroupB {}), authorization: "esc-real" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
-    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: cas_generation_first() }, observed: LeaseRunningExpected),
     cleanup: QuiescentReservedBaseline,
   }
 }

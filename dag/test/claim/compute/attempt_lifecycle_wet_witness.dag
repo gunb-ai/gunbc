@@ -651,8 +651,11 @@ test fn a_settlement_that_failed_keeps_the_owned_target_and_refuses_located() ->
 // exists that would reserve a seat and launch a real unit.
 //
 // WHAT THIS DOES NOT EXECUTE: the producer. The record is committed by the production commit function
-// from a supplied outcome, not by a unit that built it; the cold side of a real request needs the
-// host's unit manager, ledger and durable volume.
+// from a supplied outcome, not by a unit that built it. THE PAIRED INHABITANCE CLAIM is
+// gunbc.instruments.compute_run_unit_cold cold_commit_and_attach: it runs the real compute_run_unit,
+// captures its declared outputs from the identity's owned target, commits that real outcome and
+// requires compute_provide_leaf to attach, on a host with a user unit manager (//gunbc/instruments:
+// compute-run-unit-cold). This supplied-outcome half may not stand without it.
 fn reuse_store(root_path: String) -> ComputeStore {
   ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
 }

@@ -395,3 +395,21 @@ test fn w_projection_census_keeps_the_outcome_lookup_projection_under_its_own_na
     acc || projection_row_is_the_outcome_lookup_projection(row: row)
   })
 }
+
+// std.host_text chars is the host-to-structural crossing seam (operator ruling H4): its declaration
+// projects the chars primitive as a HostRealizedSeam, so its realization binds by this identity.
+test fn w_host_text_chars_is_the_scalar_crossing_seam() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(module_path: "std.host_text", decl_name: "chars")
+  ) {
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+    DeclarationProjectsPrimitive { identity: i, fidelity: fidelity } =>
+      primitive_identity_runtime_name(identity: i) == "chars"
+        && match fidelity {
+          HostRealizedSeam => true
+          ModeledProjection => false
+          DivergentProjection { divergence: _ } => false
+        }
+  }
+}
