@@ -9844,18 +9844,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let optional_representations = optional_representations_join(left: then_rt, right: else_rt, scope: scope)
           let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
           let branch_declaration_yields = inhabited_branch_types |> count == 1
-          let unified = match optional_representations {
-            Present { value: joined } => joined
-            Absent =>
-              match inhabited_branch_types |> first {
-                Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
-                Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
-              }
+          let unified = match inhabited_branch_types |> first {
+            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
+            Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
           }
-          let branch_diags = if optional_representations != none || branch_declaration_yields || node_type_compatible(
+          let branch_diags = if branch_declaration_yields || node_type_compatible(
             left: then_rt,
             right: else_rt,
             source_indices: scope.type_env.source_indices,
@@ -11144,16 +11139,31 @@ fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
   d == std_optional_declaration_ref()
 }
 
-// ONE OPTIONAL, TWO REPRESENTATIONS AT AN `if` JOIN (declared_type_conformance_note class 1): `Absent`
-// reads as the std.optional coproduct while `Present { value: v }` under an expected `T?` keeps the
-// expected node's CardOptional. The pair joins as the `T?` side; any other pairing answers none and the
-// ordinary compatibility judgment stands.
-fn optional_representations_join(left: Node, right: Node, scope: InferScope) -> Node? {
-  if left.return_cardinality == CardOptional && right.return_cardinality != CardOptional && node_is_std_optional(n: right, scope: scope) {
-    Present { value: left }
-  } else if right.return_cardinality == CardOptional && left.return_cardinality != CardOptional && node_is_std_optional(n: left, scope: scope) {
-    Present { value: right }
-  } else { none }
+// `Present { value: x }` WITH NO EXPECTED OPTIONAL IS AN INSTANCE OF THE ONE DECLARATION, std.optional
+// Optional<payload> (optional_declaration_ref): the declaration's own arms with its type parameter
+// bound to the payload's type. It is the same coproduct `Absent` is typed as, so the two arms of an
+// `if` join by the declaration and no reconciliation of two representations exists.
+fn optional_declaration_instance(payload: Node, scope: InferScope) -> Node? {
+  let si = scope.type_env.source_indices
+  match declaration_node_of_ref(d: optional_declaration_ref, env: scope.type_env) {
+    Absent => none
+    Present { value: decl } =>
+      match decl.params |> first {
+        Absent => none
+        Present { value: slot } =>
+          let subst = map_insert(empty_map(), authored_name_at(source_indices: si, node: slot), payload)
+          Present { value: Node {
+            occurrence_identity: OccurrenceSynthetic, name: decl.name, span: decl.span, ident_span: decl.ident_span,
+            children: decl.children |> map(arm => substitute_generics(n: arm, subst: subst, source_indices: si)),
+            connective: decl.connective, params: decl.params, inferred: decl.inferred,
+            return_cardinality: decl.return_cardinality, uses: decl.uses, body: decl.body, transport: decl.transport,
+            properties: decl.properties, type_annotation: decl.type_annotation,
+            is_self_recursive: decl.is_self_recursive, has_non_tail_self_call: decl.has_non_tail_self_call,
+            match_pattern: decl.match_pattern, module_item_kind: decl.module_item_kind,
+            declaration_marker: decl.declaration_marker, declaration: decl.declaration, expr_data: decl.expr_data
+          } }
+      }
+  }
 }
 
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
@@ -11814,7 +11824,10 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
       let payload_optional = match val_field {
         Present { value: val_fir } =>
-          with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
+          match optional_declaration_instance(payload: resolved_type(n: val_fir.infer_result.typed), scope: scope) {
+            Present { value: instance } => instance
+            Absent => raw_resolved
+          }
         Absent => raw_resolved
       }
       match expected {
