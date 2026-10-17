@@ -9,7 +9,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
-import extdeps.tools.curl { curl_exit_outcome, CurlPeerNotVerified }
+import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlCaCertRejected, CurlPinnedPubkeyMismatch }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   pool_front_origin, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
@@ -356,14 +356,11 @@ fn operator_round_fault(success: Bool, curl_exit: Int, status: HttpStatus?) -> O
     none
   } else {
     match curl_exit_outcome(code: curl_exit) {
-      CurlPeerNotVerified =>
-        // exit 60 is the chain or the host name (a missing IP SAN) failing against the trusted anchor, not a
-        // different certificate: typed apart so a SAN defect is never read as "not the pinned certificate".
-        if curl_exit == 60 {
-          Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: curl_exit } }
-        } else {
-          Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
-        }
+      // CurlCaCertRejected is the chain or the host name (a missing IP SAN) failing against the trusted anchor, not a
+      // different certificate: typed apart so a SAN defect is never read as "not the pinned certificate".
+      CurlCaCertRejected => Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: curl_exit } }
+      CurlPeerFailedVerification => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
+      CurlPinnedPubkeyMismatch => Present { value: OperatorCertificateNotPinned { curl_exit: curl_exit } }
       _ =>
         match status {
           Absent => none

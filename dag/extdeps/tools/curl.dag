@@ -692,10 +692,6 @@ fn curl_version_standing(tool: CliTool, stdout: String) -> CurlVersionStanding {
   }
 }
 
-// CurlPeerNotVerified IS THE TRUST DECISION, NOT THE NETWORK: 51 the peer's certificate or fingerprint was
-// wrong, 60 the certificate did not verify against the trusted anchor, 90 the public key did not match the
-// pinned one. It is kept apart from CurlTlsHandshakeFailed (35) because a caller that pins must refuse on it
-// and never retry it as if the far side had been unreachable.
 // CURL'S EXIT STATUS AS THE UPSTREAM NAMES IT (curl.se/docs/manpage.html, EXIT CODES). Only the
 // codes a caller acts on are named; any other nonzero status is carried as the number it was, never
 // guessed into a named kind. Zero means curl completed the transfer -- with -f absent, an HTTP
@@ -706,7 +702,12 @@ type CurlExitOutcome
   | CurlCouldNotConnect
   | CurlOperationTimedOut
   | CurlTlsHandshakeFailed
-  | CurlPeerNotVerified
+  // THE TRUST DECISION, NOT THE NETWORK, one variant per upstream code (CURLE_PEER_FAILED_VERIFICATION 51,
+  // CURLE_SSL_CACERT 60, CURLE_SSL_PINNEDPUBKEYNOTMATCH 90). Kept apart from CurlTlsHandshakeFailed (35) because
+  // a caller that pins must refuse on them and never retry them as if the far side had been unreachable.
+  | CurlPeerFailedVerification
+  | CurlCaCertRejected
+  | CurlPinnedPubkeyMismatch
   | CurlEmptyReply
   | CurlReceiveFailed
   | CurlExitUnnamed { code: Int }
@@ -718,9 +719,9 @@ fn curl_exit_outcome(code: Int) -> CurlExitOutcome {
     7 => CurlCouldNotConnect
     28 => CurlOperationTimedOut
     35 => CurlTlsHandshakeFailed
-    51 => CurlPeerNotVerified
-    60 => CurlPeerNotVerified
-    90 => CurlPeerNotVerified
+    51 => CurlPeerFailedVerification
+    60 => CurlCaCertRejected
+    90 => CurlPinnedPubkeyMismatch
     52 => CurlEmptyReply
     56 => CurlReceiveFailed
     _ => CurlExitUnnamed { code: code }
@@ -734,7 +735,9 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
     CurlCouldNotConnect => "could not connect (curl exit 7)"
     CurlOperationTimedOut => "operation timed out (curl exit 28)"
     CurlTlsHandshakeFailed => "TLS handshake failed (curl exit 35)"
-    CurlPeerNotVerified => "the server's certificate or public key was not the one trusted (curl exit 51, 60 or 90)"
+    CurlPeerFailedVerification => "the server's certificate failed verification (curl exit 51)"
+    CurlCaCertRejected => "the server's certificate did not verify against the trusted anchor (curl exit 60)"
+    CurlPinnedPubkeyMismatch => "the server's public key was not the pinned one (curl exit 90)"
     CurlEmptyReply => "server sent an empty reply (curl exit 52)"
     CurlReceiveFailed => "failure receiving data (curl exit 56)"
     CurlExitUnnamed { code: c } => join(["curl exit ", to_string(c)], "")
