@@ -137,6 +137,14 @@ import gunbc.host.memory_envelope {
   EnvelopeRequirementUnreadable,
   memory_envelope_required_ci_contract,
 }
+import gunbc.parse_verdict_restore {
+  parse_verdict_identity_restore_step,
+  parse_verdict_identity_restore_step_name,
+  parse_verdict_receipts_restore_step,
+  parse_verdict_receipts_restore_step_name,
+  parse_verdict_reuse_walk_step,
+  parse_verdict_reuse_walk_step_name,
+}
 import gunbc.parse_verdict_publish {
   parse_verdict_identity_blob_save_step,
   parse_verdict_identity_blob_save_step_name,
@@ -448,6 +456,21 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
     [
+      CompilerGateBoundStep {
+        step: parse_verdict_identity_restore_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_identity_restore_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_receipts_restore_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_receipts_restore_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_reuse_walk_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_reuse_walk_step_name,
+      },
       CompilerGateBoundStep {
         step: parse_verdict_publish_walk_step(),
         role: capability_neutral,
