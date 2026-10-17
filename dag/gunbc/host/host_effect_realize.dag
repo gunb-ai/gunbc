@@ -5678,7 +5678,7 @@ fn live_deploy_retract_run_leg(leg: DeployRetractLeg, transport: HostEffectTrans
     RetractRemoveRecursive { path: p } =>
       deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveForceRecursive { path: p }, transport: transport))
     RetractDaemonReload =>
-      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(command: systemctl_daemon_reload_command(), transport: transport))
+      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(command: extdeps.systemd.systemctl.systemctl_daemon_reload_command(), transport: transport))
     RetractUnitGoneReadback { unit: u } =>
       deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: systemctl_show_load_state_read(transport: transport, unit: u)))
   }
