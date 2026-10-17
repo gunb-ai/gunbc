@@ -1705,6 +1705,14 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
+  else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if callable_element_signature_mismatch(declared: declared, produced: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -7930,7 +7938,19 @@ fn binding_has_type_variable_leaf(n: Node) -> Bool {
       if n.children |> count == 0 {
         false
       } else {
-        n.children |> any(c => binding_has_type_variable_leaf(n: child_type_node(ch: c)))
+        // THE CHILD IS PASSED RAW, and that is the whole point of this line. child_type_node
+        // (v1.compiler.types, src/v1/04_types.dag:74) routes any inferred-bearing child through
+        // resolved_type, whose ONLY non-error arm is Present { Resolved } (src/v1/04_types.dag:61):
+        // a child still carrying Present { TypeVariable } -- exactly the node this predicate exists
+        // to find -- comes back as error_type (name "", CompilerError, ExprError), so the marker is
+        // destroyed before the test and the predicate answers false for every NESTED variable. That
+        // is not a hypothetical: with child_type_node here, the direct-call control
+        // fold_replaces_a_binding_that_still_carries_a_type_variable_leaf failed at the regenerated
+        // head -- Map(C, Int) with C a variable kept its binding instead of taking the settled
+        // Map(String, Int). child_type_node is correct for its own purpose ('the type this child
+        // DENOTES', for children already resolved); asking it to preserve a variable is a misuse of
+        // it, so the fix is here and not in that load-bearing accessor.
+        n.children |> any(c => binding_has_type_variable_leaf(n: c))
       }
   }
 }
@@ -9857,7 +9877,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             right: else_rt,
             source_indices: scope.type_env.source_indices,
             text: TextJudgedIn { env: scope.type_env }
-          ) {
+          ) || if_branch_types_agree_through_alias_identity(left: then_rt, right: else_rt, scope: scope) {
             []
           } else {
             [inference_error(
@@ -11283,6 +11303,23 @@ fn std_optional_payload_node(exp: Node, type_name: String, field_name: String, s
   }
 }
 
+// THE PRESENT PAYLOAD IS A DECLARED-TYPE POSITION WHATEVER THE PAYLOAD'S SYNTAX. present_value_expected_from_optional hands the
+// peeled payload type to a nested record or list literal only, so `Present { value: r }` for a plain reference `r` was never
+// judged against the declared payload and a whole record escaped a declared `T?` (gunbc.recurring_failure_mode
+// record_value_escapes_declared_optional_return). This is the same peeled node without the value-shape filter; it answers none
+// for any expected that is not a plain `T?` (return_cardinality CardOptional), so an alias or a nominal `Optional<T>` expected keeps
+// abstaining: this is a product-versus-coproduct judgment of a plain-`T?` Present payload, not general recursive Optional conformance.
+fn present_payload_declared_from_optional(type_name: String, field_name: String, expected: Node?, scope: InferScope) -> Node? {
+  match expected {
+    Absent => none
+    Present { value: exp } =>
+      let names_present_payload = name_is_std_optional_present_arm(scope: scope, name: type_name) && name_is_std_optional_payload_member(scope: scope, name: field_name)
+      if exp.return_cardinality == CardOptional && names_present_payload {
+        Present { value: with_required_cardinality(n: exp) }
+      } else { none }
+  }
+}
+
 // FREEZE-ONLY: the `T?` arm peels only the Present payload, keyed on the std.optional Present arm and
 // payload member read from the canonical declaration (name_is_std_optional_present_arm and name_is_std_optional_payload_member), the same declaration the
 // nominal arm reads; it dissolves with slice 3, the kernel Optional mint cut.
@@ -11606,10 +11643,23 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         }
       Absent => []
     }
+    let present_payload_diags = match present_payload_declared_from_optional(type_name: tn_str, field_name: fi_name, expected: expected, scope: scope) {
+      Present { value: payload_declared } =>
+        let payload_produced = resolved_type(n: ar_typed)
+        if product_versus_coproduct_head_mismatch(declared: payload_declared, produced: payload_produced, scope: scope) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: payload_declared, source_indices: scope.type_env.source_indices),
+            got: node_type_shape(n: payload_produced, source_indices: scope.type_env.source_indices),
+            span: ar_typed.span,
+            module_name: scope.module_name
+          )]
+        } else { [] }
+      Absent => []
+    }
     FieldInferResult {
       typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
+      diagnostics: concat(concat(concat(concat(ar_diags, field_type_diags), present_payload_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
         fi_name: fi_name,
         field_declared_type: field_declared_type,
@@ -14522,6 +14572,62 @@ fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> 
 //      SAME head, DIFFERENT arguments still refuse ('FreeMonoid<Int>' vs
 //      'FreeMonoid<Bool>' must stay red; smoking-gun CONTROL_FreeMonoid_Int_vs_Bool (2)
 //      refused it under the old judgment and this relation must keep refusing it).
+// THE RELATION IS NOT THE FOLD'S. Measured, and it decided this: my own fold-local relation
+// (an equality peel, a declared text pair, a bare-head-vs-application arm) removed 2 of 106 rows
+// in the one class it was written for -- the Coproduct(x) vs Node(x<...>) printings -- because
+// those are not unification questions at all. Coproduct(x), Node(x<...>), Container(x, ...) and
+// the CardOptional leaf are FOUR PRINTINGS OF ONE TYPE: node_type_shape (v1.compiler.types,
+// src/v1/04_types.dag:918-971) chooses the head word from three unrelated axes -- 'Coproduct(' when
+// connective == Disj, 'Container(' when node_is_element_collection, 'Node(' when NoConnective with
+// children and a Present declaration, 'Primitive(' for a leaf, 'UnresolvedDecl(' when the
+// declaration is Absent. Same authored name, same type, different word. A relation that lives in
+// the fold cannot see through a fork at the type authority, and a second comparison in the fold
+// would be a second meaning route (DESIGN section 3). So the fold ASKS the single compatibility
+// authority, per stern-bat-401's ruling, and carries none of its own.
+//
+// Why node_type_compatible and not node_type_equals: measured by quiet-eagle-395 on PR #14256,
+// these pairs were refused inside node_type_equals_core, while node_type_compatible already
+// accepts them by name at its tail; and node_type_equals has no refusing consumer on main, so it
+// is not the authority any caller was relying on. The fold's job is only to keep the fold honest:
+// it still refuses two settled bindings that differ (Int then Bool, FreeMonoid<Int> then
+// FreeMonoid<Bool>), which the reject controls in
+// src/v1/tests/src/cross_coproduct_generic_locate_test.rs pin, and it still refuses when the
+// shared authority says no.
+//
+// WHAT THE FOLD STILL DOES ITSELF, and why that is not a second route: the alias peel below.
+// TypeBinding.alias_rhs is a dead field (see generic_alias_unfold), so nothing reaches an alias's
+// right-hand side through peel_alias_rhs_once -- not here and not in the authority. Peeling first
+// is therefore the only way the authority ever sees an alias's declaration rather than its
+// spelling, and the peel consults the environment, which is exactly what the authority cannot do
+// from a Node alone. It widens nothing on its own: after peeling, the answer is still the
+// authority's.
+// WHAT THE FOLD CALLS, decided by measurement rather than by preference, because the obvious
+// answer -- the single compatibility authority node_type_compatible -- is unfit for this call site
+// and it broke my reject controls to use it. At the converged seed, with node_type_compatible as
+// this relation: the same 26-case suite went 24 passed / 2 failed -> 22 passed / 4 failed, and the
+// two NEW failures were the controls that pin the fold's whole purpose --
+// fold_refuses_two_distinct_settled_bindings_of_the_same_shape and
+// applied_constructor_same_head_differing_argument_list_refuses -- i.e. the fold stopped refusing
+// two settled bindings that differ. The cause is visible in the function: node_type_compatible
+// answers true when either side's inferred is a compiler error, and true when a container's element
+// is unit-like, and it treats a TypeVariable on one side as compatible. Those are right for its own
+// question (is a produced value acceptable where this was declared) and fatal for mine (may this
+// variable be REBOUND to this second spelling): error_type-accepts is precisely the nameless-leaf
+// class quiet-eagle-395 measured, so it would admit ~a hundred rows for the wrong reason.
+//
+// So the fold keeps node_type_equals as its relation, plus the two widenings that are about
+// SPELLING and not about compatibility: the declared text pair (String = FreeMonoid<Char>, whose
+// own authority is DESIGN section 4's text ruling) and the bare-head-vs-application arm (an applied
+// carrier and its unapplied carrier name are one carrier; element-wise descent keeps
+// FreeMonoid<Int>/FreeMonoid<Bool> refusing at position 0). The representation fork itself --
+// Coproduct(x) vs Node(x<...>) vs Container(x, ...) vs the CardOptional leaf, four printings of ONE
+// type chosen by connective/element-collection/declaration presence in node_type_shape
+// (src/v1/04_types.dag:918-971) -- is NOT settled here and is deliberately not duplicated here: it
+// belongs in node_type_equals_core, which is where quiet-eagle-395 measured these pairs REFUSING
+// (node_type_compatible already accepts them by name at its tail), and where PR #14256 puts the
+// arm. node_type_equals has no refusing consumer on main, so widening it there cannot move any
+// existing judgment. This fold calls node_type_equals, so it inherits that arm the moment #14256
+// lands and carries no fork knowledge of its own -- one relation, one authority (DESIGN section 3).
 fn generic_types_unify(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   let left_u = generic_type_unify_unfold(n: left, text: text, depth: 0, source_indices: source_indices)
   let right_u = generic_type_unify_unfold(n: right, text: text, depth: 0, source_indices: source_indices)
@@ -14560,24 +14666,58 @@ fn generic_types_unify(left: Node, right: Node, source_indices: Map<String, Newl
 fn generic_type_unify_unfold(n: Node, text: TextJudgment, depth: Int, source_indices: Map<String, NewlineIndex>) -> Node {
   if depth >= 4 { n }
   else {
-    let peeled = generic_alias_unfold(n: n, text: text)
+    let peeled = generic_alias_unfold(n: n, text: text, source_indices: source_indices)
     if node_type_shape(n: peeled, source_indices: source_indices) == node_type_shape(n: n, source_indices: source_indices) { n }
     else { generic_type_unify_unfold(n: peeled, text: text, depth: depth + 1, source_indices: source_indices) }
   }
 }
 
-// One peel, one authority: v1.compiler.types peel_alias_rhs_once, which unfolds the
-// binding the node's OWN spelling resolves to and declines once the node carries
-// arguments. No second route here: an applied alias reference is reached by the
-// head-vs-application arm below instead (measured CI shape 'Coproduct(FreeMonoid)' vs
-// 'Node(FreeMonoid<Primitive(Edge)>)' -- same carrier, one spelling unapplied), which
-// needs no environment lookup at all. A route that resolved an applied spelling through an
-// ambient name lookup would be a second meaning route (DESIGN section 3) and would let a
-// local alias shadow an imported one -- the defect review 80660 finding 1 named for
-// peel_alias_rhs_once itself. Refusing to unfold is therefore the sound side here: an
-// applied alias that no arm reaches keeps REFUSING.
-fn generic_alias_unfold(n: Node, text: TextJudgment) -> Node {
-  peel_alias_rhs_once(n: n, text: text)
+// The alias peel, measured rather than assumed. peel_alias_rhs_once (v1.compiler.types,
+// src/v1/04_types.dag:995) is the corpus's ONE authority for 'what does this spelling denote',
+// and the field it reads is DEAD: all 52 TypeBinding producers in v1.compiler.infer and
+// v1.compiler.env set 'alias_rhs: none' (the four other occurrences merely copy the field from a
+// binding that is itself none), so peel's Present arm is unreachable and it returns the node
+// unchanged for EVERY alias. Measured consequence at the regenerated head: the accept control
+// same_arm_alias_and_its_applied_expansion_is_accepted -- a childless 'QualifiedName' against
+// 'FreeMonoid<Symbol>', in a module declaring 'type QualifiedName = FreeMonoid<Symbol>'
+// (src/v1/tests/src/cross_coproduct_generic_locate_test.rs:255) -- FAILED while node_type_equals
+// was the relation, because nothing ever peeled the alias to its right-hand side.
+//
+// So this peel puts the SAME question to the SAME authority and reads the field that IS
+// populated: TypeBinding.resolved, set by every producer to the binding's own type. That is not
+// a second meaning route (DESIGN section 3) -- peel_alias_rhs_once already performs exactly this
+// lookup_binding_by_name(env, authored_name_at(n)) and only asks the dead field, so reading the
+// live one through the same lookup cannot let a local alias shadow an imported one any more than
+// that lookup already can. The shadowing defect review 80660 finding 1 named lives in the lookup
+// itself, which is reused unchanged rather than reimplemented.
+//
+// What is deliberately NOT done is substitution. TypeBinding carries NO parameter list, so for a
+// parameterised alias ('type MoneyAmount<S> = Measure<Currency, S, Nat>',
+// dag/std/measure.dag:1052) there is no sound way to map a node's applied arguments onto the
+// right-hand side from here, and inventing a mapping would fabricate a type (§5). So the
+// childless restriction is kept -- peel's own rule, not relaxed -- and an applied alias reference
+// keeps REFUSING. Refusal is the sound side, and it still covers the pair the corpus actually
+// spells: there the alias side is childless and the expansion side is the applied one.
+fn generic_alias_unfold(n: Node, text: TextJudgment, source_indices: Map<String, NewlineIndex>) -> Node {
+  let peeled = peel_alias_rhs_once(n: n, text: text)
+  if node_type_shape(n: peeled, source_indices: source_indices)
+    != node_type_shape(n: n, source_indices: source_indices) {
+    peeled
+  } else if (n.children |> count) > 0 {
+    n
+  } else {
+    match text {
+      TextJudgedIn { env: env } =>
+        match lookup_binding_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+          Present { value: binding } =>
+            if node_type_shape(n: binding.resolved, source_indices: source_indices)
+              == node_type_shape(n: n, source_indices: source_indices) { n }
+            else { binding.resolved }
+          Absent => n
+        }
+      TextNotAsked { reason: _ } => n
+    }
+  }
 }
 
 // THE DECLARED TEXT PAIR (DESIGN section 4: host text and the code-point sequence are the
@@ -14606,38 +14746,44 @@ fn generic_side_is_bare_text(left: Node, right: Node, source_indices: Map<String
     || (r_head == "FreeMonoid" && right.children |> count == 0 && r_name == "FreeMonoid")
     || (r_head == "FreeMonoid"
         && right.children |> count > 0
-        && (right.children |> filter(c => match c {
-             Present { value: cv } => generic_type_node_name(n: child_type_node(ch: cv), source_indices: source_indices) == "Char"
-             Absent => false
-           }) |> count) == (right.children |> count))
+        && (right.children |> filter(c =>
+             generic_type_node_name(n: child_type_node(ch: c), source_indices: source_indices) == "Char")
+            |> count) == (right.children |> count))
   left.children |> count == 0
     && l_head == "String"
     && right_is_char_sequence
 }
 
-// Name extraction EXACTLY as node_type_equals_core reads it: the identifier span when it
-// is there, the authored spelling as fallback, then the last qualified segment. Same
-// source of truth, so this relation and the identity judgment agree on what a node is
-// CALLED before they are asked what it IS.
+// Name extraction as v1.compiler.types reads it in canonical_template_name and
+// node_type_shape: the authored spelling from authored_name_at, then the last qualified
+// segment. Same source of truth as the identity judgment, so this relation and that one
+// agree on what a node is CALLED before they are asked what it IS. There is deliberately no
+// identifier-span arm here: v1.compiler.core Node has no identifier_span field (the field is
+// ident_span, a SourceSpan?), and an invented field name does not fail late -- it makes the
+// scrutinee's type unresolvable, which is how the 'no field' diagnostic and a Present-arm
+// refusal both came out of this one line.
 fn generic_type_node_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let raw = match n.identifier_span {
-    Present { value: s } =>
-      if s == "" { authored_name_at(source_indices: source_indices, node: n) }
-      else { s }
-    Absent => authored_name_at(source_indices: source_indices, node: n)
-  }
+  let raw = authored_name_at(source_indices: source_indices, node: n)
   qualified_last_segment(name: raw)
 }
 
 // The carrier head of an authored name: the text before the first '<', so an applied
-// spelling 'FreeMonoid<Char>' answers the carrier 'FreeMonoid'. The corpus already strips
-// arguments this way in v1.compiler.types' alias path (split, then trim each piece).
+// spelling 'FreeMonoid<Char>' answers the carrier 'FreeMonoid'. No trimming: this name
+// comes out of authored_name_at, which yields the authored token, and an authored type head
+// carries no surrounding whitespace (a space before '<' is not a type spelling here).
+//
+// The let is ANNOTATED on purpose, and it is the repair a checker rule demands rather than
+// a style choice. v1.compiler.core Diagnostic::PresentArmScrutineeTypeUnresolved (main,
+// landed while this PR was open) refuses a Present arm whose scrutinee type cannot be
+// resolved -- typically an Optional<T> whose T was never instantiated -- because the arm's
+// meaning would be undecided and the rule refuses to guess. Naming the list's element type
+// here is what instantiates it.
 fn generic_type_head_of_name(name: String) -> String {
-  let before_lt = match name |> split(delimiter: "<") |> first {
+  let parts: List<String> = name |> split(delimiter: "<")
+  match parts |> first {
     Present { value: s } => s
     Absent => name
   }
-  trim(value: before_lt)
 }
 
 // BARE HEAD AGAINST ITS APPLICATION: `head` must be the carrier with no arguments (zero
@@ -15853,6 +15999,73 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     } else {
       qualified_last_segment(name: left_rep) == qualified_last_segment(name: right_rep)
     }
+}
+
+// AN IF-JOIN DECIDES TYPE IDENTITY BY DECLARATION, NOT BY SPELLING. node_type_compatible compares
+// authored names, so a branch typed by an alias of an applied generic (`IntBox` for `Boxed<Int>`,
+// std.measure MegatransfersPerSecond for Measure<Frequency, Mega, Nat>) and a branch typed by its
+// target refused here although they are one type. Resolution already carries the answer:
+// v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
+// target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
+// whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
+// matches, and every applied argument agrees pairwise. transparent_alias_identity_agrees cannot
+// answer this: it admits only bare-name aliases and deliberately records no edge for `type A = B<C>`.
+// A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
+// parameter's declared type reference carries none today, so `if c { a } else { b }` over
+// `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
+// itself still judges by spelling (gunbc.recurring_failure_mode
+// carrier_alias_refuses_its_own_carriers_constructor).
+fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: InferScope) -> Bool {
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  if left_opt != right_opt { false }
+  else {
+    let left_inner = if left_opt { with_required_cardinality(n: left) } else { left }
+    let right_inner = if right_opt { with_required_cardinality(n: right) } else { right }
+    let left_args = left_inner.children
+    let right_args = right_inner.children
+    let same_declaration = match whole_declaration_carried(n: left_inner) {
+      Present { value: l } =>
+        match whole_declaration_carried(n: right_inner) {
+          Present { value: r } => declaration_ref_eq(a: l, b: r)
+          Absent => false
+        }
+      Absent => false
+    }
+    same_declaration
+      && (left_args |> count) == (right_args |> count)
+      && if_branch_type_arguments_agree(left_args: left_args, right_args: right_args, scope: scope)
+  }
+}
+
+fn if_branch_type_arguments_agree(left_args: List<Node>, right_args: List<Node>, scope: InferScope) -> Bool {
+  match left_args |> first {
+    Present { value: l } =>
+      match right_args |> first {
+        Present { value: r } =>
+          if_branch_argument_types_agree(left: child_type_node(ch: l), right: child_type_node(ch: r), scope: scope)
+            && if_branch_type_arguments_agree(left_args: left_args |> skip(1), right_args: right_args |> skip(1), scope: scope)
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+// AN ARGUMENT AGREES BY ITS WHOLE STRUCTURE, NOT ITS HEAD. node_type_compatible reads a non-container
+// application's head name and none of its arguments, so Inner<Int> and Inner<Bool> agree there; this
+// relation recurses through every applied argument so the alias admission cannot extend that. The
+// head-only reading itself is node_type_compatible's and is untouched here: `if c { a } else { b }` over
+// `a: Boxed<Int>, b: Boxed<Bool>` is admitted on main without any alias.
+fn if_branch_argument_types_agree(left: Node, right: Node, scope: InferScope) -> Bool {
+  let heads_agree = node_type_compatible(
+    left: left,
+    right: right,
+    source_indices: scope.type_env.source_indices,
+    text: TextJudgedIn { env: scope.type_env })
+    || if_branch_types_agree_through_alias_identity(left: left, right: right, scope: scope)
+  heads_agree
+    && (left.children |> count) == (right.children |> count)
+    && if_branch_type_arguments_agree(left_args: left.children, right_args: right.children, scope: scope)
 }
 
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
