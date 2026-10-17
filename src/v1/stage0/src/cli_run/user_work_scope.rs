@@ -1217,8 +1217,8 @@ mod standing_fixture_tests {
     #[test]
     fn sessions_slice_scope_refuses_as_uncapped_system_slice() {
         assert_eq!(
-            wire_with_bound(false, Some(SESSIONS_SCOPE), unread_at(SESSIONS_SCOPE, "/fixture-detail")),
-            "UncappedEnclosingCgroup:modeled-slice:sessions.slice:docker-deadbeef.scope @ 0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope: memory.max unreadable: /fixture-detail; no level of the chain yielded a reading"
+            wire_with_bound(false, Some(SESSIONS_SCOPE), unread_at(SESSIONS_SCOPE, "fixture")),
+            "UncappedEnclosingCgroup:modeled-slice:sessions.slice:docker-deadbeef.scope @ 0::/user.slice/user-1000.slice/user@1000.service/app.slice/sessions.slice/docker-deadbeef.scope: memory.max unreadable: fixture; no level of the chain yielded a reading"
         );
     }
 
