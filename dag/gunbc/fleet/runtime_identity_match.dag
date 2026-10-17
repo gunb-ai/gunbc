@@ -1,0 +1,531 @@
+module gunbc.fleet.runtime_identity_match
+
+// WHO IS ON THE NETWORK (cut 6, S10 dry half, of gunbc.plans.physical_machine_boot_program).
+//
+// A unit has been network-booted. Something now has to bind "the machine that answered on the network" to
+// "the unit the attempt was made for", because every later step -- enrolling it, installing on it, letting
+// the control plane act through it -- acts on the ANSWER of that binding. This module is the binding's
+// EVIDENCE HALF: the axes observable before the boot from the firmware side, the same axes reported by the
+// running OS afterwards, and a total match fn whose three verdicts mean three different things.
+//
+// WHY THE THREE VERDICTS ARE NOT TWO, which is the whole cut:
+// Unprovable is not Mismatch. A unit whose BMC never answered the serial query, or whose OS image does not
+// ship the tool that reads a model string, has told us NOTHING -- it has not told us it is a different
+// machine. Reporting that as a mismatch condemns a unit for its BMC's silence, and in this fleet BMC
+// silence is routine (S2's silent-BMC defect, and the rows where a controller rejects a query outright).
+// So: a divergence between two readings is Mismatch; a missing reading on either side is Unprovable; only
+// agreement across everything that had to be checked is Match. The refusal is preserved as itself rather
+// than collapsed into absence, because "the controller said no" and "nobody asked" lead to different human
+// actions.
+//
+// WHAT IS DELIBERATELY ABSENT:
+// - NO IDENTITY DATA HERE. No row in this module carries a serial, a model, or an address: fixtures live in
+//   witness fns only. A module that shipped a unit's real identity would be a second, unauditable register
+//   of who the fleet's machines are, next to the intake subject that already owns that.
+// - NO PER-HOST BRANCHING. Nothing here is keyed on a machine name, and no axis policy varies by unit. The
+//   unit is CARRIED (as data, on both sides) and never matched on: the proof is entirely in the axes.
+// - NO TRANSPORT NAMES. The pre-boot side is what the firmware reported and the post-boot side is what the
+//   running OS reported; how each was obtained is a channel, modelled as a semantic axis, never a command
+//   line, a tool, or a protocol verb.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.network.mac { Eui48Address, render_mac_address }
+
+// ---------------------------------------------------------------------------
+// THE AXES
+// ---------------------------------------------------------------------------
+
+// The identity axes a boot attempt can be proven on. Closed, because the verdict must be accountable to
+// a fixed list: a verdict that could omit an axis silently would be a verdict about whatever happened to be
+// asked. An additional axis (a TPM attestation quote, say) adds an arm here, a union below, a field on
+// each side, and a row in the axis table -- and the match fn's totals stay total because the comparison is
+// a fold over this union rather than a hand-written chain.
+type RuntimeIdentityAxis
+  = BoardSerialAxis
+  | BiosVersionAxis
+  | ModelAxis
+  | NicSetAxis
+
+// How much an axis carries, as a policy the table can state rather than a bool the fold guesses with.
+//
+// DECISIVE axes must be read on BOTH sides and must agree, or there is no binding. CORROBORATING axes are
+// checked only for divergence: a corroborating axis that goes unanswered does not void the binding, and a
+// corroborating axis that CONTRADICTS does. That asymmetry is the point -- treating a corroborating gap as
+// fatal would make every unit with a mute BMC unprovable forever, and treating a corroborating divergence
+// as harmless would let a wrong machine through on the strength of a serial.
+type AxisWeight
+  = DecisiveAxis
+  | CorroboratingAxis
+
+// How two readings of one axis are compared, as policy rather than as code scattered through the fold.
+//
+// The MAC set is NOT an exact-equality axis: a firmware reports every interface it can boot from while the
+// booted OS reports the interfaces it brought up, and on the fleet's boxes those sets legitimately differ
+// (a management NIC the firmware lists and the OS leaves down). Requiring exact equality there would be
+// Unprovable for every real unit; requiring NOTHING there would let a different machine through. So the
+// rule is a shared address, and it is stated in the table where a reviewer can read it, not buried in the
+// comparison.
+type AxisComparison
+  = ExactStringEquality
+  | NonEmptyMacIntersection
+
+// ONE ROW PER AXIS: what it weighs, how it is compared, and who says so.
+type RuntimeIdentityAxisRow {
+  axis: RuntimeIdentityAxis
+  weight: AxisWeight
+  comparison: AxisComparison
+  authority: DeclarationRef
+}
+
+// THE AXIS TABLE, as authored evidence. Every row cites the plan carrier, which is where the cut's rulings
+// live; a row without a citation would be a policy nobody can audit. A future requirement that a fourth
+// axis become decisive adds a row with a different weight -- no fn in this module changes, which is what
+// makes the policy reviewable without reading the fold.
+data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
+  RuntimeIdentityAxisRow {
+    axis: BoardSerialAxis,
+    weight: DecisiveAxis,
+    comparison: ExactStringEquality,
+    authority: runtime_identity_axis_authority(decl_name: "board_serial_is_the_unit"),
+  },
+  RuntimeIdentityAxisRow {
+    axis: BiosVersionAxis,
+    weight: CorroboratingAxis,
+    comparison: ExactStringEquality,
+    authority: runtime_identity_axis_authority(decl_name: "firmware_version_corroborates"),
+  },
+  RuntimeIdentityAxisRow {
+    axis: ModelAxis,
+    weight: CorroboratingAxis,
+    comparison: ExactStringEquality,
+    authority: runtime_identity_axis_authority(decl_name: "model_string_corroborates"),
+  },
+  RuntimeIdentityAxisRow {
+    axis: NicSetAxis,
+    weight: DecisiveAxis,
+    comparison: NonEmptyMacIntersection,
+    authority: runtime_identity_axis_authority(decl_name: "a_shared_mac_is_the_network_half_of_the_proof"),
+  },
+]
+
+fn runtime_identity_axis_authority(decl_name: NonEmptyStr) -> DeclarationRef {
+  decl_ref(module_path: "gunbc.plans.physical_machine_boot_program", decl_name: decl_name)
+}
+
+fn runtime_identity_axis_row(axis: RuntimeIdentityAxis) -> RuntimeIdentityAxisRow? {
+  runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: axis)).first()
+}
+
+// Structural equality over a closed union, written as a match rather than delegated: an arm that forgot a
+// case is a compile error, and the fold's per-axis lookups depend on this being exact.
+fn same_runtime_identity_axis(left: RuntimeIdentityAxis, right: RuntimeIdentityAxis) -> Bool {
+  match left {
+    BoardSerialAxis => match right { BoardSerialAxis => true _ => false }
+    BiosVersionAxis => match right { BiosVersionAxis => true _ => false }
+    ModelAxis => match right { ModelAxis => true _ => false }
+    NicSetAxis => match right { NicSetAxis => true _ => false }
+  }
+}
+
+data runtime_identity_match_law: String = "Cut 6 S10 ruling: Mismatch requires two readings that disagree; a missing reading on either side is Unprovable, never Mismatch, because a unit must not be condemned for its BMC's silence. Corroborating axes are checked for divergence only; decisive axes must be read on both sides and agree. Unit identity is carried as data and never matched on; no row of this module names a machine."
+
+// ---------------------------------------------------------------------------
+// EACH AXIS, AS A STANDING -- one union each, with the three states as ARMS
+// ---------------------------------------------------------------------------
+
+// What a controller's or an OS's "no" is on an identity axis. Closed, because the remedy differs: a query
+// the controller does not implement is a row to pin, an authentication failure is an operator action, and
+// an unreadable reply is a defect in the reader. A string cannot split those.
+type RuntimeIdentityRefusal
+  = QueryUnsupported { detail: NonEmptyStr }
+  | AuthenticationFailed { detail: NonEmptyStr }
+  | ReplyUnreadable { detail: NonEmptyStr }
+
+fn runtime_identity_refusal_detail(refusal: RuntimeIdentityRefusal) -> NonEmptyStr {
+  match refusal {
+    QueryUnsupported { detail: d } => d
+    AuthenticationFailed { detail: d } => d
+    ReplyUnreadable { detail: d } => d
+  }
+}
+
+// THE BOARD-SERIAL AXIS. The serial as one side reports it, verbatim; normalization would be a second
+// authority on what the string says, so equality is exact and the reading carries the raw value.
+type RuntimeBoardSerialStanding
+  = BoardSerialObserved { serial: NonEmptyStr }
+  | BoardSerialUnobserved { reason: NonEmptyStr }
+  | BoardSerialRefused { refusal: RuntimeIdentityRefusal }
+
+// THE FIRMWARE-VERSION AXIS. Same vocabulary the readiness seam uses for the same fact: the version the
+// unit reports for itself, as a reading rather than as a claim about a release.
+type RuntimeBiosVersionStanding
+  = BiosVersionRead { version: NonEmptyStr }
+  | BiosVersionMissing { reason: NonEmptyStr }
+  | BiosVersionQueryRefused { refusal: RuntimeIdentityRefusal }
+
+// THE MODEL AXIS: the board/product string one side reports. Corroborating by table, because a firmware
+// can report a generic string for several boards while a serial cannot.
+type RuntimeModelStanding
+  = ModelRead { model: NonEmptyStr }
+  | ModelMissing { reason: NonEmptyStr }
+  | ModelQueryRefused { refusal: RuntimeIdentityRefusal }
+
+// THE ADDRESS SET AXIS. Observed carries the addresses that side reported; an empty list is a side that
+// reported no addresses at all, which is a reading, not a gap -- and the table's intersection rule turns it
+// into a divergence rather than a shrug.
+type RuntimeNicSetStanding
+  = NicSetReported { addresses: List<Eui48Address> }
+  | NicSetMissing { reason: NonEmptyStr }
+  | NicSetQueryRefused { refusal: RuntimeIdentityRefusal }
+
+// What an axis did not answer, with the axis NAMED. A gap that cannot name its axis is prose, and prose
+// cannot be counted against the table.
+type RuntimeIdentityGap {
+  axis: RuntimeIdentityAxis
+  side: IdentitySide
+  detail: NonEmptyStr
+}
+
+// WHICH SIDE of the boot a reading comes from. Named, so an Unprovable can say whether the firmware side
+// or the running-OS side is the one that stayed quiet -- the operator's next action differs completely.
+type IdentitySide
+  = PreBootFirmwareSide
+  | PostBootOsSide
+
+// A divergence, with BOTH readings. The pair is what makes a Mismatch actionable: "the serials differ" is
+// an accusation, "the BMC says X and the OS says Y" is a diagnosis.
+type RuntimeIdentityDivergence {
+  axis: RuntimeIdentityAxis
+  pre_boot: NonEmptyStr
+  post_boot: NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------
+// THE TWO SIDES
+// ---------------------------------------------------------------------------
+
+// THE PRE-BOOT STANDING: what the firmware side said before the boot, per axis. Every axis is present as a
+// field, and each field is itself a three-way union, so there is no way to state a pre-boot standing that
+// quietly omits an axis -- and no way to claim a value while admitting nothing was read.
+//
+// The unit is CARRIED here and on the other side, and the match fn never compares the two keys: this is a
+// proof about the machine's own reportings, not a check that two labels were spelled the same.
+type PreBootIdentityStanding {
+  unit: NonEmptyStr
+  board_serial: RuntimeBoardSerialStanding
+  bios_version: RuntimeBiosVersionStanding
+  model: RuntimeModelStanding
+  nics: RuntimeNicSetStanding
+}
+
+// THE POST-BOOT REPORT: the same four axes, as the running OS reports them.
+type PostBootIdentityReport {
+  unit: NonEmptyStr
+  reported_over: PostBootReportChannel
+  board_serial: RuntimeBoardSerialStanding
+  bios_version: RuntimeBiosVersionStanding
+  model: RuntimeModelStanding
+  nics: RuntimeNicSetStanding
+}
+
+// HOW the OS came to report. A semantic axis rather than a transport detail, because it changes what the
+// report can cover: a machine reachable only over a serial console has no session that can read every axis,
+// and a gap on such a unit is expected rather than suspicious. It stays an axis so the reading and the
+// channel cannot disagree about themselves -- a report cannot claim a full axis set over a channel that
+// cannot carry one, because there is exactly one place both are stated.
+type PostBootReportChannel
+  = NetworkSessionChannel
+  | SerialConsoleChannel
+
+// ---------------------------------------------------------------------------
+// THE VERDICT
+// ---------------------------------------------------------------------------
+
+// Three verdicts, closed, each carrying what makes it true.
+//
+// Match carries the axes it actually checked and passed -- not a bare "true", so a Match can be audited
+// against the table afterwards. Mismatch carries both readings for every axis that diverged. Unprovable
+// carries the named gaps that prevented a verdict, which is what makes "we do not know" a reportable state
+// rather than a silent false.
+type RuntimeIdentityVerdict
+  = Match { axes_matched: List<RuntimeIdentityAxis>, unit: NonEmptyStr }
+  | Mismatch { diverged: List<RuntimeIdentityDivergence>, unit: NonEmptyStr }
+  | Unprovable { why: List<RuntimeIdentityGap>, unit: NonEmptyStr }
+
+// THE MATCH FN. Total: no error type in its signature, nothing that can panic in its body (no indexing, no
+// unwrapping, every match exhaustive over closed unions), and it takes ONLY the two sides -- the axis table
+// is read from the catalog this module owns, so a caller cannot weaken the verdict by passing a friendlier
+// policy.
+//
+// The order of the three checks IS the ruling:
+//  1. Divergences first. Two readings that disagree is the strongest evidence available about the pair, and
+//     it outranks any gap: a unit with a wrong serial is a Mismatch even if its model string never came
+//     back. Silence never launders a contradiction.
+//  2. Gaps next, and only over axes the table makes DECISIVE -- plus any corroborating gap is recorded but
+//     cannot be fatal, so an unanswered corroborating axis leaves the verdict Match rather than dragging an
+//     honest unit into Unprovable.
+//  3. Match last, and only with the checked-and-passed axes listed.
+fn runtime_identity_match(
+  pre: PreBootIdentityStanding,
+  post: PostBootIdentityReport,
+) -> RuntimeIdentityVerdict {
+  let diverged = all_divergences(pre: pre, post: post)
+  let gaps = fatal_gaps(pre: pre, post: post)
+  if diverged.length() > 0 {
+    Mismatch { diverged: diverged, unit: pre.unit }
+  } else if gaps.length() > 0 {
+    Unprovable { why: gaps, unit: pre.unit }
+  } else {
+    Match { axes_matched: axes_checked_and_passed(pre: pre, post: post), unit: pre.unit }
+  }
+}
+
+// Every axis where BOTH sides read and the readings disagree, in table order. A flat_map over the table
+// rather than a filter/map pair over a probe union: an axis with nothing to report contributes NO element,
+// so there is no "unreachable" placeholder value anywhere in this module that a bug could surface as a
+// verdict.
+fn all_divergences(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityDivergence> {
+  runtime_identity_axis_rows.flat_map(r => divergence_of_row(row: r, pre: pre, post: post))
+}
+
+// The gaps that can void a verdict: a gap on either side of any DECISIVE axis. Corroborating gaps are
+// deliberately not gathered here -- that is where "a mute BMC does not condemn a unit" lives.
+fn fatal_gaps(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityGap> {
+  runtime_identity_axis_rows.flat_map(r => fatal_gap_of_row(row: r, pre: pre, post: post))
+}
+
+// The axes a Match may claim: decisive axes, read on both sides, compared and passed. A corroborating axis
+// that agreed is not claimed, because it was not required -- claiming it would let a Match look stronger
+// than the table says it is.
+fn axes_checked_and_passed(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityAxis> {
+  runtime_identity_axis_rows.filter(r => axis_is_decisive(row: r)).filter(r => both_sides_read(row: r, pre: pre, post: post)).map(r => r.axis)
+}
+
+// ---------------------------------------------------------------------------
+// PER-AXIS READINGS AND COMPARISONS
+// ---------------------------------------------------------------------------
+
+// An axis contributes AT MOST ONE divergence and AT MOST ONE fatal gap, expressed as an Optional that the
+// fold flat_maps. There is deliberately no "no divergence" value carrying a dummy divergence, and no
+// unreachable placeholder string anywhere in this module: an axis with nothing to report contributes no
+// element, so a verdict can never be assembled from a fabricated reading.
+fn divergence_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityDivergence> {
+  match axis_pair(row: row, pre: pre, post: post) {
+    Present { value: pair } => if axes_agree(row: row, pre_text: pair.pre_text, post_text: pair.post_text, pre_addresses: pair.pre_addresses, post_addresses: pair.post_addresses) {
+      []
+    } else {
+      [RuntimeIdentityDivergence { axis: row.axis, pre_boot: pair.pre_text, post_boot: pair.post_text }]
+    }
+    Absent => []
+  }
+}
+
+fn fatal_gap_of_row(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> List<RuntimeIdentityGap> {
+  if axis_is_decisive(row: row) {
+    match side_gap(row: row, pre: pre, post: post) {
+      Present { value: g } => [g]
+      Absent => []
+    }
+  } else {
+    []
+  }
+}
+
+fn axis_is_decisive(row: RuntimeIdentityAxisRow) -> Bool {
+  match row.weight {
+    DecisiveAxis => true
+    CorroboratingAxis => false
+  }
+}
+
+fn both_sides_read(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> Bool {
+  match axis_pair(row: row, pre: pre, post: post) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The readings of one axis on both sides, or Absent when either side failed to read.
+type AxisReadingPair {
+  pre_text: NonEmptyStr
+  post_text: NonEmptyStr
+  pre_addresses: List<Eui48Address>
+  post_addresses: List<Eui48Address>
+}
+
+// THE ONLY PLACE A READING IS EXTRACTED from either side, per axis. One place, so the fold cannot compare
+// one side's field against the other side's different field -- the bug this shape exists to prevent.
+//
+// Texts are the rendered readings (used for exact-string comparison and for reporting a divergence);
+// addresses are the machine-readable set used only by the intersection rule. The MAC set is compared by
+// address and REPORTED by rendering, never decided by rendering.
+fn axis_pair(
+  row: RuntimeIdentityAxisRow,
+  pre: PreBootIdentityStanding,
+  post: PostBootIdentityReport,
+) -> AxisReadingPair? {
+  match row.axis {
+    BoardSerialAxis => match pre.board_serial {
+      BoardSerialObserved { serial: ps } => match post.board_serial {
+        BoardSerialObserved { serial: os } => Present { value: AxisReadingPair { pre_text: ps, post_text: os, pre_addresses: [], post_addresses: [] } }
+        _ => Absent
+      }
+      _ => Absent
+    }
+    BiosVersionAxis => match pre.bios_version {
+      BiosVersionRead { version: pv } => match post.bios_version {
+        BiosVersionRead { version: ov } => Present { value: AxisReadingPair { pre_text: pv, post_text: ov, pre_addresses: [], post_addresses: [] } }
+        _ => Absent
+      }
+      _ => Absent
+    }
+    ModelAxis => match pre.model {
+      ModelRead { model: pm } => match post.model {
+        ModelRead { model: om } => Present { value: AxisReadingPair { pre_text: pm, post_text: om, pre_addresses: [], post_addresses: [] } }
+        _ => Absent
+      }
+      _ => Absent
+    }
+    NicSetAxis => match pre.nics {
+      NicSetReported { addresses: pa } => match post.nics {
+        NicSetReported { addresses: oa } => Present { value: AxisReadingPair { pre_text: render_mac_set(addresses: pa), post_text: render_mac_set(addresses: oa), pre_addresses: pa, post_addresses: oa } }
+        _ => Absent
+      }
+      _ => Absent
+    }
+  }
+}
+
+// The comparison, dispatched on the table's policy rather than on the axis: the table says how to compare,
+// and this fn is the one implementation of each rule.
+fn axes_agree(
+  row: RuntimeIdentityAxisRow,
+  pre_text: NonEmptyStr,
+  post_text: NonEmptyStr,
+  pre_addresses: List<Eui48Address>,
+  post_addresses: List<Eui48Address>,
+) -> Bool {
+  match row.comparison {
+    ExactStringEquality => pre_text == post_text
+    NonEmptyMacIntersection => mac_sets_share_an_address(pre: pre_addresses, post: post_addresses)
+  }
+}
+
+fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) -> Bool {
+  pre.any(a => post.any(b => same_mac_address(left: a, right: b)))
+}
+
+// Addresses compared octet by octet, so the comparison is about the address and not about how it was
+// rendered -- render_mac_address is for reporting, never for deciding.
+fn same_mac_address(left: Eui48Address, right: Eui48Address) -> Bool {
+  left.octet1 == right.octet1
+    && left.octet2 == right.octet2
+    && left.octet3 == right.octet3
+    && left.octet4 == right.octet4
+    && left.octet5 == right.octet5
+    && left.octet6 == right.octet6
+}
+
+fn render_mac_set(addresses: List<Eui48Address>) -> NonEmptyStr {
+  join(addresses.map(a => render_mac_address(addr: a)), ",") as NonEmptyStr
+}
+
+// Which side stayed quiet, and what it said. Both sides are checked so an Unprovable is located rather than
+// merely asserted; the pre-boot side is asked first because in this fleet the firmware is the side that
+// usually refuses.
+fn side_gap(
+  row: RuntimeIdentityAxisRow,
+  pre: PreBootIdentityStanding,
+  post: PostBootIdentityReport,
+) -> RuntimeIdentityGap? {
+  match pre_side_gap(row: row, pre: pre) {
+    Present { value: g } => Present { value: g }
+    Absent => post_side_gap(row: row, post: post)
+  }
+}
+
+fn pre_side_gap(row: RuntimeIdentityAxisRow, pre: PreBootIdentityStanding) -> RuntimeIdentityGap? {
+  match row.axis {
+    BoardSerialAxis => match pre.board_serial {
+      BoardSerialUnobserved { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: r } }
+      BoardSerialRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    BiosVersionAxis => match pre.bios_version {
+      BiosVersionMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: r } }
+      BiosVersionQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    ModelAxis => match pre.model {
+      ModelMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: r } }
+      ModelQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    NicSetAxis => match pre.nics {
+      NicSetMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: r } }
+      NicSetQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PreBootFirmwareSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+  }
+}
+
+fn post_side_gap(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport) -> RuntimeIdentityGap? {
+  match row.axis {
+    BoardSerialAxis => match post.board_serial {
+      BoardSerialUnobserved { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: r } }
+      BoardSerialRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    BiosVersionAxis => match post.bios_version {
+      BiosVersionMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: r } }
+      BiosVersionQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    ModelAxis => match post.model {
+      ModelMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: r } }
+      ModelQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+    NicSetAxis => match post.nics {
+      NicSetMissing { reason: r } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: r } }
+      NicSetQueryRefused { refusal: f } => Present { value: RuntimeIdentityGap { axis: row.axis, side: PostBootOsSide, detail: runtime_identity_refusal_detail(refusal: f) } }
+      _ => Absent
+    }
+  }
+}
+
+// Whether a verdict is a Match, as an fn rather than as a field: a caller cannot ask a verdict whether it
+// matched and get a stored answer that drifted from its arms.
+fn runtime_identity_verdict_is_match(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Match { axes_matched: _, unit: _ } => true
+    Mismatch { diverged: _, unit: _ } => false
+    Unprovable { why: _, unit: _ } => false
+  }
+}
+
+fn runtime_identity_verdict_is_unprovable(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Unprovable { why: _, unit: _ } => true
+    Match { axes_matched: _, unit: _ } => false
+    Mismatch { diverged: _, unit: _ } => false
+  }
+}
+
+fn runtime_identity_verdict_is_mismatch(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Mismatch { diverged: _, unit: _ } => true
+    Match { axes_matched: _, unit: _ } => false
+    Unprovable { why: _, unit: _ } => false
+  }
+}
+
+fn runtime_identity_verdict_unit(verdict: RuntimeIdentityVerdict) -> NonEmptyStr {
+  match verdict {
+    Match { axes_matched: _, unit: u } => u
+    Mismatch { diverged: _, unit: u } => u
+    Unprovable { why: _, unit: u } => u
+  }
+}
