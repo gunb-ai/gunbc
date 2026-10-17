@@ -29,6 +29,10 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_capture_intent_write, belt_capture_intent_read, IntentAbsent, IntentRead,
   belt_capture_intent_complete, IntentNothingOwed, IntentCompleted,
   belt_worktree_head_observe, WorktreeHeadObserved,
+  belt_claim_tree_at, belt_claim_content_of, belt_claim_remove_tree,
+}
+import gunbc.roadmap.roadmap_attempt_worktree_claim {
+  ClaimTreePresent, ClaimTreeAbsent, ClaimContentDirty, ClaimContentPushed,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound, submission_capture_basename,
@@ -216,4 +220,48 @@ test fn a_kill_after_the_commit_does_not_lose_the_capture() -> Bool {
   let held = again && capture_file_at_head(instance: instance, worktree: worktree) && intent_cleared(instance: instance, worktree: worktree)
   let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
   held && cleaned.success
+}
+
+fn tree_present(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_tree_at(instance: instance, path: worktree) {
+    ClaimTreePresent => true
+    _ => false
+  }
+}
+
+fn content_is_dirty(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_content_of(instance: instance, worktree: worktree) {
+    ClaimContentDirty { detail: _ } => true
+    _ => false
+  }
+}
+
+fn content_is_pushed(instance: HostDashboardInstance, worktree: String) -> Bool {
+  match belt_claim_content_of(instance: instance, worktree: worktree) {
+    ClaimContentPushed => true
+    _ => false
+  }
+}
+
+// INHABITANCE OF THE CLAIM'S HOST ADAPTERS over a real linked worktree (the claim witness supplies these as
+// lambdas; this is the one claim that runs the production route): tree_at sees the tree, content_of judges dirty
+// then pushed, and the non-force remove refuses the dirty tree and removes the clean one.
+test fn the_real_claim_adapters_observe_judge_and_remove_a_linked_worktree() -> Bool {
+  let instance = fresh_instance(tag: "adapters")
+  let worktree = plant_dirty(instance: instance)
+  let seed = instance.repo_root as String
+  let remote_ref = worktree != "" && run_git(dir: seed, args: ["update-ref", "refs/remotes/origin/main", "HEAD"])
+  let seen = remote_ref && tree_present(instance: instance, worktree: worktree)
+  let dirty = seen && content_is_dirty(instance: instance, worktree: worktree)
+  let refused = dirty && !belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree)
+    && tree_present(instance: instance, worktree: worktree)
+  let pushed = refused && run_git(dir: worktree, args: ["checkout", "--", "src.dag"])
+    && content_is_pushed(instance: instance, worktree: worktree)
+  let removed = pushed && belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree)
+    && match belt_claim_tree_at(instance: instance, path: worktree) {
+      ClaimTreeAbsent => true
+      _ => false
+    }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  removed && cleaned.success
 }

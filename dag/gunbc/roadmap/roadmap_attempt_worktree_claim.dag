@@ -254,7 +254,6 @@ type ClaimTree
 
 type ClaimContent
   = ClaimContentDirty { detail: String }
-  | ClaimContentCleanBranch
   | ClaimContentPushed
   | ClaimContentUnpushedCommits { detail: String }
   | ClaimContentUnobserved { detail: String }
@@ -410,7 +409,6 @@ fn worktree_claim_classify_release(path: String, content: ClaimContent, reason: 
     ClaimContentDirty { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worktree has uncommitted changes (", detail, "); it is kept"], ""))
     ClaimContentUnpushedCommits { detail } => claim_refuse(verdict: UnknownRefused, reason: join(["the worktree's branch holds commits no remote has (", detail, "); it is kept"], ""))
     ClaimContentUnobserved { detail } => claim_refuse(verdict: Inaccessible, reason: join(["the worktree's content could not be observed (", detail, "); it is kept"], ""))
-    ClaimContentCleanBranch => claim_apply(plan: ClaimRemoveTree { path: path, reason: reason })
     ClaimContentPushed => claim_apply(plan: ClaimRemoveTree { path: path, reason: reason })
   }
 }
