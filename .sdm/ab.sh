@@ -42,8 +42,16 @@ HSHA=$(git -C $R rev-parse refs/sd503/harness 2>/dev/null | head -1)
 rm -rf $A/harness; git -C $R worktree add --detach $A/harness "$HSHA" >/dev/null 2>&1
 for D in $A/ctrl $A/treat; do
   rm -rf $D/.sdm; cp -r $A/harness/.sdm $D/.sdm
-  cp $A/harness/.sdm/fixtures/gap_depth_*.dag $D/dag/test/ 2>/dev/null || true
-  cp $A/harness/.sdm/fixtures/garr_*.dag $D/dag/test/ 2>/dev/null || true
+  # Fixtures must exist in EXACTLY ONE place under the source root. Source discovery
+  # enumerates every .dag under --source-root and refuses the whole compile when a module
+  # path is declared by two files -- which is what voided the previous dispatch (the
+  # witness was copied to .sdm/witness.dag while the tracked copy stayed in place). So the
+  # fixtures land in dag/test/ only, and the .sdm copy is deleted rather than left to be
+  # discovered a second time.
+  cp $A/harness/.sdm/fixtures/gap_depth_*.dag $D/dag/test/
+  cp $A/harness/.sdm/fixtures/garr_*.dag $D/dag/test/
+  rm -rf $D/.sdm/fixtures
+  echo "fixtures in $(basename $D): $(ls $D/dag/test/gap_depth_*.dag $D/dag/test/garr_*.dag 2>/dev/null | wc -l) files, .sdm/fixtures present=$([ -d $D/.sdm/fixtures ] && echo YES-BUG || echo no)"
 done
 # The witness is SELF-CONTAINED: its specimens are inline `data ... : String` sources
 # fed to total_blocking_count_for / blocking_class_count_for, so there are no separate

@@ -1,0 +1,4 @@
+module test.sd503_pf_probe_unique_9f3c
+import std.types { Int }
+fn pf_id<T>(x: T) -> T { x }
+fn probe() -> Int { pf_id(x: 1) }

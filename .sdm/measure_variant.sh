@@ -1,127 +1,107 @@
 set -e
-# Runs inside one variant of the A/B dispatch, after its binary is built.
-# Both depth series are measured with the same fresh-process protocol: the counters are
-# thread_local and dumped at compile.reconcile completion, so one process == exactly one
-# program's exclusive cost.
+# Runs inside ONE variant of the A/B dispatch, after its binary is built. Emits the raw
+# counter lines verbatim; the analyzer, not this script, decides pass/fail.
 V="$1"
 export GUNBC_GENERIC_ARG_PASS_ACCOUNT=1
-# The build uses a SHARED CARGO_TARGET_DIR across variants (so the ~200 dependency
-# crates compile once, not three times). With a shared target dir the binary is NOT
-# under ./target -- reading the wrong path gives rc=127 and a silently empty A/B.
-# Variants are built+measured strictly in sequence, so each measures its own binary.
+# The build uses a SHARED CARGO_TARGET_DIR across variants (so ~200 dependency crates
+# compile once instead of three times), so the binary is NOT under ./target -- reading the
+# wrong path gave rc=127 and a silently empty A/B. Variants run strictly in sequence, so
+# each measures the binary it just built.
 BIN="${CARGO_TARGET_DIR:?CARGO_TARGET_DIR must be exported by ab.sh}/release/gunbc"
-if [ ! -x "$BIN" ]; then echo "NO-BINARY at $BIN -- refusing to emit an empty measurement"; exit 12; fi
-echo "binary=$BIN sha256=$(sha256sum "$BIN" | cut -d' ' -f1)"
+CB="${CARGO_TARGET_DIR}/release/claim_batch"
+[ -x "$BIN" ] || { echo "NO-BINARY at $BIN -- refusing to emit an empty measurement"; exit 12; }
+echo "binary=$BIN sha256=$(sha256sum "$BIN" | cut -d' ' -f1) bytes=$(stat -c %s "$BIN")"
+[ -x "$CB" ] || echo "WARN no claim_batch at $CB (witness verdicts will be skipped)"
 mkdir -p .sdm/run
 fail=0
+
 # ---- preflight ---------------------------------------------------------------------
-# Several dispatches were burned on rc=1/rc=127 with no stderr shown: the failure branch
-# tailed a file that was empty (stderr went elsewhere) and the entry / --source-root
-# spelling was assumed rather than learned. So print the real CLI surface, then try the
-# fixture under each candidate (entry-spelling x source-root) pair and adopt the first
-# that compiles, printing each attempt's FULL output. The winning pair is reused verbatim
-# by the depth loop, so the A/B is not measured under a shape that cannot compile.
-# Fixtures live in exactly ONE directory: a module path may be declared by only one file
-# (source-discovery refuses the whole compile otherwise), which is what a second copy of
-# the witness did to the previous dispatch.
+# Earlier dispatches burned time on rc=1/rc=127 with nothing shown, because the failure
+# branch tailed a file that was empty and because the --entry / --source-root spelling was
+# assumed. So: print the real CLI surface, then try a uniquely-named probe fixture under
+# each candidate (entry-spelling x source-root) pair and adopt the first that compiles,
+# printing every attempt's FULL output. The winning pair is reused verbatim by the series.
+# The probe has its own module name so it can never collide with a fixture or a tracked
+# file: source-discovery refuses the WHOLE compile when a module path is declared twice.
 echo "@@@ VARIANT=$V PREFLIGHT"
 set +e
 timeout 300 $BIN compile --help > .sdm/run/help_$V.log 2>&1
 echo "help_rc=$?"
 grep -iE "source-root|entry|target|output-dir|claim" .sdm/run/help_$V.log | head -25
 set -e
-ENTRY_PREFIX=""; SOURCE_ROOT_ARGS=""
-for combo in \
-    "dag/test/|--source-root $PWD" \
-    "dag/test/|--source-root $PWD --source-root dag" \
-    "|--source-root $PWD" \
-    "|--source-root $PWD --source-root dag" \
-    "$PWD/.sdm/fixtures/|--source-root $PWD" \
-    "test/|--source-root dag" ; do
-  EP="${combo%%|*}"; SR="${combo#*|}"
-  # the bare and dag-relative spellings need the fixture at a matching location
-  case "$EP" in
-    ""|test/) cp .sdm/fixtures/gap_depth_2.dag ./"gap_depth_2.dag" 2>/dev/null || true ;;
-  esac
-  E="${EP}gap_depth_2.dag"
-  [ -f "$E" ] || E="${EP}.sdm/fixtures/gap_depth_2.dag"
+cp .sdm/fixtures/pf_probe.dag ./sd503_pf_probe.dag
+ENTRY_DIR=""; SOURCE_ROOT_ARGS=""
+for combo in "dag/test/|--source-root $PWD" \
+             "dag/test/|--source-root $PWD --source-root dag" \
+             "root/|--source-root $PWD" \
+             "root/|--source-root $PWD --source-root dag" \
+             "test/|--source-root dag" ; do
+  ED="${combo%%|*}"; SR="${combo#*|}"
+  if [ "$ED" = "root/" ]; then E="sd503_pf_probe.dag"; else E="${ED}sd503_pf_probe.dag"; fi
+  [ "$ED" = "test/" ] && { mkdir -p dag/test; cp .sdm/fixtures/pf_probe.dag dag/test/sd503_pf_probe.dag; }
   echo "--- attempt entry=$E roots=$SR ---"
   set +e
-  timeout 900 $BIN compile $SR --entry "$E" --target rust \
-    --output-dir .sdm/run/preflight_$(echo "$EP$SR" | tr -dc 'a-zA-Z0-9') > .sdm/run/pf.log 2>&1
+  timeout 600 $BIN compile $SR --entry "$E" --target rust \
+    --output-dir .sdm/run/pf_out > .sdm/run/pf.log 2>&1
   prc=$?
   set -e
-  echo "preflight rc=$prc"
+  echo "preflight rc=$prc entry=$E roots=$SR"
   head -40 .sdm/run/pf.log
-  if [ $prc -eq 0 ]; then
-    ENTRY_PREFIX="$EP"; SOURCE_ROOT_ARGS="$SR"
-    echo "PREFLIGHT-OK entry_prefix=$EP roots=$SR"
-    break
-  fi
+  if [ $prc -eq 0 ]; then ENTRY_DIR="$ED"; SOURCE_ROOT_ARGS="$SR"; echo "PREFLIGHT-OK entry_dir=$ED roots=$SR"; break; fi
 done
-rm -f ./gap_depth_2.dag
-if [ -z "$ENTRY_PREFIX" ] && [ -z "${SOURCE_ROOT_ARGS:-}" ]; then
-  echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the fixture; aborting rather than emitting an empty A/B"
+rm -f ./sd503_pf_probe.dag dag/test/sd503_pf_probe.dag
+if [ -z "$ENTRY_DIR" ]; then
+  echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the probe; aborting rather than emitting an empty A/B"
   exit 14
 fi
 
+# ---- depth series ------------------------------------------------------------------
 for SERIES in gap_depth garr; do
   for d in 1 2 3 4 5 6; do
-    f="${ENTRY_PREFIX}${SERIES}_${d}.dag"
-    echo "using entry=$f roots=${SOURCE_ROOT_ARGS}"
+    f="${ENTRY_DIR}${SERIES}_${d}.dag"
     [ -f "$f" ] || { echo "MISSING-FIXTURE $f"; fail=1; continue; }
-    printf "@@@ VARIANT=%s SERIES=%s DEPTH=%s\n" "$V" "$SERIES" "$d"
+    printf "@@@ VARIANT=%s SERIES=%s DEPTH=%s entry=%s\n" "$V" "$SERIES" "$d" "$f"
     set +e
     t0=$(date +%s)
-    $BIN compile ${SOURCE_ROOT_ARGS} --entry "$f" --target rust \
-        --output-dir ".sdm/run/out_${V}_${SERIES}_$d" \
-        > .sdm/run/o_${V}_${SERIES}_$d.log 2> .sdm/run/e_${V}_${SERIES}_$d.log
+    $BIN compile $SOURCE_ROOT_ARGS --entry "$f" --target rust \
+      --output-dir ".sdm/run/out_${V}_${SERIES}_${d}" \
+      > .sdm/run/o_${V}_${SERIES}_${d}.log 2> .sdm/run/e_${V}_${SERIES}_${d}.log
     rc=$?
-    echo "fixture_elapsed=$(( $(date +%s) - t0 ))s"
+    echo "compile_rc=$rc elapsed=$(( $(date +%s) - t0 ))s"
     set -e
+    grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_${SERIES}_${d}.log || echo "NO-INSTRUMENT"
+    grep -hiE "compile.reconcile done in" .sdm/run/e_${V}_${SERIES}_${d}.log || echo "NO-RECONCILE-MARK"
+    # duplicate diagnostics are the fingerprint of a replayed first pass
+    sort .sdm/run/e_${V}_${SERIES}_${d}.log | uniq -d | grep -c "type mismatch\|TypeMismatch" | sed 's/^/duplicate_diagnostics=/'
     if [ $rc -ne 0 ]; then
-      echo "COMPILE-FAIL rc=$rc"; echo "--- stdout ---"; head -30 .sdm/run/o_${V}_${SERIES}_$d.log
-      echo "--- stderr ---"; head -30 .sdm/run/e_${V}_${SERIES}_$d.log; fail=1
+      echo "COMPILE-FAIL rc=$rc"; echo "--- stdout ---"; head -30 .sdm/run/o_${V}_${SERIES}_${d}.log
+      echo "--- stderr ---"; head -30 .sdm/run/e_${V}_${SERIES}_${d}.log; fail=1
     fi
-    line=$(grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_${SERIES}_$d.log || true)
-    if [ -z "$line" ]; then echo "NO-INSTRUMENT"; fail=1; else echo "$line"; fi
-    mark=$(grep -h "compile.reconcile" .sdm/run/e_${V}_${SERIES}_$d.log | tail -1 || true)
-    if [ -z "$mark" ]; then echo "NO-RECONCILE-MARK"; fail=1; else echo "reconcile: $mark"; fi
-    # duplicate-diagnostic check (parent item 6): the same diagnostic reported twice is
-    # the signature of a replayed first pass.
-    dup=$(grep -oE "error\[?[A-Za-z]*\]?: .*" .sdm/run/e_${V}_${SERIES}_$d.log | sort | uniq -c | awk '$1>1' | wc -l)
-    echo "duplicate_diagnostics=$dup"
   done
 done
 
-# ---- the full-program specimen (where the 2618-class counter is meaningful) --------
-for SPEC in src/v2/compiler/compile.dag; do
-  if [ -f "$SPEC" ]; then
-    printf "@@@ VARIANT=%s SPECIMEN=%s\n" "$V" "$SPEC"
-    set +e
-    timeout 1500 $BIN compile --source-root dag --source-root src/v2 --entry "$SPEC" \
-      --target rust --output-dir ".sdm/run/out_${V}_spec" \
-      > .sdm/run/o_${V}_spec.log 2> .sdm/run/e_${V}_spec.log
-    rc=$?
-    set -e
-    echo "specimen_rc=$rc"
-    grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_spec.log || echo "NO-INSTRUMENT-SPECIMEN"
-    grep -h "compile.reconcile" .sdm/run/e_${V}_spec.log | tail -1 || echo "NO-RECONCILE-SPECIMEN"
-  else
-    echo "NO-SPECIMEN $SPEC"
-  fi
-done
+# ---- the specimen whose 2618 threshold the bar names -------------------------------
+# Counter provenance for the "<=2618 top r2_n" acceptance line: this is the counter
+# (r1_pass_n_top + recheck_n_top on the top-level pass), the specimen
+# (src/v2/compiler/compile.dag), and whether instrumentation overhead is included (it is
+# not: every guard returns early unless GUNBC_GENERIC_ARG_PASS_ACCOUNT is set, so the
+# counts are free; only the *_excl_ms columns pay for an Instant).
+echo "@@@ VARIANT=$V SPECIMEN entry=src/v2/compiler/compile.dag"
+set +e
+t0=$(date +%s)
+$BIN compile $SOURCE_ROOT_ARGS --entry src/v2/compiler/compile.dag --target rust \
+  --output-dir ".sdm/run/out_${V}_specimen" > .sdm/run/o_${V}_spec.log 2> .sdm/run/e_${V}_spec.log
+echo "specimen_rc=$? elapsed=$(( $(date +%s) - t0 ))s"
+set -e
+grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_spec.log || echo "NO-INSTRUMENT"
+grep -hiE "compile.reconcile done in" .sdm/run/e_${V}_spec.log || echo "NO-RECONCILE-MARK"
 
-# ---- the witness, run the way claims are ACTUALLY run --------------------------------
+# ---- the witness, run the way claims are ACTUALLY run ------------------------------
 # A `test fn` under dag/test/claim is executed by `claim_batch --entry E --function F`,
-# which prints one PASS/FAIL verdict per function (report_outcome in
-# src/v1/stage0/src/bin/claim_batch.rs). Grep says this witness is cited by NO roster and
-# no workflow, so nothing in CI runs it -- asserting a bare `gunbc run --claim-run` exit
-# code therefore proved nothing about the seven verdicts. Run each test fn by name so a
-# regression names itself, and keep the instrument env armed so the counts and the verdicts
-# come from the same process.
+# which prints one PASS/FAIL verdict per function. This witness is cited by no roster and
+# no workflow (the v1_required_lanes_withdrawn drop), so nothing in CI runs it; per parent,
+# no new lane is added -- the seven verdicts are instead pasted verbatim into the PR body.
 W=dag/test/claim/generic_argument_recheck_witness.dag
-CB="$CARGO_TARGET_DIR/release/claim_batch"
 if [ -f "$W" ] && [ -x "$CB" ]; then
   echo "@@@ VARIANT=$V WITNESS"
   for FN in a_lambda_after_the_argument_that_binds_its_parameter_is_accepted \
@@ -133,7 +113,7 @@ if [ -f "$W" ] && [ -x "$CB" ]; then
             an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred ; do
     set +e
     t0=$(date +%s)
-    timeout 900 "$CB" --source-root "$PWD" --entry "$PWD/$W" --function "$FN" \
+    timeout 900 "$CB" $SOURCE_ROOT_ARGS --entry "$PWD/$W" --function "$FN" \
       > .sdm/run/fn_${V}_${FN}.log 2>&1
     rc=$?
     set -e
