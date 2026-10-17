@@ -2,9 +2,8 @@
 // Source module: v1.compiler.runtime_rust
 
 pub use crate::extdeps_filesystem_rust_realization::rust_file_create_new_canonical_block;
-pub use crate::extdeps_posix_clock_gettime::clock_id_label;
-pub use crate::extdeps_posix_clock_gettime::ClockId;
 use crate::extdeps_posix_clock_gettime::ClockId::ClockThreadCputimeId;
+pub use crate::extdeps_posix_clock_gettime::{clock_id_label, ClockId};
 pub use crate::extdeps_rust_cargo::CargoFeature;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
