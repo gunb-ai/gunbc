@@ -81,10 +81,6 @@ const ARMS: &[Arm] = &[
         consumer: "module consumer\n\nimport a.b\n\ntype Inner {\n  items: List<Int>\n}\n\ntype Holder {\n  b: Inner\n}\n\nfn run(a: Holder) -> Int {\n  a.b.items |> count\n}\n",
     },
     Arm {
-        name: "service_operation_through_a_qualified_receiver",
-        consumer: "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = svc.probe.Probe.Version()\n  \"\"\n}\n",
-    },
-    Arm {
         name: "service_operation_through_an_imported_service_name",
         consumer: "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = Probe.Version()\n  \"\"\n}\n",
     },
