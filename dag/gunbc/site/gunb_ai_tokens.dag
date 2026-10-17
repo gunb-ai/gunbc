@@ -18,6 +18,7 @@ import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoS
 import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
 import gunbc.design.material { CssDecl, decl, BuildRule, StaticRule, serialize_rules }
 import gunbc.design.palette { Swatch, swatches_of, swatch_paint }
+import gunbc.design.theme { theme_roles, role_key }
 import gunbc.design.gunb_ai_hues {
   gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
   moss, moss_deep, clay, clay_deep, brass, brass_deep,
@@ -53,23 +54,23 @@ type TokenSwatch = TokenSwatch {
   swatch: Swatch
 }
 
-data token_canvas: TokenSwatch = TokenSwatch { role: "canvas", swatch: near_black }
-data token_canvas_raised: TokenSwatch = TokenSwatch { role: "canvas-raised", swatch: soot }
-data token_canvas_raised2: TokenSwatch = TokenSwatch { role: "canvas-raised-2", swatch: graphite }
-data token_border: TokenSwatch = TokenSwatch { role: "border", swatch: umber }
-data token_border_strong: TokenSwatch = TokenSwatch { role: "border-strong", swatch: taupe }
-data token_text: TokenSwatch = TokenSwatch { role: "text", swatch: warm_white }
+data token_canvas: TokenSwatch = TokenSwatch { role: "gunb-canvas", swatch: near_black }
+data token_canvas_raised: TokenSwatch = TokenSwatch { role: "gunb-canvas-raised", swatch: soot }
+data token_canvas_raised2: TokenSwatch = TokenSwatch { role: "gunb-canvas-raised-2", swatch: graphite }
+data token_border: TokenSwatch = TokenSwatch { role: "gunb-border", swatch: umber }
+data token_border_strong: TokenSwatch = TokenSwatch { role: "gunb-border-strong", swatch: taupe }
+data token_text: TokenSwatch = TokenSwatch { role: "gunb-text", swatch: warm_white }
 // The live page's default body colour is warm-white-dim (assets/site.css body rule),
 // a step below `text` — the table would lie if it dropped it.
-data token_text_body: TokenSwatch = TokenSwatch { role: "text-body", swatch: off_white }
-data token_text_dim: TokenSwatch = TokenSwatch { role: "text-dim", swatch: sand }
-data token_text_faint: TokenSwatch = TokenSwatch { role: "text-faint", swatch: taupe }
-data token_accent: TokenSwatch = TokenSwatch { role: "accent", swatch: moss }
-data token_accent_deep: TokenSwatch = TokenSwatch { role: "accent-deep", swatch: moss_deep }
-data token_callout: TokenSwatch = TokenSwatch { role: "callout", swatch: clay }
-data token_callout_deep: TokenSwatch = TokenSwatch { role: "callout-deep", swatch: clay_deep }
-data token_highlight: TokenSwatch = TokenSwatch { role: "highlight", swatch: brass }
-data token_highlight_deep: TokenSwatch = TokenSwatch { role: "highlight-deep", swatch: brass_deep }
+data token_text_body: TokenSwatch = TokenSwatch { role: "gunb-text-body", swatch: off_white }
+data token_text_dim: TokenSwatch = TokenSwatch { role: "gunb-text-dim", swatch: sand }
+data token_text_faint: TokenSwatch = TokenSwatch { role: "gunb-text-faint", swatch: taupe }
+data token_accent: TokenSwatch = TokenSwatch { role: "gunb-accent", swatch: moss }
+data token_accent_deep: TokenSwatch = TokenSwatch { role: "gunb-accent-deep", swatch: moss_deep }
+data token_callout: TokenSwatch = TokenSwatch { role: "gunb-callout", swatch: clay }
+data token_callout_deep: TokenSwatch = TokenSwatch { role: "gunb-callout-deep", swatch: clay_deep }
+data token_highlight: TokenSwatch = TokenSwatch { role: "gunb-highlight", swatch: brass }
+data token_highlight_deep: TokenSwatch = TokenSwatch { role: "gunb-highlight-deep", swatch: brass_deep }
 
 data token_swatches: List<TokenSwatch> = [
   token_canvas, token_canvas_raised, token_canvas_raised2, token_border, token_border_strong,
@@ -94,8 +95,17 @@ fn hue_named(name: String) -> Bool {
 // member (a binding cannot smuggle an off-set colour in); and roles are distinct and
 // carry none of the characters a custom-property name would break on (the name is the
 // contract to the CSS emitter, so its shape is checked rather than assumed).
+// Roles are prefixed "gunb-" and must not collide with gunbc.design.theme's register.
+// design.theme.theme_var_decls emits --canvas/--border/--text/--text-dim from the
+// workspace site's Materials (night_canvas is hue 226), so an unprefixed gunb.ai role
+// would be a second authority for the same custom property, last-block-wins.
+// The prefix is the convention; the COLLISION IS THE FACT, so it is checked as an
+// identity join against theme's own role_key rather than inferred from the prefix —
+// if theme ever grows a "gunb-" role, this goes red instead of silently colliding.
 fn role_name_is_wellformed(role: String) -> Bool {
-  !string_contains(s: role, pattern: " ")
+  starts_with(s: role, prefix: "gunb-")
+    && all(theme_roles, r => role_key(r: r) != role)
+    && !string_contains(s: role, pattern: " ")
     && !string_contains(s: role, pattern: "{")
     && !string_contains(s: role, pattern: "}")
     && !string_contains(s: role, pattern: ":")
