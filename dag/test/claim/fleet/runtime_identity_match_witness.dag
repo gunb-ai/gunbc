@@ -13,6 +13,8 @@ module test.claim.fleet.runtime_identity_match_witness
 // no fabricated identity rows in the model, synthetic fixtures in test fns only).
 
 import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionPending, DissolutionFired, BoundDissolution, DeclarationAppears }
 import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -585,6 +587,54 @@ test fn test_swapping_the_pair_swaps_only_the_reported_keys() -> Bool {
   verdict_units(verdict: forward) == [fixture_unit, fixture_other_unit]
     && verdict_units(verdict: backward) == [fixture_other_unit, fixture_unit]
     && same_verdict_kind(left: forward, right: backward)
+}
+
+// ---------------------------------------------------------------------------
+// THE CONSUMER FRONTIER, ASSERTED AS A STATUS RATHER THAN DESCRIBED IN PROSE
+// ---------------------------------------------------------------------------
+
+// The module is imported by nothing outside this witness, and the answer is a carrier whose status is
+// COMPUTED against a declaration population -- not a comment claiming who will consume it. Two outcomes are
+// asserted, so the test does not encode this week's world: with the consumer absent the frontier is Pending,
+// and with the declaration it names present it is Fired. No default population is passed anywhere, because
+// "nothing is present" and "nobody looked" are different answers.
+test fn test_the_consumer_frontier_is_pending_until_its_declaration_lands() -> Bool {
+  runtime_identity_match_frontier_status(present_decls: []) == DissolutionPending
+}
+
+test fn test_the_consumer_frontier_fires_for_the_declaration_it_names() -> Bool {
+  let present: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps"),
+  ]
+  runtime_identity_match_frontier_status(present_decls: present) == DissolutionFired
+}
+
+// THE LITERAL IS THE POINT: the population above is written out here rather than built from the module's
+// own ref fn, so if the module's ref drifts to a name no branch will ever declare, the frontier becomes
+// unsatisfiable and this is what says so. Handing the frontier a LOOKALIKE in the same module -- the shape a
+// wrong decl_name produces -- must not fire it.
+test fn test_the_frontier_fires_only_for_the_declaration_it_names() -> Bool {
+  let lookalike: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "some_other_actuator_step"),
+  ]
+  let wrong_module: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.provisioning.something_else", decl_name: "network_boot_arm_actuator_steps"),
+  ]
+  runtime_identity_match_frontier_status(present_decls: lookalike) == DissolutionPending
+    && runtime_identity_match_frontier_status(present_decls: wrong_module) == DissolutionPending
+}
+
+// And the carrier is BOUND, not an unbound description: a frontier whose trigger was never named would
+// report Unbound, which is the failure mode this whole section exists to make visible.
+test fn test_the_frontier_is_a_bound_trigger_over_a_real_ref() -> Bool {
+  match runtime_identity_match_consumer_frontier {
+    BoundDissolution { trigger: DeclarationAppears { ref: r } } =>
+      r.module_path == "gunbc.provisioning.network_boot_actuation"
+        && r.decl_name == "network_boot_arm_actuator_steps"
+        && { let m = runtime_identity_match_consumer_ref()
+            m.module_path == r.module_path && m.decl_name == r.decl_name }
+    _ => false
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@ module gunbc.fleet.runtime_identity_match
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
 import gunbc.machine_intake.subject { UnitKey }
 import extdeps.network.mac { Eui48Address, mac_is_permanent_interface_identity, render_mac_address }
 
@@ -598,7 +599,40 @@ fn absence_on_os_side(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport)
 }
 
 
-// Whether a verdict is a Match, as an fn rather than as a field: a caller cannot ask a verdict whether it
-// matched and get a stored answer that drifted from its arms.
+// ---------------------------------------------------------------------------
+// THE DECLARED CONSUMER FRONTIER (DESIGN 3c: name the consumer and its route, or classify).
+//
+// WHY A CARRIER RATHER THAN A COMMENT. Nothing outside this module's own witness imports it -- which is
+// TRUE AND EXPECTED for a seam that lands ahead of the cut that reads it, but which a reader (or a
+// reviewer, three rounds running) cannot distinguish from abandonment by looking. std.dissolution already
+// models "an obligation discharged by a declaration that does not exist yet" as a bound trigger over a
+// DeclarationRef whose status is COMPUTED against a declaration population. So the frontier is a row here,
+// and its status is an answer rather than a claim: nothing in this comment says who has landed, because
+// prose describing who-has-landed is a snapshot that goes stale within a day.
+// ---------------------------------------------------------------------------
 
+// THE CONSUMER THAT MUST EXIST: the S9 network-boot arm actuator, which boots a unit and whose whole
+// purpose after that boot is answered by this module -- S10 verifies, against these readings, that the
+// machine that answered on the network is the unit the attempt was made for. The name is not invented
+// here: work item node://adhoc-9cc8b205-64b carries `network_boot_arm_actuator_steps` as its scope, which
+// is the only thing that distinguishes a forward reference from a private fiction (a name nobody has agreed
+// to write would report Pending forever and look like tracking). The ref is also written as a LITERAL in
+// this module's witness, so the module cannot silently rename the frontier out from under the claim.
+//
+// WHAT A FIRED TRIGGER DOES NOT PROVE: that anything EXECUTES this seam. It proves the named declaration
+// exists. A green witness over this row is evidence of a declared frontier, never of integration -- read
+// Pending as "the consumer has not landed", and Fired as "it has been declared", nothing stronger.
+data runtime_identity_match_consumer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: runtime_identity_match_consumer_ref() },
+}
 
+fn runtime_identity_match_consumer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
+
+// THE FRONTIER AS A MACHINE CAN ANSWER IT. The caller supplies the declaration population it actually read;
+// there is no default, because "nothing is present" and "nobody looked" are different answers and a frontier
+// that cannot tell them apart reports itself discharged.
+fn runtime_identity_match_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(condition: runtime_identity_match_consumer_frontier, present_decls: present_decls)
+}
