@@ -208,16 +208,12 @@ type SoCFamily {
 fn cpu_model_catalog_row_eq(a: CpuModelCatalogRow, b: CpuModelCatalogRow) -> Bool {
   (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
     && (a.model_number as String) == (b.model_number as String)
-    && match a.oem_listing_id {
-      Present { value: av } => match b.oem_listing_id {
-        Present { value: bv } => (av as String) == (bv as String)
-        Absent => false
-      }
-      Absent => match b.oem_listing_id {
-        Present { value: _ } => false
-        Absent => true
-      }
-    }
+    // OPTIONAL EQUALITY IS COMPARISON, not a match. This used to unfold both optionals by hand --
+    // Present/Present compare, Present/Absent false, Absent/Present false, Absent/Absent true -- which is
+    // the canonical surface for Option re-derived inside an extdeps file (review 81287 F3; DESIGN §2, "net
+    // concepts must not grow by re-invention"). `==` on two Options of a comparable leaf is that surface,
+    // and it is used elsewhere in the corpus; four arms of prose became one comparison.
+    && a.oem_listing_id == b.oem_listing_id
 }
 
 fn soc_family_eq(a: SoCFamily, b: SoCFamily) -> Bool {

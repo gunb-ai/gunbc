@@ -32,9 +32,10 @@ module gunbc.host.smpro_platform_capability
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.machine_intake.ampere_smpro_observation {
-  SmproPassObservation, SmproPassSubject, SmproSiteRefusal, SmproSiteStanding, SmproSiteAdmitted,
-  SmproSiteRefused,
+  SmproPassObservation, SmproPassSubject, SmproSite, SmproSiteRefusal, SmproSiteStanding,
+  SmproSiteAdmitted, SmproSiteRefused,
 }
+import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.cpu.types { SoCFamily }
 import extdeps.cpu.ampere { ampere_soc_family_carries_smpro }
@@ -68,7 +69,38 @@ type SmproFacilityStanding
   // The host's board admits no SoC family, so NOTHING is known about the silicon. Not Carried, and
   // not Carried either: there is no family to answer about. The SMpro pass is not taken, and the
   // reason says the family is unknown rather than claiming the platform lacks the facility.
-  | SmproFacilityUnestablished { reason: NonEmptyStr }
+  | SmproFacilityUnestablished { cause: NonEmptyStr }
+
+// WHY THE PLATFORM IS NOT ESTABLISHED, as a CLOSED SET rather than a sentence. Review 81287 F5: a
+// NonEmptyStr reason is uncheckable prose -- a witness can only assert it is non-empty or compare it
+// byte-for-byte against a literal, so neither the type system nor the test suite can tell "no board row
+// is bound" from "the roster is mixed", and a wrong cause reads exactly like a right one. Each arm
+// carries the FACT that made the verdict unknowable; the renderer below is the only place words appear.
+//
+// One set serves the facility, platform and subject arms: they are the same kind of fact -- something
+// upstream of the verdict is missing -- and three overlapping cause vocabularies would be parallel
+// representation. The control arms exist because a SUBJECT needs a bound route as well as a carrying
+// platform, and which of the two is missing is the operator's actual question.
+type SmproUnestablishedCause
+  = // The access standing was never observed, so there is no controller record to reach a board through.
+    AccessUnobserved { endpoint: BmcControllerEndpoint }
+  // The access was observed but reaches no board row with a SoC edge: no hardware authority to ask.
+  | NoBoardRowBound { endpoint: BmcControllerEndpoint }
+  // A board row is bound and it admits NO SoC family: the roster itself is empty. Nullary on purpose
+  // -- neither producer can reach a board LABEL (host_board_soc_families returns the families only), so
+  // a board field would be a slot waiting to be filled with a guess. Nullary coproduct arms are
+  // precedented in this corpus: BmcSecureRefusalCause.PreviouslyRotatedCredentialRequired.
+  | BoardAdmitsNoSocFamily
+  // The roster MIXES carrying and non-carrying families and nothing selects one. The counts ride along
+  // as NUMBERS on purpose: they are what a witness asserts (one mixed family of two is a different
+  // finding from one of nine). They are deliberately not rendered -- a checkable fact and a
+  // human-facing sentence are different jobs, and this DSL has no Int-to-String cast to fake one with.
+  | MixedRosterWithoutInstalledSelection { total: Int, carrying: Int }
+  // A subject needs a bound route; the secured account refused, and which refusal it was rides through
+  // as the cause rather than being summarised into a sentence.
+  | ControlRouteNotSecured { cause: BmcSecureRefusalCause }
+  // The observed controller and the secured account name different endpoints, so no route is bound.
+  | ControlEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
 
 // HOW A BOARD'S ADMITTED FAMILIES SPLIT AGAINST THE CITED CARRYING SET. Two counts, not one boolean,
 // because three situations have to stay distinguishable: every admitted family carries, none does, and
@@ -89,7 +121,7 @@ type SmproAdmittedCounts {
 // board, not the controller, is the hardware authority.
 fn smpro_facility(access: BmcAccessObservationStanding) -> SmproFacilityStanding {
   match host_board_soc_families(access: access) {
-    Absent => SmproFacilityUnestablished { reason: "the host has no board row bound to it, so the platform is unknown" }
+    Absent => SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: unobserved_endpoint(access: access) } }
     Present { value: fs } => smpro_facility_of_families(families: fs)
   }
 }
@@ -103,18 +135,18 @@ fn smpro_facility_of_families(families: List<SoCFamily>) -> SmproFacilityStandin
   if c.total == 0 {
     // NO family at all: nothing is known about the silicon. Unknown, NOT a negative about some
     // family — the collapse the architecture key produced.
-    SmproFacilityUnestablished { reason: "the bound board admits no SoC family, so the platform is unknown" }
+    SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
   } else if c.carrying == c.total {
     // UNANIMOUS YES: whatever is in the slot, it carries the interface.
     match first_soc_family(families: families) {
       Present { value: lead } => SmproFacilityCarried { family: lead }
-      Absent => SmproFacilityUnestablished { reason: "the bound board admits no SoC family, so the platform is unknown" }
+      Absent => SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
     }
   } else if c.carrying == 0 {
     // UNANIMOUS NO: every family the board admits is negatively answered by the cited set.
     match first_soc_family(families: families) {
       Present { value: lead } => SmproFacilityNotCarried { family: lead }
-      Absent => SmproFacilityUnestablished { reason: "the bound board admits no SoC family, so the platform is unknown" }
+      Absent => SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily }
     }
   } else {
     // MIXED ROSTER. The board's edge is a COMPATIBILITY roster -- what may be installed -- so it does
@@ -123,7 +155,7 @@ fn smpro_facility_of_families(families: List<SoCFamily>) -> SmproFacilityStandin
     // silicon that has no such interface). An installed-family observation would settle it; none exists
     // in the corpus yet, so the honest answer is that we do not know -- never the optimistic arm.
     SmproFacilityUnestablished {
-      reason: "the bound board admits both SMpro-carrying and non-carrying SoC families and no installed-silicon observation selects one, so this machine's platform is unknown",
+      cause: MixedRosterWithoutInstalledSelection { total: c.total, carrying: c.carrying },
     }
   }
 }
@@ -172,16 +204,24 @@ fn first_soc_family(families: List<SoCFamily>) -> SoCFamily? {
 // valid controlled machine" representable at all: it answers NotCarried, carries no site, and still
 // binds its BMC control route and stays managed.
 type SmproPlatformStanding
-  // The platform carries SMpro AND the site was read through a bound controller endpoint. The only arm
-  // with an endpoint to join against the secured one, because it is the only arm that claims a read.
-  = SmproPlatformCarried { family: SoCFamily, site: SmproSiteStanding }
+  // The platform carries SMpro AND its site was ADMITTED -- the arm holds the admitted site itself, not
+  // a standing that might or might not be one. The only arm with an endpoint to join against the secured
+  // one, because it is the only arm that claims a read.
+  = SmproPlatformCarried { family: SoCFamily, site: SmproSite }
+  // The platform carries the interface but the site is not admissible, WITH THE CAUSE. This arm exists
+  // because the alternative was `Carried { site: SmproSiteStanding }` plus a Bool validator that rejected
+  // the refused case at runtime: a validator standing in for a sum type that was never declared, which
+  // DESIGN §5 makes the blocking form ("making it unwritable -- correctness by construction, not
+  // validation"). A refused site cannot be written into the carried arm any more, so there is nothing
+  // left for a validator to catch.
+  | SmproPlatformSiteRefused { family: SoCFamily, cause: SmproSiteRefusal }
   // A named family the cited set answers negatively: NO site exists and none is owed. There is no
   // endpoint to compare, because nothing was read and nothing was claimed.
   | SmproPlatformNotCarried { family: SoCFamily }
   // The silicon is unknown -- no family bound, or a compatibility roster that mixes carrying and
   // non-carrying families with no installed-silicon observation to select one. No site, and no claim
   // that the platform lacks the interface either.
-  | SmproPlatformUnestablished { reason: NonEmptyStr }
+  | SmproPlatformUnestablished { cause: NonEmptyStr }
 
 // THE PLATFORM STANDING FOR A MACHINE, from its board's SoC families plus (only where the platform
 // carries) the SMpro site standing. Kept as one fn so a consumer never assembles the arms by hand and
@@ -192,9 +232,20 @@ fn smpro_platform_standing(
   site: SmproSiteStanding,
 ) -> SmproPlatformStanding {
   match smpro_facility(access: access) {
-    SmproFacilityCarried { family: family } => SmproPlatformCarried { family: family, site: site }
+    SmproFacilityCarried { family: family } => platform_arm_for(family: family, site: site)
     SmproFacilityNotCarried { family: family } => SmproPlatformNotCarried { family: family }
-    SmproFacilityUnestablished { reason: reason } => SmproPlatformUnestablished { reason: reason }
+    SmproFacilityUnestablished { cause: reason } => SmproPlatformUnestablished { cause: reason }
+  }
+}
+
+// THE PLATFORM ARM A SITE BELONGS IN. The only place a site standing is turned into a platform standing,
+// so the split into Carried / SiteRefused happens once, here, by pattern on the standing -- which is why
+// no validator is needed downstream: a refused site lands in the arm that names a cause, and the carried
+// arm can only ever hold an admitted site.
+fn platform_arm_for(family: SoCFamily, site: SmproSiteStanding) -> SmproPlatformStanding {
+  match site {
+    SmproSiteAdmitted { site: s } => SmproPlatformCarried { family: family, site: s }
+    SmproSiteRefused { cause: c } => SmproPlatformSiteRefused { family: family, cause: c }
   }
 }
 
@@ -205,9 +256,9 @@ fn smpro_platform_standing_of_families(
   site: SmproSiteStanding,
 ) -> SmproPlatformStanding {
   match smpro_facility_of_families(families: families) {
-    SmproFacilityCarried { family: family } => SmproPlatformCarried { family: family, site: site }
+    SmproFacilityCarried { family: family } => platform_arm_for(family: family, site: site)
     SmproFacilityNotCarried { family: family } => SmproPlatformNotCarried { family: family }
-    SmproFacilityUnestablished { reason: reason } => SmproPlatformUnestablished { reason: reason }
+    SmproFacilityUnestablished { cause: reason } => SmproPlatformUnestablished { cause: reason }
   }
 }
 
@@ -217,31 +268,18 @@ fn smpro_platform_standing_of_families(
 // site -- the requirement that made an x86 managed host impossible.
 fn smpro_platform_controller_host(standing: SmproPlatformStanding) -> NonEmptyStr? {
   match standing {
-    SmproPlatformCarried { family: _, site: site } =>
-      match site {
-        SmproSiteAdmitted { site: s } => Present { value: s.endpoint.host }
-        SmproSiteRefused { cause: _ } => none
-      }
+    // The only arm that read anything, so the only one with an endpoint to hold against the secured one.
+    SmproPlatformCarried { family: _, site: s } => Present { value: s.endpoint.host }
+    // A refused site read nothing either, and the other two arms have no interface to read through.
+    SmproPlatformSiteRefused { family: _, cause: _ } => none
     SmproPlatformNotCarried { family: _ } => none
-    SmproPlatformUnestablished { reason: _ } => none
+    SmproPlatformUnestablished { cause: _ } => none
   }
 }
 
-// WHETHER THE ADMISSION RECORD IS WELL-FORMED ABOUT THE PLATFORM. Carried must present a read site, so
-// its endpoint is compared by the caller; NotCarried and Unestablished must present NO site, which is
-// what keeps a fabricated Admitted site off an x86 row -- the arms without an interface cannot smuggle
-// one in, and the arms with one cannot leave it out.
-fn smpro_platform_is_well_formed(standing: SmproPlatformStanding) -> Bool {
-  match standing {
-    SmproPlatformCarried { family: _, site: site } =>
-      match site {
-        SmproSiteAdmitted { site: _ } => true
-        SmproSiteRefused { cause: _ } => false
-      }
-    SmproPlatformNotCarried { family: _ } => true
-    SmproPlatformUnestablished { reason: _ } => true
-  }
-}
+// (The well-formedness validator that used to sit here is GONE: SmproPlatformCarried holds an admitted
+// SmproSite directly and a refused site has its own arm, so the state it rejected cannot be built. DESIGN
+// §5 -- correctness by construction, not validation.)
 
 // WHY NO SMpro PASS SUBJECT EXISTS, in the machine's own words. The old path collapsed
 // not-licensed to 'no subject' and the boot diagnostic then rendered 'this host has no bound controller
@@ -251,30 +289,16 @@ type SmproSubjectOutcome
   // Only a genuine subject: the mint's own refusals are their own arms below, never folded in here.
   = SmproSubjectMinted { subject: SmproPassSubject }
   | SmproSubjectNotCarried { family: SoCFamily }
-  | SmproSubjectUnestablished { reason: NonEmptyStr }
+  | SmproSubjectUnestablished { cause: NonEmptyStr }
   | SmproSubjectSiteRefused { cause: SmproSiteRefusal }
   // The site is evidence about a DIFFERENT controller than the bound one: both endpoints survive, since
   // naming them is the whole value of the refusal.
   | SmproSubjectEndpointMismatch { bound: BmcControllerEndpoint, site: BmcControllerEndpoint }
 
-// WHETHER ANY OF THIS MEANS A PASS WAS READ. Used by the boot diagnostic to decide whether to render a
-// reading at all.
-fn smpro_subject_exists(outcome: SmproSubjectOutcome) -> Bool {
-  match outcome {
-    SmproSubjectMinted { subject: _ } => true
-    _ => false
-  }
-}
-
-// WHETHER THE ABSENCE IS THE PLATFORM'S FAULT RATHER THAN A BROKEN BINDING: NotCarried and Unestablished
-// say 'no such interface / unknown silicon', which is not the same complaint as 'the route is not bound'.
-fn smpro_absence_is_platform_cause(outcome: SmproSubjectOutcome) -> Bool {
-  match outcome {
-    SmproSubjectNotCarried { family: _ } => true
-    SmproSubjectUnestablished { reason: _ } => true
-    _ => false
-  }
-}
+// (No `subject_exists`/`is_platform_cause` Bool helpers here. They were two more ways to collapse a
+// five-arm outcome into a bit -- the predicate-dissolution rule -- and neither had a consumer: a caller
+// that needs to act on the outcome matches on it, which is also the only way to keep the CAUSE. Add a
+// disposition before minting one, do not add a convenience projection.)
 
 // THE HUMAN-READABLE CAUSE, so the boot path renders WHY rather than inventing one. Sourced from the
 // arms, never assembled from a host name or from the absence of a controller.
@@ -285,15 +309,45 @@ fn smpro_subject_absence_reason(outcome: SmproSubjectOutcome) -> NonEmptyStr {
       join(["the platform does not carry the SMpro interface: the bound board's SoC family ",
         (family.name as String),
         " is not among the cited SMpro-carrying families, so there is no pass to take"], "") as NonEmptyStr
-    SmproSubjectUnestablished { reason: reason } =>
-      join(["the platform is not established: ", (reason as String),
-        "; no SMpro pass was taken because it is not known whether the silicon has the interface"], "") as NonEmptyStr
+    SmproSubjectUnestablished { cause: cause } =>
+      join(["no SMpro pass was taken: ", smpro_unestablished_cause_text(cause: cause)], "") as NonEmptyStr
     SmproSubjectSiteRefused { cause: cause } =>
       join(["the platform carries SMpro and a controller is bound, but the SMpro site was refused: ",
         smpro_site_refusal_text(cause: cause)], "") as NonEmptyStr
     SmproSubjectEndpointMismatch { bound: bound, site: site } =>
       join(["the platform carries SMpro and a controller is bound, but the SMpro site is evidence about ",
         (site.host as String), ", not the bound controller ", (bound.host as String)], "") as NonEmptyStr
+  }
+}
+
+// THE OPERATOR-READABLE CAUSE, assembled once from the typed arms. This is the only place these
+// sentences exist: producers construct a cause and callers ask for text, so a wrong cause can never be
+// dressed up as a plausible sentence, and a witness asserts the CAUSE rather than a substring of it.
+fn smpro_unestablished_cause_text(cause: SmproUnestablishedCause) -> String {
+  match cause {
+    AccessUnobserved { endpoint: e } =>
+      join(["the controller ", (e.host as String),
+        " has no access observation, so no board can be reached to ask what silicon it carries"], "")
+    NoBoardRowBound { endpoint: e } =>
+      join(["the controller ", (e.host as String),
+        " is observed but reaches no board row, so there is no hardware authority to ask what silicon is installed"], "")
+    BoardAdmitsNoSocFamily =>
+      "the bound board row admits no SoC family, so nothing is known about the silicon this machine carries"
+    MixedRosterWithoutInstalledSelection { total: _, carrying: _ } =>
+      "the bound board's compatibility roster mixes SMpro-carrying and non-carrying SoC families and no installed-silicon observation selects one, so this machine's platform is unknown"
+    ControlRouteNotSecured { cause: _ } =>
+      "no control route is bound because the secured account refused the binding"
+    ControlEndpointMismatch { observed: o, secured: sec } =>
+      join(["no control route is bound: the observed controller ", (o.host as String),
+        " and the secured account ", (sec.host as String), " name different endpoints"], "")
+  }
+}
+
+// THE ENDPOINT AN OBSERVATION NAMES, so a cause can say which controller it could not resolve.
+fn unobserved_endpoint(access: BmcAccessObservationStanding) -> BmcControllerEndpoint {
+  match access {
+    BmcAccessObserved { observation: o } => o.endpoint
+    BmcAccessUnobserved { endpoint: e } => e
   }
 }
 
@@ -315,7 +369,7 @@ fn smpro_facility_licenses_read(standing: SmproFacilityStanding) -> Bool {
   match standing {
     SmproFacilityCarried { family: _ } => true
     SmproFacilityNotCarried { family: _ } => false
-    SmproFacilityUnestablished { reason: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
   }
 }
 

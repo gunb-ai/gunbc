@@ -423,12 +423,13 @@ data ampere_smpro_carrying_soc_families: List<SmproCarryingSocFamily> = [
 // answer and is not expressible here: the caller passes a family it has, or none
 // (gunbc.host.smpro_platform_capability.smpro_facility).
 fn ampere_soc_family_carries_smpro(family: SoCFamily) -> Bool {
-  match ampere_smpro_carrying_soc_families
-    |> filter(c => soc_family_eq(a: c.family, b: family))
-    |> first() {
-    Present { value: _ } => true
-    Absent => false
-  }
+  // THE CANONICAL MEMBERSHIP PREDICATE, not a hand-built one. This used to be
+  // `|> filter(...) |> first() { Present => true / Absent => false }`: a Bool helper that reconstructs an
+  // Optional and answers one variant true and the other false, which is the predicate/walker dissolution
+  // the review policy names -- the same fact as `row.capabilities |> any(c => c == cap)` two modules over
+  // (extdeps.bmc.capability), and DESIGN §2's "must not grow by re-invention" applies to walkers as much
+  // as to types. Membership is `any` over an identity test; there is nothing else it could mean.
+  ampere_smpro_carrying_soc_families |> any(c => soc_family_eq(a: c.family, b: family))
 }
 
 // Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues

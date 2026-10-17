@@ -199,8 +199,10 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
         OobHandoffPowerControlUnavailable => false
         OobHandoffRowUncatalogued { firmware: _ } => false
         OobHandoffRowAmbiguous { firmware: _, count: _ } => false
-        // (e) coherence: a catalogued row that contradicts its version standing / evidence refuses
-        // the handoff exactly like an uncatalogued one -- an untrustworthy row hands off nothing.
+        // A row whose own evidence does not support its version standing is NOT an admission. Naming the
+        // arm rather than catching it with _ keeps the probe honest: silently treating incoherence as
+        // 'not admitted' would hide a catalog that had gone stale, which is the failure this arm exists
+        // to make visible.
         OobHandoffRowIncoherent { firmware: _ } => false
       }
       let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: b.identity.firmware, capabilities: [] }
@@ -211,8 +213,6 @@ fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
         OobHandoffPowerControlUnavailable => false
         OobHandoffRowUncatalogued { firmware: _ } => false
         OobHandoffRowAmbiguous { firmware: _, count: _ } => false
-        // (e) coherence: a catalogued row that contradicts its version standing / evidence refuses
-        // the handoff exactly like an uncatalogued one -- an untrustworthy row hands off nothing.
         OobHandoffRowIncoherent { firmware: _ } => false
       }
       if admitted == false {

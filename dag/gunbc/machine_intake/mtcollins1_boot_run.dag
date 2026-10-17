@@ -1917,7 +1917,7 @@ fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, passwor
       SmproSubjectSiteRefused { cause: _ } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectSiteRefused { cause: cause }) }
       SmproSubjectEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectEndpointMismatch { bound: bound, site: site }) }
       SmproSubjectNotCarried { family: family } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectNotCarried { family: family }) }
-      SmproSubjectUnestablished { reason: reason } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectUnestablished { reason: reason }) }
+      SmproSubjectUnestablished { cause: cause } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectUnestablished { cause: cause }) }
     }
   }
 }

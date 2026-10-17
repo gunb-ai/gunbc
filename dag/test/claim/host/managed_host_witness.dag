@@ -26,9 +26,11 @@ import gunbc.host.smpro_platform_capability {
   SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
   SmproPlatformUnestablished, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
   SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
-  smpro_platform_is_well_formed, smpro_subject_absence_reason,
+  smpro_subject_absence_reason,
   smpro_facility, smpro_facility_of_families, SmproFacilityStanding, SmproFacilityCarried,
   SmproFacilityNotCarried, SmproFacilityUnestablished, smpro_facility_licenses_read,
+  SmproUnestablishedCause, BoardAdmitsNoSocFamily, NoBoardRowBound,
+  MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
 import extdeps.toolchain.types { Aarch64, X86_64 }
@@ -152,7 +154,7 @@ test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
     BmcControlBound { route: r } => match managed_host_smpro_subject(host: h, control: bmc_control_binding(observed: h.access, secured: h.secure)) {
       // A platform that does not carry, or whose platform is unknown, minted nothing: the claim is red.
       SmproSubjectNotCarried { family: _ } => false
-      SmproSubjectUnestablished { reason: _ } => false
+      SmproSubjectUnestablished { cause: _ } => false
       SmproSubjectSiteRefused { cause: _ } => false
       SmproSubjectEndpointMismatch { bound: _, site: _ } => false
       SmproSubjectMinted { subject: s } =>
@@ -180,7 +182,7 @@ test fn w_an_x86_machine_with_no_smpro_is_a_valid_controlled_machine() -> Bool {
       families: [amd_7950x3d_soc_family]) {
       SmproFacilityNotCarried { family: f } => (f.name as String) == "Ryzen 9 7950X3D"
       SmproFacilityCarried { family: _ } => false
-      SmproFacilityUnestablished { reason: _ } => false
+      SmproFacilityUnestablished { cause: _ } => false
     }
     // and it licenses no read...
     let licenses_no_read = smpro_facility_licenses_read(
@@ -222,7 +224,7 @@ test fn w_an_aarch64_family_the_cited_set_does_not_name_is_not_carried() -> Bool
     SmproFacilityNotCarried { family: f } =>
       (f.name as String) == (aarch64_family_outside_the_cited_set.name as String)
     SmproFacilityCarried { family: _ } => false
-    SmproFacilityUnestablished { reason: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
   }
   // And a machine in that position licenses no SMpro read.
   let no_read = smpro_facility_licenses_read(standing: smpro_facility_of_families(
@@ -238,7 +240,8 @@ test fn w_an_unknown_family_is_unestablished_and_never_not_carried() -> Bool {
   // A board that admits NO SoC family: nothing is known about the silicon, which is not a negative
   // about any family.
   let no_families = match smpro_facility_of_families(families: []) {
-    SmproFacilityUnestablished { reason: r } => (r as String) != ""
+    SmproFacilityUnestablished { cause: BoardAdmitsNoSocFamily } => true
+    SmproFacilityUnestablished { cause: _ } => false
     SmproFacilityNotCarried { family: _ } => false
     SmproFacilityCarried { family: _ } => false
   }
@@ -247,7 +250,11 @@ test fn w_an_unknown_family_is_unestablished_and_never_not_carried() -> Bool {
   // Unestablished — NOT Carried (nothing licenses a read) and NOT NotCarried (no family was named to
   // be refused). This is the arm the architecture key could not express at all.
   let unbound_board = match smpro_facility(access: BmcAccessUnobserved { endpoint: fixture_bmc_endpoint }) {
-    SmproFacilityUnestablished { reason: r } => (r as String) != ""
+    // The endpoint RIDES THROUGH in the cause, so the claim can name which controller it could not
+    // resolve -- a NonEmptyStr reason could only say "something was missing" about nothing in particular.
+    SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: e } } =>
+      (e.host as String) == (fixture_bmc_endpoint.host as String)
+    SmproFacilityUnestablished { cause: _ } => false
     SmproFacilityNotCarried { family: _ } => false
     SmproFacilityCarried { family: _ } => false
   }
@@ -275,7 +282,7 @@ test fn w_the_amps_board_establishes_the_smpro_facility_as_carried() -> Bool {
         (f.name as String) == (ampere_altra_soc_family.name as String)
           && smpro_facility_licenses_read(standing: smpro_facility(access: h.access))
       SmproFacilityNotCarried { family: _ } => false
-      SmproFacilityUnestablished { reason: _ } => false
+      SmproFacilityUnestablished { cause: _ } => false
     }
   }) && count(managed_hosts()) == 1
 }
@@ -294,7 +301,12 @@ test fn w_the_amps_board_establishes_the_smpro_facility_as_carried() -> Bool {
 test fn w_a_board_admitting_carrying_and_non_carrying_families_is_unestablished() -> Bool {
   let mixed = match smpro_facility_of_families(
     families: [amd_7950x3d_soc_family, ampere_altra_max_soc_family]) {
-    SmproFacilityUnestablished { reason: r } => (r as String) != ""
+    // The cause is CHECKABLE, which a NonEmptyStr reason never was: the counts are facts a witness
+    // asserts, so "one mixed family of two" is a different verdict from "one of nine" -- a regression
+    // that miscounted the roster goes RED here instead of printing a different sentence.
+    SmproFacilityUnestablished { cause: MixedRosterWithoutInstalledSelection { total: t, carrying: c } } =>
+      t == 2 && c == 1
+    SmproFacilityUnestablished { cause: _ } => false
     SmproFacilityCarried { family: _ } => false
     SmproFacilityNotCarried { family: _ } => false
   }
@@ -362,7 +374,7 @@ test fn w_an_x86_platform_with_no_smpro_facility_is_not_carried_by_the_cited_set
         Absent => false
       }
     SmproFacilityCarried { family: _ } => false
-    SmproFacilityUnestablished { reason: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
   }
 }
 
@@ -385,7 +397,7 @@ test fn w_an_impostor_family_named_altra_does_not_carry_smpro() -> Bool {
   let not_carried = match smpro_facility_of_families(families: [altra_named_impostor_family]) {
     SmproFacilityNotCarried { family: _ } => true
     SmproFacilityCarried { family: _ } => false
-    SmproFacilityUnestablished { reason: _ } => false
+    SmproFacilityUnestablished { cause: _ } => false
   }
   // And the real Altra row is still Carried, so the test is not simply rejecting everything.
   let real_carried = match smpro_facility_of_families(families: [ampere_altra_soc_family]) {
@@ -427,9 +439,11 @@ test fn w_a_platform_that_does_not_carry_smpro_binds_no_pass_subject() -> Bool {
     // ...and on an UNKNOWN platform, whose reason survives rather than collapsing into not-carried.
     let unknown_binds_nothing_with_its_own_reason = match managed_host_smpro_subject(
       host: managed_host_fixture(host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
-        smpro: SmproPlatformUnestablished { reason: "the board admits no SoC family" }),
+        smpro: SmproPlatformUnestablished { cause: BoardAdmitsNoSocFamily }),
       control: bmc_control_binding(observed: h.access, secured: h.secure)) {
-      SmproSubjectUnestablished { reason: r } => (r as String) == "the board admits no SoC family"
+      // The CAUSE rides through unchanged -- which is what makes the arm checkable: the witness
+      // compares an arm of a closed set, not a sentence two sites would have to keep in sync.
+      SmproSubjectUnestablished { cause: BoardAdmitsNoSocFamily } => true
       _ => false
     }
     // THE POINT OF THE WHOLE SHAPE: the machine is still fully controlled either way. The route binds
@@ -472,9 +486,10 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
         BmcControlBound { route: r } => true
         _ => false
       }
-      // (3) the record-level well-formedness the admission owes: an arm with no interface must present
-      // no site, and this is the arm that must not smuggle one in
-      let well_formed = smpro_platform_is_well_formed(standing: x86.smpro)
+      // (3) the arm carries NO SITE AT ALL -- and that is now a type-level fact rather than a check:
+      // SmproPlatformNotCarried has no site field, and SmproPlatformCarried holds an admitted SmproSite
+      // directly, so 'not carried but smuggled a site' is unwritable (DESIGN §5). Matching the arm is
+      // the whole assertion; a validator here would be a check that cannot fail.
       // (4) no SMpro pass subject is minted for it, and the refusal says WHY in the machine's own words
       let control = bmc_control_binding(observed: x86.access, secured: x86.secure)
       let no_subject = match managed_host_smpro_subject(host: x86, control: control) {
@@ -496,8 +511,8 @@ test fn w_the_supplied_x86_specimen_is_managed_and_carries_no_smpro_site() -> Bo
         && text != false_controller_message
         // and an unknown platform must not be described in the same words as a not-carried one
         && text != (smpro_subject_absence_reason(outcome: SmproSubjectUnestablished {
-             reason: "the bound board admits no SoC family" }) as String)
-      platform_not_carried && route_binds && well_formed && no_subject && text_names_the_platform
+             cause: BoardAdmitsNoSocFamily }) as String)
+      platform_not_carried && route_binds && no_subject && text_names_the_platform
     }
   }
 }
@@ -529,15 +544,16 @@ test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> 
         targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
         control_socket: 0,
         evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
-      ),
-      }
+        ),
+      },
+    )
     match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
       BmcControlBound { route: r } => match managed_host_smpro_subject(host: crossed, control: bmc_control_binding(observed: crossed.access, secured: crossed.secure)) {
         SmproSubjectEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
         SmproSubjectMinted { subject: _ } => false
         SmproSubjectSiteRefused { cause: _ } => false
         SmproSubjectNotCarried { family: _ } => false
-        SmproSubjectUnestablished { reason: _ } => false
+        SmproSubjectUnestablished { cause: _ } => false
       }
       BmcControlAccessUnobserved { endpoint: _ } => false
       BmcControlNotSecured { cause: _ } => false

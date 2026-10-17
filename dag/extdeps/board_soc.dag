@@ -35,34 +35,32 @@ type BoardSocArchitectureStanding =
   Established { architecture: Architecture }
   | Unestablished
 
-// WHETHER TWO SoC FAMILIES ESTABLISH THE SAME ARCHITECTURE. Both must establish one (a family
-// whose models disagree establishes nothing, and so can never "agree" with anything), and the two
-// must name the same architecture. Comparing the families — not an optional architecture — is what
-// keeps the "establishes nothing" case from being mistaken for an agreement.
-fn soc_families_agree(a: SoCFamily, b: SoCFamily) -> Bool {
-  match soc_family_architecture(family: a) {
-    Absent => false
-    Present { value: a_arch } => match soc_family_architecture(family: b) {
-      Absent => false
-      Present { value: b_arch } => a_arch == b_arch
-    }
-  }
-}
-
 // THE ARCHITECTURE THE BOARD'S ADMITTED FAMILIES ESTABLISH TOGETHER. Every admitted family must
 // establish an architecture and agree on the same one. An edge with no families, a family that
-// establishes nothing, or a disagreement, is unestablished.
+// establishes nothing, or a disagreement, is unestablished -- never "first wins", and never an
+// agreement inferred from two families that each established nothing.
+//
+// THE LEAD'S ARCHITECTURE IS COMPUTED ONCE and every admitted family is tested against that value.
+// The `soc_families_agree(a, b)` helper this replaces recomputed the lead's architecture for EVERY
+// family, and the caller then computed it a third time; comparing the established values directly is the
+// whole predicate (same predicate-dissolution rule as `ampere_soc_family_carries_smpro`, same repair
+// direction). Testing against the lead's VALUE rather than comparing two families keeps the
+// "establishes nothing" case from being mistaken for agreement: `none` equals only `none`, and the guard
+// `lead_arch != none` means a lead that establishes nothing answers Unestablished rather than letting
+// every other nothing-establishing family "agree" with it.
 fn board_soc_architecture(edge: BoardSocEdge) -> BoardSocArchitectureStanding {
   match edge.soc_families |> first() {
     Absent => Unestablished
-    Present { value: lead } =>
-      if edge.soc_families |> all(f => soc_families_agree(a: f, b: lead)) {
-        match soc_family_architecture(family: lead) {
+    Present { value: lead } => {
+      let lead_arch = soc_family_architecture(family: lead)
+      if lead_arch != none && edge.soc_families |> all(f => soc_family_architecture(family: f) == lead_arch) {
+        match lead_arch {
           Present { value: arch } => Established { architecture: arch }
           Absent => Unestablished
         }
       } else {
         Unestablished
       }
+    }
   }
 }
