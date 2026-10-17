@@ -11832,8 +11832,10 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       }
       match expected {
         Present { value: exp } =>
-          if node_is_std_optional(n: exp, scope: scope) || exp.return_cardinality == CardOptional {
+          if node_is_std_optional(n: exp, scope: scope) {
             exp
+          } else if exp.return_cardinality == CardOptional {
+            payload_optional
           } else {
             match exp.inferred {
               Present { value: Resolved { node: rt } } =>
