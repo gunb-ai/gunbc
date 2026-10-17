@@ -1,0 +1,25 @@
+module test.claim.imported_coproduct_arms_use_line_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A module that merely IMPORTS a coproduct and its arms declares neither, so a consumer of the
+// coproduct through it must still get the coproduct's use-line from the DECLARING module. The
+// relay imports `{ ArmT }` in the control and `{ ArmT, ArmX, ArmY }` in the red; the consumer is the same.
+fn v_consumer_through_relay(relay: String, relay_fn: String, file: String) -> Bool {
+  compile_dag_rust_emit_check(
+    concat("module iar_consumer\n\nimport test.fixture.imported_arms.", relay, " { ArmT, ", relay_fn, " }\n\nfn iar_use(t: ArmT) -> ArmT {\n  ", relay_fn, "(t)\n}\n"),
+    "src/iar_consumer.rs",
+    ["pub use crate::test_fixture_imported_arms_provider::", "ArmT"],
+    [concat("crate::test_fixture_imported_arms_", file, "::{ArmT")]
+  )
+}
+
+test fn a_relay_importing_only_the_coproduct_routes_its_use_line_to_the_declarer() -> Bool {
+  v_consumer_through_relay("relay_without_arms", "arm_relay_without_arms", "relay_without_arms")
+}
+
+test fn a_relay_importing_the_coproduct_and_its_arms_routes_its_use_line_to_the_declarer() -> Bool {
+  v_consumer_through_relay("relay_with_arms", "arm_relay_with_arms", "relay_with_arms")
+}
