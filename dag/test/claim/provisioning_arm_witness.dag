@@ -48,8 +48,9 @@ import gunbc.provisioning.provisioning_arm {
   provisioning_arm_attempt,
 }
 
-// ── Sibling fixtures: the ONLY place this witness names sibling-owned shapes. S4 is not on origin/main
-// yet; the integration edit is confined to fixture_seed. ──
+// ── Sibling fixtures: the ONLY place this witness names sibling-owned shapes. The S4 binding is a
+// sole_constructor, so the only honest fixture is the one S4's own witness builds through the real
+// producer; fixture_seed_is_a_real_binding below owes the inhabitance claim that it is Present. ──
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootStanding,
   NeedsPreparation,
@@ -63,6 +64,7 @@ import gunbc.firmware_network_boot_standing {
 }
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
 import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,8 +72,11 @@ fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
 }
 
-fn fixture_seed() -> AltraAutoinstallSeedBinding {
-  AltraAutoinstallSeedBinding { seed: "fixture-seed" as NonEmptyStr }
+fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+  match built_seed_and_binding() {
+    Present { value: built } => Present { value: built.binding }
+    Absent => Absent
+  }
 }
 
 fn fixture_firmware_needs_ipmi() -> FirmwareNetworkBootStanding {
@@ -111,7 +116,7 @@ fn evidence_with(firmware: FirmwareNetworkBootStanding, chainloader: SitePxeEdge
     chainloader: chainloader,
     virtual_media: virtual_media,
     origin: fixture_origin(),
-    seed: Present { value: fixture_seed() },
+    seed: fixture_seed(),
   }
 }
 
@@ -229,7 +234,7 @@ test fn an_unpinned_chainloader_is_an_unobserved_arm() -> Bool {
 }
 
 test fn a_missing_origin_is_an_unobserved_arm_for_both_strategies() -> Bool {
-  let e = DeliveryEvidence { firmware: fixture_firmware_needs_ipmi(), chainloader: pinned(), virtual_media: media_available(), origin: Absent, seed: Present { value: fixture_seed() } }
+  let e = DeliveryEvidence { firmware: fixture_firmware_needs_ipmi(), chainloader: pinned(), virtual_media: media_available(), origin: Absent, seed: fixture_seed() }
   is_unobserved_as(arm: derive(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"), expected: OriginNotObserved)
     && is_unobserved_as(arm: derive(strategy: VirtualMedia, evidence: e, unit: "unit-alpha"), expected: OriginNotObserved)
 }
@@ -283,4 +288,14 @@ test fn the_refused_firmware_standing_is_terminal() -> Bool {
 test fn an_arm_has_no_alternates_field_and_the_field_set_is_closed() -> Bool {
   arm_field_set_is_closed(arm: derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha"))
     && arm_field_set_is_closed(arm: derive(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha"))
+}
+
+// PAIRING OBLIGATION: every other test supplies fixture_seed() as evidence, and an Absent fixture would
+// route them all through the SeedBindingNotObserved arm while still passing the ones that expect it.
+// This claim is what makes the supplied hypothesis a reading: the real S4 producer emits a binding.
+test fn fixture_seed_is_a_real_binding_from_the_s4_producer() -> Bool {
+  match fixture_seed() {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
