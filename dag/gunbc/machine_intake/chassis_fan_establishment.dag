@@ -45,10 +45,9 @@ fn fan_line_spins(line: SdrTypeLine) -> Bool {
 fn fitted_header_failure(lines: List<SdrTypeLine>, header: NonEmptyStr) -> String? {
   match fan_line_named(lines: lines, header: header) {
     Absent => Present { value: join([header as String, " (fitted) has no sensor row"], "") }
-    Present { value: line } => if fan_line_spins(line: line) {
-      Absent
-    } else {
-      Present { value: join([header as String, " (fitted) does not spin: ", line.reading_text as String], "") }
+    Present { value: line } => match fan_line_spins(line: line) {
+      true => Absent
+      false => Present { value: join([header as String, " (fitted) does not spin: ", line.reading_text as String], "") }
     }
   }
 }
