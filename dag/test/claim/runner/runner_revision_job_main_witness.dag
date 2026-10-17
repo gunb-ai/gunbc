@@ -27,9 +27,9 @@ test fn the_job_refuses_a_malformed_spec_and_an_undeclared_slot_before_any_effec
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-13") == "slot-not-declared:srv1-13"
 }
 
-// THE IMAGE WALL, CLAIMED DIRECTLY (the entry checks the slot first and the declared list is empty, so
-// the run above never reaches it): no pinned identity admits nothing, and a pinned identity over a
-// directory that holds no installed image is refused by the verifier, not waved through.
+// THE IMAGE WALL'S PURE ARM: no pinned identity admits nothing (the entry checks the slot first and the
+// declared list is empty, so the run above never reaches it). The uninstalled-image arm runs an argv
+// and lives in runner_revision_job_image_wet_witness.
 fn admitted(image_sha256: String) -> String {
   match revision_job_admit_image(image_dir: "/nonexistent", image_sha256: image_sha256) {
     RevisionJobImageNotAdmitted { reason: r } => r
@@ -37,8 +37,6 @@ fn admitted(image_sha256: String) -> String {
   }
 }
 
-test fn no_pinned_image_identity_and_an_uninstalled_image_are_both_refused() -> Bool {
+test fn no_pinned_image_identity_is_refused_before_any_image_is_read() -> Bool {
   admitted(image_sha256: "") == "no image identity is pinned for this job"
-    && admitted(image_sha256: "0000000000000000000000000000000000000000000000000000000000000000") != "no image identity is pinned for this job"
-    && admitted(image_sha256: "0000000000000000000000000000000000000000000000000000000000000000") != "verified"
 }
