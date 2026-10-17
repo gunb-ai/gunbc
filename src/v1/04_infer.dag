@@ -3128,6 +3128,56 @@ fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferSc
   }
 }
 
+// IDENTITY IS THE RESOLVED DECLARATION, NEVER A POSITION. A corpus declaration is identified by the
+// DeclarationRef its reference carries (Node.declaration, minted once by infer_resolve
+// reference_with_declaration); two nodes without it are not joined. The kernel Optional has no
+// DeclarationRef (a kernel spelling names no corpus declaration), so its identity is the kernel
+// scope's own binding, the node kernel_optional_owner_declaring hands out.
+fn type_is_kernel_optional_declaration(t: Node, owner: Node?) -> Bool {
+  match owner {
+    Present { value: o } => t.connective == Disj && t == o
+    Absent => false
+  }
+}
+
+// A BARE DECLARATION ARM IS DROPPED FROM THE JOIN WHEN A SIBLING ARM INHABITS THE SAME DECLARATION.
+// A sibling inhabits a corpus declaration when it carries the same DeclarationRef at a different
+// application (the node differs), and the kernel Optional when it is `T?`: that cardinality IS that
+// declaration, so the inhabitance is established by the owner's identity.
+//
+// READING OF THE CORPUS RULE: `t.connective == Disj` makes t the BARE declaration (an application of a
+// generic coproduct is not Disj). Siblings that are applications of the same DeclarationRef (Box<Int>,
+// Box<String>) are not Disj either, so none of them drops and the join between them is unchanged;
+// when every arm would drop, inhabited_join_types keeps them all.
+// PREMISE: v1 types a NULLARY arm literal (`Absent`, `CtlNil`) as the bare declaration. A
+// payload-carrying arm typed bare would ride this rule wrongly, so that typing must not be introduced
+// without revisiting it. The kernel Optional is identified by node equality with the kernel scope's own
+// binding, so a user coproduct that spells `Present`/`Absent` arms never matches.
+fn arm_is_bare_declaration_of_sibling(t: Node, siblings: List<Node>, optional_owner: Node?) -> Bool {
+  t.connective == Disj && (siblings |> any(s =>
+    (s != t && t.declaration != none && s.declaration == t.declaration)
+      || (s.return_cardinality == CardOptional && type_is_kernel_optional_declaration(t: t, owner: optional_owner))
+  ))
+}
+
+// THE ARM-JOIN AND THE BRANCH-JOIN SHARE ONE RULE: a bare declaration arm yields to a sibling that
+// inhabits it. Dropping it leaves the sibling, which carries the type argument the declaration lacks.
+fn inhabited_join_types(types: List<Node>, scope: InferScope) -> List<Node> {
+  let optional_owner = kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")
+  let kept = types |> filter(t => !arm_is_bare_declaration_of_sibling(t: t, siblings: types, optional_owner: optional_owner))
+  if kept |> count == 0 { types } else { kept }
+}
+
+// A FOLD INIT THAT IS A BARE DECLARATION FIXES NO ELEMENT TYPE: the fold's expected result, when it
+// inhabits that declaration, does. One rule for the method-call and the free-call fold forms.
+fn fold_init_joined_with_expected(init_type: Node, expected: Node?, scope: InferScope) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")) { exp } else { init_type }
+    Absent => init_type
+  }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
@@ -8981,7 +9031,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_method_name = Present { value: func_name }
       let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type: Node? = match call_fold_info {
-        Present { value: fi } => Present { value: resolved_type(n: arg_value(n: fi.typed_arg)) }
+        Present { value: fi } => Present { value: fold_init_joined_with_expected(init_type: resolved_type(n: arg_value(n: fi.typed_arg)), expected: expected, scope: scope) }
         Absent => none
       }
       let declared_formal_authority_failed = match call_target {
@@ -9553,8 +9603,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
+      // AN INIT THAT IS A BARE DECLARATION (`init: Absent`) FIXES NO ELEMENT TYPE; the fold's expected
+      // result, when it inhabits that declaration, does. Same rule as the arm join, same helper.
       let fold_acc_type: Node? = match fold_info {
-        Present { value: fi } => Present { value: resolved_type(n: arg_value(n: fi.typed_arg)) }
+        Present { value: fi } => Present { value: fold_init_joined_with_expected(init_type: resolved_type(n: arg_value(n: fi.typed_arg)), expected: expected, scope: scope) }
         Absent => none
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
@@ -9682,9 +9734,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => [divergent_type()]
         }
       }
-      let unified_arm_type = match arm_body_types |> first {
+      // AN ARM THAT NAMES A DECLARATION ITSELF (a bare `Absent`) CARRIES NO ELEMENT TYPE, and a sibling
+      // arm inhabiting that declaration (here `T?`) carries it. The join used to hand the declaration, with its
+      // formal unapplied, to the first-wins prefer_specific_type, which returned it and dropped T: a
+      // fold accumulator refined from that lambda rendered as `Option<Present<_>>`. The declaration is
+      // identified by its declaring site against the kernel Optional owner, never by spelling.
+      let joined_arm_types = inhabited_join_types(types: arm_body_types, scope: scope)
+      let unified_arm_type = match joined_arm_types |> first {
         Present { value: first_type } =>
-          arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
+          joined_arm_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
             prefer_specific_type(left: acc, right: t, source_indices: scope.type_env.source_indices)
           )
         Absent => scrut_rt
@@ -9801,8 +9859,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let else_diags = else_result.diagnostics
           let then_rt = resolved_type(n: then_typed)
           let else_rt = resolved_type(n: else_typed)
-          let unified = prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
-          let branch_diags = if node_type_compatible(
+          let inhabited_branch_types = inhabited_join_types(types: [then_rt, else_rt], scope: scope)
+          let branch_declaration_yields = inhabited_branch_types |> count == 1
+          let unified = match inhabited_branch_types |> first {
+            Present { value: only } => if branch_declaration_yields { only } else { prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices) }
+            Absent => prefer_specific_type(left: then_rt, right: else_rt, source_indices: scope.type_env.source_indices)
+          }
+          let branch_diags = if branch_declaration_yields || node_type_compatible(
             left: then_rt,
             right: else_rt,
             source_indices: scope.type_env.source_indices,
