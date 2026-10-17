@@ -1,6 +1,6 @@
 module gunbc.machine_intake.mtcollins1_dimm_admission
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, list_length }
 import extdeps.memory.types { DimmBuffering, Registered }
 import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 
@@ -10,11 +10,13 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // observations this repository makes out of the observed upstream's module, and the Ampere brief models
 // the brief.
 //
-// THREE STANDINGS, KEPT APART (DESIGN 4d):
-//  - the DEFAULT is a typed operator assumption, not a vendor fact: modules of one type (the pair
-//    buffering + non-volatile backing) are admitted when ranks agree, whatever their speeds; a mixture of
-//    buffering classes was never observed and is refused, not defaulted;
-//  - the PLATFORM ROWS are committed observations of this unit, each naming its run and capture;
+// STANDINGS, KEPT APART (DESIGN 4d):
+//  - POLICY (PolicyVerdict): the ruling's DEFAULT is a typed operator assumption, not a vendor fact: a
+//    nonempty population of one module type (buffering + non-volatile backing) and one rank is permitted
+//    to be attempted, whatever the speeds. Anything else is not covered unless an observed accepted
+//    population widens it, and an empty population is refused;
+//  - PLATFORM (PlatformPrediction): committed observations of this unit, each naming its run and capture,
+//    predicting only for the exact population observed; everything else is unestablished;
 //  - the AUTHORITY on what a unit accepted is the DRAM firmware's own training verdict on the booted
 //    population. This function predicts that verdict from the observations; a booted population's verdict
 //    outranks it.
@@ -25,8 +27,8 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture (sha256
 // 10ec5eb02ed88559d448b3273efa1557b57e0de1ef3eb51866636d35b63bddc1): the same four RDIMM 2R 2133
 // with four RDIMM 1R 2666 in place of the NV-RDIMMs, accepted and trained at 2133. The two populations
-// differ ONLY in module type of four modules, so the refusal is attributed to the type mixture and the
-// acceptance WIDENS the default on this platform to mixed rank within one module type.
+// differ in manufacturer, part, SPD and RCD as well as module type, so neither run isolates one cause.
+// Each run is therefore a verdict on its EXACT population only; every other population is unestablished.
 
 // CONSUMER (DESIGN 3c): consumed here by the witnesses only. A named later change consumes it: the
 // boot-attempt admission join (gunbc.recurring_failure_mode attested_population_never_joined_to_the_firmware_reading),
@@ -36,78 +38,105 @@ import std.measure { MegatransfersPerSecond, megatransfers_per_second }
 // non-volatile backing is the one fact the memory model does not yet carry, so it is declared here as the
 // observed unit's own field rather than minted as a second module-kind vocabulary.
 
+// One firmware DRAM-table line: channel position, SPD manufacturer id, part, RCD controller id, module
+// class and the trained-for rank and rate. Capacity is carried by the part.
 type ObservedDimm {
+  position: NonEmptyStr
+  spd_manufacturer: NonEmptyStr
+  part_number: NonEmptyStr
+  controller: NonEmptyStr
   buffering: DimmBuffering
   non_volatile_backing: Bool
   rank_count: Int
   megatransfers: MegatransfersPerSecond
 }
 
-type DimmAdmissionBasis
+// Two separate facts. POLICY: may this population be attempted (the ruling's operator default, widened
+// by an observed accepted population). PLATFORM: does committed evidence predict how it trains.
+type PolicyBasis
   = OperatorDefaultSameRankSameType
-  | PlatformObservationMixedRankAccepted { run: NonEmptyStr }
-  | PlatformObservationModuleTypeMixtureRefused { run: NonEmptyStr }
-  | OperatorDefaultRankMixtureNotObserved
-  | BufferingMixtureNotObserved
+  | WidenedByObservedPopulation { run: NonEmptyStr }
 
-type DimmAdmission
-  = DimmPopulationAdmitted { basis: DimmAdmissionBasis }
-  | DimmPopulationRefused { basis: DimmAdmissionBasis }
+type PolicyVerdict
+  = PolicyPermitsAttempt { basis: PolicyBasis }
+  | PolicyEmptyPopulationRefused
+  | PolicyDefaultDoesNotCover
+
+type PlatformPrediction
+  = PlatformTrainsObserved { run: NonEmptyStr }
+  | PlatformRefusesObserved { run: NonEmptyStr }
+  | PlatformUnestablished
+
+type DimmAdmissionReading {
+  policy: PolicyVerdict
+  platform: PlatformPrediction
+}
 
 data mtcollins1_refused_run: NonEmptyStr = "39005709187"
 
 data mtcollins1_accepted_run: NonEmptyStr = "39010930690"
 
-fn dimm_population_has_backing(modules: List<ObservedDimm>, nv: Bool) -> Bool {
-  any(modules, m => m.non_volatile_backing == nv)
+fn micron_nv_rdimm_1r_2666(position: NonEmptyStr) -> ObservedDimm {
+  ObservedDimm { position: position, spd_manufacturer: "2c:80", part_number: "18ASF2G72XF12G6V21AB", controller: "b3:80", buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
 }
 
-fn dimm_population_has_buffering_mixture(modules: List<ObservedDimm>) -> Bool {
-  any(modules, a => any(modules, b => a.buffering != b.buffering))
+fn micron_rdimm_2r_2133(position: NonEmptyStr) -> ObservedDimm {
+  ObservedDimm { position: position, spd_manufacturer: "2c:80", part_number: "36ASF2G72PZ-2G1A2", controller: "b3:80", buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) }
 }
 
-fn dimm_population_is_registered(modules: List<ObservedDimm>) -> Bool {
-  !any(modules, m => m.buffering != Registered)
+fn hynix_rdimm_1r_2666(position: NonEmptyStr, controller: NonEmptyStr) -> ObservedDimm {
+  ObservedDimm { position: position, spd_manufacturer: "ad:80", part_number: "HMA82GR7AFR4N-VK", controller: controller, buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) }
 }
 
-fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
-  any(modules, a => any(modules, b => a.rank_count != b.rank_count))
+// Run 39005709187 DRAM table, MC0..MC7 in order.
+data mtcollins1_run_39005709187_population: List<ObservedDimm> = [micron_nv_rdimm_1r_2666(position: "MC0"), micron_rdimm_2r_2133(position: "MC1"), micron_rdimm_2r_2133(position: "MC2"), micron_rdimm_2r_2133(position: "MC3"), micron_nv_rdimm_1r_2666(position: "MC4"), micron_nv_rdimm_1r_2666(position: "MC5"), micron_nv_rdimm_1r_2666(position: "MC6"), micron_rdimm_2r_2133(position: "MC7")]
+
+// Run 39010930690 DRAM table; MC0 and MC4 report RCD 32:86, MC5 and MC6 report b3:80.
+data mtcollins1_run_39010930690_population: List<ObservedDimm> = [hynix_rdimm_1r_2666(position: "MC0", controller: "32:86"), micron_rdimm_2r_2133(position: "MC1"), micron_rdimm_2r_2133(position: "MC2"), micron_rdimm_2r_2133(position: "MC3"), hynix_rdimm_1r_2666(position: "MC4", controller: "32:86"), hynix_rdimm_1r_2666(position: "MC5", controller: "b3:80"), hynix_rdimm_1r_2666(position: "MC6", controller: "b3:80"), micron_rdimm_2r_2133(position: "MC7")]
+
+fn dimm_identical(a: ObservedDimm, b: ObservedDimm) -> Bool {
+  a.position == b.position && a.spd_manufacturer == b.spd_manufacturer && a.part_number == b.part_number
+    && a.controller == b.controller && a.buffering == b.buffering && a.non_volatile_backing == b.non_volatile_backing
+    && a.rank_count == b.rank_count && a.megatransfers == b.megatransfers
 }
 
-fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmission {
-  if dimm_population_has_backing(modules: modules, nv: false) && dimm_population_has_backing(modules: modules, nv: true) {
-    DimmPopulationRefused { basis: PlatformObservationModuleTypeMixtureRefused { run: mtcollins1_refused_run } }
-  } else if dimm_population_has_buffering_mixture(modules: modules) {
-    DimmPopulationRefused { basis: BufferingMixtureNotObserved }
-  } else if dimm_population_has_rank_mixture(modules: modules) {
-    if dimm_population_is_registered(modules: modules) && dimm_population_has_backing(modules: modules, nv: false) {
-      DimmPopulationAdmitted { basis: PlatformObservationMixedRankAccepted { run: mtcollins1_accepted_run } }
-    } else {
-      DimmPopulationAdmitted { basis: OperatorDefaultRankMixtureNotObserved }
-    }
+fn dimm_population_covers(whole: List<ObservedDimm>, part: List<ObservedDimm>) -> Bool {
+  !any(part, p => !any(whole, w => dimm_identical(a: w, b: p)))
+}
+
+// Positions are distinct within a firmware table, so mutual cover at equal length is multiset equality.
+fn dimm_population_identical(a: List<ObservedDimm>, b: List<ObservedDimm>) -> Bool {
+  list_length(a) == list_length(b) && dimm_population_covers(whole: a, part: b) && dimm_population_covers(whole: b, part: a)
+}
+
+fn dimm_population_is_uniform(modules: List<ObservedDimm>) -> Bool {
+  !any(modules, a => any(modules, b => a.buffering != b.buffering || a.non_volatile_backing != b.non_volatile_backing || a.rank_count != b.rank_count))
+}
+
+fn mtcollins1_platform_prediction(modules: List<ObservedDimm>) -> PlatformPrediction {
+  if dimm_population_identical(a: modules, b: mtcollins1_run_39010930690_population) {
+    PlatformTrainsObserved { run: mtcollins1_accepted_run }
+  } else if dimm_population_identical(a: modules, b: mtcollins1_run_39005709187_population) {
+    PlatformRefusesObserved { run: mtcollins1_refused_run }
   } else {
-    DimmPopulationAdmitted { basis: OperatorDefaultSameRankSameType }
+    PlatformUnestablished
   }
 }
 
-data mtcollins1_run_39005709187_population: List<ObservedDimm> = [
-  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: true, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-]
-
-data mtcollins1_run_39010930690_population: List<ObservedDimm> = [
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 1, megatransfers: megatransfers_per_second(count: 2666) },
-  ObservedDimm { buffering: Registered, non_volatile_backing: false, rank_count: 2, megatransfers: megatransfers_per_second(count: 2133) },
-]
+fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmissionReading {
+  let platform = mtcollins1_platform_prediction(modules: modules)
+  DimmAdmissionReading {
+    platform: platform
+    policy: if list_length(modules) == 0 {
+      PolicyEmptyPopulationRefused
+    } else if dimm_population_is_uniform(modules: modules) {
+      PolicyPermitsAttempt { basis: OperatorDefaultSameRankSameType }
+    } else {
+      match platform {
+        PlatformTrainsObserved { run: r } => PolicyPermitsAttempt { basis: WidenedByObservedPopulation { run: r } }
+        PlatformRefusesObserved { run: _ } => PolicyDefaultDoesNotCover
+        PlatformUnestablished => PolicyDefaultDoesNotCover
+      }
+    }
+  }
+}
