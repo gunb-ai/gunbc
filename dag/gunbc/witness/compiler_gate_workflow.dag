@@ -61,7 +61,8 @@ module gunbc.witness.compiler_gate_workflow
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
 import std.types { Bool, Int, List, String }
-import std.algebra { list_append, list_map }
+import std.algebra { fold_list, list_append, list_map }
+import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Present }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
@@ -140,6 +141,8 @@ import gunbc.host.memory_envelope {
 import gunbc.parse_verdict_restore {
   parse_verdict_identity_restore_step,
   parse_verdict_identity_restore_step_name,
+  parse_verdict_locate_step,
+  parse_verdict_locate_step_name,
   parse_verdict_receipts_restore_step,
   parse_verdict_receipts_restore_step_name,
   parse_verdict_reuse_walk_step,
@@ -455,17 +458,49 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+    concat(
+      [
+        CompilerGateBoundStep {
+          step: parse_verdict_locate_step(),
+          role: capability_neutral,
+          step_name: parse_verdict_locate_step_name,
+        },
+      ],
+      compiler_gate_emit_build_tail_bound_steps(),
+    ),
+  )
+}
+
+// Every declared ordinal restores its identity and receipts pair; the verb, not the workflow, takes
+// the first ordinal that published.
+fn compiler_gate_parse_verdict_restore_bound_steps() -> List<CompilerGateBoundStep> {
+  fold_list(
+    xs: parse_verdict_restore_ancestor_ordinals,
+    empty: [],
+    cons: fn(acc, ordinal) {
+      concat(
+        acc,
+        [
+          CompilerGateBoundStep {
+            step: parse_verdict_identity_restore_step(ordinal: ordinal),
+            role: capability_neutral,
+            step_name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
+          },
+          CompilerGateBoundStep {
+            step: parse_verdict_receipts_restore_step(ordinal: ordinal),
+            role: capability_neutral,
+            step_name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
+          },
+        ],
+      )
+    },
+  )
+}
+
+fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(
+    compiler_gate_parse_verdict_restore_bound_steps(),
     [
-      CompilerGateBoundStep {
-        step: parse_verdict_identity_restore_step(),
-        role: capability_neutral,
-        step_name: parse_verdict_identity_restore_step_name,
-      },
-      CompilerGateBoundStep {
-        step: parse_verdict_receipts_restore_step(),
-        role: capability_neutral,
-        step_name: parse_verdict_receipts_restore_step_name,
-      },
       CompilerGateBoundStep {
         step: parse_verdict_reuse_walk_step(),
         role: capability_neutral,

@@ -8,6 +8,8 @@ import extdeps.github.action_release { action_release_uses_text }
 import gunbc.parse_verdict_publish { materialization_publish_if }
 import gunbc.parse_verdict_restore {
   parse_verdict_identity_restore_step,
+  parse_verdict_locate_script,
+  parse_verdict_ancestor_sha_expr,
   parse_verdict_receipts_restore_step,
   parse_verdict_restore_if,
   parse_verdict_reuse_command,
@@ -34,8 +36,8 @@ fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String)
 // POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by
 // the pull-request scope, with an exact key and no restore-keys, which a near-identity hit would need.
 test fn the_base_sha_entries_are_restored_exactly_on_pull_request_only() -> Bool {
-  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(), key_marker: "")
-    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(), key_marker: "")
+  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(ordinal: 3), key_marker: "")
+    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
     && (parse_verdict_restore_if() != materialization_publish_if())
 }
 
@@ -44,4 +46,14 @@ test fn the_pull_request_walk_reuses_and_does_not_publish() -> Bool {
   string_contains(s: parse_verdict_reuse_command(), pattern: " --reuse-from ")
     && (string_contains(s: parse_verdict_reuse_command(), pattern: "--receipts") == false)
     && (string_contains(s: parse_verdict_reuse_command(), pattern: "--write-identity") == false)
+}
+
+// The locator is bounded newest-first: ordinal 0 is the base itself (--skip=0), the script walks
+// first-parent only, and the restore key reads the ordinal's own output, not a prefix.
+test fn the_locator_walks_first_parent_ancestors_of_the_base_exactly() -> Bool {
+  string_contains(s: parse_verdict_locate_script(), pattern: "--first-parent")
+    && string_contains(s: parse_verdict_locate_script(), pattern: "--skip=0")
+    && string_contains(s: parse_verdict_locate_script(), pattern: "--skip=11")
+    && (string_contains(s: parse_verdict_locate_script(), pattern: "--skip=12") == false)
+    && string_contains(s: parse_verdict_ancestor_sha_expr(ordinal: 3), pattern: "steps.parse_ancestors.outputs.a3")
 }
