@@ -6,7 +6,7 @@ carrier (`gunbc.design_document`) and a dated ruling; this file is the drafting 
 **Answers, when agreed:** the open N3 question "List versus FreeMonoid" in roadmap node `v2-namespace-cutover`.
 
 **r2 changes** (side-chat review of r1): the design is organised around **distinct typed relations** instead
-of one overloaded "inhabitance"; the linear L0/L1/L2 layering is replaced by a **role/dependency diamond**;
+of one overloaded "inhabitance"; the linear L0/L1/L2 layering is replaced by a **per-carrier diamond** (a convention);
 `std.types` is migration-only, not a target home; the existing v2 `AlgebraInhabitanceDecl` is prior art, not
 the canonical form; Map/Set **denotation** is separated from algebraic inhabitance; the operations question has
 a recommended rule; the second-form check is strengthened from name detection to typed authority uniqueness.
