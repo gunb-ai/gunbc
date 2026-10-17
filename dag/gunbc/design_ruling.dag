@@ -231,6 +231,13 @@ data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
   provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
 }
 
+data mtcollins1_in_memory_app_credential_per_boot: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) was not decided by this ruling.",
+}
+
 data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
   decided: "2026-10-17",
@@ -296,6 +303,7 @@ fn design_rulings() -> List<DesignRuling> {
     fan_policy_is_one_fleet_management_workflow,
     dimm_population_is_admitted_permissively,
     mtcollins1_ci_runner_enrolment_approved,
+    mtcollins1_in_memory_app_credential_per_boot,
     operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,
