@@ -960,10 +960,15 @@ test fn the_frontiers_are_bound_and_report_their_true_status() -> Bool {
 // fires; hand it a DIFFERENT declaration in the same module and it stays pending. Without this arm
 // a trigger bound to the wrong decl_name would look identical to a correct one while the frontier.
 test fn a_frontier_fires_only_for_the_declaration_it_names() -> Bool {
-  let probe_present: List<DeclarationRef> = [ firmware_network_boot_probe_producer_ref() ]
+  let probe_present: List<DeclarationRef> = [
+    decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe"),
+  ]
   let lookalike_present: List<DeclarationRef> = [
     decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe_something_else"),
   ]
+  // THE LITERAL, NOT THE MODULE FN: handing it the name the producer actually uses -- `probe`, read
+  // off gunbc.firmware_network_boot_probe -- is the point. If the module's ref drifts to a name no
+  // branch will ever declare, the frontier is unsatisfiable and this is what says so.
   frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: probe_present) == DissolutionFired
     && frontier_status(condition: firmware_network_boot_probe_frontier, present_decls: lookalike_present) == DissolutionPending
     && frontier_status(
@@ -983,7 +988,7 @@ test fn the_inhabitation_claim_reports_uninhabited_until_a_producer_emits_it() -
          Uninhabited { owed_by: owed, over: boundary, falsified_by: falsifier } =>
            // It names WHO owes it (the probe), WHAT is owed (the observation shape), and WHAT would
            // falsify it. An empty or generic filler in any of the three is the defect.
-           declaration_ref_eq(a: owed, b: firmware_network_boot_probe_producer_ref())
+           declaration_ref_eq(a: owed, b: decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe"))
              && length(xs: boundary) > 40
              && length(xs: falsifier) > 40
          _ => false

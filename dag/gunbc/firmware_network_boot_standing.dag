@@ -1009,8 +1009,14 @@ data firmware_network_boot_standing_consumer_frontier: DissolutionCondition = Bo
   trigger: DeclarationAppears { ref: firmware_network_boot_standing_consumer_ref() },
 }
 
+// THE NAME IS LOOKED UP, NOT INVENTED. A trigger bound to a declaration nobody will ever write is
+// worse than the prose it replaced: it reports Pending forever and looks like honest tracking while
+// nothing can discharge it. `probe` is the fn in gunbc.firmware_network_boot_probe (S2, PR #14275)
+// that builds FirmwareBootObservation today -- read off that branch, not guessed -- and the witness
+// re-asserts the spelling as an independent literal so a silent rename here cannot keep the
+// frontier quietly unsatisfiable.
 fn firmware_network_boot_probe_producer_ref() -> DeclarationRef {
-  decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe_firmware_network_boot")
+  decl_ref(module_path: "gunbc.firmware_network_boot_probe", decl_name: "probe")
 }
 
 fn firmware_network_boot_standing_consumer_ref() -> DeclarationRef {
