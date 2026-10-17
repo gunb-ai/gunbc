@@ -129,17 +129,23 @@ fn recovery_measured_refusal_policy() -> PublishedFactoryPasswordWritePolicy {
 // DESIGN §4d refuses. So a declared provider admits nothing: it can never satisfy
 // RescueHostReachable, and its refusal is named SEPARATELY from "there is no rescue host", so a
 // reader can tell "we have not built this provider" from "this unit has no way in".
+// WHAT AN EXECUTED MEDIUM PROVES, AS A RECORD AND NOT ONLY AS AN ARM'S FIELDS. An executed rescue boot is
+// witnessed by an EvidenceRef and an instant, those two and nothing else -- and RescueHostReachable.medium
+// below is typed with THIS, which is why the reachability cannot carry a declared provider: the declared
+// arm has no such record to hand over. It also means the reachability cannot carry evidence that disagrees
+// with the medium it rests on, because there is one copy of those two fields, not three.
+type ExecutedRescueMedium { evidence: EvidenceRef, observed_at: EpochMs }
+
 type RescueHostMedium
-  = UsbRescueMediumObserved { evidence: EvidenceRef, observed_at: EpochMs }
+  = UsbRescueMediumObserved { medium: ExecutedRescueMedium }
   | NetbootRescueMediumDeclared
 
-// WHETHER A RESCUE MEDIUM HAS EVER BEEN RUN IS THE ARM IT IS, NOT A BOOL. Two predicates used to answer
-// this -- `rescue_medium_is_executed` and `recovery_host_is_reachable` -- and the second called the first,
-// so the same decision was made in two places that could disagree. Both are gone; the two sites that need
-// the answer (the single constructor for RescueHostReachable, and the refusal the standing reads) match
-// RescueHostMedium and RescueHostReachability themselves. `NetbootRescueMediumDeclared` remains a name
-// with no evidence field to read, which is the whole enforcement: a declared provider has nothing to
-// satisfy a reachability with.
+// WHETHER A RESCUE MEDIUM HAS EVER BEEN RUN IS THE ARM IT IS, NOT A BOOL. A true/false answer would be
+// asked at call sites that could each ask it differently, and the destructive gates downstream read this
+// answer. The decision is made once, in rescue_host_reachable, at the edge where a caller hands a medium
+// over; every value past that point has already been decided, which is why the reachability's own arm
+// carries no medium question at all. `NetbootRescueMediumDeclared` has no evidence field to read, which is
+// the whole enforcement: a declared provider has nothing to satisfy a reachability with.
 
 // The driver stack the observed rescue host loads, named rather than "modules present" because each
 // absence breaks the channel differently: ipmi_ssif binds the system interface (the host-to-BMC I2C
@@ -166,14 +172,39 @@ type InBandIpmiPresence {
   evidence: EvidenceRef
 }
 
-fn in_band_ipmi_presence_is_complete(presence: InBandIpmiPresence) -> Bool {
-  ipmi_device_nodes_are_same_device(a: presence.device_node, b: recovery_ipmi_device_node)
-    && recovery_ipmi_kernel_modules |> all(m => presence.kernel_modules |> any(h => h == m))
+// WHETHER THE IN-BAND IPMI IS THERE, AS A VERDICT THAT NAMES WHICH PART IS MISSING. A Bool here was the
+// defect: it answered false for TWO different mistakes, and the refusal built from it asked a second
+// function for the missing modules -- a function that returns the empty list when the DEVICE NODE is the
+// problem. So a host whose /dev node was the wrong one was reported as "up, but no in-band IPMI: load the
+// missing ipmi modules" with an empty list beside it: the sentence blamed drivers and named none, and the
+// next action told someone to insmod nothing. One function now decides once, in the order the checks
+// actually depend on (the node before the drivers, since the drivers are what create the node), and each
+// mistake arrives as its own arm carrying what was seen.
+type InBandIpmiPresenceVerdict
+  = InBandIpmiPresenceComplete { presence: InBandIpmiPresence }
+  | RecoveryDeviceNodeIsNotTheInBandNode { expected: IpmiDeviceNode, reported: IpmiDeviceNode }
+  | RecoveryKernelModulesMissing { missing: List<LinuxKernelModuleName> }
+
+fn in_band_ipmi_presence_verdict(presence: InBandIpmiPresence) -> InBandIpmiPresenceVerdict {
+  if ipmi_device_nodes_are_same_device(a: presence.device_node, b: recovery_ipmi_device_node) == false {
+    // BOTH SIDES ARE KEPT. "It is not the node we read the route through" is unactionable without the
+    // node that WAS found: a reported /dev/imb means a different driver is loaded, which is a different
+    // fix from a missing one.
+    RecoveryDeviceNodeIsNotTheInBandNode {
+      expected: recovery_ipmi_device_node,
+      reported: presence.device_node,
+    }
+  } else {
+    let missing = recovery_ipmi_kernel_modules
+      |> filter(m => presence.kernel_modules |> any(h => h == m) == false)
+    if list_length(items: missing) == 0 {
+      InBandIpmiPresenceComplete { presence: presence }
+    } else {
+      RecoveryKernelModulesMissing { missing: missing }
+    }
+  }
 }
 
-fn missing_recovery_kernel_modules(presence: InBandIpmiPresence) -> List<LinuxKernelModuleName> {
-  recovery_ipmi_kernel_modules |> filter(m => presence.kernel_modules |> any(h => h == m) == false)
-}
 
 // THE HONEST BOUNDARY, AND WHERE "PHYSICAL-ONLY" IS STATED. With no rescue OS we can reach there is
 // no route in this module, no credential at the end of it, and no pretending otherwise. The cause is
@@ -184,28 +215,38 @@ fn missing_recovery_kernel_modules(presence: InBandIpmiPresence) -> List<LinuxKe
 type RecoveryRequiresReachableHostOS
   = NoRescueHostAddressResponded { address: Ipv4Address, ssh_port: Port }
   | RescueHostReachedWithoutInBandIpmi { address: Ipv4Address, missing_modules: List<LinuxKernelModuleName> }
-  | RescueMediumNotExecuted { medium: RescueHostMedium }
+  | RescueHostReachedAtTheWrongDeviceNode {
+      address: Ipv4Address
+      expected: IpmiDeviceNode
+      reported: IpmiDeviceNode
+    }
+  // Nullary on purpose: exactly one provider of the two modelled is a declared one, so "which" is
+  // answerable from the arm's name and a field would be a second, editable place to say it (§4c).
+  | RescueMediumNotExecuted
 
+// WHICH MISTAKE, DECIDED ONCE, IN THE ORDER THE FACTS DEPEND ON EACH OTHER. The medium is asked first
+// because nothing below it is observable without the rescue OS the medium boots: checking drivers before
+// the medium would report "no ipmi modules" for a host that is not running at all.
 type RescueHostReachability
   = RescueHostReachable {
       address: Ipv4Address
       ssh_port: Port
       ipmi: InBandIpmiPresence
-      medium: RescueHostMedium
-      evidence: EvidenceRef
-      observed_at: EpochMs
+      // THE TYPE IS THE ENFORCEMENT. An executed record, not the medium sum: a declared netboot provider
+      // has no constructor path into a reachable host, so no consumer downstream can be handed one and no
+      // check has to remember to ask. Widening this to RescueHostMedium would make that value writable and
+      // need a second match to catch it -- a check for a state the model was allowed to create, which is
+      // §5 spent backwards. The evidence and instant are not repeated here either: they are the medium's,
+      // held once, so a reachability cannot disagree with the medium it rests on.
+      medium: ExecutedRescueMedium
     }
   | RescueHostUnreachable { cause: RecoveryRequiresReachableHostOS }
 
 fn recovery_host_refusal(reachability: RescueHostReachability) -> RecoveryRequiresReachableHostOS? {
   match reachability {
-    RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: medium, evidence: _, observed_at: _ } =>
-      // The constructor below refuses a declared medium, so a RescueHostReachable carrying one is not
-      // buildable; this arm is the honest complement rather than a second opinion.
-      match medium {
-        UsbRescueMediumObserved { evidence: _, observed_at: _ } => none
-        NetbootRescueMediumDeclared => Present { value: RescueMediumNotExecuted { medium: medium } }
-      }
+    // No question asked, because none can be posed: the arm carries an ExecutedRescueMedium, which is
+    // what a reachability is only ever built with.
+    RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => none
     RescueHostUnreachable { cause: c } => Present { value: c }
   }
 }
@@ -227,29 +268,28 @@ fn rescue_host_reachable(
   ssh_port: Port,
   ipmi: InBandIpmiPresence,
   medium: RescueHostMedium,
-  evidence: EvidenceRef,
-  observed_at: EpochMs,
 ) -> RescueHostReachability {
-  if match medium {
-    UsbRescueMediumObserved { evidence: _, observed_at: _ } => false
-    NetbootRescueMediumDeclared => true
-  } {
-    RescueHostUnreachable { cause: RescueMediumNotExecuted { medium: medium } }
-  } else if in_band_ipmi_presence_is_complete(presence: ipmi) == false {
-    RescueHostUnreachable {
-      cause: RescueHostReachedWithoutInBandIpmi {
+  // ONE DECISION PER FACT, EACH IN ITS OWN MATCH, AND THE REFUSALS CARRY WHAT WAS SEEN. The medium first:
+  // a declared provider has no record to hand over, and everything else here presupposes the OS it boots.
+  match medium {
+    NetbootRescueMediumDeclared => RescueHostUnreachable { cause: RescueMediumNotExecuted }
+    UsbRescueMediumObserved { medium: executed } => match in_band_ipmi_presence_verdict(presence: ipmi) {
+      // The node check runs before the driver check, so a host reporting the wrong node is refused as the
+      // wrong node, with both nodes named -- not as "modules missing", with an empty list beside it.
+      RecoveryDeviceNodeIsNotTheInBandNode { expected: e, reported: r } =>
+        RescueHostUnreachable {
+          cause: RescueHostReachedAtTheWrongDeviceNode { address: address, expected: e, reported: r },
+        }
+      RecoveryKernelModulesMissing { missing: m } =>
+        RescueHostUnreachable {
+          cause: RescueHostReachedWithoutInBandIpmi { address: address, missing_modules: m },
+        }
+      InBandIpmiPresenceComplete { presence: proven } => RescueHostReachable {
         address: address,
-        missing_modules: missing_recovery_kernel_modules(presence: ipmi),
-      },
-    }
-  } else {
-    RescueHostReachable {
-      address: address,
-      ssh_port: ssh_port,
-      ipmi: ipmi,
-      medium: medium,
-      evidence: evidence,
-      observed_at: observed_at,
+        ssh_port: ssh_port,
+        ipmi: proven,
+        medium: executed,
+      }
     }
   }
 }
@@ -421,7 +461,7 @@ fn in_band_channel_admits(
   reachability: RescueHostReachability,
 ) -> Bool {
   match reachability {
-    RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
+    RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _ } =>
       // THE CHANNEL IS MATCHED, NOT ASKED A QUESTION. Only the credential-free arm can carry an
       // observation forward; the other two arms each name why they cannot. The arm matched as admissible
       // has no field a credential could have been written into, so nothing about it has to be re-checked.
@@ -1426,7 +1466,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
           "bring up the rescue OS on the board (insert the prepared rescue medium, or netboot it once a netboot provider is executed) -- nothing is reachable at the rescue address" as NonEmptyStr
         RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: _ } =>
           "the rescue host is up but has no in-band IPMI: load the missing ipmi modules; without /dev/ipmi0 there is no route to the controller from inside the chassis" as NonEmptyStr
-        RescueMediumNotExecuted { medium: _ } =>
+        RescueMediumNotExecuted =>
           "the only rescue provider modelled for this unit is declared and has never been executed; use the executed medium or treat the unit as physical-only" as NonEmptyStr
       }
     RecoveryControllerNeverMeasured { observed: _ } =>
@@ -1521,8 +1561,6 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
       evidence: recovery_inband_channel_capture_ref,
     },
     medium: recovery_usb_medium(),
-    evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant(),
   )
   match reached {
     RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
@@ -1533,22 +1571,58 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
   }
 }
 
+// THE WRONG-NODE REFUSAL, MADE EXECUTABLE. One Bool answered false for two different mistakes, and the
+// refusal built from it took its missing-module list from a function that returns the empty list when the
+// DEVICE NODE is the problem. So a host at the wrong node was reported as "up, but no in-band IPMI: load
+// the missing ipmi modules" with nothing listed to load -- the sentence blamed drivers for a mistake about
+// a node, and the next action sent someone to insmod nothing. Each mistake is its own arm now, carrying
+// what was seen, so this claim can ask a wrong node to arrive as the node it is: both nodes named, and not
+// wearing the module-refusal's clothes.
+test fn a_wrong_device_node_is_refused_as_the_node_it_is_and_names_both_nodes() -> Bool {
+  let at_the_wrong_node = rescue_host_reachable(
+    address: recovery_rescue_host_address(),
+    ssh_port: openssh_standard_port,
+    ipmi: InBandIpmiPresence {
+      // the node the freeipmi/IMB side addresses rather than the /dev/ipmi0 the KCS route reads
+      device_node: IpmiImbDeviceNode,
+      kernel_modules: recovery_ipmi_kernel_modules,
+      evidence: recovery_inband_channel_capture_ref,
+    },
+    medium: recovery_usb_medium(),
+  )
+  match at_the_wrong_node {
+    RescueHostUnreachable { cause: RescueHostReachedAtTheWrongDeviceNode { address: a, expected: e, reported: r } } =>
+      a == recovery_rescue_host_address()
+        // BOTH NODES ARE CARRIED: "not the one we read through" is unactionable without the one found.
+        && ipmi_device_nodes_are_same_device(a: e, b: recovery_ipmi_device_node)
+        && ipmi_device_nodes_are_same_device(a: r, b: IpmiImbDeviceNode)
+        // and the module refusal is NOT the one produced, which is the defect this replaces
+        && match recovery_host_refusal(reachability: at_the_wrong_node) {
+             Present { value: RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } } =>
+               // an empty list here is exactly the old lie: blame the drivers, name no driver
+               list_length(items: m) > 0
+             Present { value: _ } => true
+             Absent => false
+           }
+    RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => false
+    RescueHostUnreachable { cause: _ } => false
+  }
+}
+
 test fn a_declared_netboot_provider_never_satisfies_the_precondition_and_is_not_the_same_refusal_as_no_host() -> Bool {
   let via_netboot = rescue_host_reachable(
     address: recovery_rescue_host_address(),
     ssh_port: openssh_standard_port,
     ipmi: recovery_complete_ipmi_presence(),
     medium: NetbootRescueMediumDeclared,
-    evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant(),
   )
   match recovery_host_refusal(reachability: via_netboot) {
-    Present { value: RescueMediumNotExecuted { medium: NetbootRescueMediumDeclared } } =>
+    Present { value: RescueMediumNotExecuted } =>
       // and it landed on the UNREACHABLE arm, matched as the coproduct rather than through a Bool that
       // would restate the same decision a second time
       match via_netboot {
         RescueHostUnreachable { cause: _ } => true
-        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _, evidence: _, observed_at: _ } => false
+        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => false
       }
     _ => false
   }
@@ -1560,8 +1634,6 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     ssh_port: openssh_standard_port,
     ipmi: recovery_complete_ipmi_presence(),
     medium: recovery_usb_medium(),
-    evidence: recovery_inband_channel_capture_ref,
-    observed_at: recovery_capture_instant(),
   )
   let observation = InBandChannelObservation {
     subject: recovery_test_subject(),
@@ -1577,7 +1649,7 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     // and a declared medium never reaches the reachable arm at all -- matched as the coproduct it is
     && match reached {
         RescueHostUnreachable { cause: _ } => true
-        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _, evidence: _, observed_at: _ } => false
+        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => false
       }
 }
 
@@ -2008,7 +2080,12 @@ fn recovery_test_release() -> BmcFirmwareReleaseIdentity {
 }
 
 fn recovery_usb_medium() -> RescueHostMedium {
-  UsbRescueMediumObserved { evidence: recovery_inband_channel_capture_ref, observed_at: recovery_capture_instant() }
+  UsbRescueMediumObserved {
+    medium: ExecutedRescueMedium {
+      evidence: recovery_inband_channel_capture_ref,
+      observed_at: recovery_capture_instant(),
+    },
+  }
 }
 
 fn recovery_complete_ipmi_presence() -> InBandIpmiPresence {
