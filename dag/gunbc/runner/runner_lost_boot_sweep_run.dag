@@ -1,0 +1,245 @@
+module gunbc.runner.runner_lost_boot_sweep_run
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, NonEmptyStr, String, List, Secret }
+import std.measure { Second, second, second_count, Minute, minute }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.transports.rest { RestResult }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
+import product.host_identity { HostIdentity }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_app_control_plane_observe { observe_github_app_control_plane }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
+import gunbc.fleet.app_control_plane_inspection { gunbai_ci_registration_goal }
+import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
+import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
+import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
+import gunbc.machine_intake.host_capture_envelope { KernelBootId }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of }
+import gunbc.runner.runner_registration_labels { runner_registration_labels }
+import gunbc.github_effect_perform {
+  ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
+  ControllerInstallationToken, list_organization_runners_with,
+  ControllerKeyStaged, ControllerKeyNotStaged, stage_controller_app_key, remove_staged_controller_key,
+}
+import gunbc.runner.runner_jit_deregistration {
+  JitRegistration, JitDeregistration, JitRunnerDeregistered, JitDeregistrationRefused, JitDeregistrationRefusal,
+  JitSlotExit, SlotLostBoot, ensure_jit_runner_deregistered,
+  LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, LostBootSweepRefusal,
+  SweepListingUnreadable, SweepRegistrationRefused, StaleJitRegistration, lost_boot_sweep, jit_runner_deregistered,
+}
+
+// THE LOST-BOOT SWEEP RUN (fleet-converge mode service_runner_lost_boot_sweep): the production consumer of
+// gunbc.runner.runner_jit_deregistration lost_boot_sweep. Authority: ruling
+// gunbc.design_ruling mtcollins1_ci_runner_enrolment_approved, and
+// fleet_converge_modes_are_outside_the_job_roster for the mode's place in the workflow; the
+// registration effect is pre-approved under the dispatching run's authorization (operator ruling
+// 2026-10-03) and rowed in gunbc.auth.privileged_effect_census.
+//
+// THE ORDER IS READ, SELECT, DEREGISTER, READ BACK. The organization listing is read in full (an
+// incomplete page refuses inside lost_boot_sweep), the registrations whose embedded boot id is not the
+// CURRENT one are selected, and each selected registration goes through ensure_jit_runner_deregistered
+// with SlotLostBoot, which succeeds only on absence read back. Current, non-grammar and other-host
+// names are never deleted.
+//
+// THE CURRENT BOOT ID IS A DISPATCH INPUT, NEVER DEFAULTED: it is the admitted runner-host-up kernel
+// boot id, and an absent or blank one refuses before any credential is read.
+//
+// THE CREDENTIAL IS THE RUN'S OWN: the gunbai-ci App key is staged from Secret Manager under the
+// run's federated identity, signs the installation-token mint and the control-plane observation, and
+// is removed on every arm. No host credential and no env token are read.
+
+data lost_boot_sweep_host_env_name: String = "FLEET_CONVERGE_LOST_BOOT_SWEEP_HOST"
+data lost_boot_sweep_current_boot_id_env_name: String = "FLEET_CONVERGE_CURRENT_BOOT_ID"
+data lost_boot_sweep_wif_access_token_env_name: String = "WIF_ACCESS_TOKEN"
+data lost_boot_sweep_runner_temp_env_name: String = "RUNNER_TEMP"
+data lost_boot_sweep_key_file_name: String = "lost-boot-sweep-app-key"
+data lost_boot_sweep_receipt_path: String = "artifacts/service-runner-lost-boot-sweep-receipt.txt"
+data lost_boot_sweep_artifact_glob: String = "artifacts/service-runner-lost-boot-sweep-*"
+
+data lost_boot_sweep_prelude_allowance: Second = second(count: 120)
+data lost_boot_sweep_per_registration_allowance: Second = second(count: 60)
+data lost_boot_sweep_registration_ceiling: Int = 40
+
+fn lost_boot_sweep_step_timeout_minutes() -> Minute {
+  let secs = second_count(s: lost_boot_sweep_prelude_allowance)
+    + lost_boot_sweep_registration_ceiling * second_count(s: lost_boot_sweep_per_registration_allowance)
+  minute(count: (secs + 59) / 60)
+}
+
+// ── The dispatch input ────────────────────────────────────────────────────────────────────────
+
+type LostBootCurrentInput
+  = LostBootCurrentPresent { boot: ServiceBootId }
+  | LostBootCurrentRefused { cause: String }
+
+fn lost_boot_current_input(raw: String) -> LostBootCurrentInput {
+  if raw == "" {
+    LostBootCurrentRefused { cause: join([
+      "lost-boot sweep: ", lost_boot_sweep_current_boot_id_env_name,
+      " is absent or blank; the current admitted boot id is a dispatch input and is never defaulted",
+    ], "") }
+  } else {
+    match service_boot_id_of(run: KernelBootId { boot_id: raw as NonEmptyStr }) {
+      Present { value: b } => LostBootCurrentPresent { boot: b }
+      Absent => LostBootCurrentRefused { cause: "lost-boot sweep: the current boot id is not a kernel boot identity" }
+    }
+  }
+}
+
+// ── One receipt line per runner, and the exit over them ───────────────────────────────────────
+
+fn deregistration_refusal_text(refusal: JitDeregistrationRefusal) -> String {
+  match refusal {
+    DeregistrationTokenForAnotherInstallation { app: _, installation: _ } => "token-for-another-installation"
+    DeregistrationAuthorityForAnotherInstallation => "authority-for-another-installation"
+    DeregistrationCredentialRefused { unsatisfied: _ } => "credential-refused"
+    DeregistrationListingUnreadable { reason: _, cause: c } => concat("listing-unreadable: ", c as String)
+    DeregistrationReadbackForAnotherSubject { organization: _, name: _, app: _, installation: _ } => "readback-for-another-subject"
+    DeregistrationRunnerStillListed { ids: ids, deletes: _ } => concat("still-listed ids=", to_string(count(ids)))
+  }
+}
+
+fn deregistration_line(outcome: JitDeregistration) -> String {
+  match outcome {
+    JitRunnerDeregistered { receipt: r } =>
+      join(["lost-boot-sweep runner=", r.registration.name.value as String, " deregistered=absent-on-readback deletes=", to_string(count(r.deletes))], "")
+    JitDeregistrationRefused { registration: reg, exit: _, refusal: refusal } =>
+      join(["lost-boot-sweep runner=", reg.name.value as String, " refused=", deregistration_refusal_text(refusal: refusal)], "")
+  }
+}
+
+fn untouched_line(name: String) -> String {
+  concat("lost-boot-sweep runner=", concat(name, " untouched"))
+}
+
+// THE EXIT IS NON-ZERO ON ANY REFUSAL: one line per selected runner, then one per untouched name.
+fn sweep_report_lines(outcomes: List<JitDeregistration>, untouched: List<String>) -> List<String> {
+  concat(outcomes |> map(o => deregistration_line(outcome: o)), untouched |> map(n => untouched_line(name: n)))
+}
+
+fn sweep_all_deregistered(outcomes: List<JitDeregistration>) -> Bool {
+  fold(outcomes, init: true, f: (ok, o) => ok && jit_runner_deregistered(result: o))
+}
+
+fn sweep_refusal_text(refusal: LostBootSweepRefusal) -> String {
+  match refusal {
+    SweepListingUnreadable { reason: _, cause: c } => concat("lost-boot sweep: listing unreadable: ", c as String)
+    SweepRegistrationRefused { listed: l, refusal: _ } => concat("lost-boot sweep: a listed registration was refused: ", l)
+  }
+}
+
+// ── The standing the sweep is taken under ─────────────────────────────────────────────────────
+
+fn sweep_authority() -> GitHubCredentialAuthority {
+  ManagedAppInstallationCredential {
+    app: gunbai_ci_declared,
+    installation: gunbai_ci_declared_installation_id,
+    profile: GitHubCredentialProfileRef { name: "fleet-converge-lost-boot-sweep" },
+  }
+}
+
+// THE HOST ENTERS ONLY THROUGH ITS managed_host ROW. A host the corpus does not manage has no standing,
+// so the sweep refuses it rather than naming a runner population from a string.
+type SweepHostStanding
+  = SweepHostBound { host: HostIdentity, standing: HostControlStanding }
+  | SweepHostNotManaged { host: String }
+
+fn sweep_host_standing(host: NonEmptyStr) -> SweepHostStanding {
+  match managed_host_binding_for(host: host) {
+    ManagedHostNotManaged { host: h } => SweepHostNotManaged { host: h as String }
+    ManagedHostFound { standing: s } => SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(standing: s) }
+    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } =>
+      SweepHostBound { host: host as HostIdentity, standing: bmc_controlled_host(standing: s) }
+  }
+}
+
+// ── The wet entry ─────────────────────────────────────────────────────────────────────────────
+
+fn write_sweep_receipt(lines: List<String>) -> ProcessExit {
+  let kept = Filesystem.Write(path: lost_boot_sweep_receipt_path, content: concat(join(lines, "\n"), "\n"))
+  if kept.success { ExitSuccess } else { exit_failure(reason: concat("lost-boot sweep: receipt write refused: ", kept.error)) }
+}
+
+fn lost_boot_sweep_wet() -> ProcessExit
+  uses net: Network
+{
+  match lost_boot_current_input(raw: actions_variable_trimmed(name: lost_boot_sweep_current_boot_id_env_name)) {
+    LostBootCurrentRefused { cause } => exit_failure(reason: cause)
+    LostBootCurrentPresent { boot } => {
+      let host_name = actions_variable_trimmed(name: lost_boot_sweep_host_env_name)
+      let wif = actions_variable_trimmed(name: lost_boot_sweep_wif_access_token_env_name)
+      let temp = actions_variable_trimmed(name: lost_boot_sweep_runner_temp_env_name)
+      if host_name == "" || wif == "" || temp == "" {
+        exit_failure(reason: "lost-boot sweep: the sweep host input, the run's federation token or RUNNER_TEMP is unset")
+      } else {
+        match sweep_host_standing(host: host_name as NonEmptyStr) {
+          SweepHostNotManaged { host } => exit_failure(reason: concat("lost-boot sweep: host is not a managed_host row: ", host))
+          SweepHostBound { host, standing } => sweep_under_staged_key(
+            host: host, standing: standing, current: boot,
+            wif: wif as Secret, key_path: join([temp, "/", lost_boot_sweep_key_file_name], "") as NonEmptyStr,
+          )
+        }
+      }
+    }
+  }
+}
+
+// THE KEY IS REMOVED ON EVERY ARM, AND A KEY THAT STAYED FAILS THE RUN beside whatever the sweep
+// answered.
+fn sweep_under_staged_key(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, wif: Secret, key_path: NonEmptyStr) -> ProcessExit
+  uses net: Network
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key } => {
+      let exit = match mint_controller_installation_token_with_key(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "lost-boot sweep: the gunbai-ci installation token was not minted")
+        ControllerTokenMinted { token } => {
+          let control_plane = observe_github_app_control_plane(
+            app: gunbai_ci_declared,
+            key: key,
+            installation: gunbai_ci_declared_installation_id,
+            required: gunbai_ci_registration_goal.required_permissions,
+            reason: "the lost-boot sweep observes the gunbai-ci App control plane before deregistering stale registrations" as NonEmptyStr,
+          )
+          sweep_and_deregister(host: host, standing: standing, current: current, token: token, control_plane: control_plane)
+        }
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}
+
+fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, current: ServiceBootId, token: ControllerInstallationToken, control_plane: GitHubAppControlPlaneState) -> ProcessExit
+  uses net: Network
+{
+  let organization = github_organization_ref()
+  match lost_boot_sweep(
+    organization: organization,
+    host: standing,
+    current: current,
+    authority: sweep_authority(),
+    registration_labels: runner_registration_labels(host: host),
+    listing: list_organization_runners_with(token: token, organization: organization.login),
+  ) {
+    LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
+    LostBootSweepSelected { registrations, untouched } => {
+      let outcomes = registrations |> map(stale => ensure_jit_runner_deregistered(
+        token: token,
+        authority: sweep_authority(),
+        control_plane: control_plane,
+        registration: stale.registration,
+        exit: SlotLostBoot { stale_boot_id: stale.stale_boot_id },
+      ))
+      let wrote = write_sweep_receipt(lines: sweep_report_lines(outcomes: outcomes, untouched: untouched))
+      if sweep_all_deregistered(outcomes: outcomes) { wrote } else { exit_failure(reason: "lost-boot sweep: at least one selected registration was not deregistered; see the receipt") }
+    }
+  }
+}

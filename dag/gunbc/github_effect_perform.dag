@@ -40,7 +40,7 @@ import extdeps.github.org_actions { OrgRunnerGroupWire }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
 import extdeps.github.actions_artifacts
 import extdeps.github.actions_artifacts { ActionsArtifactList }
-import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
+import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
@@ -217,10 +217,23 @@ type ControllerTokenMint
   | ControllerTokenNotMinted { performance: JitMintPerformance }
 
 fn mint_controller_installation_token(installation: GitHubAppInstallationId) -> ControllerTokenMint uses net: Network {
+  mint_controller_installation_token_with_key(installation: installation, key: lifecycle_controller_app_key)
+}
+
+// THE SIGNING KEY IS THE ONE PARAMETER, NOT A SECOND MINT. The controller signs from its custodied
+// host file; a fleet-converge run that stages the same App's key from Secret Manager under its own
+// federated identity (gunbc.runner.runner_lost_boot_sweep_run) signs from that staged file. The App
+// and installation the token names are the lifecycle controller's either way, so
+// gunbc.runner.runner_jit_deregistration deregistration_credential_refusal still binds the token to
+// the registration's minter.
+fn mint_controller_installation_token_with_key(installation: GitHubAppInstallationId, key: JwsSigningKeyRef) -> ControllerTokenMint uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "mint_controller_installation_token"),
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
+] {
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: d } => ControllerTokenNotMinted { performance: JitMintClockUnread { detail: d } }
     ClockUnixMillisObserved { millis: ms } =>
-      match app_jwt_for(dispatch_app_id: lifecycle_controller_app.app_id.value, key: lifecycle_controller_app_key, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
+      match app_jwt_for(dispatch_app_id: lifecycle_controller_app.app_id.value, key: key, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
         AppJwtUnsigned { detail: d } => ControllerTokenNotMinted { performance: JitMintAppJwtUnsigned { detail: d } }
         AppJwtSigned { jwt: jwt } =>
           match github.AppInstallationAccessTokens.Create(
@@ -332,6 +345,35 @@ fn list_runners_by_name_with(token: ControllerInstallationToken, organization: N
       RestRefused { refusal } => RestRefused { refusal: refusal }
     },
   }
+}
+
+// THE WHOLE ORGANIZATION LISTING, every page the bound allows, merged into one wire value that keeps
+// GitHub's total_count. A page that is refused ends the walk as that refusal; a walk that ends short
+// of total_count is returned short, and gunbc.runner.runner_jit_deregistration lost_boot_sweep
+// refuses a count that disagrees with total_count, so an unread page never reads as an absent runner.
+data organization_runner_listing_pages: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+fn list_organization_runners_with(token: ControllerInstallationToken, organization: NonEmptyStr) -> RestResult<OrganizationRunnerListWire>
+  uses net: Network
+{
+  fold(organization_runner_listing_pages, init: RestAnswered { answer: OrganizationRunnerListWire { total_count: 0, runners: [] } }, f: fn(acc, page) {
+    match acc {
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+      RestAnswered { answer: so_far } =>
+        if page > 1 && count(so_far.runners) >= so_far.total_count {
+          acc
+        } else {
+          match github.ActionsSelfHostedRunners.ListOrganizationRunners(installation_token: token.token, org: organization, page: page) {
+            RestRefused { refusal } => RestRefused { refusal: refusal }
+            RestAnswered { answer } =>
+              RestAnswered { answer: OrganizationRunnerListWire {
+                total_count: answer.result.total_count,
+                runners: concat(so_far.runners, answer.result.runners),
+              } }
+          }
+        }
+    }
+  })
 }
 
 fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_id: Int) -> RestResult<OrganizationRunnerDeletedBody>
@@ -512,6 +554,46 @@ fn update_runner_group_workflows_with(token: ControllerInstallationToken, organi
 // temp path and deleted on EVERY arm after signing, refusals included; a delete that fails refuses
 // the mint rather than leaving a key behind. The JWT and the token are Secrets that live only inside
 // this call; only the scoped installation token is returned, to be presented to one fast-forward.
+// THE CONTROLLER APP'S KEY, STAGED FOR A RUN THAT HOLDS NO HOST KEY. A fleet-converge run federates to
+// GCP (WIF_ACCESS_TOKEN) and reads the gunbai-ci App key from Secret Manager, as the heal publisher
+// does for gunbai-bot. The key is written owner-only, signs the installation-token mint AND the
+// control-plane observation (both need the file), and is removed by the caller on every arm;
+// remove_staged_controller_key reports a key that stayed, which the caller must not swallow.
+type ControllerKeyStaging
+  = ControllerKeyStaged { key: JwsSigningKeyRef }
+  | ControllerKeyNotStaged { cause: String }
+
+fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
+] {
+  match gcp.SecretManager.AccessVersion(
+    access_token: wif_access_token,
+    project_id: gunbai_ci_app_pem_secret.project,
+    secret: gunbai_ci_app_pem_secret.secret,
+    version: gunbai_ci_app_pem_secret.version,
+  ) {
+    RestRefused { refusal } => ControllerKeyNotStaged { cause: concat("ControllerAppKeyUnreadable: ", publisher_refusal_text(refusal: refusal)) }
+    RestAnswered { answer } =>
+      match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
+        SmAccessVersionSecretDecodeRefused { cause: _ } =>
+          ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload did not decode" }
+        SmAccessVersionSecretDecoded { credential: key } => {
+          let written = Filesystem.WriteOwnerOnly(path: key_path, content: key as String)
+          if written.success {
+            ControllerKeyStaged { key: HostKeyFile { path: key_path } }
+          } else {
+            ControllerKeyNotStaged { cause: concat("ControllerAppKeyUnstaged: ", written.error) }
+          }
+        }
+      }
+  }
+}
+
+fn remove_staged_controller_key(key_path: NonEmptyStr) -> String? {
+  let removed = Filesystem.Delete(path: key_path)
+  if removed.success { Absent } else { Present { value: concat("ControllerAppKeyNotRemoved: ", removed.error) } }
+}
+
 type PublisherTokenMint
   = PublisherTokenMinted { token: Secret }
   | PublisherTokenNotMinted { cause: String }

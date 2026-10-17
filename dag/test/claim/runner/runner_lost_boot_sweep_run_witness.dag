@@ -1,0 +1,162 @@
+module test.claim.runner.runner_lost_boot_sweep_run_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestResult, RestAnswered }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerWire }
+import extdeps.github.app { GitHubAppInstallationId }
+import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInstallationCredential, GitHubCredentialProfileRef }
+import gunbc.host.managed_host { ManagedHost, managed_hosts }
+import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_unit }
+import gunbc.runner.runner_jit_deregistration {
+  LostBootSweep, SweepRegistrationRefused, ListedNameOutsideServiceGrammar, LostBootSweepSelected, LostBootSweepRefused, StaleJitRegistration, lost_boot_sweep,
+  JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
+}
+import gunbc.runner.runner_lost_boot_sweep_run {
+  LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input,
+  sweep_authority, sweep_host_standing, SweepHostBound, SweepHostNotManaged,
+  sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data supplied_labels: RunnerRegistrationLabelsResolution = RegistrationLabelsResolved { labels: ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"] }
+data org: GitHubOrganizationRef = GitHubOrganizationRef { login: "gunb-ai" }
+
+fn the_host() -> ManagedHost? { first(managed_hosts()) }
+
+// A boot identity exists only through service_boot_id_of over a KernelBootId, so every fixture takes
+// the real route; an unconstructible id reads as the empty name, which no assertion below accepts.
+fn kernel_boot(id: String) -> HostCaptureRunIdentity { KernelBootId { boot_id: id as NonEmptyStr } }
+
+fn unit(m: ManagedHost, id: String, index: Int) -> String {
+  match service_boot_id_of(run: kernel_boot(id: id)) {
+    Present { value: b } => service_slot_unit(host: m.host, boot: b, index: index) as String
+    Absent => ""
+  }
+}
+
+fn listing(names: List<String>) -> RestResult<OrganizationRunnerListWire> {
+  RestAnswered { answer: OrganizationRunnerListWire {
+    total_count: count(names),
+    runners: names |> map(n => OrganizationRunnerWire { id: 1, name: n }),
+  } }
+}
+
+// THE SWEEP UNDER THE RUN'S OWN AUTHORITY, over a SUPPLIED listing (a witness discriminates at one
+// interface): sweep_host_standing is the run's own host derivation, the labels are supplied because the
+// host has no fleet offer today.
+fn run_sweep(m: ManagedHost, authority: GitHubCredentialAuthority, current: String, names: List<String>) -> LostBootSweep {
+  match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+    SweepHostNotManaged { host: _ } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
+    SweepHostBound { host: _, standing: s } =>
+      match service_boot_id_of(run: kernel_boot(id: current)) {
+        Present { value: b } =>
+          lost_boot_sweep(organization: org, host: s, current: b, authority: authority,
+            registration_labels: supplied_labels, listing: listing(names: names))
+        Absent => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: "", refusal: ListedNameOutsideServiceGrammar { listed: "" } } }
+      }
+  }
+}
+
+// THE DISPATCH INPUT IS NEVER DEFAULTED. RED: an absent or blank boot id must refuse. Positive control:
+// a real id is carried through unchanged.
+test fn an_absent_current_boot_id_refuses_and_a_present_one_is_carried() -> Bool {
+  (match lost_boot_current_input(raw: "") {
+    LostBootCurrentRefused { cause: _ } => true
+    LostBootCurrentPresent { boot: _ } => false
+  }) && (match lost_boot_current_input(raw: "9f1c-boot") {
+    LostBootCurrentPresent { boot: b } => (b.boot_id as String) == "9f1c-boot"
+    LostBootCurrentRefused { cause: _ } => false
+  })
+}
+
+// THE HOST ENTERS ONLY THROUGH ITS managed_host ROW: a managed host binds, a name no row carries is
+// not managed rather than defaulted into a standing.
+test fn the_host_enters_only_through_its_managed_row() -> Bool {
+  (match the_host() {
+    Absent => false
+    Present { value: m } => match sweep_host_standing(host: m.host as String as NonEmptyStr) {
+      SweepHostBound { host: _, standing: _ } => true
+      SweepHostNotManaged { host: _ } => false
+    }
+  }) && (match sweep_host_standing(host: "no-such-managed-host" as NonEmptyStr) {
+    SweepHostNotManaged { host: h } => h == "no-such-managed-host"
+    SweepHostBound { host: _, standing: _ } => false
+  })
+}
+
+// STALE SELECTED, CURRENT UNTOUCHED, over the run's own authority, and the selected registration
+// carries the boot id that made it stale (the SlotLostBoot payload) and the DECLARED installation --
+// condition (4): an authority for another installation yields a registration for that installation,
+// which ensure_jit_runner_deregistered refuses, so the declared pair is what the run must supply.
+test fn the_run_sweeps_stale_registrations_under_the_declared_installation() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let names = [unit(m: m, id: "old", index: 0), unit(m: m, id: "new", index: 0), "actions-runner@srv1-3.service"]
+      (match run_sweep(m: m, authority: sweep_authority(), current: "new", names: names) {
+        LostBootSweepSelected { registrations: rs, untouched: u } =>
+          count(rs) == 1 && count(u) == 2
+            && (match first(rs) {
+              Present { value: s } => (s.stale_boot_id as String) == "old"
+                && s.registration.installation == gunbai_ci_declared_installation_id
+                && s.registration.app == gunbai_ci_declared
+              Absent => false
+            })
+        LostBootSweepRefused { refusal: _ } => false
+      }) && (match run_sweep(m: m, authority: other_installation_authority(), current: "new", names: names) {
+        LostBootSweepSelected { registrations: rs, untouched: _ } =>
+          (match first(rs) {
+            Present { value: s } => s.registration.installation != gunbai_ci_declared_installation_id
+            Absent => false
+          })
+        LostBootSweepRefused { refusal: _ } => false
+      })
+    }
+  }
+}
+
+fn other_installation_authority() -> GitHubCredentialAuthority {
+  ManagedAppInstallationCredential {
+    app: gunbai_ci_declared,
+    installation: GitHubAppInstallationId { value: 4242 },
+    profile: GitHubCredentialProfileRef { name: "other" },
+  }
+}
+
+// PER-RUNNER AGGREGATION: a refusal is a refused line naming its runner and fails the run; no
+// selection (every listed name current or foreign) is a passing run whose untouched names still get
+// one line each.
+test fn one_receipt_line_per_runner_and_any_refusal_fails_the_run() -> Bool {
+  match the_host() {
+    Absent => false
+    Present { value: m } => {
+      let names = [unit(m: m, id: "old", index: 0), unit(m: m, id: "old", index: 1), unit(m: m, id: "new", index: 0)]
+      match run_sweep(m: m, authority: sweep_authority(), current: "new", names: names) {
+        LostBootSweepRefused { refusal: _ } => false
+        LostBootSweepSelected { registrations: rs, untouched: u } => {
+          let refused = rs |> map(s => JitDeregistrationRefused {
+            registration: s.registration,
+            exit: SlotLostBoot { stale_boot_id: s.stale_boot_id },
+            refusal: DeregistrationAuthorityForAnotherInstallation,
+          })
+          let lines = sweep_report_lines(outcomes: refused, untouched: u)
+          count(lines) == 3
+            && !sweep_all_deregistered(outcomes: refused)
+            && sweep_all_deregistered(outcomes: [])
+            && count(sweep_report_lines(outcomes: [], untouched: u)) == 1
+            && (match first(refused) {
+              Present { value: o } => deregistration_line(outcome: o) == concat("lost-boot-sweep runner=", concat(unit(m: m, id: "old", index: 0), " refused=authority-for-another-installation"))
+              Absent => false
+            })
+        }
+      }
+    }
+  }
+}

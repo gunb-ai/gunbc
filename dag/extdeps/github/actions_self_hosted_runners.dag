@@ -93,6 +93,32 @@ service github.ActionsSelfHostedRunners {
     }
   }
 
+  operation ListOrganizationRunners {
+    requires Network
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      page: Int
+      per_page: Int = organization_runners_max_per_page
+    }
+    output {
+      result: OrganizationRunnerListWire
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/orgs/\{org\}/actions/runners",
+      query: { page: page, per_page: per_page }
+    }
+    response {
+      200 => OrganizationRunnerListWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
   operation DeleteOrganizationRunner {
     requires Network
     input {
