@@ -4,7 +4,7 @@ set -e
 # fetches its own SHA by hash, verifies it, builds once, then measures and emits.
 R=/root/workspace/repo-root
 SRC="$PWD"   # ctrl-build lands the uncommitted files in the ACTION cwd, not repo-root
-SHA="$1"; SIDE="$2"; MODE="${3:-both}"; NONCE="${4:-0}"   # NONCE: unique per dispatch
+SHA="$1"; SIDE="$2"; MODE="${3:-both}"; NONCE="${5:-0}"   # NONCE: unique per dispatch
 # A NONCE goes in the ctrl-build command string because every retry that reuses an identical
 # command string is reported as "invocation cancelled": unique per dispatch
 echo "dispatch-nonce=$NONCE"
@@ -32,10 +32,29 @@ cd $W
 echo "worktree HEAD=$(git rev-parse HEAD)"
 echo "dirty_on_arrival=$(git status --porcelain | wc -l)"
 
-# carry the uncommitted instrument + measurement fixtures (synced as dirty files)
-mkdir -p .sdm dag/test
+# carry the instrument + fixtures from the COMMITTED harness ref (zero dirty files,
+# so no per-retry 444-file upload). Fetched by refname into its own worktree.
+HARNESS="${4:-sd503-instrument}"
+# Two channels for the harness, whichever is available: the pushed scratch ref
+# (authoritative, fetched by name) or the files ctrl-build mirrored into the action
+# cwd. Both are checked, and the instrument must come from ONE of them or we abort.
+WH=/root/sd503_harness
+have_ref=0
+if git -C $R rev-parse --verify -q "refs/sd503/harness" >/dev/null \
+   || git -C $R fetch --quiet origin "$HARNESS:refs/sd503/harness"; then
+  HSHA=$(git -C $R rev-parse refs/sd503/harness 2>/dev/null | head -1)
+  if [ -n "$HSHA" ] && git -C $R cat-file -e "$HSHA:.sdm/gap_block.rs" 2>/dev/null; then
+    rm -rf $WH; git -C $R worktree add --detach $WH "$HSHA" >/dev/null 2>&1 && have_ref=1
+  fi
+fi
+if [ $have_ref = 1 ]; then
+  SRC="$WH"; echo "harness=ref $HARNESS resolved=$HSHA"
+else
+  echo "harness=synced-action-cwd $SRC/.sdm"
+  [ -f "$SRC/.sdm/gap_block.rs" ] || { echo "MISSING-INSTRUMENT both channels"; exit 8; }
+fi
 for f in gap_block.rs hooks.py measure_side.sh; do
-  [ -f "$SRC/.sdm/$f" ] || { echo "MISSING-INSTRUMENT $SRC/.sdm/$f"; exit 8; }
+  [ -f "$SRC/.sdm/$f" ] || { echo "MISSING-INSTRUMENT $f"; exit 8; }
   cp "$SRC/.sdm/$f" "$W/.sdm/"
 done
 ls "$SRC"/.sdm/fixtures/gap_depth_*.dag >/dev/null 2>&1 || { echo "MISSING-FIXTURES"; exit 8; }
