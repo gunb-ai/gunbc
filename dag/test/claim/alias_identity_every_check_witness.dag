@@ -5,7 +5,6 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_rows_of_class,
-  census_blocking_rows,
   census_total_count
 }
 import std.types { String, Bool, Int }
@@ -19,7 +18,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // gunbc.recurring_failure_mode a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling.
 fn refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+      + census_total_count(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited"))
+      + census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError"))
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
