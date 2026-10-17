@@ -28,6 +28,7 @@ import gunbc.provisioning.provisioning_arm {
   VirtualMediaUnavailable,
   VirtualMediaUnobserved,
   AttemptBinding,
+  provisioning_arm_consumer_ref,
   DeliveryEvidence,
   FirmwarePreparation,
   FirmwarePreparedVia,
@@ -57,9 +58,12 @@ import gunbc.firmware_network_boot_standing {
   Unobserved,
   Refused,
   OverrideMechanismUnsupported,
+  PreparationBlockingOn,
   NoInterfaceCarriesPxe,
   IpmiOneShotOverride,
   RedfishOneShotOverride,
+  FirmwareNetworkBootPreparationRoute,
+  firmware_network_boot_preparation_routes,
   TransportRefusedVendorCommand,
   VendorCommandRejected,
 }
@@ -80,12 +84,39 @@ fn fixture_seed() -> AltraAutoinstallSeedBinding? {
   }
 }
 
+// Routes are REAL catalog rows (authority and obligation are S0's, not mine); a missing row is an
+// Unobserved standing, never an improvised route.
+fn catalog_ipmi_route() -> FirmwareNetworkBootPreparationRoute? {
+  firmware_network_boot_preparation_routes
+    |> filter(r => match r {
+      IpmiOneShotOverride { channel: _, authority: _, obligation: _ } => true
+      _ => false
+    })
+    |> first
+}
+
+fn catalog_redfish_route() -> FirmwareNetworkBootPreparationRoute? {
+  firmware_network_boot_preparation_routes
+    |> filter(r => match r {
+      RedfishOneShotOverride { service_root: _, authority: _, obligation: _ } => true
+      _ => false
+    })
+    |> first
+}
+
+fn standing_over(route: FirmwareNetworkBootPreparationRoute?, blocking: PreparationBlockingOn) -> FirmwareNetworkBootStanding {
+  match route {
+    Present { value: r } => NeedsPreparation { route: r, blocking: blocking }
+    Absent => Unobserved { unanswered: [] }
+  }
+}
+
 fn fixture_firmware_needs_ipmi() -> FirmwareNetworkBootStanding {
-  NeedsPreparation { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
+  standing_over(route: catalog_ipmi_route(), blocking: OverrideMechanismUnsupported)
 }
 
 fn fixture_firmware_needs_other_flag() -> FirmwareNetworkBootStanding {
-  NeedsPreparation { route: RedfishOneShotOverride { service_root: "fixture-root" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
+  standing_over(route: catalog_redfish_route(), blocking: OverrideMechanismUnsupported)
 }
 
 data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
@@ -199,9 +230,16 @@ test fn two_strategies_with_the_same_identity_derive_different_arms() -> Bool {
   p != v
 }
 
+fn firmware_is_prepared_via_fixture(f: FirmwarePreparation) -> Bool {
+  match fixture_firmware_needs_ipmi() {
+    NeedsPreparation { route: r, blocking: b } => f == FirmwarePreparedVia { route: r, blocking: b }
+    _ => false
+  }
+}
+
 test fn the_pxe_arm_carries_the_pinned_chainloader_and_the_preparation_route() -> Bool {
   match derive(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
-    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && f == FirmwarePreparedVia { route: IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }, blocking: OverrideMechanismUnsupported }
+    ArmedPxeOrUefiHttp { chainloader: c, firmware: f, origin: _, seed: _ } => c.installed_filename == "snponly.efi" && firmware_is_prepared_via_fixture(f)
     ArmedVirtualMedia { media_observation: _, origin: _, seed: _ } => false
     ArmUnobserved { missing: _ } => false
     ArmRefused { cause: _ } => false
@@ -304,8 +342,14 @@ test fn fixture_seed_is_a_real_binding_from_the_s4_producer() -> Bool {
 // The same route under a different blocker is a different arm: the arm reports what the standing said was
 // in the way, so a derivation that drops the blocker (or defaults it) is indifferent to it and goes red here.
 test fn the_same_route_under_a_different_blocker_derives_a_different_arm() -> Bool {
-  let same_route = IpmiOneShotOverride { channel: "fixture-lan" as NonEmptyStr }
-  let a = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: NeedsPreparation { route: same_route, blocking: OverrideMechanismUnsupported }, chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
-  let b = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: NeedsPreparation { route: same_route, blocking: NoInterfaceCarriesPxe }, chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
+  let same_route = catalog_ipmi_route()
+  let a = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: standing_over(route: same_route, blocking: OverrideMechanismUnsupported), chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
+  let b = derive(strategy: PxeOrUefiHttp, evidence: evidence_with(firmware: standing_over(route: same_route, blocking: NoInterfaceCarriesPxe), chainloader: pinned(), virtual_media: media_available()), unit: "unit-alpha")
   a != b
+}
+
+// The ref is re-asserted as an independent literal so a silent rename in the module cannot leave the
+// frontier quietly unsatisfiable.
+test fn the_consumer_frontier_names_the_s9_actuator_literally() -> Bool {
+  provisioning_arm_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
 }

@@ -1,7 +1,8 @@
 module gunbc.provisioning.provisioning_arm
 
 import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
@@ -181,4 +182,20 @@ fn derive_virtual_media(evidence: DeliveryEvidence) -> ArmShape {
 
 fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
   arm.attempt
+}
+
+// THE CONSUMER THAT MUST EXIST. An arm is only a statement of what one boot attempt WOULD do; nothing
+// in this module runs it. The executing route is work item S9 (node://adhoc-9cc8b205-64b), which owns
+// `network_boot_arm_actuator_steps` in gunbc.provisioning.network_boot_actuation. That name is coined
+// by operator-side decision, not read off an existing module; S9 must build its steps from
+// gunbc.nbd_proxy_virtual_media_install's OsInstallActuatorStep / os_install_actuator_steps rather
+// than a second step vocabulary. Discharge-by-name proves ONLY that the declaration exists, never that
+// the arm's shape is exercised end to end (S0 keeps BoundaryInhabitation as a separate carrier for
+// that reason), so landing this module fires S0's own consumer frontier with nothing yet executing.
+data provisioning_arm_consumer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: provisioning_arm_consumer_ref() },
+}
+
+fn provisioning_arm_consumer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
 }
