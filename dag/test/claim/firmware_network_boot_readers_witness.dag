@@ -9,7 +9,7 @@ import extdeps.external_authority { TranscribedUncited }
 import gunbc.firmware_network_boot_standing {
   BootOrderObserved, NicsObserved, SecureBootEnabled, BiosVersionObserved,
   ResourceNotFound, AuthenticationRequired, VendorCommandRejected, ReplyShapeUnrecognized,
-  BootEntry, boot_entry,
+  BootEntry, boot_entry, FirmwareBootObservation,
 }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
@@ -194,6 +194,13 @@ test fn every_target_round_trips_through_its_wire_value() -> Bool {
   all_ok && lowercase_is_not_a_target
 }
 
+fn order_ok(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order { BootOrderObserved { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd] _ => false }
+}
+fn secure_ok(o: FirmwareBootObservation) -> Bool { match o.secure_boot { SecureBootEnabled => true _ => false } }
+fn nics_ok_obs(o: FirmwareBootObservation) -> Bool { match o.nics { NicsObserved { nics: ns } => list_length(items: ns) == 2 _ => false } }
+fn bios_ok(o: FirmwareBootObservation) -> Bool { match o.bios_version { BiosVersionObserved { version: v } => v == "2.4.1" _ => false } }
+
 // INHABITANCE: the reader's output is what probe() consumes, on the OpenBMC row, end to end.
 test fn reader_output_feeds_the_probe() -> Bool {
   let rows = firmware_boot_family_rows()
@@ -203,8 +210,7 @@ test fn reader_output_feeds_the_probe() -> Bool {
     Present { value: r } =>
       match probe(row: r, subject: ProbeSubject { unit_label: "u" }, contact: BmcResponded { replies: redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok())) }) {
         BmcObserved { subject: _, observation: o } =>
-          match o.boot_order { BootOrderObserved { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd]
-            _ => false }
+          order_ok(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
         BmcUnreachable { subject: _, attempt: _ } => false
       }
   }
