@@ -11,6 +11,7 @@ pub use crate::std_content_hash::{sha256_hex_digest, sha512_hex_digest};
 pub use crate::std_content_hash::{Sha256Digest, Sha512Digest};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
+pub use crate::std_optional::Optional;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
