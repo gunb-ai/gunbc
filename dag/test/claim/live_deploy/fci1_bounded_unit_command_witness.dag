@@ -1,0 +1,54 @@
+module test.claim.live_deploy.fci1_bounded_unit_command_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { finite_byte_size_count }
+import extdeps.exec.command { argv_words }
+import gunbc.fabric.fci1_bounded_execution_context { fci1_bounded_execution_context, Fci1BoundedExecutionContextBuilt }
+import gunbc.live_deploy.slice_bounds { fci1_controls_slice_unit_name }
+import gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator {
+  Fci1UnitBound, Fci1UnitBounded, Fci1UnitUnbounded,
+  Fci1UnitCommandBuilt, Fci1UnitCommandRefused, fci1_unit_command,
+}
+
+// The bounded actuator's unit argv is built by evaluating fci1_unit_command, with no systemd. A record
+// shape the extdeps union no longer has typechecks and only fails when evaluated (gunbc.recurring_failure_mode
+// changed_declaration_signature_consumer_unplanned), so this evaluates every bound arm and reads the words.
+
+fn word_hits(words: List<String>, needle: String) -> Bool {
+  any(words, w => w == needle)
+}
+
+test fn the_bounded_unit_argv_carries_the_working_directory_slice_and_memory_bounds() -> Bool {
+  match fci1_bounded_execution_context(checkout_root: ".") {
+    Fci1BoundedExecutionContextBuilt { context: c } => {
+      let high = match c.memory_high {
+        Present { value: h } => h
+        Absent => c.memory_max
+      }
+      match fci1_unit_command(unit: "fci1-t" as NonEmptyStr, working_directory: "/wt", bound: Fci1UnitBounded { max: c.memory_max, high: high }, child_words: ["true"]) {
+        Fci1UnitCommandRefused { detail: _ } => false
+        Fci1UnitCommandBuilt { command } => {
+          let words = argv_words(command: command)
+          word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
+            && word_hits(words: words, needle: "--property=Slice=" + (fci1_controls_slice_unit_name as String))
+            && word_hits(words: words, needle: "--property=MemoryMax=" + to_string(finite_byte_size_count(size: c.memory_max)))
+            && word_hits(words: words, needle: "--property=MemoryHigh=" + to_string(finite_byte_size_count(size: high)))
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn the_unbounded_unit_argv_is_memory_max_infinity_with_no_slice() -> Bool {
+  match fci1_unit_command(unit: "fci1-u" as NonEmptyStr, working_directory: "/wt", bound: Fci1UnitUnbounded, child_words: ["true"]) {
+    Fci1UnitCommandRefused { detail: _ } => false
+    Fci1UnitCommandBuilt { command } => {
+      let words = argv_words(command: command)
+      word_hits(words: words, needle: "--property=MemoryMax=infinity")
+        && word_hits(words: words, needle: "--property=WorkingDirectory=/wt")
+        && !any(words, w => string_contains(s: w, pattern: "--property=Slice="))
+    }
+  }
+}

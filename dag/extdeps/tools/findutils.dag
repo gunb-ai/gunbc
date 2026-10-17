@@ -94,6 +94,28 @@ fn find_regular_files_sha256_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
 }
 
+// A TREE'S ENTRY METADATA, ONE `<relative path>|<type>|<mode>|<owner>|<group>|<size>` LINE EACH,
+// confined to the starting point's filesystem by -xdev (find(1) EXPRESSIONS, Global options), with
+// the escapes find's own as above. Beside find_tree_regular_files_sha256_command it describes a tree
+// closely enough that a canonical store left unchanged reads equal and any entry, mode, owner or
+// byte moved reads different.
+fn find_tree_metadata_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%s\\n"])
+}
+
+// Every regular file's sha256 on the starting point's filesystem only (-xdev), batched through
+// sha256sum, printed `<hex>  <path>`. find_regular_files_sha256_command is the same read without the
+// filesystem confinement.
+fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-type", "f", "-exec", sha256sum_program().invocation as String, "{}", "+"])
+}
+
+// THE DIRECT CHILDREN OF A DIRECTORY WHOSE NAME MATCHES A GLOB, one bare name per line (-maxdepth 1,
+// %f is the entry's final component). The matching entry's own subtree is never walked.
+fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-name", name_glob, "-printf", "%f\\n"])
+}
+
 // ENTRIES UNDER ROOTS THAT ARE NOT TRUSTED AS A ROOT-OWNED LOCUS: not owned by `owner`, writable by
 // group or other (-perm /022: any of the two bits), or a symbolic link (find(1) TESTS; -P, the default,
 // does not follow a starting point, so a symlinked root is seen as a link). `top_only` adds

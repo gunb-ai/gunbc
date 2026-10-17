@@ -30,8 +30,8 @@ type Fci1BoundedExecutionContextEmission
 // v2.extdeps.languages.bash_build nodes and emitted by v2.workflow.bash_emit, or as typed
 // host_effect_apply. CORRECTED 2026-09-28: #12430 classed this (c), "route available today". It is
 // (b), a missing target-language capability.
-// -- the same condition carried by tools/fabric_ci_fci1_bounded_execution_controls.sh and
-// tools/fabric_ci_fci1_live_instrument.sh.
+// -- the same condition carried by tools/fabric_ci_fci1_live_instrument.sh (the bounded controls
+// moved to gunbc.instruments.fabric_ci_fci1_bounded_controls_actuator).
 //
 // THE MARK IS HERE AND NOT ONLY ON THOSE TWO FILES BECAUSE THE TRIGGER WOULD OTHERWISE RETIRE THEM
 // AND LEAVE THIS ONE STANDING. A reader of this module has no way to reach a marker written in the
