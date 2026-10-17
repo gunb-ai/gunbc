@@ -18987,21 +18987,29 @@ Rc::new(FieldInferResult {
                             };
                             match expected.clone() {
                                 Some(exp) => {
-                                    if (node_is_std_optional(exp.clone(), scope.clone())
-                                        || (exp.return_cardinality.clone()
-                                            == Cardinality::CardOptional))
-                                    {
+                                    if node_is_std_optional(exp.clone(), scope.clone()) {
                                         exp.clone()
                                     } else {
-                                        match exp.inferred.clone().as_deref().cloned() {
-                                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                                if node_is_std_optional(rt.clone(), scope.clone()) {
-                                                    rt.clone()
-                                                } else {
-                                                    payload_optional.clone()
+                                        if (exp.return_cardinality.clone()
+                                            == Cardinality::CardOptional)
+                                        {
+                                            payload_optional.clone()
+                                        } else {
+                                            match exp.inferred.clone().as_deref().cloned() {
+                                                Some(InferredNode::Resolved {
+                                                    node: rt, ..
+                                                }) => {
+                                                    if node_is_std_optional(
+                                                        rt.clone(),
+                                                        scope.clone(),
+                                                    ) {
+                                                        rt.clone()
+                                                    } else {
+                                                        payload_optional.clone()
+                                                    }
                                                 }
+                                                _ => payload_optional.clone(),
                                             }
-                                            _ => payload_optional.clone(),
                                         }
                                     }
                                 }
