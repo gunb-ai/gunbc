@@ -438,25 +438,27 @@ fn fold_step(bound: Rc<Node>, actual: Rc<Node>) -> Rc<UnifyGenericsAcc> {
     )
 }
 
-/// BEHAVIOUR LOCK, NOT A RED CONTROL -- stated honestly because it cannot be one.
+/// RED-BEFORE CONTROL (measured FAILED on the SHIPPED seed, GREEN once the predicate is
+/// carried by the seed). The stored binding carries a TYPE-VARIABLE leaf, so it is
+/// unsettled evidence and must be REPLACED by the settled actual.
 ///
-/// The stored binding carries a TYPE-VARIABLE leaf, so it is unsettled evidence and is
-/// REPLACED by the settled actual. Two rungs of honesty, both from measurement at head
-/// b493909 (4 passed / 0 failed on the SHIPPED seed):
-///  (a) asserting only `diagnostics.is_empty()` was VACUOUS -- v1.compiler.types
+/// Measurement, on the shipped mirrors (v1_compiler_infer.rs sha256 5e9c37585fe088ac,
+/// UnifyGenericsAcc count 36 -- i.e. the fold WITHOUT the new predicate), with this exact
+/// test file: 3 passed / 1 failed, the failure being THIS row --
+///   assertion `left == right` failed: an unsettled stored binding must be REPLACED by
+///   the first settled actual
+///     left:  "Map(Primitive(),Primitive(Int))"   (the variable-bearing binding, kept)
+///     right: "Map(Primitive(String),Primitive(Int))"
+/// So on main the fold KEEPS an unsettled binding and lets a settled actual go unrecorded;
+/// with the predicate it replaces it. Two honesty rungs found on the way here:
+///  (a) asserting only `diagnostics.is_empty()` is VACUOUS -- v1.compiler.types
 ///      node_type_compatible (src/v1/04_types.dag) answers true whenever either side's
 ///      inferred is a TypeVariable, so the pre-predicate path emitted no diagnostic
-///      either. The assertion therefore moved to WHICH node is stored.
-///  (b) even that is not discriminating HERE, because equality in this corpus is
-///      name-based: two nodes that compare equal PRINT equal, so no fixture can show
-///      'kept the unsettled node' versus 'kept the settled node' while the comparison
-///      says equal. When the two nodes print DIFFERENTLY the pre-existing behaviour
-///      already replaced the binding, so this arm's observable effect at fold grain is
-///      nil -- it is uniformity/defence, not a behaviour change. It stays as a lock on
-///      the arm's contract. The discriminating RED-before control for this predicate is
-///      fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable,
-///      below, whose RED-before IS measured (the shipped seed overwrites the settled
-///      binding with the variable-bearing actual).
+///      either. The assertion therefore has to be about WHICH node is stored.
+///  (b) the variable-bearing leaf PRINTS as `Primitive()` (empty name), so the two
+///      candidates are distinguishable only when one side is a variable; a fixture of two
+///      settled nodes that compare equal prints equal, and no accept control can be built
+///      that way. That is why the mirror row below is labelled a lock, not a control.
 #[test]
 fn fold_replaces_a_binding_that_still_carries_a_type_variable_leaf() {
     let bound = fold_app("Map", &[fold_tv_leaf("C"), fold_leaf("Int")]);
