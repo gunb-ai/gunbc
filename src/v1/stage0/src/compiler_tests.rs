@@ -5967,6 +5967,72 @@ mod compiler_tests {
         );
     }
 
+    // THE COUNTING ALLOCATOR IS INSTALLED BY DEMAND AND BY NOTHING ELSE. Rendering the native claim
+    // driver main for three binding sets: none (the pure main), a bound resource that is not the
+    // AllocationCounter (the effect main), and the AllocationCounter binding. Only the last may carry a
+    // #[global_allocator]; the first two are the negative controls, so a main that always rendered it
+    // (or one that rendered it for any effect main) turns this row red.
+    #[test]
+    fn the_counting_allocator_is_installed_only_by_demand() {
+        use crate::v1_compiler_emit_rust::emit_native_claim_driver_main_rs;
+        let render = |bindings: Vec<
+            std::rc::Rc<crate::v1_compiler_emit_rust::NativeEffectBindingText>,
+        >|
+         -> String {
+            emit_native_claim_driver_main_rs(
+                "c".to_string(),
+                "m".to_string(),
+                std::rc::Rc::new(bindings),
+            )
+            .content
+            .clone()
+        };
+        let other = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "fs".to_string(),
+            type_path: "c::std_filesystem::Filesystem".to_string(),
+            binding_line: "    let fs = 0;\n".to_string(),
+            argument: "fs".to_string(),
+        });
+        let counter = std::rc::Rc::new(crate::v1_compiler_emit_rust::NativeEffectBindingText {
+            var: "counter".to_string(),
+            type_path: "c::std_realization_measurement::AllocationCounter".to_string(),
+            binding_line: "    let counter = 0;\n".to_string(),
+            argument: "counter".to_string(),
+        });
+        assert!(
+            !render(Vec::new()).contains("#[global_allocator]"),
+            "a pure main must carry no allocator"
+        );
+        assert!(
+            !render(vec![other.clone()]).contains("#[global_allocator]"),
+            "an effect main without the AllocationCounter must carry no allocator"
+        );
+        let registered =
+            |main: &str| main.contains("register_counting_allocator(&COUNTING_ALLOCATOR)");
+        assert!(
+            !registered(&render(Vec::new())),
+            "a pure main must register no provider"
+        );
+        assert!(
+            !registered(&render(vec![other.clone()])),
+            "an effect main without the AllocationCounter must register no provider"
+        );
+        let demanding = render(vec![other, counter]);
+        assert!(
+            demanding.contains("#[global_allocator]"),
+            "positive control: a main binding the AllocationCounter carries it"
+        );
+        assert!(
+            registered(&demanding),
+            "the allocator and its registration come from the one selection"
+        );
+        assert!(
+            demanding.find("register_counting_allocator").unwrap()
+                < demanding.find("native_claim_report(").unwrap(),
+            "registration precedes the first read"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]

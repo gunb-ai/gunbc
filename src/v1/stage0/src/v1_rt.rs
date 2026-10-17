@@ -1685,31 +1685,43 @@ pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
 /// monotone. It sees no Rc retain and no persistent-collection copy-on-write except as the
 /// allocation it causes. The reads below REFUSE in a process whose allocator is not this one:
 /// zero is a reading, absence is not.
-pub struct CountingAllocator;
+/// A CountingAllocator carries its OWN counters, so an instance a test builds is isolated from the
+/// process's installed one. The installed instance is the `static` the selected realization declares
+/// (v1.compiler.emit_rust native claim main) and then REGISTERS before any read; availability is
+/// that registration and nothing else -- never a nonzero count, never set in a binary that did not
+/// select this allocator.
+pub struct CountingAllocator {
+    operations: std::sync::atomic::AtomicU64,
+    bytes_requested: std::sync::atomic::AtomicU64,
+}
 
-static ALLOCATION_OPERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static ALLOCATION_BYTES_REQUESTED: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
-static ALLOCATION_COUNTING_LIVE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+impl CountingAllocator {
+    pub const fn new() -> Self {
+        CountingAllocator {
+            operations: std::sync::atomic::AtomicU64::new(0),
+            bytes_requested: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
 
-fn allocation_counted(bytes: usize) {
-    ALLOCATION_OPERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    ALLOCATION_BYTES_REQUESTED.fetch_add(bytes as u64, std::sync::atomic::Ordering::Relaxed);
-    ALLOCATION_COUNTING_LIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+    fn counted(&self, bytes: usize) {
+        self.operations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.bytes_requested
+            .fetch_add(bytes as u64, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
-        allocation_counted(layout.size());
+        self.counted(layout.size());
         std::alloc::System.alloc(layout)
     }
     unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
-        allocation_counted(layout.size());
+        self.counted(layout.size());
         std::alloc::System.alloc_zeroed(layout)
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
-        allocation_counted(new_size);
+        self.counted(new_size);
         std::alloc::System.realloc(ptr, layout, new_size)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
@@ -1717,25 +1729,149 @@ unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
     }
 }
 
-fn allocation_counter_read(counter: &std::sync::atomic::AtomicU64, axis: &str) -> i64 {
-    if !ALLOCATION_COUNTING_LIVE.load(std::sync::atomic::Ordering::Relaxed) {
-        eprintln!("REFUSED: {} is unobservable: this process does not run the counting allocator (its entry does not use AllocationCounter)", axis);
-        std::process::exit(2);
+pub enum AllocationAxis {
+    Operations,
+    BytesRequested,
+}
+
+/// THE ONE READER. `None` is UNOBSERVABLE -- no counting provider was selected for this process --
+/// and is not a count of zero: a process that never selected the provider still allocates, and a
+/// provider that observed nothing reads `Some(0)`.
+pub fn allocation_reading(
+    provider: Option<&CountingAllocator>,
+    axis: AllocationAxis,
+) -> Option<u64> {
+    let provider = provider?;
+    Some(match axis {
+        AllocationAxis::Operations => provider
+            .operations
+            .load(std::sync::atomic::Ordering::Relaxed),
+        AllocationAxis::BytesRequested => provider
+            .bytes_requested
+            .load(std::sync::atomic::Ordering::Relaxed),
+    })
+}
+
+static REGISTERED_ALLOCATION_PROVIDER: std::sync::atomic::AtomicPtr<CountingAllocator> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+/// The selected realization's own statement that its installed allocator is the counting provider.
+pub fn register_counting_allocator(provider: &'static CountingAllocator) {
+    REGISTERED_ALLOCATION_PROVIDER.store(
+        provider as *const CountingAllocator as *mut CountingAllocator,
+        std::sync::atomic::Ordering::Release,
+    );
+}
+
+fn registered_allocation_provider() -> Option<&'static CountingAllocator> {
+    let registered = REGISTERED_ALLOCATION_PROVIDER.load(std::sync::atomic::Ordering::Acquire);
+    // SAFETY: register_counting_allocator is the only store and it stores a 'static reference.
+    unsafe { registered.as_ref() }
+}
+
+fn allocation_counter_read(axis: AllocationAxis, name: &str) -> i64 {
+    match allocation_reading(registered_allocation_provider(), axis) {
+        Some(n) => {
+            if n > i64::MAX as u64 {
+                i64::MAX
+            } else {
+                n as i64
+            }
+        }
+        None => {
+            eprintln!("REFUSED: {} is unobservable: this process did not select the counting allocator (its entry does not use AllocationCounter)", name);
+            std::process::exit(2);
+        }
     }
-    let n = counter.load(std::sync::atomic::Ordering::Relaxed);
-    if n > i64::MAX as u64 {
-        i64::MAX
-    } else {
-        n as i64
-    }
+}
+
+pub fn observed_allocation_available(_label: String) -> bool {
+    registered_allocation_provider().is_some()
 }
 
 pub fn observed_allocation_operations(_label: String) -> i64 {
-    allocation_counter_read(&ALLOCATION_OPERATIONS, "allocation operations")
+    allocation_counter_read(AllocationAxis::Operations, "allocation operations")
 }
 
 pub fn observed_allocation_bytes(_label: String) -> i64 {
-    allocation_counter_read(&ALLOCATION_BYTES_REQUESTED, "allocation bytes")
+    allocation_counter_read(AllocationAxis::BytesRequested, "allocation bytes")
+}
+
+#[cfg(test)]
+mod counting_allocator_tests {
+    use super::*;
+    use std::alloc::{GlobalAlloc, Layout};
+
+    fn reading(a: &CountingAllocator) -> (u64, u64) {
+        (
+            allocation_reading(Some(a), AllocationAxis::Operations).unwrap(),
+            allocation_reading(Some(a), AllocationAxis::BytesRequested).unwrap(),
+        )
+    }
+
+    #[test]
+    fn alloc_counts_one_operation_and_its_requested_bytes() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(32, 8).unwrap();
+        let p = unsafe { a.alloc(layout) };
+        assert!(!p.is_null());
+        assert_eq!(reading(&a), (1, 32));
+        unsafe { a.dealloc(p, layout) };
+    }
+
+    #[test]
+    fn alloc_zeroed_counts_one_operation_and_its_requested_bytes() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(64, 8).unwrap();
+        let p = unsafe { a.alloc_zeroed(layout) };
+        assert!(!p.is_null());
+        assert_eq!(reading(&a), (1, 64));
+        unsafe { a.dealloc(p, layout) };
+    }
+
+    #[test]
+    fn realloc_counts_one_operation_and_its_new_size() {
+        let a = CountingAllocator::new();
+        let small = Layout::from_size_align(32, 8).unwrap();
+        let p = unsafe { a.alloc(small) };
+        assert!(!p.is_null());
+        let before = reading(&a);
+        let grown = unsafe { a.realloc(p, small, 96) };
+        assert!(!grown.is_null());
+        let after = reading(&a);
+        assert_eq!((after.0 - before.0, after.1 - before.1), (1, 96));
+        unsafe { a.dealloc(grown, Layout::from_size_align(96, 8).unwrap()) };
+    }
+
+    #[test]
+    fn dealloc_counts_nothing() {
+        let a = CountingAllocator::new();
+        let layout = Layout::from_size_align(48, 8).unwrap();
+        let p = unsafe { a.alloc(layout) };
+        assert!(!p.is_null());
+        let before = reading(&a);
+        unsafe { a.dealloc(p, layout) };
+        assert_eq!(reading(&a), before);
+    }
+
+    #[test]
+    fn a_process_without_the_provider_reads_unobservable_not_zero() {
+        // This test process allocates but selected no counting allocator and registered none.
+        let work: Vec<u8> = Vec::with_capacity(64);
+        assert!(work.capacity() >= 64);
+        assert!(registered_allocation_provider().is_none());
+        assert_eq!(allocation_reading(None, AllocationAxis::Operations), None);
+        assert_eq!(
+            allocation_reading(None, AllocationAxis::BytesRequested),
+            None
+        );
+        // The positive control: a provider that observed nothing reads zero, which is a reading.
+        let idle = CountingAllocator::new();
+        assert_eq!(
+            allocation_reading(Some(&idle), AllocationAxis::Operations),
+            Some(0)
+        );
+    }
 }
 
 fn int_relu(x: i64) -> i64 {
