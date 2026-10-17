@@ -17,9 +17,13 @@ import extdeps.board_authority { BoardAuthorityRef }
 // the board has one socket. The variant (-i/-C/-NC) is not established. Nothing here belongs in extdeps.boards.supermicro_h11ssl:
 // the manual (Rev. 1.1) predates these observations and is silent on each of them.
 //
-// Consumer: arrival intake for this board, via supermicro_h11ssl_first_contact_family_standing,
-// which selects the family-neutral first-contact path (bmc_first_contact_standing) and so refuses
-// to run the OpenBMC factory-login producer against this controller.
+// CONSUMPTION, declared frontier (DESIGN section 3c): nothing in the arrival-intake path imports
+// this receipt yet. In this change its predicates are consumed only by the witnesses in
+// test.claim.supermicro_h11ssl_witness. The named later change is the arrival-intake binding for
+// this board: a gunbc.board_authority_binding row for the H11SSL, then reading
+// supermicro_h11ssl_first_contact_family_standing and supermicro_h11ssl_factory_login_producer_admitted
+// where the first-contact producer is chosen. Its trigger is the unit's IPMI FRU Board Area read
+// (extdeps.board_authority BoardFruIdentity), which is also the read the variant standing owes.
 // The board revision printed on the unit (REV 2.0 as the operator reports it); the manual
 // conditions EPYC 7002 support on revision 2.x (p.15).
 type H11sslUnitBoardRevision { major: Nat, minor: Nat }
@@ -175,8 +179,8 @@ fn is_root_answered(o: H11sslObservation) -> Bool {
 
 // True only for the ordered transition on this BMC: a refused root, then a licence activation,
 // then an answered root, each strictly later than the one before (RFC 3339 instants). A
-// reordered or deleted step is false. Consumer: arrival intake choosing whether the Redfish path
-// may be tried on this unit.
+// reordered or deleted step is false. Consumed by the witness now; the arrival-intake Redfish
+// path is the same declared frontier as the module header.
 fn supermicro_h11ssl_redfish_root_answered_after_activation(r: H11sslFirstContactReceipt) -> Bool {
   any(r.observations, refused => is_root_refused(o: refused) && any(r.observations, act => is_activation(o: act) && instant_precedes(a: refused.observed_at, b: act.observed_at) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: act.observed_at, b: ans.observed_at))))
 }
