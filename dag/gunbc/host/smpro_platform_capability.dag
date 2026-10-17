@@ -260,14 +260,49 @@ fn smpro_platform_standing_of_families(
 // something, so only that arm has an endpoint to hold against the secured one. The old shape asked
 // "which host is the SMpro site on?" for EVERY machine, which quietly required every machine to have a
 // site -- the requirement that made an x86 managed host impossible.
-fn smpro_platform_controller_host(standing: SmproPlatformStanding) -> NonEmptyStr? {
+// WHAT THE PLATFORM ARM OBLIGES THE ADMISSION JOIN TO CHECK, decided PER ARM.
+//
+// THIS REPLACES smpro_platform_controller_host, which answered "which endpoint did you read?" and mapped
+// THREE different arms to `none`. Collapsing them into one Optional and then answering the `Absent`
+// branch `true` was a SILENT WIDEN (review 81478; DESIGN Sec 5: "a failure arm refuses, never widens"),
+// because those three arms are not the same fact:
+//   NotCarried        -- an x86 family the cited set answers negatively. No site exists, none is owed.
+//                        This is the arm the manager ruled must be admitted (blocker 2), and it is the
+//                        only one of the three that may join the roster.
+//   SiteRefused       -- the platform DOES carry the interface and the read came back refusing. A failed
+//                        read, not an absent interface. Main refused it (smpro_controller_host mapped
+//                        SmproSiteRefused to none and the conjunction was false), and it still must.
+//   Unestablished     -- the silicon itself is unknown. Nothing was read and nothing is claimed about
+//                        what the board admits; a roster is not a place to guess.
+// An Option cannot tell those apart, so the model names them separately and each gets its own answer.
+// Nothing here is a Bool either: a true/false over coproduct arms is the predicate the review policy
+// strikes, and the refused arm carries the cause so a refusal stays checkable rather than anonymous.
+type SmproPlatformJoinObligation
+  = SmproJoinOwesEndpoint { host: NonEmptyStr }
+  | SmproJoinNoEndpointOwed
+  | SmproJoinRefused { cause: SmproJoinRefusal }
+
+// THE TWO WAYS A PLATFORM REFUSES THE JOIN, kept distinct because their repairs point at different
+// people: a refused site is fixed by re-reading the board over the secured route (an operator), an
+// unestablished silicon is fixed by binding a board row or reading the installed family (an intake
+// gap). One arm would make an operator chase a site that was never the problem.
+type SmproJoinRefusal
+  = SmproJoinSiteRefused { cause: SmproSiteRefusal }
+  | SmproJoinPlatformUnestablished { cause: SmproUnestablishedCause }
+
+fn smpro_platform_join_obligation(
+  standing: SmproPlatformStanding,
+) -> SmproPlatformJoinObligation {
   match standing {
-    // The only arm that read anything, so the only one with an endpoint to hold against the secured one.
-    SmproPlatformCarried { family: _, site: s } => Present { value: s.endpoint.host }
-    // A refused site read nothing either, and the other two arms have no interface to read through.
-    SmproPlatformSiteRefused { family: _, cause: _ } => none
-    SmproPlatformNotCarried { family: _ } => none
-    SmproPlatformUnestablished { cause: _ } => none
+    // The only arm that claims a read, so the only one with an endpoint to hold against the secured one.
+    SmproPlatformCarried { family: _, site: s } => SmproJoinOwesEndpoint { host: s.endpoint.host }
+    // An absent interface owes nothing -- and this is the ONE arm admission may pass without a site.
+    SmproPlatformNotCarried { family: _ } => SmproJoinNoEndpointOwed
+    // Two FAILED reads refuse. Not widened, not defaulted, each carrying why.
+    SmproPlatformSiteRefused { family: _, cause: cause } =>
+      SmproJoinRefused { cause: SmproJoinSiteRefused { cause: cause } }
+    SmproPlatformUnestablished { cause: cause } =>
+      SmproJoinRefused { cause: SmproJoinPlatformUnestablished { cause: cause } }
   }
 }
 

@@ -10,9 +10,19 @@ import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisio
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
+// THE IDENTITY TEST IS IMPORTED, NOT RELIED ON BY NAME. ampere_soc_family_carries_smpro calls it, and a
+// name that resolves only because nothing else in scope shadows it is not a resolved name. Review 81471
+// caught that this import list was written BEFORE the membership test was rewritten to use any(...) over
+// soc_family_eq, so the call was added and the import never was -- and the function's one consumer
+// (gunbc.host.smpro_platform_capability) sits outside the required emitted-subject rows, which is exactly
+// the CI blind spot DESIGN Sec 3 names: "a dependent can stop resolving while the required job reports
+// SUCCESS". The comment sits ABOVE the block, not inside it: no file in this corpus carries a comment
+// inside an import block, so it is not a position the parser is known to accept.
 import extdeps.cpu.types {
   ProcessorCoolingMount,
-  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily }
+  SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily,
+  soc_family_eq,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

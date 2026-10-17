@@ -33,7 +33,8 @@ import gunbc.machine_intake.ampere_smpro_observation {
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.host.smpro_platform_capability {
   SmproPlatformStanding, SmproPlatformCarried, SmproPlatformNotCarried,
-  SmproPlatformUnestablished, smpro_platform_standing, smpro_platform_controller_host,
+  SmproPlatformUnestablished, smpro_platform_standing, smpro_platform_join_obligation,
+  SmproPlatformJoinObligation, SmproJoinOwesEndpoint, SmproJoinNoEndpointOwed, SmproJoinRefused,
   SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
   SmproPlatformSiteRefused,
   SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
@@ -285,12 +286,27 @@ fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
           Absent => false
           Present { value: secure_host } =>
             (access_host as String) == (secure_host as String)
-            // ONLY a Carried platform has read anything, so only it has an endpoint to hold against the
-            // secured one. NotCarried / Unestablished name no endpoint at all -- requiring one is what
-            // forced an x86 host to fabricate an Ampere site in order to be managed at all.
-              && match smpro_platform_controller_host(standing: record.smpro) {
-                Absent => true
-                Present { value: smpro_host } => (secure_host as String) == (smpro_host as String)
+            // WHAT THE PLATFORM ARM OBLIGES, answered PER ARM rather than through one Optional.
+            // Review 81478 caught the widen this replaces: the old join asked smpro_platform_controller_host
+            // "which endpoint did you read?", three arms answered none, and the Absent branch then returned
+            // true -- so a host whose SMpro READ FAILED joined the roster alongside a host whose platform
+            // simply has no interface. DESIGN Sec 5: "a failure arm refuses, never widens".
+            //   Carried        owes the endpoint join, exactly as before.
+            //   NotCarried     joins with no site. This is the ONE arm the manager's blocker 2 opened, and
+            //                  the only one that makes sense of it: an x86 unit must not have to fabricate
+            //                  an Ampere site to be managed at all.
+            //   SiteRefused    REFUSES, as it did on main. The platform carries SMpro and the read came
+            //                  back refusing -- a failed read, not an absent interface.
+            //   Unestablished  REFUSES. The silicon is unknown; a compatibility roster is not a place to
+            //                  guess a platform into membership.
+            // The pass subject still refuses the refused site later (SmproSubjectSiteRefused), and that
+            // refusal is what the boot-run gauntlet row MUT-SITE-AS-NEGATIVE is measured against; but a
+            // later refusal is not a licence to admit here, and the entry point's own comment still
+            // promises unbound standings are Absent.
+              && match smpro_platform_join_obligation(standing: record.smpro) {
+                SmproJoinOwesEndpoint { host: smpro_host } => (secure_host as String) == (smpro_host as String)
+                SmproJoinNoEndpointOwed => true
+                SmproJoinRefused { cause: _ } => false
               }
         }
     }

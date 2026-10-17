@@ -1,5 +1,6 @@
 module test.claim.host.managed_host_boot_witness
 
+import std.algebra { string_contains }
 import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64 }
@@ -21,10 +22,14 @@ import gunbc.host.host_capability_row {
   host_access_repoint_firmware, host_capability_row, HostCapabilityRowKnown,
 }
 import gunbc.host.bmc_release_capability_catalog {
-  megarac_release_capability_catalog, MegaRacVersionFromFirmwareRead,
-  MegaRacVersionFromOperatorAttestation, megarac_version_establishment,
+  megarac_release_capability_catalog, megarac_release_capability_row_for,
+  MegaRacVersionFromFirmwareRead, MegaRacVersionFromOperatorAttestation,
+  megarac_version_establishment, megarac_run_attempt_identity,
   MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
-  MegaRacReleaseEstablishmentRefused, megarac_run_attempt_identity,
+  MegaRacReleaseEstablishmentRefused,
+  MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityUncatalogued,
+  StandingComponentCarriesNoVersion, StandingNamesNoComponentInTable,
+  StandingTableUnreadable, StandingIsAnUpgradeListing, StandingNamesAComponentListedTwice,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { managed_host_fixture, managed_hosts }
@@ -51,6 +56,11 @@ import gunbc.host.boot_medium {
 }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_boot_medium }
 import gunbc.host.managed_host_boot_handoff { CredentialPathGiven, CredentialPathMissing, boot_handoff_password_file, boot_handoff_admission_probe_of }
+// boot_selection IS NAMED AGAIN after review 81366: its supplied-table sibling boot_selection_in was
+// deleted and the two names shared one line, so the shipped entry point went with the sibling. Same class
+// as review 81471's finding -- a name called but never imported -- and a name-resolvency audit over the
+// files this PR changed is what caught it. Comments stay ABOVE import blocks: no file in this corpus
+// carries one inside a block, so it is not a position the parser is known to accept.
 import gunbc.host.managed_host_boot {
   BootSubjectAdmitted,
   BootSubjectRefused,
@@ -62,6 +72,10 @@ import gunbc.host.managed_host_boot {
   boot_subject_admission_in,
   boot_subject_admission_refusal,
   boot_subject_machine,
+  boot_selection,
+  VirtualMediaBootSelectionOutcome,
+  VirtualMediaBootSelectionAdmitted,
+  VirtualMediaBootSelectionRefused,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

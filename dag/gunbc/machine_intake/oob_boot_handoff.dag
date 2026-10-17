@@ -134,7 +134,9 @@ fn oob_boot_handoff_admission_for_row(
 // the catalog has not read is a typed unresolved refusal, never a default row.
 fn oob_boot_handoff_admission(observation: BmcAccessObservation) -> OobBootHandoffAdmission {
   match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
-    MegaRacReleaseCapabilityKnown { row: row } => oob_boot_handoff_admission_for_row(observation: observation, row: row)
+    MegaRacReleaseCapabilityKnown { row: row } => oob_boot_handoff_admission_for_row(
+      observation: observation, capability_row: row,
+    )
     MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => OobHandoffRowUncatalogued { firmware: firmware }
     MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => OobHandoffRowAmbiguous { firmware: firmware, count: count }
   }
