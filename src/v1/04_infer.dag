@@ -126,7 +126,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
+import v1.compiler.infer_env { transparent_alias_rhs, alias_head_reaches, alias_rhs_head_of_declaration, type_names_settle_to_one_declaration, overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -17868,16 +17868,9 @@ fn bindings_accum_insert(acc: BindingsAccum, ident: Int, updated_binding: TypeBi
 // The resolved binding itself is unchanged; this is the reference a reader asks "what does the alias
 // name", so nothing downstream re-resolves the spelling.
 fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
-  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
-    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
-    none
-  } else {
-    match pre.inferred {
-      Present { value: Resolved { node: rhs } } =>
-        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
-        else { Present { value: reference_with_declaration(n: rhs, env: env) } }
-      _ => none
-    }
+  match transparent_alias_rhs(pre: pre) {
+    Present { value: rhs } => Present { value: reference_with_declaration(n: rhs, env: env) }
+    Absent => none
   }
 }
 

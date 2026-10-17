@@ -2146,18 +2146,50 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
   }
 }
 
+// The right-hand side of a transparent alias item (`type A = B`, `type A = B<C>`): a bare, required, unannotated item whose
+// `inferred` is its authored RHS. Every other item answers none. The one predicate both the env binding writer and the index
+// reader use.
+fn transparent_alias_rhs(pre: Node) -> Node? {
+  if pre.connective != NoConnective || (pre.params |> count) > 0 || pre.type_annotation != none
+    || (pre.children |> count) > 0 || pre.return_cardinality != Required {
+    none
+  } else {
+    match pre.inferred {
+      Present { value: Resolved { node: rhs } } =>
+        if rhs.connective != NoConnective || rhs.return_cardinality != Required || rhs.type_annotation != none { none }
+        else { Present { value: rhs } }
+      _ => none
+    }
+  }
+}
+
+// An alias declared outside the module and its direct imports (a record field typed by an alias a transitive module owns) is not in
+// any reachable env binding; its item is read from the symbol index by its exact module path and name, and its right-hand side is
+// admitted only when the resolver already recorded the head's identity there. No spelling is re-resolved.
 fn alias_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
   let declaring = if env.module_path == (item_ref.module_path as String) {
     Present { value: env }
   } else {
     env.parents |> filter(p => p.module_path == (item_ref.module_path as String)) |> first
   }
-  match declaring {
+  let from_env = match declaring {
     Absent => none
     Present { value: owner } =>
       match map_get(owner.str_bindings, item_ref.decl_name as String) {
         Absent => none
         Present { value: binding } => binding.alias_rhs
+      }
+  }
+  match from_env {
+    Present { value: rhs } => Present { value: rhs }
+    Absent =>
+      match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
+        Absent => none
+        Present { value: item } =>
+          match transparent_alias_rhs(pre: item) {
+            Present { value: rhs } => match rhs.declaration { Present { value: _ } => Present { value: rhs }  Absent => none }
+            Absent => none
+          }
       }
   }
 }
