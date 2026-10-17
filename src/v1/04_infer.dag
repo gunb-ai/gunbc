@@ -9605,7 +9605,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             true => none
             false =>
               let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+              // A service operation is classified BEFORE a module path or a receiver (#14147: the
+              // module-path rewrite turned effect operations into missing functions).
+              match service_spine_projection(texpr: recv, scope: scope) {
+                Present { value: _ } => none
+                Absent =>
+              match declared_module_owner(index: scope.type_env.symbol_index, name: dotted) {
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
@@ -9620,6 +9625,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     scope: scope,
                     expected: expected
                   ) }
+              }
               }
           }
       }
@@ -14476,7 +14482,7 @@ fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
-  if contains(func_name, ".") {
+  if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
     match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
       FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
       FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }

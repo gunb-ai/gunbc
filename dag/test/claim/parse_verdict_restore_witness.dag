@@ -1,0 +1,47 @@
+module test.claim.parse_verdict_restore_witness
+
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.action_use_admission { cache_restore_action, cache_save_action }
+import extdeps.github.action_release { action_release_uses_text }
+import gunbc.parse_verdict_publish { materialization_publish_if }
+import gunbc.parse_verdict_restore {
+  parse_verdict_identity_restore_step,
+  parse_verdict_receipts_restore_step,
+  parse_verdict_restore_if,
+  parse_verdict_reuse_command,
+  parse_verdict_reuse_walk_step,
+}
+
+fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String) -> Bool {
+  match step {
+    UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      (action_release_uses_text(action_release: u) == action_release_uses_text(action_release: cache_restore_action))
+        && (action_release_uses_text(action_release: u) != action_release_uses_text(action_release: cache_save_action))
+        && (match c { Present { value: v } => v == parse_verdict_restore_if()  Absent => false })
+        && match w {
+          Present { value: kvs } =>
+            any(kvs, kv => kv.key == "key")
+              && any(kvs, kv => kv.key == "path")
+              && (any(kvs, kv => kv.key == "restore-keys") == false)
+          Absent => false
+        }
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by
+// the pull-request scope, with an exact key and no restore-keys, which a near-identity hit would need.
+test fn the_base_sha_entries_are_restored_exactly_on_pull_request_only() -> Bool {
+  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(), key_marker: "")
+    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(), key_marker: "")
+    && (parse_verdict_restore_if() != materialization_publish_if())
+}
+
+// The walk that consumes them is the reuse walk: it names --reuse-from, and writes nothing.
+test fn the_pull_request_walk_reuses_and_does_not_publish() -> Bool {
+  string_contains(s: parse_verdict_reuse_command(), pattern: " --reuse-from ")
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--receipts") == false)
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--write-identity") == false)
+}
