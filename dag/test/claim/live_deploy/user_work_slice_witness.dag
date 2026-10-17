@@ -491,14 +491,23 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds live_enclosing_bound`")
     && string_contains(s: seed, pattern: "fn live_enclosing_bound_in")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds wrap_exemption_premise`")
-    && !string_contains(s: seed, pattern: "CiExempt")
-    && !string_contains(s: seed, pattern: "RunnerSlotExempt")
-    && !string_contains(s: seed, pattern: "AlreadyInSlice")
-    && !string_contains(s: seed, pattern: "ExemptSystemUnit")
-    && !string_contains(s: seed, pattern: "UncappedSystemSlice")
-    && !string_contains(s: seed, pattern: "BoundedByObservedCgroup")
-    && !string_contains(s: seed, pattern: "live_modeled_slice_standing")
-    && !string_contains(s: seed, pattern: "slice_memory")
+    // CODE-SHAPED negatives: the seed's prose may name the arms it replaced (the receipts do), but no
+    // per-arm CONSTRUCTOR or reading may exist any more. Asserting the bare names would make the row
+    // false on its own documentation.
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::CiExempt")
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::RunnerSlotExempt")
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::AlreadyInSlice")
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::ExemptSystemUnit")
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::UncappedSystemSlice")
+    && !string_contains(s: seed, pattern: "UserWorkScopeStanding::BoundedByObservedCgroup")
+    && !string_contains(s: seed, pattern: "fn live_modeled_slice_standing")
+    && !string_contains(s: seed, pattern: "slice_memory: RootMemoryRead")
+    && !string_contains(s: seed, pattern: "fn live_slice_memory")
+    && !string_contains(s: seed, pattern: "fn modeled_slice_standing_from_cgroup")
+    && !string_contains(s: seed, pattern: "fn system_unit_standing_from_cgroup")
+    // A premise may not skip without the check being consulted: the seed's skip is composed FROM the
+    // check's answer -- this is the fold's LiveEnclosingBound branch, and no other composition exists.
+    && string_contains(s: seed, pattern: "EnclosingBoundObservation::LiveEnclosingBound { cgroup, memory_max } =>")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_user_slice_cgroup_needle`")
     && string_contains(s: seed, pattern: concat("\"", concat(user_work_scope_user_slice_cgroup_needle, "\"")))
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds user_work_scope_service_unit_suffix`")

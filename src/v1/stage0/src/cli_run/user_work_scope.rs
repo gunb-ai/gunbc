@@ -966,14 +966,16 @@ mod standing_fixture_tests {
     // THE RUNNER SLOT ARM, same pair. A slot path is not a bound; an observed finite one is.
     #[test]
     fn runner_slot_without_a_live_bound_refuses_and_with_one_skips() {
+        // Literals, not format!: the `.dag` mirror join compares the DECLARED wire of these
+        // standings against the seed's text, so the expected line must be readable there.
         let cg = SLOT;
         assert_eq!(
             wire_with_bound(false, Some(cg), no_finite_max(cg)),
-            format!("UncappedEnclosingCgroup:runner-slot-cgroup @ {cg}: no finite memory.max: every memory.max on the chain reads max")
+            "UncappedEnclosingCgroup:runner-slot-cgroup @ 0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service: no finite memory.max: every memory.max on the chain reads max"
         );
         assert_eq!(
             wire_with_bound(false, Some(cg), live(cg, 21474836480)),
-            format!("ExemptUnderObservedBound:runner-slot-cgroup:{cg}:21474836480")
+            "ExemptUnderObservedBound:runner-slot-cgroup:0::/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-03.service:21474836480"
         );
     }
 
