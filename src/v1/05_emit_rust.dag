@@ -278,7 +278,7 @@ import v1.compiler.emit {
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
@@ -18184,6 +18184,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
   match verb {
     FileRead           => file_read_match_expr
     FileWrite          => file_write_expr
+    FileWriteBytes     => file_write_bytes_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
     FileWriteCreateNew => file_write_create_new_expr
     FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr
@@ -18291,6 +18292,12 @@ data file_link_create_new_expr: String = "match v1_rt::gunbc_file_link_create_ne
 // `mode` is the declared permission-bit value (extdeps.access.posix file_mode_bits). A value that is
 // not a mode REFUSES as InvalidInput before anything is created; it is never truncated into one.
 data file_write_create_new_with_mode_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+
+// Write with Bytes content: the same write as file_write_expr over the content's octets. Collecting
+// into a boxed slice makes it one write for every Bytes realization (Vec<u8> in the seed's runtime,
+// im::Vector<u8> in the emitted v2 runtime); a `Vec<u8>` annotation here is itself rewritten to the
+// runtime's vector type, which is not a slice.
+data file_write_bytes_expr: String = "{\n    let octets: Box<[u8]> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};"
 

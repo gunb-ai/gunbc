@@ -236,3 +236,20 @@ test fn population_two_declaration_module_refuses_whole_on_unwired_target() -> B
 test fn population_two_declaration_module_produces_on_wired_target() -> Bool {
   !(population_emission_add_then_add2() == "")
 }
+
+// THE GENERIC-ARROW CONSUMER (executed route of v2.std.compilers.target_model ProducedSignatureTypeParams).
+// A module declaring `fn id<T>(x: T) -> T` is ingested, assembled, inferred, collected and emitted by the
+// production observation. Before the type-parameter header segment this refused at emission
+// (translate_reason_generic_arrow_not_rendered); now the Rust rows render the list. The twin is the same
+// module against a target whose rows declare no type-parameter segment, which still refuses at emission
+// (v2.test.claim.type_param_binder_frame holds the refusal at declaration grain), so the text is the rows' and
+// not the specimen's.
+data population_src_generic_id: String = "module module_population_probe\n\nfn id<T>(x: T) -> T { x }\n"
+
+fn population_emission_generic_id() -> String {
+  population_emitted_text_of(src: population_src_generic_id)
+}
+
+test fn population_generic_arrow_module_emits_its_type_parameter_list() -> Bool {
+  population_emission_generic_id() == concat("fn id<T>(x: T) -> T { x }", emit_module_decl_separator)
+}

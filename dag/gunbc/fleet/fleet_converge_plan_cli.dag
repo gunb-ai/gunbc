@@ -34,6 +34,7 @@ import extdeps.languages.json.emit { serialize_json }
 import extdeps.shell
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.durable_compare_and_set { cas_generation_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
@@ -596,7 +597,7 @@ fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -
           let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
           let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
           let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String)
-          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(artifact.prior_generation + 1))
+          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(cas_generation_count(g: artifact.plan_lease.epoch.generation)))
           let w_prior = Filesystem.Write(path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation))
           let w_member_fp = Filesystem.Write(path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String)
           let w_scope = Filesystem.Write(path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope))
@@ -646,7 +647,7 @@ fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
                 prior_generation: prior_generation,
                 observed_allocation_store: observed,
               ) {
-                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
+                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or lease generation successor refused")
                 Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
               }
           }
@@ -882,10 +883,13 @@ fn fleet_converge_plan_scoped_bound_wet(
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
   {
-    let artifact = fleet_converge_plan_artifact_of_request(
+    match fleet_converge_plan_artifact_of_request(
       request: request,
       prior_generation: prior_generation,
-    )
+    ) {
+      Absent =>
+        exit_failure(reason: "fleet_converge_plan: lease generation successor refused")
+      Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
@@ -893,7 +897,7 @@ fn fleet_converge_plan_scoped_bound_wet(
         Absent =>
           exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
-          let planned_generation = prior_generation + 1
+          let planned_generation = cas_generation_count(g: artifact.plan_lease.epoch.generation)
           let mkdir = run_shell_commands(
             commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
             transport: LocalExec,
@@ -980,6 +984,7 @@ fn fleet_converge_plan_scoped_bound_wet(
             }
           }
         }
+      }
       }
     }
   }

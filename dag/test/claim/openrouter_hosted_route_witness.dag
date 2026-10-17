@@ -47,6 +47,7 @@ import std.measure { Measure, Count, One, second_count }
 import extdeps.api_rate_limit { UpstreamRateLimit }
 import gunbc.fabric.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric.fabric_storage_client { FabricStorageServed }
 import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedFailure, harness_outcome_label, harness_outcome_detail }
@@ -64,7 +65,7 @@ fn w_leased(reference: String) -> QuotaLease {
   QuotaLeased {
     grant: LeaseGrant {
       reference: reference as NonEmptyStr,
-      fence: LeaseFence { grant: join(["g-", reference], "") as GrantIdentity, generation: 1 },
+      fence: LeaseFence { grant: join(["g-", reference], "") as GrantIdentity, generation: cas_generation_first() },
       granted_at: 100,
       maximum_duration_seconds: 60,
       expires_at: 160,

@@ -3,6 +3,8 @@ module extdeps.llm.cursor_cli
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, brand }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -86,6 +88,36 @@ fn cursor_sandbox_args(choice: CursorSandboxChoice) -> List<String> {
     CursorSandboxEnabled => ["--sandbox", "enabled"]
     CursorSandboxDisabled => ["--sandbox", "disabled"]
   }
+}
+
+// THE SANDBOX HAS A FREE PREFLIGHT. `cursor-agent sandbox run <cmd> [args...]` runs one command in
+// the sandbox a sandbox-enabled turn uses, and calls no provider and reads no key: the CLI's own
+// `sandbox --help` (2026.09.15-d2fe57e, read on srv2 2026-10-16) gives it as "Run a command in a
+// sandbox (defaults to workspace read/write)". Cursor documents the Linux sandbox as needing kernel
+// 6.2 or later with Landlock v3 and unprivileged user namespaces, and documents falling back to
+// approval-before-run when they are missing (cursor.com/docs/agent/run-modes, Sandboxing). Observed
+// on srv2: a host that cannot build the sandbox prints the error class below on STDOUT and exits 1,
+// and a sandbox-enabled --print turn on the same host fails the same way before any provider request.
+//
+// WHAT RUNS INSIDE IS A READ OF THE REALIZED ENVIRONMENT, NOT `true`. The same table documents
+// CURSOR_SANDBOX as set to "native" on Linux when the process is running inside the sandbox. So the
+// preflight's command prints that variable from inside: exit 0 alone could be a run the CLI let
+// through unsandboxed, and only the subject's own read of the variable separates the two
+// (gunbc.recurring_failure_mode suppressed_precondition_failure_runs_the_workload_unconstrained).
+// What a host must provide to pass is the host's fact, not this module's.
+data cursor_sandbox_unsupported_error_class: NonEmptyStr = "SandboxUnsupportedError" as NonEmptyStr
+data cursor_sandbox_env_var: NonEmptyStr = "CURSOR_SANDBOX" as NonEmptyStr
+data cursor_sandbox_linux_native_value: NonEmptyStr = "native" as NonEmptyStr
+
+// cursor-agent has no CliTool row, so its identity is on the debt roster (extdeps.exec.program
+// uncataloged_program). The preflight builder takes the identity as a parameter, so a placement that
+// pins an exact executable supplies its own identity without a second builder.
+fn cursor_cli_program_identity() -> ProgramIdentity {
+  uncataloged_program(invocation: cursor_cli_program as NonEmptyStr)
+}
+
+fn cursor_sandbox_preflight_command(program: ProgramIdentity) -> ArgvCommand {
+  argv_command(program: program, arguments: ["sandbox", "run", "printenv", cursor_sandbox_env_var as String])
 }
 
 // MODEL IS A PER-INVOCATION ARGUMENT AND THE ROSTER IS AN ACCOUNT FACT. --model takes an identifier

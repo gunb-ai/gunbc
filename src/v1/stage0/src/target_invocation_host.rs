@@ -478,6 +478,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("brand-mark-assets"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/brand_mark_assets_control.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -581,6 +587,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
                 function: "compute_run_unit_sccache_probe_exit",
+            },
+        ),
+        (
+            instrument_label("compute-run-unit-cold-same-path"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/gunbc/instruments/compute_run_unit_cold.dag",
+                function: "compute_run_unit_cold_same_path_exit",
             },
         ),
     ]

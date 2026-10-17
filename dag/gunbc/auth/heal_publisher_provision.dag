@@ -14,7 +14,8 @@ import extdeps.cloud.gcp.iam_admin {
   workload_identity_resource_id_admitted, workload_identity_resource_id_min_characters, workload_identity_resource_id_max_characters,
   workload_identity_resource_id_reserved_prefix,
 }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifPoolWire, WifProviderWire, WifPoolOperation, WifProviderOperation }
+import gunbc.auth.gcp_operation_wait { wif_create_operation_wait }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.auth.access_token_source {
   read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable,
@@ -218,8 +219,9 @@ fn bind_impersonation(f: DedicatedFederation, token: Secret) -> ProcessExit
 // observe its CONFIGURATION, which for the provider is the attribute condition -- the single fact
 // that decides which workflows may federate at all -- so reporting it as converged would be this
 // run asserting a security property it never read. CreateRefused is everything else.
-// subject_creation classifies a REFUSED create only; an answered create is SubjectCreated at the call
-// site, where the RestAnswered arm is.
+// subject_creation classifies a REFUSED create only; an answered pool or provider create is
+// SubjectCreated only once its long-running operation is done (created_after_operation), and an
+// answered account create, which is not an operation, is SubjectCreated at the call site.
 type SubjectCreation
   = SubjectCreated
   | SubjectAlreadyPresentUnverified
@@ -504,6 +506,12 @@ fn dedicated_federation_input_refusals(federations: List<DedicatedFederation>) -
     + workload_identity_resource_id_refusal(f: f, input: "provider id", id: f.provider_id, operation: "CreateWorkloadIdentityPoolProvider"))
 }
 
+// A create that answered 200 is created only once its long-running operation is done; a failed, spent
+// or unreadable operation halts the run and the create is not reissued (gunbc.auth.gcp_operation_wait).
+fn created_after_operation(waited: String) -> SubjectCreation {
+  if waited == "" { SubjectCreated } else { SubjectCreateRefused { cause: waited } }
+}
+
 fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationClassification) -> String
 {
   match c {
@@ -511,7 +519,7 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
     FederationClassified { create_pool: cp, create_provider: cv, create_account: ca } => {
       let pool = if cp {
         create_if(wanted: true, subject: "the pool", creation: match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, display_name: f.pool_display_name) {
-          RestAnswered { answer: _ } => SubjectCreated
+          RestAnswered { answer: a } => created_after_operation(waited: wif_create_operation_wait(token: token, subject: WifPoolOperation { pool_id: f.pool_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o)))
           RestRefused { refusal } => subject_creation(o: refusal)
         })
       } else { "" }
@@ -520,7 +528,7 @@ fn create_absent_subjects(f: DedicatedFederation, token: Secret, c: FederationCl
       }
       let provider = if cv {
         create_if(wanted: true, subject: "the provider", creation: match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: f.pool_id, provider_id: f.provider_id, issuer_uri: github_wif_issuer_uri, attribute_mapping: f.attribute_mapping, attribute_condition: f.attribute_condition as NonEmptyStr) {
-          RestAnswered { answer: _ } => SubjectCreated
+          RestAnswered { answer: a } => created_after_operation(waited: wif_create_operation_wait(token: token, subject: WifProviderOperation { pool_id: f.pool_id as String, provider_id: f.provider_id as String }, operation_name: a.operation_name, done: a.done, error: a.error, render_refusal: o => rest_refusal_text(o: o)))
           RestRefused { refusal } => subject_creation(o: refusal)
         })
       } else { "" }

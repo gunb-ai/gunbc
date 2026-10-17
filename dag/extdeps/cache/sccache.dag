@@ -496,3 +496,56 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     },
   ]
 }
+
+// WHAT ENTERS sccache's RUST COMPILE KEY, at the pinned v0.15.0. Upstream: src/compiler/rust.rs
+// generate_hash_key, step 8 ("Environment variables"), hashes every environment variable whose name
+// starts with CARGO_ into the key, except CARGO_MAKEFLAGS, CARGO_REGISTRIES_*, CARGO_BUILD_JOBS and
+// CARGO_ENCODED_RUSTFLAGS. Cargo itself sets CARGO_MANIFEST_DIR per package, so a package under a
+// checkout carries that checkout's absolute path into its key; any CARGO_* the launcher exports
+// (CARGO_TARGET_DIR, CARGO_BUILD_TARGET_DIR) is hashed with its value.
+type SccacheRustKeyFacts {
+  cargo_prefixed_env_enters_key: Bool
+  cargo_env_names_excluded_from_key: List<NonEmptyStr>
+  cargo_env_prefix_excluded_from_key: NonEmptyStr
+  out_dir_argument_enters_key: Bool
+  basedirs_strips_cargo_manifest_dir: Bool
+  evidence: List<CacheEvidence>
+}
+
+data sccache_rust_key_facts: SccacheRustKeyFacts = {
+  cargo_prefixed_env_enters_key: true
+  cargo_env_names_excluded_from_key: ["CARGO_MAKEFLAGS" as NonEmptyStr, "CARGO_BUILD_JOBS" as NonEmptyStr, "CARGO_ENCODED_RUSTFLAGS" as NonEmptyStr]
+  cargo_env_prefix_excluded_from_key: "CARGO_REGISTRIES_" as NonEmptyStr
+  out_dir_argument_enters_key: false
+  basedirs_strips_cargo_manifest_dir: false
+  evidence: [
+    {
+      field: "cargo_prefixed_env_enters_key"
+      evidence: VendorCitation {
+        source: "sccache v0.15.0 src/compiler/rust.rs generate_hash_key, step 8: all environment variables starting with CARGO_ are hashed (name and value), since they are not listed in dep-info but affect cacheability"
+        url: "https://github.com/mozilla/sccache/blob/v0.15.0/src/compiler/rust.rs"
+      }
+    },
+    {
+      field: "cargo_prefixed_env_enters_key"
+      evidence: RunnerObserved {
+        receipt: "Direct rustc control (2026-10-16, sccache 0.15.0, rustc 1.99.0, private server, one dependency-free crate, identical arguments): varying only CARGO_TARGET_DIR missed, varying only CARGO_MANIFEST_DIR missed, varying only an unrelated CARGO_FOO missed; the same environment twice hit. In the unit, the same effect measured on the real build: gunbc#14156 run 38874802505, arm D (different identity, same checkout path, the first identity's target directory) Rust 111 hits / 0 misses, arm B (own target directory) 0 hits / 111 misses."
+        observed_at: "2026-10-16"
+      }
+    },
+    {
+      field: "out_dir_argument_enters_key"
+      evidence: RunnerObserved {
+        receipt: "Direct rustc control (2026-10-16, sccache 0.15.0): the same compile with only --out-dir changed hit, and with only -L dependency= changed hit; cargo build --target-dir (a flag, not CARGO_TARGET_DIR) into two different target directories from one checkout hit."
+        observed_at: "2026-10-16"
+      }
+    },
+    {
+      field: "basedirs_strips_cargo_manifest_dir"
+      evidence: RunnerObserved {
+        receipt: "Two-crate path-dependency cargo build (2026-10-16, sccache 0.15.0) with SCCACHE_BASEDIRS set to the common parent of both checkouts, server started with it, --target-dir flag: the second checkout still missed (1 hit / 2 misses overall, identical to the run without it). Configuration.md at v0.15.0 describes basedirs as enabling hits across parallel checkouts and worktrees; it did not do so for Rust here, where CARGO_MANIFEST_DIR is hashed as an environment value."
+        observed_at: "2026-10-16"
+      }
+    },
+  ]
+}
