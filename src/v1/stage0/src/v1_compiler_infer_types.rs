@@ -2521,23 +2521,30 @@ pub fn applied_arguments_identical(
     right_args: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    arguments_agree_in_lockstep(left_args.clone(), right_args.clone(), |l, r| {
+        applied_argument_types_identical(l.clone(), r.clone(), source_indices.clone())
+    })
+}
+
+pub fn arguments_agree_in_lockstep(
+    left_args: Rc<Vec<Rc<Node>>>,
+    right_args: Rc<Vec<Rc<Node>>>,
+    agree: impl Fn(Rc<Node>, Rc<Node>) -> bool + Clone,
+) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match left_args.clone().first().cloned() {
             Some(l) => match right_args.clone().first().cloned() {
                 Some(r) => {
-                    (applied_argument_types_identical(
-                        child_type_node(l.clone()),
-                        child_type_node(r.clone()),
-                        source_indices.clone(),
-                    ) && applied_arguments_identical(
-                        Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
-                        Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
-                        source_indices.clone(),
-                    ))
+                    (agree(child_type_node(l.clone()), child_type_node(r.clone()))
+                        && arguments_agree_in_lockstep(
+                            Rc::new(v1_rt::list_skip(&left_args.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&right_args.clone(), 1)),
+                            agree.clone(),
+                        ))
                 }
                 std::option::Option::None => false,
             },
-            std::option::Option::None => true,
+            std::option::Option::None => ((right_args.clone().len() as i64) == 0),
         }
     })
 }
@@ -3123,64 +3130,27 @@ pub fn applied_spelling_arguments_agree(
                         text.clone(),
                     )
                 } else {
-                    applied_children_agree(
-                        applied.clone(),
-                        other.clone(),
-                        source_indices.clone(),
-                        text.clone(),
+                    arguments_agree_in_lockstep(
+                        applied.children.clone(),
+                        other.children.clone(),
+                        |a, b| {
+                            node_type_equals(
+                                a.clone(),
+                                b.clone(),
+                                source_indices.clone(),
+                                text.clone(),
+                            )
+                        },
                     )
                 }
             }
-            _ => applied_children_agree(
-                applied.clone(),
-                other.clone(),
-                source_indices.clone(),
-                text.clone(),
+            _ => arguments_agree_in_lockstep(
+                applied.children.clone(),
+                other.children.clone(),
+                |a, b| node_type_equals(a.clone(), b.clone(), source_indices.clone(), text.clone()),
             ),
         }
     }
-}
-
-pub fn applied_children_agree(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    text: Rc<TextJudgment>,
-) -> bool {
-    (((left.children.clone().len() as i64) == (right.children.clone().len() as i64)) && {
-        let mut __all = true;
-        for pair in Rc::new(
-            left.children
-                .clone()
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, v)| (i as i64, v))
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
-        {
-            if !(match right
-                .children
-                .clone()
-                .get((pair.0.clone()) as usize)
-                .cloned()
-            {
-                Some(right_child) => node_type_equals(
-                    child_type_node(pair.1.clone()),
-                    child_type_node(right_child.clone()),
-                    source_indices.clone(),
-                    text.clone(),
-                ),
-                std::option::Option::None => false,
-            }) {
-                __all = false;
-                break;
-            }
-        }
-        __all
-    })
 }
 
 pub fn node_type_equals_core(
