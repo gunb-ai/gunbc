@@ -29,7 +29,7 @@ import gunbc.host.virtual_media_boot_selection {
   VirtualMediaUnestablished,
 }
 import gunbc.host.host_capability_row {
-  host_capability_row, HostCapabilityRowKnown, HostCapabilityRowNoCurrentRelease,
+  host_capability_row, HostCapabilityRowResolved, HostCapabilityRowNoCurrentRelease,
 }
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, megarac_release_capability_row_for,
@@ -362,7 +362,7 @@ test fn w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admi
     }
     // the resolved row is the 0.45.3 build's own row, not 0.32's
     let resolves_the_new_row = match host_capability_row(evidence: at_0_45_3, access: h.access) {
-      HostCapabilityRowKnown { row: row } => row.firmware.raw_version == "0.45.3"
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } => row.firmware.raw_version == "0.45.3"
       _ => false
     }
     admitted && resolves_the_new_row
@@ -705,7 +705,7 @@ test fn w_the_admitted_machine_boots_off_the_current_release_and_not_the_probed_
     Present { value: membership } => {
       let member = membership_host(membership: membership)
       let resolves_under = match host_capability_row(evidence: committed_evidence(), access: member.access) {
-        HostCapabilityRowKnown { row: row } => Present { value: row.firmware }
+        HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } => Present { value: row.firmware }
         _ => Absent
       }
       let is_the_current_release = match resolves_under {
@@ -762,7 +762,7 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
       _ => false
     }
     let own_resolves = match host_capability_row(evidence: fixture_evidence_at(h, megarac_firmware_0_45_3), access: h.access) {
-      HostCapabilityRowKnown { row: row } => bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_45_3)
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } => bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_45_3)
       _ => false
     }
     row_refuses && boot_refuses && own_resolves

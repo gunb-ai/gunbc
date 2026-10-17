@@ -5,8 +5,9 @@ import gunbc.host.managed_host { ManagedHost }
 import gunbc.host.board_platform_facts { host_board_architecture }
 import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
-import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowKnown }
+import gunbc.host.host_capability_row { host_capability_row, HostCapabilityRowResolved }
 import gunbc.host.virtual_media_boot_selection {
+import gunbc.host.bmc_release_capability_catalog { MegaRacReleaseCapabilityKnown }
   VirtualMediaBootSelectionOutcome,
   VirtualMediaBootSelectionRefusal,
   VirtualMediaBootSelectionAdmitted,
@@ -30,7 +31,8 @@ fn reset_boot_selection(
   let arch = host_board_architecture(access: host.access)
   let media =
     match host_capability_row(evidence: evidence, access: host.access) {
-      HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
+      HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityKnown { row: row } } =>
+        controller_capability(row: row).virtual_media
       _ => CapabilityUnestablished
     }
   virtual_media_boot_selection(arch: arch, media: media)
