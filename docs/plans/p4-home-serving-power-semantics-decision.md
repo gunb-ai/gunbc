@@ -86,16 +86,25 @@ restating it, not sweeping it.
 
 ### (2) No receipt anywhere records an applied power limit
 
-The three committed fixtures are the only bench evidence in the tree, and none carries a watt
-figure:
+The three committed fixtures are the only bench evidence in the tree — no other `.jsonl` or
+`auto.log` exists under any fixture path — and none carries a watt figure. They are committed on
+`serving-bench-p3-receipts` (P3), not yet on `main`, where `fixtures/gpu_bench/` is empty; sizes
+and counts below are measured at that branch.
 
-- `fixtures/gpu_bench/pro6000ws_600w_v2/warm_ninfer_nvfp4_pro6000ws_600w.jsonl` (91,935 B) has 15
-  keys per record: `completion_tokens, error, max_tokens, n_active, phase, prompt_tokens,
-  retained, round, run, schema, session, status, t_end, t_first, t_start`. No power field.
+- `fixtures/gpu_bench/pro6000ws_600w_v2/warm_ninfer_nvfp4_pro6000ws_600w.jsonl` (91,935 B; 268
+  records) has 15 keys per record: `completion_tokens, error, max_tokens, n_active, phase,
+  prompt_tokens, retained, round, run, schema, session, status, t_end, t_first, t_start`. No power
+  field.
 - `auto.log` (2,038 B) and `results_ninfer_nvfp4_pro6000ws_600w.txt` (1,023 B): `grep -Ei
-  'watt|power|tdp'` → no match.
-- The string "600" appears in the JSONL **only inside `"run":
-  "warm_ninfer_nvfp4_pro6000ws_600w"`** — a run name, not a measurement.
+  'watt|power|tdp'` → no match in either.
+- The substring "600" occurs 542 times in the JSONL. 536 of them are inside the run name
+  `"run": "warm_ninfer_nvfp4_pro6000ws_600w"` (268 records × 2 occurrences per name — the name
+  contains `600` twice, in `pro6000ws` and in `600w`). The remaining 6 are digit runs inside epoch
+  timestamps, e.g. `"t_end": 1791770016.2**600**296`, `"t_start": 1791770056.07**600**21`,
+  `"t_first": 1791770374.38**600**52 — six values among `t_start`/`t_first`/`t_end`. So not one
+  occurrence of "600" is a measurement: 536 are a label and 6 are coincidental digits in a clock
+  reading. (An earlier draft of this document said "only inside the run name"; that was wrong by
+  those 6.)
 
 So `600w` in this repo today means *"the 600 W SKU"*: a SKU label baked into a directory name, a
 filename, and a run id. It does **not** mean *"this run executed under a 600 W limit"*, and there
