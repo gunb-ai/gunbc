@@ -34,6 +34,9 @@ test fn a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_
 }
 
 test fn a_nested_left_bound_bind_chain_is_accepted() -> Bool {
+  // Zero blocking diagnostics of ANY class. Under the deleted coarse gate this chain is
+  // never rechecked at any depth; if a recheck were reintroduced it would either double
+  // a diagnostic (caught by the negatives' == 1) or leak a new blocking row (caught here).
   total_blocking_count_for(source: nested_left_bound_chain_source) == 0
 }
 
@@ -46,9 +49,18 @@ test fn an_earlier_record_literal_whose_generic_is_bound_later_is_accepted() -> 
 }
 
 test fn a_lambda_return_that_disagrees_with_the_substituted_callable_refuses() -> Bool {
-  blocking_class_count_for(source: lambda_return_mismatch_source, wanted_class: "TypeMismatch") >= 1
+  // EXACTLY one blocking TypeMismatch and nothing else blocking. ">= 1" could not see
+  // the duplicate a replayed first pass produces (first-pass diagnostic + recheck
+  // diagnostic for the same node), so the bar is == 1 on the class AND == 1 in total:
+  // one refusal, at the refusing node, with no unrelated blocking diagnostic beside it.
+  blocking_class_count_for(source: lambda_return_mismatch_source, wanted_class: "TypeMismatch") == 1 &&
+    total_blocking_count_for(source: lambda_return_mismatch_source) == 1
 }
 
 test fn an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred() -> Bool {
-  blocking_class_count_for(source: inner_generic_bound_by_outer_source, wanted_class: "TypeMismatch") >= 1
+  // Same exact-count bar as the return-mismatch negative: exactly one TypeMismatch,
+  // zero other blocking diagnostics. This is the specimen that FAILS if the recheck is
+  // removed -- the inner gar_id(x: v) must be re-inferred against the settled context.
+  blocking_class_count_for(source: inner_generic_bound_by_outer_source, wanted_class: "TypeMismatch") == 1 &&
+    total_blocking_count_for(source: inner_generic_bound_by_outer_source) == 1
 }
