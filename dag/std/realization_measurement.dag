@@ -116,18 +116,21 @@ resource AllocationCounter {
 // counters. AllocationUnobservable names which axis could not be taken and why; it is the only arm a
 // process that selected no counting allocator can produce, and it carries no number.
 type AllocationObservation
-  = AllocationObserved { operations: Int, bytes_requested: ByteSize }
+  = AllocationObserved { operations: Nat, bytes_requested: ByteSize }
   | AllocationUnobservable { axis: String, reason: String }
 
 // THE ONE FOLD FROM RAW READINGS TO THE TYPED OBSERVATION. A caller reads the counters only after
 // observed_allocation_available answered true -- the realization's own statement that the selected main
 // registered the counting allocator before any read, never an inference from a count -- so an empty span in
-// a selecting process is AllocationObserved with zero operations. A byte counter that went backwards has no
-// ByteSize and is unobservable on that axis, never a fabricated zero.
+// a selecting process is AllocationObserved with zero operations. A counter that went backwards has no
+// Nat span and is unobservable on that axis, never a fabricated zero.
 fn allocation_span_observation(operations_before: Int, operations_after: Int, bytes_before: Int, bytes_after: Int) -> AllocationObservation {
-  match checked_int_to_nat(n: bytes_after - bytes_before) {
-    Present { value: n } => AllocationObserved { operations: operations_after - operations_before, bytes_requested: byte_size(count: n) }
-    Absent => AllocationUnobservable { axis: "bytes_requested", reason: "the byte counter read lower than its earlier reading" }
+  match checked_int_to_nat(n: operations_after - operations_before) {
+    Present { value: ops } => match checked_int_to_nat(n: bytes_after - bytes_before) {
+      Present { value: n } => AllocationObserved { operations: ops, bytes_requested: byte_size(count: n) }
+      Absent => AllocationUnobservable { axis: "bytes_requested", reason: "the byte counter read lower than its earlier reading" }
+    }
+    Absent => AllocationUnobservable { axis: "operations", reason: "the operation counter read lower than its earlier reading" }
   }
 }
 
