@@ -9,7 +9,7 @@ import extdeps.external_authority { TranscribedUncited }
 import gunbc.firmware_network_boot_standing {
   BootOrderObserved, NicsObserved, SecureBootEnabled, BiosVersionObserved,
   ResourceNotFound, AuthenticationRequired, VendorCommandRejected, ReplyShapeUnrecognized,
-  boot_entry,
+  BootEntry, boot_entry,
 }
 import gunbc.firmware_network_boot_probe {
   AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
@@ -34,15 +34,24 @@ fn reads(system: RedfishGet, secure: RedfishGet, nics: RedfishGet) -> RedfishBoo
   RedfishBootReads { system: system, secure_boot: secure, nics: nics }
 }
 
+fn kinds_of(es: List<BootEntry>) -> List<RedfishBootSourceOverrideTarget> {
+  let init: List<RedfishBootSourceOverrideTarget> = []
+  fold(es, init: init, f: (acc, e) => concat(acc, [e.kind]))
+}
+fn labels_of(es: List<BootEntry>) -> List<NonEmptyStr> {
+  let init: List<NonEmptyStr> = []
+  fold(es, init: init, f: (acc, e) => concat(acc, [e.label]))
+}
+
 fn is_order_pxe_hdd(r: AxisReply) -> Bool {
   match r {
-    ReplyBootOrder { devices: [a, b] } => a.kind == BootTargetPxe && a.label == "Pxe" && b.kind == BootTargetHdd
+    ReplyBootOrder { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd] && labels_of(es: es) == ["Pxe", "Hdd"]
     _ => false
   }
 }
 fn is_options_three(r: AxisReply) -> Bool {
   match r {
-    ReplyBootOptions { options: [a, b, c] } => a.kind == BootTargetNone && b.kind == BootTargetPxe && c.kind == BootTargetUefiHttp
+    ReplyBootOptions { options: es } => kinds_of(es: es) == [BootTargetNone, BootTargetPxe, BootTargetUefiHttp]
     _ => false
   }
 }
@@ -194,7 +203,8 @@ test fn reader_output_feeds_the_probe() -> Bool {
     Present { value: r } =>
       match probe(row: r, subject: ProbeSubject { unit_label: "u" }, contact: BmcResponded { replies: redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok())) }) {
         BmcObserved { subject: _, observation: o } =>
-          match o.boot_order { BootOrderObserved { devices: [a, _] } => a.kind == BootTargetPxe _ => false }
+          match o.boot_order { BootOrderObserved { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd]
+            _ => false }
         BmcUnreachable { subject: _, attempt: _ } => false
       }
   }
