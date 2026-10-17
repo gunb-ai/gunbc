@@ -570,10 +570,14 @@ fn megarac_end_media_record(e: MegaRacEndMedia) -> EndMedia {
 // reads the machine out after the boot -- so the raw census-end distinction becomes the neutral
 // terminal-observed marker, and only the boot's own report is classified here. The mapping from
 // terminal to "the census ended" lives with the census consumer, not in the boot.
-fn megarac_power_after_attempt(p: MegaRacPowerAfter) -> PowerAfterAttempt {
+// THE TWO INPUTS ARE PAIRED HERE, AT THE ONE PLACE THAT PAIRS THEM: the chassis answer from this
+// module's carrier, the terminal from the record's own terminal field. Neither type encodes the other.
+fn megarac_power_after_attempt(p: MegaRacPowerAfter, terminal: TerminalObserved) -> PowerAfterAttempt {
   match p {
-    MegaRacPoweredOffAfterCensusEnd => PoweredOffAfterTerminal
-    MegaRacPoweredOffWithoutCensusEnd => PoweredOffWithoutTerminal
+    MegaRacPoweredOffAfterAttempt => match terminal {
+      TerminalMarker { marker: _ } => PoweredOffAfterTerminal
+      TerminalNotObserved => PoweredOffWithoutTerminal
+    }
     MegaRacPoweredOnAfterAttempt => PoweredOnAfterAttempt
     MegaRacPowerAfterUnobserved { reason: reason } => PowerAfterUnobserved { reason: reason }
     MegaRacPowerAfterNotTaken { reason: reason } => PowerAfterNotTaken { reason: reason }
@@ -627,7 +631,7 @@ fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding>
     MegaRacHandoffUnconfirmed { handoff: _ } => []
     MegaRacPresentationAfterHandoff { look: _ } => []
     MegaRacOverrideNotConsumed { consumption: _ } => []
-    MegaRacPoweredOffWithoutCensusEndMarker => []
+    MegaRacPoweredOffWithoutTerminal => []
   })
 }
 
@@ -654,15 +658,20 @@ fn megarac_console_diagnostic_ref(c: ConsoleReading) -> DiagnosticRef {
 fn megarac_boot_run_record(raw: MegaRacRunRecord, console: ConsoleReading, identity: AttemptIdentityReading,
                            harness: List<HarnessFinding>) -> BootRunRecord {
   let diagnostic = megarac_console_diagnostic_ref(c: console)
+  // THE TERMINAL, BUILT ONCE FROM THE RECORD'S ONE TERMINAL FIELD. raw.census_ended is the raw fact
+  // that this row's watch saw its END marker; this is the only place that turns it into a
+  // TerminalObserved, and both the record's field and the power classification read THAT value, so
+  // they cannot disagree. The boot does not decide what counts as terminal -- it reports the marker
+  // its own watch saw -- and no power arm encodes it a second time.
+  let terminal =
+    if raw.census_ended { TerminalMarker { marker: "the diagnostic census ended" } } else { TerminalNotObserved }
   BootRunRecord {
-    // The census that ended is this row's terminal read, reported as observed or not; the boot does not
-    // decide what counts as terminal, it reports which terminal it saw.
-    terminal: if raw.census_ended { TerminalMarker { marker: "the diagnostic census ended" } } else { TerminalNotObserved },
+    terminal: terminal,
     end_media: megarac_end_media_record(e: raw.end_media),
     handoff_media: megarac_handoff_media_record(h: raw.handoff_media),
     media: megarac_media_attach_record(r: raw.media),
     override: megarac_override_consumption(o: raw.override),
-    power_after: megarac_power_after_attempt(p: raw.power_after),
+    power_after: megarac_power_after_attempt(p: raw.power_after, terminal: raw.terminal),
     timing: raw.timing,
     identity: identity,
     diagnostic: diagnostic,
@@ -723,9 +732,15 @@ type MegaRacOverride
   | MegaRacOverrideNotHandedOff { reason: NonEmptyStr }
   | MegaRacOverrideConsumptionUnread { reason: NonEmptyStr }
 
+// THE ARMS ANSWER ONLY THE CHASSIS QUESTION: on, off, or no answer. They used to key on the census
+// END marker (MegaRacPoweredOffAfterCensusEnd / ...WithoutCensusEnd) while MegaRacRunRecord separately
+// carried `census_ended` -- two representations of one fact that could disagree, because the finding
+// was read off the power arm's NAME, so flipping census_ended changed nothing. Now the neutral
+// classifier pairs this carrier with the record's own terminal field, which is the single home of the
+// terminal fact: "powered off" and "no terminal" can combine, and "off after a terminal" together with
+// "no terminal" cannot be written (DESIGN §3 one fact one home; §5 construction over validation).
 type MegaRacPowerAfter
-  = MegaRacPoweredOffAfterCensusEnd
-  | MegaRacPoweredOffWithoutCensusEnd
+  = MegaRacPoweredOffAfterAttempt
   | MegaRacPoweredOnAfterAttempt
   // WHY A REASON AND NOT THE CHASSIS OBSERVATION. The arm once carried the whole
   // ChassisPowerObservation, whose own sum includes ChassisPowerRead { power_on: Bool } -- so a value
@@ -962,7 +977,7 @@ type HarnessFinding
   | MegaRacHandoffUnconfirmed { handoff: MegaRacHandoff }
   | MegaRacPresentationAfterHandoff { look: MegaRacAttachResult }
   | MegaRacOverrideNotConsumed { consumption: MegaRacOverride }
-  | MegaRacPoweredOffWithoutCensusEndMarker
+  | MegaRacPoweredOffWithoutTerminal
   | MegaRacCredentialMayRemain
 
 fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
@@ -1228,10 +1243,10 @@ fn megarac_boot_override_consumption(before: BootParam5Reading, after: BootParam
   }
 }
 
-fn megarac_power_after_from_observation(observation: ChassisPowerObservation, census_ended: Bool) -> MegaRacPowerAfter {
+fn megarac_power_after_from_observation(observation: ChassisPowerObservation) -> MegaRacPowerAfter {
   match observation {
     ChassisPowerRead { power_on: on } =>
-      if on { MegaRacPoweredOnAfterAttempt } else if census_ended { MegaRacPoweredOffAfterCensusEnd } else { MegaRacPoweredOffWithoutCensusEnd }
+      if on { MegaRacPoweredOnAfterAttempt } else { MegaRacPoweredOffAfterAttempt }
     ChassisStatusUndecodable { cause: c } => MegaRacPowerAfterUnobserved { reason: c }
     ChassisUnreadable => MegaRacPowerAfterUnobserved { reason: "the chassis status read returned nothing decodable" }
   }
@@ -1248,10 +1263,18 @@ fn override_harness(c: MegaRacOverride) -> List<HarnessFinding> {
   }
 }
 
-fn power_after_harness(p: MegaRacPowerAfter) -> List<HarnessFinding> {
+// THE FINDING NEEDS BOTH FACTS, AND NOW IT IS GIVEN BOTH. This function used to take the power
+// carrier alone and answer from its arm name, so the record's census_ended never reached it: setting
+// that field true or false changed nothing about the finding (the witness claim
+// the_override_and_power_findings_derive_from_their_fields caught exactly that). The power arm says
+// only what the chassis reads; whether the attempt reached its terminal is the record's own field, and
+// the two are paired here, in the one place that pairs them.
+fn power_after_harness(p: MegaRacPowerAfter, terminal: TerminalObserved) -> List<HarnessFinding> {
   match p {
-    MegaRacPoweredOffWithoutCensusEnd => [MegaRacPoweredOffWithoutCensusEndMarker]
-    MegaRacPoweredOffAfterCensusEnd => []
+    MegaRacPoweredOffAfterAttempt => match terminal {
+      TerminalMarker { marker: _ } => []
+      TerminalNotObserved => [MegaRacPoweredOffWithoutTerminal]
+    }
     MegaRacPoweredOnAfterAttempt => []
     MegaRacPowerAfterUnobserved { reason: _ } => []
     MegaRacPowerAfterNotTaken { reason: _ } => []
@@ -1271,8 +1294,7 @@ fn megarac_override_consumption_text(c: MegaRacOverride) -> String {
 
 fn megarac_power_after_text(p: MegaRacPowerAfter) -> String {
   match p {
-    MegaRacPoweredOffAfterCensusEnd => "off after the census END marker (expected: the census image ends with poweroff -f)"
-    MegaRacPoweredOffWithoutCensusEnd => "OFF without the census END marker"
+    MegaRacPoweredOffAfterAttempt => "off after the attempt"
     MegaRacPoweredOnAfterAttempt => "on"
     MegaRacPowerAfterUnobserved { reason: r } => concat("unobserved: ", r as String)
     MegaRacPowerAfterNotTaken { reason: r } => concat("not taken: ", r as String)
@@ -1808,8 +1830,7 @@ fn chassis_coverage(p: MegaRacPowerAfter) -> CarrierStanding {
   match p {
     MegaRacPowerAfterUnobserved { reason: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
     MegaRacPowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
-    MegaRacPoweredOffAfterCensusEnd => CarrierRead
-    MegaRacPoweredOffWithoutCensusEnd => CarrierRead
+    MegaRacPoweredOffAfterAttempt => CarrierRead
     MegaRacPoweredOnAfterAttempt => CarrierRead
   }
 }
@@ -1885,7 +1906,7 @@ fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Li
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
     concat(override_harness(c: bundle.run.override),
-    concat(power_after_harness(p: bundle.run.power_after),
+    concat(power_after_harness(p: bundle.run.power_after, terminal: bundle.run.terminal),
       if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))))
 }
 
@@ -1933,7 +1954,7 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       MegaRacOverrideNotHandedOff { reason: _ } => megarac_override_consumption_text(c: c)
       MegaRacOverrideConsumptionUnread { reason: _ } => megarac_override_consumption_text(c: c)
     }
-    MegaRacPoweredOffWithoutCensusEndMarker => "the host was powered off after the attempt without the census END marker"
+    MegaRacPoweredOffWithoutTerminal => "the host was powered off after the attempt without an observed terminal: the image did not reach its end"
     MegaRacCredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"
   }
 }

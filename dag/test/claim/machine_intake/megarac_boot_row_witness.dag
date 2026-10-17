@@ -22,9 +22,10 @@ module test.claim.machine_intake.megarac_boot_row_witness
 // pass and so no way to ask for another machine, and no seam a mismatch could be detected at.
 
 import std.types { NonEmptyStr, String }
-import std.measure { second }
+import std.measure { byte_size, second }
 import std.algebra { string_contains }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.tools.sha256sum { Sha256FileDigestUnavailable }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BootDiagnosticBundle, MegaRacAccountReceipt, MegaRacBootRow, MegaRacConsoleReference,
   MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacRunRecord, InventoryReading,
@@ -35,7 +36,10 @@ import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_row, MegaRacBootRowStanding, BootRowFor, BootRowEndpointMismatch,
 }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.host.boot_attempt { AttemptRunId, ConsoleNotConfigured }
+import gunbc.host.boot_attempt {
+  AttemptRunId, ConsoleNotConfigured, ConsoleReading, CaptureContents, CaptureContentsRead,
+  console_reading,
+}
 import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt }
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import gunbc.machine_intake.megarac_kvm_still { kvm_observer_record_not_started }
@@ -98,6 +102,51 @@ fn empty_bundle() -> BootDiagnosticBundle {
 
 fn no_run() -> MegaRacRunRecord = megarac_run_record_not_taken(reason: "fixture: no run record")
 
+// THE CONSOLE A ROW'S OWN RECEIPTS PRODUCE. With no console configured the renderer prints one
+// "NOT CONFIGURED" line, and the row's retained-artifact prefix and its two reference scopes never
+// reach the text -- an earlier revision of the three claims below asserted exactly those strings
+// against a bundle with no console and failed for that reason (the assertions were true of the ROW,
+// false of the RENDERING). So each claim hands the renderer a bundle whose console was read from the
+// row under test: the capture sits under THAT row's retained-artifact root, and the checkpoint line
+// is what carries the row's firmware and configuration scopes into the text, since the relation line
+// is their only home in the rendering. One "CP:" token line yields one span with a last token, so a
+// relation exists rather than being unread; the reference is the same capture, so the relation is
+// established, not refused.
+data boot_console_capture_text: String = "CP: 0ff00900\n"
+
+fn boot_console_capture() -> CaptureContents {
+  CaptureContentsRead {
+    text: boot_console_capture_text,
+    digest: Sha256FileDigestUnavailable { path: "witness", reason: "not digested in this claim" },
+  }
+}
+
+fn console_of(row: MegaRacBootRow) -> ConsoleReading {
+  console_reading(
+    path: concat(row.retained_artifact_prefix as String, "90000000001-sol.capture"),
+    size: byte_size(count: 4096),
+    capture: boot_console_capture(),
+    reference: boot_console_capture(),
+    retained_prefix: row.retained_artifact_prefix,
+    census_sol_reference_path: row.console_reference.census_sol_artifact_path,
+    reference_firmware_scope: row.console_reference.reference_firmware_scope,
+    reference_configuration_scope: row.console_reference.reference_configuration_scope,
+  )
+}
+
+// The bundle, with the row's console read into it. Every other section stays not-taken for the same
+// reason as empty_bundle(): the witness is about whose machine the text names.
+fn bundle_of(row: MegaRacBootRow) -> BootDiagnosticBundle {
+  let empty = empty_bundle()
+  BootDiagnosticBundle {
+    configuration: empty.configuration, attempt: empty.attempt, outcome: empty.outcome,
+    sel_before: empty.sel_before, sel_after: empty.sel_after,
+    sdr_cache: empty.sdr_cache, sensors: empty.sensors, smpro: empty.smpro,
+    inventory: empty.inventory, console: console_of(row),
+    run: empty.run, screen: empty.screen,
+  }
+}
+
 // The attempt asked for no topology, so the bundle records none: the witness is about WHICH machine
 // the text names, not about what any sensor said.
 fn no_configuration() -> AttemptConfigurationReceipt {
@@ -109,7 +158,7 @@ fn no_configuration() -> AttemptConfigurationReceipt {
 // The rendering is driven entirely by the row it was handed: the foreign board's artifact prefix and
 // its own console reference appear, and mtcollins1 appears nowhere.
 test fn a_foreign_row_renders_its_own_bundle_and_names_no_mtcollins1() -> Bool {
-  let rendered = megarac_boot_bundle_text(row: another_board_row(), bundle: empty_bundle(), account: no_account())
+  let rendered = megarac_boot_bundle_text(row: another_board_row(), bundle: bundle_of(another_board_row()), account: no_account())
   string_contains(s: rendered, pattern: "artifacts/srv9-boot-")
     && string_contains(s: rendered, pattern: "srv9 firmware set")
     && string_contains(s: rendered, pattern: "one socket, eight DIMMs")
@@ -121,7 +170,7 @@ test fn a_foreign_row_renders_its_own_bundle_and_names_no_mtcollins1() -> Bool {
 test fn the_mtcollins1_row_still_renders_mtcollins1() -> Bool {
   match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
     BootRowFor { row: row } =>
-      string_contains(s: megarac_boot_bundle_text(row: row, bundle: empty_bundle(), account: no_account()),
+      string_contains(s: megarac_boot_bundle_text(row: row, bundle: bundle_of(row), account: no_account()),
         pattern: "artifacts/mtcollins1-boot-")
     BootRowEndpointMismatch { expected: _, observed: _ } => false
   }
@@ -132,8 +181,8 @@ test fn the_mtcollins1_row_still_renders_mtcollins1() -> Bool {
 test fn two_rows_produce_two_different_bundles_from_one_attempt() -> Bool {
   match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
     BootRowFor { row: mine } => {
-      let a = megarac_boot_bundle_text(row: mine, bundle: empty_bundle(), account: no_account())
-      let b = megarac_boot_bundle_text(row: another_board_row(), bundle: empty_bundle(), account: no_account())
+      let a = megarac_boot_bundle_text(row: mine, bundle: bundle_of(mine), account: no_account())
+      let b = megarac_boot_bundle_text(row: another_board_row(), bundle: bundle_of(another_board_row()), account: no_account())
       a != b
         && string_contains(s: a, pattern: "two sockets")
         && string_contains(s: b, pattern: "one socket, eight DIMMs")

@@ -2042,8 +2042,9 @@ fn power_after_phase_result(p: MegaRacPowerAfter) -> BootPhaseRunResult {
   match p {
     MegaRacPowerAfterUnobserved { reason: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
     MegaRacPowerAfterNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
-    MegaRacPoweredOffAfterCensusEnd => PhaseVerified
-    MegaRacPoweredOffWithoutCensusEnd => PhaseVerified
+    // Either chassis answer verified the phase: the poll took a reading. Whether the attempt reached its
+    // terminal is a separate fact (the stage, then MegaRacRunRecord.census_ended), not a power arm.
+    MegaRacPoweredOffAfterAttempt => PhaseVerified
     MegaRacPoweredOnAfterAttempt => PhaseVerified
   }
 }
@@ -2158,7 +2159,7 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
   match mtcollins1_bmc_username {
     Absent => MegaRacPowerAfterNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
     Present { value: user } => {
-      let observed = megarac_power_after_from_observation(observation: megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr), census_ended: census_ended)
+      let observed = megarac_power_after_from_observation(observation: megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr))
       match observed {
         MegaRacPoweredOnAfterAttempt =>
           if census_ended && remaining > 1 {
@@ -2167,8 +2168,7 @@ fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, r
           } else {
             observed
           }
-        MegaRacPoweredOffAfterCensusEnd => observed
-        MegaRacPoweredOffWithoutCensusEnd => observed
+        MegaRacPoweredOffAfterAttempt => observed
         MegaRacPowerAfterUnobserved { reason: _ } => observed
         MegaRacPowerAfterNotTaken { reason: _ } => observed
       }
@@ -2767,9 +2767,15 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         sel_after: sel_after,
         sdr_cache: sdr,
         sensors: megarac_boot_sensors(row: mtcollins1_boot_row_value, password_file: pf, sdr: sdr),
+        // The post-attempt SMpro pass is skipped only when the off is the census image's own doing:
+        // powered off AND the attempt reached its END marker. The two facts come from their own homes --
+        // the chassis answer from the power carrier, the terminal from the stage that produced it -- and
+        // are paired here rather than being pre-baked into the carrier's arm name.
         smpro: match power_after {
-          MegaRacPoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-          MegaRacPoweredOffWithoutCensusEnd => mtcollins1_boot_smpro_read(username: user, password_file: pf)
+          MegaRacPoweredOffAfterAttempt => match mtcollins1_boot_terminal_of_stage(stage: attempt.stage) {
+            TerminalMarker { marker: _ } => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
+            TerminalNotObserved => mtcollins1_boot_smpro_read(username: user, password_file: pf)
+          }
           MegaRacPoweredOnAfterAttempt => mtcollins1_boot_smpro_read(username: user, password_file: pf)
           MegaRacPowerAfterUnobserved { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
           MegaRacPowerAfterNotTaken { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
@@ -2781,6 +2787,18 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         configuration: attempt.configuration,
       }
     }
+  }
+}
+
+// THE TERMINAL'S ONE HOME IN THE ACTUATION IS THE STAGE: ActuationCensusEnded is the fact that this
+// row's watch saw its END marker. This fn is the only place that turns a stage into a TerminalObserved,
+// and MegaRacRunRecord's census_ended and the SMpro skip below both read that one value, so they cannot
+// drift. No MegaRacPowerAfter arm encodes the terminal any more.
+fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> TerminalObserved {
+  match stage {
+    ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => TerminalMarker { marker: "the diagnostic census ended" }
+    ActuationPoweredOn { selection: _, smpro_power_on: _, smpro_census: _ } => TerminalNotObserved
+    ActuationNotPoweredOn { reason: _ } => TerminalNotObserved
   }
 }
 

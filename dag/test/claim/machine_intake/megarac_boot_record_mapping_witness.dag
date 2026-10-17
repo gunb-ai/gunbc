@@ -77,14 +77,14 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacHandoff, MegaRacHandoffNotReached, MegaRacHandoffWithheldAtRecheck, MegaRacHandoffAttempted,
   MegaRacHandoffCallResult, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed,
   MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved,
-  MegaRacPowerAfter, MegaRacPoweredOffAfterCensusEnd, MegaRacPoweredOffWithoutCensusEnd,
-  MegaRacPoweredOnAfterAttempt, MegaRacPowerAfterUnobserved, MegaRacPowerAfterNotTaken,
+  MegaRacPowerAfter, MegaRacPoweredOffAfterAttempt, MegaRacPoweredOnAfterAttempt,
+  MegaRacPowerAfterUnobserved, MegaRacPowerAfterNotTaken,
   MegaRacOverride, MegaRacOverrideConsumedByCensusBoot, MegaRacOverrideNoLongerPendingAfterAttempt,
   MegaRacOverridePendingBeforeAttempt, MegaRacOverrideStillPendingAfterAttempt, MegaRacOverrideNotHandedOff,
   MegaRacOverrideConsumptionUnread,
   HarnessFinding, MegaRacEveryReadFailed, MegaRacMediaAttachNotReady, MegaRacMediaAttachSessionHeld,
   MegaRacHandoffWithheld, MegaRacHandoffUnconfirmed, MegaRacPresentationAfterHandoff,
-  MegaRacOverrideNotConsumed, MegaRacPoweredOffWithoutCensusEndMarker, MegaRacCredentialMayRemain,
+  MegaRacOverrideNotConsumed, MegaRacPoweredOffWithoutTerminal, MegaRacCredentialMayRemain,
   megarac_host_power, megarac_presentation, megarac_stale_power_off_record, megarac_media_attach_record,
   megarac_handoff_call_result, megarac_handoff_media_record, megarac_end_media_record,
   megarac_power_after_attempt, megarac_override_consumption, megarac_standing_findings,
@@ -387,10 +387,14 @@ test fn a_withheld_handoff_is_withheld() -> Bool {
   }
 }
 
+// The after: field is a LOOK, so its fixture is a look. presented_result() is an ATTACH outcome, and
+// the look classifier answers an attach arm as "the observation reached an attach decision", i.e.
+// Unread; the healthy look (a_still_served_look) is the one that classifies as Presented. The before:
+// field IS an attach, so it keeps presented_result().
 test fn an_attempted_handoff_classifies_its_call_and_its_after_state() -> Bool {
   match megarac_handoff_media_record(
     h: MegaRacHandoffAttempted {
-      before: presented_result(), handoff: MegaRacHandoffConfirmed, after: presented_result(),
+      before: presented_result(), handoff: MegaRacHandoffConfirmed, after: a_still_served_look(),
     }) {
     HandoffMediaAttempted { handoff: h2, after: a } => h2 == HandoffConfirmed && a == Presented
     _ => false
@@ -407,7 +411,11 @@ test fn end_media_not_taken_carries_its_reason() -> Bool {
 }
 
 test fn an_observed_end_look_is_a_presentation() -> Bool {
-  match megarac_end_media_record(e: MegaRacEndMediaObserved { look: presented_result() }) {
+  // The field is a LOOK (a KvmObserverResult recheck), so the fixture is a look. presented_result() is
+  // an ATTACH outcome, and the look classifier answers an attach arm as "this observation reached an
+  // attach decision", i.e. Unread -- which is why this claim failed. a_still_served_look() is the
+  // healthy look the classifier's own comment names, and it classifies as Presented.
+  match megarac_end_media_record(e: MegaRacEndMediaObserved { look: a_still_served_look() }) {
     EndMediaObserved { look: l } => l == Presented
     _ => false
   }
@@ -415,15 +423,16 @@ test fn an_observed_end_look_is_a_presentation() -> Bool {
 
 // ── POWER AFTER: the census end becomes a terminal, not a boot fact ──────────────────
 
-// The two raw arms differ by THIS consumer's terminal (the diagnostic census). Neutrally they differ
-// only by whether a terminal was observed; which terminal counts as "the census ended" is decided by
-// the census consumer, not by the boot.
-test fn powered_off_after_the_census_is_powered_off_after_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffAfterCensusEnd) == PoweredOffAfterTerminal
+// ONE CARRIER CANNOT ANSWER BOTH QUESTIONS. The raw power carrier now says only what the chassis reads
+// (on / off / no answer); whether the attempt reached its terminal is the record's own field. So the
+// classifier is given BOTH, exactly as the record builder gives them, and the same off answers two
+// different ways depending only on the terminal it is paired with.
+test fn powered_off_with_an_observed_terminal_is_powered_off_after_a_terminal() -> Bool {
+  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt, terminal: terminal_marker()) == PoweredOffAfterTerminal
 }
 
-test fn powered_off_without_the_census_is_powered_off_without_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffWithoutCensusEnd) == PoweredOffWithoutTerminal
+test fn powered_off_with_no_terminal_is_powered_off_without_a_terminal() -> Bool {
+  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt, terminal: terminal_not_observed()) == PoweredOffWithoutTerminal
 }
 
 test fn powered_on_after_the_attempt_is_powered_on() -> Bool {
@@ -550,7 +559,7 @@ test fn a_stored_finding_never_duplicates_what_the_fields_already_say() -> Bool 
       after: presented_result() } },
     MegaRacPresentationAfterHandoff { look: a_not_served_look() },
     MegaRacOverrideNotConsumed { consumption: MegaRacOverrideStillPendingAfterAttempt },
-    MegaRacPoweredOffWithoutCensusEndMarker,
+    MegaRacPoweredOffWithoutTerminal,
   ]
   count(megarac_standing_findings(raw: derived_arms)) == 0
 }
@@ -857,8 +866,20 @@ test fn a_run_that_reached_everything_derives_no_findings() -> Bool {
 // A boot that never got anywhere derives ONE finding, not a pile: the sections it never reached
 // (handoff not reached, end media not taken, override "not handed off") are absences the not-taken
 // fields already state, so they derive nothing. Only the power-off-without-terminal pairing fires here.
+// a_stopped_run() leaves the power NOT TAKEN, and a power that was never read derives no finding at
+// all (the derivation cannot invent one). This claim is about a boot that reached nothing EXCEPT a
+// chassis reading, so the power is read here -- off, with no terminal seen. It is a local variant of
+// a_stopped_run rather than an edit to it, because the other three claims that use that fixture assert
+// the not-reached arms of media, handoff and override.
 test fn a_boot_that_never_reached_anything_derives_only_the_power_finding() -> Bool {
-  let findings = derived_of(a_stopped_run())
+  let stopped = a_stopped_run()
+  let off_without_end = MegaRacRunRecord {
+    census_ended: false, end_media: stopped.end_media, handoff_media: stopped.handoff_media, media: stopped.media,
+    smpro_power_on: stopped.smpro_power_on, smpro_census: stopped.smpro_census,
+    override_before: stopped.override_before, override_after: stopped.override_after,
+    override: stopped.override, power_after: MegaRacPoweredOffAfterAttempt, timing: stopped.timing,
+  }
+  let findings = derived_of(off_without_end)
   count(findings) == 1
     && any(findings, f => match f {
          PoweredOffWithoutTerminalMarker => true
@@ -970,13 +991,13 @@ test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
     census_ended: false, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: MegaRacPoweredOffWithoutCensusEnd, timing: raw.timing,
+    override: raw.override, power_after: MegaRacPoweredOffAfterAttempt, timing: raw.timing,
   }
   let off_with_terminal = MegaRacRunRecord {
     census_ended: true, end_media: raw.end_media, handoff_media: raw.handoff_media, media: raw.media,
     smpro_power_on: raw.smpro_power_on, smpro_census: raw.smpro_census,
     override_before: raw.override_before, override_after: raw.override_after,
-    override: raw.override, power_after: MegaRacPoweredOffWithoutCensusEnd, timing: raw.timing,
+    override: raw.override, power_after: MegaRacPoweredOffAfterAttempt, timing: raw.timing,
   }
   count(derived_of(pending)) == 1
     && any(derived_of(pending), f => match f {
@@ -988,8 +1009,12 @@ test fn the_override_and_power_findings_derive_from_their_fields() -> Bool {
            PoweredOffWithoutTerminalMarker => true
            _ => false
          })
-    // the same power state, with the terminal observed: no finding. This is the pairing that makes
-    // "powered off" alone insufficient, which a stored list could have gotten wrong in silence.
+    // THE PAIRING THIS CLAIM EXISTS TO PIN. The two records differ ONLY in census_ended, and both carry
+    // the same single off arm -- so before, when the raw carrier had separate ...AfterCensusEnd /
+    // ...WithoutCensusEnd arms, that flip could not change anything: the finding was read off the arm's
+    // NAME and the record's terminal field was never consulted. That is the same fact in two places, and
+    // the claim could not pass. Now the carrier answers the chassis question and the classifier pairs it
+    // with the record's terminal, so one off reading yields a finding only when no terminal was seen.
     && count(derived_of(off_with_terminal)) == 0
 }
 

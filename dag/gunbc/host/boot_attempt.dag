@@ -772,7 +772,11 @@ fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture
   // Both arms build the same reference identity (path, digest and the row's two scopes) and differ in
   // exactly one thing: a read reference carries its observation, an unread one carries the reason it
   // could not be read. The match is on the coproduct itself, so neither arm can claim the other's fact.
-  flat_map(checkpoints.spans, span => match reference {
+  // Each constructor answers AmpereCheckpointRelation? (a span whose last checkpoint token is
+  // missing has no relation to state). The Optional is turned into a list HERE, by matching it;
+  // handing the Optional itself to flat_map would put an Optional in the list and every reader of
+  // relation.span would be reading a field off the wrong type.
+  flat_map(checkpoints.spans, span => match match reference {
     CaptureContentsRead { text: t, digest: _ } =>
       ampere_checkpoint_relation(span: span, capture: capture, reference: AmpereCheckpointReference {
         path: reference_path, digest: capture_digest_of(capture: reference, path: reference_path),
@@ -784,6 +788,9 @@ fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture
         digest: capture_digest_of(capture: reference, path: reference_path),
         firmware_scope: firmware_scope, configuration_scope: configuration_scope,
         detail: r as String)
+  } {
+    Absent => []
+    Present { value: relation } => [relation]
   })
 }
 
