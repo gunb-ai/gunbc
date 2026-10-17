@@ -178,3 +178,23 @@ test fn importing_a_non_kernel_name_from_the_same_module_is_accepted() -> Bool {
 test fn importing_the_kernel_mint_optional_is_accepted() -> Bool {
   outcome_clean(o: compile_mint_import())
 }
+
+// OPTION B RED (ruling: Present is an instance of std.optional.Optional<payload>, no bridge): an
+// if-join of `Present { value: 1 }` and bare `Absent` is typed by the one declaration on both
+// arms. Without the instance typing the arms were the T? product against the Optional coproduct
+// and the join refused as incompatible branch types.
+data present_absent_join_source: String = "module probe_present_absent_join\n\nimport std.optional \{ Absent, Optional, Present \}\n\nfn joined(b: Bool) -> Int \{\n  let x = if b \{ Present \{ value: 1 \} \} else \{ Absent \}\n  match x \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
+
+fn compile_present_absent_join() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/optional.dag", mint_decl_source),
+      fixture_source("probe_present_absent_join.dag", present_absent_join_source)
+    ],
+    entry: "probe_present_absent_join.dag"
+  })
+}
+
+test fn an_if_join_of_present_and_absent_is_typed_by_the_declaration() -> Bool {
+  outcome_clean(o: compile_present_absent_join())
+}
