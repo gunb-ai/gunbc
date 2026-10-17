@@ -64,6 +64,21 @@ fn rebind_probe_print(
     eprintln!("{}", s);
 }
 
+fn rebind_probe_infer(inferred: Option<Rc<InferredNode>>) -> String {
+    match inferred.clone() {
+        Some(rc) => match rc.as_ref() {
+            InferredNode::Resolved { node } => format!("Resolved({})", node.name.clone()),
+            InferredNode::TypeVariable { id } => format!("TypeVariable({})", id),
+            InferredNode::CompilerError { message, span } => format!(
+                "CompilerError({}@{}:{}-{})",
+                message, span.file.clone(), span.start, span.end
+            ),
+            InferredNode::Divergent => "Divergent".to_string(),
+        },
+        None => "none".to_string(),
+    }
+}
+
 fn rebind_probe_side(
     s: &mut String,
     n: Rc<Node>,
@@ -92,14 +107,7 @@ fn rebind_probe_side(
         None => "none".to_string(),
     });
     s.push_str("|infer=");
-    s.push_str(&match n.inferred.clone() {
-        Some(InferredNode::Resolved { node }) => format!("Resolved({})", node.name.clone()),
-        Some(InferredNode::TypeVariable { id }) => format!("TypeVariable({})", id),
-        Some(InferredNode::CompilerError { message, span }) => {
-            format!("CompilerError({}@{}:{}-{})", message, span.file.clone(), span.start, span.end)
-        }
-        None => "none".to_string(),
-    });
+    s.push_str(&rebind_probe_infer(n.inferred.clone()));
     s.push_str("|shape=");
     s.push_str(&crate::v1_compiler_infer_types::node_type_shape(
         n.clone(),
@@ -119,14 +127,7 @@ fn rebind_probe_side(
             None => "none".to_string(),
         });
         s.push_str("/");
-        s.push_str(&match c.inferred.clone() {
-            Some(InferredNode::Resolved { node }) => format!("Resolved({})", node.name.clone()),
-            Some(InferredNode::TypeVariable { id }) => format!("TypeVariable({})", id),
-            Some(InferredNode::CompilerError { message, span }) => {
-                format!("CompilerError({}@{}:{}-{})", message, span.file.clone(), span.start, span.end)
-            }
-            None => "none".to_string(),
-        });
+        s.push_str(&rebind_probe_infer(c.inferred.clone()));
         s.push_str("/");
         s.push_str(&crate::v1_compiler_infer_types::node_type_shape(
             c.clone(),
