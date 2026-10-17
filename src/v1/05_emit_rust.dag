@@ -7169,7 +7169,9 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         && !declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: en)
         && !rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: en)
         && rust_kernel_grounded_type_decl(module_name: import_module, item_text: en) == none)
-      |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
+      |> map(en =>
+        let declaring_mod = graph_type_import_module_filename(name: en, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+        RustUseLine { target_module: declaring_mod, text: concat("use crate::", declaring_mod, "::", en, "::*;") })
     concat(main_lines, variant_lines, wildcard_enum_lines)
   }
 }
