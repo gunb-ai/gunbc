@@ -119,8 +119,9 @@ data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc"
 // SECURE BOOT IS A CHECK WITH THREE STANDINGS, NOT A BOOL. "Not accepted because nobody signed it or
 // looked" and "not accepted because a firmware was observed refusing it" have different remedies (observe
 // vs. sign/enroll), and a Bool cannot tell them apart. Observed carries the verdict AND the evidence that
-// settled it; Unobserved is the honest default for an artifact no firmware has been shown; Refused is a
-// standing in which the check cannot be attempted or the firmware policy forbids the image outright.
+// settled it (a firmware observed refusing the image is Observed with SecureBootVerdictRejected, never
+// Refused); Unobserved is the honest default for an artifact no firmware has been shown; Refused means
+// only that the operator declines to attempt the check, so no firmware was shown the image by choice.
 // There is no stored or parallel Bool: acceptance IS the absence of a Secure Boot cause in
 // site_pxe_edge_gate_causes, the one fold that decides it. A new settling source
 // (an enrolled certificate, a second firmware family) is a new evidence value, not a new variant.
@@ -170,7 +171,11 @@ type SitePxeEdgeChainloaderPin
   = SitePxeEdgeChainloaderPinned { build: SitePxeEdgeChainloaderBuildReceipt }
   | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
 
-// BUILT, NOT YET PLACED. Evidence: the receipt's own build_command and toolchain fields, and the sha256 (337920 bytes) of the committed artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
+// BUILT, NOT YET PLACED. The committed image's consumer is the wet placement step (the srv4 TFTP write run
+// by swift-wren-451 after operator approval), which must verify its sha256 against this pin before copying;
+// that step is the declared later change, triggered by operator approval of the srv4 write. Until it lands the
+// pin and the blob are cross-checked by `sha256sum artifacts/ipxe/snponly-arm64.efi` alone.
+// Evidence: the receipt's own build_command and toolchain fields, and the sha256 (337920 bytes) of the committed artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
 // documented `make <platform>/<image>` grammar (extdeps.firmware.ipxe). The file is NOT on srv4: the
 // gate still closes on the chainloader observation until a wet step places it at
 // site_pxe_edge_chainloader_path and the post-placement sha256 agrees with this digest.

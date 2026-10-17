@@ -151,8 +151,8 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
   )) == 0
 }
 
-// TODAY'S STATE, on the real row: the chainloader is built and pinned (digest from the real build,
-// artifacts/ipxe/BUILD-RECEIPT.md), so the pin no longer closes the gate. Supplying the file as observed
+// TODAY'S STATE, on the real row: the chainloader is built and pinned (digest read from the pin itself;
+// re-derive it with `sha256sum artifacts/ipxe/snponly-arm64.efi`), so the pin no longer closes the gate. Supplying the file as observed
 // at the pinned digest and every probe held, exactly one cause remains: Secure Boot is unobserved.
 test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bool {
   let causes = site_pxe_edge_gate_causes(
