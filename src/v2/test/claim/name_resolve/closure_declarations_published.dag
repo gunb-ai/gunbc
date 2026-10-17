@@ -105,11 +105,13 @@ test fn a_subject_importing_a_record_sees_the_declarers_record_in_its_resolved_d
   }
 }
 
-// A PARTLY-REFUSED DECLARER. `broken` names an unbound identifier, so its declaration is refused and the
+// A PARTLY-REFUSED DECLARER. It imports a symbol std.algebra does not declare (a refused import row, the shape
+// that lost extdeps.uri's whole module from the index, measured red on the filtered-root fill) and `broken` names
+// an unbound identifier, so both rows are refused and the
 // module is observed with Rec DeclarationAvailable beside it. The closure index is derived from the same
 // per-declaration outcome (v2.compiler.name_resolve closure_available_names), so Rec is indexed and
 // `broken` is not. `fixed` is the all-resolving positive control with the same shape.
-data cdp_part_broken_source: String = "module v2.test.cdp.part\n\ntype Unit = | U\ntype Rec { value: Unit }\nfn broken() -> Unit { cdp_unbound_name }\n"
+data cdp_part_broken_source: String = "module v2.test.cdp.part\n\nimport std.algebra { cdp_nope }\n\ntype Unit = | U\ntype Rec { value: Unit }\nfn broken() -> Unit { cdp_unbound_name }\n"
 
 data cdp_part_fixed_source: String = "module v2.test.cdp.part\n\ntype Unit = | U\ntype Rec { value: Unit }\nfn broken() -> Unit { U }\n"
 
