@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, string_contains }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import gunbc.host.host_capability_row { host_access_repoint_firmware }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -20,7 +20,7 @@ import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_ob
 import extdeps.board_authority { BoardFruObservation, BoardFruRead, BoardFruIdentity }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
-  SmproTarget, SiteFromOperatorBrief, smpro_site_admit,
+  SmproTarget, SiteFromOperatorBrief, smpro_site_admit, SmproSiteRefused, SiteHasNoTargets, SmproSiteAdmitted,
 }
 import gunbc.host.bmc_control_binding {
   bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured,
@@ -33,7 +33,7 @@ import gunbc.host.smpro_platform_capability {
   smpro_subject_absence_reason,
   smpro_facility, smpro_facility_of_families, SmproFacilityStanding, SmproFacilityCarried,
   SmproFacilityNotCarried, SmproFacilityUnestablished, smpro_facility_licenses_read,
-  SmproUnestablishedCause, BoardAdmitsNoSocFamily, NoBoardRowBound,
+  SmproUnestablishedCause, BoardAdmitsNoSocFamily, NoBoardRowBound, SmproPlatformSiteRefused,
   MixedRosterWithoutInstalledSelection, AccessUnobserved, ControlRouteNotSecured, ControlEndpointMismatch,
 }
 import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
@@ -598,33 +598,101 @@ data amd_7950x3d_soc_family: SoCFamily = SoCFamily {
 // still binds, but its site is admitted behind "fixture-other-bmc"; the subject mint refuses it with
 // both controllers named, so the pass that would have read this host's BMC against another board's
 // addresses has no subject to read with.
-test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
+// RED (this is the claim the boot-run gauntlet row MUT-SITE-AS-NEGATIVE is measured against): A
+// REFUSED SITE IS REPORTED AS A REFUSED SITE. Everything else about the machine is intact — the
+// controller is observed, the route binds, the platform carries SMpro — and the ONLY thing missing is
+// the site, refused for having no targets at all. Before cut 2 the subject mint had no refused-site arm,
+// so this host was reported as having no bound controller and an operator went off re-securing a route
+// that was fine. If the mint ever folds SmproPlatformSiteRefused into NotCarried or Unestablished —
+// indistinguishable from a platform whose silicon does not carry the interface at all — this goes red,
+// which is what makes that gauntlet row able to go red at all.
+test fn w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller() -> Bool {
   managed_hosts() |> all(h => {
-    let crossed = managed_host_fixture(host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
-      // smpro_site_admit already returns a SmproSiteStanding, so it is the site field directly --
-      // wrapping it again would be a type error and, worse, a hint that a standing could be nested.
-      smpro: SmproPlatformCarried {
-        family: ampere_altra_soc_family,
-        site: smpro_site_admit(
-        endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" },
-        bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
-        targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
-        control_socket: 0,
-        evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
-        ),
-      },
+    let refused = managed_host_fixture(
+      host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+      // THE CAUSE IS THE CLAIM'S OWN: SiteHasNoTargets is what smpro_site_admit answers to an empty
+      // target roster, so this is the shape a real read produces, not an arm nobody can reach.
+      smpro: SmproPlatformSiteRefused { family: ampere_altra_soc_family, cause: SiteHasNoTargets },
     )
-    match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
-      BmcControlBound { route: r } => match managed_host_smpro_subject(host: crossed, control: bmc_control_binding(observed: crossed.access, secured: crossed.secure)) {
-        SmproSubjectEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
-        SmproSubjectMinted { subject: _ } => false
-        SmproSubjectSiteRefused { cause: _ } => false
-        SmproSubjectNotCarried { family: _ } => false
-        SmproSubjectUnestablished { cause: _ } => false
+    let control = bmc_control_binding(observed: refused.access, secured: refused.secure)
+    match control {
+      // THE ROUTE MUST BIND. If it did not, this claim would go green on a route refusal and never
+      // reach the arm it is about — the exact shape of a claim that cannot fail.
+      BmcControlBound { route: _ } => {
+        let outcome = managed_host_smpro_subject(host: refused, control: control)
+        let names_the_cause = match outcome {
+          SmproSubjectSiteRefused { cause: cause } => match cause {
+            SiteHasNoTargets => true
+            SiteControlNotATarget { socket: _ } => false
+            SiteControlAmbiguous { socket: _, matches: _ } => false
+            SiteSocketRepeated { socket: _ } => false
+            SiteAddressRepeated { seven_bit_address: _ } => false
+          }
+          // A swallowed refusal is a minted pass; anything else silently recategorises a refusal.
+          SmproSubjectMinted { subject: _ } => false
+          SmproSubjectEndpointMismatch { bound: _, site: _ } => false
+          SmproSubjectNotCarried { family: _ } => false
+          SmproSubjectUnestablished { cause: _ } => false
+        }
+        // AND THE TEXT SAYS WHAT IS TRUE: a controller IS bound, so a rendering claiming none was is
+        // false — the defect this arm exists to kill.
+        let text = smpro_subject_absence_reason(outcome: outcome) as String
+        let says_a_controller_is_bound = string_contains(s: text, pattern: "a controller is bound")
+        let does_not_claim_no_controller = !string_contains(s: text, pattern: "no bound controller")
+          && !string_contains(s: text, pattern: "does not carry the SMpro interface")
+        names_the_cause && says_a_controller_is_bound && does_not_claim_no_controller
       }
       BmcControlAccessUnobserved { endpoint: _ } => false
       BmcControlNotSecured { cause: _ } => false
       BmcControlEndpointMismatch { observed: _, secured: _ } => false
     }
   }) && count(managed_hosts()) == 1
+}
+
+test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
+  managed_hosts() |> all(h =>
+    // THE SITE IS ADMITTED FIRST AND ITS ARM MATCHED. SmproPlatformCarried holds an ADMITTED SmproSite
+    // directly, not a standing that might be a refusal, so handing a standing to that arm is a shape the
+    // model does not carry. It reached runtime anyway: `gunbc run --claim-run` swallows a runtime error
+    // as NO VERDICT, so this claim printed neither PASS nor FAIL while the entry still reported 13/13
+    // PASS. crisp-newt-630 caught it with claim_batch --functions; the contract now is that an entry
+    // whose verdict lines do not match its declared count gets a per-function pass before anyone writes
+    // a row. Matching the standing here means a refusal of the fixture's own admission fails the claim
+    // loudly instead of being smuggled into the carried arm.
+    match smpro_site_admit(
+      endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" },
+      bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
+      targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
+      control_socket: 0,
+      evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
+    ) {
+      SmproSiteRefused { cause: _ } => false
+      SmproSiteAdmitted { site: admitted_site } => {
+        let crossed = managed_host_fixture(
+          host: h.host, access: h.access, secure: h.secure, unit_hold: h.unit_hold,
+          smpro: SmproPlatformCarried { family: ampere_altra_soc_family, site: admitted_site },
+        )
+        match bmc_control_binding(observed: crossed.access, secured: crossed.secure) {
+          // The route must bind: if it did not, this claim could go green on a route refusal instead of
+          // on the site join it is about.
+          BmcControlBound { route: r } =>
+            match managed_host_smpro_subject(
+              host: crossed,
+              control: bmc_control_binding(observed: crossed.access, secured: crossed.secure),
+            ) {
+              SmproSubjectEndpointMismatch { bound: bd, site: st } =>
+                (st.host as String) == "fixture-other-bmc"
+                  && (bd.host as String) == (bmc_control_route_endpoint(route: r).host as String)
+              SmproSubjectMinted { subject: _ } => false
+              SmproSubjectSiteRefused { cause: _ } => false
+              SmproSubjectNotCarried { family: _ } => false
+              SmproSubjectUnestablished { cause: _ } => false
+            }
+          BmcControlAccessUnobserved { endpoint: _ } => false
+          BmcControlNotSecured { cause: _ } => false
+          BmcControlEndpointMismatch { observed: _, secured: _ } => false
+        }
+      }
+    }
+  ) && count(managed_hosts()) == 1
 }
