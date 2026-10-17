@@ -2,6 +2,7 @@ module gunbc.firmware_network_boot_probe
 
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 // S0 SEAM, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
@@ -61,10 +62,14 @@ type FirmwareBootObservation {
 // release behind a dedicated management port and behind the host's shared NIC are different rows
 // because the second is silent whenever the host NIC is down. A unit's identity is carried in
 // ProbeSubject as an opaque label that no fn here matches on.
+//
+// THE STACK IS KEYED ON extdeps.bmc.endpoint's BmcFirmwareFamily, not respelled here: a row naming
+// a firmware family that endpoint does not declare fails at load. A stack with no declared
+// family (Supermicro's Redfish-only BMC) is RedfishOnlyStack until extdeps.bmc gains a module
+// for it; that module's arrival replaces this arm with a FirmwareFamilyStack row, no gate edit.
 type BmcStack
-  = AmiMegaRacStack
-  | OpenBmcStack
-  | SupermicroRedfishStack
+  = FirmwareFamilyStack { family: BmcFirmwareFamily }
+  | RedfishOnlyStack
 
 type BmcReach
   = DedicatedManagementPort
@@ -85,31 +90,9 @@ type ReadRoute
   | OpenBmcRedfishGetRoute
   | MegaRacRestGetRoute
 
-// WHAT THE ROW IS ALLOWED TO ASK OF A BMC. Only read verbs exist, deliberately: the Supermicro host has a CPU
-// with no heatsink and must never power on, so the capability every row carries is that the
-// instrument only reads. If a future requirement needs a mutating family it adds a NEW capability
-// type with its own admission rather than a verb here, because every match below would then
-// have to decide, per call site, whether to refuse - the check-at-the-call-site shape this
-// closes off.
-type ReadVerb
-  = GetResource
-  | ReadBootParameter
-
-type RowAuthority sole_constructor {
-  verb: ReadVerb
-}
-
-fn read_only_authority(verb: ReadVerb) -> RowAuthority {
-  RowAuthority { verb: verb }
-}
-
-fn route_read_verb(route: ReadRoute) -> ReadVerb {
-  match route {
-    RedfishGetRoute => GetResource
-    OpenBmcRedfishGetRoute => GetResource
-    MegaRacRestGetRoute => GetResource
-  }
-}
+// READ-ONLY IS THE ABSENCE OF A WRITE ARM: ReadRoute has only GET-shaped routes, so no row can carry
+// a mutating capability. A mutating family would be a new type with its own admission, never an
+// arm here, because every match over ReadRoute would then decide per call site whether to refuse.
 
 type ObservationAxis
   = BootOrderAxis
@@ -129,7 +112,6 @@ type FirmwareBootFamilyRow {
   family: FamilyKey
   authority: CitedFigureStanding
   route: ReadRoute
-  access: RowAuthority
   coverage: List<AxisCoverage>
 }
 
@@ -139,7 +121,7 @@ fn firmware_boot_family_row(
   route: ReadRoute,
   coverage: List<AxisCoverage>
 ) -> FirmwareBootFamilyRow {
-  FirmwareBootFamilyRow { family: family, authority: authority, route: route, access: read_only_authority(verb: route_read_verb(route: route)), coverage: coverage }
+  FirmwareBootFamilyRow { family: family, authority: authority, route: route, coverage: coverage }
 }
 
 // WRITE-SHAPED REQUESTS EXIST ONLY TO BE REFUSED. They are the vocabulary an operator or a caller
@@ -366,31 +348,31 @@ fn megarac_coverage() -> List<AxisCoverage> {
 fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
   [
     firmware_boot_family_row(
-      family: FamilyKey { stack: AmiMegaRacStack, release_line: none, reach: DedicatedManagementPort },
+      family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the AMI MegaRAC SP-X Redfish and IPMI references for the boot-parameter and BIOS inventory surface; extdeps.bmc.megarac holds the transport." },
       route: MegaRacRestGetRoute,
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
-      family: FamilyKey { stack: AmiMegaRacStack, release_line: Present { value: "2.11.104000" }, reach: DedicatedManagementPort },
+      family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: Present { value: "2.11.104000" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read the MegaRAC 2.11.104000 release notes for which Redfish Systems properties it serves; extdeps.bmc.megarac holds the transport." },
       route: MegaRacRestGetRoute,
       coverage: megarac_coverage()
     ),
     firmware_boot_family_row(
-      family: FamilyKey { stack: OpenBmcStack, release_line: Present { value: "3.22" }, reach: DedicatedManagementPort },
+      family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "3.22" }, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read bmcweb's Redfish Systems schema for the OpenBMC 3.22 build (extdeps.bmc.openbmc); cite the release that serves Boot and SecureBoot." },
       route: OpenBmcRedfishGetRoute,
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
-      family: FamilyKey { stack: OpenBmcStack, release_line: none, reach: SharedHostNic },
+      family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: none, reach: SharedHostNic },
       authority: TranscribedUncited { read_obligation: "Read the board's manual for how the shared-NIC management port behaves while the host NIC is down; the Redfish surface is extdeps.bmc.openbmc's." },
       route: OpenBmcRedfishGetRoute,
       coverage: all_axes_answered()
     ),
     firmware_boot_family_row(
-      family: FamilyKey { stack: SupermicroRedfishStack, release_line: none, reach: DedicatedManagementPort },
+      family: FamilyKey { stack: RedfishOnlyStack, release_line: none, reach: DedicatedManagementPort },
       authority: TranscribedUncited { read_obligation: "Read Supermicro's Redfish reference guide for the Systems/Boot and SecureBoot GETs; only GETs are modeled (extdeps.bmc.redfish)." },
       route: RedfishGetRoute,
       coverage: all_axes_answered()

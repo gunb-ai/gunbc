@@ -7,10 +7,11 @@ import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
 }
 import std.optional { Present, Absent }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.external_authority { TranscribedUncited }
 import gunbc.firmware_network_boot_probe {
   firmware_boot_family_rows, firmware_boot_family_row, probe, route_for,
-  FamilyKey, AmiMegaRacStack, OpenBmcStack, SupermicroRedfishStack, DedicatedManagementPort, SharedHostNic,
+  FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
   RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
   TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
   ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc,
@@ -74,15 +75,15 @@ fn is_unobserved_secure_boot(o: FirmwareBootObservation) -> Bool {
 test fn five_families_are_rows_of_one_table() -> Bool {
   let rows = firmware_boot_family_rows()
   let count = fold(rows, init: 0, f: (n, _r) => n + 1)
-  let megarac = fold(rows, init: 0, f: (n, r) => if (r.family.stack == AmiMegaRacStack) { n + 1 } else { n })
+  let megarac = fold(rows, init: 0, f: (n, r) => if (r.family.stack == (FirmwareFamilyStack { family: AmiMegaRac })) { n + 1 } else { n })
   let shared = any(rows, r => r.family.reach == SharedHostNic)
-  let open = any(rows, r => r.family.stack == OpenBmcStack)
-  let smc = any(rows, r => r.family.stack == SupermicroRedfishStack)
+  let open = any(rows, r => r.family.stack == FirmwareFamilyStack { family: OpenBmc })
+  let smc = any(rows, r => r.family.stack == RedfishOnlyStack)
   count == 5 && megarac == 2 && shared && open && smc
 }
 
 test fn supermicro_refuses_every_write_shaped_request() -> Bool {
-  match first_row_of(rows: firmware_boot_family_rows(), stack: SupermicroRedfishStack) {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
     Absent => false
     Present { value: row } =>
       is_refused(verdict: route_for(row: row, request: SetBootOverrideRequest))
@@ -97,7 +98,7 @@ test fn every_row_refuses_writes_not_only_supermicro() -> Bool {
 }
 
 test fn silent_bmc_is_not_an_empty_answer() -> Bool {
-  match first_row_of(rows: firmware_boot_family_rows(), stack: AmiMegaRacStack) {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: AmiMegaRac }) {
     Absent => false
     Present { value: r } => {
       let off = probe(row: r, subject: subject(), contact: BmcSilent { attempt: ConnectTimedOut })
@@ -117,7 +118,7 @@ test fn silent_bmc_is_not_an_empty_answer() -> Bool {
 
 test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
   let row = firmware_boot_family_row(
-    family: FamilyKey { stack: AmiMegaRacStack, release_line: none, reach: DedicatedManagementPort },
+    family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
     authority: TranscribedUncited { read_obligation: "witness row" },
     route: MegaRacRestGetRoute,
     coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
@@ -129,7 +130,7 @@ test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
 }
 
 test fn bmc_refusal_is_preserved_as_refused() -> Bool {
-  match first_row_of(rows: firmware_boot_family_rows(), stack: OpenBmcStack) {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
     Absent => false
     Present { value: r } =>
       match probe(row: r, subject: subject(), contact: BmcResponded { replies: [ReplyRefusedByBmc { axis: BootOrderAxis, refusal: "403 PasswordChangeRequired" }] }) {
@@ -146,7 +147,7 @@ test fn bmc_refusal_is_preserved_as_refused() -> Bool {
 
 test fn a_sixth_family_probes_without_touching_the_instrument() -> Bool {
   let sixth = firmware_boot_family_row(
-    family: FamilyKey { stack: OpenBmcStack, release_line: Present { value: "9.99" }, reach: DedicatedManagementPort },
+    family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.99" }, reach: DedicatedManagementPort },
     authority: TranscribedUncited { read_obligation: "hypothetical sixth family" },
     route: OpenBmcRedfishGetRoute,
     coverage: [TransportAnswers { axis: BootOrderAxis }]
