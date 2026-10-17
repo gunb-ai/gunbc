@@ -1,7 +1,6 @@
 module extdeps.posix.shell_command_language
 
 import std.types { String, NonEmptyStr, Bool, Char }
-import std.optional { Optional, Present, Absent }
 import std.algebra { Cons, Empty, FreeMonoid, contains, for_all, string_contains }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -251,16 +250,6 @@ fn emit_posix_redirection(redir: PosixRedirection) -> String {
     PosixRedirectStderrAppend { word: w } =>
       concat(" 2>>", posix_single_quote(spelling: posix_redirect_pathname_spelling(path: w) as String))
     PosixRedirectStderrDupStdout => " 2>&1"
-  }
-}
-
-fn posix_redirection_word(redir: PosixRedirection) -> Optional<PosixRedirectPathname> {
-  match redir {
-    PosixRedirectStdoutClobber { word: w } => Present { value: w }
-    PosixRedirectStdoutAppend { word: w } => Present { value: w }
-    PosixRedirectStderrClobber { word: w } => Present { value: w }
-    PosixRedirectStderrAppend { word: w } => Present { value: w }
-    PosixRedirectStderrDupStdout => Absent
   }
 }
 
