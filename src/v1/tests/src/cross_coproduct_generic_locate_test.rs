@@ -372,7 +372,7 @@ fn one_callee_two_distinct_settled_arguments_still_refuses() {
 // ---------------------------------------------------------------------------
 
 use v1_compiler::v1_compiler_infer::{unify_generics, UnifyGenericsAcc};
-use v1_compiler::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
+use v1_compiler::v1_compiler_infer_types::{node_type_shape, TextJudgment, TextNotAskedReason};
 use v1_compiler::v1_std_core::{no_span, InferredNode};
 
 fn fold_leaf(name: &str) -> Rc<Node> {
@@ -438,12 +438,25 @@ fn fold_step(bound: Rc<Node>, actual: Rc<Node>) -> Rc<UnifyGenericsAcc> {
     )
 }
 
-/// ACCEPT (RED on the shipped seed, GREEN once the predicate is in the seed): the
-/// stored binding still carries a TYPE-VARIABLE leaf, so it is not settled evidence
-/// and must be replaced by the settled actual instead of refused against it. The
-/// old authority (v1.compiler.infer unify_binding_is_uninformative) follows only a
-/// single-child chain, so Map(<var C>, Int) looked settled and was refused against
-/// Map(String, Int) -- a refusal about a variable that could BE String.
+/// BEHAVIOUR LOCK, NOT A RED CONTROL -- stated honestly because it cannot be one.
+///
+/// The stored binding carries a TYPE-VARIABLE leaf, so it is unsettled evidence and is
+/// REPLACED by the settled actual. Two rungs of honesty, both from measurement at head
+/// b493909 (4 passed / 0 failed on the SHIPPED seed):
+///  (a) asserting only `diagnostics.is_empty()` was VACUOUS -- v1.compiler.types
+///      node_type_compatible (src/v1/04_types.dag) answers true whenever either side's
+///      inferred is a TypeVariable, so the pre-predicate path emitted no diagnostic
+///      either. The assertion therefore moved to WHICH node is stored.
+///  (b) even that is not discriminating HERE, because equality in this corpus is
+///      name-based: two nodes that compare equal PRINT equal, so no fixture can show
+///      'kept the unsettled node' versus 'kept the settled node' while the comparison
+///      says equal. When the two nodes print DIFFERENTLY the pre-existing behaviour
+///      already replaced the binding, so this arm's observable effect at fold grain is
+///      nil -- it is uniformity/defence, not a behaviour change. It stays as a lock on
+///      the arm's contract. The discriminating RED-before control for this predicate is
+///      fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable,
+///      below, whose RED-before IS measured (the shipped seed overwrites the settled
+///      binding with the variable-bearing actual).
 #[test]
 fn fold_replaces_a_binding_that_still_carries_a_type_variable_leaf() {
     let bound = fold_app("Map", &[fold_tv_leaf("C"), fold_leaf("Int")]);
@@ -451,14 +464,28 @@ fn fold_replaces_a_binding_that_still_carries_a_type_variable_leaf() {
     let acc = fold_step(bound, actual);
     assert!(
         acc.diagnostics.is_empty(),
-        "a binding whose element is still a variable is unsettled; refusing it against a          settled Map(String, Int) is a refusal about an unsettled variable: {:?}",
+        "a binding whose element is still a variable is unsettled; refusing it against a settled Map(String, Int) is a refusal about an unsettled variable: {:?}",
         acc.diagnostics
+    );
+    let kept = acc
+        .subst
+        .get("T")
+        .cloned()
+        .expect("T must still be bound after the step");
+    assert_eq!(
+        node_type_shape(kept, Rc::new(im::HashMap::new())),
+        "Map(Primitive(String),Primitive(Int))",
+        "an unsettled stored binding must be REPLACED by the first settled actual"
     );
 }
 
-/// ACCEPT (RED pre-predicate, GREEN after): the mirror arm -- the stored binding is
-/// settled and the ACTUAL still carries a variable, so the actual cannot falsify the
-/// binding and the binding is kept.
+/// ACCEPT: the mirror arm -- the stored binding is settled and the ACTUAL still
+/// carries a variable, so the actual cannot falsify the binding and the binding is
+/// kept. Same rung caveat as the row above: the no-diagnostic half was measured green
+/// on the shipped seed (node_type_compatible answers true for a type variable), so the
+/// discriminating assertion is the substitution content, RED before the predicate (the
+/// settled Map(String, Int) would be OVERWRITTEN by the variable-bearing actual) and
+/// GREEN after it (the settled binding is kept).
 #[test]
 fn fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_variable() {
     let bound = fold_app("Map", &[fold_leaf("String"), fold_leaf("Int")]);
@@ -468,6 +495,16 @@ fn fold_keeps_a_settled_binding_against_an_actual_that_still_carries_a_type_vari
         acc.diagnostics.is_empty(),
         "a variable-bearing actual cannot falsify a settled binding: {:?}",
         acc.diagnostics
+    );
+    let kept = acc
+        .subst
+        .get("T")
+        .cloned()
+        .expect("T must still be bound after the step");
+    assert_eq!(
+        node_type_shape(kept, Rc::new(im::HashMap::new())),
+        "Map(Primitive(String),Primitive(Int))",
+        "the settled binding must survive; a variable-bearing actual may not overwrite it"
     );
 }
 
