@@ -131,18 +131,24 @@ fn parse_verdict_base_select(ancestors: List<String>, slots: List<ParseVerdictRe
   }
 }
 
-fn parse_verdict_slots_read(dir: String, ordinals: List<Int>) -> List<ParseVerdictRestoredSlot> {
+// Tail-recursive over the declared ordinals: the reads are effects, and the Rust realization lowers
+// only tail calls to a loop, so the slots accumulate and the call is the last expression.
+fn parse_verdict_slots_read(dir: String, ordinals: List<Int>, read: List<ParseVerdictRestoredSlot>) -> List<ParseVerdictRestoredSlot> {
   match ordinals {
-    Empty {} => []
+    Empty {} => read
     Cons { head: ordinal, tail: rest } => {
       let identity = Filesystem.Read(path: parse_verdict_slot_path(dir: dir, basename: parse_verdict_restore_identity_basename, ordinal: ordinal))
       let receipts = Filesystem.Read(path: parse_verdict_slot_path(dir: dir, basename: parse_verdict_restore_receipts_basename, ordinal: ordinal))
-      concat(
-        [ParseVerdictRestoredSlot {
-          identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
-          receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
-        }],
-        parse_verdict_slots_read(dir: dir, ordinals: rest)
+      parse_verdict_slots_read(
+        dir: dir,
+        ordinals: rest,
+        read: concat(
+          read,
+          [ParseVerdictRestoredSlot {
+            identity: filesystem_read_outcome(content: identity.content, success: identity.success, error: identity.error),
+            receipts: filesystem_read_outcome(content: receipts.content, success: receipts.success, error: receipts.error)
+          }]
+        )
       )
     }
   }
@@ -155,7 +161,7 @@ fn parse_verdict_base_read(dir: String) -> ParseVerdictBase {
       FilesystemReadSucceeded { content: c } => parse_verdict_text_lines(text: c)
       FilesystemReadRefused { error: _ } => []
     },
-    slots: parse_verdict_slots_read(dir: dir, ordinals: parse_verdict_restore_ancestor_ordinals),
+    slots: parse_verdict_slots_read(dir: dir, ordinals: parse_verdict_restore_ancestor_ordinals, read: []),
     ordinal: 0
   )
 }
