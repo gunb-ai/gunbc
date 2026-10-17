@@ -7,8 +7,10 @@ use crate::extdeps_ietf_http_semantics::HttpMethod::{
 };
 use crate::extdeps_uri_path::PathTemplateParseResult::{MalformedPathTemplate, ParsedPathTemplate};
 use crate::extdeps_uri_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::extdeps_uri_path::{has_path_params, last_path_param, parse_path_template};
-pub use crate::extdeps_uri_path::{PathTemplate, PathTemplateParseResult, UrlPathToken};
+pub use crate::extdeps_uri_path::{
+    has_path_params, last_path_param, parse_path_template, PathTemplate, PathTemplateParseResult,
+    UrlPathToken,
+};
 use crate::std_effects::CompositionVerdict::{BrokenBy, IdempotentComposition};
 use crate::std_effects::DeriveOpEffectResult::{
     DerivedEffect, MalformedPathInput, MethodHasNoOperationEffect,
@@ -22,10 +24,8 @@ use crate::std_effects::MethodEffectShape::{MethodHasNoEffectShape, MethodShaped
 use crate::std_effects::ModifierAgreement::{Agrees, DerivationUnknown, Disagrees};
 pub use crate::std_effects::{
     check_modifier_vs_derivation, compose_effects, derive_effect_shape, derive_op_effect,
-    generate_idempotency_obligations, is_idempotent_effect,
-};
-pub use crate::std_effects::{
-    CompositionVerdict, DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
+    generate_idempotency_obligations, is_idempotent_effect, CompositionVerdict,
+    DeriveOpEffectResult, DerivedOpEffect, EffectShape, IdempotencyEvidence,
     IdempotencyTestObligation, KeySource, MethodEffectShape, ModifierAgreement, ModifierCheck,
     OperationEffect, WorkflowEffectConcern,
 };

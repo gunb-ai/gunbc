@@ -3,8 +3,7 @@
 
 use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
 pub use crate::std_coercion::{ConversionPhase, ConversionPlan};
-pub use crate::std_decl_ref::decl_ref;
-pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, DeclarationRef};
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
