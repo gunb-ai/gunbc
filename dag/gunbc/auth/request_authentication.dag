@@ -1,6 +1,7 @@
 module gunbc.auth.request_authentication
 
 import std.types { NonEmptyStr, String, Bool, List, Timestamp, Int }
+import std.algebra { non_empty }
 import std.access {
   AccessRequest, AccessContext, AccessEvidence, AccessDecision, Permit, Deny,
   AccessRefusal, AccessRefusalCause, AccessRefusalLocation,
@@ -441,7 +442,7 @@ fn write_authorization_policy_for(deployment: DeploymentId) -> ServeWriteAuthori
 // Whether a deployment has an agent door at all is this policy's answer: a deployment that rosters
 // no agent principal has nobody the door could admit (gunbc.live_deploy.spec deployment_agent_door_socket).
 fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
-  !(all(write_authorization_policy_for(deployment: deployment).agent_roster, p => false))
+  non_empty(xs: write_authorization_policy_for(deployment: deployment).agent_roster)
 }
 
 // The actions an agent peer may take when its deployment rosters it. Everything else (approval, the

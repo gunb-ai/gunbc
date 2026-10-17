@@ -68,6 +68,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
   dashboard_instance_agent_door_directory,
+  agent_door_socket_in,
+  owned_directory_is_agent_door,
 }
 import gunbc.auth.request_authentication { deployment_admits_agent_peer }
 import gunbc.auth.tracker_web_oauth_client {
@@ -756,14 +758,7 @@ fn deployment_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr?
 fn deployment_agent_door_socket_of(spec: DeploymentSpec) -> NonEmptyStr? {
   match filter(spec.directories, d => owned_directory_is_agent_door(t: d)) |> first() {
     Absent => none
-    Present { value: d } => Present { value: join([owned_directory_path(t: d) as String, "/agent.sock"], "") as NonEmptyStr }
-  }
-}
-
-fn owned_directory_is_agent_door(t: OwnedDirectoryTarget) -> Bool {
-  match t {
-    OwnedDirectoryDeclared { member, path: _, owner: _, mode: _ } => member == "agent-door" as NonEmptyStr
-    OwnedDirectoryManaged { directory: _ } => false
+    Present { value: d } => Present { value: agent_door_socket_in(directory: d) }
   }
 }
 
