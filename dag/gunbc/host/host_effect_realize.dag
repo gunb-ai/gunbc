@@ -233,7 +233,7 @@ import gunbc.ci.ci_deploy_access {
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
 import extdeps.access.posix { FileMode, file_mode_octal }
-import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_argv }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.host.host_axis_caps { CapConvergeWithheld, cap_converge_decision }
 import gunbc.runner.runner_host_deploy {
@@ -254,7 +254,14 @@ import gunbc.runner.runner_slot_retirement {
   observe_retirement_standings,
   surplus_observation_from_census_and_retirement,
 }
+import gunbc.live_deploy.retract_legs {
+  DeployRetractLeg, DeployRetractPlan, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs, deploy_retract_leg_step,
+  RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
+}
+import gunbc.systemctl_show_read { systemctl_show_load_state_read, SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import extdeps.systemd.systemctl {
+  systemctl_disable_now_argv,
   systemctl_list_all_service_units_command,
   systemctl_list_all_service_units_argv,
   systemctl_daemon_reload_command,
@@ -262,7 +269,6 @@ import extdeps.systemd.systemctl {
 }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for_wet,
-  live_deploy_retract_script_for,
   deployment_serve_route_command,
 }
 import gunbc.live_deploy.release_locus {
@@ -5503,13 +5509,11 @@ fn realize_live_deploy_apply_on_host(
   }
 }
 
-// RETRACT LOCUS GATE. A fail-closed narrowing placed in front of the STILL-RETAINED retract script:
-// realize_live_deploy_retract_on_host runs retained_srvn(live_deploy_retract_script_for) through
-// realize_shell_on_host, and that script is not modeled over ssh or the thin-run artifact locus, so
-// only the local locus proceeds. LocalShell passes (none); SshShell, FleetSsh and
-// EmitArtifactThenThinRun each refuse before any step runs. This does not make the teardown typed:
-// dissolving the script (and this retained_srvn row) is PB2's typed deploy preamble/retract, which
-// is the trigger that deletes the script and keeps this gate as the typed locus choice.
+// RETRACT LOCUS GATE. A fail-closed narrowing in front of the typed retract legs: the teardown is a
+// LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes),
+// and it is not modeled over ssh or the thin-run artifact locus, so only the local locus proceeds.
+// LocalShell passes (none); SshShell, FleetSsh and EmitArtifactThenThinRun each refuse before any
+// step runs. The gate is the typed locus choice; the retract script it once fronted is gone.
 fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -> Optional<String> {
   match transport {
     LocalShell => none
@@ -5529,6 +5533,11 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
   }
 }
 
+// THE RETRACT, AS TYPED LEGS. deploy_retract_plan_legs (gunbc.live_deploy.retract_legs) decides every
+// refusal before any leg runs, as the script's Decide fragments did; the shared preamble then runs; then
+// each leg in retract order. The first failing leg stops the fold and names its step. There is no
+// script body, no stage directory of its own and no EXIT trap: the preamble owns its scratch and
+// removes it on both branches, and no other leg stages anything.
 fn realize_live_deploy_retract_on_host(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
@@ -5538,14 +5547,155 @@ fn realize_live_deploy_retract_on_host(
   match live_deploy_retract_candidate_locus_refusal(transport: transport) {
     Present { value: why } => NotConverged { reason: why, applied: intent }
     Absent =>
-    realize_shell_on_host(
-      script: retained_srvn(
-        body: live_deploy_retract_script_for(spec: spec, access: access),
-        reason: "live_deploy retract (unit teardown)",
-      ),
-      transport: transport,
-      intent: intent,
-    )
+      match deploy_retract_plan_legs(spec: spec) {
+        RetractPlanRefused { step: s, reason: r } =>
+          NotConverged { reason: join(["live_deploy retract refused at step ", s, ": ", r], ""), applied: intent }
+        RetractPlanReady { legs: legs } =>
+          match live_deploy_apply_preamble_on_host(access: access, principal: spec.names.publication_principal) {
+            PreambleRefused { step: ps, reason: pr, legs_consumed: _ } =>
+              NotConverged {
+                reason: join(["live_deploy retract refused at preamble step ", live_deploy_preamble_step_name(step: ps), ": ", pr], ""),
+                applied: intent,
+              }
+            PreambleConverged { principal: _, dropin: _, legs_consumed: _ } =>
+              live_deploy_retract_verdict(
+                run: live_deploy_retract_run_legs(legs: legs, transport: transport),
+                host: spec.target.host.identity,
+                intent: intent,
+              )
+          }
+      }
+  }
+}
+
+type DeployRetractRun
+  = RetractRunOk { legs_run: Int }
+  | RetractRunFailed { step: String, reason: String, legs_run: Int }
+
+type RetractLoadState
+  = RetractUnitNotFound
+  | RetractUnitLoaded
+  | RetractLoadStateUnreadable { reason: String }
+
+// THE END-OF-FOLD RECEIPT LINE, as the script's `echo live-deploy-receipt ...` printed it.
+fn live_deploy_receipt_line(host: NonEmptyStr, fold: String) -> String {
+  join(["live-deploy-receipt host=", host as String, " fold=", fold, " verdict=converged\n"], "")
+}
+
+// PURE: the run's answer to a Reconciliation, with no host in sight.
+fn live_deploy_retract_verdict(
+  run: DeployRetractRun,
+  host: NonEmptyStr,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match run {
+    RetractRunFailed { step: s, reason: r, legs_run: n } =>
+      NotConverged {
+        reason: join(["live_deploy retract refused at step ", s, " after ", to_string(n), " completed legs: ", r], ""),
+        applied: intent,
+      }
+    RetractRunOk { legs_run: _ } =>
+      Converged {
+        evidence: ShellEffectApplied { exit_code: 0, stdout: live_deploy_receipt_line(host: host, fold: "retract"), stderr: "" },
+        applied: intent,
+      }
+  }
+}
+
+// PURE: LoadState is the one observation that tells an ABSENT unit from a present one. An unreadable
+// manager is its own state and is never folded into absent (systemctl_show_load_state_argv's rule).
+fn deploy_retract_load_state_of(capture: SystemdPropertyCapture) -> RetractLoadState {
+  match capture {
+    SystemdPropertyCaptured { value: v } =>
+      if v == (systemd_unit_load_state_not_found_wire as String) { RetractUnitNotFound } else { RetractUnitLoaded }
+    SystemdPropertyBlank => RetractLoadStateUnreadable { reason: "systemctl show printed no LoadState" }
+    SystemdPropertyCaptureRefused { reason: r } => RetractLoadStateUnreadable { reason: r }
+  }
+}
+
+// PURE: one argv leg's failure, if any. A refused transport is never reported as having run.
+fn deploy_retract_command_failure(outcome: RunArgvTransportOutcome) -> Optional<String> {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Present { value: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        Absent
+      } else {
+        Present { value: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") }
+      }
+  }
+}
+
+fn deploy_retract_remove_failure(verdict: Reconciliation<HostRemoveTarget, HostRemoveEvidence>) -> Optional<String> {
+  match verdict {
+    Converged { evidence: _, applied: _ } => Absent
+    NotConverged { reason: r, applied: _ } => Present { value: r }
+  }
+}
+
+fn deploy_retract_disable_failure(load: RetractLoadState, disable: RunArgvTransportOutcome) -> Optional<String> {
+  match load {
+    RetractUnitNotFound => Absent
+    RetractLoadStateUnreadable { reason: r } => Present { value: join(["the unit's LoadState was unreadable, so disable --now was not attempted: ", r], "") }
+    RetractUnitLoaded => deploy_retract_command_failure(outcome: disable)
+  }
+}
+
+fn deploy_retract_gone_failure(load: RetractLoadState) -> Optional<String> {
+  match load {
+    RetractUnitNotFound => Absent
+    RetractUnitLoaded => Present { value: "leftover timer still loaded after retire -- LoadState is not not-found (fail-closed)" }
+    RetractLoadStateUnreadable { reason: r } => Present { value: join(["leftover timer readback unreadable: ", r], "") }
+  }
+}
+
+fn live_deploy_retract_run_leg(leg: DeployRetractLeg, transport: HostEffectTransport) -> Optional<String> {
+  match leg {
+    RetractServeOff { endpoint: e } =>
+      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(
+        command: sudo_elevate_command(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e))),
+        transport: transport,
+      ))
+    RetractDisableIfLoaded { unit: u } => {
+      let load = deploy_retract_load_state_of(capture: systemctl_show_load_state_read(transport: transport, unit: u))
+      match load {
+        RetractUnitLoaded =>
+          deploy_retract_disable_failure(
+            load: load,
+            disable: run_argv_over_host_effect_transport(
+              command: sudo_elevate_command(command: systemctl_disable_now_argv(unit: u)),
+              transport: transport,
+            ),
+          )
+        RetractUnitNotFound => Absent
+        RetractLoadStateUnreadable { reason: _ } => deploy_retract_disable_failure(load: load, disable: RunArgvTransportRefused { reason: "disable not attempted" })
+      }
+    }
+    RetractRemoveForce { paths: ps } =>
+      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveForce { paths: ps }, transport: transport))
+    RetractRemoveEmptyDirectory { path: p } =>
+      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveEmptyDirectory { path: p }, transport: transport))
+    RetractRemoveRecursive { path: p } =>
+      deploy_retract_remove_failure(verdict: host_remove_on_host(target: RemoveForceRecursive { path: p }, transport: transport))
+    RetractDaemonReload =>
+      deploy_retract_command_failure(outcome: run_argv_over_host_effect_transport(command: systemctl_daemon_reload_command(), transport: transport))
+    RetractUnitGoneReadback { unit: u } =>
+      deploy_retract_gone_failure(load: deploy_retract_load_state_of(capture: systemctl_show_load_state_read(transport: transport, unit: u)))
+  }
+}
+
+fn live_deploy_retract_run_legs(legs: List<DeployRetractLeg>, transport: HostEffectTransport) -> DeployRetractRun {
+  live_deploy_retract_run_legs_from(legs: legs, transport: transport, done: 0)
+}
+
+fn live_deploy_retract_run_legs_from(legs: List<DeployRetractLeg>, transport: HostEffectTransport, done: Int) -> DeployRetractRun {
+  match legs {
+    Empty => RetractRunOk { legs_run: done }
+    Cons { head: leg, tail: rest } =>
+      match live_deploy_retract_run_leg(leg: leg, transport: transport) {
+        Present { value: why } => RetractRunFailed { step: deploy_retract_leg_step(leg: leg), reason: why, legs_run: done }
+        Absent => live_deploy_retract_run_legs_from(legs: rest, transport: transport, done: done + 1)
+      }
   }
 }
 
