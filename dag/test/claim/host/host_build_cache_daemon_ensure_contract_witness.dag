@@ -1,0 +1,692 @@
+module test.claim.host.host_build_cache_daemon_ensure_contract_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.optional { Absent, Optional, Present }
+import extdeps.cache.sccache { sccache_fatal_error_log_fragment, sccache_installed_binary_path, sccache_release_0_15_0 }
+import extdeps.sudo.elevation { sudo_elevate_command, sudo_non_interactive_flag, sudo_program }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, BuildCacheServerPlacement, ServerPlacementAbsent, ci_cache_instance }
+import gunbc.build_cache.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  DaemonMisconfigured,
+  DaemonStatsOk,
+  DaemonUnresponsive,
+}
+import gunbc.host.build_cache_daemon_ensure {
+  BuildCacheDigestRefusal,
+  BuildCacheEnsureExecuted,
+  BuildCacheEnsureOp,
+  BuildCacheHostRunObserved,
+  BuildCacheHostRunOutcome,
+  BuildCacheObserve,
+  CouldNotRun,
+  EnsureCompleted,
+  EnsureFailed,
+  EnsureOps,
+  EnsurePlanRefused,
+  EnsureSkipped,
+  EnsureTransportBlocked,
+  ObserveAbsent,
+  Ran,
+  ObserveMisconfigured,
+  ObserveReadBlocked,
+  ObserveStatsOk,
+  ObserveUnresponsive,
+  FetchArchive,
+  InstallStep,
+  ReadDigest,
+  RefusedBeforeInstall,
+  Runs,
+  UnitStep,
+  build_cache_misconfigured_marker,
+  build_cache_ensure_run,
+  build_cache_ensure_run_legs,
+  build_cache_plan_legs_of_kind,
+  build_cache_daemon_ensure_observation,
+  build_cache_daemon_ensure_plan,
+  build_cache_ensure_is_needed,
+  build_cache_matched_stats_fragment,
+  build_cache_observe_observed,
+  build_cache_read_back_observation,
+}
+import gunbc.host.verified_binary_install { AlreadyInstalled, InstallNeeded, VerifiedBinaryInstallPresence }
+import gunbc.shell_command_text { shell_command_text_of_argv }
+import extdeps.exec.command { argv_words }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// THE CONTRACT OF THE BUILD-CACHE DAEMON ENSURE, ON THE HOST IT EXISTS FOR.
+//
+// ENROLLED AS A KNOWN-RED QUARANTINE PROBE (gunbc.explicit_witness_admission), AND IT IS WRITTEN TO ASSERT
+// THE CORRECT BEHAVIOUR, NOT THE CURRENT ONE. That direction is deliberate and is the whole point: a witness
+// asserting the current refusal would be GREEN today, would have to be deleted when the defect is fixed, and
+// would spend the weeks in between certifying the bug as the expected result. Written the other way it is red
+// while the defect is live, greens with NO EDIT when the fix lands, and then stays in the tree as an ordinary
+// regression control. The quarantine row is what the fixing change deletes, never this claim.
+//
+// THE HOST STATE, SUPPLIED RATHER THAN MEASURED (DESIGN's witness rule: a claim supplies its own boundary
+// values, because a claim that depends on a host it cannot control cannot be reproduced by the person who has
+// to fix it). A build-cache instance whose server placement is unknown-to-absent, whose sccache binary IS
+// installed and executable, and whose `--show-stats` exits ZERO with a zeroed table -- the measured behaviour
+// of sccache 0.15.0 when no server exists at all (extdeps.cache.sccache.sccache_stats_query_does_not_spawn_note,
+// RunnerObserved srv2 2026-08-01, two private-endpoint controls).
+//
+// WHY THIS STATE IS NOT HYPOTHETICAL: it is the ordinary steady state of a host whose sccache unit is not up.
+// srv3 on 2026-07-25 was greened over a unit that had been inactive for six hours on exactly this read.
+//
+// WHAT SHOULD HAPPEN, AND WHAT THE RETIRED SCRIPT DID INSTEAD. The script's observe phase tested only the exit
+// code, saw zero, printed its `observe=ok` receipt and `exit 0`'d -- so no unit was written, no daemon-reload
+// ran, nothing was enabled or restarted, and the read-back never happened; the classifier then reported
+// "exited zero without printing its read_back=ok receipt" and the effect refused with NotConverged. The port
+// keeps that behaviour EXACTLY (ruling A: faithful port, no behaviour change in this PR), which is why this
+// claim is red now. The fix is ONE ARM: the observe phase must not end the ensure, and daemon ownership comes
+// from the endpoint survey rather than from `--show-stats` -- the same conclusion the retired receipt's own
+// server_placement paragraph already reached, and the reason `--show-stats` is documented as supplemental.
+//
+// THE FOUR CONJUNCTS, AND WHICH ONE IS RED TODAY. Three are true now and are here as the positive control:
+// they prove the observer read the captures correctly, that the ensure's operations ARE derivable (so the
+// refusal is not caused by a plan that cannot be built), and that a completed ensure plus an answering
+// read-back converges. Exactly one is false today -- whether this host needs the ensure -- and it is the one
+// the fix changes. So the claim goes red for the defect and for nothing else, and each conjunct fails for a
+// distinguishable reason if the machinery around the fix is broken.
+
+// EVERY VALUE HERE IS SUPPLIED BY THE CLAIM: the captures, the digests, the instance, the placement, the
+// privilege broker's own argv. Nothing in this file opens a host, a filesystem, or the live tree -- which is
+// what makes the claim reproducible by whoever has to fix the arm it quarantines, rather than true only on
+// the one machine it was written against.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data zeroed_stats_table: String = "Compile requests                      0\nCompile requests executed                 0\nCache hits                              0\nCache misses                            0\n"
+
+// THE CITED FRAGMENT, IMPORTED RATHER THAN RETYPED (the no-policy-literals rule applies to a witness as
+// much as to a plan: a claim that re-strings a policy string keeps passing when the policy changes, which
+// is how a scan can lose a fragment without any test noticing). contract_fatal_fragment is the alias, not
+// a second copy of the value.
+data contract_fatal_fragment: String = sccache_fatal_error_log_fragment
+
+test fn binary_present_with_daemon_absent_runs_the_ensure_legs_and_converges() -> Bool {
+  let observe = build_cache_contract_observe()
+  // (1) CONTROL, true today: the two captures are read as they should be -- binary present, and an rc-0 stats
+  // table. If this arm were wrong the rest of the claim would be measuring a different host than it names.
+  build_cache_observe_is_stats_ok(observe: observe)
+    // (2) CONTROL, true today: the ensure's operations ARE derivable for this host, in the right order. The
+    // refusal is therefore not a plan that cannot be built; it is a decision not to run a plan that can be.
+    && build_cache_contract_plan_derives_the_ensure_legs()
+    // (3) CONTROL, true today: given a completed ensure and an answering read-back the classifier converges,
+    // carrying the table the host printed as its evidence. So the tail of the pipeline works; only the front
+    // of it refuses to enter it.
+    && build_cache_contract_converges_on_an_answering_read_back()
+    // (4) THE DEFECT, false today: on this host -- binary installed, daemon down -- the ensure IS needed.
+    // Avoiding a restart of a server that is SERVING is the only good reason not to bounce; this host has
+    // nothing to drain. Every outcome other than "the daemon answered" already requires the ensure; this is
+    // the one that does not, and it is the one the fleet is made of.
+    && build_cache_ensure_is_needed(observe: observe)
+}
+
+// THE THREE CONTROLS, RUNNABLE ON THEIR OWN -- and that is why they are three claims rather than only
+// three conjuncts. Inside the contract above they are invisible at run time: `&&` reports one verdict for
+// the whole expression, so a red contract cannot tell you WHETHER the other three held, and a known-red row
+// whose red might be caused by something other than the defect it names is worth nothing. As siblings, each
+// control reports for itself. Run from one head they give: three HELD, one DID NOT HOLD, and the one that
+// did not hold is this file's contract claim -- which is exactly the diagnosis the trace gives, and the only
+// reading under which the quarantine row means what it says.
+//
+// They are GREEN claims and are deliberately NOT enrolled in gunbc.explicit_witness_admission: only the
+// contract is known-red, and enrolling a green claim would let it rot. If the machinery around the fix
+// breaks, the control that goes red names itself here instead of adding a second cause to the contract's
+// single, isolated red.
+
+test fn control_the_two_captures_are_read_as_the_observer_claims() -> Bool {
+  build_cache_observe_is_stats_ok(observe: build_cache_contract_observe())
+}
+
+test fn control_the_ensure_operations_are_derivable_in_the_right_order() -> Bool {
+  build_cache_contract_plan_derives_the_ensure_legs()
+}
+
+test fn control_a_completed_ensure_with_an_answering_read_back_converges() -> Bool {
+  build_cache_contract_converges_on_an_answering_read_back()
+}
+
+// THE HOST THE CONTRACT IS ABOUT, BUILT IN ONE PLACE so the controls and the contract cannot drift apart
+// into two different hypothetical hosts. Binary installed and executable, stats query answered zero with a
+// zeroed table, placement absent.
+fn build_cache_contract_observe() -> BuildCacheObserve {
+  build_cache_observe_observed(
+    presence: build_cache_presence_ran(),
+    stats: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+      },
+    },
+  )
+}
+
+fn build_cache_presence_ran() -> BuildCacheHostRunOutcome {
+  Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } }
+}
+
+// THE OBSERVER READ THE CAPTURES AS CLAIMED: the presence probe exited zero (which is why the stats query ran
+// at all) and the stats query exited zero. `ObserveStatsOk` is the arm the defect hangs on, so the claim first
+// proves it is holding the observation it says it is.
+fn build_cache_observe_is_stats_ok(observe: BuildCacheObserve) -> Bool {
+  match observe {
+    ObserveStatsOk { stats: s } => string_contains(s: s, pattern: "Compile requests")
+    _ => false
+  }
+}
+
+// THE OPERATIONS THE ENSURE WOULD RUN ARE ALL THERE, in the order that makes them correct: the unit bytes to
+// the staged sibling, the install into /etc/systemd/system, the manager reload so the manager can SEE the
+// unit, then enable, then restart. Asserted by COUNT AND ORDER rather than by rendering, so this control
+// cannot be satisfied by an empty plan, nor by a plan that forgot the reload between the write and the start.
+//
+// The install legs are deliberately absent here, and their absence is part of the control: this host's binary
+// is already executable, so deriving a re-download would be wrong in the other direction -- it would
+// overwrite a binary that is running.
+fn build_cache_contract_plan_derives_the_ensure_legs() -> Bool {
+  let plan =
+    build_cache_daemon_ensure_plan(
+      instance: build_cache_contract_instance(),
+      arch_token: "x86_64" as NonEmptyStr,
+      digest: sccache_release_0_15_0.digest_x86_64,
+      install: Present {
+        value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String },
+      },
+    )
+  match plan {
+    EnsureOps { ops: steps } =>
+      list_length(items: steps) == 5
+        && build_cache_op_is_elevated_to(index: 0, want: "dd", steps: steps)
+        && build_cache_op_is_elevated_to(index: 1, want: "install", steps: steps)
+        && build_cache_op_is_elevated_to(index: 2, want: "daemon-reload", steps: steps)
+        && build_cache_op_is_elevated_to(index: 3, want: "enable", steps: steps)
+        && build_cache_op_is_elevated_to(index: 4, want: "restart", steps: steps)
+        // THE WRITE CARRIES ITS BYTES ON STDIN AND THE OTHER FOUR DO NOT. A plan that staged the unit
+        // but lost the stdin binding would write an empty file and still exit zero, which is the
+        // silent-success shape this whole claim exists to make impossible.
+        && build_cache_op_takes_stdin(index: 0, steps: steps)
+        && !build_cache_op_takes_stdin(index: 1, steps: steps)
+    _ => false
+  }
+}
+
+// GIVEN AN ENSURE THAT COMPLETED AND A READ-BACK THAT ANSWERED, THE EFFECT CONVERGES -- and what it reports is
+// the table the HOST printed, not a marker the effect printed about itself. This is the end of the pipeline
+// the claim has to reach, proved separately so the claim's red cannot be blamed on it.
+fn build_cache_contract_converges_on_an_answering_read_back() -> Bool {
+  match build_cache_daemon_ensure_observation(
+    observe: build_cache_observe_unresponsive_for_control(),
+    ensure: Present { value: EnsureCompleted },
+    read_back: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+      },
+    },
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonStatsOk { stats_line: line, placement: _ } =>
+      string_contains(s: line, pattern: "Compile requests")
+    DaemonUnresponsive { detail: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    // THE OTHER THREE REFUSALS, each false because this control asks only whether an answering read-back
+    // converges -- and each named rather than caught by a wildcard. A `DaemonAbsent` here would in fact be
+    // the interesting one: it is the state the contract claim is about, and if this control ever reported
+    // it the observer would be misreading its own captures. Listing the variants is what makes that
+    // visible instead of quietly absorbed.
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+}
+
+// THE OBSERVATION THE TAIL CONTROL NEEDS: an outcome that reaches the ensure and the read-back instead of
+// short-circuiting. An unresponsive host is the script's own fall-through case, so the control exercises the
+// same path the fixed code will take for the defective case.
+fn build_cache_observe_unresponsive_for_control() -> BuildCacheObserve {
+  build_cache_observe_observed(
+    presence: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: "", stderr: "" } },
+    stats: Present {
+      value: Ran {
+        observed: BuildCacheHostRunObserved { exit_code: 1, stdout: "", stderr: "Connection refused" },
+      },
+    },
+  )
+}
+
+// EVERY LEG RUNS UNDER THE PRIVILEGE BROKER, AND RUNS THE TOOL IT NAMES. `want` is the tool the leg
+// ultimately invokes, so this asserts BOTH that the broker wraps it AND that the wrapped tool is the one
+// named: a leg that lost its elevation fails, and so does a leg that quietly became a different tool.
+//
+// INCLUDING daemon-reload, which is not an oversight and is not this claim's opinion: the cited systemctl
+// operation carries sudo itself, with its own written justification -- the unit lives in the SYSTEM
+// manager, so an unelevated invocation is not a weaker version of the request but a different one that
+// fails. Asserting the ABSENCE of privilege on any leg would be asserting a posture the upstream module
+// does not have, which is the mistake this claim was nearly written with; the control that matters is the
+// one below, that all five legs reach their tool THROUGH the broker, in the order that makes them correct
+// (staged write, install, reload so the manager can see the unit, enable, start).
+fn build_cache_op_is_elevated_to(index: Int, want: String, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } =>
+      step.argv.program.invocation as String == sudo_program().invocation as String
+        && build_cache_args_contain(args: step.argv.arguments, want: sudo_non_interactive_flag as String)
+        && build_cache_args_contain(args: step.argv.arguments, want: want)
+  }
+}
+
+// THE UNIT BYTES TRAVEL ON THE WRITE LEG'S STANDARD INPUT -- the typed replacement for the script's
+// heredoc. Asserted on two legs rather than one: a plan that staged the unit but lost the stdin binding
+// would write an empty file, exit zero, and converge, which is the silent-success shape the whole claim
+// exists to make impossible -- and a plan that bound stdin to the install leg too would read its own
+// staged file as its payload.
+fn build_cache_op_takes_stdin(index: Int, steps: List<BuildCacheEnsureOp>) -> Bool {
+  match get(xs: steps, index: index) {
+    Absent => false
+    Present { value: step } => step.unit_bytes_on_stdin
+  }
+}
+
+// A WORD CARRYING `want` APPEARS SOMEWHERE IN THE LEG. fold rather than a find combinator: the fold
+// accumulates the first hit and keeps it, which is also what the fragment scan beside it does, so the two
+// scans in this file read the same way.
+fn build_cache_args_contain(args: List<String>, want: String) -> Bool {
+  match fold(args, init: Absent, f: (acc, a) => match acc {
+    Present { value: _ } => acc
+    Absent => match string_contains(s: a, pattern: want) {
+      true => Present { value: a }
+      false => acc
+    }
+  }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn build_cache_contract_instance() -> BuildCacheInstance {
+  ci_cache_instance(host: "srv1")
+}
+
+fn build_cache_contract_placement() -> BuildCacheServerPlacement {
+  ServerPlacementAbsent
+}
+
+// THE SCAN STILL SEES WHAT IT IS CITED TO SEE, on a capture that also contains the zeroes a healthy-host table
+// is made of. Kept in this file because the fix touches the same classifier: a cited fragment must still win
+// over a well-formed-looking empty table, so the misconfigured report cannot be lost while the arms around it
+// are rearranged.
+test fn a_fragment_still_classifies_over_a_zeroed_table() -> Bool {
+  match build_cache_matched_stats_fragment(
+    capture: join(["nothing useful here\n", contract_fatal_fragment, "\n", zeroed_stats_table], ""),
+  ) {
+    Present { value: got } => got == contract_fatal_fragment
+    Absent => false
+  }
+}
+
+// ─── THE OTHER REFUSAL ARMS, one executing claim per arm ──────────────────────────
+//
+// WHY THESE EXIST. The retired script died in six distinguishable ways once its plan
+// existed — a leg that exited non-zero, a leg that could not be dispatched at all, a
+// plan refused before anything ran, an ensure that was skipped on a path that still
+// reached the read-back, a phase that never ran at all, and a read-back that could not
+// be read — and each printed its own message before `set -e` took the exit code. A
+// port that keeps the ARM but loses the MESSAGE is exactly the silent default this
+// program exists to forbid, and an arm nothing executes cannot be seen losing it.
+//
+// THESE ARE GREEN CLAIMS. The behaviour is correct today, so nothing here is enrolled
+// in gunbc.explicit_witness_admission and there is no QuarantineProbeExpectRed row
+// beside them; the single known-red in this file remains the contract claim. They are
+// regression controls on the refusals the port was required to preserve, not pending
+// bug reports.
+
+// EVERY ENSURE OUTCOME BUT A COMPLETED ONE REFUSES, and the completed one converges.
+// Both halves are load-bearing: a table of five refusals alone would be satisfied by
+// an implementation that refused EVERYTHING, which is as wrong as one that converged on
+// a skipped ensure. One row per arm of BuildCacheEnsureExecuted.
+test fn every_ensure_outcome_except_a_completed_one_refuses_and_each_names_its_reason() -> Bool {
+  let rb = Present {
+    value: Ran {
+      observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" },
+    },
+  }
+  let plan_words = build_cache_refusal_detail(ensure: Present { value: EnsurePlanRefused { reason: "the digest could not be read" } }, read_back: rb)
+  let failed_words = build_cache_refusal_detail(
+    ensure: Present {
+      value: EnsureFailed {
+        op: build_cache_contract_elevated_restart_op(),
+        observed: BuildCacheHostRunObserved { exit_code: 1, stdout: "", stderr: "Job for sccache-server.service failed." },
+      },
+    },
+    read_back: rb,
+  )
+  let blocked_words = build_cache_refusal_detail(
+    ensure: Present {
+      value: EnsureTransportBlocked { op: build_cache_contract_elevated_restart_op(), reason: "the broker declined the privileged leg" },
+    },
+    read_back: rb,
+  )
+  let skipped_words = build_cache_refusal_detail(ensure: Present { value: EnsureSkipped }, read_back: rb)
+  let absent_words = build_cache_refusal_detail(ensure: Absent, read_back: rb)
+  // Five refusals, five assertion sets, and no arm able to report a bare 'failed'. Each
+  // reason comes from a DIFFERENT SOURCE — the plan's own string, the exit code plus the
+  // host's stderr, the broker's reason plus the blocked leg's command text, the skipped
+  // phase's name, and the missing phase's name. No tuple pattern is used because this
+  // grammar has none; every refusal is checked through the same helper, so all five ride
+  // one code path and none can be quietly skipped.
+  build_cache_words_say(words: plan_words, must_say: [
+    "refused before running anything",
+    "the digest could not be read",
+  ])
+    && build_cache_words_say(words: failed_words, must_say: [
+      "exited 1",
+      "Job for sccache-server.service failed.",
+    ])
+    && build_cache_words_say(words: blocked_words, must_say: [
+      "could not run",
+      "the broker declined the privileged leg",
+      "systemctl",
+    ])
+    && build_cache_words_say(words: skipped_words, must_say: [
+      "was not run",
+      "skipped",
+    ])
+    && build_cache_words_say(words: absent_words, must_say: [
+      "the ensure",
+      "never read as a silent success",
+    ])
+    // ...and the one outcome that may converge does, so the five refusals above are a
+    // distinction rather than a blanket.
+    && build_cache_contract_converges_on_an_answering_read_back()
+}
+
+// A READ-BACK THAT FAILED OR COULD NOT BE READ REFUSES, and says which. The rc-0
+// branch is the ONLY thing in this module that produces DaemonStatsOk, so the two
+// failure branches have to be asserted against it explicitly: a `CouldNotRun` read-back
+// has no exit code to inspect, which puts 'no evidence of failure' one careless `else`
+// away from 'evidence of success'.
+test fn a_read_back_that_failed_or_could_not_be_read_refuses_and_says_which() -> Bool {
+  let blocked = match build_cache_read_back_observation(
+    read_back: CouldNotRun { phase: "the post-ensure read-back", reason: "no transport for a privileged argv" },
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonUnresponsive { detail: d } =>
+      string_contains(s: d as String, pattern: "the post-ensure read-back")
+        && string_contains(s: d as String, pattern: "no transport for a privileged argv")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+  let nonzero = match build_cache_read_back_observation(
+    read_back: Ran {
+      observed: BuildCacheHostRunObserved { exit_code: 2, stdout: "", stderr: "sccache: could not connect to daemon" },
+    },
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonUnresponsive { detail: d } =>
+      string_contains(s: d as String, pattern: "2")
+        && string_contains(s: d as String, pattern: "could not connect to daemon")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+  blocked && nonzero
+}
+
+// THE TWO OBSERVE ARMS THAT DECIDE WITHOUT THE ENSURE STILL REFUSE, each with its own
+// shape. ObserveReadBlocked refuses on the SPOT (the observation it needs was never
+// made, so there is nothing to plan from) and ObserveMisconfigured reports
+// misconfiguration rather than unresponsiveness, carrying the host's own bytes in
+// `detail` — the field the receipt protocol could not carry, because by the time the
+// classifier ran those bytes had been flattened into a marker. Neither may collapse
+// into the other, and neither may fall through to 'nothing to do'.
+test fn the_read_blocked_and_misconfigured_observe_arms_refuse_in_their_own_shapes() -> Bool {
+  let blocked = match build_cache_daemon_ensure_observation(
+    observe: ObserveReadBlocked { phase: "the stats query", reason: "the read produced no capture" },
+    ensure: Absent,
+    read_back: Absent,
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonUnresponsive { detail: d } =>
+      string_contains(s: d as String, pattern: "the stats query")
+        && string_contains(s: d as String, pattern: "the read produced no capture")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonMisconfigured { matched_fragment: _, detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+  let misconfigured = match build_cache_daemon_ensure_observation(
+    observe: ObserveMisconfigured { matched_fragment: contract_fatal_fragment, stats: "sccache: encountered fatal error\nCache hits 0\n" },
+    ensure: Absent,
+    read_back: Absent,
+    placement: build_cache_contract_placement(),
+  ) {
+    // Misconfigured, NOT unresponsive: the distinction is the point. And the host's
+    // bytes survive rather than being reduced to a word.
+    DaemonMisconfigured { matched_fragment: m, detail: s } =>
+      (m as String) == (build_cache_misconfigured_marker as String)
+        && string_contains(s: s as String, pattern: "sccache: encountered fatal error")
+    DaemonStatsOk { stats_line: _, placement: _ } => false
+    DaemonUnresponsive { detail: _ } => false
+    DaemonAbsent => false
+    DaemonPathShadowed { resolved: _, expected: _ } => false
+    DaemonUnsupervised { unit: _, unit_state: _ } => false
+  }
+  blocked && misconfigured
+}
+
+// ─── helpers for the arms above ───────────────────────────────────────────────────
+
+// AN ELEVATED RESTART LEG, built by the SAME builders the plan uses (the cited systemctl
+// operation, wrapped by the same broker) so a claim cannot test a leg shape the
+// production plan never produces, and cannot drift from it either.
+fn build_cache_contract_elevated_restart_op() -> BuildCacheEnsureOp {
+  BuildCacheEnsureOp {
+    kind: UnitStep,
+    argv: sudo_elevate_command(command: systemctl_restart_argv(unit: build_cache_contract_instance().intended_unit)),
+    unit_bytes_on_stdin: false,
+  }
+}
+
+// THE REFUSAL'S OWN WORDS, or Absent when the arm reported no words at all — which is
+// the outcome these claims hunt, so it is carried as a value rather than flattened to
+// false, and a red can say 'this arm went silent' rather than only 'something failed'.
+fn build_cache_refusal_detail(ensure: Optional<BuildCacheEnsureExecuted>, read_back: Optional<BuildCacheHostRunOutcome>) -> Optional<String> {
+  match build_cache_daemon_ensure_observation(
+    observe: build_cache_observe_unresponsive_for_control(),
+    ensure: ensure,
+    read_back: read_back,
+    placement: build_cache_contract_placement(),
+  ) {
+    DaemonUnresponsive { detail: d } => Present { value: d as String }
+    _ => Absent
+  }
+}
+
+// THE WORDS A REFUSAL PRODUCED MUST CONTAIN EVERYTHING IT IS SUPPOSED TO. Words are
+// carried as Optional<String> rather than Bool so a red can distinguish 'this arm
+// refused with thin words' from 'this arm refused with no words at all' — the second is
+// the silent default, and it is the one an empty-detail edit produces.
+fn build_cache_words_say(words: Optional<String>, must_say: List<String>) -> Bool {
+  match words {
+    Absent => false
+    Present { value: text } => match fold(must_say, init: Absent, f: (acc, want) => match acc {
+      Present { value: _ } => acc
+      Absent => match string_contains(s: text, pattern: want) {
+        true => Present { value: want }
+        false => acc
+      }
+    }) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE DIGEST GATE. Main's retired installer ran `curl` and then compared the downloaded archive
+// against the pinned release digest before extracting anything; a typed port that drops those two
+// legs would extract an archive that was never downloaded and install whatever came out of it
+// without ever checking what it was. These three claims are what makes that undroppable: one asks
+// what a mismatch permits, one asks what a match permits, and one asks what a host with no install
+// to do is asked at all. Each SUPPLIES its own boundary values (the pinned digests, a mismatched
+// line) rather than trusting the effect to be tested against something arbitrary.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test fn a_digest_mismatch_refuses_before_any_install_leg_runs() -> Bool {
+  // THE OBSERVED LINE IS SUPPLIED, not invented by the effect: a well-formed sha256sum line whose digest
+  // is not the pinned one. Well-formed matters — a malformed line would exercise a different refusal, and
+  // a claim that cannot tell those apart would pass on a gate that only checks the file exists.
+  let mismatched = "0000000000000000000000000000000000000000000000000000000000000000  /tmp/sccache.tar.gz"
+  match build_cache_ensure_run(
+    ops: build_cache_contract_install_plan(),
+    digest: sccache_release_0_15_0.digest_x86_64,
+    observed_digest_line: Present { value: mismatched },
+  ) {
+    Runs { legs: _ } => false
+    RefusedBeforeInstall { legs: permitted, op: gate, refusal: why } =>
+      // NOTHING INSTALLS, asserted as a computed list rather than as prose: no leg that extracts, no leg
+      // that moves a binary into /usr/local/bin, no leg that touches the unit or the daemon. The fetch and
+      // the read remain, because both ran and it is honest to report them.
+      list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+        // BOTH DIGESTS ARE CARRIED: the pinned one and the one the download reported. A refusal that
+        // collapsed them could not distinguish a corrupt download from a swapped archive.
+        && build_cache_digest_refusal_names(refusal: why, expected: sccache_release_0_15_0.digest_x86_64.hex as String, observed: "0000000000000000000000000000000000000000000000000000000000000000")
+        // THE GATE IS REPORTED BY ITS OWN COMMAND, not as "something in the sequence failed".
+        && string_contains(s: shell_command_text_of_argv(argv: argv_words(command: gate.argv)), pattern: "sha256sum")
+        // AND THE OPERATOR SEES IT: the same refusal reaches the observation as a NotConverged whose text
+        // says outright that nothing was installed. An empty plan alone would read as a successful no-op.
+        && build_cache_words_say(
+          words: build_cache_refusal_detail(
+            ensure: Present {
+              value: EnsureDigestRefused { op: gate, refusal: why },
+            },
+            read_back: Present {
+              value: Ran { observed: BuildCacheHostRunObserved { exit_code: 0, stdout: zeroed_stats_table, stderr: "" } },
+            },
+          ),
+          must_say: [
+            "pinned release digest",
+            "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "nothing was extracted",
+          ],
+        )
+    }
+}
+
+test fn the_pinned_digest_permits_every_leg_and_the_gate_is_not_vacuous() -> Bool {
+  // THE POSITIVE CONTROL, and the reason the claim above means anything: with the line the release row
+  // actually pins, the gate permits the WHOLE plan, install legs included. Delete the gate and the
+  // mismatch claim goes red; delete the plan's install legs and this one does.
+  let pinned = sccache_release_0_15_0.digest_x86_64.hex as String
+  let line = pinned + "  /tmp/sccache.tar.gz"
+  let ops = build_cache_contract_install_plan()
+  match build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: Present { value: line }) {
+    RefusedBeforeInstall { legs: _, op: _, refusal: _ } => false
+    Runs { legs: permitted } =>
+      list_length(items: permitted) == list_length(items: ops)
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 5
+        && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 5
+  }
+}
+
+test fn a_binary_that_is_already_installed_is_never_fetched_and_never_hashed() -> Bool {
+  // main's `if [ ! -x /usr/local/bin/sccache ]` gate, expressed as the ABSENCE of legs rather than as a
+  // runtime test inside the sequence: a host that already has the binary is not gated on a read it does not
+  // need, and — the part that would be a privacy and bandwidth incident if it regressed — nothing is
+  // downloaded from a release host on a host that never asked for it.
+  let ops = build_cache_contract_plan_legs(install: Present {
+    value: AlreadyInstalled { dest_path: sccache_installed_binary_path as String },
+  })
+  list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: FetchArchive)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: ops, kind: ReadDigest)) == 0
+    // And the gate is genuinely inapplicable, not merely unsatisfied: an absent line, and a mismatched
+    // one, both permit the full plan, because there is no gate to apply.
+    && list_length(
+      items: build_cache_ensure_run_legs(
+        run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
+      ),
+    ) == list_length(items: ops)
+    && list_length(
+      items: build_cache_ensure_run_legs(
+        run: build_cache_ensure_run(
+          ops: ops,
+          digest: sccache_release_0_15_0.digest_x86_64,
+          observed_digest_line: Present { value: "0000000000000000000000000000000000000000000000000000000000000000  /tmp/x" },
+        ),
+      ),
+    ) == list_length(items: ops)
+}
+
+// THE PLAN FOR A HOST THAT HAS TO INSTALL, built once so the three gate claims ask about the same
+// sequence. `InstallNeeded` is the arm the presence probe returns when `test -x` fails, which is exactly
+// the state the fetch and the digest check exist for.
+fn build_cache_contract_install_plan() -> List<BuildCacheEnsureOp> {
+  build_cache_contract_plan_legs(install: Present {
+    value: InstallNeeded { dest_path: sccache_installed_binary_path as String },
+  })
+}
+
+fn build_cache_contract_plan_legs(install: Optional<VerifiedBinaryInstallPresence>) -> List<BuildCacheEnsureOp> {
+  match build_cache_daemon_ensure_plan(
+    instance: build_cache_contract_instance(),
+    arch_token: "x86_64" as NonEmptyStr,
+    digest: sccache_release_0_15_0.digest_x86_64,
+    install: install,
+  ) {
+    EnsureOps { ops: steps } => steps
+    BuildCachePlanRefused { reason: _ } => []
+  }
+}
+
+// WHETHER THE REFUSAL CARRIES BOTH DIGESTS AS TEXT AN OPERATOR CAN ACT ON. Matching on the rendered
+// values rather than on an arm name, because what has to survive is the information, not the spelling.
+fn build_cache_digest_refusal_names(refusal: BuildCacheDigestRefusal, expected: String, observed: String) -> Bool {
+  match refusal {
+    DigestRefused { reason: _, expected_hex: e, observed_line: line } =>
+      string_contains(s: e, pattern: expected)
+        && string_contains(s: line, pattern: observed)
+        && string_contains(s: reason_of(refusal: refusal), pattern: "digest")
+  }
+}
+
+// THE REFUSAL'S OWN WORDS, reached through the type rather than by matching on an arm name at every call
+// site. A grammar with no tuple patterns needs this one accessor to read a coproduct field from outside a
+// match; the match above keeps the exhaustiveness the type is supposed to guarantee.
+fn reason_of(refusal: BuildCacheDigestRefusal) -> String {
+  match refusal {
+    DigestRefused { reason: why, expected_hex: _, observed_line: _ } => why
+  }
+}
+
+test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
+  // THE ARM THE OTHER GATE CLAIMS DO NOT TOUCH, and the one that would have stayed unclaimed: what the plan
+  // permits BEFORE the read has produced anything. It must be the fetch and the read, and nothing else. An
+  // implementation that treated an absent line as admitted -- which is what a `false` becoming a `true`
+  // looks like, and what a `get()`-style default would give for free -- would keep every other claim green:
+  // the mismatch claim supplies a line, the positive control supplies a line, the already-installed claim
+  // has no gate to fail.
+  let ops = build_cache_contract_install_plan()
+  let permitted = build_cache_ensure_run_legs(
+    run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
+  )
+  list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+    // AND THE UNREAD CASE IS NOT THE REFUSED CASE. Nothing has been refused yet, so the effect is still
+    // progressing rather than stopped: reporting a digest refusal for a read that has not happened would
+    // accuse a download of being corrupt before it was downloaded.
+    && list_length(items: permitted) < list_length(items: ops)
+}

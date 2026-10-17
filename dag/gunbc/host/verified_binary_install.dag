@@ -1,0 +1,279 @@
+module gunbc.host.verified_binary_install
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { list_append }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.gnu_coreutils { mv_exact_destination_command, rm_recursive_force_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.posix.test_utility { test_executable_command }
+import extdeps.crypto.hash { Digest, sha256sum_file_command, sha256sum_line_digest, digest_shell_verify_line }
+
+// THE GENERIC VERIFIED DOWNLOAD-PLUS-INSTALL EFFECT.
+//
+// Two call sites in this repository each spelled the same effect as a concatenation of bash lines
+// built inside a product module: fetch an archive from a url, check its bytes against a digest
+// BEFORE anything is moved, move an archive member to a destination path, make the destination
+// executable, and delete the staging files. Because the effect lived in a string, the refusals it
+// carried were invisible to everything but a shell that had already run it: a digest mismatch
+// aborted via `set -e` and nothing was installed, which is the correct behavior, and nothing in the
+// type system said so. This module carries the same effect with its refusals as a type and keeps
+// the string only as the transport a host shell requires (DESIGN 3: interface, realization,
+// policy are three facts).
+//
+// THE INTERFACE is `VerifiedBinaryInstallParams`: url, expected digest, archive member, staged
+// layout, destination, mode, and privilege -- all PARAMETERS. The module names no product, no
+// version, and no path of its own, so the two consumers (and the next one, which is
+// extdeps.container.docker_ce's apt-keyrings install) supply their own boundary values rather than
+// inheriting someone else's. That is what makes it an effect and not a sccache-shaped string.
+//
+// THE REALIZATION is `verified_binary_install_shell`: one line per cited operation, in refusal
+// order. Every step is an existing cited extdeps op -- extdeps.tools.curl, extdeps.tools.tar,
+// extdeps.tools.gnu_coreutils, extdeps.tools.chmod, extdeps.sudo.elevation,
+// extdeps.posix.test_utility, extdeps.crypto.hash -- so no policy literal sits in an argv and no
+// consumer re-spells a step. The typed realization is `verified_binary_install_fetch_step` +
+// `verified_binary_install_verify_step` + `verified_binary_install_install_steps`, admitted by
+// `verified_binary_install_admission`, which is the FetchAndVerify-then-InstallBinary fork the
+// trigger for the deleted sccache installer named.
+//
+// THE POLICY -- which release, which destination, whether root is needed -- is a consumer fact and
+// arrives in the parameters. The presence precondition stays an OBSERVATION
+// (`verified_binary_install_destination_present`, `test -x` through the cited op), not a shell
+// guard a consumer has to remember to write.
+
+type VerifiedBinaryInstallParams {
+  // The archive and the member that becomes the installed binary. `archive_member` is the
+  // archive-relative path (`sccache-v0.15.0-aarch64-unknown-linux-musl/sccache`); `staged_root` is
+  // the top-level directory extraction creates, which cleanup removes. Both are facts of the cited
+  // release layout and are supplied, never derived here -- deriving either by string surgery would
+  // put a fact about someone's tarball into the effect.
+  url: String
+  digest: Digest
+  archive_member: String
+  staged_root: String
+  staged_binary_path: String
+  // The staging layout: where the archive lands and where extraction puts it.
+  download_path: String
+  extract_root: String
+  // Where the binary ends up, and in what mode. `exec_mode` is `+x` (add executable) or an octal
+  // such as `0755`; the effect does not decide that a cache daemon's binary wants +x, its consumer does.
+  dest_path: String
+  exec_mode: NonEmptyStr
+  // True: the move and the mode step are elevated through the cited non-interactive sudo, so a
+  // missing NOPASSWD grant REFUSES instead of prompting on a tty that CI does not have. False: the
+  // caller is already root and both steps run un-elevated. There is no third arm and no interactive
+  // form to reach: extdeps.sudo.elevation mints only the non-interactive one.
+  elevated: Bool
+}
+
+// FETCH-AND-VERIFY, STEP ONE: the download as the cited curl invocation. `-f` makes an HTTP error a
+// non-zero exit rather than a body written to disk, so an unfetchable release is a refusal at this
+// step and the verify step never sees a truncated file.
+fn verified_binary_install_fetch_step(p: VerifiedBinaryInstallParams) -> ArgvCommand {
+  curl_download_command(url: p.url, destination: p.download_path)
+}
+
+// FETCH-AND-VERIFY, STEP TWO: the digest check as an OBSERVATION, not as a shell test. The cited
+// op runs sha256sum over the downloaded file; its stdout line is folded by
+// `verified_binary_install_admission` below. Reading the digest instead of trusting a piped `sha256sum -c`
+// is what lets the refusal be a value: a shell can only abort, a type can say which refusal.
+fn verified_binary_install_verify_step(p: VerifiedBinaryInstallParams) -> ArgvCommand {
+  sha256sum_file_command(path: p.download_path)
+}
+
+// THE VERIFY LINE FOR THE SHELL REALIZATION: `echo '<hex>  <path>' | sha256sum -c -` through the
+// cited op. Under `set -e` a mismatching line is a non-zero exit that aborts the script before the
+// first move, chmod, or cleanup -- the shell form of the same refusal the typed admission states.
+fn verified_binary_install_verify_line(p: VerifiedBinaryInstallParams) -> String {
+  digest_shell_verify_line(digest: p.digest, file_path: p.download_path as NonEmptyStr)
+}
+
+// THE GATE BETWEEN THE TWO HALVES OF THE EFFECT. `observed_sha256sum_line` is the stdout of
+// `verified_binary_install_verify_step`. A line sha256sum did not produce (a missing file, a
+// truncated read) yields no digest and REFUSES; a digest that is not the expected one REFUSES.
+// Nothing in either branch installs anything. THIS IS THE RED'S SUBJECT: a digest mismatch refuses
+// and nothing gets installed.
+// The check's verdict. The refusal carries BOTH values: a refusal that says only "mismatch" cannot be
+// triaged, and a refusal that drops the observed line destroys the difference between "the download is
+// corrupt" and "no digest was ever computed" -- which is the difference between a failed attack and a
+// failed build. `Verified` carries the digest that was actually seen, so an admitted install can be
+// audited against the byte the check read rather than against the value it hoped for.
+type VerifiedBinaryInstallVerdict =
+  | Verified { observed: Digest }
+  | Refused { reason: String, expected: Digest, observed_line: String }
+
+// WHY THE PLAN IS A SUM AND NOT A LIST. A caller that receives `List<ArgvCommand>` and sees `[]` cannot
+// tell three different worlds apart: the binary was already in place, the download produced no byte, or
+// verification refused. All three look like a successful no-op to a caller that can only count steps --
+// the silent default DESIGN 3 and 6b forbid, and the reason `host_effect_plan_apply` refuses an empty
+// plan rather than converging on it. So the refusal travels as its own arm, carrying the reason and
+// BOTH digests (a refusal that drops the observed line cannot distinguish "the download is corrupt"
+// from "no digest was ever computed", which is the difference between a failed attack and a failed
+// build), plus the destination and url so the caller's message names what it refused to touch.
+// A caller reporting to a human maps RefusedToInstall onto NotConverged with `reason` -- the same
+// carrier every other host effect uses (std.realization_reconcile.Reconciliation).
+type VerifiedBinaryInstallPlan =
+    Planned { steps: List<ArgvCommand> }
+  | RefusedToInstall {
+      reason: String,
+      expected: Digest,
+      observed_line: String,
+      dest_path: NonEmptyStr,
+      source_url: NonEmptyStr,
+    }
+
+data verified_binary_install_unreadable_line_refusal_reason: String = "verified_binary_install: the sha256sum -c line produced no digest, so the download was never verified and nothing is installed"
+
+data verified_binary_install_digest_mismatch_refusal_reason: String = "verified_binary_install: the sha256sum -c line reports a digest other than the expected one, so the download does not match the pinned release and nothing is installed"
+
+// The refusal, built at the one site that knows which case it is. The reason quotes BOTH the expected
+// digest and the line actually read, because the two refusal cases have to stay distinguishable to
+// whoever receives them: a mirror that served a 404 and an attacker who swapped the archive both look
+// like "the check failed" until the reason says which digest was wanted and what the check saw.
+fn verified_binary_install_refused(
+  base: String,
+  expected: Digest,
+  observed_sha256sum_line: String,
+) -> VerifiedBinaryInstallVerdict {
+  Refused {
+    reason: join(
+      [base, " -- expected sha256 ", expected.hex as String, ", read: ", observed_sha256sum_line],
+      "",
+    ),
+    expected: expected,
+    observed_line: observed_sha256sum_line,
+  }
+}
+
+fn verified_binary_install_admission(
+  expected: Digest,
+  observed_sha256sum_line: String,
+) -> VerifiedBinaryInstallVerdict {
+  match sha256sum_line_digest(line: observed_sha256sum_line) {
+    Absent =>
+      verified_binary_install_refused(
+        base: verified_binary_install_unreadable_line_refusal_reason,
+        expected: expected,
+        observed_sha256sum_line: observed_sha256sum_line,
+      )
+    Present { value: d } =>
+      if d == expected { Verified { observed: d } } else { verified_binary_install_refused(base: verified_binary_install_digest_mismatch_refusal_reason, expected: expected, observed_sha256sum_line: observed_sha256sum_line) }
+  }
+}
+
+// INSTALL-BINARY: the body that runs only after the gate admits it. Extract with the archive's own
+// layout preserved (--strip-components=0: the member path the caller supplied is the path
+// extraction produces, so `staged_binary_path` cannot disagree with the member), move it to the
+// destination, set the mode, delete the staging files. Cleanup is part of the effect rather than a
+// courtesy: an install that leaves a world-readable copy of its own archive in /tmp has a second,
+// unverified copy of the binary lying around.
+fn verified_binary_install_install_steps(p: VerifiedBinaryInstallParams) -> List<ArgvCommand> {
+  let extract =
+    tar_extract_command(archive: p.download_path, into_directory: p.extract_root, strip_components: 0)
+  let move =
+    if p.elevated { sudo_elevate_command(command: ["mv", p.staged_binary_path, p.dest_path]) }
+    else { mv_exact_destination_command(source: p.staged_binary_path, destination: p.dest_path) }
+  let mode =
+    if p.elevated { sudo_elevate_command(command: ["chmod", p.exec_mode as String, p.dest_path]) }
+    else { chmod_set_mode_command(chmod_program: chmod_binary_path, mode: p.exec_mode, path: p.dest_path) }
+  let cleanup_archive = rm_recursive_force_command(path: p.download_path)
+  let cleanup_staging = rm_recursive_force_command(path: p.staged_root)
+  [extract, move, mode, cleanup_archive, cleanup_staging]
+}
+
+// THE ADMITTED PLAN. The fold the RED reads: on Refused there is NO plan at all, and the caller is told
+// why in its own value -- not a shorter plan, not a best-effort plan, and not an empty list that a caller
+// could mistake for "nothing to do, all done". "Nothing gets installed" is therefore a statement about
+// the returned value rather than about how a shell happened to exit, and the reason for it survives all
+// the way to whoever reports the step. On Verified the plan is the install body.
+fn verified_binary_install_admitted_plan(
+  p: VerifiedBinaryInstallParams,
+  observed_sha256sum_line: String,
+) -> VerifiedBinaryInstallPlan {
+  match verified_binary_install_admission(expected: p.digest, observed_sha256sum_line: observed_sha256sum_line) {
+    Refused { reason: why, expected: e, observed_line: seen } =>
+      RefusedToInstall {
+        reason: why,
+        expected: e,
+        observed_line: seen,
+        dest_path: p.dest_path,
+        source_url: p.url,
+      }
+    Verified { observed: _ } => Planned { steps: verified_binary_install_install_steps(p: p) }
+  }
+}
+
+// The steps of an admitted plan, or nothing when the check refused. Callers that want the refusal must
+// match on `verified_binary_install_admitted_plan` themselves; this exists so a caller that has already
+// admitted the install can hand its steps to a transport without re-matching.
+fn verified_binary_install_plan_steps(plan: VerifiedBinaryInstallPlan) -> List<ArgvCommand> {
+  match plan {
+    Planned { steps: s } => s
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => []
+  }
+}
+
+// Whether the plan carries an install at all. A caller that reports to a human should use
+// `verified_binary_install_plan_refusal_reason` on the false branch rather than reporting success.
+fn verified_binary_install_plan_is_planned(plan: VerifiedBinaryInstallPlan) -> Bool {
+  match plan {
+    Planned { steps: _ } => true
+    RefusedToInstall { reason: _, expected: _, observed_line: _, dest_path: _, source_url: _ } => false
+  }
+}
+
+// THE REFUSAL, AS THE CALLER SEES IT. Present exactly when no install will happen, carrying the reason
+// and both digests so a step reporting `NotConverged { reason: ... }` reports the truth of WHY rather
+// than an empty plan that reads as a no-op (std.realization_reconcile.Reconciliation is the carrier the
+// host pipeline already uses; this is the same fact in the shape that feeds it).
+fn verified_binary_install_plan_refusal_reason(plan: VerifiedBinaryInstallPlan) -> String? {
+  match plan {
+    Planned { steps: _ } => Absent
+    RefusedToInstall { reason: why, expected: _, observed_line: _, dest_path: _, source_url: _ } =>
+      Present { value: why }
+  }
+}
+
+// THE PRESENCE OBSERVATION. The effect is idempotent and its precondition is an observation: if the
+// destination is already there and executable, nothing is fetched and nothing is moved. This
+// replaces the `if [ ! -x ... ]` guard a consumer used to concatenate by hand; the cited op is the
+// same one, so the typed observation and the shell spelling cannot drift apart.
+fn verified_binary_install_destination_present_command(p: VerifiedBinaryInstallParams) -> ArgvCommand {
+  test_executable_command(path: p.dest_path)
+}
+
+type VerifiedBinaryInstallPresence =
+  | AlreadyInstalled { dest_path: String }
+  | InstallNeeded { dest_path: String }
+
+fn verified_binary_install_destination_present(
+  p: VerifiedBinaryInstallParams,
+  test_executable_exit: Int,
+) -> VerifiedBinaryInstallPresence {
+  if test_executable_exit == 0 { AlreadyInstalled { dest_path: p.dest_path } }
+  else { InstallNeeded { dest_path: p.dest_path } }
+}
+
+// THE SHELL REALIZATION. `set -e` first, then one line per typed step in the typed order: fetch,
+// verify, extract, move, mode, cleanup. The verify line is the only line that is not the render of
+// an ArgvCommand, because a check is a pipeline rather than an invocation -- which is exactly why
+// the typed route above reads a digest instead of trusting it.
+fn verified_binary_install_shell(p: VerifiedBinaryInstallParams) -> String {
+  join(
+    list_append(
+      left: [
+        "set -e",
+        shell_command_render(command: verified_binary_install_fetch_step(p: p)),
+        verified_binary_install_verify_line(p: p),
+      ],
+      right: map(
+        verified_binary_install_install_steps(p: p),
+        step => shell_command_render(command: step),
+      ),
+    ),
+    "\n",
+  )
+}
