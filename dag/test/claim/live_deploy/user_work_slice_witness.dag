@@ -534,9 +534,12 @@ test fn the_seed_trampoline_mirrors_the_declared_wrap_standing() -> Bool {
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds innermost_modeled_capped_slice`")
     && string_contains(s: seed, pattern: "UserWorkScopeStanding::UserSessionAbsent =>")
     && string_contains(s: seed, pattern: "SEED MIRROR of `gunbc.compute.unit_bounds cgroup_bound_fallthrough_wire`")
-    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: live_fixture()), "\"")))
-    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: unread_chain(detail: "fixture")), "\"")))
-    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0"])), "\"")))
+    // The three wire words are a RENDERING OF THE CHECK'S ANSWER (cgroup_bound_fallthrough_wire now
+    // consumes EnclosingBoundObservation), so the rows pass the check itself -- a premise that skipped
+    // the check could not print them.
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: check_against(ci_fixture_cgroup(), live_fixture())), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: check_against(ci_fixture_cgroup(), unread_chain(detail: "fixture"))), "\"")))
+    && string_contains(s: seed, pattern: concat("\"", concat(cgroup_bound_fallthrough_wire(bound: check_against(ci_fixture_cgroup(), chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0"]))), "\"")))
     // The refusal line the seed prints is the declared wire for the same standing, byte for byte: a
     // premise, the cgroup consulted, and what its memory.max said.
     && string_contains(s: seed, pattern: user_work_scope_standing_wire(s: UncappedEnclosingCgroup { premise: InCiRunnerEnvironment, cgroup: ci_fixture_cgroup(), cause: NoFiniteMemoryMax }))
@@ -579,6 +582,11 @@ fn runner_slot_fixture_dir() -> String {
 
 fn live_fixture() -> CgroupBoundObservation {
   chain(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/job.service", max: "21474836480")], swap: ["0"])
+}
+
+// The ONE check applied to a chain reading, as the standing-composing fold receives it.
+fn check_against(text: String, bound: CgroupBoundObservation) -> EnclosingBoundObservation {
+  live_enclosing_bound(bound: bound, cgroup_text: text)
 }
 
 fn seed_fixture_assert_eq(seed: String, wire: String) -> Bool {
@@ -1220,17 +1228,17 @@ fn bound_standing(levels: List<CgroupMemoryLevel>, swap: List<String>) -> String
 }
 
 test fn a_binding_memory_max_with_swap_forbidden_bounds_the_process_whatever_its_unit_is_called() -> Bool {
-  string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]), pattern: "ExemptUnderObservedBound:unmodeled-system-unit:system.slice:gunbc-revision-job.service:")
-    && string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]), pattern: ":21474836480")
-    && string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max"), level(dir: "/sys/fs/cgroup/system.slice", max: "8589934592")], swap: ["max", "0"]), pattern: ":8589934592")
+  string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level_at(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]), pattern: "ExemptUnderObservedBound:unmodeled-system-unit:system.slice:gunbc-revision-job.service:")
+    && string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/gunbc-revision-job.service", max: "21474836480"), level_at(dir: "/sys/fs/cgroup/system.slice", max: "max")], swap: ["0", "max"]), pattern: ":21474836480")
+    && string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max"), level_at(dir: "/sys/fs/cgroup/system.slice", max: "8589934592")], swap: ["max", "0"]), pattern: ":8589934592")
 }
 
 test fn unbounded_or_swap_allowed_or_unread_chains_refuse() -> Bool {
-  string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]), pattern: "UncappedEnclosingCgroup:unmodeled-system-unit:system.slice:gunbc-revision-job.service @ 0::/system.slice/gunbc-revision-job.service: no finite memory.max")
-    && string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]), pattern: "is not binding: no level on the chain sets memory.swap.max to 0")
+  string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "max")], swap: ["0"]), pattern: "UncappedEnclosingCgroup:unmodeled-system-unit:system.slice:gunbc-revision-job.service @ 0::/system.slice/gunbc-revision-job.service: no finite memory.max")
+    && string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480")], swap: ["max"]), pattern: "is not binding: no level on the chain sets memory.swap.max to 0")
     && string_contains(s: bound_standing(levels: [], swap: []), pattern: "no finite memory.max")
-    && string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "0")], swap: ["0"]), pattern: "memory.max is 0 at /sys/fs/cgroup/system.slice/x.service, which systemd reads as no limit")
-    && string_contains(s: bound_standing(levels: [level(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480"), level(dir: "/sys/fs/cgroup/system.slice", max: "0")], swap: ["0", "max"]), pattern: "memory.max is 0 at /sys/fs/cgroup/system.slice,")
+    && string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "0")], swap: ["0"]), pattern: "memory.max is 0 at /sys/fs/cgroup/system.slice/x.service, which systemd reads as no limit")
+    && string_contains(s: bound_standing(levels: [level_at(dir: "/sys/fs/cgroup/system.slice/x.service", max: "21474836480"), level_at(dir: "/sys/fs/cgroup/system.slice", max: "0")], swap: ["0", "max"]), pattern: "memory.max is 0 at /sys/fs/cgroup/system.slice,")
     && string_contains(s: user_work_scope_standing_wire(s: user_work_scope_standing(unit_test: false, github_actions: false,
          cgroup: CgroupText { text: "0::/system.slice/x.service" }, bound: CgroupChainUnread { detail: "unreadable" },
          user_manager_reachable: false, xdg_runtime_dir: false
