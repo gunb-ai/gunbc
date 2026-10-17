@@ -7,8 +7,11 @@ import gunbc.firmware_network_boot_standing {
 }
 import gunbc.firmware_network_boot_probe {
   FirmwareBootFamilyRow, BmcStack, RouteVerdict,
+  firmware_boot_axis_reader_frontier_status, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
 }
 import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionPending, DissolutionFired }
 import extdeps.bmc.types { BootTargetPxe }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.external_authority { TranscribedUncited }
@@ -160,4 +163,21 @@ test fn a_sixth_family_probes_without_touching_the_instrument() -> Bool {
     BmcObserved { subject: _, observation: o } => is_observed_boot_order(o: o)
     BmcUnreachable { subject: _, attempt: _ } => false
   }
+}
+
+test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
+  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
+  let pending = match firmware_boot_axis_reader_frontier_status(present_decls: []) {
+    DissolutionPending => true
+    _ => false
+  }
+  let fired = match firmware_boot_axis_reader_frontier_status(present_decls: [reader]) {
+    DissolutionFired => true
+    _ => false
+  }
+  let uninhabited = match firmware_boot_axis_reply_inhabitation {
+    AxisReplyUninhabited { owed_by: o, over: _, falsified_by: _ } => o == reader
+    AxisReplyInhabitedByReader { observed: _ } => false
+  }
+  pending && fired && uninhabited
 }

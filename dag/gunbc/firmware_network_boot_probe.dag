@@ -4,6 +4,8 @@ import std.types { Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.dissolution { DissolutionCondition, DissolutionStatus, BoundDissolution, DeclarationAppears, dissolution_status }
+import std.decl_ref { DeclarationRef, decl_ref }
 
 // S0 IMPORT, ONE MARKED BLOCK. The observation vocabulary belongs to gunbc.firmware_network_boot_standing
 // (S0); this module emits it and defines none of it. Nothing outside this block names where these
@@ -352,4 +354,39 @@ fn firmware_boot_family_rows() -> List<FirmwareBootFamilyRow> {
       coverage: all_axes_answered()
     ),
   ]
+}
+
+// ---- THE FRONTIER THIS MODULE OWES: A REAL READER FOR AxisReply.
+//
+// probe() consumes AxisReply, and nothing yet decodes a real extdeps.bmc reply into one, so every
+// run of this module is fixtures-in / fixtures-out. The decoder belongs in its own module, not here:
+// extdeps.bmc.{megarac,openbmc,redfish} own their command surfaces, and a decoder written in the
+// probe's file would be a second owner of that surface that cannot be reviewed as transport work.
+// Until it exists the frontier is Pending and the inhabitation claim is Uninhabited, both as values
+// rather than prose, so a reader cannot mistake "tested on fixtures" for "emits what a BMC says".
+data firmware_boot_axis_reader_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: firmware_boot_axis_reader_ref() },
+}
+
+// THE NAME IS A COMMITMENT, NOT A DISCOVERY: no branch declares a decoder yet, so this ref names the
+// declaration the reader module must introduce (gunbc.firmware_network_boot_readers, fn
+// redfish_axis_replies, returning List<AxisReply>). The witness pins the literal; renaming the
+// future decoder means editing this one fn and that pin, and until then the status stays Pending
+// on purpose rather than reporting a discharge nobody earned.
+fn firmware_boot_axis_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
+}
+
+fn firmware_boot_axis_reader_frontier_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  dissolution_status(condition: firmware_boot_axis_reader_frontier, present_decls: present_decls)
+}
+
+type AxisReplyInhabitation
+  = AxisReplyUninhabited { owed_by: DeclarationRef, over: NonEmptyStr, falsified_by: NonEmptyStr }
+  | AxisReplyInhabitedByReader { observed: NonEmptyStr }
+
+data firmware_boot_axis_reply_inhabitation: AxisReplyInhabitation = AxisReplyUninhabited {
+  owed_by: firmware_boot_axis_reader_ref(),
+  over: "AxisReply: one reply per answered axis decoded from an extdeps.bmc reply, boot entries classified by RedfishBootSourceOverrideTarget kind, every BMC refusal a FirmwareReadRefusal",
+  falsified_by: "a reader that maps an empty or malformed BMC body to an Observed empty list, guesses a boot-entry kind from a label, or turns a refusal into no reply",
 }
