@@ -1,6 +1,7 @@
 module extdeps.provisioning.ubuntu_arm64_network_origin
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, FiniteByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
 import std.optional { Absent, Present }
 import std.content_hash { content_hash_validate_lower_hex_length, content_hash_validate_lower_hex_syntax }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -84,22 +85,22 @@ fn origin_iso_member_path(role: OriginArtefactRole) -> NonEmptyStr? {
 }
 
 // A PIN IS A SHA-256 DIGEST AND A NON-ZERO SIZE, and the standing says where the digest came
-// from. The constructor takes the hex, not a Digest, so a sha512 pin (or a hex that is not 64
-// lower-case digits, or an empty artefact) has no spelling; it returns absence instead.
+// from. The size is std.measure FiniteByteSize, so an empty artefact has no constructor rather
+// than a check. The constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and
+// a hex that is not 64 lower-case digits returns absence.
 // A second algorithm is a second constructor when an upstream publishes one.
 type PinnedArtefact sole_constructor {
   digest: Digest
-  size_bytes: Int
+  size: FiniteByteSize
   standing: CitedFigureStanding
 }
 
 data sha256_hex_width: Int = 64
 
-fn pinned_artefact(sha256_hex: NonEmptyStr, size_bytes: Int, standing: CitedFigureStanding) -> PinnedArtefact? {
-  if size_bytes > 0
-    && content_hash_validate_lower_hex_length(text: sha256_hex as String, expected_hex_digits: sha256_hex_width)
+fn pinned_artefact(sha256_hex: NonEmptyStr, size: FiniteByteSize, standing: CitedFigureStanding) -> PinnedArtefact? {
+  if content_hash_validate_lower_hex_length(text: sha256_hex as String, expected_hex_digits: sha256_hex_width)
     && content_hash_validate_lower_hex_syntax(text: sha256_hex as String) {
-    Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size_bytes: size_bytes, standing: standing } }
+    Present { value: PinnedArtefact { digest: sha256_digest(hex: sha256_hex), size: size, standing: standing } }
   } else {
     Absent
   }
@@ -137,7 +138,7 @@ fn origin_artefact(origin: UbuntuNetworkOrigin, role: OriginArtefactRole) -> Pin
 
 // WHAT A FETCH-AND-HASH PRODUCED FOR ONE ARTEFACT. Not fetching is a reading, not an error.
 type ArtefactReading
-  = ArtefactRead { digest: Digest, size_bytes: Int }
+  = ArtefactRead { digest: Digest, size: ByteSize }
   | ArtefactNotFetched { why: NonEmptyStr }
 
 // VERIFIABLE OR REFUSED. Observed means every artefact was read and equals its pin; a mirror that
@@ -155,14 +156,14 @@ fn origin_digest_equal(a: Digest, b: Digest) -> Bool {
 
 fn origin_reading_mismatches(pin: PinnedArtefact, reading: ArtefactReading) -> Bool {
   match reading {
-    ArtefactRead { digest: d, size_bytes: s } => origin_digest_equal(a: d, b: pin.digest) == false || s != pin.size_bytes
+    ArtefactRead { digest: d, size: s } => origin_digest_equal(a: d, b: pin.digest) == false || byte_size_count(b: s) != finite_byte_size_count(size: pin.size)
     ArtefactNotFetched { why: _ } => false
   }
 }
 
 fn origin_reading_unfetched(reading: ArtefactReading) -> NonEmptyStr? {
   match reading {
-    ArtefactRead { digest: _, size_bytes: _ } => Absent
+    ArtefactRead { digest: _, size: _ } => Absent
     ArtefactNotFetched { why: w } => Present { value: w }
   }
 }
@@ -207,7 +208,7 @@ data ubuntu_casper_member_read_obligation: NonEmptyStr = "Re-derive: curl -O htt
 fn ubuntu_noble_arm64_kernel_pin() -> PinnedArtefact? {
   pinned_artefact(
     sha256_hex: "b4567593bda98a0723d9234603ec51d6ec7ee0553e1f36793a9da3956a68183e",
-    size_bytes: 18581403,
+    size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)),
     standing: TranscribedUncited { read_obligation: ubuntu_casper_member_read_obligation },
   )
 }
@@ -215,7 +216,7 @@ fn ubuntu_noble_arm64_kernel_pin() -> PinnedArtefact? {
 fn ubuntu_noble_arm64_initrd_pin() -> PinnedArtefact? {
   pinned_artefact(
     sha256_hex: "993024a4daa493bd297ca34a6ed60efaf932225b25f901a3734d2ee6c57af187",
-    size_bytes: 76091508,
+    size: finite_byte_size(count: positive_measure_count(predecessor: 76091507)),
     standing: TranscribedUncited { read_obligation: ubuntu_casper_member_read_obligation },
   )
 }
@@ -223,7 +224,7 @@ fn ubuntu_noble_arm64_initrd_pin() -> PinnedArtefact? {
 fn ubuntu_noble_arm64_installer_filesystem_pin() -> PinnedArtefact? {
   pinned_artefact(
     sha256_hex: "f12484464c7d4d73e2167e0a7dbda1e669f8fae9bcf778dc0944937034b320cb",
-    size_bytes: 3825512448,
+    size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
     standing: CitedToAuthority { authority: ubuntu_release_sha256sums_authority },
   )
 }

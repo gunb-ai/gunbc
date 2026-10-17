@@ -1,6 +1,7 @@
 module test.claim.ubuntu_arm64_network_origin_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure { byte_size, finite_byte_size, positive_measure_count }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
@@ -45,9 +46,9 @@ test fn matching_readings_are_observed() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
-      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size_bytes: 18581403 },
-      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size_bytes: 76091508 },
-      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size_bytes: 3825512448 },
+      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size: byte_size(count: 18581403) },
+      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size: byte_size(count: 76091508) },
+      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size: byte_size(count: 3825512448) },
     ) {
       OriginObserved { origin: _ } => true
       _ => false
@@ -60,9 +61,9 @@ test fn a_mirror_serving_other_bytes_is_a_mismatch_not_observed() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
-      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size_bytes: 18581403 },
-      initrd: ArtefactRead { digest: sha256_digest(hex: other_hex), size_bytes: 76091508 },
-      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size_bytes: 3825512448 },
+      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size: byte_size(count: 18581403) },
+      initrd: ArtefactRead { digest: sha256_digest(hex: other_hex), size: byte_size(count: 76091508) },
+      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size: byte_size(count: 3825512448) },
     ) {
       OriginMismatch { role: OriginInitrd, expected: _, actual: _ } => true
       _ => false
@@ -75,9 +76,9 @@ test fn the_right_digest_at_the_wrong_size_is_a_mismatch() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
-      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size_bytes: 18581402 },
-      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size_bytes: 76091508 },
-      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size_bytes: 3825512448 },
+      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size: byte_size(count: 18581402) },
+      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size: byte_size(count: 76091508) },
+      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size: byte_size(count: 3825512448) },
     ) {
       OriginMismatch { role: OriginKernel, expected: _, actual: _ } => true
       _ => false
@@ -90,9 +91,9 @@ test fn the_same_hex_under_another_algorithm_is_a_mismatch() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
-      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size_bytes: 18581403 },
-      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size_bytes: 76091508 },
-      installer_filesystem: ArtefactRead { digest: sha512_digest(hex: iso_hex), size_bytes: 3825512448 },
+      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size: byte_size(count: 18581403) },
+      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size: byte_size(count: 76091508) },
+      installer_filesystem: ArtefactRead { digest: sha512_digest(hex: iso_hex), size: byte_size(count: 3825512448) },
     ) {
       OriginMismatch { role: OriginInstallerFilesystem, expected: _, actual: _ } => true
       _ => false
@@ -105,8 +106,8 @@ test fn an_unfetched_artefact_is_unfetched_not_observed() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
-      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size_bytes: 18581403 },
-      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size_bytes: 76091508 },
+      kernel: ArtefactRead { digest: sha256_digest(hex: kernel_hex), size: byte_size(count: 18581403) },
+      initrd: ArtefactRead { digest: sha256_digest(hex: initrd_hex), size: byte_size(count: 76091508) },
       installer_filesystem: ArtefactNotFetched { why: "mirror unreachable" },
     ) {
       OriginUnfetched { role: OriginInstallerFilesystem, why: _ } => true
@@ -121,8 +122,8 @@ test fn a_mismatch_outranks_an_unfetched_artefact() -> Bool {
     Present { value: o } => match verify_ubuntu_network_origin(
       origin: o,
       kernel: ArtefactNotFetched { why: "not read" },
-      initrd: ArtefactRead { digest: sha256_digest(hex: other_hex), size_bytes: 76091508 },
-      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size_bytes: 3825512448 },
+      initrd: ArtefactRead { digest: sha256_digest(hex: other_hex), size: byte_size(count: 76091508) },
+      installer_filesystem: ArtefactRead { digest: sha256_digest(hex: iso_hex), size: byte_size(count: 3825512448) },
     ) {
       OriginMismatch { role: OriginInitrd, expected: _, actual: _ } => true
       _ => false
@@ -141,21 +142,17 @@ test fn the_origin_architecture_is_aarch64() -> Bool {
   }
 }
 
-test fn a_pin_refuses_malformed_hex_and_empty_size() -> Bool {
+test fn a_pin_refuses_malformed_hex() -> Bool {
   let standing = TranscribedUncited { read_obligation: "witness" }
-  let short = match pinned_artefact(sha256_hex: "abc", size_bytes: 1, standing: standing) {
+  let short = match pinned_artefact(sha256_hex: "abc", size: finite_byte_size(count: positive_measure_count(predecessor: 0)), standing: standing) {
     Present { value: _ } => false
     Absent => true
   }
-  let upper = match pinned_artefact(sha256_hex: "B4567593BDA98A0723D9234603EC51D6EC7EE0553E1F36793A9DA3956A68183E", size_bytes: 1, standing: standing) {
+  let upper = match pinned_artefact(sha256_hex: "B4567593BDA98A0723D9234603EC51D6EC7EE0553E1F36793A9DA3956A68183E", size: finite_byte_size(count: positive_measure_count(predecessor: 0)), standing: standing) {
     Present { value: _ } => false
     Absent => true
   }
-  let empty = match pinned_artefact(sha256_hex: kernel_hex, size_bytes: 0, standing: standing) {
-    Present { value: _ } => false
-    Absent => true
-  }
-  short && upper && empty
+  short && upper
 }
 
 test fn the_installer_url_derives_from_release_and_architecture() -> Bool {
