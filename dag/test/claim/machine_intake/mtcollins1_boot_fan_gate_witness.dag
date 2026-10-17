@@ -48,9 +48,18 @@ test fn a_mixed_chassis_with_one_fitted_fan_at_zero_refuses() -> Bool {
   refused(v: boot_fan_gate_verdict(fitted: fitted(), round: round(on: true, lines: [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "0 RPM" as NonEmptyStr)])))
 }
 
-// The unit's own fitted set is still unestablished: the gate refuses, naming the obligation, rather than guess.
-test fn the_unestablished_unit_fitted_set_refuses_even_with_every_fan_spinning() -> Bool {
-  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: spinning())))
+fn unit_rows(fan5_1: NonEmptyStr) -> List<SdrTypeLine> {
+  [row(name: "FAN4_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN4_1_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_0_Speed" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN5_1_Speed" as NonEmptyStr, reading: fan5_1), row(name: "FAN0_0_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr), row(name: "FAN3_1_Speed" as NonEmptyStr, reading: "No Reading" as NonEmptyStr)]
+}
+
+// The unit's own fixed set against the observed 05:25:07Z shape: the four observed rotors spin and the empty
+// headers read nothing, so it is established; one fitted rotor at zero refuses.
+test fn the_unit_fitted_set_is_established_on_the_observed_reading() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: unit_rows(fan5_1: "5800 RPM" as NonEmptyStr)))) == false
+}
+
+test fn the_unit_fitted_set_refuses_when_one_fitted_rotor_reads_zero() -> Bool {
+  refused(v: boot_fan_gate_verdict(fitted: mtcollins1_fitted_fan_set, round: round(on: true, lines: unit_rows(fan5_1: "0 RPM" as NonEmptyStr))))
 }
 
 test fn a_stop_that_read_back_off_carries_the_manager_standing() -> Bool {
