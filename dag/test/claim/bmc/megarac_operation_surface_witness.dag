@@ -377,6 +377,7 @@ test fn unreadable_temperature_re_enables_the_cooling_manager() -> Bool {
         }
     MegaRacThermalGuardHolds => false
     MegaRacThermalGuardTrip { sensor: _, temperature: _ } => false
+    MegaRacThermalGuardCeilingUnestablished { sensor: _, model: _, read_obligation: _ } => false
   }
 }
 

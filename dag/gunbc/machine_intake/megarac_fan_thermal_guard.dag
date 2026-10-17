@@ -6,7 +6,11 @@ import std.measure { Celsius, Percent }
 import product.fleet_fan_policy {
   ChassisOutlet,
   DimmChannel,
+  GuardCeilingUnstated,
   GuardHolds,
+  GuardRunExited,
+  GuardSensorUnreadable,
+  GuardTripped,
   GuardRestoreAutomatic,
   SocJunction,
   ThermalGuardRole,
@@ -81,7 +85,11 @@ fn megarac_guard_component_ceiling(kind: ThermalGuardRole, cpu_limits: Processor
   }
 }
 
-// WHAT ONE SENSOR READING SAYS, KEEPING THE POLICY'S OWN CAUSE: a ceiling the host's CPU model has no
+// WHAT ONE SENSOR READING SAYS, MAPPED EXHAUSTIVELY FROM THE POLICY'S GuardRestoreCause (a new policy cause
+// is a compile error here, not a silent trip). This sum exists only because the family verdict and restore
+// carry MegaRAC sensor names and the CPU model, which the role-keyed policy cause does not; it is a
+// projection of GuardRestoreCause, not a second vocabulary.
+// a ceiling the host's CPU model has no
 // limits row for is NOT a temperature trip (no threshold was established); it still restores automatic.
 type MegaRacSensorVerdict
   = MegaRacSensorHolds
@@ -99,7 +107,9 @@ fn megarac_sensor_verdict(sensor: NonEmptyStr, temperature: Celsius, cpu_limits:
     ) {
       GuardHolds => MegaRacSensorHolds
       GuardRestoreAutomatic { cause: GuardCeilingUnstated { role: _ } } => MegaRacSensorCeilingUnestablished
-      GuardRestoreAutomatic { cause: _ } => MegaRacSensorTrips
+      GuardRestoreAutomatic { cause: GuardTripped { role: _, temperature: _ } } => MegaRacSensorTrips
+      GuardRestoreAutomatic { cause: GuardSensorUnreadable { role: _ } } => MegaRacSensorTrips
+      GuardRestoreAutomatic { cause: GuardRunExited } => MegaRacSensorTrips
     }
   }
 }
