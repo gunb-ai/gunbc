@@ -212,17 +212,45 @@ fn bmc_capability_observation_citation(decl_name: String) -> FactCitation {
   }
 }
 
-// THE OPERATOR'S READ OF THE 2026-10-16 BMC web UI firmware page, as an instant in the shared-monotonic
-// wall-clock domain of that unit: BMC firmware 0.45.3, build 'Dec 27 2023 09:36:21 CDT', Image 1; BIOS
-// 0ACOD014; SCP shown blank. Carried as an ObservationInstant rather than a bare epoch-milliseconds
-// literal, because std.measure.ObservationInstant is the carrier the corpus already has and a bare scalar
-// with no domain or basis cannot be compared with anything — DESIGN.md §2, "net concepts must not grow by
-// re-invention" (review 81149, finding 2).
+// THE OPERATOR'S READ OF THE 2026-10-16 BMC web UI firmware page: BMC firmware 0.45.3, build 'Dec 27
+// 2023 09:36:21 CDT', Image 1; BIOS 0ACOD014; SCP shown blank. Carried as an ObservationInstant rather
+// than a bare epoch-milliseconds literal, because std.measure.ObservationInstant is the carrier the
+// corpus already has and a bare scalar with no domain or basis cannot be compared with anything —
+// DESIGN.md §2, "net concepts must not grow by re-invention" (review 81149, finding 2).
+//
+// THE DOMAIN IS THE UNIX EPOCH, not an origin named after the day being read (review 81301, blocking).
+// The draft paired a Unix-epoch count with origin "mtcollins1-bmc-web-ui-2026-10-16", which asserted
+// the attestation happened 56.8 years AFTER its own origin. Since std.measure.compare_instants only
+// orders within one domain, and a same-domain subtraction against that origin would have produced
+// nonsense rather than refusing, the origin has to be the thing the count is actually measured from.
+// Naming it the epoch makes the count mean what it says and makes the instant comparable with any other
+// Unix-epoch instant this repository reads -- the shape gunbc.wall_clock_model already uses for a
+// printed wall clock (ModeledWallClock.unix_at_origin: EpochSecs).
+//
+// PRECISION, stated because the count cannot carry it: the operator's report gave a DATE, not a
+// reading-time. So this is the first instant of 2026-10-16 UTC as an EARLIEST BOUND -- "on or after
+// 2026-10-16T00:00:00Z" -- and not a claim about the hour. A day-resolution reading stored in a
+// nanosecond field is honest only while the field's meaning is recorded, which is what this note and
+// the claim below are for; a consumer that needs sub-day ordering does not have it here and must not
+// invent it.
 data megarac_0_45_3_operator_attestation_instant: ObservationInstant = ObservationInstant {
-  domain: SharedMonotonic { origin: "mtcollins1-bmc-web-ui-2026-10-16" },
+  domain: SharedMonotonic { origin: "unix-epoch-1970-01-01T00:00:00Z" },
   basis: WallClock,
+  // 1792108800 seconds from the epoch = 2026-10-16T00:00:00Z, at nanosecond scale because that is the
+  // unit ObservationInstant carries. Derived, not typed from memory: `date -u -d @1792108800` prints
+  // exactly that instant, so the count and its origin agree.
   since_origin: nanosecond(count: 1792108800000000000),
 }
+
+// THE READING IS DAY-RESOLUTION, STATED IN THE CONVENTION THIS REPO ALREADY USES FOR A FACT NO FOLD
+// READS: `data <name>_note: String`, as std.measure.measure_clock_basis_note does for a clock basis.
+// Deliberately NOT a field on the standing -- a field nothing reads is the dangling row DESIGN.md Sec 3c
+// names, and no consumer needs sub-day ordering today. The instant above is an EARLIEST BOUND: the
+// 2026-10-16 web UI read gave a DATE, not a reading-time, so nothing may treat it as sub-day
+// resolution, and a question like "was the attestation after run 38789347052?" must come away
+// unresolved rather than pick a side. If a consumer ever needs that ordering, the resolution becomes a
+// fact worth modelling -- and this note is where the reason it was not modelled now is recorded.
+data megarac_0_45_3_operator_attestation_note: String = "day-resolution earliest bound"
 
 // THE CATALOG WE ESTABLISH, keyed by the release identity upstream names. Two rows today, and the
 // asymmetry between them is the point: the 0.32 row rests on a committed machine read with no run behind
@@ -328,7 +356,21 @@ type MegaRacReleaseCapabilityLookup
     | MegaRacReleaseCapabilityIncoherent { firmware: BmcFirmwareReleaseIdentity }
 
 fn megarac_release_capability_row_for(firmware: BmcFirmwareReleaseIdentity) -> MegaRacReleaseCapabilityLookup {
-  let hits = megarac_release_capability_catalog
+  megarac_release_capability_row_for_in(table: megarac_release_capability_catalog, firmware: firmware)
+}
+
+// THE SAME LOOKUP OVER A SUPPLIED TABLE, so the drift refusal is CLAIM-TESTABLE rather than asserted in
+// a comment. Review 81287 / manager: a row labelled one release while its evidence read another must
+// refuse on BOTH public paths before any effect. That state cannot be built in the shipped table (one
+// key, and the shipped rows agree with their evidence), so a witness supplies the drifted table and
+// asserts the refusal -- the shape board_soc_edges_for_in set for a supplied edge table. The shipped
+// entry point above resolves against the shipped catalog and nothing else, so this is the same
+// implementation on both paths, not a second path a consumer could be routed around.
+fn megarac_release_capability_row_for_in(
+  table: List<MegaRacReleaseCapabilityEntry>,
+  firmware: BmcFirmwareReleaseIdentity,
+) -> MegaRacReleaseCapabilityLookup {
+  let hits = table
     |> filter(entry => bmc_firmware_release_identity_eq(a: entry.row.firmware, b: firmware))
   let n = count(hits)
   if n == 0 {

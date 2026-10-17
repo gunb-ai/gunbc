@@ -92,9 +92,11 @@ type SmproUnestablishedCause
   // precedented in this corpus: BmcSecureRefusalCause.PreviouslyRotatedCredentialRequired.
   | BoardAdmitsNoSocFamily
   // The roster MIXES carrying and non-carrying families and nothing selects one. The counts ride along
-  // as NUMBERS on purpose: they are what a witness asserts (one mixed family of two is a different
-  // finding from one of nine). They are deliberately not rendered -- a checkable fact and a
-  // human-facing sentence are different jobs, and this DSL has no Int-to-String cast to fake one with.
+  // as NUMBERS rather than being folded into the sentence: they are what a witness asserts (one mixed
+  // family of two is a different finding from one of nine, and a rule that miscounted the roster would
+  // go red on the numbers instead of printing a plausible paragraph). The renderer below does print
+  // them, via the kernel's to_string, because telling the operator WHICH roster shape refused is the
+  // point of the diagnostic -- the numbers are the evidence, not an ornament.
   | MixedRosterWithoutInstalledSelection { total: Int, carrying: Int }
   // A subject needs a bound route; the secured account refused, and which refusal it was rides through
   // as the cause rather than being summarised into a sentence.
@@ -333,8 +335,10 @@ fn smpro_unestablished_cause_text(cause: SmproUnestablishedCause) -> String {
         " is observed but reaches no board row, so there is no hardware authority to ask what silicon is installed"], "")
     BoardAdmitsNoSocFamily =>
       "the bound board row admits no SoC family, so nothing is known about the silicon this machine carries"
-    MixedRosterWithoutInstalledSelection { total: _, carrying: _ } =>
-      "the bound board's compatibility roster mixes SMpro-carrying and non-carrying SoC families and no installed-silicon observation selects one, so this machine's platform is unknown"
+    MixedRosterWithoutInstalledSelection { total: total, carrying: carrying } =>
+      join(["the bound board's compatibility roster mixes SMpro-carrying and non-carrying SoC families (",
+        to_string(value: carrying), " of ", to_string(value: total),
+        " families carry it) and no installed-silicon observation selects one, so this machine's platform is unknown"], "")
     ControlRouteNotSecured { cause: _ } =>
       "no control route is bound because the secured account refused the binding"
     ControlEndpointMismatch { observed: o, secured: sec } =>

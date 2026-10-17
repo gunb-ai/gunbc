@@ -8,6 +8,8 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, Bmc
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
 import extdeps.bmc.capability {
   bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq,
+  BmcFirmwareReleaseCapabilityRow, bmc_capability_observation_citation,
+  CapabilityBootSourceOverride, CapabilityPowerControl, CapabilityOemRemoteMedia,
 }
 import extdeps.bmc.megarac { megarac_firmware_0_45_3 }
 import gunbc.host.virtual_media_boot_selection {
@@ -15,14 +17,26 @@ import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionRefused,
   VirtualMediaUnestablished,
 }
-import gunbc.host.host_capability_row { host_access_repoint_firmware, host_capability_row, HostCapabilityRowKnown }
+import gunbc.host.host_capability_row {
+  host_access_repoint_firmware, host_capability_row, host_capability_row_in,
+  HostCapabilityRowKnown, HostCapabilityRowIncoherent,
+}
 import gunbc.host.bmc_release_capability_catalog {
   megarac_release_capability_catalog, MegaRacReleaseCapabilityEntry,
   megarac_release_version_is_machine_read, megarac_release_entry_is_coherent,
+  MegaRacVersionMachineRead, megarac_run_38789347052_evidence,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.host.managed_host { managed_host_fixture, managed_hosts }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch }
+import std.measure {
+  ObservationInstant, SharedMonotonic, ProcessMonotonic, WallClock, nanosecond,
+  nanosecond_count, compare_instants, InstantOrder, InstantBefore, InstantSame,
+  InstantAfter, InstantIncomparable, clock_domain_eq,
+}
+import gunbc.machine_intake.oob_boot_handoff {
+  oob_boot_handoff_admission, oob_boot_handoff_admission_in, OobHandoffRowIncoherent,
+}
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.boot_medium {
   BootMedium,
@@ -40,7 +54,7 @@ import gunbc.host.managed_host_boot {
   BootSubjectHostUnbound,
   BootSubjectNoSelection,
   admit_boot_subject,
-  boot_selection,
+  boot_selection, boot_selection_in,
   boot_subject_admission_for,
   boot_subject_admission_in,
   boot_subject_admission_refusal,
@@ -296,4 +310,158 @@ test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> B
     let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
     real && red
   }) && count(managed_hosts()) == 1
+}
+
+// THE MANAGER'S DRIFT RED: A ROW THAT DISAGREES WITH ITS OWN EVIDENCE REFUSES BEFORE ANY EFFECT.
+// The catalog has ONE release key (entry.row.firmware), so a drifted entry cannot be built by
+// authoring -- which is exactly why it needs a claim, not a comment: "structurally impossible" was
+// the claim that let the old code delete its mismatch refusal. A supplied table is the only way to
+// reach the state, and the three shipped entry points all pass the shipped catalog through these same
+// implementations, so the refusal cannot be routed around.
+//
+// The drifted entry: keyed 0.45.3, machine-read standing, and its executed run's own bytes read 0.32.
+// That is a row borrowing a run it does not belong to -- a capability set corroborated by evidence
+// about a different build. Every public path must refuse it.
+// The drifted entry, AUTHORED FIELD BY FIELD rather than derived from the shipped table: a
+// derivation would inherit the shipped row's agreement with its own evidence and quietly stop being a
+// drift. The forged parts are marked; the release identities, the capability set and the run id are
+// the shipped ones, so only the disagreement is invented.
+fn drifted_release_entry() -> MegaRacReleaseCapabilityEntry {
+  MegaRacReleaseCapabilityEntry {
+    // The release this row is keyed by -- the catalog's single key is exactly this field.
+    row: BmcFirmwareReleaseCapabilityRow {
+      firmware: megarac_firmware_0_45_3,
+      capabilities: [
+        CapabilityBootSourceOverride,
+        CapabilityPowerControl,
+        CapabilityOemRemoteMedia,
+      ],
+    },
+    // FORGED: the row CLAIMS a machine read, which is the standing under which a row's release is
+    // supposed to rest on a machine read of its own build.
+    version: MegaRacVersionMachineRead {
+      read_from: "a forged pre-power hpm check -- no such read exists",
+    },
+    // THE REAL RUN, whose committed bytes read NO version (the shipped value's own wording). A
+    // machine-read standing beside an executed run that read nothing is the disagreement: capabilities
+    // presented as machine-established on evidence that establishes nothing about the release.
+    evidence: megarac_run_38789347052_evidence,
+    citations: [bmc_capability_observation_citation(decl_name: "drifted_release_entry")],
+  }
+}
+
+test fn w_a_row_its_own_evidence_does_not_support_refuses_on_every_public_path() -> Bool {
+  let drifted = [drifted_release_entry()]
+  match managed_hosts() |> first() {
+    // An empty fixture set would make every assertion below vacuously true, so it is a refusal rather
+    // than a silent pass: a claim that cannot see its subject has not established anything.
+    Absent => false
+    Present { value: h } => {
+    // 1. THE CAPABILITY ROW refuses, rather than handing out a capability set its evidence does not
+    // support -- and it names WHICH release it refused, so a witness can tell "refused" from "silent".
+    let row_refuses = match host_capability_row_in(table: drifted, access: h.access) {
+      HostCapabilityRowIncoherent { firmware: f } =>
+        bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+      _ => false
+    }
+    // 2. BOOT SELECTION refuses BEFORE any effect: no selection, so no attach, no override, no cycle.
+    let boot_refuses = match boot_selection_in(table: drifted, host: h) {
+      VirtualMediaBootSelectionRefused { cause: _ } => true
+      VirtualMediaBootSelectionAdmitted { selection: _ } => false
+    }
+    // 3. THE PUBLIC OUT-OF-BAND HANDOFF refuses: a host whose row cannot be trusted hands off nothing.
+    let handoff_refuses = match h.access {
+      BmcAccessObserved { observation: o } =>
+        match oob_boot_handoff_admission_in(table: drifted, observation: o) {
+          OobHandoffRowIncoherent { firmware: f } =>
+            bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_45_3)
+          _ => false
+        }
+      BmcAccessUnobserved { endpoint: _ } => false
+    }
+    // AND THE CONTROL, without which all three refusals above would pass on a lookup that refused
+    // everything: the shipped table, whose rows agree with their own evidence, resolves and selects.
+    let shipped_resolves = match host_capability_row(access: h.access) {
+      HostCapabilityRowKnown { row: row } =>
+        bmc_firmware_release_identity_eq(a: row.firmware, b: megarac_firmware_0_45_3)
+      _ => false
+    }
+    let shipped_boot = match boot_selection(host: h) {
+      VirtualMediaBootSelectionAdmitted { selection: _ } => true
+      VirtualMediaBootSelectionRefused { cause: _ } => false
+    }
+      row_refuses && boot_refuses && handoff_refuses && shipped_resolves && shipped_boot
+    }
+  }
+}
+
+// THE ATTESTATION INSTANT MEANS WHAT IT SAYS (review 81301, blocking). The draft declared
+// origin "mtcollins1-bmc-web-ui-2026-10-16" and then stored the Unix-epoch offset in since_origin,
+// which asserted the operator's read happened about 56.8 years after its own origin. std.measure
+// only orders instants WITHIN one domain, so the defect stayed invisible until something compared
+// two same-domain readings -- and then it would subtract to nonsense rather than refuse. This claim
+// pins both halves: the count sits at the day it names in the domain it names, and a reading in a
+// DIFFERENT domain comes away incomparable rather than nonsense.
+test fn w_the_operator_attestation_instant_is_coherent_with_its_own_origin() -> Bool {
+  let attested = megarac_0_45_3_operator_attestation_instant
+  // The count, read as an offset from the epoch, is 2026-10-16T00:00:00Z: 1792108800 seconds at
+  // nanosecond scale. Derived and checked against `date -u -d @1792108800`, not typed from memory.
+  let epoch_days = nanosecond_count(n: attested.since_origin) == 1792108800000000000
+  // The origin is the epoch itself, which is what makes that count mean 2026-10-16 rather than
+  // "56.8 years after the day being read".
+  let epoch_domain = match attested.domain {
+    SharedMonotonic { origin: o } => (o as String) == "unix-epoch-1970-01-01T00:00:00Z"
+    ProcessMonotonic { process: _ } => false
+  }
+  // A second reading in the SAME domain and basis subtracts sanely: five minutes later is after,
+  // not 56.8-years-plus-five-minutes after its own origin.
+  let later = ObservationInstant {
+    domain: SharedMonotonic { origin: "unix-epoch-1970-01-01T00:00:00Z" },
+    basis: WallClock,
+    since_origin: nanosecond(count: 1792108800000000000 + 300000000000),
+  }
+  let same_domain_orders = match compare_instants(a: attested, b: later) {
+    InstantBefore => true
+    InstantSame => false
+    InstantAfter => false
+    InstantIncomparable { left: _, right: _ } => false
+  }
+  // AND THE REFUSAL: the same reading in ANOTHER domain does not compare at all. This is the half
+  // the defect would have hidden -- the old origin, if anything had compared against it, produced a
+  // plausible number instead of refusing.
+  let other_domain = ObservationInstant {
+    domain: SharedMonotonic { origin: "mtcollins1-bmc-web-ui-2026-10-16" },
+    basis: WallClock,
+    since_origin: attested.since_origin,
+  }
+  let cross_domain_refuses = match compare_instants(a: attested, b: other_domain) {
+    InstantIncomparable { left: _, right: _ } => true
+    InstantBefore => false
+    InstantSame => false
+    InstantAfter => false
+  }
+  // The instant is the one the 0.45.3 row actually rests on, and the day-resolution of the reading
+  // is carried as a fact rather than left to the nanosecond field to imply: a date-only reading
+  // stored at nanosecond scale is an EARLIEST BOUND, and a consumer needing sub-day ordering has to
+  // be told it does not have it.
+  let row_carries_it = match megarac_release_capability_catalog
+    |> filter(e => bmc_firmware_release_identity_eq(a: e.row.firmware, b: megarac_firmware_0_45_3))
+    |> first() {
+    Present { value: e } => match e.version {
+      MegaRacVersionOperatorAttested { attested_on: on, detail: _, upgrade_read: _ } =>
+        clock_domain_eq(a: on.domain, b: attested.domain)
+        && nanosecond_count(n: on.since_origin) == nanosecond_count(n: attested.since_origin)
+        && (e.citations |> first() |> match {
+             Present { value: c } => (c.authority.declaration_ref.path as String) != ""
+             Absent => false
+           })
+      MegaRacVersionMachineRead { read_from: _ } => false
+    }
+    Absent => false
+  }
+  epoch_days && epoch_domain && same_domain_orders && cross_domain_refuses && row_carries_it
+    // The domain name is what carries the resolution honestly: an origin naming the EPOCH, rather
+    // than the day being read, is what stops a date-only reading from implying a time of day it never
+    // claimed. The companion note records that the reading is day-resolution.
+    && ((megarac_0_45_3_operator_attestation_note as String) == "day-resolution earliest bound")
 }
