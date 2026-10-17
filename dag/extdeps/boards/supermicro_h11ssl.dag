@@ -4,7 +4,7 @@ import std.types { List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure {
-  Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
+  Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
 import extdeps.boards.types { DimmPopulation, PopulationAdmission, admit_population }
 import extdeps.vendor.supermicro { supermicro }
@@ -48,6 +48,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
+
+type H11sslBoardRevision { major: Nat, minor: Nat }
+
+// What a CPU-support row is conditioned on; p.15 conditions 7002 on revision 2.x.
+type H11sslRevisionCondition = NoRevisionConditionStated | BoardMajorRevisionAtLeast { major: Nat }
 
 type H11sslVariant = VariantI | VariantC | VariantNc
 
@@ -97,12 +102,13 @@ type H11sslCpuSupport {
   family: H11sslCpuFamily
   socket_label: NonEmptyStr
   sockets: Nat
-  min_board_revision_label: NonEmptyStr
+  revision_condition: H11sslRevisionCondition
 }
 
+// p.15: '*AMD EPYC 7002 series drop-in support requires board revision 2.x'.
 data supermicro_h11ssl_cpu_support: List<H11sslCpuSupport> = [
-  H11sslCpuSupport { family: Epyc7001, socket_label: "SP3", sockets: 1, min_board_revision_label: "any stated revision" },
-  H11sslCpuSupport { family: Epyc7002, socket_label: "SP3", sockets: 1, min_board_revision_label: "2.x (p.15: '*AMD EPYC 7002 series drop-in support requires board revision 2.x')" },
+  H11sslCpuSupport { family: Epyc7001, socket_label: "SP3", sockets: 1, revision_condition: NoRevisionConditionStated },
+  H11sslCpuSupport { family: Epyc7002, socket_label: "SP3", sockets: 1, revision_condition: BoardMajorRevisionAtLeast { major: 2 } },
 ]
 
 data supermicro_h11ssl_socket_contact_count_standing: CitedFigureStanding = TranscribedUncited {
@@ -216,7 +222,10 @@ data supermicro_h11ssl_sata_dom_power_headers: List<NonEmptyStr> = ["JSD1", "JSD
 // the JNCSI1 NC-SI header.
 type H11sslRearPort = RearCom1 | RearIpmiLan | RearUsb2Pair | RearUsb3Pair | RearLan1 | RearLan2 | RearVga | RearUidSwitch
 data supermicro_h11ssl_rear_io_ports: List<H11sslRearPort> = [RearCom1, RearIpmiLan, RearUsb2Pair, RearUsb3Pair, RearLan1, RearLan2, RearVga, RearUidSwitch]
-data supermicro_h11ssl_gigabit_lan_ports: Nat = 2
+type H11sslLanPort = Lan1 | Lan2
+data supermicro_h11ssl_lan_ports: List<H11sslLanPort> = [Lan1, Lan2]
+// Intel i210, gigabit RJ45 (p.15); link LEDs distinguish 10M/100M/1G (p.49).
+data supermicro_h11ssl_lan_max_speed: Bandwidth = bandwidth(count: 1000000000)
 data supermicro_h11ssl_dedicated_management_ports: Nat = 1
 
 type H11sslLanLinkSpeedLed = LinkLedOff10M | LinkLedGreen100M | LinkLedAmber1G
@@ -341,20 +350,21 @@ data supermicro_h11ssl_redfish_kvm_virtual_media_standing: CitedFigureStanding =
   read_obligation: "The manual never mentions Redfish, remote console/KVM or virtual media. Absence from the manual is not absence from the firmware; ground against Supermicro's BMC firmware documentation.",
 }
 
-// The only licensing statement (p.130): an OOB license is needed to flash BIOS through the BMC
+// The only licensing statement (p.130: 'If you have purchased an OOB license, you can do a BIOS flash again through BMC WebGUI or SUM'): an OOB license is needed to flash BIOS through the BMC
 // WebGUI or SUM. Which BMC features the licence gates is not stated.
-data supermicro_h11ssl_oob_licence_note: NonEmptyStr = "p.130: 'If you have purchased an OOB license, you can do a BIOS flash again through BMC WebGUI or SUM.'"
+type H11sslOobLicenceGatedOperation
+  = BiosFlashViaBmcWebGuiOrSum | BmcFeatureGateUnstated
+data supermicro_h11ssl_oob_licence_gated_operations: List<H11sslOobLicenceGatedOperation> = [BiosFlashViaBmcWebGuiOrSum]
 
 // ---- Boot (pp.75,86-87,105,119-120): boot mode LEGACY/UEFI/DUAL (default DUAL); LAN1 option ROM
 // Disabled/PXE/EFI; LAN2 Disabled/PXE; IPv4/IPv6 PXE and HTTP network stack.
 type H11sslBootMode = BootLegacy | BootUefi | BootDual
 data supermicro_h11ssl_boot_mode_default: H11sslBootMode = BootDual
 type H11sslLanOptionRom = OptionRomDisabled | OptionRomPxe | OptionRomEfi
-fn supermicro_h11ssl_lan_option_rom_choices(lan: Nat) -> List<H11sslLanOptionRom> {
+fn supermicro_h11ssl_lan_option_rom_choices(lan: H11sslLanPort) -> List<H11sslLanOptionRom> {
   match lan {
-    1 => [OptionRomDisabled, OptionRomPxe, OptionRomEfi]
-    2 => [OptionRomDisabled, OptionRomPxe]
-    _ => []
+    Lan1 => [OptionRomDisabled, OptionRomPxe, OptionRomEfi]
+    Lan2 => [OptionRomDisabled, OptionRomPxe]
   }
 }
 
@@ -362,17 +372,17 @@ fn supermicro_h11ssl_lan_option_rom_choices(lan: Nat) -> List<H11sslLanOptionRom
 type SupermicroH11sslMechanical {
   board_label: NonEmptyStr
   vendor: Vendor<Hardware>
-  revision_label: NonEmptyStr
+  revision: H11sslBoardRevision
   dimm_slots: Nat
   dimms_per_channel: Nat
-  gigabit_lan_ports: Nat
+  lan_ports: List<H11sslLanPort>
 }
 
 data supermicro_h11ssl_i_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
   board_label: "Supermicro H11SSL (manual -i column; unit variant unread)",
   vendor: supermicro,
-  revision_label: "REV 2.0 (unit; manual Rev. 1.1 covers 1.x and 2.x)",
+  revision: H11sslBoardRevision { major: 2, minor: 0 },
   dimm_slots: 8,
   dimms_per_channel: 1,
-  gigabit_lan_ports: 2,
+  lan_ports: [Lan1, Lan2],
 }

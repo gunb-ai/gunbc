@@ -11,7 +11,7 @@ import extdeps.boards.supermicro_h11ssl {
   supermicro_h11ssl_max_data_rate,
   supermicro_h11ssl_jpwr2_pin, supermicro_h11ssl_jpwr1_pin, AtxGround, Atx12V, Atx5Vsb,
   supermicro_h11ssl_jumper_resets_bmc_accounts,
-  supermicro_h11ssl_lan_option_rom_choices,
+  supermicro_h11ssl_lan_option_rom_choices, Lan1, Lan2,
   supermicro_h11ssl_fan_pin, FanPwm,
 }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
@@ -60,10 +60,9 @@ test fn w_no_jumper_resets_bmc_accounts() -> Bool {
     && match supermicro_h11ssl_jumper_resets_bmc_accounts(j: Jpb1BmcEnable) { JumperDoesNotResetBmcAccounts => true  _ => false }
 }
 
-test fn w_lan2_has_no_efi_option_rom_and_lan3_none() -> Bool {
-  count(supermicro_h11ssl_lan_option_rom_choices(lan: 1)) == 3
-    && count(supermicro_h11ssl_lan_option_rom_choices(lan: 2)) == 2
-    && count(supermicro_h11ssl_lan_option_rom_choices(lan: 3)) == 0
+test fn w_lan2_has_no_efi_option_rom() -> Bool {
+  count(supermicro_h11ssl_lan_option_rom_choices(lan: Lan1)) == 3
+    && count(supermicro_h11ssl_lan_option_rom_choices(lan: Lan2)) == 2
 }
 
 test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
