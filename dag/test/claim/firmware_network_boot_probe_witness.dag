@@ -1,0 +1,183 @@
+module test.claim.firmware_network_boot_probe_witness
+
+import std.types { Bool, List }
+import gunbc.firmware_network_boot_standing {
+  FirmwareBootObservation, SecureBootUnobserved, SecureBootEnabled, SecureBootDisabled, SecureBootRefused,
+  boot_entry, BootOrderObserved, BootOrderRefused, BootOrderUnobserved, AuthenticationRequired,
+}
+import gunbc.firmware_network_boot_probe {
+  FirmwareBootFamilyRow, BmcStack, RouteVerdict,
+  firmware_boot_axis_reader_frontier_status, firmware_boot_axis_reply_inhabitation, AxisReplyUninhabited, AxisReplyInhabitedByReader,
+}
+import std.optional { Present, Absent }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionPending, DissolutionFired }
+import extdeps.bmc.types { BootTargetPxe }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.firmware_network_boot_probe {
+  firmware_boot_family_rows, firmware_boot_family_row, probe, route_for,
+  FamilyKey, FirmwareFamilyStack, RedfishOnlyStack, DedicatedManagementPort, SharedHostNic,
+  RedfishGetRoute, MegaRacRestGetRoute, OpenBmcRedfishGetRoute,
+  TransportAnswers, BootOrderAxis, SecureBootAxis, TransportCannotAnswer,
+  ReplyBootOrder, ReplySecureBootEnabled, ReplyRefusedByBmc,
+  BmcResponded, BmcSilent, ConnectTimedOut,
+  BmcUnreachable, BmcObserved, ProbeSubject,
+  ReadAxisRequest, SetBootOverrideRequest, ChangeBootOrderRequest, PowerActionRequest,
+  Routed, RequestRefused,
+}
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn subject() -> ProbeSubject {
+  ProbeSubject { unit_label: "unit-under-test" }
+}
+
+fn first_row_of(rows: List<FirmwareBootFamilyRow>, stack: BmcStack) -> FirmwareBootFamilyRow? {
+  fold(
+    rows,
+    init: Absent,
+    f: (acc, r) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => if r.family.stack == stack { Present { value: r } } else { Absent }
+      }
+  )
+}
+
+fn is_refused(verdict: RouteVerdict) -> Bool {
+  match verdict {
+    RequestRefused { why: _ } => true
+    Routed { route: _ } => false
+  }
+}
+
+fn is_unobserved_boot_order(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order {
+    BootOrderUnobserved { reason: _ } => true
+    BootOrderObserved { devices: _ } => false
+    BootOrderRefused { refusal: _ } => false
+  }
+}
+
+fn is_observed_boot_order(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order {
+    BootOrderObserved { devices: _ } => true
+    BootOrderUnobserved { reason: _ } => false
+    BootOrderRefused { refusal: _ } => false
+  }
+}
+
+fn is_unobserved_secure_boot(o: FirmwareBootObservation) -> Bool {
+  match o.secure_boot {
+    SecureBootUnobserved { reason: _ } => true
+    SecureBootEnabled => false
+    SecureBootDisabled => false
+    SecureBootRefused { refusal: _ } => false
+  }
+}
+
+test fn five_families_are_rows_of_one_table() -> Bool {
+  let rows = firmware_boot_family_rows()
+  let count = fold(rows, init: 0, f: (n, _r) => n + 1)
+  let megarac = fold(rows, init: 0, f: (n, r) => if (r.family.stack == (FirmwareFamilyStack { family: AmiMegaRac })) { n + 1 } else { n })
+  let shared = any(rows, r => r.family.reach == SharedHostNic)
+  let open = any(rows, r => r.family.stack == FirmwareFamilyStack { family: OpenBmc })
+  let smc = any(rows, r => r.family.stack == RedfishOnlyStack)
+  count == 5 && megarac == 2 && shared && open && smc
+}
+
+test fn supermicro_refuses_every_write_shaped_request() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: RedfishOnlyStack) {
+    Absent => false
+    Present { value: row } =>
+      is_refused(verdict: route_for(row: row, request: SetBootOverrideRequest))
+        && is_refused(verdict: route_for(row: row, request: ChangeBootOrderRequest))
+        && is_refused(verdict: route_for(row: row, request: PowerActionRequest))
+        && !is_refused(verdict: route_for(row: row, request: ReadAxisRequest { axis: BootOrderAxis }))
+  }
+}
+
+test fn every_row_refuses_writes_not_only_supermicro() -> Bool {
+  all(firmware_boot_family_rows(), r => is_refused(verdict: route_for(row: r, request: PowerActionRequest)))
+}
+
+test fn silent_bmc_is_not_an_empty_answer() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: AmiMegaRac }) {
+    Absent => false
+    Present { value: r } => {
+      let off = probe(row: r, subject: subject(), contact: BmcSilent { attempt: ConnectTimedOut })
+      let empty = probe(row: r, subject: subject(), contact: BmcResponded { replies: [] })
+      let off_ok = match off {
+        BmcUnreachable { subject: _, attempt: ConnectTimedOut } => true
+        _ => false
+      }
+      let empty_ok = match empty {
+        BmcObserved { subject: _, observation: o } => is_unobserved_boot_order(o: o)
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+      off_ok && empty_ok
+    }
+  }
+}
+
+test fn cannot_answer_secure_boot_is_unobserved_never_defaulted() -> Bool {
+  let row = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: AmiMegaRac }, release_line: none, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "witness row" },
+    route: MegaRacRestGetRoute,
+    coverage: [TransportAnswers { axis: BootOrderAxis }, TransportCannotAnswer { axis: SecureBootAxis, why: "not exposed" }]
+  )
+  match probe(row: row, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_entry(kind: BootTargetPxe, label: "pxe")] }, ReplySecureBootEnabled] }) {
+    BmcObserved { subject: _, observation: o } => is_unobserved_secure_boot(o: o) && is_observed_boot_order(o: o)
+    BmcUnreachable { subject: _, attempt: _ } => false
+  }
+}
+
+test fn bmc_refusal_is_preserved_as_refused() -> Bool {
+  match first_row_of(rows: firmware_boot_family_rows(), stack: FirmwareFamilyStack { family: OpenBmc }) {
+    Absent => false
+    Present { value: r } =>
+      match probe(row: r, subject: subject(), contact: BmcResponded { replies: [ReplyRefusedByBmc { axis: BootOrderAxis, refusal: AuthenticationRequired { detail: "403 PasswordChangeRequired" } }] }) {
+        BmcObserved { subject: _, observation: o } =>
+          match o.boot_order {
+            BootOrderRefused { refusal: AuthenticationRequired { detail: d } } => d == "403 PasswordChangeRequired"
+            BootOrderRefused { refusal: _ } => false
+            BootOrderObserved { devices: _ } => false
+            BootOrderUnobserved { reason: _ } => false
+          }
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+  }
+}
+
+test fn a_sixth_family_probes_without_touching_the_instrument() -> Bool {
+  let sixth = firmware_boot_family_row(
+    family: FamilyKey { stack: FirmwareFamilyStack { family: OpenBmc }, release_line: Present { value: "9.99" }, reach: DedicatedManagementPort },
+    authority: TranscribedUncited { read_obligation: "hypothetical sixth family" },
+    route: OpenBmcRedfishGetRoute,
+    coverage: [TransportAnswers { axis: BootOrderAxis }]
+  )
+  match probe(row: sixth, subject: subject(), contact: BmcResponded { replies: [ReplyBootOrder { devices: [boot_entry(kind: BootTargetPxe, label: "net")] }] }) {
+    BmcObserved { subject: _, observation: o } => is_observed_boot_order(o: o)
+    BmcUnreachable { subject: _, attempt: _ } => false
+  }
+}
+
+test fn reader_frontier_is_pending_and_pinned_to_a_literal_ref() -> Bool {
+  let reader = decl_ref(module_path: "gunbc.firmware_network_boot_readers", decl_name: "redfish_axis_replies")
+  let pending = match firmware_boot_axis_reader_frontier_status(present_decls: []) {
+    DissolutionPending => true
+    _ => false
+  }
+  let fired = match firmware_boot_axis_reader_frontier_status(present_decls: [reader]) {
+    DissolutionFired => true
+    _ => false
+  }
+  let uninhabited = match firmware_boot_axis_reply_inhabitation {
+    AxisReplyUninhabited { owed_by: o, over: _, falsified_by: _ } => o == reader
+    AxisReplyInhabitedByReader { observed: _ } => false
+  }
+  pending && fired && uninhabited
+}

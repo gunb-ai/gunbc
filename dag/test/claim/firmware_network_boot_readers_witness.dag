@@ -1,0 +1,216 @@
+module test.claim.firmware_network_boot_readers_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, list_length }
+import std.optional { Present, Absent }
+import std.algebra { list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, BootTargetHdd, BootTargetUefiHttp, BootTargetNone, redfish_boot_target_wire }
+import extdeps.bmc.endpoint { OpenBmc }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.firmware_network_boot_standing {
+  BootOrderObserved, NicsObserved, SecureBootEnabled, BiosVersionObserved,
+  ResourceNotFound, AuthenticationRequired, VendorCommandRejected, ReplyShapeUnrecognized,
+  BootEntry, boot_entry, FirmwareBootObservation,
+}
+import gunbc.firmware_network_boot_probe {
+  AxisReply, ReplyBootOrder, ReplyBootOptions, ReplyNics, ReplySecureBootEnabled, ReplySecureBootDisabled, ReplyBiosVersion, ReplyRefusedByBmc,
+  BmcResponded, BmcObserved, BmcUnreachable, ProbeSubject, probe, firmware_boot_family_rows,
+  FirmwareFamilyStack,
+}
+import gunbc.firmware_network_boot_readers {
+  RedfishGet, RedfishGetBody, RedfishGetStatus, RedfishBootReads, redfish_axis_replies, boot_target_of_wire, all_boot_targets,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DMTF-schema-shaped bodies, NOT captures: no MegaRAC or OpenBMC body for these axes is in the corpus.
+fn system_ok() -> RedfishGet {
+  RedfishGetBody { body: "{\"BiosVersion\":\"2.4.1\",\"Boot\":{\"BootOrder\":[\"Pxe\",\"Hdd\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"None\",\"Pxe\",\"UefiHttp\"]}}" }
+}
+fn secure_on() -> RedfishGet { RedfishGetBody { body: "{\"SecureBootEnable\":true}" } }
+fn nics_ok() -> RedfishGet {
+  RedfishGetBody { body: "{\"Members@odata.count\":2,\"Members\":[{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/1\"},{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/2\"}]}" }
+}
+fn reads(system: RedfishGet, secure: RedfishGet, nics: RedfishGet) -> RedfishBootReads {
+  RedfishBootReads { system: system, secure_boot: secure, nics: nics }
+}
+
+fn kinds_of(es: List<BootEntry>) -> List<RedfishBootSourceOverrideTarget> {
+  list_map(xs: es, f: fn(e) { e.kind })
+}
+fn labels_of(es: List<BootEntry>) -> List<NonEmptyStr> {
+  list_map(xs: es, f: fn(e) { e.label })
+}
+
+fn is_order_pxe_hdd(r: AxisReply) -> Bool {
+  match r {
+    ReplyBootOrder { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd] && labels_of(es: es) == ["Pxe", "Hdd"]
+    _ => false
+  }
+}
+fn is_options_three(r: AxisReply) -> Bool {
+  match r {
+    ReplyBootOptions { options: es } => kinds_of(es: es) == [BootTargetNone, BootTargetPxe, BootTargetUefiHttp]
+    _ => false
+  }
+}
+fn is_two_nics(r: AxisReply) -> Bool {
+  match r { ReplyNics { nics: ns } => ns == ["/redfish/v1/Systems/1/EthernetInterfaces/1", "/redfish/v1/Systems/1/EthernetInterfaces/2"] _ => false }
+}
+fn is_bios(r: AxisReply) -> Bool {
+  match r { ReplyBiosVersion { version: v } => v == "2.4.1" _ => false }
+}
+fn is_shape_refusal(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: ReplyShapeUnrecognized { detail: _ } } => true _ => false }
+}
+fn is_not_found(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: ResourceNotFound { detail: _ } } => true _ => false }
+}
+fn is_auth(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: AuthenticationRequired { detail: _ } } => true _ => false }
+}
+fn is_rejected(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: VendorCommandRejected { detail: _ } } => true _ => false }
+}
+fn is_refusal(r: AxisReply) -> Bool {
+  match r { ReplyRefusedByBmc { axis: _, refusal: _ } => true _ => false }
+}
+fn is_secure_on(r: AxisReply) -> Bool { match r { ReplySecureBootEnabled => true _ => false } }
+fn is_secure_off(r: AxisReply) -> Bool { match r { ReplySecureBootDisabled => true _ => false } }
+fn any_is_auth(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_auth(r: r))
+}
+fn any_is_bios(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_bios(r: r))
+}
+fn any_is_not_found(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_not_found(r: r))
+}
+fn any_is_options_three(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_options_three(r: r))
+}
+fn any_is_order_pxe_hdd(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_order_pxe_hdd(r: r))
+}
+fn any_is_rejected(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_rejected(r: r))
+}
+fn any_is_secure_off(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_secure_off(r: r))
+}
+fn any_is_secure_on(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_secure_on(r: r))
+}
+fn any_is_shape_refusal(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_shape_refusal(r: r))
+}
+fn any_is_two_nics(rs: List<AxisReply>) -> Bool {
+  fold(rs, init: false, f: (a, r) => a || is_two_nics(r: r))
+}
+fn count_refusals(rs: List<AxisReply>) -> Int {
+  fold(rs, init: 0, f: (n, r) => if is_refusal(r: r) { n + 1 } else { n })
+}
+
+test fn a_well_formed_system_yields_five_typed_replies() -> Bool {
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok()))
+  list_length(items: rs) == 5 && any_is_order_pxe_hdd(rs: rs) && any_is_options_three(rs: rs) && any_is_two_nics(rs: rs) &&
+  any_is_secure_on(rs: rs) && any_is_bios(rs: rs) && count_refusals(rs: rs) == 0
+}
+
+// kind is the enum value, never a label: "IPv4 iSCSI" contains "IPv4" and is not a target.
+test fn a_label_is_never_classified_by_substring() -> Bool {
+  let label = RedfishGetBody { body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[\"Pxe\",\"IPv4 iSCSI\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe Network\"]}}" }
+  let rs = redfish_axis_replies(reads: reads(system: label, secure: secure_on(), nics: nics_ok()))
+  count_refusals(rs: rs) == 2 && !any_is_order_pxe_hdd(rs: rs) && any_is_shape_refusal(rs: rs)
+}
+
+test fn a_boot_option_reference_is_refused_not_dropped() -> Bool {
+  let refs = RedfishGetBody { body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[\"Boot0001\",\"Boot0002\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe\"]}}" }
+  let rs = redfish_axis_replies(reads: reads(system: refs, secure: secure_on(), nics: nics_ok()))
+  count_refusals(rs: rs) == 1 && any_is_shape_refusal(rs: rs)
+}
+
+test fn empty_lists_are_refused_never_observed_empty() -> Bool {
+  let empty_boot = RedfishGetBody { body: "{\"BiosVersion\":\"1\",\"Boot\":{\"BootOrder\":[],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[]}}" }
+  let empty_nics = RedfishGetBody { body: "{\"Members@odata.count\":0,\"Members\":[]}" }
+  let rs = redfish_axis_replies(reads: reads(system: empty_boot, secure: secure_on(), nics: empty_nics))
+  count_refusals(rs: rs) == 3
+}
+
+test fn a_paged_nic_collection_is_refused() -> Bool {
+  let paged = RedfishGetBody { body: "{\"Members\":[{\"@odata.id\":\"/redfish/v1/Systems/1/EthernetInterfaces/1\"}],\"Members@odata.nextLink\":\"/redfish/v1/Systems/1/EthernetInterfaces?$skip=1\"}" }
+  let rs = redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: paged))
+  count_refusals(rs: rs) == 1 && !any_is_two_nics(rs: rs)
+}
+
+test fn secure_boot_reads_the_flag_and_refuses_a_missing_one() -> Bool {
+  let off = RedfishGetBody { body: "{\"SecureBootEnable\":false}" }
+  let missing = RedfishGetBody { body: "{\"SecureBootMode\":\"UserMode\"}" }
+  let r_off = redfish_axis_replies(reads: reads(system: system_ok(), secure: off, nics: nics_ok()))
+  let r_missing = redfish_axis_replies(reads: reads(system: system_ok(), secure: missing, nics: nics_ok()))
+  any_is_secure_off(rs: r_off) && !any_is_secure_on(rs: r_off) && count_refusals(rs: r_missing) == 1 && !any_is_secure_on(rs: r_missing) && !any_is_secure_off(rs: r_missing)
+}
+
+test fn http_statuses_map_to_their_refusal_arms() -> Bool {
+  let nf = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 404, detail: "no SecureBoot" }, nics: nics_ok()))
+  let au = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 401, detail: "unauthorized" }, nics: nics_ok()))
+  let fb = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 403, detail: "forbidden" }, nics: nics_ok()))
+  let rj = redfish_axis_replies(reads: reads(system: system_ok(), secure: RedfishGetStatus { status: 500, detail: "oops" }, nics: nics_ok()))
+  any_is_not_found(rs: nf) && any_is_auth(rs: au) && any_is_rejected(rs: fb) && any_is_rejected(rs: rj)
+}
+
+test fn an_unreadable_system_refuses_its_three_axes_and_nothing_else() -> Bool {
+  let bad = RedfishGetBody { body: "<html>login</html>" }
+  let gone = RedfishGetStatus { status: 404, detail: "no system" }
+  let rs_bad = redfish_axis_replies(reads: reads(system: bad, secure: secure_on(), nics: nics_ok()))
+  let rs_gone = redfish_axis_replies(reads: reads(system: gone, secure: secure_on(), nics: nics_ok()))
+  list_length(items: rs_bad) == 5 && count_refusals(rs: rs_bad) == 3 && any_is_shape_refusal(rs: rs_bad) &&
+  count_refusals(rs: rs_gone) == 3 && any_is_not_found(rs: rs_gone) && any_is_two_nics(rs: rs_gone)
+}
+
+test fn a_missing_bios_version_is_refused() -> Bool {
+  let nobios = RedfishGetBody { body: "{\"Boot\":{\"BootOrder\":[\"Pxe\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe\"]}}" }
+  let blank = RedfishGetBody { body: "{\"BiosVersion\":\"\",\"Boot\":{\"BootOrder\":[\"Pxe\"],\"BootSourceOverrideTarget@Redfish.AllowableValues\":[\"Pxe\"]}}" }
+  let a = redfish_axis_replies(reads: reads(system: nobios, secure: secure_on(), nics: nics_ok()))
+  let b = redfish_axis_replies(reads: reads(system: blank, secure: secure_on(), nics: nics_ok()))
+  count_refusals(rs: a) == 1 && count_refusals(rs: b) == 1 && !any_is_bios(rs: a)
+}
+
+// One wire table: every target's wire spelling inverts through boot_target_of_wire.
+fn round_trips(t: RedfishBootSourceOverrideTarget) -> Bool {
+  match boot_target_of_wire(s: redfish_boot_target_wire(t: t)) {
+    Present { value: u } => u == t
+    Absent => false
+  }
+}
+
+test fn every_target_round_trips_through_its_wire_value() -> Bool {
+  let all_ok = fold(all_boot_targets(), init: true, f: (ok, t) => ok && round_trips(t: t))
+  let lowercase_is_not_a_target = match boot_target_of_wire(s: "pxe") {
+    Present { value: _ } => false
+    Absent => true
+  }
+  all_ok && lowercase_is_not_a_target
+}
+
+fn order_ok(o: FirmwareBootObservation) -> Bool {
+  match o.boot_order { BootOrderObserved { devices: es } => kinds_of(es: es) == [BootTargetPxe, BootTargetHdd] _ => false }
+}
+fn secure_ok(o: FirmwareBootObservation) -> Bool { match o.secure_boot { SecureBootEnabled => true _ => false } }
+fn nics_ok_obs(o: FirmwareBootObservation) -> Bool { match o.nics { NicsObserved { nics: ns } => list_length(items: ns) == 2 _ => false } }
+fn bios_ok(o: FirmwareBootObservation) -> Bool { match o.bios_version { BiosVersionObserved { version: v } => v == "2.4.1" _ => false } }
+
+// INHABITANCE: the reader's output is what probe() consumes, on the OpenBMC row, end to end.
+test fn reader_output_feeds_the_probe() -> Bool {
+  let rows = firmware_boot_family_rows()
+  let row = fold(rows, init: Absent, f: (acc, r) => match acc { Present { value: _ } => acc Absent => if r.family.stack == FirmwareFamilyStack { family: OpenBmc } { Present { value: r } } else { Absent } })
+  match row {
+    Absent => false
+    Present { value: r } =>
+      match probe(row: r, subject: ProbeSubject { unit_label: "u" }, contact: BmcResponded { replies: redfish_axis_replies(reads: reads(system: system_ok(), secure: secure_on(), nics: nics_ok())) }) {
+        BmcObserved { subject: _, observation: o } =>
+          order_ok(o: o) && secure_ok(o: o) && nics_ok_obs(o: o) && bios_ok(o: o)
+        BmcUnreachable { subject: _, attempt: _ } => false
+      }
+  }
+}
