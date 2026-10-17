@@ -20,7 +20,7 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness
 }
-import v2.std.node {
+import v2.std.node { positional_child_target_nodes,
   Disj,
   Arrow,
   Atom,
@@ -50,8 +50,8 @@ import v2.std.arrow_signature {
   anonymous_signature_arrow,
   arrow_declared_parameter_order
 }
-import v2.std.node_query { declared_field_from_edge, node_positional_child_targets }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
+import v2.std.node_query { declared_field_from_edge }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, declaration_denotation_of_type }
 import v2.std.type_binder { edge_is_type_params }
 import v2.std.optional_layers {
   OccupancyWrapperMalformed,
@@ -280,14 +280,9 @@ fn inhabitance_pair_undecidable_reason_declared_then_produced(
 // THE NOMINAL HEAD OF A TYPE: the declaration an Instantiation applies (its first positional target), or
 // the node itself. Absent when the head is not a declaration reference (a type variable, a kernel atom).
 fn inhabitance_declaration_head(t: Node) -> Optional<QualifiedName> {
-  match t.kind {
-    TypeNode { connective: Instantiation } =>
-      match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
-        Absent => Absent
-        Present { value: head } => declaration_reference_path_optional(node: head)
-      }
-    TypeNode { connective: _ } => declaration_reference_path_optional(node: t)
-    ComputationNode { behavior: _ } => Absent
+  match declaration_denotation_of_type(t: t) {
+    Absent => Absent
+    Present { value: denotation } => Present { value: denotation.declaration }
   }
 }
 
@@ -462,7 +457,7 @@ fn inhabitance_arrow_signature_read(arrow: Node) -> ArrowSignatureRead {
       ArrowParameterOrderAbsent => ArrowSignatureUnreadable
       ArrowParameterOrderMalformed => ArrowSignatureUnreadable
       ArrowParameterOrderDeclared { labels: labels } =>
-        let positional = node_positional_child_targets(node: arrow)
+        let positional = positional_child_target_nodes(node: arrow)
         match list_at_optional(xs: positional, index: 0) {
           Absent => ArrowSignatureUnreadable
           Present { value: domain } =>
