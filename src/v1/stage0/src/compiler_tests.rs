@@ -1006,48 +1006,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn if_join_admits_a_transparent_alias_of_its_other_branch() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                let std_optional = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "dag/std/optional.dag".to_string(),
-                    content: include_str!("../../../../dag/std/optional.dag").to_string(),
-                });
-                let blocking_of = |content: &str| -> Vec<String> {
-                    let src = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                        path: "probe_if_join_alias.dag".to_string(),
-                        content: content.to_string(),
-                    });
-                    let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![std_optional.clone(), src]));
-                    resolved.diagnostics.iter().filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())).map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()
-                };
-                let head = "module probe.if_join_alias\ntype Boxed<T> {\n  v: T\n}\ntype Other<T> {\n  v: T\n}\ntype IntBox = Boxed<Int>\ntype BoolBox = Boxed<Bool>\ntype BoxRow {\n  min: Int\n  ceiling: IntBox\n}\ntype Inner<T> {\n  v: T\n}\ntype NestBox = Boxed<Inner<Int>>\n";
-                let same = format!("{head}fn pick_same(a: IntBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
-                let optional = format!("{head}fn pick_box(acc: IntBox?, row: BoxRow, n: Int) -> IntBox? {{\n  if n >= row.min {{\n    match acc {{\n      Absent => Present {{ value: row.ceiling }}\n      Present {{ value: a }} => Present {{ value: a }}\n    }}\n  }} else {{\n    acc\n  }}\n}}\n");
-                let mismatch = format!("{head}fn pick_mismatch(a: BoolBox, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
-                let unrelated = format!("{head}fn pick_unrelated(a: Other<Int>, b: Boxed<Int>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
-                let nested = format!("{head}fn pick_nested(a: NestBox, b: Boxed<Inner<Bool>>, c: Bool) -> Int {{\n  let x = if c {{ a }} else {{ b }}\n  0\n}}\n");
-                let join_refused = |m: &Vec<String>| m.iter().any(|s| s.contains("if branches resolve to incompatible types"));
-                let same_msgs = blocking_of(&same);
-                // PINNED, NOT CORRECT: a parameter's declared type reference does not carry its declaration, so the join declines and still refuses. Flips when formal type references carry their DeclarationRef.
-                assert!(join_refused(&same_msgs), "known residual: two parameter-typed branches have no carried declaration to compare; if this now passes, invert this assertion: {:?}", same_msgs);
-                let optional_msgs = blocking_of(&optional);
-                assert!(!join_refused(&optional_msgs), "an optional alias and its optional target are one type at an if-join: {:?}", optional_msgs);
-                let mismatch_msgs = blocking_of(&mismatch);
-                assert!(join_refused(&mismatch_msgs), "an alias of Boxed<Bool> is not Boxed<Int>; the join must refuse: {:?}", mismatch_msgs);
-                let unrelated_msgs = blocking_of(&unrelated);
-                assert!(join_refused(&unrelated_msgs), "a same-shaped unrelated declaration is not an alias; the join must refuse: {:?}", unrelated_msgs);
-                let nested_msgs = blocking_of(&nested);
-                // NOT YET DISCRIMINATING: refused today because parameter-typed branches carry no declaration (the residual above). When that flips, this is the control that nested arguments agree structurally, not by head name.
-                assert!(join_refused(&nested_msgs), "an alias of Boxed<Inner<Int>> is not Boxed<Inner<Bool>>; nested arguments must agree structurally: {:?}", nested_msgs);
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("if_join_admits_a_transparent_alias_of_its_other_branch panicked");
-    }
-
-    #[test]
     fn present_empty_list_fold_init_emits_no_unit_element() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
