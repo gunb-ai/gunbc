@@ -115,6 +115,27 @@ because every declaration-keyed conversion depends on it.
 |---|---|---|
 | Q8 | Are dashboard sessions (`session_name` / `session_id`, ~40 sites) in-program entities? | They are modelled in the program but named outside it. Leaning: external identifiers, so they stay a branded string |
 
-## 7. Next step
+## 7. Decisions (2026-10-17, via sleek-owl-397)
 
-Settle Q1 (re-key `DeclarationRef`) and Q8, then plan the `DeclarationRef` re-key as the first change.
+**R1: `DeclarationRef` is the one canonical reference.** It is re-keyed on identities
+(`module_path: QualifiedName`, `decl_name: Symbol`) and built by the compiler from `^decl`. This follows from DESIGN
+§3 (single authority) and the §6b root generalization: three identity carriers for one fact is itself the fork.
+- `ResolvedDeclRef`, `ModuleId` and `ModuleIdentity` are **deleted**, not kept beside it. Module identity is
+  `QualifiedName`.
+- The migration population is the fork census of §6.2: the ~550 (a) sites in ~20 files. The `DeclarationRef`
+  re-key lands first.
+
+**R2: dashboard sessions are external branded strings (Q8).** The dashboard is an independently governed
+upstream (DESIGN §3, external upstream decomposition), and its ids are opaque to us. The brand belongs in a
+modelled `extdeps` home for the dashboard. None exists on main today (checked `fb6f04c403`), so creating that
+home is part of the conversion.
+
+**Interlock: alias identity (Family A, `adhoc-65526d74-43f`).** The type relation it keys must use the re-keyed
+`DeclarationRef` (identity: `QualifiedName` + `Symbol`). It must not use a spelling, `ResolvedDeclRef` or
+`ModuleId`.
+
+This is doc text only. Implementation goes back through plan approval.
+
+## 8. Next step
+
+Plan the `DeclarationRef` re-key as the first change, for plan approval.
