@@ -53,7 +53,9 @@ import gunbc.runner.runner_guest_image {
 //      which runs each claim and frames the exits onto /dev/vde.
 // THE CLAIMS RUN BOUNDED INSIDE THE GUEST. The unit carries MemoryMax= and MemorySwapMax=0 on its own
 // cgroup, so `gunbc test` inside it reads a finite memory.max with no swap on its cgroup chain
-// (gunbc.compute.unit_bounds BoundedByObservedCgroup) -- bounded by the cgroup, not exempted by name.
+// (gunbc.compute.unit_bounds live_enclosing_bound, admitted as ExemptUnderObservedBound) -- bounded by
+// the cgroup, not exempted by name. That is why the unit needs no exemption premise at all: the bound
+// it carries is what admits it, so the arm cannot be satisfied by a path or an environment variable.
 // The bound is the CI slot's declared per-job envelope (gunbc.runner.runner_slot_desired
 // gunbc_runner_slot_memory_max), since the claims are the labels CI runs; the VM's RAM is that bound
 // plus the guest OS allowance, read from this same row by the launch plan.
