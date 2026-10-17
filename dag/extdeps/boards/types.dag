@@ -23,6 +23,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// A vendor manual copy a board model was read from. Title and sha256 are optional: a reading
+// that did not record them says so with Absent rather than carrying a placeholder.
+type HeldManualRevision {
+  title: NonEmptyStr?
+  version_label: NonEmptyStr
+  published_label: NonEmptyStr
+  page_count: Nat
+  sha256_hex: NonEmptyStr?
+  authority: ExternalAuthority
+}
+
 type BaseboardCatalogRow {
   model: BoardAuthorityRef
   model_label: NonEmptyStr
