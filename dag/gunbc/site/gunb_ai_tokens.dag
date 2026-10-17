@@ -226,11 +226,21 @@ fn role_row(t: TokenSwatch) -> Fragment {
 
 // `var(--role)` is the read side of the CustomProperty declarations token_root_decls
 // emits; extdeps.languages.css.properties models the declaration (CustomProperty) but
-// not yet the reference. SCAFFOLD with a dissolution trigger: this one function is the
-// site layer's var-reference grammar, and it dissolves the moment
-// extdeps.languages.css.properties grows a var-reference wire (same grammar, one home).
-fn role_var(role: String) -> String {
-  join(["var(--", role, ")"], "")
+// not yet the reference. SCAFFOLD, narrowly: the STRING SHAPE of a var reference is
+// this function's residue, and it dissolves the moment extdeps.languages.css.properties
+// grows a var-reference wire (same grammar, one home).
+//
+// WHICH ERROR CLASS THIS LEAVES UNWRITABLE (review 81528; DESIGN §5 "correctness by
+// construction, not validation"): it takes the TOKEN ROW, not a role string — the same
+// shape scale_var(t: …) already uses. A call site cannot name a role that is not a
+// declared row: role_var(t: token_text_dimm) does not resolve. Reading a role is
+// therefore not validated after the fact, it is unavailable to type wrongly. The
+// string that comes out is still built here (the scaffold), so a mis-shaped var()
+// would still be a shape bug in one place instead of 24 — and witness_all_var_references_resolve
+// checks the rendered artifact for exactly that, across EVERY reference rather than a
+// hand-pinned pair.
+fn role_var(t: TokenSwatch) -> String {
+  join(["var(--", t.role, ")"], "")
 }
 
 // The review surface's CSS as TYPED RULES through gunbc.design.material
@@ -248,8 +258,8 @@ fn full_width() -> String {
   css_length_wire(l: CssLength { n: 100, unit: Percent })
 }
 
-fn hairline_solid(role: String) -> List<CssDecl> {
-  [decl(prop: Border, value: scale_border(w: border_1, color_var: role_var(role: role)))]
+fn hairline_solid(edge: TokenSwatch) -> List<CssDecl> {
+  [decl(prop: Border, value: scale_border(w: border_1, color_var: role_var(t: edge)))]
 }
 
 fn margin_four(top: String, right: String, bottom: String, left: String) -> List<CssDecl> {
@@ -275,8 +285,8 @@ fn review_rules() -> List<BuildRule> {
       }),
       [
         StaticRule { selector: ElementSelector { tag: "body" }, decls: concat([
-          decl(prop: Background, value: role_var(role: "canvas")),
-          decl(prop: Color, value: role_var(role: "text")),
+          decl(prop: Background, value: role_var(t: token_canvas)),
+          decl(prop: Color, value: role_var(t: token_text)),
           decl(prop: FontFamily, value: scale_var(t: font_body)),
           decl(prop: FontSize, value: scale_var(t: scale_body)),
         ], margin_four(top: zero_length(), right: zero_length(), bottom: zero_length(), left: zero_length())) },
@@ -289,24 +299,24 @@ fn review_rules() -> List<BuildRule> {
         ] },
         StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_heading)),
-          decl(prop: Color, value: role_var(role: "text-dim")),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
         ] },
         StaticRule { selector: ElementSelector { tag: "a" }, decls: [
-          decl(prop: Color, value: role_var(role: "accent")),
+          decl(prop: Color, value: role_var(t: token_accent)),
         ] },
         StaticRule { selector: ElementSelector { tag: "table" }, decls: [
           decl(prop: BorderCollapse, value: "collapse"),
           decl(prop: Width, value: full_width()),
         ] },
         StaticRule { selector: ElementSelector { tag: "td" }, decls: concat([
-          decl(prop: Color, value: role_var(role: "text-dim")),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
           decl(prop: Padding, value: scale_var(t: gap_xs)),
-        ], [decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: role_var(role: "border")))]) },
+        ], [decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: role_var(t: token_border)))]) },
         StaticRule { selector: ClassSelector { name: "chip" }, decls: concat(concat([
           decl(prop: Display, value: "inline-block"),
           decl(prop: Padding, value: scale_var(t: gap_xs)),
-          decl(prop: Background, value: role_var(role: "canvas-raised")),
-        ], hairline_solid(role: "border")), margin_four(top: zero_length(), right: scale_var(t: gap_xs), bottom: scale_var(t: gap_xs), left: zero_length())) },
+          decl(prop: Background, value: role_var(t: token_canvas_raised)),
+        ], hairline_solid(edge: token_border)), margin_four(top: zero_length(), right: scale_var(t: gap_xs), bottom: scale_var(t: gap_xs), left: zero_length())) },
         StaticRule { selector: ClassSelector { name: "chip-swatch" }, decls: [
           decl(prop: Display, value: "inline-block"),
           decl(prop: Width, value: scale_var(t: chip_swatch)),
@@ -316,24 +326,24 @@ fn review_rules() -> List<BuildRule> {
         ] },
         StaticRule { selector: ClassSelector { name: "specimen" }, decls: concat(concat([
           decl(prop: Padding, value: scale_var(t: gap_md)),
-          decl(prop: Background, value: role_var(role: "canvas-raised-2")),
-        ], hairline_solid(role: "border")), margin_four(top: scale_var(t: gap_md), right: zero_length(), bottom: scale_var(t: gap_md), left: zero_length())) },
+          decl(prop: Background, value: role_var(t: token_canvas_raised2)),
+        ], hairline_solid(edge: token_border)), margin_four(top: scale_var(t: gap_md), right: zero_length(), bottom: scale_var(t: gap_md), left: zero_length())) },
         StaticRule { selector: ClassSelector { name: "spec-display" }, decls: concat([
           decl(prop: FontSize, value: scale_var(t: scale_display)),
-          decl(prop: Color, value: role_var(role: "text")),
+          decl(prop: Color, value: role_var(t: token_text)),
         ], margin_four(top: zero_length(), right: zero_length(), bottom: scale_var(t: gap_xs), left: zero_length())) },
         StaticRule { selector: ClassSelector { name: "spec-heading" }, decls: concat([
           decl(prop: FontSize, value: scale_var(t: scale_heading)),
-          decl(prop: Color, value: role_var(role: "text-dim")),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
         ], margin_four(top: zero_length(), right: zero_length(), bottom: scale_var(t: gap_sm), left: zero_length())) },
         StaticRule { selector: ClassSelector { name: "body-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_body)),
-          decl(prop: Color, value: role_var(role: "text-dim")),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
           decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
         ] },
         StaticRule { selector: ClassSelector { name: "label-sample" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_label)),
-          decl(prop: Color, value: role_var(role: "highlight")),
+          decl(prop: Color, value: role_var(t: token_highlight)),
           // "0.12em" is a CssDecl VALUE — material's own contract is a string value
           // beside design/typography.dag's "1.55"/"normal"; the rule above it is the
           // modeled route. em is not yet a CssLengthUnit arm (values.dag); it enters
@@ -342,20 +352,20 @@ fn review_rules() -> List<BuildRule> {
         ] },
         StaticRule { selector: ClassSelector { name: "wires" }, decls: [
           decl(prop: FontSize, value: scale_var(t: scale_small)),
-          decl(prop: Color, value: role_var(role: "accent")),
+          decl(prop: Color, value: role_var(t: token_accent)),
         ] },
         StaticRule { selector: ClassSelector { name: "hex" }, decls: [
-          decl(prop: Color, value: role_var(role: "highlight")),
+          decl(prop: Color, value: role_var(t: token_highlight)),
         ] },
         StaticRule { selector: ClassSelector { name: "note" }, decls: [
-          decl(prop: Color, value: role_var(role: "text-faint")),
+          decl(prop: Color, value: role_var(t: token_text_faint)),
         ] },
         StaticRule { selector: ClassSelector { name: "meta" }, decls: [
-          decl(prop: Color, value: role_var(role: "accent")),
+          decl(prop: Color, value: role_var(t: token_accent)),
           decl(prop: FontSize, value: scale_var(t: scale_small)),
         ] },
         StaticRule { selector: ClassSelector { name: "dim" }, decls: [
-          decl(prop: Color, value: role_var(role: "text-dim")),
+          decl(prop: Color, value: role_var(t: token_text_dim)),
           decl(prop: MaxWidth, value: scale_var(t: measure_prose)),
         ] },
       ],
