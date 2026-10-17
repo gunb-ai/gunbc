@@ -72,16 +72,30 @@ data fixture_other_bios: NonEmptyStr = "SYNTH-BIOS-2.10"
 data fixture_model: NonEmptyStr = "SYNTH-MODEL-A"
 data fixture_other_model: NonEmptyStr = "SYNTH-MODEL-B"
 
+// A burnable, permanent address: octet1 mod 4 == 0 is universally administered AND individual, which is
+// what the address axis's binding predicate requires before an address may bind two sightings.
 fn fixture_mac_a() -> Eui48Address {
-  mac_address(octet1: 2, octet2: 3, octet3: 4, octet4: 5, octet5: 6, octet6: 7)
+  mac_address(octet1: 4, octet2: 3, octet3: 4, octet4: 5, octet5: 6, octet6: 7)
 }
 
 fn fixture_mac_b() -> Eui48Address {
-  mac_address(octet1: 10, octet2: 11, octet3: 12, octet4: 13, octet5: 14, octet6: 15)
+  mac_address(octet1: 8, octet2: 11, octet3: 12, octet4: 13, octet5: 14, octet6: 15)
 }
 
 fn fixture_mac_c() -> Eui48Address {
   mac_address(octet1: 20, octet2: 21, octet3: 22, octet4: 23, octet5: 24, octet6: 25)
+}
+
+// A LOCALLY ADMINISTERED address: bit 1 of octet 1 set (2 = 0b00000010). Software chose this one and
+// software can change it, so it names no interface permanently.
+fn fixture_mac_locally_administered() -> Eui48Address {
+  mac_address(octet1: 2, octet2: 11, octet3: 12, octet4: 13, octet5: 14, octet6: 15)
+}
+
+// A GROUP address: bit 0 of octet 1 set (1 = 0b00000001) and universally administered. It names a group,
+// never a single interface.
+fn fixture_mac_group() -> Eui48Address {
+  mac_address(octet1: 1, octet2: 11, octet3: 12, octet4: 13, octet5: 14, octet6: 15)
 }
 
 // A pre-boot standing with every axis answered.
@@ -429,6 +443,77 @@ test fn test_empty_pre_boot_address_set_is_not_an_agreement() -> Bool {
   }
 }
 
+// THE CITED PREDICATE MUST GOVERN THE COMPARISON, not merely decorate the row. An address that cannot name
+// an interface -- locally administered (software chose it) or group (it names a multicast group) -- is
+// shared by no particular machine: a bridge, a container, or a renamed NIC can present the same octets on
+// any unit. If the intersection stopped checking the predicate the row cites, both of these would come back
+// as Match, and that is the silent widen DESIGN section 5 calls a hard reject.
+test fn test_a_shared_locally_administered_address_is_not_a_binding() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_locally_administered()] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_locally_administered()] },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    _ => false
+  }
+}
+
+test fn test_a_shared_group_address_is_not_a_binding() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_group()] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_group()] },
+  }
+  match runtime_identity_match(pre: pre, post: post) {
+    Mismatch { diverged: ds, unit: _ } => ds.length() == 1 && same_runtime_identity_axis(left: first_axis(divergences: ds), right: NicSetAxis)
+    _ => false
+  }
+}
+
+// A permanent address still binding, after the filter exists: without this, the two tests above could be
+// satisfied by an address comparison that refuses everything, and a module that never binds the address axis
+// would look correct.
+test fn test_a_shared_permanent_address_still_binds() -> Bool {
+  let pre = PreBootIdentityStanding {
+    unit: fixture_unit,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_a(), fixture_mac_locally_administered()] },
+  }
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_group(), fixture_mac_a()] },
+  }
+  classifies_as_match(verdict: runtime_identity_match(pre: pre, post: post))
+}
+
 // ---------------------------------------------------------------------------
 // UNIT IDENTITY IS CARRIED, NEVER MATCHED ON
 // ---------------------------------------------------------------------------
@@ -563,12 +648,12 @@ test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bo
   every_row_cites_two_homes(rows: runtime_identity_axis_rows)
     && every_row_citation_resolves(rows: runtime_identity_axis_rows)
     && cited("gunbc.machine_intake.subject", "BoardSerialObservation")
-    && cited("gunbc.machine_intake.subject", "UnitKeyStanding")
+    && cited("gunbc.machine_intake.subject", "bind_unit_key")
     && cited("gunbc.machine_intake.subject", "FirmwareManifest")
-    && cited("gunbc.board_authority_binding", "firmware_generation_owns_currently_running_software")
+    && cited("gunbc.machine_intake.subject", "firmware_manifest_digest")
     && cited("gunbc.machine_intake.mtjade1_access_observation", "FruIdentityFields")
-    && cited("gunbc.board_authority_binding", "board_extra_binds_the_capture_to_this_unit")
-    && cited("extdeps.network.mac", "mac_address_value")
+    && cited("gunbc.machine_intake.mtjade1_access_observation", "RecordedFruObservation")
+    && cited("extdeps.network.mac", "Eui48Address")
     && cited("extdeps.network.mac", "mac_is_permanent_interface_identity")
     && runtime_identity_axis_rows.length() == 4
 }

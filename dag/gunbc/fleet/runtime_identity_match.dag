@@ -33,7 +33,7 @@ module gunbc.fleet.runtime_identity_match
 import std.types { Bool, List, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.network.mac { Eui48Address, render_mac_address }
+import extdeps.network.mac { Eui48Address, mac_is_permanent_interface_identity, render_mac_address }
 
 // ---------------------------------------------------------------------------
 // THE AXES
@@ -130,30 +130,30 @@ data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
     weight: DecisiveAxis,
     comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "BoardSerialObservation"),
-    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "UnitKeyStanding"),
+    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "bind_unit_key"),
   },
   RuntimeIdentityAxisRow {
     axis: BiosVersionAxis,
     weight: CorroboratingAxis,
     comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "FirmwareManifest"),
-    binding_authority: decl_ref(
-      module_path: "gunbc.board_authority_binding",
-      decl_name: "firmware_generation_owns_currently_running_software",
-    ),
+    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "firmware_manifest_digest"),
   },
   RuntimeIdentityAxisRow {
     axis: ModelAxis,
     weight: CorroboratingAxis,
     comparison: ExactStringEquality,
     reading_authority: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "FruIdentityFields"),
-    binding_authority: decl_ref(module_path: "gunbc.board_authority_binding", decl_name: "board_extra_binds_the_capture_to_this_unit"),
+    binding_authority: decl_ref(
+      module_path: "gunbc.machine_intake.mtjade1_access_observation",
+      decl_name: "RecordedFruObservation",
+    ),
   },
   RuntimeIdentityAxisRow {
     axis: NicSetAxis,
     weight: DecisiveAxis,
     comparison: NonEmptyMacIntersection,
-    reading_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_address_value"),
+    reading_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "Eui48Address"),
     binding_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_is_permanent_interface_identity"),
   },
 ]
@@ -476,8 +476,18 @@ fn axes_agree(row: RuntimeIdentityAxisRow, pair: AxisReadingPair) -> Bool {
   }
 }
 
+// AN ADDRESS BINDS ONLY IF IT CAN NAME AN INTERFACE, and the row's binding authority is the predicate that
+// says which addresses can. Octet equality alone is a silent widen (DESIGN section 5): a locally
+// administered address is chosen by software and a group address names no single interface at all, so a
+// bridge, a VM, or a renamed NIC could present one to any machine and be agreed with any other -- a Match
+// from an address that belongs to nobody. Both sets are therefore filtered through the cited predicate
+// BEFORE intersecting, which is what makes the row's Decisive weight earned rather than claimed. Filtering
+// is intersection-only: it can turn an agreement into a non-agreement, never the reverse, and the fold
+// reports that as a divergence an operator sees rather than as silence.
 fn mac_sets_share_an_address(pre: List<Eui48Address>, post: List<Eui48Address>) -> Bool {
-  pre.any(a => post.any(b => same_mac_address(left: a, right: b)))
+  let permanent_pre = pre.filter(a => mac_is_permanent_interface_identity(addr: a))
+  let permanent_post = post.filter(a => mac_is_permanent_interface_identity(addr: a))
+  permanent_pre.any(a => permanent_post.any(b => same_mac_address(left: a, right: b)))
 }
 
 // Addresses compared octet by octet, so the comparison is about the address and not about how it was
