@@ -22,7 +22,6 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootRefused,
   SecureBootVerdictBooted,
   SecureBootVerdictRejected,
-  site_pxe_edge_secure_boot_accepted,
   ChainloaderSecureBootUnobserved,
   ChainloaderSecureBootRefused,
   ChainloaderSecureBootRejected,
@@ -96,6 +95,8 @@ fn build_with(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Arch
     architecture: architecture,
     digest: digest,
     installed_filename: filename,
+    build_command: "fixture build command",
+    toolchain: "fixture toolchain",
     secure_boot: secure_boot,
   )
 }
@@ -187,7 +188,7 @@ test fn the_landed_pin_is_pinned_and_closes_the_gate_only_on_secure_boot() -> Bo
 }
 
 fn landed_digest() -> ContentHash {
-  Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" })
+  target_of(pin: site_pxe_edge_chainloader_pin).digest
 }
 
 // WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4 (digest unobservable), dnsmasq
@@ -207,14 +208,10 @@ test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
     && contains(join(texts, "\n"), "\ndnsmasq-binary-unobservable: not probed\nadministrator-privilege-unobservable: not probed")
 }
 
-// The Bool is derived from the standing: only an observed boot is accepted; unobserved, refused and an
+// Acceptance is the gate's absence of a Secure Boot cause: only an observed boot is accepted; unobserved, refused and an
 // observed rejection are all false yet close the gate with three different causes.
 test fn secure_boot_acceptance_is_derived_and_each_standing_has_its_own_cause() -> Bool {
-  site_pxe_edge_secure_boot_accepted(standing: booted())
-    && !site_pxe_edge_secure_boot_accepted(standing: SecureBootUnobserved { why: "x" })
-    && !site_pxe_edge_secure_boot_accepted(standing: SecureBootRefused { why: "x" })
-    && !site_pxe_edge_secure_boot_accepted(standing: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" })
-    && length(secure_boot_causes(secure_boot: booted())) == 0
+  length(secure_boot_causes(secure_boot: booted())) == 0
     && secure_boot_causes(secure_boot: SecureBootUnobserved { why: "x" }) == [ChainloaderSecureBootUnobserved { why: "x" }]
     && secure_boot_causes(secure_boot: SecureBootRefused { why: "y" }) == [ChainloaderSecureBootRefused { why: "y" }]
     && secure_boot_causes(secure_boot: SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: "e" }) == [ChainloaderSecureBootRejected { evidence: "e" }]

@@ -121,7 +121,8 @@ data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc"
 // vs. sign/enroll), and a Bool cannot tell them apart. Observed carries the verdict AND the evidence that
 // settled it; Unobserved is the honest default for an artifact no firmware has been shown; Refused is a
 // standing in which the check cannot be attempted or the firmware policy forbids the image outright.
-// The Bool is DERIVED by site_pxe_edge_secure_boot_accepted and stored nowhere. A new settling source
+// There is no stored or parallel Bool: acceptance IS the absence of a Secure Boot cause in
+// site_pxe_edge_gate_causes, the one fold that decides it. A new settling source
 // (an enrolled certificate, a second firmware family) is a new evidence value, not a new variant.
 type SitePxeEdgeSecureBootVerdict
   = SecureBootVerdictBooted
@@ -132,24 +133,14 @@ type SitePxeEdgeSecureBootStanding
   | SecureBootUnobserved { why: NonEmptyStr }
   | SecureBootRefused { why: NonEmptyStr }
 
-fn site_pxe_edge_secure_boot_accepted(standing: SitePxeEdgeSecureBootStanding) -> Bool {
-  match standing {
-    SecureBootObserved { verdict: v, evidence: _ } =>
-      match v {
-        SecureBootVerdictBooted => true
-        SecureBootVerdictRejected => false
-      }
-    SecureBootUnobserved { why: _ } => false
-    SecureBootRefused { why: _ } => false
-  }
-}
-
 type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
   upstream_revision: NonEmptyStr
   build_target: IpxeBuildTarget
   architecture: Architecture
   digest: ContentHash
   installed_filename: NonEmptyStr
+  build_command: NonEmptyStr
+  toolchain: NonEmptyStr
   secure_boot: SitePxeEdgeSecureBootStanding
 }
 
@@ -159,6 +150,8 @@ fn site_pxe_edge_chainloader_build_receipt(
   architecture: Architecture,
   digest: ContentHash,
   installed_filename: NonEmptyStr,
+  build_command: NonEmptyStr,
+  toolchain: NonEmptyStr,
   secure_boot: SitePxeEdgeSecureBootStanding,
 ) -> SitePxeEdgeChainloaderBuildReceipt {
   SitePxeEdgeChainloaderBuildReceipt {
@@ -167,6 +160,8 @@ fn site_pxe_edge_chainloader_build_receipt(
     architecture: architecture,
     digest: digest,
     installed_filename: installed_filename,
+    build_command: build_command,
+    toolchain: toolchain,
     secure_boot: secure_boot,
   }
 }
@@ -175,8 +170,7 @@ type SitePxeEdgeChainloaderPin
   = SitePxeEdgeChainloaderPinned { build: SitePxeEdgeChainloaderBuildReceipt }
   | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
 
-// BUILT, NOT YET PLACED. Evidence: artifacts/ipxe/BUILD-RECEIPT.md records the command, toolchain and
-// sha256 of artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
+// BUILT, NOT YET PLACED. Evidence: the receipt's own build_command and toolchain fields, and the sha256 (337920 bytes) of the committed artifacts/ipxe/snponly-arm64.efi, built from the upstream revision below with ipxe.org's
 // documented `make <platform>/<image>` grammar (extdeps.firmware.ipxe). The file is NOT on srv4: the
 // gate still closes on the chainloader observation until a wet step places it at
 // site_pxe_edge_chainloader_path and the post-placement sha256 agrees with this digest.
@@ -190,6 +184,8 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
     architecture: Aarch64,
     digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
     installed_filename: ipxe_arm64_efi_snponly.image,
+    build_command: "make -j4 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- bin-arm64-efi/snponly.efi",
+    toolchain: "aarch64-linux-gnu-gcc (Debian 14.2.0-19) 14.2.0; GNU Make 4.4.1; GNU ld (GNU Binutils for Debian) 2.44",
     secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
   ),
 }
