@@ -5,6 +5,7 @@ import std.nat { Nat, Zero, Succ }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.decimal { ExactDecimal }
+import std.apply_mode { ApplyMode, Plan }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
@@ -810,3 +811,9 @@ fn flex_admit_revocable_target(
           }
         }
 }
+
+// WHETHER THE FLEX LANE'S VAST ACTUATION IS DRY OR WET is policy, so it is a row and not a literal in a call
+// site. Plan until the operator changes this row. The release realization (gunbc.serving.rented_release)
+// never reads it: its caller passes this row as the mode, and the first executing consumer is
+// test.claim.serving.rented_release_witness, which does exactly that.
+data flex_vast_actuation_mode: ApplyMode = Plan
