@@ -1,6 +1,6 @@
 module extdeps.boards.asrock_rack
 
-import extdeps.boards.types {
+import extdeps.boards.types { HeldManualRevision,
   BaseboardCatalogRow, DimmPopulation,
   BaseboardPhysicalProfile,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
@@ -952,17 +952,12 @@ data asrock_altrad8ud_open_mounting_unknowns: List<Altrad8udMountingUnknown> = [
 // read from, so a later revision of the manual can be diffed against the row rather than against
 // a memory of it.
 // =============================================================================================
-type HeldManualRevision {
-  version_label: NonEmptyStr
-  published_label: NonEmptyStr
-  page_count: Nat
-  authority: ExternalAuthority
-}
-
 data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
+  title: Absent,
   version_label: "1.20",
   published_label: "Jul. 2025",
   page_count: 95,
+  sha256_hex: Absent,
   authority: extdeps_external_authority_anchor,
 }
 

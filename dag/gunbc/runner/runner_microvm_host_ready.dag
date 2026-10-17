@@ -602,6 +602,7 @@ fn install_firecracker_release(root: String) -> ProcessExit
     archive: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr,
     pin: ArchiveSha256 { hex: firecracker_release_aarch64_tarball_sha256 },
     install: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
+    transport: LocalShell,
   ) {
     ArchiveInstalled => ExitSuccess
     ArchiveDigestMismatched { archive: _ } => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))

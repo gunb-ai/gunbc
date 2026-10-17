@@ -1,5 +1,6 @@
 module test.claim.fabric.flex_vast_shadow_witness
 
+import std.apply_mode { Plan, Apply }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool, Int, String }
 import std.nat { Nat }
@@ -35,7 +36,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet,
+  FlexOnDemandReferenceMissing,
   FlexCandidateConsequencesUnestablished,
   flex_machine_key_eq,
 }
@@ -48,7 +49,6 @@ import product.fabric.flex_vast_shadow {
   flex_serving_recipe, flex_host_image, flex_serving_template, FlexTemplateResolved, FlexTemplateImageUnread,
   FlexTemplateServedIdUnread, flex_offer_screen_by_recipe, flex_offer_in_shadow_field,
   FlexShadowFieldEntry, ShadowEntryEstablished, ShadowEntryEstimated, ShadowEntryExcluded, FlexVramTolerance, flex_vram_tolerance, flex_offer_screen_with_tolerance,
-  flex_wet_create_estimated_refusal_frontier,
   flex_search_type, flex_machine_key, flex_machine_key_for_offer, flex_shadow_bid,
   flex_bind_attempt_to_offer, FlexAttemptBound, FlexAttemptCandidateUnestablished,
   flex_vast_offer_key, flex_keyset_page_limit,
@@ -64,9 +64,7 @@ import product.fabric.flex_vast_shadow {
   FlexWriteBlockedRateUnconverted, FlexWriteBlockedCurrencyMismatch,
   FlexWriteBlockedOverCap, FlexWriteBlockedPartialRoster, FlexWriteWetUnwired,
   FlexInstancesStanding, FlexInstancesPartial, FlexInstancesUnreadable,
-  flex_search_offers_inhabitance_frontier, flex_m3_rent_cooldown_starts_at_ask,
-  flex_m3_pass_stops_at_first_failure,
-  flex_wet_create_release_consumer_frontier, flex_wet_create_template_consumer_frontier, flex_trial_fleet_rate_cap_authority, flex_rented_serving_allocation_join,
+  flex_search_offers_inhabitance_frontier, flex_trial_fleet_rate_cap_authority,
   flex_record_pass,
 }
 import std.rational { NonzeroNatFraction }
@@ -362,8 +360,8 @@ test fn the_cap_authority_discriminates_the_old_ruling() -> Bool {
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
   match flex_trial_policy.actuation {
-    FlexActuationDry => true
-    FlexActuationWet => false
+    Plan => true
+    Apply => false
   }
     && write_gate_conjunction()
     && frontiers_are_unbound()
@@ -375,7 +373,7 @@ fn live_policy() -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationWet,
+    actuation: Apply,
   }
 }
 
@@ -421,7 +419,7 @@ fn eur_live_policy() -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationWet,
+    actuation: Apply,
   }
 }
 
@@ -470,30 +468,6 @@ fn frontiers_are_unbound() -> Bool {
     UnboundDissolution { description: _ } => true
     BoundDissolution { trigger: _ } => false
   }
-    && match flex_m3_rent_cooldown_starts_at_ask {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_m3_pass_stops_at_first_failure {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_wet_create_release_consumer_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_wet_create_estimated_refusal_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_wet_create_template_consumer_frontier {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
-    && match flex_rented_serving_allocation_join {
-      UnboundDissolution { description: _ } => true
-      BoundDissolution { trigger: _ } => false
-    }
 }
 
 fn objective_is_cost_per_accepted_unit() -> Bool {
@@ -714,8 +688,8 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
     && (receipt.offer_key == flex_vast_offer_key(offer: offer))
     && flex_machine_key_eq(left: receipt.machine, right: flex_machine_key_for_offer(account: "vast-account-1", offer: offer))
     && match receipt.actuation {
-      FlexActuationDry => true
-      FlexActuationWet => false
+      Plan => true
+      Apply => false
     }
     && match receipt.candidates {
       VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>

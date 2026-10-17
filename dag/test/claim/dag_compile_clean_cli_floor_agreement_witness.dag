@@ -4,8 +4,7 @@ import gunbc.instruments.dag_compile_clean_cli_floor_agreement {
   witness_cli_floor_policy_agreement_holds,
   witness_policy_row_is_floor_not_yet,
   witness_policy_row_drives_predicate,
-  witness_enforced_flip_red_control,
-  cli_floor_agreement_note
+  witness_enforced_flip_red_control
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -25,8 +24,4 @@ test fn dag_compile_clean_cli_floor_enforced_flip_red_control_holds() -> Bool {
 
 test fn dag_compile_clean_cli_floor_policy_row_drives_predicate_holds() -> Bool {
   witness_policy_row_drives_predicate()
-}
-
-test fn dag_compile_clean_cli_floor_agreement_note_named() -> Bool {
-  string_contains(s: cli_floor_agreement_note, pattern: "issue 11")
 }
