@@ -421,15 +421,35 @@ fn in_band_channel_admits(
 // from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's judgement is
 // WHICH arm clears the user table, not what the enum contains.
 
-// ResetRestore keeps the user table, which is precisely the table holding the unknown password;
-// ResetNetwork likewise. Only ResetAll can produce a credential we hold. Spelled as a judgement on
-// the arm rather than an if inside the actuator, so a future reader cannot reach for the gentler arm
-// as a default and get a "recovery" that changed nothing an attacker would care about.
-fn reset_to_defaults_clears_unknown_credential(kind: RedfishResetToDefaultsType) -> Bool {
+// WHAT EACH PUBLISHED ARM DOES TO THE USER TABLE, AS TWO ARMS RATHER THAN A YES/NO (review 81308).
+//
+// This used to be `reset_to_defaults_clears_unknown_credential(kind) -> Bool`, and the module's OWN note
+// on extdeps.bmc.ipmi's IpmiCommandTransport is the argument against it: a true/false function over a
+// closed sum "put the decision OUTSIDE the data ... a consumer that forgot to ask failed OPEN", against
+// DESIGN 5's "making it UNWRITABLE". The transport got sums; this one stayed a Bool, which is the same
+// shape carrying the same risk one file over.
+//
+// The two arms also keep the reason the gentler ones fail, which a Bool discarded: ResetRestore keeps the
+// user table (the table holding the password we do not know) and ResetNetwork likewise, so a reader told
+// "not that one" can see WHY and not reach for it as a milder default -- the exact mistake the previous
+// comment warned about while implementing it as one bit. Decided once, here; consumers match.
+type ResetToDefaultsUserTableDisposition
+  = ClearsUserTableIncludingUnknownCredential { kind: RedfishResetToDefaultsType }
+  | LeavesUserTableIntact { kind: RedfishResetToDefaultsType, what_survives: NonEmptyStr }
+
+fn reset_to_defaults_user_table_disposition(kind: RedfishResetToDefaultsType) -> ResetToDefaultsUserTableDisposition {
   match kind {
-    ResetAll => true
-    ResetNetwork => false
-    ResetRestore => false
+    ResetAll => ClearsUserTableIncludingUnknownCredential { kind: ResetAll }
+    // the words are the DMTF arm's own consequence, not a taste: what survives is the account whose
+    // password is the thing we are trying to change
+    ResetNetwork => LeavesUserTableIntact {
+      kind: ResetNetwork,
+      what_survives: "the user table, including the account whose unknown password motivated the reset",
+    }
+    ResetRestore => LeavesUserTableIntact {
+      kind: ResetRestore,
+      what_survives: "the user table, including the account whose unknown password motivated the reset",
+    }
   }
 }
 
@@ -528,13 +548,13 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
   recovery_write_record_names_kind(record: record, kind: kind)
 }
 
-fn recovery_write_grounds_success(record: RecoveryWriteRecord) -> Bool {
-  match record {
-    ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
-    ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
-    NotExecuted { kind: _ } => false
-  }
-}
+// WHY THERE IS NO `recovery_write_grounds_success` (review 81308). The Bool existed, and NO PRODUCTION
+// CALL SITE EVER ASKED IT: the fold gates on recovery_write_was_attempted and on the readback, and the
+// success arm is chosen by which branch it lands in, not by consulting a predicate. What "grounds
+// success" means is therefore carried by the arms themselves -- ExecutedWithCapturedExchange is the only
+// arm whose bytes can ground anything -- and a true/false-per-arm helper was reachable only from a test,
+// which is how it read as used. The witness now matches the three arms where they are visible; a `_ =>
+// false` helper would be the same Bool wearing the claim's clothes.
 
 // WHY THERE ARE NO `*_admission_issued_by` PREDICATES. Checking WHICH GATE issued an admission is a
 // legitimate question -- it compares two declarations -- but it does not need a helper: each admitted arm
@@ -705,7 +725,14 @@ fn admit_recovery_manager_reset_to_defaults(
   } {
     ResetWriteRefused { cause: "the ruling's interlock is not rostered against this site, so no standing discharges the reset's irreversibility" as NonEmptyStr }
   } else if match arm {
-    Present { value: a } => a != ResetAll
+    // MATCHED THROUGH THE DISPOSITION, not asked a yes/no: the admitted arm has to be one the upstream
+    // enum's own effect says clears the table holding the credential. Absent (the record named no reset
+    // arm at all) refuses with the rest of them, and the disposition's other arm says why in its own words.
+    Present { value: a } =>
+      match reset_to_defaults_user_table_disposition(kind: a) {
+        ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+        LeavesUserTableIntact { kind: _, what_survives: _ } => true
+      }
     Absent => true
   } {
     ResetWriteRefused { cause: "the write record does not name a ResetToDefaults with the arm that clears the user table, so what would have been actuated is not the reset this row classifies" as NonEmptyStr }
@@ -805,13 +832,44 @@ type RecoveryFactoryCredentialReadback
   | CredentialNotAccepted { evidence: EvidenceRef, observed_at: EpochMs }
   | ReadbackInconclusive { detail: NonEmptyStr }
 
-fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -> Bool {
+// THE ONLY MINT OF ProvenResetReadback, AND IT REFUSES. It used to return a Bool, which left the caller
+// still holding the unproven readback and free to decide what to believe with it -- which is exactly how
+// the hand-off arm stayed writable around a ReadbackInconclusive. An optional is the difference: Absent
+// means there is no value to put in the arm, so no hand-off can be assembled from an unproven readback.
+// The message identity is checked against extdeps.bmc.redfish's named constant rather than a re-typed
+// literal, and neither of the two non-proving arms has a mint.
+fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -> ProvenResetReadback? {
   match readback {
-    FactoryCredentialActiveAwaitingChange { message_id, evidence: _, observed_at: _ } =>
-      redfish_message_id_is_password_change_required(id: message_id as String)
-    CredentialNotAccepted { evidence: _, observed_at: _ } => false
-    ReadbackInconclusive { detail: _ } => false
+    FactoryCredentialActiveAwaitingChange { message_id: message_id, evidence: evidence, observed_at: observed_at } =>
+      if redfish_message_id_is_password_change_required(id: message_id as String) {
+        Present {
+          value: ProvenResetReadback {
+            message_id: message_id,
+            evidence: evidence,
+            observed_at: observed_at,
+            // the bytes the proof rests on travel with it, so a reader of the standing reaches the
+            // capture without leaving the model
+            capture: recovery_post_reset_readback_capture_ref,
+          },
+        }
+      } else {
+        Absent
+      }
+    CredentialNotAccepted { evidence: _, observed_at: _ } => Absent
+    ReadbackInconclusive { detail: _ } => Absent
   }
+}
+
+// SEALED: ONE MINT, IN THIS MODULE (see recovery_readback_proves_reset). Its existence is what makes
+// InBandRecoveryOutcome's hand-off arm unwritable with an unproven readback, which is what let
+// recovery_standing_handed_off be deleted (review 81308: "make the handed-off arm require a readback type
+// that only a proving PasswordChangeRequired readback can construct"). A value of this type IS the
+// evidence -- message identity, the EvidenceRef that recorded it, the instant, and the capture digest.
+type ProvenResetReadback sole_constructor {
+  message_id: NonEmptyStr
+  evidence: EvidenceRef
+  observed_at: EpochMs
+  capture: EvidenceRef
 }
 
 // The arms as the message decides them, so they cannot be chosen by taste: a body that does not name
@@ -887,16 +945,14 @@ type InBandRecoveryStanding sole_constructor {
   outcome: InBandRecoveryOutcome
 }
 
-fn recovery_standing_handed_off(standing: InBandRecoveryStanding) -> Bool {
-  match standing.outcome {
-    RecoveryHandedToOnboarding { controller: _, readback: r, writes: _ } => recovery_readback_proves_reset(readback: r)
-    RecoveryHostUnreachable { cause: _ } => false
-    RecoveryChannelUnobserved { detail: _ } => false
-    RecoveryControllerPolicyUnavailable { sighting: _ } => false
-    RecoveryWriteUnverified { kind: _ } => false
-    RecoveryReadbackRefusedFactoryCredential { readback: _ } => false
-  }
-}
+// WHY THERE IS NO `recovery_standing_handed_off` (review 81308; the fix review 81285 asked for). It was a
+// Bool over the whole outcome sum -- one arm true, five false -- whose ONLY real work was re-asking the
+// readback question the hand-off arm should never have been writable without. Both halves were wrong: the
+// Bool is the predicate-dissolution shape this module's own transport note argues against, and the re-ask
+// is §5's "validation stood where construction was available". Neither survives. The arm now carries
+// ProvenResetReadback, which has exactly one mint, so the question cannot be posed wrongly; consumers
+// match the outcome arms where they are visible (recovery_route_unavailability, the access_discover seam,
+// and the claims below). A `_ => false` helper would be the deleted Bool wearing the claim's clothes.
 
 // ── THE CONVERGENCE STEPS ──────────────────────────────────────────────────────────────────────
 //
@@ -929,9 +985,13 @@ data recovery_factory_credential_readback_step: DeclarationRef = decl_ref(
   decl_name: "recovery_readback_proves_reset",
 )
 
+// The hand-off step names the fold, because the fold is the declaration that WRITES the hand-off arm --
+// and it can only write it holding a ProvenResetReadback. It used to name recovery_standing_handed_off,
+// a Bool re-checking the readback after the fact; that declaration is deleted (review 81308), and naming
+// a step after a predicate rather than after the actuation that performs it was already the wrong shape.
 data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
-  decl_name: "recovery_standing_handed_off",
+  decl_name: "converge_in_band_recovery",
 )
 
 // WHY THE ROUTE CARRIES NO operator_approval / reset_readback FIELD. It used to, and nothing read them:
@@ -1091,23 +1151,30 @@ fn converge_after_admissions(
           route: route,
           outcome: RecoveryWriteUnverified { kind: recovery_reset_actuation() },
         }
-      } else if recovery_readback_proves_reset(readback: readback) == false {
-        InBandRecoveryStanding {
-          subject: route.subject,
-          route: route,
-          outcome: RecoveryReadbackRefusedFactoryCredential { readback: readback },
+      } else
+        // THE READBACK IS ASKED ONCE, AND THE MATCH ROUTES THE OUTCOME -- no Bool in between, no second
+        // ask, no arm that could hold a hand-off without a proof. Absent has nowhere to go but the refusal
+        // arm; the hand-off arm below is the only place ProvenResetReadback is ever consumed, and nothing
+        // outside this module can build one (type ProvenResetReadback sole_constructor), so the value in
+        // it is this mint's answer about THIS readback and nothing else (review 81308).
+        match recovery_readback_proves_reset(readback: readback) {
+          Absent =>
+            InBandRecoveryStanding {
+              subject: route.subject,
+              route: route,
+              outcome: RecoveryReadbackRefusedFactoryCredential { readback: readback },
+            }
+          Present { value: proven } =>
+            InBandRecoveryStanding {
+              subject: route.subject,
+              route: route,
+              outcome: RecoveryHandedToOnboarding {
+                controller: route.controller,
+                proven: proven,
+                writes: [in_band_write, reset_write],
+              },
+            }
         }
-      } else {
-        InBandRecoveryStanding {
-          subject: route.subject,
-          route: route,
-          outcome: RecoveryHandedToOnboarding {
-            controller: route.controller,
-            readback: readback,
-            writes: [in_band_write, reset_write],
-          },
-        }
-      }
 }
 
 // WHAT A MEASUREMENT IS ABOUT, when one exists. Only the refusal arm names a release; the catalog's
@@ -1415,13 +1482,28 @@ test fn the_transport_sums_place_every_wire_name_on_exactly_one_side() -> Bool {
     })
 }
 test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
-  reset_to_defaults_clears_unknown_credential(kind: ResetAll)
-    && reset_to_defaults_clears_unknown_credential(kind: ResetNetwork) == false
-    && reset_to_defaults_clears_unknown_credential(kind: ResetRestore) == false
+  (match reset_to_defaults_user_table_disposition(kind: ResetAll) {
+    ClearsUserTableIncludingUnknownCredential { kind: k } => k == ResetAll
+    LeavesUserTableIntact { kind: _, what_survives: _ } => false
+  })
+    // AND the two arms that keep the table say WHAT THEY LEAVE BEHIND, which a Bool could not: an
+    // operator offered "the gentler reset" is told the account we cannot log into survives it.
+    && (match reset_to_defaults_user_table_disposition(kind: ResetNetwork) {
+      LeavesUserTableIntact { kind: k, what_survives: w } => k == ResetNetwork && string_length(w) > 0
+      ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+    })
+    && (match reset_to_defaults_user_table_disposition(kind: ResetRestore) {
+      LeavesUserTableIntact { kind: k, what_survives: w } => k == ResetRestore && string_length(w) > 0
+      ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+    })
     // AND the kind carries the arm rather than answering a question about it: a ResetRestore inside the
     // Redfish arm is matched as the arm it is, so nothing can read that actuation as one that wipes.
     && (match RedfishManagerResetToDefaults { reset_type: ResetRestore } {
-         RedfishManagerResetToDefaults { reset_type: rt } => reset_to_defaults_clears_unknown_credential(kind: rt) == false
+         RedfishManagerResetToDefaults { reset_type: rt } =>
+           match reset_to_defaults_user_table_disposition(kind: rt) {
+             LeavesUserTableIntact { kind: _, what_survives: _ } => true
+             ClearsUserTableIncludingUnknownCredential { kind: _ } => false
+           }
          InBandTemporaryAdministratorPassword => false
        })
     // THE ADMITTED RESET ARM IS MATCHED ONCE, and everything it must carry is read out of that match: the
@@ -1447,26 +1529,54 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
 }
 
 test fn a_readback_that_names_a_different_message_does_not_prove_the_reset() -> Bool {
-  recovery_readback_proves_reset(
+  // THE MINT REFUSES, SO THERE IS NOTHING TO HAND THE HAND-OFF ARM. Each arm is matched, and the refusal
+  // side asserts the absence of a VALUE rather than a false from a predicate: "no ProvenResetReadback was
+  // produced" is what makes a hand-off unwritable, which is a stronger claim than the Bool ever made.
+  // The near-miss message IDs are what a fabricated readback would most plausibly carry -- the registry
+  // strings come from the DMTF registry the readback was read out of, not from this file.
+  (match recovery_readback_proves_reset(
     readback: FactoryCredentialActiveAwaitingChange {
       message_id: "Base.1.16.0.NoResource",
       evidence: recovery_post_reset_readback_capture_ref,
       observed_at: recovery_capture_instant(),
     },
-  ) == false
-    && recovery_readback_proves_reset(
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  })
+    // THE PROOF, when it comes: the carrier carries the identity, the evidence row and the instant it was
+    // minted from, so a reader of the standing can get from the claim to the bytes.
+    && (match recovery_readback_proves_reset(
       readback: FactoryCredentialActiveAwaitingChange {
         message_id: "Base.1.16.0.PasswordChangeRequired",
         evidence: recovery_post_reset_readback_capture_ref,
         observed_at: recovery_capture_instant(),
       },
-    )
-    && recovery_readback_proves_reset(
+    ) {
+      Present { value: p } =>
+        redfish_message_id_is_password_change_required(id: p.message_id as String)
+          // canonical equality on the record, not a hand-written field-by-field comparison: the carrier
+          // must cite the SAME capture row (label + digest), not a look-alike
+          && p.evidence == recovery_post_reset_readback_capture_ref
+      Absent => false
+    })
+    // a rejected credential is not a proof either, whatever else its body said
+    && (match recovery_readback_proves_reset(
       readback: CredentialNotAccepted {
         evidence: recovery_post_reset_readback_capture_ref,
         observed_at: recovery_capture_instant(),
       },
-    ) == false
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    // and neither is a body that was never readable
+    && (match recovery_readback_proves_reset(
+      readback: ReadbackInconclusive { detail: "response body was truncated before the message" },
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    })
     && recovery_readback_of(
       body: "{\"error\":{\"@Message.ExtendedInfo\":[{\"MessageId\":\"Base.1.16.0.PasswordChangeRequired\"}]}}",
       evidence: recovery_post_reset_readback_capture_ref,
@@ -1525,7 +1635,10 @@ test fn a_route_on_a_controller_nobody_measured_refuses_the_destructive_reset() 
       match sighting {
         ControllerNeverMeasured { observed: o } =>
           o.firmware_revision_major == 3 && o.firmware_revision_minor == 6
-            && recovery_standing_handed_off(standing: standing) == false
+            && match standing.outcome {
+              RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
+              _ => true
+            }
             // matched, not compared: an optional compared against a Present literal answers by
             // representation (gunbc.recurring_failure_mode.optional_equality_answers_by_representation)
             && match recovery_route_unavailability(standing: standing) {
@@ -1581,8 +1694,22 @@ test fn the_standing_refuses_to_hand_off_without_the_readback() -> Bool {
     in_band_admission: recovery_admitted_in_band_write(),
     reset_admission: recovery_admitted_reset_write(),
   )
-  recovery_standing_handed_off(standing: without_readback) == false
-    && recovery_standing_handed_off(standing: with_readback)
+  // THE SAME PAIR, MATCHED. And the reason the refusal side is not vacuous is the sealed carrier: there
+  // is no ProvenResetReadback value to put in the hand-off arm for a ReadbackInconclusive, so the fold
+  // cannot reach that arm at all -- which is a stronger claim than the Bool this replaces ever made.
+  (match without_readback.outcome {
+    RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
+    RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
+    _ => false
+  })
+    && (match with_readback.outcome {
+      RecoveryHandedToOnboarding { controller: c, proven: p, writes: w } =>
+        c == route.controller && list_length(items: w) == 2
+          // the carrier carries the identity it was minted from, and that identity is still the one
+          // extdeps.bmc.redfish recognises -- checked by ITS predicate, not against a literal here
+          && redfish_message_id_is_password_change_required(id: p.message_id as String)
+      _ => false
+    })
     && match without_readback.outcome {
       RecoveryReadbackRefusedFactoryCredential { readback: _ } => true
       _ => false
@@ -1608,7 +1735,10 @@ test fn an_unattempted_reset_write_leaves_the_route_unverified_rather_than_recov
   )
   match standing.outcome {
     RecoveryWriteUnverified { kind: RedfishManagerResetToDefaults { reset_type: ResetAll } } =>
-      recovery_standing_handed_off(standing: standing) == false
+      match standing.outcome {
+        RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => false
+        _ => true
+      }
     _ => false
   }
 }
