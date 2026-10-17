@@ -1352,7 +1352,8 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
 // separates declarations, never the arguments applied to one. An application agrees with a non-applied
 // spelling only when that spelling RETAINS the arguments to compare: child against child. A childless
 // other side (a leaf, or a bare generic still carrying its declared parameters) retains none, and a
-// RESOLVED EXPANSION retains none either: slots were replaced by name and the declared parameter list
+// RESOLVED EXPANSION, coproduct OR product, retains none either (a product's fields are not the
+// arguments: Stamp<Int> would meet the expansion of Stamp<Bool> on a fixed field): slots were replaced by name and the declared parameter list
 // cleared, so nothing records which parameter supplied which occurrence (a parameter the body never
 // uses, or two parameters bound to one type, cannot be told apart). No retained arguments is a refusal,
 // never an agreement. Admitting them would be an instantiation relation, not equality; the rung that
@@ -1364,12 +1365,7 @@ fn applied_spelling_arguments_agree(applied: Node, other: Node, source_indices: 
     false
   } else {
     match applied.inferred {
-      Present { value: Resolved { node: expansion } } =>
-        if is_coproduct_type(n: expansion) {
-          false
-        } else {
-          arguments_agree_in_lockstep(left_args: applied.children, right_args: other.children, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, text: text))
-        }
+      Present { value: Resolved { node: _ } } => false
       _ => arguments_agree_in_lockstep(left_args: applied.children, right_args: other.children, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, text: text))
     }
   }

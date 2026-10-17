@@ -3119,26 +3119,7 @@ pub fn applied_spelling_arguments_agree(
         false
     } else {
         match applied.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved {
-                node: expansion, ..
-            }) => {
-                if is_coproduct_type(expansion.clone()) {
-                    false
-                } else {
-                    arguments_agree_in_lockstep(
-                        applied.children.clone(),
-                        other.children.clone(),
-                        |a, b| {
-                            node_type_equals(
-                                a.clone(),
-                                b.clone(),
-                                source_indices.clone(),
-                                text.clone(),
-                            )
-                        },
-                    )
-                }
-            }
+            Some(InferredNode::Resolved { node: _, .. }) => false,
             _ => arguments_agree_in_lockstep(
                 applied.children.clone(),
                 other.children.clone(),

@@ -271,3 +271,51 @@ fn an_argument_that_vanishes_from_the_expansion_refuses_in_both_orders() {
         "Pair<Int, Bool> vs the expansion of Pair<Int, Int> refuses as well"
     );
 }
+
+// A PRODUCT EXPANSION: Stamp<T> { marker: Int } never mentions T, so the expansions of Stamp<Int> and
+// Stamp<Bool> are equal and the application's argument Int meets the field Int by accident. A Conj
+// expansion retains no arguments either, so the application refuses it in both orders (the Box and Pair
+// controls above are all Disj, which is why the product path was missed).
+fn stamp_application(argument: &str) -> Rc<Node> {
+    let slot = leaf("T");
+    let mut decl = named(
+        "Stamp",
+        Connective::Conj,
+        vec![Rc::new(named("marker", Connective::NoConnective, vec![]))],
+    );
+    decl.children = Rc::new(vec![leaf("Int")].into_iter().collect());
+    decl.params = Rc::new(vec![slot].into_iter().collect());
+    let use_site = named("Stamp", Connective::NoConnective, vec![leaf(argument)]);
+    let env = Rc::new((*empty_type_env()).clone());
+    generic_declaration_application(
+        Rc::new(use_site),
+        Rc::new(decl),
+        "Stamp".to_string(),
+        Rc::new(vec![leaf(argument)].into_iter().collect()),
+        Rc::new(im::HashMap::unit("T".to_string(), leaf(argument))),
+        env,
+    )
+}
+
+#[test]
+fn an_application_refuses_a_product_expansion_of_another_instantiation_in_both_orders() {
+    let int_stamp = stamp_application("Int");
+    let bool_expansion = expansion_of(&stamp_application("Bool"));
+    assert_eq!(
+        bool_expansion.connective,
+        Connective::Conj,
+        "premise: the expansion is a product"
+    );
+    assert!(
+        equals(expansion_of(&int_stamp), bool_expansion.clone()),
+        "premise: the two expansions are equal, so only the arguments could tell them apart"
+    );
+    assert!(
+        !equals(int_stamp.clone(), bool_expansion.clone()),
+        "Stamp<Int> vs the product expansion of Stamp<Bool> must refuse"
+    );
+    assert!(
+        !equals(bool_expansion, int_stamp),
+        "reverse operand order must refuse too"
+    );
+}
