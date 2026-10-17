@@ -32,6 +32,16 @@ import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 // enclosing scope. A moved Rust accumulator cannot be authored in .dag; the distance to that minimum is
 // what the SUBJECT reading exposes, and exact alloc/alloc_zeroed/realloc layouts need a Rust-level control
 // no .dag program can author (named blocker, so the byte check here is a lower bound on a known string).
+//
+// CALIBRATION NOT AUTHORABLE FROM .dag, EACH A NAMED BLOCKER (not a pass):
+// (a) availability as a realization fact -- the runtime flag turns true on the first allocation, so a
+// window cannot tell a live meter from one that observed nothing; the empty-window and known-allocation
+// cases bound this from both sides (0 vs 4106 ops) but a declared availability fact needs the allocator
+// to export its installed state, which is a v1 runtime-text change for the next repair PR.
+// (b) a disconnected-counter control -- running a window against an allocator that is not installed
+// needs a second binary without #[global_allocator]; the label builds one emitted crate, and the
+// non-demanding-main check is pinned instead at the emit decision (compiler_tests_rust,
+// the_counting_allocator_is_installed_only_by_demand).
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
 type RefAcc {
