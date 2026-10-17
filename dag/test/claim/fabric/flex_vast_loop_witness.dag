@@ -45,14 +45,18 @@ import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHel
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, rented_allocation_identity,
 }
-import gunbc.serving.rented_release { RentedReleasePlanned, RentedReleaseGone }
+import gunbc.serving.rented_release {
+  RentedReleasePlanned, RentedReleaseGone, RentedReleasePending, RentedReleaseReceiptV1, RentedReleaseReadings, RentedHostReading,
+  RentedHostSilent, RentedVantageReached, RentedVantageNotReached, RentedLegOutcomeNotPerformedHostSilent, RentedLegDrain, RentedReleaseHeld,
+  RentedReleaseDestroyRefused,
+}
 import test.claim.fabric.flex_vast_shadow_witness { wire_offer, inst_labelled, exhausted, t_charge }
 import test.claim.fabric.flex_bid_admission_witness {
   t_policy, t_attempt, t_account, t_window, empty_occupancy, t_machine, one_dollar_wire, one_ten, usd_hour,
 }
 import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.cloud.vast_ai { VastAiCharges }
-import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance }
+import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected, w_instance, w_silent_readings }
 import gunbc.serving.rented_release { RentedInstanceObserved }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
@@ -311,7 +315,7 @@ test fn the_wet_gates_start_closed_and_stop_a_create_that_cleared_every_wall() -
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedKeyNotLive { custody: c, causes: cs } } } => ((c.host_path as String) == "/etc/gunbc-flex/vast-api-key") && ((cs |> length) == 1)
     _ => false
   } && ((flex_wet_gate_wall(gates: w_open) |> length) == 0)
-    && ((flex_release_return_wall() |> length) == 1)
+    && ((flex_release_return_wall() |> length) == 0)
     && match w_placement_refusal() {
       Present { value: FlexPassCreateRefused { refusal: FlexRefusedPlacementUnread { obligation: _ } } } => true
       _ => false
@@ -496,4 +500,54 @@ fn w_placement_refusal() -> FlexPassRefusal? {
   let i = w_intent(entry: w_established(), admitted: true)
   let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: i.quote, admission: i.admission, placement: FlexPlacementUnread { obligation: "host and route unread" as NonEmptyStr } }
   w_refusal_of(p: flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: intent })))
+}
+
+// ---- THE RELEASE LEG IS GATED ON S5b's TYPED OUTCOMES, not on a wall. A flex release of a card whose host is
+// established silent reaches the guarded destroy with its on-card legs NOT PERFORMED; an ambiguous silence
+// holds the release at the drain leg; a label that is not ours stops at the id guard, so nothing is destroyed.
+fn w_flex_release(host: RentedHostReading, label: String) -> RentedReleaseReceiptV1? {
+  let listed = RentedInstanceObserved { instance: w_instance(id: 1001, label: Present { value: label }) }
+  let base = w_silent_readings(host: host, listed: listed)
+  let readings = RentedReleaseReadings { host: base.host, authorizations: base.authorizations, anchor: base.anchor, before: listed, after: listed }
+  match flex_release_card(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 1), intent: none), allocation: w_acquired(), roots: w_roots, protected: w_protected, readings: readings) {
+    FlexPassReleased { receipt: r, destroy_status: _ } => Present { value: r }
+    _ => none
+  }
+}
+
+test fn a_silent_card_is_released_with_not_performed_legs_and_the_destroy_is_pending() -> Bool {
+  match w_flex_release(host: RentedHostSilent { control: RentedVantageReached }, label: "gunbc-flex") {
+    Present { value: r } =>
+      match r.drain {
+        RentedLegOutcomeNotPerformedHostSilent =>
+          match r.outcome {
+            RentedReleasePending { request: q, status: _ } => q.instance_id == 1001
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn an_ambiguous_silence_holds_the_release_at_the_drain_leg() -> Bool {
+  match w_flex_release(host: RentedHostSilent { control: RentedVantageNotReached }, label: "gunbc-flex") {
+    Present { value: r } =>
+      match r.outcome {
+        RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn a_silent_card_that_is_not_ours_stops_at_the_id_guard() -> Bool {
+  match w_flex_release(host: RentedHostSilent { control: RentedVantageReached }, label: "ctrl-bidder") {
+    Present { value: r } =>
+      match r.outcome {
+        RentedReleaseDestroyRefused { decision: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
 }
