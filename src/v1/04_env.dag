@@ -2189,3 +2189,52 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
       }
   }
 }
+
+// A TYPE NAME AT A NAME-ONLY SEAM IS READ AS ITS DECLARATION, NEVER COMPARED AS A SPELLING. The name
+// resolves through the symbol index to the DeclarationRef it names (qualified: its declaring module;
+// bare: the unique global binding); an ambiguous or undeclared name is Absent and the seam refuses.
+fn declaration_named_by_type_name(name: String, env: TypeEnv) -> DeclarationRef? {
+  match operand_declaration_from_qualified_name(qualified: name, env: env) {
+    Present { value: od } => Present { value: od.declaration }
+    Absent =>
+      if qualified_all_but_last(name: name) != "" { none }
+      else {
+        match map_get(env.symbol_index.global_bare, name) {
+          Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => Present { value: decl_ref(module_path: mp, decl_name: name) }
+          _ => none
+        }
+      }
+  }
+}
+
+// What a declaration stands for after its BARE-name alias edges: a `type A = B` chases to B; an alias
+// whose right-hand side applies arguments (`type A = B<C>`) is not a bare edge and stops the chase,
+// because the name alone does not carry the arguments the two sides must agree on.
+fn bare_alias_settled_declaration(d: DeclarationRef, env: TypeEnv, fuel: Int) -> DeclarationRef {
+  if fuel <= 0 { d }
+  else {
+    match alias_rhs_of_declaration(item_ref: d, env: env) {
+      Absent => d
+      Present { value: rhs } =>
+        if (rhs.children |> count) > 0 { d }
+        else {
+          match rhs.declaration {
+            Present { value: next } => bare_alias_settled_declaration(d: next, env: env, fuel: fuel - 1)
+            Absent => d
+          }
+        }
+    }
+  }
+}
+
+fn type_names_settle_to_one_declaration(left: String, right: String, env: TypeEnv) -> Bool {
+  match declaration_named_by_type_name(name: left, env: env) {
+    Absent => false
+    Present { value: l } =>
+      match declaration_named_by_type_name(name: right, env: env) {
+        Absent => false
+        Present { value: r } =>
+          declaration_ref_eq(a: bare_alias_settled_declaration(d: l, env: env, fuel: 16), b: bare_alias_settled_declaration(d: r, env: env, fuel: 16))
+      }
+  }
+}

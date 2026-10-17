@@ -2,7 +2,7 @@ module v1.compiler.infer_types
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, settled_args_agree }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -1041,9 +1041,19 @@ fn alias_identity_in_judgment(left: Node, right: Node, source_indices: Map<Strin
   match text {
     TextJudgedIn { env: e } =>
       alias_settled_agree(left: left, right: right, source_indices: source_indices, env: e,
-        agree: (a, b) => node_type_compatible(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
+        agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text))
     TextNotAsked { reason: _ } => false
   }
+}
+
+// An applied argument of an alias-settled pair agrees when it is compatible AND its own applied
+// arguments agree in turn: node_type_compatible compares a non-container application by head name
+// alone, so `Inner<Int>` would otherwise pass for `Inner<Bool>` one level down.
+fn applied_argument_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  node_type_compatible(left: left, right: right, source_indices: source_indices, text: text)
+    && ((left.children |> count) != (right.children |> count)
+      || settled_args_agree(left: left.children, right: right.children,
+        agree: (a, b) => applied_argument_agrees(left: child_type_node(ch: a), right: child_type_node(ch: b), source_indices: source_indices, text: text)))
 }
 
 fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Node {

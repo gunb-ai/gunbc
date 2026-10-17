@@ -142,21 +142,8 @@ fn class_count(source: String, wanted: String) -> Int {
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
-test fn dbg_if_tm() -> Bool { class_count(source: if_source, wanted: "TypeMismatch") == 0 }
-test fn dbg_if_dt() -> Bool { class_count(source: if_source, wanted: "DeclaredTypeNotInhabited") == 0 }
-test fn dbg_if_ie() -> Bool { class_count(source: if_source, wanted: "InternalError") == 0 }
 
-data dbgsrc_aa: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox) -> Boxed<Int> { if c { a } else { a } }\n"
-test fn dbg_aa() -> Bool { class_count(source: dbgsrc_aa, wanted: "InternalError") == 0 }
 
-data dbgsrc_bb: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, b: Boxed<Int>) -> Boxed<Int> { if c { b } else { b } }\n"
-test fn dbg_bb() -> Bool { class_count(source: dbgsrc_bb, wanted: "InternalError") == 0 }
 
-data dbgsrc_ba: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> Boxed<Int> { if c { b } else { a } }\n"
-test fn dbg_ba() -> Bool { class_count(source: dbgsrc_ba, wanted: "InternalError") == 0 }
 
-data dbgsrc_retalias: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> IntBox { if c { a } else { b } }\n"
-test fn dbg_retalias() -> Bool { class_count(source: dbgsrc_retalias, wanted: "InternalError") == 0 }
 
-data dbgsrc_letab: String = "module probe_dbg\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(c: Bool, a: IntBox, b: Boxed<Int>) -> Int { let x = if c { a } else { b }\n x.v }\n"
-test fn dbg_letab() -> Bool { class_count(source: dbgsrc_letab, wanted: "InternalError") == 0 }
