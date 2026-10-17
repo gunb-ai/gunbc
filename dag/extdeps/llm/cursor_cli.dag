@@ -116,6 +116,38 @@ fn cursor_cli_program_identity() -> ProgramIdentity {
   uncataloged_program(invocation: cursor_cli_program as NonEmptyStr)
 }
 
+// STATUS OBSERVES STORED AUTH, NOT THE KEY IN THE ENVIRONMENT. Observed on cursor-agent 2026.09.15-d2fe57e
+// on srv2, 2026-10-17: `status` reports only the auth stored under the Cursor config root
+// ($XDG_CONFIG_HOME/cursor/auth.json); under an empty config root an invalid CURSOR_API_KEY and the
+// valid custody key both read unauthenticated. So it answers "does this config root hold stored auth",
+// and no builder here claims it judges a supplied key.
+//
+// --list-models VALIDATES THE INVOCATION'S ENVIRONMENT KEY (same build, same day). An invalid
+// CURSOR_API_KEY exits 1 with stderr "The provided API key is invalid. The API key was loaded from the
+// CURSOR_API_KEY environment variable"; the valid custody key exits 0 and prints "Available models"
+// followed by model rows. It establishes that the CLI accepts the credential and nothing about quota,
+// entitlement or a paid turn's success.
+//
+// A KEYED INVOCATION PERSISTS THE KEY. After one --list-models under an empty XDG_CONFIG_HOME,
+// cursor/auth.json appeared there with the shape {accessToken, refreshToken, apiKey}. Whatever config
+// root an invocation sees therefore receives the credential, so a caller that runs a keyed invocation
+// owns that root's lifetime (gunbc.cursor_harness_credential); this module owns only the fact.
+data cursor_list_models_flag: String = "--list-models"
+data cursor_invalid_api_key_marker: NonEmptyStr = "The provided API key is invalid" as NonEmptyStr
+data cursor_list_models_header: NonEmptyStr = "Available models" as NonEmptyStr
+data cursor_config_root_env_var: NonEmptyStr = "XDG_CONFIG_HOME" as NonEmptyStr
+data cursor_home_env_var: NonEmptyStr = "HOME" as NonEmptyStr
+data cursor_persisted_auth_relative_path: NonEmptyStr = "cursor/auth.json" as NonEmptyStr
+
+// The hidden global --disable-auto-update ("Disable auto-updates"): absent from --help, accepted by
+// 2026.09.15-d2fe57e (exit 0 with --version and with status, srv2 2026-10-17). A root-owned pinned tree
+// cannot be written by the invoking user, so every pinned invocation passes it.
+data cursor_disable_auto_update_flag: String = "--disable-auto-update"
+
+fn cursor_key_probe_command(program: ProgramIdentity) -> ArgvCommand {
+  argv_command(program: program, arguments: [cursor_disable_auto_update_flag, cursor_list_models_flag])
+}
+
 fn cursor_sandbox_preflight_command(program: ProgramIdentity) -> ArgvCommand {
   argv_command(program: program, arguments: ["sandbox", "run", "printenv", cursor_sandbox_env_var as String])
 }
