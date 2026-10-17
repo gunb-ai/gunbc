@@ -1,11 +1,13 @@
 module test.claim.fleet_fan_converge_witness
 
 import std.types { Bool, Int, NonEmptyStr }
+import std.optional { Absent, Present }
 import std.measure { percent }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPolicy, HeldAtDutyFloor, fleet_fan_policy }
 import gunbc.fleet.fleet_fan_converge {
   FleetFanApply,
+  FleetFanDecision,
   FleetFanConverged,
   FleetFanControlObserved,
   FleetFanControlUnobservable,
@@ -14,6 +16,7 @@ import gunbc.fleet.fleet_fan_converge {
   FleetFanRefuse,
   FleetFanUnobservable,
   fleet_fan_decide,
+  fleet_fan_family_refusal,
   fleet_fan_standing,
 }
 
@@ -51,21 +54,37 @@ test fn witness_divergence_applies_on_bound_route_and_refuses_on_unbound() -> Bo
   on_openbmc && on_megarac
 }
 
-// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY ROUTE IS CONSULTED: 22 is off MegaRAC's
-// step-5 set and OpenBMC's held floor is unread.
+fn refused_with(d: FleetFanDecision, why: NonEmptyStr?) -> Bool {
+  match d {
+    FleetFanRefuse { cause: c } => match why {
+      Present { value: w } => (c as String) == (w as String)
+      Absent => false
+    }
+    FleetFanNoop => false
+    FleetFanApply { target: _, route: _ } => false
+  }
+}
+
+fn is_present(v: NonEmptyStr?) -> Bool {
+  match v {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A FLOOR THE FAMILY CANNOT EXPRESS REFUSES BEFORE ANY ROUTE IS CONSULTED, AND THE CAUSE IS THE
+// FAMILY'S: MegaRAC's route is unbound too, so a bare Refuse cannot tell the two apart; the cause
+// must equal fleet_fan_family_refusal's. 22 is off MegaRAC's step-5 set, 30 is on it (family
+// refusal absent, so its Refuse comes from the route and differs); OpenBMC's held floor is unread.
 test fn witness_inexpressible_floor_refuses() -> Bool {
   let seen = FleetFanControlObserved { control: FirmwareAutomatic }
-  let megarac = match fleet_fan_decide(policy: held(22), family: AmiMegaRac, observed: seen) {
-    FleetFanRefuse { cause: _ } => true
-    FleetFanNoop => false
-    FleetFanApply { target: _, route: _ } => false
-  }
-  let openbmc = match fleet_fan_decide(policy: held(30), family: OpenBmc, observed: seen) {
-    FleetFanRefuse { cause: _ } => true
-    FleetFanNoop => false
-    FleetFanApply { target: _, route: _ } => false
-  }
-  megarac && openbmc
+  let off_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(22))
+  let on_set = fleet_fan_family_refusal(family: AmiMegaRac, control: seen_held(30))
+  let openbmc = fleet_fan_family_refusal(family: OpenBmc, control: seen_held(30))
+  is_present(off_set) && !is_present(on_set) && is_present(openbmc)
+    && refused_with(fleet_fan_decide(policy: held(22), family: AmiMegaRac, observed: seen), off_set)
+    && !refused_with(fleet_fan_decide(policy: held(30), family: AmiMegaRac, observed: seen), off_set)
+    && refused_with(fleet_fan_decide(policy: held(30), family: OpenBmc, observed: seen), openbmc)
 }
 
 test fn witness_unobservable_refuses_and_is_never_converged() -> Bool {

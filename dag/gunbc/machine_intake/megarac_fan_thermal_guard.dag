@@ -14,6 +14,7 @@ import product.fleet_fan_policy {
   fleet_fan_policy,
   fleet_fan_guard_reading,
 }
+import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.bmc.megarac_fan_policy {
   CoolingManagerAutomatic,
   CoolingManagerDisabledManual,
@@ -64,12 +65,24 @@ fn megarac_guard_sensor_class(sensor: NonEmptyStr) -> ThermalGuardRole? {
   }
 }
 
+// This machine's own ceilings: mtcollins1 carries an Ampere Altra Max M128-30, whose cited continuous
+// junction maximum is the SoC trip's base. No other guard role takes a margin below a ceiling.
+fn megarac_guard_component_ceiling(kind: ThermalGuardRole) -> Celsius? {
+  match kind {
+    SocJunction => Present { value: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature }
+    DimmChannel => Absent
+    VoltageRegulator => Absent
+    ChassisOutlet => Absent
+  }
+}
+
 fn megarac_temperature_trips(sensor: NonEmptyStr, temperature: Celsius) -> Bool {
   match megarac_guard_sensor_class(sensor: sensor) {
     Absent => false
     Present { value: kind } => match fleet_fan_guard_reading(
       policy: fleet_fan_policy,
       role: kind,
+      component_ceiling: megarac_guard_component_ceiling(kind: kind),
       reading: Present { value: temperature },
     ) {
       GuardHolds => false

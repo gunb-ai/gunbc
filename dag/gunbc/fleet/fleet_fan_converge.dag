@@ -1,8 +1,7 @@
 module gunbc.fleet.fleet_fan_converge
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import std.optional { Absent, Present }
-import std.measure { percent_count }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
 import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound, FanDutyConvergeRoute }
@@ -39,19 +38,6 @@ type FleetFanConvergenceStanding
   | FleetFanDiverged { observed: FleetFanControl }
   | FleetFanUnobservable { cause: NonEmptyStr }
 
-fn fleet_fan_control_eq(a: FleetFanControl, b: FleetFanControl) -> Bool {
-  match a {
-    FirmwareAutomatic => match b {
-      FirmwareAutomatic => true
-      HeldAtDutyFloor { floor: _ } => false
-    }
-    HeldAtDutyFloor { floor: fa } => match b {
-      FirmwareAutomatic => false
-      HeldAtDutyFloor { floor: fb } => percent_count(p: fa) == percent_count(p: fb)
-    }
-  }
-}
-
 // WHAT A FAMILY'S UPSTREAM CAN EXPRESS. Automatic is the firmware default and every family has it.
 // A held floor is refused unless the family's upstream is read to express it: MegaRAC by its closed
 // admitted-wire set, OpenBMC until its phosphor zone-floor expressibility is read (a typed bet,
@@ -75,7 +61,7 @@ fn fleet_fan_decide(policy: FleetFanPolicy, family: BmcFirmwareFamily, observed:
   match observed {
     FleetFanControlUnobservable { cause: c } => FleetFanRefuse { cause: c }
     FleetFanControlObserved { control: seen } =>
-      if fleet_fan_control_eq(a: seen, b: policy.control) {
+      if seen == policy.control {
         FleetFanNoop
       } else {
         match fleet_fan_family_refusal(family: family, control: policy.control) {
@@ -99,7 +85,7 @@ fn fleet_fan_standing(policy: FleetFanPolicy, readback: FleetFanObserved) -> Fle
   match readback {
     FleetFanControlUnobservable { cause: c } => FleetFanUnobservable { cause: c }
     FleetFanControlObserved { control: seen } =>
-      if fleet_fan_control_eq(a: seen, b: policy.control) {
+      if seen == policy.control {
         FleetFanConverged
       } else {
         FleetFanDiverged { observed: seen }
