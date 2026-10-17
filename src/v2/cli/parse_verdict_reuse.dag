@@ -62,16 +62,6 @@ fn parse_verdict_receipt_lines(text: String) -> Map<String, Bool> {
   )
 }
 
-// The ancestor record is one line; the receipts, which are the whole population, stay a set built in
-// one pass above.
-fn parse_verdict_text_lines(text: String) -> List<String> {
-  fold_list(
-    xs: parse_verdict_line_scalars(text: text),
-    empty: [],
-    cons: fn(acc, line) { concat(acc, [unicode_scalar_fold(xs: line)]) }
-  )
-}
-
 fn parse_verdict_base_from(
   ancestor: Optional<String>,
   identity: FilesystemReadOutcome,
@@ -92,13 +82,13 @@ fn parse_verdict_base_from(
 
 fn parse_verdict_restored_path(dir: String, basename: String) -> String { join([dir, "/", basename], "") }
 
-// The sha the restore chain recorded: the first line of the record, Absent when the record is missing
+// The sha the restore chain recorded: the first line of the record (a head read, no list built), Absent when the record is missing
 // or empty. An entry restored without a named ancestor is still reused only on exact identity.
 fn parse_verdict_ancestor_from(record: FilesystemReadOutcome) -> Optional<String> {
   match record {
     FilesystemReadSucceeded { content: c } =>
-      match list_head(xs: parse_verdict_text_lines(text: c)) {
-        Present { value: line } => if line == "" { Absent } else { Present { value: line } }
+      match list_head(xs: parse_verdict_line_scalars(text: c)) {
+        Present { value: line } => if unicode_scalar_fold(xs: line) == "" { Absent } else { Present { value: unicode_scalar_fold(xs: line) } }
         Absent => Absent
       }
     FilesystemReadRefused { error: _ } => Absent
