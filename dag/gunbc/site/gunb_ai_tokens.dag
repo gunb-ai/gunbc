@@ -15,7 +15,10 @@ import extdeps.languages.css.properties {
   MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
 }
 import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
-import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
+import extdeps.accessibility.wcag_contrast {
+  srgb8_contrast_ratio_x100, wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+}
 import gunbc.design.material { CssDecl, decl, BuildRule, StaticRule, serialize_rules }
 import gunbc.design.palette { Swatch, swatches_of, swatch_paint }
 import gunbc.design.theme { theme_roles, role_key }
@@ -191,8 +194,7 @@ fn token_root_decls() -> List<CssDecl> {
 
 // Contrast floors on the night canvas, in x100 (the unit
 // extdeps.accessibility.wcag_contrast reports). A refusal reads Absent and counts as
-// 0 — fail-closed, a bad channel never passes. Pinned from the current values; when
-// pick-A values move in the redesign, the witness moves with them deliberately.
+// 0 — fail-closed, a bad channel never passes.
 fn contrast_x100(a: Swatch, b: Swatch) -> Int {
   match srgb8_contrast_ratio_x100(a: a.color, b: b.color) {
     Present { value: r } => r
@@ -200,13 +202,22 @@ fn contrast_x100(a: Swatch, b: Swatch) -> Int {
   }
 }
 
+// Contrast floors, stated as WCAG LEVELS PER ROLE rather than numbers pinned from the
+// current values (review 81584): the thresholds come from
+// extdeps.accessibility.wcag_contrast's modelled constants, so the standard is named,
+// not transcribed. Text roles must clear AA normal text; accent/callout/highlight are
+// used as graphics and large display type, so they clear the AA large-text/graphics
+// level. A role that reads as text at body size (text-faint) is held to the text level.
+// The rule: what a role is FOR decides its floor; the number is the standard's.
 fn token_contrast_floors_hold() -> Bool {
-  contrast_x100(a: warm_white, b: near_black) >= 1700
-    && contrast_x100(a: sand, b: near_black) >= 1100
-    && contrast_x100(a: moss, b: near_black) >= 600
-    && contrast_x100(a: brass, b: near_black) >= 700
-    && contrast_x100(a: moss, b: soot) >= 600
-    && contrast_x100(a: clay, b: near_black) >= 360
+  contrast_x100(a: warm_white, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: off_white, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: sand, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: taupe, b: near_black) >= wcag_aa_normal_text_hundredths
+    && contrast_x100(a: moss, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: moss, b: soot) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: brass, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
+    && contrast_x100(a: clay, b: near_black) >= wcag_aa_large_text_and_graphics_hundredths
 }
 
 // --- review surface ----------------------------------------------------------
