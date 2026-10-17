@@ -70,3 +70,18 @@ data function_type_source: String = "module probe_alias_function_type\nimport st
 test fn w_alias_and_expansion_agree_at_function_type() -> Bool {
   refusal_count(source: function_type_source) == 0
 }
+
+// CONTROLS. A zero is only readable beside a nonzero: the first must accept (the probe preamble itself
+// compiles clean) and the second must refuse (a genuine mismatch is counted), or the arms above measure
+// the probe and not the alias.
+data control_clean_source: String = "module probe_alias_ctl_ok\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> Boxed<Int> { b }\n"
+
+test fn w_control_without_alias_crossing_is_clean() -> Bool {
+  refusal_count(source: control_clean_source) == 0
+}
+
+data control_mismatch_source: String = "module probe_alias_ctl_bad\nimport std.types { Int, Bool }\ntype Boxed<T> { v: T }\ntype IntBox = Boxed<Int>\nfn p(b: Boxed<Int>) -> Int { b }\n"
+
+test fn w_control_genuine_mismatch_is_counted() -> Bool {
+  refusal_count(source: control_mismatch_source) >= 1
+}
