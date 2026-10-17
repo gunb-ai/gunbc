@@ -655,23 +655,26 @@ fn megarac_console_diagnostic_ref(c: ConsoleReading) -> DiagnosticRef {
 // THE CLASSIFICATION OF ONE RAW RUN RECORD. This is the function a neutral consumer calls. It reads
 // nothing, waits for nothing and holds no identity of its own: it says, from the raw records the
 // attempt already recorded, what the boot did.
+// THE ONE PLACE this row's raw terminal fact becomes a neutral TerminalObserved. census_ended is the
+// raw fact that this row's watch saw its END marker; the record's terminal field, the power
+// classification and the harness all read THIS function's answer, so they cannot disagree. The boot
+// does not decide what counts as terminal -- it reports the marker its own watch saw -- and no power
+// arm encodes it a second time.
+fn megarac_run_terminal(raw: MegaRacRunRecord) -> TerminalObserved {
+  if raw.census_ended { TerminalMarker { marker: "the diagnostic census ended" } } else { TerminalNotObserved }
+}
+
 fn megarac_boot_run_record(raw: MegaRacRunRecord, console: ConsoleReading, identity: AttemptIdentityReading,
                            harness: List<HarnessFinding>) -> BootRunRecord {
   let diagnostic = megarac_console_diagnostic_ref(c: console)
-  // THE TERMINAL, BUILT ONCE FROM THE RECORD'S ONE TERMINAL FIELD. raw.census_ended is the raw fact
-  // that this row's watch saw its END marker; this is the only place that turns it into a
-  // TerminalObserved, and both the record's field and the power classification read THAT value, so
-  // they cannot disagree. The boot does not decide what counts as terminal -- it reports the marker
-  // its own watch saw -- and no power arm encodes it a second time.
-  let terminal =
-    if raw.census_ended { TerminalMarker { marker: "the diagnostic census ended" } } else { TerminalNotObserved }
+  let terminal = megarac_run_terminal(raw)
   BootRunRecord {
     terminal: terminal,
     end_media: megarac_end_media_record(e: raw.end_media),
     handoff_media: megarac_handoff_media_record(h: raw.handoff_media),
     media: megarac_media_attach_record(r: raw.media),
     override: megarac_override_consumption(o: raw.override),
-    power_after: megarac_power_after_attempt(p: raw.power_after, terminal: raw.terminal),
+    power_after: megarac_power_after_attempt(p: raw.power_after, terminal: terminal),
     timing: raw.timing,
     identity: identity,
     diagnostic: diagnostic,
@@ -1906,7 +1909,7 @@ fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Li
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
     concat(override_harness(c: bundle.run.override),
-    concat(power_after_harness(p: bundle.run.power_after, terminal: bundle.run.terminal),
+    concat(power_after_harness(p: bundle.run.power_after, terminal: megarac_run_terminal(bundle.run)),
       if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))))
 }
 

@@ -428,28 +428,36 @@ test fn an_observed_end_look_is_a_presentation() -> Bool {
 // classifier is given BOTH, exactly as the record builder gives them, and the same off answers two
 // different ways depending only on the terminal it is paired with.
 test fn powered_off_with_an_observed_terminal_is_powered_off_after_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt, terminal: terminal_marker()) == PoweredOffAfterTerminal
+  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt,
+    terminal: TerminalMarker { marker: "the diagnostic census ended" }) == PoweredOffAfterTerminal
 }
 
 test fn powered_off_with_no_terminal_is_powered_off_without_a_terminal() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt, terminal: terminal_not_observed()) == PoweredOffWithoutTerminal
+  megarac_power_after_attempt(p: MegaRacPoweredOffAfterAttempt,
+    terminal: TerminalNotObserved) == PoweredOffWithoutTerminal
 }
 
+// The on arm needs no terminal to answer, but the pairing is total: the caller always holds the
+// record's terminal, and this claim supplies the not-observed one so an on answer cannot quietly
+// depend on it.
 test fn powered_on_after_the_attempt_is_powered_on() -> Bool {
-  megarac_power_after_attempt(p: MegaRacPoweredOnAfterAttempt) == PoweredOnAfterAttempt
+  megarac_power_after_attempt(p: MegaRacPoweredOnAfterAttempt, terminal: TerminalNotObserved) ==
+    PoweredOnAfterAttempt
 }
 
 // The unobserved arm carries the READ's reason and nothing else: a boot whose post-attempt chassis
 // read did not answer reports why, and cannot also carry a decoded power (review 81117).
 test fn an_unobserved_power_after_carries_only_its_reason() -> Bool {
-  match megarac_power_after_attempt(p: MegaRacPowerAfterUnobserved { reason: "the System Power line was unreadable" }) {
+  match megarac_power_after_attempt(p: MegaRacPowerAfterUnobserved { reason: "the System Power line was unreadable" },
+      terminal: TerminalNotObserved) {
     PowerAfterUnobserved { reason: r } => string_contains(s: r, pattern: "System Power line")
     _ => false
   }
 }
 
 test fn a_power_after_never_read_says_so() -> Bool {
-  match megarac_power_after_attempt(p: MegaRacPowerAfterNotTaken { reason: "no time left" }) {
+  match megarac_power_after_attempt(p: MegaRacPowerAfterNotTaken { reason: "no time left" },
+      terminal: TerminalNotObserved) {
     PowerAfterNotTaken { reason: r } => r == "no time left"
     _ => false
   }
