@@ -1820,7 +1820,11 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
     RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
       a == recovery_rescue_host_address()
         && list_length(items: m) == 1
-        && m |> first() == Present { value: "ipmi_ssif" }
+        // The refusal names the driver, so it can be read: LinuxKernelModuleName is branded, so the name
+        // is compared as text rather than re-typed as a branded literal a second time (§3 -- a second
+        // spelling of one name is a second place to be wrong about it). With the count pinned to 1 above,
+        // "contains ipmi_ssif" is exact rather than merely inclusive.
+        && (m |> any(x => (x as String) == "ipmi_ssif"))
     _ => false
   }
 }
@@ -1900,11 +1904,28 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
     observed_at: recovery_capture_instant(),
   }
   in_band_channel_admits(observation: observation, reachability: reached) == false
-    // and a declared medium never reaches the reachable arm at all -- matched as the coproduct it is
-    && match reached {
-        RescueHostUnreachable { cause: _ } => true
-        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => false
-      }
+    // THE REFUSAL IS ABOUT THE ADDRESS AND NOTHING ELSE. Same observation, same reachability, only the
+    // address it names changed: if the matching case did not admit, this claim would be green for a
+    // channel that never admits anything, which is not the fact being pinned.
+    && in_band_channel_admits(
+      observation: InBandChannelObservation {
+        subject: observation.subject,
+        rescue_host_address: recovery_rescue_host_address(),
+        device_node: observation.device_node,
+        kernel_modules: observation.kernel_modules,
+        channel: observation.channel,
+        administrator: observation.administrator,
+        evidence: observation.evidence,
+        observed_at: observation.observed_at,
+      },
+      reachability: reached,
+    )
+    // and the reachability this was checked against really is the reachable arm -- otherwise both halves
+    // above are vacuous, since an unreachable host refuses every channel alike.
+    && (match reached {
+        RescueHostReachable { address: _, ssh_port: _, ipmi: _, medium: _ } => true
+        RescueHostUnreachable { cause: _ } => false
+      })
 }
 
 // THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. Three parts,
@@ -2601,20 +2622,18 @@ test fn both_recovery_writes_are_admitted_by_their_own_filed_rows() -> Bool {
       LedgerConforms { verdict: _ } => true
       LedgerRefusal { cause: _ } => false
     })
-    // THE RESET'S GATE IS STRICTER, AND THAT IS CHECKABLE: the password row conforms at its own site and
-    // is NOT what the reset's gate accepts, because the reset asks the selection as well as the row. Two
-    // gates with the same answer everywhere would be one gate wearing two names.
-    && (match recovery_ledger_selects_operator_approval(site_ref: recovery_in_band_password_write_site()) {
-      LedgerConforms { verdict: _ } => false
-      // the password row's selection is a real pattern that is not the operator-approved capability: it
-      // arrives named, so the reason the reset is not admitted by that row is readable from the refusal
-      LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: selected } } =>
-        match selected {
-          OperatorApprovedCapability => false
-          _ => true
-        }
-      LedgerRefusal { cause: _ } => false
-    })
+    // THE TWO GATES ARE ASKED AT DIFFERENT SITES, which is what keeps the reset's gate from being the
+    // password gate under another name: each is answered by its own filed row, and a single shared site
+    // would mean one classification vouching for two writes of different kinds.
+    && declaration_ref_eq(a: recovery_in_band_password_write_site(), b: recovery_manager_reset_site()) == false
+  // WHAT IS *NOT* CLAIMED, so the absence is on the record rather than looking like an oversight. Both
+  // rows select the operator-approved capability -- the census says so, and each row states the force that
+  // brings it about (the reset by irreversibility, the password write by the credential it mints) -- so no
+  // claim can be made here about the reset gate refusing a revocable grant: the fixture data does not
+  // contain one, and asserting a refusal the data does not produce would be fabricating an expectation to
+  // match a comment. The strength difference is instead pinned where it exists: the reset's walk names
+  // OperatorApprovedCapability and the password's does not, and the mutation that makes the reset accept
+  // ANY selected pattern turns a claim red.
 }
 
 // A CENSUS REFUSAL SURVIVES THE WHOLE ROUTE, AND IS NOT RE-RENDERED AS A CHANNEL PROBLEM ON THE WAY OUT.
