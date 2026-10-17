@@ -3610,7 +3610,12 @@ fn shared_layer_of_type_expr(shared_types: Set<String>, type_expr: Node, type_de
   let alias_to_non_container = judged_leaf != spelled && !is_container_type(name: judged_leaf)
   let routed = resolve_type_decl_routed(index: type_decl_items, type_expr: judged, source_indices: source_indices)
   // A kernel-minted type (Hash in v1.std.core hash_type) has no declaration to wrap, share or copy.
-  let kernel_minted = match type_reference_provenance(n: judged) { KernelMinted { minted_name: _ } => true  _ => false }
+  // The provenance is the RESOLVED declaration's when the index resolved one: an unstamped field-type node
+  // falls back to its own span (type_reference_provenance), which mis-keyed user types as kernel-minted.
+  let kernel_minted = match routed.resolution {
+    TypeDeclResolved { identity: _, decl: d } => match declaration_provenance_of(item: d) { KernelMinted { minted_name: _ } => true  _ => false }
+    _ => match type_reference_provenance(n: judged) { KernelMinted { minted_name: _ } => true  _ => false }
+  }
   if kernel_scalar || kernel_minted || alias_to_non_container || rust_type_node_is_arrow(n: judged) {
     SharedLayerAtValue
   } else {
@@ -15662,35 +15667,10 @@ fn wrap_rust_record_field_value(raw: String, value_node: Node?, scope: InferScop
     rust_callable_field_value_wrap(raw: raw, value_node: value_node, scope: scope)
   } else {
     match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
-      NeedsBox => concat("/*DBG6:", dbg6_box_tag(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name), "*/Box::new(", raw, ")")
+      NeedsBox => concat("Box::new(", raw, ")")
       NeedsNoBox => raw
       NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
     }
-  }
-}
-
-fn dbg6_box_tag(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
-  match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
-    Present { value: ft } =>
-      let layer = match shared_layer_of_type_expr(shared_types: shared_types, type_expr: ft, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: []) {
-        SharedLayerAtShared => "shared"
-        SharedLayerAtValue => "value"
-        SharedLayerRefuse { leaf: l, cause: c } => concat("refuse ", l)
-      }
-      let res = match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: ft, source_indices: scope.type_env.source_indices).resolution {
-        TypeDeclResolved { identity: id, decl: _ } => concat("resolved ", id, if set_contains(shared_types, id) { " inset" } else { " notinset" })
-        TypeDeclLeafAmbiguous { leaf: l } => concat("ambiguous ", l)
-        TypeDeclKernelSpellingUndecided { leaf: l } => concat("undecided ", l)
-        TypeDeclNotDeclared => "notdeclared"
-      }
-      let si6 = scope.type_env.source_indices
-      let spelled6 = rust_fn_sig_leaf_name(source_indices: si6, n: ft)
-      let ks = !is_container_type(name: spelled6) && (is_kernel_type(name: spelled6) || realized_checkpoint(decision: type_reference_realization(n: ft, dag_name: spelled6, target: Rust)) != none)
-      let hop = rust_operand_alias_or_refinement_continue(rt: ft, scope: emit_alias_hop_scope(source_indices: si6), fuel: 1)
-      let hopleaf = match hop { Present { value: nx } => rust_fn_sig_leaf_name(source_indices: si6, n: nx)  Absent => "-" }
-      let km = match type_reference_provenance(n: ft) { KernelMinted { minted_name: _ } => "km"  _ => "nokm" }
-      concat(layer, " ", res, " spelled=", spelled6, " kscalar=", if ks { "t" } else { "f" }, " hop=", hopleaf, " ", km, " arrow=", if rust_type_node_is_arrow(n: ft) { "t" } else { "f" })
-    Absent => "nofield"
   }
 }
 
