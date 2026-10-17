@@ -12,7 +12,7 @@ import test.claim.runner.runner_revision_job_spec_witness { spec }
 // job stops here -- which is the control that no job can start on an undeclared slot.
 
 fn run(text: String, slot: String) -> String {
-  match revision_job_run(spec_text: text, slot_instance: slot, release_dir: "/nonexistent", image_dir: "/nonexistent",
+  match revision_job_run(spec_text: text, slot_instance: slot, release_dir: "/nonexistent", image_dir: "/nonexistent", image_sha256: "",
     cache_dir: "/nonexistent", work_dir: "/nonexistent", store_root: "/nonexistent", invocation_id: "witness", vcpus: hardware_thread_count(count: 2), now: "2026-10-15T00:00:00Z") {
     RevisionJobSpecNotAdmitted { refusal: _ } => "spec-not-admitted"
     RevisionJobSlotNotDeclared { instance: i } => concat("slot-not-declared:", i)

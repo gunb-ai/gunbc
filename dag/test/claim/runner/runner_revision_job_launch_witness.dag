@@ -2,13 +2,13 @@ module test.claim.runner.runner_revision_job_launch_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { Cons, Empty }
-import std.measure { byte_size_count, hardware_thread_count, mebibyte_to_byte_size }
+import std.measure { byte_size_count, hardware_thread_count, mebibyte_to_byte_size, gibibyte_to_byte_size, mebibyte, mebibyte_count }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
 import extdeps.virtualization.firecracker { FirecrackerDrive, firecracker_block_sector_size }
 import gunbc.runner.runner_microvm { jit_drive_utf8_size }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import gunbc.runner.runner_revision_job_launch {
-  revision_job_vm_config, revision_job_guest_memory,
-}
+import gunbc.runner.runner_revision_job_launch { revision_job_vm_config }
+import gunbc.runner.runner_revision_job_guest { revision_job_guest_memory, revision_job_claim_envelope, revision_job_guest_os_allowance }
 import gunbc.runner.runner_revision_job_stage { revision_job_spec_device_content }
 
 // THE REVISION JOB'S VM, AS ITS CONFIG SAYS: no network interface, the drives in the order the guest
@@ -29,7 +29,17 @@ test fn the_vm_has_no_network_and_its_drives_in_the_guest_units_order() -> Bool 
 
 test fn the_vm_ram_exceeds_the_claim_envelope_and_the_spec_fills_whole_sectors() -> Bool {
   let sector = byte_size_count(b: firecracker_block_sector_size)
-  byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) > byte_size_count(b: gunbc_runner_slot_memory_max)
+  byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) > byte_size_count(b: revision_job_claim_envelope())
     && byte_size_count(b: jit_drive_utf8_size(text: revision_job_spec_device_content(spec_text: "GUNBC_CLAIM_SET_COMMIT=abc\n"))) % sector == 0
     && revision_job_spec_device_content(spec_text: "GUNBC_CLAIM_SET_COMMIT=abc\n").starts_with("GUNBC_CLAIM_SET_COMMIT=abc\n")
+}
+
+// THE VM FITS ITS OWN CELL: the jailer unit asks for the VM's RAM plus the realization allowance, and
+// that is exactly the CI slot's row, no more -- the claims' envelope sits below the VM's RAM by the
+// guest OS allowance. (Before, the VM asked for the row plus both allowances inside a cell of the row.)
+test fn the_vm_and_its_realization_allowance_ask_no_more_than_the_slot_row() -> Bool {
+  byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory())) + byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
+    == byte_size_count(b: gunbc_runner_slot_memory_max)
+    && byte_size_count(b: revision_job_claim_envelope()) + byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_os_allowance))
+      == byte_size_count(b: mebibyte_to_byte_size(m: revision_job_guest_memory()))
 }
