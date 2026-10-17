@@ -12,6 +12,13 @@ import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiPxe, UefiHttpBoot }
 import gunbc.network_boot_delivery { BootControlObserved, BootControlPredecessor, BootControlReceiptStanding, BootControlUnobserved }
 import gunbc.firmware_network_boot_standing {
+  AxisNotAsked,
+  AxisRefused,
+  BootOrderAxisUnanswered,
+  SecureBootAxisUnanswered,
+  BiosAxisUnanswered,
+  NetworkInterfaceAxisUnanswered,
+  BootOptionsAxisUnanswered,
   BootOptionsObserved,
   BootOptionsObservation,
   BootOptionsRefused,
@@ -219,15 +226,15 @@ fn length_of(gaps: List<UnansweredAxis>) -> Bool {
 // (go ask vs. stop asking that way) and the report line differs too.
 test fn refusal_on_any_axis_keeps_its_cause() -> Bool {
   match standing_of(observation: with_boot_order(boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } })) {
-    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: r } } } => r == "ipmi vendor command rejected"
+    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: r } }, gaps: _ } => r == "ipmi vendor command rejected"
     _ => false
   }
     && match standing_of(observation: with_nics(nics: NicsRefused { refusal: ResourceNotFound { detail: "redfish nic collection denied" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: ResourceNotFound { detail: r } } } => r == "redfish nic collection denied"
+         Refused { cause: TransportRefusedVendorCommand { refusal: ResourceNotFound { detail: r } }, gaps: _ } => r == "redfish nic collection denied"
          _ => false
        }
     && match standing_of(observation: with_secure_boot(secure_boot: SecureBootRefused { refusal: AuthenticationRequired { detail: "secure boot property hidden" } })) {
-         Refused { cause: TransportRefusedVendorCommand { refusal: _ } } => true
+         Refused { cause: TransportRefusedVendorCommand { refusal: _ }, gaps: _ } => true
          _ => false
        }
 }
@@ -303,7 +310,7 @@ fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
     Ready { firmware_mode: _, network_interface: _, evidence: _ } => true
     NeedsPreparation { route: _, blocking: _ } => true
     Unobserved { unanswered: _ } => true
-    Refused { cause: _ } => true
+    Refused { cause: _, gaps: _ } => true
   }
 }
 
@@ -466,7 +473,7 @@ test fn a_legacy_bios_unit_is_refused_because_the_edge_cannot_serve_it() -> Bool
     observed_at: witness_epoch,
     boot_mode: LegacyBiosPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
   ) {
-    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ } } => true
+    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => true
     _ => false
   }
 }
@@ -492,7 +499,10 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
     AttemptConstructed { attempt: built } =>
       match firmware_network_boot_attempt_receipt(
         attempt: built,
-        outcome: Refused { cause: FirmwareModeUnsupportedByEdge { why: "edge serves UEFI only" } },
+        outcome: Refused {
+        cause: FirmwareModeUnsupportedByEdge { why: "edge serves UEFI only" },
+        gaps: [],
+      },
       ) {
         receipt =>
           match receipt.attempt.resulting_dhcp {
@@ -500,7 +510,7 @@ test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Boo
             _ => false
           }
             && match receipt.outcome {
-                 Refused { cause: FirmwareModeUnsupportedByEdge { why: _ } } => true
+                 Refused { cause: FirmwareModeUnsupportedByEdge { why: _ }, gaps: _ } => true
                  _ => false
                }
       }
@@ -541,4 +551,150 @@ test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silen
            }
          AttemptRouteUncataloged { route: _ } => false
        }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEW 81689 FINDINGS 4 AND 5, MADE TESTABLE. The type grew to carry every
+// unanswered axis and to keep gaps alongside a refusal; a bigger type that
+// nothing asserts is a bigger lie waiting to happen. These are the assertions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn names_boot_order_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BootOrderAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+fn names_secure_boot_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    SecureBootAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+fn names_bios_axis(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BiosAxisUnanswered { absence: _ } => true
+    _ => false
+  }
+}
+
+// THE GAP LIST IS NOT A SINGLE-ELEMENT LIST IN DISGUISE. Secure Boot and BIOS both
+// unanswered on one unit must appear as two gaps: the report line the type promises
+// ('three units were never asked about Secure Boot') is unanswerable if only the
+// first axis ever survives the fold.
+test fn every_unanswered_axis_survives_the_fold_not_just_the_first() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: ["UEFI Network Stack"] },
+    boot_options: BootOptionsObserved { options: ["UEFI IPv4 HTTP"] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "family cannot answer" },
+    bios_version: BiosVersionUnobserved { reason: "no reader" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Unobserved { unanswered: gaps } =>
+      any(gaps, g => names_secure_boot_axis(gap: g)) && any(gaps, g => names_bios_axis(gap: g))
+    _ => false
+  }
+}
+
+// A REFUSAL MUST NOT SWALLOW THE UNKNOWN. When boot order was refused and Secure
+// Boot was never asked, the operator needs BOTH facts in one visit: the refusal to
+// chase and the gap to go ask about. The pre-review shape returned the refusal and
+// silently dropped the Secure Boot unknown.
+test fn a_refusal_keeps_its_cause_and_reports_the_unasked_axes_too() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderRefused { refusal: VendorCommandRejected { detail: "ipmi vendor command rejected" } },
+    boot_options: BootOptionsObserved { options: ["UEFI IPv4 HTTP"] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "never asked" },
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Refused { cause: TransportRefusedVendorCommand { refusal: VendorCommandRejected { detail: d } }, gaps: gaps } =>
+      d == "ipmi vendor command rejected"
+        && any(gaps, g => names_boot_order_axis(gap: g))
+        && any(gaps, g => names_secure_boot_axis(gap: g))
+    _ => false
+  }
+}
+
+// NOT-ASKED AND REFUSED ARE DIFFERENT KINDS OF MISSING, per axis: a probe coverage
+// gap and a transport denial must be countable apart, or 'BMC will not answer' gets
+// filed as 'nobody ran the probe' and nobody goes to fix the BMC.
+test fn the_kind_of_absence_is_typed_per_axis() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: ["UEFI Network Stack"] },
+    boot_options: BootOptionsObserved { options: ["UEFI IPv4 HTTP"] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootUnobserved { reason: "never asked" },
+    bios_version: BiosVersionRefused { refusal: AuthenticationRequired { detail: "credentials absent" } },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Refused { cause: TransportRefusedVendorCommand { refusal: AuthenticationRequired { detail: d } }, gaps: gaps } =>
+      d == "credentials absent"
+        && any(gaps, g => gap_was_not_asked(gap: g))
+        && any(gaps, g => gap_was_refused(gap: g))
+    _ => false
+  }
+}
+
+fn gap_was_not_asked(gap: UnansweredAxis) -> Bool {
+  match gap {
+    SecureBootAxisUnanswered { absence: AxisNotAsked { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn gap_was_refused(gap: UnansweredAxis) -> Bool {
+  match gap {
+    BiosAxisUnanswered { absence: AxisRefused { refusal: _ } } => true
+    _ => false
+  }
+}
+
+// THE ROUTE MUST BE ABLE TO FIX WHAT IT CLAIMS IS BLOCKING. A boot order full of
+// non-network entries cannot be fixed by a one-shot override: an override only
+// points at an entry the list already contains, and this unit has none. The route
+// has to be the attribute that ENABLES a network stack, and it must not be a
+// one-shot wearing the right-looking name.
+test fn a_boot_order_with_no_network_entry_gets_the_route_that_can_add_one() -> Bool {
+  let observation = firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: ["NVMe0", "NVMe1", "SATA0"] },
+    boot_options: BootOptionsObserved { options: ["UEFI IPv4 HTTP"] },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+  match firmware_network_boot_standing(
+    observation: observation,
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    NeedsPreparation { route: RedfishBiosAttributes { service_root: s, attribute: a }, blocking: b } =>
+      s == "redfish:Bios"
+        && a == "NetworkStack"
+        && match b {
+             NoNetworkStackInBootOrder => route_is_cataloged(route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" })
+             _ => false
+           }
+    _ => false
+  }
 }

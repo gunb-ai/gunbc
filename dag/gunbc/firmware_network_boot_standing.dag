@@ -23,7 +23,7 @@ module gunbc.firmware_network_boot_standing
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.algebra { length, string_contains }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot {
@@ -318,7 +318,14 @@ type FirmwareNetworkBootStanding
     }
   | NeedsPreparation { route: FirmwareNetworkBootPreparationRoute, blocking: PreparationBlockingOn }
   | Unobserved { unanswered: List<UnansweredAxis> }
-  | Refused { cause: FirmwareNetworkBootRefusal }
+  // `gaps` is not decoration (review 81689): the earlier shape short-circuited at the FIRST
+  // unanswered axis, so a unit missing both its boot order and its Secure Boot answer was
+  // reported as missing only one, and an early refusal hid every later unknown. That is a lossy
+  // report, and DESIGN.md 5 asks for every degradation typed, located and countable. A single
+  // `cause` stays because an executor acts on one thing at a time; `gaps` says everything else the
+  // fleet still does not know about this unit, so the operator learns it all in one visit instead
+  // of one per attempt.
+  | Refused { cause: FirmwareNetworkBootRefusal, gaps: List<UnansweredAxis> }
 
 // WHAT IS IN THE WAY, named. A NeedsPreparation that says only "not ready" sends someone to
 // re-read the observation themselves; the blocking axis says what to act on, and it is a
@@ -333,12 +340,20 @@ type PreparationBlockingOn
 // Which axis came back unanswered. Axis-level attribution is what lets a fleet report say "three
 // units were never asked about Secure Boot" instead of the earlier, useless "some units are not
 // ready".
+// WHY AN AXIS CAN BE MISSING IN TWO TYPED WAYS. 'We never asked' and 'we asked and were told no'
+// have different remedies, and BOTH are gaps the report must be able to count. Keeping them as
+// one reason string would let a probe coverage gap and a transport refusal be tallied together,
+// which is how 'BMC will not answer' gets filed as 'nobody ran the probe'.
+type AxisAbsence
+  = AxisNotAsked { reason: NonEmptyStr }
+  | AxisRefused { refusal: FirmwareReadRefusal }
+
 type UnansweredAxis
-  = BootOrderAxisUnanswered { reason: NonEmptyStr }
-  | BootOptionsAxisUnanswered { reason: NonEmptyStr }
-  | NetworkInterfaceAxisUnanswered { reason: NonEmptyStr }
-  | SecureBootAxisUnanswered { reason: NonEmptyStr }
-  | BiosAxisUnanswered { reason: NonEmptyStr }
+  = BootOrderAxisUnanswered { absence: AxisAbsence }
+  | BootOptionsAxisUnanswered { absence: AxisAbsence }
+  | NetworkInterfaceAxisUnanswered { absence: AxisAbsence }
+  | SecureBootAxisUnanswered { absence: AxisAbsence }
+  | BiosAxisUnanswered { absence: AxisAbsence }
 
 // A REFUSAL IS A STANDING, and its cause set is closed over exactly the ways an agent can say no
 // to this question: a transport that rejects the command, a firmware mode this fleet's edge will
@@ -441,71 +456,204 @@ fn firmware_network_boot_standing(
   observed_at: EpochMs,
   boot_mode: ClientNetworkBootMode
 ) -> FirmwareNetworkBootStanding {
-  // The edge's own capability outranks every firmware answer, because a unit whose firmware the
-  // edge cannot serve is not "unready firmware", it is a mismatch between the unit and OUR edge,
-  // and the report has to say which one has to change.
+  // THE EDGE'S OWN LIMITATION OUTRANKS THE FIRMWARE'S ANSWERS: a unit whose firmware the edge
+  // cannot serve is not "unready firmware", it is a mismatch between the unit and OUR edge, and
+  // the report has to say which one has to change. Gaps still ride along, because the unit may
+  // ALSO be unanswered on other axes and that is worth knowing before someone drives over with a
+  // console.
   if legacy_bios_is_unserviceable(boot_mode: boot_mode) {
     Refused {
       cause: FirmwareModeUnsupportedByEdge {
         why: "the site PXE edge of cut 6 serves UEFI only; a PXE BIOS unit has no boot target here",
       },
+      gaps: axis_gaps(observation: observation),
     }
   } else {
-    match observation.boot_order {
-    BootOrderUnobserved { reason: r } =>
-      Unobserved { unanswered: [BootOrderAxisUnanswered { reason: r }] }
-    BootOrderRefused { refusal: f } =>
-      Refused { cause: TransportRefusedVendorCommand { refusal: f } }
-    BootOrderObserved { devices: devices } =>
-      match observation.boot_options {
-        BootOptionsUnobserved { reason: r } =>
-          Unobserved { unanswered: [BootOptionsAxisUnanswered { reason: r }] }
-        BootOptionsRefused { refusal: f } =>
-          Refused { cause: TransportRefusedVendorCommand { refusal: f } }
-        BootOptionsObserved { options: options } =>
-          match observation.nics {
-            NicsUnobserved { reason: r } =>
-              Unobserved { unanswered: [NetworkInterfaceAxisUnanswered { reason: r }] }
-            NicsRefused { refusal: f } =>
-              Refused { cause: TransportRefusedVendorCommand { refusal: f } }
-            NicsObserved { nics: nics } =>
-              match observation.secure_boot {
-                SecureBootUnobserved { reason: r } =>
-                  Unobserved { unanswered: [SecureBootAxisUnanswered { reason: r }] }
-                SecureBootRefused { refusal: f } =>
-                  Refused { cause: TransportRefusedVendorCommand { refusal: f } }
-                SecureBootEnabled =>
-                  // Secure Boot ON with an unsigned chainloader is not a refusal: the board will
-                  // boot it IF a key is enrolled that covers it, which is an observation we do not
-                  // have. It is preparation with a route, and the route is the attribute change or
-                  // the enrolment a human performs.
-                  NeedsPreparation {
-                    route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" },
-                    blocking: SecureBootBlocksUnsignedChainloader,
+    // TWO PHASES, NOT ONE SHORT-CIRCUITING MATCH (review 81689). Phase one asks every axis what
+    // it has; phase two decides. The earlier single nested match returned at the FIRST unanswered
+    // axis, which lost information the type had promised to carry: a unit missing both Secure Boot
+    // and BIOS version was reported as missing only Secure Boot, and any refusal made the later
+    // unknowns invisible. Counting the gaps first is also what makes the report queryable per
+    // axis, which is the entire reason UnansweredAxis names an axis at all.
+    let gaps = axis_gaps(observation: observation)
+    if length(xs: gaps) > 0 {
+      match first_refusal(gaps: gaps) {
+        Present { value: refusal } =>
+          Refused { cause: TransportRefusedVendorCommand { refusal: refusal }, gaps: gaps }
+        Absent => Unobserved { unanswered: gaps }
+      }
+    } else {
+      match observation.boot_order {
+        BootOrderObserved { devices: devices } =>
+          match observation.boot_options {
+            BootOptionsObserved { options: options } =>
+              match observation.nics {
+                NicsObserved { nics: nics } =>
+                  match observation.secure_boot {
+                    SecureBootDisabled =>
+                      match observation.bios_version {
+                        BiosVersionObserved { version: bios } =>
+                          decide(
+                            devices: devices,
+                            options: options,
+                            nics: nics,
+                            bios: bios,
+                            authority: authority,
+                            observed_at: observed_at,
+                            observation: observation,
+                            boot_mode: boot_mode,
+                          )
+                        // Unreachable while the gap pass is honest: an unanswered axis is already
+                        // in `gaps`. The arm exists because the compiler, not optimism, requires it
+                        // -- and it reports rather than lying, so a future gap-pass bug surfaces as
+                        // an Unobserved instead of a fabricated Ready.
+                        BiosVersionUnobserved { reason: r } =>
+                          Unobserved {
+                            unanswered: [BiosAxisUnanswered { absence: AxisNotAsked { reason: r } }],
+                          }
+                        BiosVersionRefused { refusal: f } =>
+                          Refused {
+                            cause: TransportRefusedVendorCommand { refusal: f },
+                            gaps: [BiosAxisUnanswered { absence: AxisRefused { refusal: f } }],
+                          }
+                      }
+                    // Secure Boot ON with an unsigned chainloader is neither Ready nor Refused: a
+                    // covering certificate may make it boot, which is an observation we do not
+                    // have. It is preparation with a route, and the route is the enrolment or the
+                    // attribute change a human performs.
+                    SecureBootEnabled =>
+                      NeedsPreparation {
+                        route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "SecureBoot" },
+                        blocking: SecureBootBlocksUnsignedChainloader,
+                      }
+                    SecureBootUnobserved { reason: r } =>
+                      Unobserved { unanswered: [SecureBootAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
+                    SecureBootRefused { refusal: f } =>
+                      Refused {
+                        cause: TransportRefusedVendorCommand { refusal: f },
+                        gaps: [SecureBootAxisUnanswered { absence: AxisRefused { refusal: f } }],
+                      }
                   }
-                SecureBootDisabled =>
-                  match observation.bios_version {
-                    BiosVersionUnobserved { reason: r } =>
-                      Unobserved { unanswered: [BiosAxisUnanswered { reason: r }] }
-                    BiosVersionRefused { refusal: f } =>
-                      Refused { cause: TransportRefusedVendorCommand { refusal: f } }
-                    BiosVersionObserved { version: bios } => decide(
-                      devices: devices,
-                      options: options,
-                      nics: nics,
-                      bios: bios,
-                      authority: authority,
-                      observed_at: observed_at,
-                      observation: observation,
-                      boot_mode: boot_mode,
-                    )
+                NicsUnobserved { reason: r } =>
+                  Unobserved { unanswered: [NetworkInterfaceAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
+                NicsRefused { refusal: f } =>
+                  Refused {
+                    cause: TransportRefusedVendorCommand { refusal: f },
+                    gaps: [NetworkInterfaceAxisUnanswered { absence: AxisRefused { refusal: f } }],
                   }
               }
+            BootOptionsUnobserved { reason: r } =>
+              Unobserved { unanswered: [BootOptionsAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
+            BootOptionsRefused { refusal: f } =>
+              Refused {
+                cause: TransportRefusedVendorCommand { refusal: f },
+                gaps: [BootOptionsAxisUnanswered { absence: AxisRefused { refusal: f } }],
+              }
+          }
+        BootOrderUnobserved { reason: r } =>
+          Unobserved { unanswered: [BootOrderAxisUnanswered { absence: AxisNotAsked { reason: r } }] }
+        BootOrderRefused { refusal: f } =>
+          Refused {
+            cause: TransportRefusedVendorCommand { refusal: f },
+            gaps: [BootOrderAxisUnanswered { absence: AxisRefused { refusal: f } }],
           }
       }
     }
   }
 }
+
+// EVERY UNANSWERED AXIS, IN BOOT-ORDER-TO-BIOS ORDER, WITH ITS KIND. No short-circuit: this walk
+// is the difference between 'the unit is not ready' and 'these three axes were never asked, and
+// the fourth refused us'. Order is fixed so the report reads the same for the same unit every
+// time, which matters when two operators are comparing notes on the same machine.
+fn axis_gaps(observation: FirmwareBootObservation) -> List<UnansweredAxis> {
+  concat(
+    concat(boot_order_gap(boot_order: observation.boot_order), boot_options_gap(options: observation.boot_options)),
+    concat(
+      nics_gap(nics: observation.nics),
+      concat(secure_boot_gap(secure_boot: observation.secure_boot), bios_gap(bios_version: observation.bios_version)),
+    ),
+  )
+}
+
+fn boot_order_gap(boot_order: BootOrderObservation) -> List<UnansweredAxis> {
+  match boot_order {
+    BootOrderObserved { devices: _ } => []
+    BootOrderUnobserved { reason: r } => [BootOrderAxisUnanswered { absence: AxisNotAsked { reason: r } }]
+    BootOrderRefused { refusal: f } => [BootOrderAxisUnanswered { absence: AxisRefused { refusal: f } }]
+  }
+}
+
+fn boot_options_gap(options: BootOptionsObservation) -> List<UnansweredAxis> {
+  match options {
+    BootOptionsObserved { options: _ } => []
+    BootOptionsUnobserved { reason: r } => [BootOptionsAxisUnanswered { absence: AxisNotAsked { reason: r } }]
+    BootOptionsRefused { refusal: f } => [BootOptionsAxisUnanswered { absence: AxisRefused { refusal: f } }]
+  }
+}
+
+fn nics_gap(nics: NicsObservation) -> List<UnansweredAxis> {
+  match nics {
+    NicsObserved { nics: _ } => []
+    NicsUnobserved { reason: r } => [NetworkInterfaceAxisUnanswered { absence: AxisNotAsked { reason: r } }]
+    NicsRefused { refusal: f } => [NetworkInterfaceAxisUnanswered { absence: AxisRefused { refusal: f } }]
+  }
+}
+
+fn secure_boot_gap(secure_boot: SecureBootObservation) -> List<UnansweredAxis> {
+  match secure_boot {
+    SecureBootEnabled => []
+    SecureBootDisabled => []
+    SecureBootUnobserved { reason: r } => [SecureBootAxisUnanswered { absence: AxisNotAsked { reason: r } }]
+    SecureBootRefused { refusal: f } => [SecureBootAxisUnanswered { absence: AxisRefused { refusal: f } }]
+  }
+}
+
+fn bios_gap(bios_version: BiosVersionObservation) -> List<UnansweredAxis> {
+  match bios_version {
+    BiosVersionObserved { version: _ } => []
+    BiosVersionUnobserved { reason: r } => [BiosAxisUnanswered { absence: AxisNotAsked { reason: r } }]
+    BiosVersionRefused { refusal: f } => [BiosAxisUnanswered { absence: AxisRefused { refusal: f } }]
+  }
+}
+
+// THE FIRST REFUSAL IS THE ONE AN EXECUTOR ACTS ON, so Refused keeps a single cause: a human
+// chasing four refusals at once does none of them. That is an executor convenience, not a report
+// limit -- `gaps` carries all of them, refusals included.
+fn first_refusal(gaps: List<UnansweredAxis>) -> Optional<FirmwareReadRefusal> {
+  match (
+    gaps |> filter(g => gap_is_refusal(gap: g)) |> first
+  ) {
+    Present { value: g } => refusal_of_gap(gap: g)
+    Absent => Absent
+  }
+}
+
+fn gap_is_refusal(gap: UnansweredAxis) -> Bool {
+  match gap_absence(gap: gap) {
+    AxisRefused { refusal: _ } => true
+    AxisNotAsked { reason: _ } => false
+  }
+}
+
+fn refusal_of_gap(gap: UnansweredAxis) -> Optional<FirmwareReadRefusal> {
+  match gap_absence(gap: gap) {
+    AxisRefused { refusal: f } => Present { value: f }
+    AxisNotAsked { reason: _ } => Absent
+  }
+}
+
+// The absence behind any named axis, so the five constructor arms stay one union for consumers.
+fn gap_absence(gap: UnansweredAxis) -> AxisAbsence {
+  match gap {
+    BootOrderAxisUnanswered { absence: a } => a
+    BootOptionsAxisUnanswered { absence: a } => a
+    NetworkInterfaceAxisUnanswered { absence: a } => a
+    SecureBootAxisUnanswered { absence: a } => a
+    BiosAxisUnanswered { absence: a } => a
+  }
+}
+
 
 // The three facts that actually make a unit bootable over the network: a network stack the
 // firmware will try, a network option it can be pointed at, and exactly one interface to do it
@@ -526,8 +674,14 @@ fn decide(
       blocking: NoNetworkStackInBootOrder,
     }
   } else if !any_network(texts: devices) {
+    // THE ROUTE MUST BE ABLE TO FIX THE BLOCKING (review 81689). This branch once returned an
+    // IPMI one-shot override, which cannot work: a one-shot only points the NEXT boot at an entry
+    // the boot order already contains, and this unit has just told us it contains no network
+    // stack to point at. The route is the BIOS attribute that enables the stack, same as the
+    // empty-list branch above -- the difference between 'nothing in the list' and 'entries in the
+    // list, none of them network' is worth its own blocking value, not a different route.
     NeedsPreparation {
-      route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+      route: RedfishBiosAttributes { service_root: "redfish:Bios", attribute: "NetworkStack" },
       blocking: NoNetworkStackInBootOrder,
     }
   } else if length(xs: options) == 0 || !any_network(texts: options) {
@@ -539,7 +693,13 @@ fn decide(
       blocking: NoNetworkBootOptionListed,
     }
   } else if length(xs: nics) == 0 {
-    Refused { cause: NoSuchUnit { why: "no network interface reported by any family reader" } }
+    // Zero NICs after an otherwise complete probe is a refusal, not a gap: every axis answered,
+    // and the answer was 'this unit has no network interface to boot from'. Gaps ride along empty
+    // because that IS the honest report -- nothing else is unknown here.
+    Refused {
+      cause: NoSuchUnit { why: "no network interface reported by any family reader" },
+      gaps: [],
+    }
   } else if length(xs: nics) > 1 {
     // Several candidate NICs and no evidence which one carries PXE is a preparation question.
     // Picking the first would be a machine-name selection wearing a different hat: it is stable,
@@ -565,7 +725,14 @@ fn decide(
           observation: observation,
         ),
       }
-      Absent => Refused { cause: NoSuchUnit { why: "one NIC counted but none enumerable" } }
+      Absent =>
+        // The gap list is empty here and that is the honest report: every axis answered, and the
+        // enumeration still found nothing. A Refused with no gaps says 'nothing more is unknown',
+        // which is exactly what distinguishes it from a refusal hiding further silence.
+        Refused {
+          cause: NoSuchUnit { why: "one NIC counted but none enumerable" },
+          gaps: [],
+        }
     }
   }
 }
