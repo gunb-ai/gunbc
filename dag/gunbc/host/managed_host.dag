@@ -275,7 +275,7 @@ fn standings_bound_to_record_subject(record: ManagedHostAdmission) -> Bool {
   // The unit-key join that used to sit here is DELETED too -- the PhysicalMachineBinding mint refuses
   // a route whose unit differs from axis-1's, so no record can exist in which the two disagree.
   // What remains below is the join that CAN disagree: the endpoints a machine named.
-    && match access_controller_host(access: record.access) {
+  match access_controller_host(access: record.access) {
       Absent => false
       Present { value: access_host } =>
         match secure_controller_host(secure: record.secure) {
