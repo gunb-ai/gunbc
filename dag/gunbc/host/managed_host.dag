@@ -191,6 +191,12 @@ fn managed_host_admission(
       decl_name: "w_admission_permits_a_platform_that_does_not_carry_smpro"),
     // snappy-seal-211's x86-platform claim (managed_host_witness) constructs this record under the
     // cut-1 binding shape; its assertions are unchanged, only its record construction reached here.
+    // THE X86 REQUIRED-RED CLAIM mints a VARIANT of the committed admission record: only its
+    // smpro arm differs from the committed one, and minting a variant is the whole point of the
+    // claim (an x86 platform with no SMpro interface must still be admitted). The alternative --
+    // reading the committed record and overriding one field -- is the bypass this seal exists to
+    // refuse, so the claim comes through the door with its name on it, as the six admission-
+    // witness claims above already do.
     decl_ref(module_path: "test.claim.host.managed_host_witness",
       decl_name: "w_admission_admits_a_platform_that_carries_no_smpro_interface"),
   ]
