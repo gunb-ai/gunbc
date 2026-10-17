@@ -83,6 +83,10 @@ data flex_release_return_frontier: DissolutionCondition = unbound_dissolution(de
 
 data flex_run_pass_caller_frontier: DissolutionCondition = unbound_dissolution(description: "flex_run_pass has no production caller: the executing route is a srv1 fleet-converge entry that reads the custody standing, the Vast instance and charge pages and the sealed readings, feeds the previous pass's create standing through flex_reconcile_ours into flex_reconciled_allocation (no planner reads a reconcile verdict yet), loads the key through flex_vast_api_read_grant, and calls it with FlexPolicy.actuation. TRIGGER: that entry exists and executes a DRY pass on srv1. SUFFICIENT FOR deleting this row. NOT satisfied by test.claim.fabric.flex_vast_loop_witness, which exercises the pure planner and flex_created_outcome only.")
 
+data flex_select_supply_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "No wet or dry pass quotes shadow-field offers through serving_card_hourly into product.fabric.selection select_supply with flex_objective and flex_delay_unvalued: flex_plan_pass takes its candidate offer and quote as supplied, so those two values and serving_cache_bytes have no production consumer. TRIGGER: the srv1 fleet-converge entry (flex_run_pass_caller_frontier) builds FlexPassInput's offer and quote through select_supply under flex_objective. SUFFICIENT FOR deleting this row.")
+
+data flex_rented_allocation_enrollment_frontier: DissolutionCondition = unbound_dissolution(description: "The allocation join stops at constructing RentedServingAllocation; handing it to rented_allocation_enrollment (startup, key binding, enroll-and-seat) is deep-bear-539's S-plan (S3 #14109, S4), not this loop. TRIGGER: rented_allocation_enrollment has a production caller that receives the allocation from flex_created_outcome or flex_reconciled_allocation. SUFFICIENT FOR deleting this row.")
+
 // The Secret read from the host copy by the entry. It is named only by reference here.
 type FlexKeyCustodyDeclaration {
   secret: SecretRef
@@ -425,6 +429,7 @@ type FlexPassRefusal
   | FlexPassCreateRefused { refusal: FlexCreateRefusal }
   | FlexPassNoAllocationForCard { id: NonEmptyStr }
   | FlexPassCooldownActive { until: EpochMs }
+  | FlexPassNotAWritePlan
 
 type FlexPassPlan
   = FlexPlanRefused { refusal: FlexPassRefusal }
@@ -642,6 +647,9 @@ fn flex_perform_plan(
               }
             other => other
           }
-        _ => FlexPassIdle
+        FlexPlanRefused { refusal: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
+        FlexPlanIdle => FlexPassStopped { refusal: FlexPassNotAWritePlan }
+        FlexPlanDryCreate { would: _, walls: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
+        FlexPlanDryDestroy { would: _ } => FlexPassStopped { refusal: FlexPassNotAWritePlan }
   }
 }
