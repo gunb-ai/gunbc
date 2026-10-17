@@ -40,8 +40,9 @@ HARNESS="${4:-sd503-instrument}"
 # cwd. Both are checked, and the instrument must come from ONE of them or we abort.
 WH=/root/sd503_harness
 have_ref=0
-if git -C $R rev-parse --verify -q "refs/sd503/harness" >/dev/null \
-   || git -C $R fetch --quiet origin "$HARNESS:refs/sd503/harness"; then
+# always force-fetch so a re-run picks up harness fixes instead of a stale cached ref
+if git -C $R fetch --quiet --force origin "$HARNESS:refs/sd503/harness" \
+   || git -C $R rev-parse --verify -q "refs/sd503/harness" >/dev/null; then
   HSHA=$(git -C $R rev-parse refs/sd503/harness 2>/dev/null | head -1)
   if [ -n "$HSHA" ] && git -C $R cat-file -e "$HSHA:.sdm/gap_block.rs" 2>/dev/null; then
     rm -rf $WH; git -C $R worktree add --detach $WH "$HSHA" >/dev/null 2>&1 && have_ref=1
