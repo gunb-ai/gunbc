@@ -1117,7 +1117,9 @@ mod compiler_tests {
             })
             .expect("failed to spawn thread")
             .join();
-        result.expect("if_join_argument_identity_is_strict_where_compatibility_is_permissive panicked");
+        result.expect(
+            "if_join_argument_identity_is_strict_where_compatibility_is_permissive panicked",
+        );
     }
 
     #[test]
