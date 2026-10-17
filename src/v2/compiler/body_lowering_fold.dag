@@ -146,7 +146,7 @@ import v2.std.compilers.lowered_shape {
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
-import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, parse_production_emitted_identity_optional }
+import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -9525,18 +9525,9 @@ fn body_lower_match_arm_items_on_lbrace_token(id: Symbol, right: Node) -> Outcom
       match body_lower_match_arm_items_from_brace_interior(interior: right) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: arms, diagnostics: d } =>
-          if count(arms) > 0 {
-            Accepted {
-              value: optional_present(value: arms),
-              diagnostics: d
-            }
-          } else {
-            outcome_rejected(
-              d: body_lower_diagnostic(
-                reason: ^body_lowering_reason_match_arm_navigation_refused,
-                n: right
-              )
-            )
+          Accepted {
+            value: optional_present(value: arms),
+            diagnostics: d
           }
       }
     false => body_lower_match_arm_items_after_lbrace_optional(spine: right)
@@ -9599,18 +9590,9 @@ fn body_lower_try_match_from_captured(captured: Node) -> Outcome<Optional<Node>>
         Accepted { value: arms_opt, diagnostics: d } =>
           match arms_opt {
             Present { value: arms } =>
-              if count(arms) > 0 {
-                Accepted {
-                  value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
-                  diagnostics: d
-                }
-              } else {
-                outcome_rejected(
-                  d: body_lower_diagnostic(
-                    reason: ^body_lowering_reason_match_arm_navigation_refused,
-                    n: captured
-                  )
-                )
+              Accepted {
+                value: optional_present(value: lower_match(scrutinee: scrutinee, arms: arms)),
+                diagnostics: d
               }
             Absent =>
               outcome_rejected(

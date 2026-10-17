@@ -70,6 +70,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -104,7 +105,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, approval_broker_releases_dir, approval_broker_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
@@ -3786,12 +3787,13 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // the exit status here, where the ShellExecObserved carrier requires it -- the same derivation
 // every RunArgv caller makes.
 //
-// FleetSsh and EmitArtifactThenThinRun refuse where run_shell_transport refuses them, but the
-// REFUSAL TEXT changes with the carrier and says so: the old text blamed the script body's shape (a
-// command string where the fleet path admits portable words); a typed argv has no such shape
-// problem, so what remains is the transport's own authority -- the fleet seam executes through its
-// own session type and trust policy, and admitting shape_fleet_ssh_exec as a host-effect transport
-// arm is its own change with its own analysis, not a rider on this conversion.
+// FleetSsh is the same typed-argv mapping as run_typed_argv_transport: portable words through
+// typed_argv_exec_over_fleet_ssh (sealed known-hosts context and bound credential). The old
+// refusal was fail-closed until that seam existed; it exists, and SshShell already mapped the
+// same way through typed_argv_exec_over_ssh. A second path that called the fleet seam from a
+// leaf while this dispatcher still refused is the parallel-authority tell. EmitArtifactThenThinRun
+// still refuses: it is not a typed argv transport. The stdin sibling stays refused until its own
+// portable-words-with-stdin admit (browser_ready_labels_fleet_route_stall).
 fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
@@ -3808,18 +3810,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
     }
     SshShell { ssh_host: h } =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
-    FleetSsh { target: t, context: _ } =>
-      RunArgvTransportRefused {
-        reason: join([
-          "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
-          known_hosts_host_field(address: t.address) as String,
-          ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
-          " admits portable words) does not apply; what remains is the transport's own authority: the fleet",
-          " seam executes through its own session type and trust policy, and admitting shape_fleet_ssh_exec",
-          " as a host-effect transport arm is its own change with its own analysis. Fail-closed until that",
-          " change names itself.",
-        ], ""),
-      }
+    FleetSsh { target: t, context: c } =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
@@ -4862,8 +4854,8 @@ fn approval_broker_tree_install(
 ) -> ApprovalBrokerTreeInstallVerdict {
   approval_broker_tree_install_at(
     owner: owner,
-    spine: [base_root, approval_broker_releases_dir(root: base_root)],
-    locus: approval_broker_release_dir(root: base_root, revision: revision),
+    spine: [base_root, release_locus_releases_dir(root: base_root)],
+    locus: release_locus_dir(root: base_root, revision: revision),
     source_root: source_root,
     revision: revision,
     transport: transport,
@@ -4884,11 +4876,11 @@ fn approval_broker_tree_install_at(
     RevisionNotInstalled =>
       TreeInstallRefused { step: TreeStepRevision, reason: "the tree install was asked for RevisionNotInstalled; a release directory is named by the candidate sha" }
     RevisionBoundAtEmission { revision: r } => {
-      match observe_tree_hashes(root: source_root, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepSourceObserve, reason: why }
         TreeObserved { entries: source } =>
           if count(source) == 0 {
-            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(approval_broker_tree_subdirs, ", ")], "") }
+            TreeInstallRefused { step: TreeStepSourceObserve, reason: join(["no regular file under ", source_root, " in ", join(release_locus_tree_subdirs, ", ")], "") }
           } else {
             approval_broker_tree_install_observed(
               owner: owner, spine: spine, source_root: source_root, locus: locus,
@@ -4905,22 +4897,83 @@ fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, 
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
 
-// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both hashes are
-// observed through the transport and must be equal; an unreadable hash is a disagreement.
-fn tree_binary_hex(path: String, transport: HostEffectTransport) -> String {
-  match run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport) {
-    RunArgvTransportRefused { reason: _ } => ""
+// ONE READER FOR "the sha256 of a path, observed over a HostEffectTransport". The three ways it can
+// be unobserved stay distinct: a refused transport, a run that failed, and a line carrying no digest.
+type Sha256UnobservedCause
+  = Sha256TransportRefused { reason: String }
+  | Sha256RunFailed { stderr: String }
+  | Sha256LineUnparsed { stdout: String }
+
+type Sha256Observation
+  = Sha256Observed { digest: Digest }
+  | Sha256Unobserved { cause: Sha256UnobservedCause }
+
+type Sha256Side = SourceSide | InstalledSide
+
+type Sha256Agreement
+  = Sha256Agrees
+  | Sha256Differs
+  | Sha256SideUnobserved { side: Sha256Side, cause: Sha256UnobservedCause }
+
+fn sha256_observation_of_outcome(outcome: RunArgvTransportOutcome) -> Sha256Observation {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => Sha256Unobserved { cause: Sha256TransportRefused { reason: r } }
     RunArgvTransportObserved { observed: o } =>
-      match (if o.success { sha256sum_line_digest(line: o.stdout) } else { none }) {
-        Absent => ""
-        Present { value: d } => d.hex as String
+      if o.success == false {
+        Sha256Unobserved { cause: Sha256RunFailed { stderr: o.stderr } }
+      } else {
+        match sha256sum_line_digest(line: o.stdout) {
+          Absent => Sha256Unobserved { cause: Sha256LineUnparsed { stdout: o.stdout } }
+          Present { value: d } => Sha256Observed { digest: d }
+        }
       }
   }
 }
 
-fn tree_binary_agrees(source_path: String, installed_path: String, transport: HostEffectTransport) -> Bool {
-  let a = tree_binary_hex(path: source_path, transport: transport)
-  string_length(s: a) > 0 && a == tree_binary_hex(path: installed_path, transport: transport)
+fn observe_sha256_over_transport(path: String, transport: HostEffectTransport) -> Sha256Observation {
+  sha256_observation_of_outcome(outcome: run_argv_over_host_effect_transport(command: sha256sum_file_command(path: path), transport: transport))
+}
+
+fn sha256_unobserved_cause_text(cause: Sha256UnobservedCause) -> String {
+  match cause {
+    Sha256TransportRefused { reason: r } => r
+    Sha256RunFailed { stderr: e } => e
+    Sha256LineUnparsed { stdout: _ } => "sha256sum printed no 64-hex digest field"
+  }
+}
+
+fn sha256_observations_agreement(source: Sha256Observation, installed: Sha256Observation) -> Sha256Agreement {
+  match source {
+    Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: SourceSide, cause: c }
+    Sha256Observed { digest: a } =>
+      match installed {
+        Sha256Unobserved { cause: c } => Sha256SideUnobserved { side: InstalledSide, cause: c }
+        Sha256Observed { digest: b } => if (a.hex as String) == (b.hex as String) { Sha256Agrees } else { Sha256Differs }
+      }
+  }
+}
+
+// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both sums are
+// observed through the transport and must be equal; an unobserved side is a disagreement naming its cause.
+fn tree_binary_agreement(source_path: String, installed_path: String, transport: HostEffectTransport) -> Sha256Agreement {
+  sha256_observations_agreement(
+    source: observe_sha256_over_transport(path: source_path, transport: transport),
+    installed: observe_sha256_over_transport(path: installed_path, transport: transport))
+}
+
+fn sha256_side_text(side: Sha256Side) -> String {
+  match side {
+    SourceSide => "source"
+    InstalledSide => "installed"
+  }
+}
+
+fn sha256_disagreement_text(agreement: Sha256Agreement) -> String? {
+  match agreement {
+    Sha256Agrees => none
+    Sha256Differs => Present { value: "the two sums differ" }
+    Sha256SideUnobserved { side: s, cause: c } => Present { value: join([sha256_side_text(side: s), " sum unobserved: ", sha256_unobserved_cause_text(cause: c)], "") }
+  }
 }
 
 fn approval_broker_tree_install_observed(
@@ -4948,19 +5001,22 @@ fn approval_broker_tree_install_observed(
   match after_binary {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
-      match observe_tree_hashes(root: locus, subs: approval_broker_tree_subdirs, transport: transport) {
+      match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
         TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
         TreeObserved { entries: installed } =>
-          if !tree_binary_agrees(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport) {
-            TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (or could not be hashed); no receipt was written"], "") }
-          } else if !tree_entries_agree(source: source, installed: installed) {
-            TreeInstallRefused { step: TreeStepReadback, reason: join([
-              "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
-              " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
-          } else {
-            approval_broker_tree_receipt_write(
-              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-              files: count(installed), transport: transport)
+          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: join([source_root, "/target/release/", gunbc_release_bin_name], ""), installed_path: join([locus, "/", gunbc_release_bin_name], ""), transport: transport)) {
+            Present { value: why } =>
+              TreeInstallRefused { step: TreeStepReadback, reason: join(["the installed binary ", gunbc_release_bin_name, " under ", locus, " does not hash equal to the source binary (", why, "); no receipt was written"], "") }
+            Absent =>
+              if !tree_entries_agree(source: source, installed: installed) {
+                TreeInstallRefused { step: TreeStepReadback, reason: join([
+                  "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
+                  " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
+              } else {
+                approval_broker_tree_receipt_write(
+                  owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                  files: count(installed), transport: transport)
+              }
           }
       }
   }
@@ -5099,8 +5155,10 @@ fn dark_run_leg(state: DarkState, leg: DarkLeg, transport: HostEffectTransport) 
               else { DarkOk }
           }
         DarkLegSameHash { step: s, left: l, right: r } =>
-          if tree_binary_agrees(source_path: l, installed_path: r, transport: transport) { DarkOk }
-          else { DarkFailed { step: s, reason: join([l, " and ", r, " differ (or one could not be hashed)"], "") } }
+          match sha256_disagreement_text(agreement: tree_binary_agreement(source_path: l, installed_path: r, transport: transport)) {
+            Absent => DarkOk
+            Present { value: why } => DarkFailed { step: s, reason: join([l, " and ", r, " differ (", why, ")"], "") }
+          }
       }
   }
 }
@@ -5199,8 +5257,8 @@ fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Lis
   ]
 }
 
-fn dark_slice_control_legs(units: List<SliceControlUnit>) -> List<DarkLeg> {
-  flat_map(units, u =>
+fn dark_slice_control_legs(units: FreeSemigroup<SliceControlUnit>) -> List<DarkLeg> {
+  flat_map(non_empty_to_list(xs: units), u =>
     list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
       DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
 }

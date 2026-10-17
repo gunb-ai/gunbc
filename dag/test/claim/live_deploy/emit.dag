@@ -191,9 +191,9 @@ import gunbc.live_deploy.emit {
   approval_broker_helper_sudoers_readback_stage_name,
 }
 import gunbc.live_deploy.release_locus {
-  approval_broker_tree_receipt_path_for,
-  approval_broker_release_dir,
-  approval_broker_release_binary_path,
+  release_locus_tree_receipt_path,
+  release_locus_dir,
+  release_locus_binary_path,
   RevisionBoundAtEmission,
 }
 import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
@@ -214,8 +214,13 @@ import gunbc.host.host_axis_caps {
   RunnerSlotServiceUnits, ServiceUnitsDerived, ServiceUnitsWidthUnresolved,
 }
 import product.host_identity { HostIdentity }
+import gunbc.host.host_converge {
+  slice_control_plan_for, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused,
+  SliceControlUnit,
+}
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import std.algebra { FreeSemigroup }
 import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
@@ -631,9 +636,34 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
 
 test fn witness_apply_script_converges_sessions_and_broker_slice_control() -> Bool {
   let host = operator_host_srv1
-  let script = deploy_slice_control_converge_script(host: host)
-  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(spec: deployment_spec_srv1()))
   let apply = witness_apply_script()
+  // THE PLAN IS DISCRIMINATED ONCE, HERE. The emit helpers used to call slice_control_plan_for
+  // themselves, which is how a Refused plan became two empty lists -- an empty script and an empty
+  // step list -- that then compared equal. Now they take the Derived roster, so this claim feeds the
+  // SAME units to both producers, and the two arms that are not Derived are asserted to make the
+  // claim fail: a roster that is not owed, or is refused, must not leave this witness looking
+  // satisfied because nothing was emitted to check.
+  match slice_control_plan_for(host: host) {
+    SliceControlPlanDerived { units } => witness_slice_control_roster_converges(units: units, apply: apply)
+    SliceControlPlanNotOwed => false
+    SliceControlPlanRefused { cause: _ } => false
+  }
+}
+
+// NO EMPTY-ROSTER RED, AND NO NON-EMPTY GUARD: there used to be one of each. The guard was
+// `(list_length(items: units) > 0)` inside this helper and the RED fed it `units: []` to prove the
+// guard was load-bearing. Both are GONE because the roster is a FreeSemigroup (std.algebra), whose
+// `head: T` makes a zero-unit plan unwritable -- so `units: []` is not a falsifying input any more,
+// it is a type error. DESIGN §5: "Stronger than catching a wrong state is making it unwritable --
+// correctness by construction, not validation." A guard against an unwritable state would only be
+// noise that someone later deletes as redundant.
+//
+// ONE ROSTER, BOTH PRODUCERS: the script and the step text are emitted from the same already-derived
+// units the apply route receives, so the two cannot drift apart, and neither can be empty: an empty
+// script compared against empty step text used to be exactly how a refused host looked converged.
+fn witness_slice_control_roster_converges(units: FreeSemigroup<SliceControlUnit>, apply: String) -> Bool {
+  let script = deploy_slice_control_converge_script(units: units)
+  let steps = pipeline_steps_text(steps: apply_slice_control_converge_steps(units: units))
   match compose_host_script_standing(fragments: apply_slice_control_converge_fragments(spec: deployment_spec_srv1())) {
     HostScriptRefused { cause: _ } => false
     HostScriptProceed =>
@@ -2126,7 +2156,7 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let release_dir = approval_broker_release_dir(
+  let release_dir = release_locus_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
@@ -2159,7 +2189,7 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let release_dir = approval_broker_release_dir(
+  let release_dir = release_locus_dir(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
@@ -2167,7 +2197,7 @@ test fn the_dark_install_populates_the_broker_tree() -> Bool {
   string_contains(s: script, pattern: release_dir)
     && string_contains(s: script, pattern: join([" -o ", owner, " -g ", owner, " \"$PWD\"/{} ", release_dir, "/{}"], ""))
     && !string_contains(s: script, pattern: "rsync")
-    && string_contains(s: script, pattern: approval_broker_tree_receipt_path_for(
+    && string_contains(s: script, pattern: release_locus_tree_receipt_path(
       root: srv1_gunbc_approval_broker_root as String,
       revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
     ))
@@ -2207,7 +2237,7 @@ test fn the_dark_install_and_the_unit_name_the_same_candidate_binary() -> Bool {
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   ))
-  let binary = approval_broker_release_binary_path(
+  let binary = release_locus_binary_path(
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )

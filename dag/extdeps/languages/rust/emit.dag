@@ -283,6 +283,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "string_length",      bridge_name: "string_length",    passes_by_ref: true,  wraps_result: false },
   { name: "substring",          bridge_name: "substring",        passes_by_ref: true,  wraps_result: false },
   { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: true,  wraps_result: false },
+  { name: "chars",              bridge_name: "chars",            passes_by_ref: true,  wraps_result: false },
   { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: true,  wraps_result: false },
   { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: true, wraps_result: false },
   { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },
@@ -333,6 +334,9 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
   { name: "observed_monotonic_nanos", bridge_name: "observed_monotonic_nanos", passes_by_ref: false, wraps_result: false },
   { name: "observed_thread_cpu_nanos", bridge_name: "observed_thread_cpu_nanos", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_available", bridge_name: "observed_allocation_available", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_operations", bridge_name: "observed_allocation_operations", passes_by_ref: false, wraps_result: false },
+  { name: "observed_allocation_bytes", bridge_name: "observed_allocation_bytes", passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },

@@ -23,7 +23,7 @@ import gunbc.runner.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAcce
 import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity }
 import gunbc.runner.runner_microvm_cell_readiness { WorkspaceWorkload }
 import gunbc.runner.workspace_guest_image { VerifiedWorkspaceImage }
-import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance, jit_drive_newline_sector, jit_drive_utf8_size, runner_microvm_network_interfaces }
+import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_allowance, newline_padded_to_whole_sectors, runner_microvm_network_interfaces }
 import gunbc.runner.runner_microvm_network { runner_slot_network, runner_slot_network_as_microvm_networking, runner_slot_guest_network_boot_args }
 import gunbc.runner.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied, AttemptLaunchPlan, LaunchAuthorized, LaunchRefusedPriorResources,
@@ -33,7 +33,7 @@ import gunbc.runner.runner_attempt_launch {
 }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, FirecrackerBootSource, FirecrackerDrive, FirecrackerMachineConfig,
-  firecracker_jailer_run_command, firecracker_requires_kvm_device, firecracker_block_sector_size,
+  firecracker_jailer_run_command, firecracker_requires_kvm_device,
 }
 import extdeps.tools.gnu_coreutils { cp_command, install_empty_file_command, install_file_owned_command, timeout_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -167,9 +167,7 @@ fn bind_workspace_launch_lease(
 
 fn workspace_bootstrap_content(binding: WorkspaceLaunchBinding) -> String {
   let body = join([binding.bootstrap_identity as String, "\n", binding.public_key.line as String, "\n"], "")
-  let sector = byte_size_count(b: firecracker_block_sector_size)
-  let tail = byte_size_count(b: jit_drive_utf8_size(text: body)) % sector
-  if tail == 0 { body } else { concat(body, substring(s: jit_drive_newline_sector(), start: 0, end: sector - tail)) }
+  newline_padded_to_whole_sectors(body: body)
 }
 
 data workspace_bootstrap_jail_path: FilePath = "/bootstrap.bin"
@@ -236,6 +234,7 @@ fn workspace_launch_plan(binding: WorkspaceLaunchBinding, ground: AttemptGround,
         stage_jail_root: mkdir_parents_command(path: jail_root),
         stage_kernel: cp_command(source: binding.image.kernel, destination: concat(jail_root, jail_kernel_path as String)),
         stage_rootfs: cp_command(source: binding.image.rootfs, destination: rootfs),
+        input_drives: [],
         workspace_path: disk,
         workspace_create: install_file_owned_command(source: rootfs, destination: disk, mode: "0600", uid: attempt_unprivileged_uid, gid: attempt_unprivileged_gid),
         workspace_format: dumpe2fs_superblock_command(image_path: disk),

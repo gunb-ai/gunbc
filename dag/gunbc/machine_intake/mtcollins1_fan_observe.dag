@@ -11,7 +11,7 @@ import gunbc.host.managed_host { managed_host_binding_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.fan_observe {
   FanObserveAdmitted, FanObserveRefused, FanObservePolicy,
-  fan_observe_admission, fan_observe_boot_phase_with, fan_observe_refusal_text, fan_observe_with,
+  fan_boot_phase_refused_prefix, fan_observe_admission, fan_observe_boot_phase_with, fan_observe_refusal_text, fan_observe_with,
 }
 
 // MT. COLLINS UNIT 1'S BINDING OF THE FAN OBSERVATION (managed-host cut 5). The read, the family-selected
@@ -37,6 +37,17 @@ data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-ob
 // second as a fact about the machine. The name is owned here and used by the prelude
 // (gunbc_ci_mtcollins1_probe_credential_statements) so the writer and the reader cannot drift.
 data mtcollins1_fan_credential_fetch_status_suffix: String = "-fetch-status"
+
+// THE BOOT PHASE'S TYPED OUTCOME AS A STEP OUTPUT (operator ruling 2026-10-16: a modeled refusal stops
+// the boot, exactly as an unmodeled failure or timeout does; no rung drop, no boot-anyway arm). The
+// receipt is the carrier: a receipt that opens with fan_boot_phase_taken_prefix (gunbc.machine_intake.fan_observe,
+// the one spelling every writer builds from) is an observed reading; anything else - refused,
+// missing, unrecognized - is refused (fail-closed). The prelude tail writes this
+// output from the receipt, fails the step on refusal, and the boot step's if: reads the output, so
+// the boot runs only on an observed reading. Names are owned here so writer and reader cannot drift.
+data mtcollins1_fan_boot_phase_outcome_output: String = "fan_outcome"
+data mtcollins1_fan_boot_phase_outcome_observed: String = "observed"
+data mtcollins1_fan_boot_phase_outcome_refused: String = "refused"
 
 type MtCollins1FanCredentialFetchStatus
   = FetchOk
@@ -146,31 +157,32 @@ fn mtcollins1_fan_observe_boot_phase_receipt(content: String) -> ProcessExit {
 // are a FanObserveBootPhaseRefused receipt naming the cause, with ExitSuccess. Nothing the step models
 // is absorbed by continue-on-error: a crash or a step timeout is an UNMODELED failure and fails the
 // job at this step, before the boot, located (review 81077; DESIGN §5 - no escape hatch). Only an
-// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. Whether a REFUSED
-// observation should stop the boot is a policy question with its own answer pending (review 81090 A);
-// this entry reports refusals typed and does not decide it by a toggle.
+// unwritable receipt fails. The standalone mtcollins1_fan_observe_wet stays strict. A REFUSED
+// observation STOPS THE BOOT (operator ruling 2026-10-16): this entry still reports refusals as typed
+// receipts, and the step's prelude tail turns the receipt into the mtcollins1_fan_boot_phase_outcome_output
+// step output and fails the step, so the boot is ineligible.
 fn mtcollins1_fan_observe_boot_phase_wet() -> ProcessExit
 {
   match fan_observe_admission(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr)) {
     FanObserveRefused { cause: c } =>
       mtcollins1_fan_observe_boot_phase_receipt(
-          content: concat("FanObserveBootPhaseRefused admission=", fan_observe_refusal_text(cause: c) as String),
+          content: join([fan_boot_phase_refused_prefix, " admission=", fan_observe_refusal_text(cause: c) as String], ""),
         )
     FanObserveAdmitted { host: admitted } =>
       match mtcollins1_fan_credential_path() {
         FanCredentialPathUnset =>
           mtcollins1_fan_observe_boot_phase_receipt(
-              content: join(["FanObserveBootPhaseRefused credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
+              content: join([fan_boot_phase_refused_prefix, " credential=unset env=", mtcollins1_fan_credential_path_env as String], ""),
             )
         FanCredentialPathEmpty =>
           mtcollins1_fan_observe_boot_phase_receipt(
-              content: join(["FanObserveBootPhaseRefused credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
+              content: join([fan_boot_phase_refused_prefix, " credential=empty env=", mtcollins1_fan_credential_path_env as String], ""),
             )
         FanCredentialPathReady { path: password_file } =>
           match mtcollins1_fan_credential_fetch_status(credential_path: password_file) {
             FetchRefused =>
               mtcollins1_fan_observe_boot_phase_receipt(
-                content: join(["FanObserveBootPhaseRefused credential=fetch-failed env=", mtcollins1_fan_credential_path_env as String], ""),
+                content: join([fan_boot_phase_refused_prefix, " credential=fetch-failed env=", mtcollins1_fan_credential_path_env as String], ""),
               )
             FetchOk =>
               fan_observe_boot_phase_with(host: admitted, password_file: password_file, policy: mtcollins1_fan_observe_policy)

@@ -189,7 +189,7 @@ test fn cursor_status_never_makes_the_offer_selectable_before_the_entitlement_tr
     ProviderStandingFromFact { fact: _ } => false
   }
   let rejected_named = match rejected {
-    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "rejects")
+    ProviderStandingUnobserved { reason } => string_contains(s: reason as String, pattern: "holds no stored auth")
     ProviderStandingFromFact { fact: _ } => false
   }
   accepted_pending && rejected_named
@@ -279,7 +279,7 @@ test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool
 test fn a_rejected_key_refuses_before_the_sandbox_reading_is_consulted() -> Bool {
   match cursor_standing_from_readings(status: cursor_status_reading(stdout: observed_unauthenticated_status), sandbox: sandbox_unsupported_on_srv2()) {
     ProviderStandingUnobserved { reason } =>
-      string_contains(s: reason as String, pattern: "rejects")
+      string_contains(s: reason as String, pattern: "holds no stored auth")
         && !string_contains(s: reason as String, pattern: cursor_sandbox_unavailable_reason_prefix)
     ProviderStandingFromFact { fact: _ } => false
   }
