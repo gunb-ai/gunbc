@@ -102,7 +102,7 @@ fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
 
 fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => []
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => []
     ResolveWalkRefused { first: f, rest: r, observation: _ } =>
       Cons {
         head: walk_chain_identity(c: f),
@@ -113,14 +113,14 @@ fn walk_identities(w: ResolveNodeWalk) -> List<Symbol> {
 
 fn walk_chain_count(w: ResolveNodeWalk) -> Int {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => 0
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => 0
     ResolveWalkRefused { first: _, rest: r, observation: _ } => length(xs: r) + 1
   }
 }
 
 fn walk_complete(w: ResolveNodeWalk) -> Bool {
   match w {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => true
     ResolveWalkRefused { first: _, rest: _, observation: o } =>
       match o {
         ObservationComplete => true
@@ -205,7 +205,7 @@ test fn walk_clean_bind_is_accepted_holds() -> Bool {
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_reference(name: ^x, ordinal: 2))
   ) {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: l } => length(xs: l) == 1
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: l } => length(xs: l) == 1
     ResolveWalkRefused { first: _, rest: _, observation: _ } => false
   }
 }
@@ -217,7 +217,7 @@ test fn walk_one_refusal_refuses_the_node_holds() -> Bool {
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))
   ) {
-    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => false
+    ResolveWalkAccepted { value: _, diagnostics: _, bindings: _ } => false
     ResolveWalkRefused { first: _, rest: _, observation: _ } => true
   }
 }

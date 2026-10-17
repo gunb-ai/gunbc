@@ -24,24 +24,20 @@ use crate::gunbc_rust_crate_package_ident::PackageIdentSetOutcome::{
 };
 pub use crate::gunbc_rust_crate_package_ident::{
     package_ident_bound, package_ident_refusal_message, rust_crate_package_idents,
-};
-pub use crate::gunbc_rust_crate_package_ident::{
     PackageIdentBinding, PackageIdentRefusalCause, PackageIdentSetOutcome,
 };
 pub use crate::gunbc_rust_emitted_crate::EmittedCrateDependencyDemand;
-pub use crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows;
 use crate::gunbc_stage0_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFacadeCrate, GeneratedFoundationCrate,
     GeneratedLayeredCoreCrate,
 };
 pub use crate::gunbc_stage0_stage0_crate_partition_generated::{
-    GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+    generated_partition_crate_rows, GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
 pub use crate::gunbc_stage0_stage0_emitted_edge_admission::partition_module_owner_packages_over;
 pub use crate::gunbc_stage0_stage0_partition_package_graph::partition_package_dependency_names_over;
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::v1_compiler_emit_rust::{
     emit_cargo_dep, emit_cargo_dep_no_default_features, emit_cargo_features_section,
     emit_non_empty_wrappers, generated_rust_lint_relaxations,
