@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import std.materialization_store_grant { DurableHostVolume }
 import gunbc.compute.work_provider_local {
-  UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
+  NoPathVirtualization, UnitTermination, UnitAttemptCompleted, UnitAbsentAuthoritatively, UnitPopulated, UnitTerminationUnavailable,
   UnitPropertyReading, UnitObservations, unit_termination_decide,
   unit_termination_frees_capacity, unit_termination_wire, compute_attempt_completed,
   ProvideResult, ProvideFresh, ProvideAttached, HostRecordStatus, HostRecordWritten, HostRecordLost,
@@ -258,7 +258,7 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 }
 
 // Declared outputs follow the operation: a build names its binaries under the profile directory of
-// the TARGET root (the identity-owned CARGO_TARGET_DIR under that identity's work_dir, not the
+// the TARGET root (the identity-owned cargo --target-dir under that identity's work_dir, not the
 // checkout -- the first wet run declared the checkout and mismatched a build that had succeeded);
 // checking operations declare none, so an absent binary is a mismatch and an absent nothing is not.
 test fn declared_outputs_follow_the_operation() -> Bool {
@@ -417,7 +417,7 @@ fn property_words(props: List<SystemdRunProperty>) -> List<String> {
 test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -> Bool {
   let props = compute_unit_properties(
     layout: compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "abc"),
-    granted: kibibyte(count: 1048576))
+    granted: kibibyte(count: 1048576), path_virtualization: NoPathVirtualization)
   contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value() as String], ""))
     && contains(property_words(props), join([systemd_unit_property_wire(property: KillModeProperty) as String, "=", systemd_kill_mode_wire(mode: KillModeControlGroup) as String], ""))
     && count(filter(property_words(props), p => starts_with(s: p, prefix: "MemoryMax="))) == 1

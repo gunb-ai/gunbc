@@ -743,6 +743,18 @@ fn compute_run_unit_sccache_probe_binding() -> TargetBinding {
   TargetBinding { target: compute_run_unit_sccache_probe_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_sccache_probe_function() } }
 }
 
+fn compute_run_unit_cold_same_path_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "compute-run-unit-cold-same-path" } }
+}
+
+fn compute_run_unit_cold_same_path_function() -> String {
+  "compute_run_unit_cold_same_path_exit"
+}
+
+fn compute_run_unit_cold_same_path_binding() -> TargetBinding {
+  TargetBinding { target: compute_run_unit_cold_same_path_label() producer: CliWireProgramProducer { entry: compute_run_unit_cold_entry() function: compute_run_unit_cold_same_path_function() } }
+}
+
 fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
@@ -984,7 +996,7 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_wrong_capture_label(),
+    compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
@@ -1006,7 +1018,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_wrong_capture_binding(),
+    compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
