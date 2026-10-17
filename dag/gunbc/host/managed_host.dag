@@ -1,11 +1,11 @@
 module gunbc.host.managed_host
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
-import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
+import gunbc.machine_intake.bmc_secure { BmcSecureRefused, BmcSecureStanding, BmcSecured }
 import gunbc.machine_intake.subject {
   IntakeAttemptId,
   MachineIntakeSubject,

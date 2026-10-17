@@ -40,7 +40,6 @@ import gunbc.machine_intake.mtcollins1_managed_host_admission { mtcollins1_curre
 import gunbc.host.host_reset_subject_roster {
   ResetRosterHostUnderDeclaredDrop, OrdinaryResetRosterHost, reset_subject_roster, reset_subject_roster_of,
 }
-import gunbc.host.virtual_media_boot_selection { VirtualMediaBootSelectionAdmitted }
 import gunbc.host.smpro_platform_capability { SmproPlatformNotCarried }
 import extdeps.cpu.types { SoCFamily }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
