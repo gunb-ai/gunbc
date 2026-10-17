@@ -13,6 +13,7 @@ import extdeps.tools.util_linux_setsid { setsid_fork_command }
 import extdeps.posix.process { PosixProcessStdoutAndStderrToOneFile, PosixFileTruncate }
 import extdeps.posix.shell_command_language { admit_posix_redirect_pathname, PosixRedirectPathAdmitted, PosixRedirectPathRefused }
 import gunbc.remote_shell_command { RemoteExecCommandBuilt, RemoteExecCommandRefused, RemoteExecCommandRefusalCause, remote_exec_command_rendered }
+import gunbc.command_runner { command_over_transport_refusal_reason }
 import gunbc.host.host_effect_argv_stdio { host_effect_argv_stdio_remote_command }
 import gunbc.serving.serving_key_grant { ServingKeyGrant, serving_key_grant_name }
 import extdeps.ninfer.ninfer_serve { NinferServeLaunch, NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable }
@@ -144,7 +145,7 @@ fn serving_detach_text(detach: ServingDetachLeg) -> String {
   match detach {
     ServingDetachRendered { remote_command: c } => c as String
     ServingDetachRefusedLogPath { path: p } => concat("refused: the serve log path is not a redirectable pathname: ", p as String)
-    ServingDetachRefusedRender { cause: _ } => "refused: the detach command could not be rendered for the login shell"
+    ServingDetachRefusedRender { cause: c } => concat("refused: the detach command could not be rendered for the login shell: ", command_over_transport_refusal_reason(cause: c))
   }
 }
 
