@@ -7,7 +7,8 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.provisioning.network_boot { ProxyDhcp }
-import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64, BiosX86, HttpBootX86_64, HttpBootArm64, DhcpProcessorArchitecture, dhcp_processor_architecture_code }
+import std.list { first_where }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64, BiosX86, HttpBootX86_64, HttpBootArm64, DhcpProcessorArchitecture, dhcp_processor_architecture_code, dhcp_processor_architecture_members }
 import product.placement_supply { SiteIdentity }
 import gunbc.fleet.site_pxe_edge_receipts {
   EdgeOfferObservation, EdgeOfferObserved, EdgeOfferUnobserved,
@@ -305,6 +306,10 @@ fn round_trips(a: DhcpProcessorArchitecture) -> Bool {
   }
 }
 
+// Walks the upstream member list itself, so a variant added there is covered without editing this witness.
 test fn every_upstream_architecture_code_decodes_back_to_itself() -> Bool {
-  round_trips(a: BiosX86) && round_trips(a: UefiX86_64) && round_trips(a: UefiArm64) && round_trips(a: HttpBootX86_64) && round_trips(a: HttpBootArm64)
+  match first_where(xs: dhcp_processor_architecture_members, keep: a => !round_trips(a: a)) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
