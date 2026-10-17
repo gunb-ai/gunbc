@@ -43,8 +43,8 @@ test fn a_consumer_of_a_relayed_plain_function_routes_its_use_line_to_the_declar
   compile_dag_rust_emit_check(
     "module iar_plain\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.relay_plain_fn \{ arm_plain_fn \}\n\nfn iar_plain_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n",
     "src/iar_plain.rs",
-    ["crate::test_fixture_imported_arms_provider::{arm_plain_fn"],
-    ["crate::test_fixture_imported_arms_relay_plain_fn::{arm_plain_fn"]
+    ["crate::test_fixture_imported_arms_provider::\{arm_plain_fn"],
+    ["crate::test_fixture_imported_arms_relay_plain_fn::\{arm_plain_fn"]
   )
 }
 
@@ -53,7 +53,7 @@ test fn a_consumer_importing_a_plain_function_from_its_declarer_keeps_its_use_li
   compile_dag_rust_emit_check(
     "module iar_plain_direct\n\nimport std.types \{ Int \}\nimport test.fixture.imported_arms.provider \{ arm_plain_fn \}\n\nfn iar_plain_direct_use(x: Int) -> Int {\n  arm_plain_fn(x)\n}\n",
     "src/iar_plain_direct.rs",
-    ["crate::test_fixture_imported_arms_provider::{arm_plain_fn"],
+    ["crate::test_fixture_imported_arms_provider::\{arm_plain_fn"],
     []
   )
 }
