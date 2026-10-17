@@ -17211,22 +17211,11 @@ pub fn record_lit_name_declares_union(
         type_name.clone(),
     ) {
         Some(decl) => {
-            let to_expand = if (((decl.connective.clone() == Connective::NoConnective)
-                && ((decl.children.clone().len() as i64) == 0))
-                && (decl.inferred.clone() != std::option::Option::None))
-            {
-                match decl.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
-                    _ => decl.clone(),
-                }
-            } else {
-                decl.clone()
-            };
-            if to_expand.connective.clone() == Connective::Disj {
-                Some(to_expand.clone())
-            } else if to_expand.connective.clone() == Connective::NoConnective {
+            if decl.connective.clone() == Connective::Disj {
+                Some(decl.clone())
+            } else if decl.connective.clone() == Connective::NoConnective {
                 let expanded_result = expand_type_for_field_access(
-                    to_expand.clone(),
+                    decl.clone(),
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 );

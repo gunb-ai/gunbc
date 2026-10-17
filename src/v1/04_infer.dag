@@ -10758,23 +10758,20 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
 // DOES THIS NAME CARRY A RECORD CONSTRUCTOR? A type name standing in record-literal position is
 // asked this ONE question before any field is read. A name declaring a coproduct does not: its
 // constructors are its arms. The answer is read off the EXPANSION, so `type ZzT = ZzU` is judged by
-// what ZzU is and not by the spelling ZzT (an alias carries the target in `inferred`, and its own
-// connective is NoConnective -- a name test alone called every alias of a union a constructor).
-// Only the structural shapes answer: a name that resolves to nothing, to a primitive, or to a
-// conjunction is left to the refusals that already judge it, so this widens on none of them.
+// what ZzU is and not by the spelling ZzT: an alias carries no connective of its own (NoConnective),
+// and a name test alone would call every alias of a union a constructor. Only the structural shapes
+// answer: a name that resolves to nothing, to a primitive, or to a conjunction is left to the
+// refusals that already judge it, so this widens on none of them.
+// (Grammar note, from the parse this file must survive: the seed parser rejects `let x = if ...` --
+// a `let` whose right-hand side is an if-expression -- so the branches are spelled as blocks whose
+// bodies hold the lets, the shape every other function in this file uses.)
 fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Present { value: decl } =>
-      let to_expand = if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
-        match decl.inferred {
-          Present { value: Resolved { node: target } } => target
-          _ => decl
-        }
-      } else { decl }
-      if to_expand.connective == Disj {
-        Present { value: to_expand }
-      } else if to_expand.connective == NoConnective {
-        let expanded_result = expand_type_for_field_access(n: to_expand, env: scope.type_env, module_name: scope.module_name)
+      if decl.connective == Disj {
+        Present { value: decl }
+      } else if decl.connective == NoConnective {
+        let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
         let expanded = expanded_result.resolved
         if expanded.connective == Disj { Present { value: expanded } } else { none }
       } else { none }

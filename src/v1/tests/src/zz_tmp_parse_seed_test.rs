@@ -1,6 +1,6 @@
 #![allow(clippy::all, dead_code, unused_imports)]
+use crate::helpers::parse_source_named;
 use std::rc::Rc;
-use v1_compiler_tests::helpers::parse_source_named;
 
 fn report(label: &str, source: &str) {
     let r = parse_source_named("snippet.dag", source);
@@ -23,13 +23,15 @@ fn zz_tmp_parse_seed() {
     let whole = std::fs::read_to_string("src/v1/04_infer.dag").expect("read seed infer");
     report("whole-04_infer", &whole);
 
-    let helper = std::fs::read_to_string("src/v1/04_infer.dag")
-        .unwrap()
-        .lines()
-        .skip(10764)
-        .take(27)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let all = std::fs::read_to_string("src/v1/04_infer.dag").unwrap();
+    let start = all
+        .find("fn record_lit_name_declares_union")
+        .expect("helper");
+    let end = all[start..]
+        .find("\n}\n")
+        .map(|e| start + e + 3)
+        .unwrap_or(all.len());
+    let helper = all[start..end].to_string();
     println!("HELPER_TEXT_START");
     for (i, l) in helper.lines().enumerate() {
         println!("{:02}: {}", i, l);
