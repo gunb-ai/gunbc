@@ -3,6 +3,8 @@ module std.bounded_nat
 import std.types { Int, Bool, List }
 import std.measure { BitWidth, bit_width, bit_width_count }
 import std.power_of_two { bitwise_pow2 }
+import std.integer { Unsigned }
+import std.machine_width_range { machine_width_admits }
 
 // ARITHMETIC ON BOUNDED NATURALS, AS DECLARED OPERATIONS RATHER THAN INFIX.
 //
@@ -97,7 +99,8 @@ fn bounded_nat_admit(bits: BitWidth) -> BoundedNatAdmission {
   }
 }
 
-// The exclusive upper bound of a width: 2^N.
+// The exclusive upper bound of a width: 2^N, for the arithmetic below. WHICH VALUES A WIDTH ADMITS is
+// std.machine_width_range machine_width_admits, the one range authority the mint and v2.compiler.infer share.
 fn bounded_nat_modulus(bits: BitWidth) -> Int {
   bitwise_pow2(n: bit_width_count(b: bits))
 }
@@ -121,7 +124,7 @@ fn bounded_nat(bits: BitWidth, value: Int) -> BoundedNatMint {
     WidthNotStatic => WidthRefused { cause: WidthNotStatic }
     WidthExceedsHostInt { bits: b } => WidthRefused { cause: WidthExceedsHostInt { bits: b } }
     WidthAdmitted { bits: b } =>
-      if value < 0 || value >= bounded_nat_modulus(bits: b) {
+      if !machine_width_admits(signedness: Unsigned, bits: b, value: value) {
         OutOfWidth { bits: b, value: value }
       } else {
         Minted { n: BoundedNat { bits: b, value: value } }

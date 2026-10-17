@@ -200,3 +200,26 @@ test fn wla_s_bits_read() -> Bool { infer_machine_width_bits(t: wla_instantiatio
 test fn wla_s_signedness_nat() -> Bool { infer_machine_width_signedness(carrier: wla_decl(dotted: "std.nat.Nat")) == optional_present(value: Unsigned) }
 test fn wla_s_signedness_int() -> Bool { infer_machine_width_signedness(carrier: wla_int_carrier()) == optional_present(value: Signed) }
 
+
+// FAIL CLOSED ON AN UNREADABLE WIDTH (infer_machine_width_of's WidthUnreadable arm): the type is width-constrained but its
+// width cannot be read, so the literal refuses with the typed reason rather than reaching ordinary grounding, which would
+// accept it. Each RED has a readable twin above (wla_s_uint8_255 is the positive control for the same Compose shape).
+fn wla_verdict_at(lexeme: String, expected: Node) -> Symbol {
+  match infer_literal_elaborates_at(literal_node: wla_literal(lexeme: lexeme), expected: expected, declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
+    InferLiteralElaboratesTo { destination_type: _ } => ^elaborated
+    InferLiteralNotElaborated => ^not_elaborated
+    InferLiteralElaborationRefused { cause: c } => c
+  }
+}
+
+// MachineWidth<PointerWidth>: IntPlatform / UIntPlatform. No constant to read.
+fn wla_pointer_width_type(carrier: Node) -> Node {
+  wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [carrier, wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.MachineWidth"), args: [wla_decl(dotted: "std.machine_constraints.PointerWidth")])])
+}
+
+test fn wla_s_pointer_width_refuses() -> Bool { wla_verdict_at(lexeme: "1", expected: wla_pointer_width_type(carrier: wla_int_carrier())) == ^infer_reason_machine_width_not_static }
+test fn wla_s_pointer_width_unsigned_refuses() -> Bool { wla_verdict_at(lexeme: "1", expected: wla_pointer_width_type(carrier: wla_decl(dotted: "std.nat.Nat"))) == ^infer_reason_machine_width_not_static }
+test fn wla_s_undeclared_signedness_refuses() -> Bool { wla_verdict(lexeme: "1", carrier: wla_decl(dotted: "std.machine_constraints.PointerWidth"), bits: "8") == ^infer_reason_machine_width_carrier_signedness_undeclared }
+test fn wla_s_malformed_compose_refuses() -> Bool {
+  wla_verdict_at(lexeme: "1", expected: wla_instantiation(head: wla_decl(dotted: "std.machine_constraints.Compose"), args: [wla_int_carrier()])) == ^infer_reason_machine_width_compose_malformed
+}

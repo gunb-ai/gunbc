@@ -4488,68 +4488,75 @@ fn infer_int_literal_value_at(value: Int, expected: Node, declarations: SymbolIn
     Absent => InferLiteralNotElaborated
     Present { value: destination } =>
       match infer_machine_width_of(t: wanted) {
-        Present { value: width } =>
-          if machine_width_admits(signedness: width.signedness, bits: width.bits, value: value) {
+        WidthReadable { signedness: signedness, bits: bits } =>
+          if machine_width_admits(signedness: signedness, bits: bits, value: value) {
             InferLiteralElaboratesTo { destination_type: wanted }
           } else {
             InferLiteralElaborationRefused { cause: ^infer_reason_literal_outside_machine_width }
           }
-        Absent => infer_int_literal_value_at_declared(value: value, wanted: wanted, destination: destination)
+        WidthUnreadable { reason: r } => InferLiteralElaborationRefused { cause: r }
+        NotWidthConstrained => infer_int_literal_value_at_declared(value: value, wanted: wanted, destination: destination)
       }
   }
 }
 
-// A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE: Compose<A, MachineWidth<N>> with a Nat literal N and a
-// carrier A that is the kernel Int (signed) or std.nat Nat (unsigned). The meaning of the width -- which
-// integers N bits admits -- is std.machine_width_range machine_width_admits, not a table here. Anything
-// else (a named width such as PointerWidth, a carrier that is neither) is Absent and keeps the grounding
-// and homomorphism path: a width that cannot be read is not admitted by guessing one.
-type InferMachineWidth {
-  signedness: Signedness
-  bits: BitWidth
-}
+// A WIDTH-CONSTRAINED INTEGER READ FROM ITS TYPE, IN THREE ANSWERS (fail closed, DESIGN section 5): a type is
+// NotWidthConstrained (it names no MachineWidth, so the grounding and homomorphism path decides),
+// WidthReadable (Compose<A, MachineWidth<N>> with a Nat literal N and a carrier A that is the kernel Int, signed, or
+// std.nat Nat, unsigned), or WidthUnreadable -- it IS width-constrained but the width cannot be read: a malformed
+// Compose, a named width such as MachineWidth<PointerWidth> (IntPlatform, UIntPlatform), a carrier whose signedness is
+// not declared. Unreadable refuses, typed: a width that cannot be read is neither admitted by guessing one nor
+// handed to ordinary grounding, which would accept any literal the carrier accepts. The meaning of a readable width
+// is std.machine_width_range machine_width_admits, not a table here.
+type InferMachineWidth
+  = NotWidthConstrained
+  | WidthReadable { signedness: Signedness, bits: BitWidth }
+  | WidthUnreadable { reason: Symbol }
 
-fn infer_machine_width_of(t: Node) -> Optional<InferMachineWidth> {
+fn infer_machine_width_of(t: Node) -> InferMachineWidth {
   match infer_type_declaration_ref(t: t) {
-    Absent => optional_absent()
+    Absent => NotWidthConstrained
     Present { value: head } =>
       if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
         match infer_type_head_and_args(t: t).args {
           Cons { head: carrier, tail: Cons { head: width, tail: Empty } } =>
-            match infer_machine_width_bits(t: width) {
-              Absent => optional_absent()
-              Present { value: bits } =>
-                match infer_machine_width_signedness(carrier: carrier) {
-                  Absent => optional_absent()
-                  Present { value: signedness } => optional_present(value: InferMachineWidth { signedness: signedness, bits: bits })
-                }
+            if infer_type_names_machine_width(t: width) {
+              match infer_machine_width_bits(t: width) {
+                Absent => WidthUnreadable { reason: ^infer_reason_machine_width_not_static }
+                Present { value: bits } =>
+                  match infer_machine_width_signedness(carrier: carrier) {
+                    Absent => WidthUnreadable { reason: ^infer_reason_machine_width_carrier_signedness_undeclared }
+                    Present { value: signedness } => WidthReadable { signedness: signedness, bits: bits }
+                  }
+              }
+            } else {
+              NotWidthConstrained
             }
-          Cons { head: _, tail: _ } => optional_absent()
-          Empty => optional_absent()
+          Cons { head: _, tail: _ } => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
+          Empty => WidthUnreadable { reason: ^infer_reason_machine_width_compose_malformed }
         }
       } else {
-        optional_absent()
+        NotWidthConstrained
       }
   }
 }
 
-fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
+fn infer_type_names_machine_width(t: Node) -> Bool {
   match infer_type_declaration_ref(t: t) {
-    Absent => optional_absent()
-    Present { value: head } =>
-      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth") {
-        match infer_type_head_and_args(t: t).args {
-          Cons { head: literal, tail: Empty } =>
-            match dag_int_literal_magnitude_int_from_node(node: literal) {
-              Accepted { value: m, diagnostics: _ } => optional_present(value: bit_width(count: nat_magnitude(a: m)))
-              Rejected { diagnostics: _ } => optional_absent()
-            }
-          Cons { head: _, tail: _ } => optional_absent()
-          Empty => optional_absent()
-        }
-      } else {
-        optional_absent()
+    Absent => false
+    Present { value: head } => head == decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")
+  }
+}
+
+fn infer_machine_width_bits(t: Node) -> Optional<BitWidth> {
+  match infer_type_head_and_args(t: t).args {
+    Cons { head: literal, tail: Empty } =>
+      match dag_int_literal_magnitude_int_from_node(node: literal) {
+        Accepted { value: m, diagnostics: _ } => optional_present(value: bit_width(count: nat_magnitude(a: m)))
+        Rejected { diagnostics: _ } => optional_absent()
       }
+    Cons { head: _, tail: _ } => optional_absent()
+    Empty => optional_absent()
   }
 }
 
