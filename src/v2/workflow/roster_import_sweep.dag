@@ -38,8 +38,7 @@ import v2.std.qualified_name { QualifiedName }
 // construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
 //   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
 //   REFUSE <path> <cause>
-// No applier is committed (tools/ is gitignored): the rows are applied by a session-local sha256
-// compare-and-set writer with no semantics. Applier home is an open question to the manager.
+// roster_import_sweep_apply_exit is the committed apply step (compare-and-set, then Filesystem.Write).
 // DISSOLVES when the row-driven generator over the ruled home table (N4/N5) replaces this fixed
 // four-row table; consumed until then by the sweep PRs. Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
@@ -55,15 +54,19 @@ import v2.std.qualified_name { QualifiedName }
 type RosterHeadRow {
   call: String
   import_name: String
-  renames_call: Bool
 }
+
+type RosterOutcome
+  = RosterClean
+  | RosterEdit { start: Int, end: Int, text: String, own_line: Bool }
+  | RosterRefused { cause: String }
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
-    RosterHeadRow { call: "concat", import_name: "collection_concat_shape", renames_call: false },
-    RosterHeadRow { call: "count", import_name: "collection_count_shape", renames_call: false },
-    RosterHeadRow { call: "map", import_name: "collection_map_shape", renames_call: false },
-    RosterHeadRow { call: "join", import_name: "collection_join_shape", renames_call: false }
+    RosterHeadRow { call: "concat", import_name: "collection_concat_shape" },
+    RosterHeadRow { call: "count", import_name: "collection_count_shape" },
+    RosterHeadRow { call: "map", import_name: "collection_map_shape" },
+    RosterHeadRow { call: "join", import_name: "collection_join_shape" }
   ]
 }
 
@@ -95,24 +98,94 @@ fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedL
 fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex)
+    roster_render_outcome(path: path, outcome: roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex))
   } else {
     "REFUSE " + path + " unreadable\n"
   }
 }
 
-fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+// THE APPLY STEP, in the same entry family as the generator: the file is read, the outcome computed,
+// the file re-read and required byte-identical to what the outcome was computed from (compare-and-set),
+// the extent required to hold what the parsed decl said it holds, and only then written with
+// Filesystem.Write. Anything else is a REFUSE row and the file is untouched. Success is silent, so the
+// exit reason is exactly the refusals.
+fn roster_import_sweep_apply_exit(paths_csv: String) -> ProcessExit {
+  let report = roster_apply_for_paths(paths_csv: paths_csv)
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_apply_for_paths(paths_csv: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      fold_list(
+        xs: split(s: paths_csv, delimiter: ","),
+        empty: "",
+        cons: fn(acc, path) { acc + roster_apply_path(path: path, prepared: prepared, lex: dag_prepared_lex()) }
+      )
+  }
+}
+
+fn roster_apply_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    match roster_sweep_text(path: path, text: read.content, prepared: prepared, lex: lex) {
+      RosterClean => ""
+      RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+      RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+        roster_apply_edit(path: path, before: read.content, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+    }
+  } else {
+    "REFUSE " + path + " unreadable\n"
+  }
+}
+
+fn roster_apply_edit(path: String, before: String, start: Int, end: Int, replacement: String) -> String {
+  let now = Filesystem.Read(path: path)
+  if !now.success || now.content != before {
+    "REFUSE " + path + " cas-mismatch\n"
+  } else if !roster_extent_holds(before: before, start: start, end: end) {
+    "REFUSE " + path + " extent-mismatch\n"
+  } else {
+    let wrote = Filesystem.Write(
+      path: path,
+      content: substring(s: before, start: 0, end: start) + replacement + substring(s: before, start: end, end: string_length(s: before))
+    )
+    if wrote.success { "" } else { "REFUSE " + path + " write-failed\n" }
+  }
+}
+
+// A replaced extent is an import of std.algebra; an insertion point is the end of an import block.
+fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
+  if start == end {
+    substring(s: before, start: start - 1, end: start) == "}"
+  } else {
+    substring(s: before, start: start, end: start + 18) == "import std.algebra"
+  }
+}
+
+// The one rendering of an outcome as protocol rows: replacement newlines are escaped as \n.
+fn roster_render_outcome(path: String, outcome: RosterOutcome) -> String {
+  match outcome {
+    RosterClean => ""
+    RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+      "EDIT " + path + " " + int_to_decimal_string(value: start) + " " + int_to_decimal_string(value: end) + " "
+        + (if own_line { "\\n" } else { "" }) + text + "\n"
+    RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+  }
+}
+
+fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterOutcome {
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => "REFUSE " + path + " tokenize-refused\n"
+        Rejected { diagnostics: _ } => RosterRefused { cause: "tokenize-refused" }
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => "REFUSE " + path + " parse-refused\n"
+            Rejected { diagnostics: _ } => RosterRefused { cause: "parse-refused" }
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => "REFUSE " + path + " normalize-refused\n"
+                Rejected { diagnostics: _ } => RosterRefused { cause: "normalize-refused" }
                 Accepted { value: scoped, diagnostics: _ } =>
                   roster_sweep_rows(
-                    path: path,
                     parse_root: artifact.tree,
                     spans: artifact.span_index,
                     normalized_root: scoped.tree.root,
@@ -169,18 +242,16 @@ fn roster_spelling_is(qn: QualifiedName, call: String) -> Bool {
 }
 
 fn roster_sweep_rows(
-  path: String,
   parse_root: Node,
   spans: SpanIndex,
   normalized_root: Node,
   imported: List<Symbol>
-) -> String {
+) -> RosterOutcome {
   let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported)
   if is_empty(xs: needed) {
-    ""
+    RosterClean
   } else {
-    roster_import_row(path: path, parse_root: parse_root, spans: spans, needed: needed)
-      + roster_rename_rows(path: path, parse_root: parse_root, spans: spans, needed: needed)
+    roster_import_row(parse_root: parse_root, spans: spans, needed: needed)
   }
 }
 
@@ -194,7 +265,7 @@ type ImportDeclFact {
   end: Int
 }
 
-fn roster_import_row(path: String, parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> String {
+fn roster_import_row(parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> RosterOutcome {
   let decls = roster_import_decl_facts(parse_root: parse_root, spans: spans)
   let algebra = roster_filter_module(decls: decls, module_name: "std.algebra")
   let wanted = list_map(xs: needed, f: fn(r) { r.import_name })
@@ -202,20 +273,20 @@ fn roster_import_row(path: String, parse_root: Node, spans: SpanIndex, needed: L
     0 =>
       match roster_last_decl_end(decls: decls) {
         Present { value: at } =>
-          "EDIT " + path + " " + int_to_decimal_string(value: at) + " " + int_to_decimal_string(value: at) + " "
-            + "\\n" + roster_render_import(names: roster_dedupe(base: [], more: wanted)) + "\n"
-        Absent => "REFUSE " + path + " no-import-anchor\n"
+          RosterEdit { start: at, end: at, text: roster_render_import(names: roster_dedupe(base: [], more: wanted)), own_line: true }
+        Absent => RosterRefused { cause: "no-import-anchor" }
       }
     _ =>
       // Several std.algebra imports make the same names visible; the first one is extended and the rest stay as authored.
       fold_list(
         xs: algebra,
-        empty: "",
+        empty: RosterClean,
         cons: fn(acc, d) {
-          if acc == "" {
-            "EDIT " + path + " " + int_to_decimal_string(value: d.start) + " " + int_to_decimal_string(value: d.end) + " "
-              + roster_render_import(names: roster_dedupe(base: d.names, more: wanted)) + "\n"
-          } else { acc }
+          match acc {
+            RosterClean =>
+              RosterEdit { start: d.start, end: d.end, text: roster_render_import(names: roster_dedupe(base: d.names, more: wanted)), own_line: false }
+            _ => acc
+          }
         }
       )
   }
@@ -325,47 +396,6 @@ fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? 
         _ => Absent
       }
     Absent => Absent
-  }
-}
-
-// A renamed head (map_get -> map_lookup) is rewritten at every parsed occurrence of that atom; the
-// count of parsed occurrences must equal the collector's unbound-site count, else the file refuses
-// (an identity join, not a count the tree was copied from).
-fn roster_rename_rows(path: String, parse_root: Node, spans: SpanIndex, needed: List<RosterHeadRow>) -> String {
-  fold_list(
-    xs: needed,
-    empty: "",
-    cons: fn(acc, row) {
-      if row.renames_call {
-        acc + roster_rename_row_edits(path: path, parse_root: parse_root, spans: spans, row: row)
-      } else {
-        acc
-      }
-    }
-  )
-}
-
-fn roster_rename_row_edits(path: String, parse_root: Node, spans: SpanIndex, row: RosterHeadRow) -> String {
-  fold_list(
-    xs: node_subtree_nodes(root: parse_root),
-    empty: "",
-    cons: fn(acc, n) { roster_rename_step(acc: acc, n: n, path: path, spans: spans, row: row) }
-  )
-}
-
-fn roster_rename_step(acc: String, n: Node, path: String, spans: SpanIndex, row: RosterHeadRow) -> String {
-  match n.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      if symbol_lexeme(sym: sym) == row.call {
-        match roster_node_byte_range(node: n, spans: spans) {
-          Present { value: r } =>
-            acc + "EDIT " + path + " " + int_to_decimal_string(value: r.start) + " " + int_to_decimal_string(value: r.end) + " " + row.import_name + "\n"
-          Absent => acc + "REFUSE " + path + " rename-site-without-extent\n"
-        }
-      } else {
-        acc
-      }
-    _ => acc
   }
 }
 
