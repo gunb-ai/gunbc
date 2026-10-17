@@ -19,12 +19,26 @@ type H11sslRedfishRootObservation
 type H11sslDefaultLoginObservation
   = DefaultAdminLoginRejected { observed_on: NonEmptyStr }
 
+// A credential is carried ONLY as a reference to the operator-held document that shows it; the
+// value is never stored here. The document is access-restricted to the operator.
+type H11sslCredentialSource
+  = BoardLabelPhotoHeldByOperator { document_url: NonEmptyStr }
+
+type H11sslLabelObservation {
+  observed_on: NonEmptyStr
+  top_label_serial_barcode: NonEmptyStr
+  lan_macs: List<NonEmptyStr>
+  jps1_silkscreen: NonEmptyStr
+  bmc_factory_credential: H11sslCredentialSource
+}
+
 type H11sslFirstContactReceipt {
   board: BoardAuthorityRef
   bmc_address: NonEmptyStr
   bmc_mac: NonEmptyStr
   redfish_root: H11sslRedfishRootObservation
   default_login: H11sslDefaultLoginObservation
+  label: H11sslLabelObservation
 }
 
 data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11sslFirstContactReceipt {
@@ -34,11 +48,22 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
   // Redfish service root answered Base.v1_4_0.OemLicenseNotPassed, naming the SUM DCMS OOB licences.
   redfish_root: RedfishRootRefusedLicence { message_id: "Base.v1_4_0.OemLicenseNotPassed" },
   default_login: DefaultAdminLoginRejected { observed_on: "2026-10-17" },
+  label: H11sslLabelObservation {
+    observed_on: "2026-10-17",
+    top_label_serial_barcode: "55503A0100160200000EAJ0A1",
+    lan_macs: ["AC:1F:6B:E3:F6:B0", "AC:1F:6B:E3:F6:B1"],
+    jps1_silkscreen: "JPS1 1-2 Enable LSI SAS3008 (default) / 2-3 Disable",
+    bmc_factory_credential: BoardLabelPhotoHeldByOperator { document_url: "drive.google.com/file/d/1s89-T-RZntbpFnoXQ0kwvLKtftBssGz7/view" },
+  },
 }
+
+// Observed 2026-10-17 by merry-fox-82: web login with the label credential succeeded (session
+// issued, logged out, nothing changed). The variant (-i/-C/-NC) is NOT established by any
+// observation here; the FRU is unread.
 
 // A refused Redfish root and a rejected default login identify no firmware family.
 data supermicro_h11ssl_first_contact_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
-  discriminator: "Redfish root refused Base.v1_4_0.OemLicenseNotPassed; ADMIN/ADMIN rejected 2026-10-17; manual p.15 says only 'ATEN IPMI' on AST2500",
+  discriminator: "Redfish root refused Base.v1_4_0.OemLicenseNotPassed; ADMIN/ADMIN rejected 2026-10-17 (label credential accepted); manual p.15 says only 'ATEN IPMI' on AST2500",
 }
 
 // True when the receipt's login observation permits the factory-default producer: it never does.

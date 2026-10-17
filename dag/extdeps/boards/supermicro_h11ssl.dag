@@ -23,9 +23,13 @@ import extdeps.uri { Uri, Https }
 // 9400160cdaa057a0dfc875988f3006ebec7645dc54b4d2c8390386360c091c6b, shared from the operator's
 // Google Drive file 1Mq0TCwDVYG-iGxjIxcsr_7jAg9cZvZ9X. The PDF is NOT committed: the manual's
 // notice forbids copying any part without written permission, so it is cited by hash and URL.
-// Page numbers below are PRINTED pages, equal to the PDF page index from page 12 on.
-// The manual covers H11SSL-i, -C and -NC; every row here is the -i variant (the one held) unless
-// it says otherwise. Our unit is REV 2.0, which the manual conditions EPYC 7002 support on (p.15).
+// CITATION SCHEME: every 'p.N' in this module is the 1-based PDF page index (130 pages). From page
+// 12 on it equals the printed page number (footer); every page cited here is 3 or 13+.
+// VARIANT: the manual covers H11SSL-i, -C and -NC. Rows named *_i_variant or described as '-i'
+// are the manual's -i column and are the unit's only if its IPMI FRU says so; see
+// supermicro_h11ssl_unit_variant_standing. The unit's JPS1 silkscreen (SAS3008 enable) is a
+// -C/-NC feature in this manual (p.13), so the -i assumption is NOT established.
+// Our unit is REV 2.0, which the manual conditions EPYC 7002 support on (p.15).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -43,6 +47,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
+}
+
+type H11sslVariant = VariantI | VariantC | VariantNc
+
+data supermicro_h11ssl_unit_variant_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Which of -i/-C/-NC the held units are is unestablished: read the IPMI FRU Board Part Number (and lspci for a SAS3008) before using any *_i_variant row for them. JPS1/SAS3008 silkscreen suggests -C or -NC.",
 }
 
 type HeldManual {
@@ -359,7 +369,7 @@ type SupermicroH11sslMechanical {
 }
 
 data supermicro_h11ssl_i_mechanical: SupermicroH11sslMechanical = SupermicroH11sslMechanical {
-  board_label: "Supermicro H11SSL-i",
+  board_label: "Supermicro H11SSL (manual -i column; unit variant unread)",
   vendor: supermicro,
   revision_label: "REV 2.0 (unit; manual Rev. 1.1 covers 1.x and 2.x)",
   dimm_slots: 8,
