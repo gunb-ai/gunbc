@@ -23,11 +23,18 @@ module gunbc.host.boot_attempt
 // census consumer's fact (it reads its own census END marker); the boot records a terminal marker it
 // saw and classifies the power against it, terminal-neutral.
 //
-// MINTED ON PROVEN ABSENCE (operator ruling 2026-10-14, correction 1): the neutral power state is
-// minted here because I checked host_reset_return (no power-state type), host_control_route (none),
-// std (none), and extdeps.bmc.types (RedfishPowerState = On|Off|PoweringOn|PoweringOff — a Redfish-
-// shaped 4-state with no unread arm, protocol-specific, not the on/off/unread the boot power-after
-// needs). No protocol-neutral on/off vocabulary to extend, so this one is minted.
+// MINTED ON PROVEN ABSENCE, THEN MADE THE ONE HOME (operator ruling 2026-10-14, correction 1;
+// review 81732). The search at cut time covered host_reset_return (no power-state type),
+// host_control_route (none), std (none), and extdeps.bmc.types (RedfishPowerState =
+// On|Off|PoweringOn|PoweringOff — a Redfish-shaped 4-state with no unread arm, protocol-specific, not
+// the on/off/unread the boot power-after needs). It MISSED gunbc.fleet.mtcollins_firmware_converge,
+// which carried the same three-state answer as its own HostPowerReading
+// (HostPoweredOff | HostPoweredOn | HostPowerUnreadable). That was a second authority for one concept
+// (DESIGN §2, re-invention; §3, nicknaming), so it is not patched -- it is deleted, and this module
+// becomes the single home: gunbc.fleet.mtcollins_firmware_converge now imports HostPowerState and its
+// pre-flash receipt fields and refusal branches read PowerOff / PowerOn / PowerUnread. The name
+// HostPowerReading is left free for what it says here -- whether a read was taken at all -- so one
+// name no longer carries two meanings.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
