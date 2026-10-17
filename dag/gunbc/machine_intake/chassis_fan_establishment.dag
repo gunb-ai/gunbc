@@ -10,9 +10,9 @@ import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReadin
 // The verdict population is the EXPECTED fitted headers, never "every header the controller lists": a
 // unit with an unpopulated socket has headers that will always read nothing, and a rule over every
 // header would refuse every boot. A fitted header that reads zero, nothing, a duty or an unrecognised
-// text is Refused. A header NOT in the fitted set that reads a spinning speed is a finding recorded
-// beside the verdict, never a pass and never a refusal, because it contradicts the fitted fact and the
-// fact (not this fold) is what needs the operator.
+// text is Refused. A header NOT in the fitted set that reads a spinning speed is neither a pass nor a
+// refusal here and is not carried by the verdict (nothing consumes it): the fan observation receipt
+// already lists every header's reading, so the contradiction is visible there to the operator.
 //
 // THE FITTED SET IS A STANDING FACT, NOT A DEFAULT. Until it is established the only honest verdict is
 // a refusal that names what would establish it (the fan-policy standing's TranscribedUncited move,
@@ -23,7 +23,7 @@ type FittedFanSet
   | FittedFanSetEstablished { headers: List<NonEmptyStr> }
 
 type ChassisFanVerdict
-  = ChassisFansEstablished { unexpected_spinning: List<String> }
+  = ChassisFansEstablished
   | ChassisFansRefused { cause: NonEmptyStr }
 
 fn fan_line_named(lines: List<SdrTypeLine>, header: NonEmptyStr) -> SdrTypeLine? {
@@ -52,18 +52,6 @@ fn fitted_header_failure(lines: List<SdrTypeLine>, header: NonEmptyStr) -> Strin
   }
 }
 
-fn header_is_fitted(headers: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
-  fold(headers, init: false, f: (acc, h) => acc || (h as String) == (name as String))
-}
-
-fn unexpected_spinning_headers(headers: List<NonEmptyStr>, lines: List<SdrTypeLine>) -> List<String> {
-  fold(lines, init: [], f: (acc, line) => if header_is_fitted(headers: headers, name: line.name) == false && fan_line_spins(line: line) {
-    acc.append(join([line.name as String, " (not fitted) reads ", line.reading_text as String], ""))
-  } else {
-    acc
-  })
-}
-
 fn chassis_fan_verdict(fitted: FittedFanSet, lines: List<SdrTypeLine>) -> ChassisFanVerdict {
   match fitted {
     FittedFanSetNotEstablished { read_obligation: why } =>
@@ -78,7 +66,7 @@ fn chassis_fan_verdict(fitted: FittedFanSet, lines: List<SdrTypeLine>) -> Chassi
       } else if failures.length() > 0 {
         ChassisFansRefused { cause: join(failures, "; ") as NonEmptyStr }
       } else {
-        ChassisFansEstablished { unexpected_spinning: unexpected_spinning_headers(headers: headers, lines: lines) }
+        ChassisFansEstablished
       }
     }
   }

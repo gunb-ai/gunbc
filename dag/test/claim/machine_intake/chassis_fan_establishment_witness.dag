@@ -19,26 +19,26 @@ fn spinning_rows() -> List<SdrTypeLine> {
   [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]
 }
 
-fn established_with_no_unexpected(rows: List<SdrTypeLine>) -> Bool {
+fn established(rows: List<SdrTypeLine>) -> Bool {
   match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
-    ChassisFansEstablished { unexpected_spinning: u } => u.length() == 0
+    ChassisFansEstablished => true
     ChassisFansRefused { cause: _ } => false
   }
 }
 
 fn refused(rows: List<SdrTypeLine>) -> Bool {
   match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: rows) {
-    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansEstablished => false
     ChassisFansRefused { cause: _ } => true
   }
 }
 
 test fn every_fitted_fan_spinning_is_established() -> Bool {
-  established_with_no_unexpected(rows: spinning_rows())
+  established(rows: spinning_rows())
 }
 
 test fn an_unfitted_header_with_no_reading_does_not_refuse() -> Bool {
-  established_with_no_unexpected(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "no reading" as NonEmptyStr)))
+  established(rows: spinning_rows().append(row(name: "FAN6" as NonEmptyStr, reading: "no reading" as NonEmptyStr)))
 }
 
 test fn a_fitted_fan_reading_zero_refuses() -> Bool {
@@ -57,23 +57,16 @@ test fn no_rows_at_all_refuses() -> Bool {
   refused(rows: [])
 }
 
-test fn an_unexpected_spinning_header_is_recorded_not_a_pass_or_a_refusal() -> Bool {
-  match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: fitted() }, lines: spinning_rows().append(row(name: "FAN5" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr))) {
-    ChassisFansEstablished { unexpected_spinning: u } => u.length() == 1
-    ChassisFansRefused { cause: _ } => false
-  }
-}
-
 test fn an_unestablished_fitted_set_refuses_even_when_every_fan_spins() -> Bool {
   match chassis_fan_verdict(fitted: FittedFanSetNotEstablished { read_obligation: "operator statement naming the fitted headers" as NonEmptyStr }, lines: spinning_rows()) {
-    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansEstablished => false
     ChassisFansRefused { cause: _ } => true
   }
 }
 
 test fn an_empty_fitted_set_refuses() -> Bool {
   match chassis_fan_verdict(fitted: FittedFanSetEstablished { headers: [] }, lines: spinning_rows()) {
-    ChassisFansEstablished { unexpected_spinning: _ } => false
+    ChassisFansEstablished => false
     ChassisFansRefused { cause: _ } => true
   }
 }

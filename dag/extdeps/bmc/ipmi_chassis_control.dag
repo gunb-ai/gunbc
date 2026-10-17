@@ -131,6 +131,15 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
   }
 }
 
+// OFF IS ONLY A DECODED OFF READING: an undecodable or unreadable chassis read is no reading, so it is never off.
+fn chassis_observation_is_off(observation: ChassisPowerObservation) -> Bool {
+  match observation {
+    ChassisPowerRead { power_on: on } => on == false
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
+  }
+}
+
 fn chassis_observation_text(observation: ChassisPowerObservation) -> NonEmptyStr {
   match observation {
     ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }

@@ -25,7 +25,7 @@ fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
 fn spinning() -> List<SdrTypeLine> { [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr)] }
 
 fn refused(v: ChassisFanVerdict) -> Bool {
-  match v { ChassisFansRefused { cause: _ } => true  ChassisFansEstablished { unexpected_spinning: _ } => false }
+  match v { ChassisFansRefused { cause: _ } => true  ChassisFansEstablished => false }
 }
 
 test fn an_on_chassis_with_fitted_fans_reading_is_established() -> Bool {
