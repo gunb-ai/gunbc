@@ -188,6 +188,12 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
   argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
 }
 
+// THE ARGV TAIL FORM of the delete above, for a caller that hands the command to another program to run
+// per entry (find -exec). The operand paths follow it. The invocation "rm" is rm_program's.
+fn rm_recursive_force_one_file_system_exec_argv() -> List<String> {
+  ["rm", coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String]
+}
+
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
 // existing destination first, -n treats a destination that is itself a symlink to a directory as a
 // file to replace, and -T (--no-target-directory) makes ln REFUSE when the destination is a real
