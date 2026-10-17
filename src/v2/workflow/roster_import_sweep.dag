@@ -192,12 +192,17 @@ fn roster_target_refusal(root: String, path: String) -> String {
   } else {
     let tree = git.Inspect.ListTreeEntryAtPath(ref: "HEAD" as GitRef, path: path)
     let status = git.Inspect.WorkingTreeStatus(repository_path: root)
-    if !tree.success || !status.success {
+    let flags = git.Inspect.IndexFlagsIn(repository_path: root, path: path)
+    if !tree.success || !status.success || !flags.success {
       "git-unobservable"
     } else if string_length(s: tree.entries_nul) < 12 || substring(s: tree.entries_nul, start: 0, end: 12) != "100644 blob " {
       "target-not-tracked-regular"
+    } else if flags.entries_nul != "H " + path + "\u{0}" {
+      "target-index-flagged"
     } else if roster_status_names_path(entries_nul: status.entries_nul, path: path) {
       "target-modified"
+    } else if roster_status_names_ancestor(entries_nul: status.entries_nul, path: path) {
+      "target-ancestor-changed"
     } else {
       ""
     }
@@ -208,6 +213,17 @@ fn roster_ends_with_space_path(field: String, path: String) -> Bool {
   let n = string_length(s: field)
   let m = string_length(s: path)
   n > m && substring(s: field, start: n - m - 1, end: n) == " " + path
+}
+
+// ANY status entry naming a directory above the target (`?? src` for a replaced directory, a typechange, a deletion) refuses the
+// target: the committed tree says nothing about what the worktree path now resolves through.
+fn roster_status_names_ancestor(entries_nul: String, path: String) -> Bool {
+  fold_list(xs: split(s: entries_nul, delimiter: "\u{0}"), empty: false, cons: fn(hit, f) { hit || roster_names_ancestor(candidate: f, path: path) || (string_length(s: f) > 3 && substring(s: f, start: 2, end: 3) == " " && roster_names_ancestor(candidate: substring(s: f, start: 3, end: string_length(s: f)), path: path)) })
+}
+
+fn roster_names_ancestor(candidate: String, path: String) -> Bool {
+  let dir = if string_length(s: candidate) > 0 && substring(s: candidate, start: string_length(s: candidate) - 1, end: string_length(s: candidate)) == "/" { candidate } else { candidate + "/" }
+  string_length(s: candidate) > 0 && string_length(s: path) > string_length(s: dir) && substring(s: path, start: 0, end: string_length(s: dir)) == dir
 }
 
 // porcelain v1 -z fields are "XY path", and a rename source is the bare path: either spelling names the path.
@@ -699,6 +715,7 @@ fn roster_controls_report() -> String {
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_generation()
         + roster_control_status_names()
+        + roster_control_ancestor()
   }
 }
 
@@ -758,6 +775,15 @@ fn roster_control_status_names() -> String {
     ""
   } else {
     "CONTROL-FAIL status: porcelain fields misread\n"
+  }
+}
+
+fn roster_control_ancestor() -> String {
+  let entries = "?? src\u{0} D docs/x.dag\u{0}?? srcx\u{0}"
+  if roster_status_names_ancestor(entries_nul: entries, path: "src/f.dag") && roster_status_names_ancestor(entries_nul: "?? src/\u{0}", path: "src/a/f.dag") && !roster_status_names_ancestor(entries_nul: entries, path: "srcy/f.dag") && !roster_status_names_ancestor(entries_nul: entries, path: "src") {
+    ""
+  } else {
+    "CONTROL-FAIL ancestor: status entry naming a parent directory misread\n"
   }
 }
 
