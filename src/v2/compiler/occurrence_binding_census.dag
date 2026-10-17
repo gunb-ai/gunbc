@@ -65,7 +65,9 @@ type OccurrenceBindingContribution {
 // a list introduction, so its first positional child is a compiler-generated reference to
 // std.algebra.FreeMonoid; resolve carries the whole edge unwalked (resolve_arrow_node_admitted,
 // resolve_type_params_conj: the binder atoms are labels, not references), so nothing answers that head.
-// It is a reference NO ONE RESOLVES, printed as `binding_unanswered <module> <path> declared_order` and
+// It is a reference NO ONE RESOLVES, printed as `binding_unanswered <module> <path> <ordinal> declared_order`
+// -- the ordinal is the head's position among the module's declared-order heads in walk order, so two
+// heads in one module are two rows and a reader's count stays per occurrence -- and
 // not refused. Every other unrecorded reference still refuses. It dissolves when resolve answers the
 // head through resolve_generated_declaration_reference, which waits on N2b's provider acquisition
 // (#14266) so that answering it does not newly refuse closures that lack std.algebra.
@@ -167,7 +169,7 @@ fn unrecorded_split_walk(tree: ResolvedTree, n: Node, order_head: Bool, acc: Unr
     match declaration_reference_path_optional(node: n) {
       Present { value: p } =>
         if order_head {
-          UnrecordedSplit { other: acc.other, declared_order: list_snoc_item(xs: acc.declared_order, item: qualified_name_to_dotted_string(qn: p)) }
+          UnrecordedSplit { other: acc.other, declared_order: list_snoc_item(xs: acc.declared_order, item: qualified_name_to_dotted_string(qn: p) + "\t" + to_string(length(xs: acc.declared_order))) }
         } else {
           UnrecordedSplit { other: list_snoc_item(xs: acc.other, item: qualified_name_to_dotted_string(qn: p)), declared_order: acc.declared_order }
         }

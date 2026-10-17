@@ -6,7 +6,7 @@ import std.optional { Optional, Present, Absent, optional_present, optional_abse
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ExistingDeclaration, KernelTypeSpellingTable, ambient_name_homes }
-import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref }
+import gunbc.instruments.ambient_name_census_reading { ambient_census_base_ref, census_observation_text }
 
 // THE NAMESPACE-WAVE BINDING DIFF: `gunbc test //gunbc/instruments:namespace-wave-binding-diff`, run by
 // a wave's author on the wave's own PR (no bystander is billed; the namespace-wave admission wall that
@@ -296,6 +296,67 @@ fn home_control_failure() -> Optional<String> {
   }
 }
 
+// THE FORMATTER-TO-READER CONTROL: a target-changing pair sent through the census's own formatter
+// (census_observation_text) and then this diff must refuse. Without it the label could compare zero
+// rows -- the formatter once dropped the binding_module lines this reader observes modules through --
+// and a re-binding would reach success (side chat on PR #14112).
+fn formatter_control_failure() -> Optional<String> {
+  let base_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.a.helper\n"
+  let head_tree = "binding_module\texamples.uses\t1\t0\t0\t0\nbinding\texamples.uses\thelper\t0\tdeclared\texamples.b.helper\n"
+  let diff = binding_diff(base_stdout: census_observation_text(tree_stdout: base_tree), head_stdout: census_observation_text(tree_stdout: head_tree), rows: [])
+  if (count(diff.refused) != 1) || (count(diff.admitted) != 0) {
+    optional_present(value: "a target-changing pair sent through the census formatter was not refused by the diff (the formatted output lost what the reader observes modules by)")
+  } else {
+    optional_absent()
+  }
+}
+
+// THE VERDICT. An incomplete side never yields success: a census that answered 2 (a rewritten module
+// refused or unread, an incomplete subject run, an unreadable spelling) keeps that standing unless a
+// stronger refusal (a re-binding, exit 1) applies. Each side's own 2-rows are carried into the output.
+fn binding_diff_exit(refused: Int, unobserved: Int, outside: Int, unobserved_both: Int, base_status: Int, head_status: Int) -> ProcessExit {
+  if refused != 0 {
+    ExitFailure { code: 1, reason: to_string(refused) + " occurrence(s) or module(s) re-bound outside the wave's declared homes (refused rows above)" }
+  } else if unobserved != 0 {
+    ExitFailure { code: 2, reason: to_string(unobserved) + " rewritten module(s) the census did not observe (unobserved_rewritten rows above): not admitted until coverage exists" }
+  } else if outside != 0 {
+    ExitFailure { code: 2, reason: to_string(outside) + " module(s) observed on one side only (outside_other_population rows above): not compared" }
+  } else if unobserved_both != 0 {
+    ExitFailure { code: 2, reason: "no refusal among the observed modules, but " + to_string(unobserved_both) + " module(s) neither census reached (unobserved rows above)" }
+  } else if base_status == 2 {
+    ExitFailure { code: 2, reason: "base: the base census answered 2 (base_incomplete rows above), so the diff is incomplete" }
+  } else if head_status == 2 {
+    ExitFailure { code: 2, reason: "head: the head census answered 2 (head_incomplete rows above), so the diff is incomplete" }
+  } else {
+    ExitSuccess
+  }
+}
+
+// THE INCOMPLETE-SIDE CONTROL, the side chat's counterexample: a module absent on base and
+// refused_rewritten on head leaves no row to compare and no refusal, and must still answer 2.
+fn incomplete_side_control_failure() -> Optional<String> {
+  match binding_diff_exit(refused: 0, unobserved: 0, outside: 0, unobserved_both: 0, base_status: 0, head_status: 2) {
+    ExitFailure { code: c, reason: _ } =>
+      if c == 2 { optional_absent() } else { optional_present(value: "an incomplete head side answered " + to_string(c) + ", not 2") }
+    ExitSuccess => optional_present(value: "an incomplete head side (refused_rewritten, nothing else) yielded success")
+  }
+}
+
+// A side's own incomplete dispositions, carried into the diff's output under that side's name.
+fn side_incomplete_rows(side: String, stdout: String) -> List<String> {
+  (rows_with_prefix(stdout: stdout, prefix: "refused_rewritten\t") + rows_with_prefix(stdout: stdout, prefix: "unobserved_subject\t"))
+    |> map(l => side + "_incomplete\t" + l)
+}
+
+fn first_control_failure(controls: List<Optional<String>>) -> Optional<String> {
+  fold(controls, init: optional_absent(), f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => c
+    }
+  })
+}
+
 fn binding_diff_standing(
   rebind_base_stdout: String,
   rebind_head_stdout: String,
@@ -307,8 +368,8 @@ fn binding_diff_standing(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match home_control_failure() {
-        Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "home control: " + why } }
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), incomplete_side_control_failure()]) {
+        Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           if (base_status != 0) && (base_status != 2) {
             CliWirePrintable { bytes: base_stdout + "\n", exit: ExitFailure { code: 2, reason: "base: the base ambient-name census exited " + to_string(base_status) + " (its controls did not hold, or it did not run), so base was not observed" } }
@@ -327,16 +388,17 @@ fn binding_diff_standing(
               + (diff.unobserved_both_sides |> map(m => "unobserved\t" + m) |> join(separator: "\n")) + "\n"
               + (unobserved |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
               + (outside |> map(m => "outside_other_population\t" + m) |> join(separator: "\n")) + "\n"
-            if (count(diff.refused) != 0) || (count(diff.unreached_one_side) != 0) {
-              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: to_string(count(diff.refused) + count(diff.unreached_one_side)) + " occurrence(s) or module(s) re-bound outside the wave's declared homes (refused rows above)" } }
-            } else if count(unobserved) != 0 {
-              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(unobserved)) + " rewritten module(s) the census did not observe (unobserved_rewritten rows above): not admitted until coverage exists" } }
-            } else if count(outside) != 0 {
-              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: to_string(count(outside)) + " module(s) observed on one side only (outside_other_population rows above): not compared" } }
-            } else if count(diff.unobserved_both_sides) != 0 {
-              CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: "no refusal among the observed modules, but " + to_string(count(diff.unobserved_both_sides)) + " module(s) neither census reached (unobserved rows above)" } }
-            } else {
-              CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+              + ((side_incomplete_rows(side: "base", stdout: base_stdout) + side_incomplete_rows(side: "head", stdout: head_stdout)) |> join(separator: "\n")) + "\n"
+            CliWirePrintable {
+              bytes: bytes,
+              exit: binding_diff_exit(
+                refused: count(diff.refused) + count(diff.unreached_one_side),
+                unobserved: count(unobserved),
+                outside: count(outside),
+                unobserved_both: count(diff.unobserved_both_sides),
+                base_status: base_status,
+                head_status: head_status
+              )
             }
           }
       }
