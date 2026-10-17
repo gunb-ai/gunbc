@@ -17387,6 +17387,44 @@ pub fn record_lit_alias_struct_expansion(
     }
 }
 
+pub fn record_lit_name_declares_union(
+    type_name: String,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(
+        scope.type_env.clone(),
+        type_name.clone(),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(decl) => {
+            if (decl.connective.clone() == Connective::Disj) {
+                Some(decl.clone())
+            } else {
+                record_lit_expansion_declares_union(decl.clone(), scope.clone())
+            }
+        }
+    }
+}
+
+pub fn record_lit_expansion_declares_union(
+    decl: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    {
+        let expanded_result = expand_type_for_field_access(
+            decl.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        let expanded = expanded_result.resolved.clone();
+        if (expanded.connective.clone() == Connective::Disj) {
+            Some(expanded.clone())
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
 pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bool {
     match crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
@@ -18458,6 +18496,48 @@ pub fn infer_record_lit_structural(
                     }
                 }
             };
+        let union_name_decl = if ((((((tn_str.clone() != "".to_string())
+            && (presence_variant_owner.clone() == std::option::Option::None))
+            && (expected_variant_node.clone() == std::option::Option::None))
+            && (instantiated_struct_fields.clone() == std::option::Option::None))
+            && (expected_struct_fields.clone() == std::option::Option::None))
+            && (presence_name_is_ambiguous.clone() == false))
+        {
+            match alias_struct_expansion.clone() {
+                Some(expansion) => {
+                    if (expansion.resolved.clone().connective.clone() == Connective::Disj) {
+                        Some(expansion.resolved.clone())
+                    } else {
+                        record_lit_name_declares_union(tn_str.clone(), scope.clone())
+                    }
+                }
+                std::option::Option::None => {
+                    record_lit_name_declares_union(tn_str.clone(), scope.clone())
+                }
+            }
+        } else {
+            std::option::Option::None
+        };
+        let union_name_no_record_constructor_diags = match union_name_decl.clone() {
+            Some(decl) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TypeNameCarriesNoRecordConstructor {
+                    type_name: tn_str.clone(),
+                    declared_variants: Rc::new({
+                        let mut __result = Vec::new();
+                        for v in decl.children.clone().iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                si_presence.clone(),
+                                v.clone(),
+                            ));
+                        }
+                        __result
+                    }),
+                    span: name_span.clone(),
+                }),
+                scope.module_name.clone(),
+            )]),
+            std::option::Option::None => Rc::new(vec![]),
+        };
         let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || presence_name_is_ambiguous.clone())
@@ -19125,7 +19205,13 @@ Rc::new(FieldInferResult {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(fi_diags.clone(), alias_struct_diags.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                union_name_no_record_constructor_diags.clone(),
+                                                fi_diags.clone(),
+                                            ),
+                                            alias_struct_diags.clone(),
+                                        ),
                                         type_diags.clone(),
                                     ),
                                     sole_ctor_diags.clone(),

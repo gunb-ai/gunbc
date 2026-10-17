@@ -10903,6 +10903,30 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
   }
 }
 
+// DOES THIS NAME CARRY A RECORD CONSTRUCTOR? A type name standing in record-literal position is
+// asked this ONE question before any field is read. A name declaring a coproduct does not: its
+// constructors are its arms. The answer is read off the EXPANSION, so `type ZzT = ZzU` is judged by
+// what ZzU is and not by the spelling ZzT: an alias carries no connective of its own (NoConnective),
+// and a name test alone would call every alias of a union a constructor. Only the structural shapes
+// answer: a name that resolves to nothing, to a primitive, or to a conjunction is left to the
+// refusals that already judge it, so this widens on none of them.
+fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
+  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+    Absent => none
+    Present { value: decl } => if decl.connective == Disj { Present { value: decl } } else { record_lit_expansion_declares_union(decl: decl, scope: scope) }
+  }
+}
+
+// The answer for a name that is not spelled as a coproduct: the EXPANSION decides, so an alias of a
+// union is judged by what it expands to. Its own function because the seed grammar admits `let` only
+// in a statement block (a function body), never inside the branches of an if-expression -- the two
+// shapes this file already uses everywhere else.
+fn record_lit_expansion_declares_union(decl: Node, scope: InferScope) -> Node? {
+  let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
+  let expanded = expanded_result.resolved
+  if expanded.connective == Disj { Present { value: expanded } } else { none }
+}
+
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Present { value: decl } => decl.properties |> any(p => p.name == "sole_constructor")
@@ -11518,6 +11542,51 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       none
     }
+  // DESIGN §4b (the floor first): a value inhabits its DECLARED type, and the values a type name
+  // admits are fixed by the shape it declares. A name that declares a coproduct carries NO record
+  // constructor at all, so `Union { ... }` -- in any position, with any fields -- builds a value no
+  // type inhabits: unrepresentable downstream, and it reached an EVAL non-exhaustive match instead
+  // of a located refusal at authoring (extdeps.systemd SystemdRunProperty: #13942 turned it from a
+  // record into a union, #14149 wrote the old record shape, and main refused only at run
+  // 38905139153). The defect is the NAME, so it is read off the resolved declaration BEFORE the
+  // field walk and fires whatever the fields happen to be: a union's child variants make
+  // record_lit_expected_fields accept any field set the union of their fields admits, which made
+  // the field walk the wrong place to ask. Located at name_span (the name is the defect), it lists
+  // the variants the author could have meant, and it is PREPENDED into the diagnostic concat
+  // instead of returned early -- an early return absorbed the later TypeMismatch that the
+  // stop-observation witness claims, which is the fail-open this repo refuses.
+  //
+  // It fires only where no other fact has already answered the construction question, so it
+  // widens on nothing: an owned presence variant (presence_variant_owner), an expected-coproduct
+  // arm (expected_variant_node), an instantiated generic (instantiated_struct_fields) or a field
+  // set read from the expected position (expected_struct_fields) each already resolve the
+  // constructor by a route that does not read a union as a record; an ambiguous bare name belongs
+  // to the AmbiguousReference refusal; and a name whose expansion resolves to a conjunction (a
+  // record, or a variant of a union -- the `Present { value: ... }` spelling) is a constructor this
+  // literal is entitled to use.
+  let union_name_decl = if tn_str != "" && presence_variant_owner == none && expected_variant_node == none && instantiated_struct_fields == none && expected_struct_fields == none && presence_name_is_ambiguous == false {
+    match alias_struct_expansion {
+      Present { value: expansion } =>
+        if expansion.resolved.connective == Disj {
+          Present { value: expansion.resolved }
+        } else {
+          record_lit_name_declares_union(type_name: tn_str, scope: scope)
+        }
+      Absent => record_lit_name_declares_union(type_name: tn_str, scope: scope)
+    }
+  } else { none }
+  let union_name_no_record_constructor_diags = match union_name_decl {
+    Present { value: decl } =>
+      [make_error_node(
+        diagnostic: TypeNameCarriesNoRecordConstructor {
+          type_name: tn_str,
+          declared_variants: decl.children |> map(v => authored_name_at(source_indices: si_presence, node: v)),
+          span: name_span
+        },
+        module_name: scope.module_name
+      )]
+    Absent => []
+  }
   let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || presence_name_is_ambiguous {
       []
     } else {
@@ -11916,7 +11985,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(concat(fi_diags, alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags))
     }
   }
 }
