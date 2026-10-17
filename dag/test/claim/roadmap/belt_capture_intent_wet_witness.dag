@@ -186,7 +186,7 @@ test fn a_kill_after_the_scm_save_does_not_double_capture() -> Bool {
   let o = if worktree == "" { 0 - 1 } else { through_scm_save(instance: instance, worktree: worktree) }
   let rerun = o >= 0 && match belt_commit_capture_candidate(
     instance: instance, worktree: worktree, node_id: wit_node, attempt_key: wit_attempt,
-    message: msg(), submission: sub(), digest: "d",
+    message: msg(), submission: sub(), digest: "d", handin: none,
   ) {
     CandidateCaptured { node_id: _, head_sha: _, message: _ } => true
     _ => false
