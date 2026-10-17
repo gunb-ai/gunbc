@@ -10,9 +10,8 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::*;
 use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{
-    lookup_type, lookup_type_by_name, lookup_type_for, symbol_index_lookup,
+    lookup_type, lookup_type_by_name, lookup_type_for, symbol_index_lookup, TypeEnv,
 };
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
@@ -34,11 +33,8 @@ pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
     match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    InferredNode, MatchPattern, NewlineIndex, Node,
+    with_optional_cardinality, Cardinality, CompilerDiagnostic, Connective, DeclarationMarker,
+    ErrorNode, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
