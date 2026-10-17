@@ -3,8 +3,9 @@ module extdeps.provisioning.ubuntu_arm64_network_origin
 // SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. This module adds
 // to extdeps.provisioning.ubuntu_install_media (the one home of the Ubuntu release, architecture
 // spelling, mirror URL construction and ISO row) only what a NETWORK origin needs beyond it: the
-// 24.04.5 row, which the same SHA256SUMS lists beside the 24.04.3 row, and the casper member
-// layout of that ISO. What a mirror served, our sizes, and the kernel/initrd digests WE extracted
+// 24.04.5 row, which the same SHA256SUMS lists beside the 24.04.3 row, and the aarch64 gate.
+// The casper member layout is owned by gunbc.machine_intake.mtcollins1_census_member_readback.
+// What a mirror served, our sizes, and the kernel/initrd digests WE extracted
 // are in gunbc.provisioning.ubuntu_arm64_network_origin_observation.
 import std.types { NonEmptyStr }
 import std.optional { Absent, Present }
