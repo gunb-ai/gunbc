@@ -1159,7 +1159,6 @@ type ResolveRefusalReason
   | ResolveUnboundSymbol
   | ResolveAnonymousParameterReferenced
   | ResolveTypeParameterInValuePosition
-  | ResolveFloatLiteralNotLowered
   | ResolveAmbiguousSymbol
   | ResolveTestCodeReferenced
   | ResolveKernelTypeSpellingNamesAForeignDeclaration
@@ -1174,7 +1173,6 @@ fn resolve_refusal_reason_symbol(reason: ResolveRefusalReason) -> Symbol {
     ResolveUnboundSymbol => ^resolve_reason_unbound_symbol
     ResolveAnonymousParameterReferenced => ^resolve_reason_anonymous_parameter_referenced
     ResolveTypeParameterInValuePosition => ^resolve_reason_type_parameter_in_value_position
-    ResolveFloatLiteralNotLowered => ^float_literal_not_lowered
     ResolveAmbiguousSymbol => ^resolve_reason_ambiguous_symbol
     ResolveTestCodeReferenced => ^resolve_reason_test_code_referenced
     ResolveKernelTypeSpellingNamesAForeignDeclaration => ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration
@@ -1262,14 +1260,6 @@ fn unbound_symbol_diagnostics(ctx: ResolveContext, n: Node, name: Symbol) -> Non
 // index on any path, success or refusal), so the explanation would exist on the failing path only.
 fn unbound_symbol_diagnostics_of_value_name(n: Node) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: unbound_symbol_diagnostic(n: n), tail: [] }
-}
-
-fn float_literal_not_lowered_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: ^float_literal_not_lowered,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: CorrectionNotModeled }
-  }
 }
 
 fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
@@ -2248,12 +2238,8 @@ fn resolve_atom_not_symbol_literal(ctx: ResolveContext, n: Node, identity: Symbo
 }
 
 fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<ResolvedAtom> {
-  if dag_node_is_int_literal_atom(node: n) {
+  if dag_node_is_int_literal_atom(node: n) || dag_node_is_float_literal_atom(node: n) {
     resolved_atom_plain(o: Accepted { value: n, diagnostics: None })
-  } else if dag_node_is_float_literal_atom(node: n) {
-    Rejected {
-      diagnostics: diagnostics_singleton(d: float_literal_not_lowered_diagnostic(n: n))
-    }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
