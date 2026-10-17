@@ -89,6 +89,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.flashinfer",
     "extdeps.fonts",
     "extdeps.formats",
+    "extdeps.freedesktop",
     "extdeps.formats.elf",
     "extdeps.git",
     "extdeps.github",
