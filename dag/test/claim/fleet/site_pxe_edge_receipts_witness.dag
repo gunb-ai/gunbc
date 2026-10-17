@@ -1,0 +1,269 @@
+module test.claim.fleet.site_pxe_edge_receipts_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, Fnv1a64, Fnv1a64Structural }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.provisioning.network_boot { ProxyDhcp }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import product.placement_supply { SiteIdentity }
+import gunbc.fleet.site_pxe_edge_receipts {
+  EdgeOfferObservation, EdgeOfferObserved, EdgeOfferUnobserved,
+  ClientRequestObservation, ClientRequestObserved, ClientRequestUnobserved,
+  ClientResponseObservation, ClientResponseAccepted, ClientNoResponseAccepted,
+  SiteEdgeReceipt, ClientNetbootReceipt,
+  SiteEdgeBound, SiteEdgeBindingRefused, EdgeOfferNotObserved, EdgeOfferWithoutAuthority,
+  ClientNetbootBound, ClientNetbootBindingRefused, ClientRequestNotObserved, ClientRequestWithoutAuthority,
+  ClientRequestUnanswered, ClientArchitectureNotRecognized,
+  BootAttemptBound, BootAttemptRefused, AcceptedResponseHasNoEdgeOffer, EdgeDigestUnobserved,
+  ClientDigestUnobserved, DigestFamiliesIncomparable, DigestDisagrees, AcceptedFilenameDisagrees,
+  AcceptedFromNotNextServer, OfferPrecedesRequest, AcceptancePrecedesOffer,
+  bind_site_edge_receipt, bind_client_netboot_receipt, bind_boot_attempt, untaken_offers
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY VALUE BELOW IS SYNTHETIC and exists only inside these test functions. The octets, stamps
+// and digests name no real machine, exchange or file; they are the smallest inputs that tell the
+// binder's arms apart.
+fn synthetic_mac(last: Int) -> Eui48Address {
+  mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: last)
+}
+
+fn synthetic_ip(last: Int) -> Ipv4Address {
+  ipv4_address(octet1: 10, octet2: 0, octet3: 0, octet4: last)
+}
+
+fn synthetic_source() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fleet.site_pxe_edge_receipts_witness", decl_name: "synthetic_source")
+}
+
+fn synthetic_digest_a() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
+}
+
+fn synthetic_digest_b() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
+}
+
+fn synthetic_edge_obs(mac: Eui48Address, xid: Int, digest: ContentHash?, at: Int, source: DeclarationRef?) -> EdgeOfferObservation {
+  EdgeOfferObserved {
+    site: "synthetic-site" as SiteIdentity,
+    serving_address: synthetic_ip(last: 2),
+    client_mac: mac,
+    transaction: xid,
+    direction: ProxyDhcp,
+    offered_filename: "synthetic-boot.efi" as NonEmptyStr,
+    next_server: synthetic_ip(last: 2),
+    chainloader_digest: digest,
+    offered_at: at,
+    source: source,
+  }
+}
+
+fn synthetic_client_obs(mac: Eui48Address, xid: Int, code: Int, requested: Int, response: ClientResponseObservation, source: DeclarationRef?) -> ClientRequestObservation {
+  ClientRequestObserved { client_mac: mac, transaction: xid, architecture_code: code, requested_at: requested, response: response, source: source }
+}
+
+fn synthetic_accept(filename: String, from: Ipv4Address, digest: ContentHash?, at: Int) -> ClientResponseObservation {
+  ClientResponseAccepted { accepted_filename: filename as NonEmptyStr, accepted_from: from, fetched_digest: digest, accepted_at: at }
+}
+
+fn bound_edge(obs: EdgeOfferObservation) -> List<SiteEdgeReceipt> {
+  match bind_site_edge_receipt(observation: obs) {
+    SiteEdgeBound { receipt: r } => [r]
+    SiteEdgeBindingRefused { refusal: _ } => []
+  }
+}
+
+fn bound_client(obs: ClientRequestObservation) -> List<ClientNetbootReceipt> {
+  match bind_client_netboot_receipt(observation: obs) {
+    ClientNetbootBound { receipt: r } => [r]
+    ClientNetbootBindingRefused { refusal: _ } => []
+  }
+}
+
+fn good_edge(digest: ContentHash?, at: Int) -> List<SiteEdgeReceipt> {
+  bound_edge(obs: synthetic_edge_obs(mac: synthetic_mac(last: 1), xid: 77, digest: digest, at: at, source: Present { value: synthetic_source() }))
+}
+
+fn good_client(filename: String, from: Ipv4Address, digest: ContentHash?, accepted: Int) -> List<ClientNetbootReceipt> {
+  bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 77, code: 11, requested: 10, response: synthetic_accept(filename: filename, from: from, digest: digest, at: accepted), source: Present { value: synthetic_source() }))
+}
+
+fn attempt_refusal_is(clients: List<ClientNetbootReceipt>, edges: List<SiteEdgeReceipt>, want: String) -> Bool {
+  match clients.first() {
+    Absent => false
+    Present { value: c } =>
+      match bind_boot_attempt(client: c, edges: edges) {
+        BootAttemptBound { receipt: _ } => want == "bound"
+        BootAttemptRefused { refusal: r } =>
+          match r {
+            AcceptedResponseHasNoEdgeOffer { client_mac: _, transaction: _ } => want == "no_edge_offer"
+            EdgeDigestUnobserved => want == "edge_digest_unobserved"
+            ClientDigestUnobserved => want == "client_digest_unobserved"
+            DigestFamiliesIncomparable => want == "families"
+            DigestDisagrees { edge: _, client: _ } => want == "digest"
+            AcceptedFilenameDisagrees { offered: _, accepted: _ } => want == "filename"
+            AcceptedFromNotNextServer { next_server: _, accepted_from: _ } => want == "from"
+            OfferPrecedesRequest { requested_at: _, offered_at: _ } => want == "offer_before_request"
+            AcceptancePrecedesOffer { offered_at: _, accepted_at: _ } => want == "accept_before_offer"
+          }
+      }
+  }
+}
+
+test fn synthetic_matching_exchange_binds() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "bound",
+  )
+}
+
+test fn edge_observation_without_authority_is_refused() -> Bool {
+  match bind_site_edge_receipt(observation: synthetic_edge_obs(mac: synthetic_mac(last: 1), xid: 1, digest: none, at: 1, source: none)) {
+    SiteEdgeBindingRefused { refusal: r } => match r {
+      EdgeOfferWithoutAuthority => true
+      EdgeOfferNotObserved => false
+    }
+    SiteEdgeBound { receipt: _ } => false
+  }
+}
+
+test fn unobserved_edge_offer_is_its_own_refusal() -> Bool {
+  match bind_site_edge_receipt(observation: EdgeOfferUnobserved) {
+    SiteEdgeBindingRefused { refusal: r } => match r {
+      EdgeOfferNotObserved => true
+      EdgeOfferWithoutAuthority => false
+    }
+    SiteEdgeBound { receipt: _ } => false
+  }
+}
+
+test fn client_observation_without_authority_is_refused() -> Bool {
+  match bind_client_netboot_receipt(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 1, code: 11, requested: 1, response: synthetic_accept(filename: "f", from: synthetic_ip(last: 2), digest: none, at: 2), source: none)) {
+    ClientNetbootBindingRefused { refusal: r } => match r {
+      ClientRequestWithoutAuthority => true
+      ClientRequestNotObserved => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    ClientNetbootBound { receipt: _ } => false
+  }
+}
+
+test fn unobserved_client_request_is_refused() -> Bool {
+  match bind_client_netboot_receipt(observation: ClientRequestUnobserved) {
+    ClientNetbootBindingRefused { refusal: r } => match r {
+      ClientRequestNotObserved => true
+      ClientRequestWithoutAuthority => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    ClientNetbootBound { receipt: _ } => false
+  }
+}
+
+test fn request_nobody_answered_is_the_unanswered_refusal() -> Bool {
+  match bind_client_netboot_receipt(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 5, code: 11, requested: 9, response: ClientNoResponseAccepted, source: Present { value: synthetic_source() })) {
+    ClientNetbootBindingRefused { refusal: r } => match r {
+      ClientRequestUnanswered { client_mac: _, transaction: x, requested_at: t } => x == 5 && t == 9
+      ClientRequestNotObserved => false
+      ClientRequestWithoutAuthority => false
+      ClientArchitectureNotRecognized { code: _ } => false
+    }
+    ClientNetbootBound { receipt: _ } => false
+  }
+}
+
+test fn unrecognized_architecture_code_is_carried_and_refused() -> Bool {
+  match bind_client_netboot_receipt(observation: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 1, code: 99, requested: 1, response: synthetic_accept(filename: "f", from: synthetic_ip(last: 2), digest: none, at: 2), source: Present { value: synthetic_source() })) {
+    ClientNetbootBindingRefused { refusal: r } => match r {
+      ClientArchitectureNotRecognized { code: c } => c == 99
+      ClientRequestNotObserved => false
+      ClientRequestWithoutAuthority => false
+      ClientRequestUnanswered { client_mac: _, transaction: _, requested_at: _ } => false
+    }
+    ClientNetbootBound { receipt: _ } => false
+  }
+}
+
+test fn accepted_answer_with_no_edge_offer_is_refused_distinctly() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: [],
+    want: "no_edge_offer",
+  )
+}
+
+test fn offer_nobody_took_is_reported_not_refused() -> Bool {
+  length(untaken_offers(edges: good_edge(digest: none, at: 20), clients: [])) == 1
+    && length(untaken_offers(edges: good_edge(digest: none, at: 20), clients: good_client(filename: "f", from: synthetic_ip(last: 2), digest: none, accepted: 30))) == 0
+}
+
+test fn digest_disagreement_between_views_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_b() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "digest",
+  )
+}
+
+test fn missing_edge_digest_is_refused_not_assumed_equal() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: none, at: 20),
+    want: "edge_digest_unobserved",
+  )
+}
+
+test fn missing_client_digest_is_refused_not_assumed_equal() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: none, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "client_digest_unobserved",
+  )
+}
+
+test fn cross_family_digests_are_incomparable_not_different() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: Fnv1a64(Fnv1a64Structural { hex: "0000000000000000" }) }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "families",
+  )
+}
+
+test fn accepted_filename_that_was_not_offered_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "other.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "filename",
+  )
+}
+
+test fn accepted_from_a_host_other_than_next_server_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "from",
+  )
+}
+
+test fn client_accepting_before_the_edge_offered_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 15),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
+    want: "accept_before_offer",
+  )
+}
+
+test fn offer_stamped_before_the_request_is_refused() -> Bool {
+  attempt_refusal_is(
+    clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
+    edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 5),
+    want: "offer_before_request",
+  )
+}

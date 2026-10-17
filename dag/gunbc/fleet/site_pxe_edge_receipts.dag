@@ -1,0 +1,288 @@
+module gunbc.fleet.site_pxe_edge_receipts
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.list { first_where }
+import std.content_hash {
+  ContentHash,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+  compare_content_hash
+}
+import std.decl_ref { DeclarationRef }
+import extdeps.network.mac { Eui48Address }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.provisioning.network_boot { DhcpBootDirection }
+import extdeps.provisioning.dhcp_client_arch {
+  DhcpProcessorArchitecture,
+  BiosX86,
+  UefiX86_64,
+  UefiArm64,
+  HttpBootX86_64,
+  HttpBootArm64,
+  dhcp_processor_architecture_code
+}
+import product.placement_supply { SiteIdentity }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc2131#section-4.3.1"
+  }
+}
+
+// THIS MODULE HOLDS SHAPES AND BINDERS ONLY, AND NO `data` ROW IS A RECEIPT. A receipt here is a
+// claim that a real boot attempt happened; the repository has observed none through the site
+// edge, so any authored row would be invented fleet history that a later reader could not tell
+// from a measured one. The wet half adds receipts as rows beside the observation that produced
+// each one; the witness builds only synthetic observations, inside test functions.
+
+// RFC 2131 xid: the 32-bit value a client picks for one exchange and the server echoes in every
+// reply. It is the one identifier both views of an exchange carry, so it is the join key; the
+// range is the wire field's width, not a convention.
+type DhcpTransactionId = Int where range(min: 0, max: 4294967295)
+
+// THE ARCHITECTURE A CLIENT'S REQUEST SAID IT HAS, kept as an observation about the request. A
+// code outside RFC 4578's recognized set is carried as read and refused by the binder; it is never
+// coerced onto a recognized architecture and never looked up by machine name.
+type ClientArchitectureClaim
+  = ClientArchitectureRecognized { architecture: DhcpProcessorArchitecture }
+  | ClientArchitectureUnrecognized { code: Int }
+
+fn client_architecture_claim(code: Int) -> ClientArchitectureClaim {
+  if code == dhcp_processor_architecture_code(a: BiosX86) {
+    ClientArchitectureRecognized { architecture: BiosX86 }
+  } else {
+    if code == dhcp_processor_architecture_code(a: UefiX86_64) {
+      ClientArchitectureRecognized { architecture: UefiX86_64 }
+    } else {
+      if code == dhcp_processor_architecture_code(a: UefiArm64) {
+        ClientArchitectureRecognized { architecture: UefiArm64 }
+      } else {
+        if code == dhcp_processor_architecture_code(a: HttpBootX86_64) {
+          ClientArchitectureRecognized { architecture: HttpBootX86_64 }
+        } else {
+          if code == dhcp_processor_architecture_code(a: HttpBootArm64) {
+            ClientArchitectureRecognized { architecture: HttpBootArm64 }
+          } else {
+            ClientArchitectureUnrecognized { code: code }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---- Raw observations (inputs; nothing here is yet a receipt) ----------------------------
+
+// `source` is the declaration that names where the reading came from. Absent means the reading
+// arrived with no authority, which is its own refusal rather than an accepted anonymous reading.
+// `chainloader_digest` is Absent when the edge did not hash what it served; that is a missing
+// reading, not a mismatch.
+type EdgeOfferObservation
+  = EdgeOfferObserved {
+      site: SiteIdentity
+      serving_address: Ipv4Address
+      client_mac: Eui48Address
+      transaction: DhcpTransactionId
+      direction: DhcpBootDirection
+      offered_filename: NonEmptyStr
+      next_server: Ipv4Address
+      chainloader_digest: ContentHash?
+      offered_at: EpochMs
+      source: DeclarationRef?
+    }
+  | EdgeOfferUnobserved
+
+type ClientResponseObservation
+  = ClientResponseAccepted {
+      accepted_filename: NonEmptyStr
+      accepted_from: Ipv4Address
+      fetched_digest: ContentHash?
+      accepted_at: EpochMs
+    }
+  | ClientNoResponseAccepted
+
+type ClientRequestObservation
+  = ClientRequestObserved {
+      client_mac: Eui48Address
+      transaction: DhcpTransactionId
+      architecture_code: Int
+      requested_at: EpochMs
+      response: ClientResponseObservation
+      source: DeclarationRef?
+    }
+  | ClientRequestUnobserved
+
+// ---- Receipts ---------------------------------------------------------------------------
+// sole_constructor: a receipt exists only through its binder below, so no hand-built value can
+// skip an authority, a recognized architecture or an accepted response.
+
+type SiteEdgeReceipt sole_constructor {
+  site: SiteIdentity
+  serving_address: Ipv4Address
+  client_mac: Eui48Address
+  transaction: DhcpTransactionId
+  direction: DhcpBootDirection
+  offered_filename: NonEmptyStr
+  next_server: Ipv4Address
+  chainloader_digest: ContentHash?
+  offered_at: EpochMs
+  source: DeclarationRef
+}
+
+type ClientNetbootReceipt sole_constructor {
+  client_mac: Eui48Address
+  transaction: DhcpTransactionId
+  architecture: DhcpProcessorArchitecture
+  requested_at: EpochMs
+  accepted_filename: NonEmptyStr
+  accepted_from: Ipv4Address
+  fetched_digest: ContentHash?
+  accepted_at: EpochMs
+  source: DeclarationRef
+}
+
+// Both views of one exchange, joined. Constructible only by bind_boot_attempt.
+type BootAttemptReceipt sole_constructor {
+  edge: SiteEdgeReceipt
+  client: ClientNetbootReceipt
+}
+
+// ---- Binder 1: edge observation -> SiteEdgeReceipt ---------------------------------------
+
+type EdgeBindingRefusal
+  = EdgeOfferNotObserved
+  | EdgeOfferWithoutAuthority
+
+type SiteEdgeBinding
+  = SiteEdgeBound { receipt: SiteEdgeReceipt }
+  | SiteEdgeBindingRefused { refusal: EdgeBindingRefusal }
+
+fn bind_site_edge_receipt(observation: EdgeOfferObservation) -> SiteEdgeBinding {
+  match observation {
+    EdgeOfferUnobserved => SiteEdgeBindingRefused { refusal: EdgeOfferNotObserved }
+    EdgeOfferObserved { site: s, serving_address: a, client_mac: m, transaction: x, direction: d, offered_filename: f, next_server: n, chainloader_digest: h, offered_at: t, source: src } =>
+      match src {
+        Absent => SiteEdgeBindingRefused { refusal: EdgeOfferWithoutAuthority }
+        Present { value: authority } =>
+          SiteEdgeBound {
+            receipt: SiteEdgeReceipt { site: s, serving_address: a, client_mac: m, transaction: x, direction: d, offered_filename: f, next_server: n, chainloader_digest: h, offered_at: t, source: authority }
+          }
+      }
+  }
+}
+
+// ---- Binder 2: client observation -> ClientNetbootReceipt --------------------------------
+// A request nobody answered is the outage, so it is named apart from every other refusal and
+// carries the identifiers a responder would be sought by.
+
+type ClientBindingRefusal
+  = ClientRequestNotObserved
+  | ClientRequestWithoutAuthority
+  | ClientRequestUnanswered { client_mac: Eui48Address, transaction: DhcpTransactionId, requested_at: EpochMs }
+  | ClientArchitectureNotRecognized { code: Int }
+
+type ClientNetbootBinding
+  = ClientNetbootBound { receipt: ClientNetbootReceipt }
+  | ClientNetbootBindingRefused { refusal: ClientBindingRefusal }
+
+fn bind_client_netboot_receipt(observation: ClientRequestObservation) -> ClientNetbootBinding {
+  match observation {
+    ClientRequestUnobserved => ClientNetbootBindingRefused { refusal: ClientRequestNotObserved }
+    ClientRequestObserved { client_mac: m, transaction: x, architecture_code: code, requested_at: rt, response: resp, source: src } =>
+      match src {
+        Absent => ClientNetbootBindingRefused { refusal: ClientRequestWithoutAuthority }
+        Present { value: authority } =>
+          match resp {
+            ClientNoResponseAccepted => ClientNetbootBindingRefused { refusal: ClientRequestUnanswered { client_mac: m, transaction: x, requested_at: rt } }
+            ClientResponseAccepted { accepted_filename: f, accepted_from: from, fetched_digest: h, accepted_at: at } =>
+              match client_architecture_claim(code: code) {
+                ClientArchitectureUnrecognized { code: c } => ClientNetbootBindingRefused { refusal: ClientArchitectureNotRecognized { code: c } }
+                ClientArchitectureRecognized { architecture: arch } =>
+                  ClientNetbootBound {
+                    receipt: ClientNetbootReceipt { client_mac: m, transaction: x, architecture: arch, requested_at: rt, accepted_filename: f, accepted_from: from, fetched_digest: h, accepted_at: at, source: authority }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ---- Binder 3: the two views of one exchange -> BootAttemptReceipt -----------------------
+// A client that accepted an answer the edge has no record of, and an edge offer no client took,
+// are different facts: the first is an unexplained boot, the second is ordinary traffic and is
+// reported by untaken_offers rather than refused.
+
+type BootAttemptRefusal
+  = AcceptedResponseHasNoEdgeOffer { client_mac: Eui48Address, transaction: DhcpTransactionId }
+  | EdgeDigestUnobserved
+  | ClientDigestUnobserved
+  | DigestFamiliesIncomparable
+  | DigestDisagrees { edge: ContentHash, client: ContentHash }
+  | AcceptedFilenameDisagrees { offered: NonEmptyStr, accepted: NonEmptyStr }
+  | AcceptedFromNotNextServer { next_server: Ipv4Address, accepted_from: Ipv4Address }
+  | OfferPrecedesRequest { requested_at: EpochMs, offered_at: EpochMs }
+  | AcceptancePrecedesOffer { offered_at: EpochMs, accepted_at: EpochMs }
+
+type BootAttemptBinding
+  = BootAttemptBound { receipt: BootAttemptReceipt }
+  | BootAttemptRefused { refusal: BootAttemptRefusal }
+
+fn offer_answers_request(edge: SiteEdgeReceipt, client: ClientNetbootReceipt) -> Bool {
+  edge.client_mac == client.client_mac && edge.transaction == client.transaction
+}
+
+// Ordering uses the two sides' own clocks; cross-host skew is not modeled, so an exchange whose
+// stamps straddle a skew larger than the exchange refuses instead of passing. A tolerance would
+// be an added field on the binder, not a loosened comparison.
+fn bind_boot_attempt(client: ClientNetbootReceipt, edges: List<SiteEdgeReceipt>) -> BootAttemptBinding {
+  match first_where(xs: edges, keep: e => offer_answers_request(edge: e, client: client)) {
+    Absent => BootAttemptRefused { refusal: AcceptedResponseHasNoEdgeOffer { client_mac: client.client_mac, transaction: client.transaction } }
+    Present { value: edge } => bind_matched_attempt(edge: edge, client: client)
+  }
+}
+
+fn bind_matched_attempt(edge: SiteEdgeReceipt, client: ClientNetbootReceipt) -> BootAttemptBinding {
+  if edge.offered_at < client.requested_at {
+    BootAttemptRefused { refusal: OfferPrecedesRequest { requested_at: client.requested_at, offered_at: edge.offered_at } }
+  } else {
+    if client.accepted_at < edge.offered_at {
+      BootAttemptRefused { refusal: AcceptancePrecedesOffer { offered_at: edge.offered_at, accepted_at: client.accepted_at } }
+    } else {
+      if edge.offered_filename != client.accepted_filename {
+        BootAttemptRefused { refusal: AcceptedFilenameDisagrees { offered: edge.offered_filename, accepted: client.accepted_filename } }
+      } else {
+        if edge.next_server != client.accepted_from {
+          BootAttemptRefused { refusal: AcceptedFromNotNextServer { next_server: edge.next_server, accepted_from: client.accepted_from } }
+        } else {
+          bind_matched_digests(edge: edge, client: client)
+        }
+      }
+    }
+  }
+}
+
+fn bind_matched_digests(edge: SiteEdgeReceipt, client: ClientNetbootReceipt) -> BootAttemptBinding {
+  match edge.chainloader_digest {
+    Absent => BootAttemptRefused { refusal: EdgeDigestUnobserved }
+    Present { value: eh } =>
+      match client.fetched_digest {
+        Absent => BootAttemptRefused { refusal: ClientDigestUnobserved }
+        Present { value: ch } =>
+          match compare_content_hash(left: eh, right: ch) {
+            ContentHashEqual => BootAttemptBound { receipt: BootAttemptReceipt { edge: edge, client: client } }
+            ContentHashDifferent => BootAttemptRefused { refusal: DigestDisagrees { edge: eh, client: ch } }
+            ContentHashCrossFamilyIncomparable => BootAttemptRefused { refusal: DigestFamiliesIncomparable }
+          }
+      }
+  }
+}
+
+// Offers no client receipt answers: ordinary traffic (a machine that was offered and did not
+// boot), reported as a list, never as a refusal.
+fn untaken_offers(edges: List<SiteEdgeReceipt>, clients: List<ClientNetbootReceipt>) -> List<SiteEdgeReceipt> {
+  edges |> filter(e => (clients |> any(c => offer_answers_request(edge: e, client: c))) == false)
+}
