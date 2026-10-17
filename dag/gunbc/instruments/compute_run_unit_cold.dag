@@ -862,6 +862,26 @@ fn same_path_premise_refusal(facts: SccacheRustKeyFacts) -> Optional<String> {
   else { Present { value: "premise changed: re-derive the residual (extdeps.cache.sccache sccache_rust_key_facts no longer has cargo_prefixed_env_enters_key=true and basedirs_strips_cargo_manifest_dir=false)" } }
 }
 
+// The F arms are the observation of the RFM row's next-rung trigger ("per-unit path virtualization available to
+// user-manager units"). While BindPaths is refused (226/NAMESPACE) f2_hits is absent and nothing is written to the
+// host stable path: the residual ceiling stands. An F2 that built means the wall lifted, so the ceiling must be
+// re-derived (exit 2, not green); an F build that wrote the host stable path breaks the isolation the arm claims.
+fn stable_arm_refusal(f2_hits: Int?, wrote_only_own: Bool) -> Optional<String> {
+  match f2_hits {
+    Absent => Absent
+    Present { value: h } =>
+      if !wrote_only_own { Present { value: "stable arms built but wrote the host stable path: path virtualization is not isolating" } }
+      else { Present { value: "premise changed: stable-path arms F1/F2 built under BindPaths, so the next-rung trigger fired; re-derive the residual ceiling" } }
+  }
+}
+
+fn first_refusal(a: Optional<String>, b: Optional<String>) -> Optional<String> {
+  match a {
+    Present { value: why } => Present { value: why }
+    Absent => b
+  }
+}
+
 fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
   match observe_hermetic_user_session_runtime() {
     HermeticUserSessionRuntimeAbsent =>
@@ -937,7 +957,7 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                           } else {
                             match stable_path_arms(runtime_dir: runtime_dir, homes: homes, stable_root: join([runtime_dir as String, "/c9-stable"], "")) {
                               StableArmsNoFrame { text: why } => no_observation(bytes: join([bytes, why], ""), reason: "no observation: stable arms had no run frame")
-                              StableArmsRead { text: stable_text, f2_hits: _, wrote_only_own: _ } => {
+                              StableArmsRead { text: stable_text, f2_hits: f2_hits, wrote_only_own: wrote_only_own } => {
                             let bytes = join([bytes, stable_text], "")
                             match arm_rust_hits(text: ta2) {
                               Absent => no_observation(bytes: bytes, reason: "no observation: A2 Rust stats unreadable")
@@ -963,7 +983,7 @@ fn compute_run_unit_cold_same_path_exit() -> CliWireResponse {
                                         match arm_miss_set(text: te) {
                                           Absent => no_observation(bytes: bytes, reason: "no observation: E miss set unreadable")
                                           Present { value: miss_e } =>
-                                        match same_path_premise_refusal(facts: sccache_rust_key_facts) {
+                                        match first_refusal(a: same_path_premise_refusal(facts: sccache_rust_key_facts), b: stable_arm_refusal(f2_hits: f2_hits, wrote_only_own: wrote_only_own)) {
                                         Present { value: why } => no_observation(bytes: bytes, reason: why)
                                         Absent =>
                                         if !arm_rust_misses_readable(text: ta2) || !arm_rust_misses_readable(text: td) {
