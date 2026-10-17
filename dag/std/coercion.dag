@@ -232,18 +232,8 @@ type CastRule {
 // declared twice in one corpus -- std.nat.Nat (grounded onto Int, carrier i64) and v2.std.nat.Nat
 // (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
 // holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
-// `as` target is authored with. THE THREE NAMES FROM std.decl_ref ARE NAMED IN THE IMPORT ROW
-// ABOVE -- DeclarationRef, decl_ref and declaration_ref_eq -- and not left to the file's bare
-// channel. A file that declares imports has that bare channel switched off (the
-// unimported-bare-provider gate), so a name omitted from the row is simply unbound: the census
-// reported std.coercion's three bare `decl_ref` uses that way (297:55, 518:34, 518:123 in the
-// reading before this note) while `decl_ref` had exactly one declarer, std.decl_ref, in the
-// whole corpus. Under the strict-first
-// ruling of 2026-10-15 the bare channel is not an entitlement, so the fix is to name it rather
-// than to widen the channel. An earlier version of this note claimed the module declared NO
-// imports on purpose because its self-compile closure "does not reach std.algebra"; both halves
-// were stale -- the module has carried four import rows on both sides of this change, and its
-// import closure already reached std.algebra through the existing std.types row.
+// `as` target is authored with. These std.decl_ref names are named explicitly rather than left to
+// the file's bare channel, because declaring any import switches that channel off.
 type RefinementCastRule {
   from_type: String
   to_type: String
