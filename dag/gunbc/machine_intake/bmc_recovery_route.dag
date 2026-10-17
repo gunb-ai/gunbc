@@ -58,11 +58,12 @@ import gunbc.machine_intake.subject {
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.privileged_effect_census {
-  PrivilegedEffectSite, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_census, ruling_discharge_interlock_defect, recovery_reset_operator_ruling,
+  PrivilegedEffectSite, RealizedAuthorization, RealizedApprovalCapability, SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable, site_verdict, privileged_effect_census, ruling_discharge_interlock_defect, recovery_reset_operator_ruling,
 }
 import gunbc.auth.authorization_pattern_selection {
-  PatternSelected, OperatorApprovedCapability, ManualStepRequired, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, NoAdmissiblePattern, StandingDestructiveAuthorization,
+  AuthorizationPattern, PatternSelected, OperatorApprovedCapability, HumanOnlyStep, ManualStepRequired, PatternSelectionRefused, PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, NoAdmissiblePattern, StandingDestructiveAuthorization,
 }
+import std.decision { DecisionScope, SelectionEvidenceNeed }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldAcquisition, UnitHeld, UnitHoldRefused, AdmittedUnitHoldSubject,
 }
@@ -598,6 +599,13 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
 // followed by a second match on the same value was the Bool standing where the match belonged.
 type PasswordWriteAuthorization
   = PasswordWriteAdmitted { authorized_by: DeclarationRef }
+  // THE LEDGER'S OWN VERDICT, PASSED THROUGH. When the census refused, the refusal is the census's: the
+  // defects, needs, survivors, causes and divergence it computed travel in the arm. Rendering them into a
+  // sentence here would have thrown away the detail that makes the refusal actionable -- six upstream
+  // outcomes would have arrived as one string, and three of them need three different people to fix.
+  | PasswordWriteRefusedByLedger { site: DeclarationRef, cause: LedgerRefusalCause }
+  // The channel and record refusals have no upstream carrier to pass along: they ARE the decision, made in
+  // this gate, so they name what they checked.
   | PasswordWriteRefused { cause: NonEmptyStr }
 
 type ResetWriteAuthorization
@@ -606,6 +614,8 @@ type ResetWriteAuthorization
       authorized_by: DeclarationRef
       operator_ruling: StandingDestructiveAuthorization
     }
+  // As above: the census's refusal keeps the census's own computed detail.
+  | ResetWriteRefusedByLedger { site: DeclarationRef, cause: LedgerRefusalCause }
   | ResetWriteRefused { cause: NonEmptyStr }
 
 // The two admitted arms carry the two census sites, so "who admitted this" is answered by the arm rather
@@ -659,76 +669,248 @@ fn recovery_census_row_at(site_ref: DeclarationRef) -> PrivilegedEffectSite? {
 
 // WHAT THE LEDGER HAS TO SAY ABOUT A RECOVERY WRITE. `site_verdict` is the census's own judgment: it asks
 // gunbc.auth.authorization_pattern_selection what pattern the effect's characteristics force, then joins
-// that against what the row claims is realized. Nothing here is a boolean the route carries with it. Two
-// questions are asked, at two strengths, because the two writes are not alike:
+// that against what the row claims is realized. Nothing here is a boolean the route carries with it, and
+// nothing here renders the verdict into a string on the way out -- each refusal arm carries what the census
+// COMPUTED (`defects`, `needs`, `survivors`, `causes`, `standing`, the row's `divergence`), because a
+// degradation a reader cannot tell apart from four others is not countable, and three of these need three
+// different people to fix. §5: "every degradation is typed, located and countable".
 //
-//   * `recovery_ledger_conforms` -- a row exists, its selection is a pattern (not a refusal, not "needs
-//     evidence", not "not decidable"), and the row's `realized` agrees with what was selected. This is the
-//     bar for the reversible temporary password; demanding operator approval there would have the census
-//     claim a destructive standing for a write the next rotation undoes.
+// TWO QUESTIONS, AT TWO STRENGTHS, because the two writes are not alike:
+//
+//   * `recovery_ledger_admits_password_write` -- a row exists, its selection is a pattern (not a refusal,
+//     not "needs evidence", not "not decidable"), and the row's `realized` agrees with what was selected.
+//     This is the bar for the reversible temporary password; demanding operator approval there would have
+//     the census claim a destructive standing for a write the next rotation undoes.
 //   * `recovery_ledger_selects_operator_approval` -- on top of that, the selected pattern IS
 //     OperatorApprovedCapability and the row realizes an approval capability. Only the reset is held to
 //     this, and what makes it a gate rather than a redundancy is that it reads the pattern the SELECTION
 //     produced from the effect's characteristics: soften the reset's `reversibility` and selection moves to
 //     a revocable grant, so the gate closes. A gate that merely restated the row's own field would be
 //     decoration.
-fn recovery_ledger_conforms(site_ref: DeclarationRef) -> Bool {
+//
+// BOTH WALK THE FULL SELECTION, not just its happy path. Six outcomes exist upstream and all six arrive
+// here as themselves, so the reset is refused with the selection's own defects rather than with a sentence
+// about there being a problem.
+type LedgerAdmission
+  = LedgerConforms { verdict: SiteVerdict }
+  | LedgerRefusal { cause: LedgerRefusalCause }
+
+// THE ONE REFUSAL, SHARED BY BOTH GATES, WITH THE SELECTION CARRIED THROUGH. Naming is per mistake rather
+// than per gate, so a missing row refused twice (once per write) is recognisably one problem.
+type LedgerRefusalCause
+  = CensusRowMissing { site: DeclarationRef }
+  | SelectionNeedsEvidence { needs: List<SelectionEvidenceNeed> }
+  | SelectionNeedsPolicy { survivors: List<DeclarationRef> }
+  | SelectionRefusedByConstraints { defects: List<NonEmptyStr> }
+  | NoPatternAdmissible { causes: List<NonEmptyStr>, scope: DecisionScope }
+  | PatternIsNotOperatorApproved { selected: AuthorizationPattern }
+  | RealizedFieldDisagreesWithSelection {
+      divergence: SiteConformance,
+      selected: AuthorizationPattern,
+      realized: RealizedAuthorization,
+    }
+  | RowNotDecidable { standing: AuthorizationPatternSelection }
+
+// THE GATE FOR THE TEMPORARY PASSWORD WRITE. The bar is a conforming row whose selection is a pattern --
+// demanding operator approval here would have the census claim a destructive standing for a write the next
+// rotation undoes, which is why this gate and the reset's are two questions at two strengths.
+fn recovery_ledger_admits_password_write(site_ref: DeclarationRef) -> LedgerAdmission {
   match recovery_census_row_at(site_ref: site_ref) {
-    Absent => false
+    Absent => LedgerRefusal { cause: CensusRowMissing { site: site_ref } }
     Present { value: row } =>
       match site_verdict(row: row) {
         SiteVerdict { site: _, selection: selection, conformance: conformance } =>
           match selection {
             PatternSelected { pattern: _, receipt: _ } =>
               match conformance {
-                Conforms => true
-                Diverges => false
-                DivergesWithReason { reason: _ } => false
-                SiteNotDecidable { standing: _ } => false
+                Conforms => LedgerConforms { verdict: site_verdict(row: row) }
+                Diverges =>
+                  LedgerRefusal {
+                    cause: RealizedFieldDisagreesWithSelection {
+                      divergence: conformance,
+                      selected: selection_pattern(selection: selection),
+                      realized: row.realized,
+                    },
+                  }
+                DivergesWithReason { reason: _ } =>
+                  LedgerRefusal {
+                    cause: RealizedFieldDisagreesWithSelection {
+                      divergence: conformance,
+                      selected: selection_pattern(selection: selection),
+                      realized: row.realized,
+                    },
+                  }
+                SiteNotDecidable { standing: standing } =>
+                  LedgerRefusal { cause: RowNotDecidable { standing: standing } }
               }
-            ManualStepRequired { step: _, receipt: _ } => false
-            PatternSelectionRefused { defects: _ } => false
-            PatternSelectionNeedsEvidence { needs: _ } => false
-            PatternSelectionNeedsPolicy { survivors: _ } => false
-            NoAdmissiblePattern { causes: _, scope: _ } => false
+            ManualStepRequired { step: step, receipt: _ } =>
+              LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: HumanOnlyStep { step: step } } }
+            PatternSelectionNeedsEvidence { needs: needs } =>
+              LedgerRefusal { cause: SelectionNeedsEvidence { needs: needs } }
+            PatternSelectionNeedsPolicy { survivors: survivors } =>
+              LedgerRefusal { cause: SelectionNeedsPolicy { survivors: survivors } }
+            PatternSelectionRefused { defects: defects } =>
+              LedgerRefusal { cause: SelectionRefusedByConstraints { defects: defects } }
+            NoAdmissiblePattern { causes: causes, scope: scope } =>
+              LedgerRefusal { cause: NoPatternAdmissible { causes: causes, scope: scope } }
           }
       }
   }
 }
 
-fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Bool {
+// THE GATE FOR THE DESTRUCTIVE RESET -- the same walk, with the pattern named, because that is the whole
+// difference between the two writes. What makes it a gate rather than a restatement of the row's own field
+// is that it reads the pattern the SELECTION produced from the effect's characteristics: soften the reset's
+// `reversibility` and selection moves to a revocable grant, so this gate closes. A gate that only checked
+// `row.realized` would be decoration, and this one demonstrably is not: it is the reason the reset is
+// refused while the effect's classification is being argued about.
+fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> LedgerAdmission {
   match recovery_census_row_at(site_ref: site_ref) {
-    Absent => false
+    Absent => LedgerRefusal { cause: CensusRowMissing { site: site_ref } }
     Present { value: row } =>
       match site_verdict(row: row) {
         SiteVerdict { site: _, selection: selection, conformance: conformance } =>
           match selection {
             PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
               match conformance {
-                Conforms => match row.realized {
-                  RealizedApprovalCapability => true
-                  _ => false
-                }
-                Diverges => false
-                DivergesWithReason { reason: _ } => false
-                SiteNotDecidable { standing: _ } => false
+                Conforms =>
+                  match row.realized {
+                    RealizedApprovalCapability => LedgerConforms { verdict: site_verdict(row: row) }
+                    _ =>
+                      LedgerRefusal {
+                        cause: RealizedFieldDisagreesWithSelection {
+                          divergence: conformance,
+                          selected: OperatorApprovedCapability,
+                          realized: row.realized,
+                        },
+                      }
+                  }
+                Diverges =>
+                  LedgerRefusal {
+                    cause: RealizedFieldDisagreesWithSelection {
+                      divergence: conformance,
+                      selected: OperatorApprovedCapability,
+                      realized: row.realized,
+                    },
+                  }
+                DivergesWithReason { reason: _ } =>
+                  LedgerRefusal {
+                    cause: RealizedFieldDisagreesWithSelection {
+                      divergence: conformance,
+                      selected: OperatorApprovedCapability,
+                      realized: row.realized,
+                    },
+                  }
+                SiteNotDecidable { standing: standing } =>
+                  LedgerRefusal { cause: RowNotDecidable { standing: standing } }
               }
-            // ANY OTHER SELECTION IS A REFUSAL OF THIS GATE, and named rather than defaulted: the
-            // selection sum has other arms (a federated grant, a human-only pattern, a refused
-            // selection), and the one this gate accepts is the operator-approved capability because the
-            // effect's own classification forces it. Listing them keeps the question "which patterns
-            // exist?" answerable from this match instead of from a wildcard that would silently swallow a
-            // new arm the selection module later adds.
-            PatternSelected { pattern: _, receipt: _ } => false
-            PatternSelectionRefused { defects: _ } => false
-            ManualStepRequired { step: _, receipt: _ } => false
-            PatternSelectionRefused { defects: _ } => false
-            PatternSelectionNeedsEvidence { needs: _ } => false
-            PatternSelectionNeedsPolicy { survivors: _ } => false
-            NoAdmissiblePattern { causes: _, scope: _ } => false
+            // ANY OTHER SELECTION REFUSES THIS GATE, AND EACH ONE ARRIVES WITH ITS OWN EVIDENCE. The
+            // pattern the selection DID produce travels into the refusal, so "why not the operator-approved
+            // capability?" is answerable from the refusal instead of from a re-run of the selection.
+            PatternSelected { pattern: other, receipt: _ } =>
+              LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: other } }
+            ManualStepRequired { step: step, receipt: _ } =>
+              LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: HumanOnlyStep { step: step } } }
+            PatternSelectionNeedsEvidence { needs: needs } =>
+              LedgerRefusal { cause: SelectionNeedsEvidence { needs: needs } }
+            PatternSelectionNeedsPolicy { survivors: survivors } =>
+              LedgerRefusal { cause: SelectionNeedsPolicy { survivors: survivors } }
+            PatternSelectionRefused { defects: defects } =>
+              LedgerRefusal { cause: SelectionRefusedByConstraints { defects: defects } }
+            NoAdmissiblePattern { causes: causes, scope: scope } =>
+              LedgerRefusal { cause: NoPatternAdmissible { causes: causes, scope: scope } }
           }
       }
   }
+}
+
+// THE PATTERN THE SELECTION SELECTED, OR NOTHING. A total extraction rather than a default: the arms that
+// select no pattern answer Absent, which is what the refusal above needs to know.
+fn selection_pattern(selection: AuthorizationPatternSelection) -> AuthorizationPattern? {
+  match selection {
+    PatternSelected { pattern: p, receipt: _ } => Present { value: p }
+    ManualStepRequired { step: _, receipt: _ } => Absent
+    NoAdmissiblePattern { causes: _, scope: _ } => Absent
+    PatternSelectionNeedsEvidence { needs: _ } => Absent
+    PatternSelectionNeedsPolicy { survivors: _ } => Absent
+    PatternSelectionRefused { defects: _ } => Absent
+  }
+}
+
+// THE THREE NAME RENDERERS, EACH A CLOSED MATCH OVER THE ARMS IT IS GIVEN. These are not helpers standing
+// in for a decision: the names they return are the census's own vocabulary, spelled once, so the sentence
+// below cannot drift from the sum it describes. Every arm of every sum is named, which is what makes the
+// sentence safe to read to an operator.
+fn pattern_identity_text(p: AuthorizationPattern) -> NonEmptyStr {
+  match p {
+    FederatedScopedGrant => "federated scoped grant" as NonEmptyStr
+    OperatorApprovedCapability => "operator-approved capability" as NonEmptyStr
+    HumanOnlyStep { step: _ } => "human-only step" as NonEmptyStr
+    OperatorOwnSession => "operator's own session" as NonEmptyStr
+  }
+}
+
+fn realized_authorization_text(r: RealizedAuthorization) -> NonEmptyStr {
+  match r {
+    RealizedFederatedGrant => "federated grant" as NonEmptyStr
+    RealizedRunSelected => "run-selected" as NonEmptyStr
+    RealizedApprovalCapability => "approval capability" as NonEmptyStr
+    RealizedHumanStep => "human step" as NonEmptyStr
+    RealizedOperatorSession { arm: _ } => "operator session" as NonEmptyStr
+    RealizedUnauthorized => "unauthorized" as NonEmptyStr
+  }
+}
+
+fn conformance_text(c: SiteConformance) -> NonEmptyStr {
+  match c {
+    Conforms => "conforms" as NonEmptyStr
+    Diverges => "diverges, with no reason attached" as NonEmptyStr
+    DivergesWithReason { reason: reason } =>
+      concat("diverges: ", reason.statement as NonEmptyStr) as NonEmptyStr
+    SiteNotDecidable { standing: _ } => "not decidable against its selection" as NonEmptyStr
+  }
+}
+
+// THE OPERATOR-FACING SENTENCE, DERIVED FROM THE CARRIER AND NEVER INVENTED BESIDE IT. Each arm contributes
+// its own words plus what it counts; the two "needs" arms report a count rather than naming items, because
+// naming them would mean importing the evidence-need vocabulary into a module whose job is the recovery
+// route -- and the exact list travels in the carrier, where a consumer that needs it can match the arm.
+fn ledger_refusal_text(site_ref: DeclarationRef, cause: LedgerRefusalCause) -> NonEmptyStr {
+  let where_ = concat(" at ", declaration_ref_display_key(ref: site_ref) as String) as String
+  // Each arm's words are constants in this function, and each counts what its carrier holds. join is used
+  // rather than a chain of nested concats so the sentence is readable at the call site.
+  join([
+    "the census does not admit ",
+    declaration_ref_display_key(ref: site_ref) as String,
+    ": ",
+    match cause {
+      CensusRowMissing { site: s } =>
+        join(["no row is filed against ", declaration_ref_display_key(ref: s) as String,
+              ", so the write is unclassified and nothing admits it"], "")
+      SelectionNeedsEvidence { needs: needs } =>
+        join(["the selection is waiting on ", to_string(value: list_length(items: needs)),
+              " evidence need(s) -- the exact list travels in the refusal's carrier"], "")
+      SelectionNeedsPolicy { survivors: survivors } =>
+        join(["nothing decides among ", to_string(value: list_length(items: survivors)),
+              " surviving candidate pattern(s); a policy must say which"], "")
+      SelectionRefusedByConstraints { defects: defects } =>
+        join(["the effect's own characteristics are refused by the pattern constraints (",
+              to_string(value: list_length(items: defects)), " defect(s))"], "")
+      NoPatternAdmissible { causes: causes, scope: _ } =>
+        join(["no admissible pattern exists for this effect's decision scope (",
+              to_string(value: list_length(items: causes)), " cause(s))"], "")
+      PatternIsNotOperatorApproved { selected: selected } =>
+        join(["the selection chose ", pattern_identity_text(p: selected) as String,
+              ", not the operator-approved capability, so a standing that could be revoked would stand behind",
+              " an irreversible actuation"], "")
+      RealizedFieldDisagreesWithSelection { divergence: d, selected: sel, realized: realized } =>
+        join(["the row's realized field (", realized_authorization_text(r: realized) as String,
+              ") disagrees with the selected pattern (", pattern_identity_text(p: sel) as String,
+              "): ", conformance_text(c: d) as String], "")
+      RowNotDecidable { standing: _ } =>
+        join(["the row is not decidable against the standing its selection produced", where_], "")
+    },
+  ], "") as NonEmptyStr
 }
 
 // THE MEASUREMENT A DESTRUCTIVE ACTUATION MAY REST ON, read off the controller under foot. The route
@@ -756,17 +938,31 @@ fn admit_recovery_in_band_password_write(
   route: RecoveryInBandRoute,
   write: RecoveryWriteRecord,
 ) -> PasswordWriteAuthorization {
+  // THE LEDGER FIRST, AND ITS REFUSAL PASSED THROUGH UNREDUCED. Everything below presupposes the effect is
+  // classified at all; asking the channel question of a write with no census row produces a refusal about
+  // the channel, which is the wrong subject.
+  match recovery_ledger_admits_password_write(site_ref: recovery_in_band_password_write_site()) {
+    LedgerRefusal { cause: cause } =>
+      PasswordWriteRefusedByLedger { site: recovery_in_band_password_write_site(), cause: cause }
+    LedgerConforms { verdict: _ } => password_write_admitted_after_ledger(route: route, write: write)
+  }
+}
+
+// THE CHANNEL AND RECORD QUESTIONS, ASKED ONLY ONCE THE EFFECT IS ADMITTED. A branch per refusal, each
+// naming the thing it checked -- no Bool is consulted, so there is nothing for a call site to forget.
+fn password_write_admitted_after_ledger(
+  route: RecoveryInBandRoute,
+  write: RecoveryWriteRecord,
+) -> PasswordWriteAuthorization {
   let kind = recovery_in_band_password_actuation()
-  if recovery_ledger_conforms(site_ref: recovery_in_band_password_write_site()) == false {
-    PasswordWriteRefused { cause: "the census verdict at this site does not select a pattern that conforms to what the effect's classification forces" as NonEmptyStr }
-  } else if match route.in_band.channel {
+  if match route.in_band.channel {
     // Matched, not queried: a channel that carried its credential on the argv, or was never read, has an
     // arm, and that arm says so here rather than in a predicate the call site has to remember.
     InBandChannelPasswordless { transport: _ } => false
     InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => true
     InBandChannelNotObserved { detail: _ } => true
   } {
-    PasswordWriteRefused { cause: "the in-band channel is not the credential-free arm, so this is not the write the census row classifies" as NonEmptyStr }
+    PasswordWriteRefused { cause: "the in-band channel is not the credential-free arm, so this is not the write the census admits" as NonEmptyStr }
   } else if recovery_write_was_attempted(record: write, kind: kind) == false {
     PasswordWriteRefused { cause: "the write handed over does not name the in-band password actuation this gate classifies" as NonEmptyStr }
   } else {
@@ -799,66 +995,90 @@ fn admit_recovery_manager_reset_to_defaults(
   unit_hold: UnitHoldAcquisition?,
   reset_write: RecoveryWriteRecord,
 ) -> ResetWriteAuthorization {
-  let arm = recovery_write_reset_arm(record: reset_write)
-  if recovery_ledger_selects_operator_approval(site_ref: recovery_manager_reset_site()) == false {
-    ResetWriteRefused { cause: "the reset is not admitted by the census verdict: no operator-approved capability realized at this site" as NonEmptyStr }
-  } else if match ruling_discharge_interlock_defect(site_ref: recovery_manager_reset_site(), ruling: under_ruling) {
-    Present { value: _ } => true
-    Absent => false
-  } {
-    ResetWriteRefused { cause: "the ruling's interlock is not rostered against this site, so no standing discharges the reset's irreversibility" as NonEmptyStr }
-  } else if match arm {
-    // MATCHED THROUGH THE DISPOSITION, not asked a yes/no: the admitted arm has to be one the upstream
-    // enum's own effect says clears the table holding the credential. Absent (the record named no reset
-    // arm at all) refuses with the rest of them, and the disposition's other arm says why in its own words.
+  // THE LEDGER FIRST, AND ITS REFUSAL PASSED THROUGH UNREDUCED. The ruling, the disposition, the warrant and
+  // the hold all presuppose the effect is classified and admitted; asking them of a write with no census row
+  // produced a refusal about something other than the missing classification.
+  match recovery_ledger_selects_operator_approval(site_ref: recovery_manager_reset_site()) {
+    LedgerRefusal { cause: cause } =>
+      ResetWriteRefusedByLedger { site: recovery_manager_reset_site(), cause: cause }
+    LedgerConforms { verdict: _ } =>
+      reset_write_admitted_after_ledger(
+        route: route,
+        under_ruling: under_ruling,
+        unit_hold: unit_hold,
+        reset_write: reset_write,
+      )
+  }
+}
+
+// THE FOUR QUESTIONS THE RESET OWES, ASKED OF A WRITE THAT IS ALREADY ADMITTED BY CLASSIFICATION. The reset
+// arm is matched once at the top rather than extracted twice, so the admitted arm's `reset_type` is THE ARM
+// THAT WAS CHECKED -- not a second read that could disagree with the check, and with no unreachable arm that
+// would have to invent a reset type to stay total.
+fn reset_write_admitted_after_ledger(
+  route: RecoveryInBandRoute,
+  under_ruling: StandingDestructiveAuthorization,
+  unit_hold: UnitHoldAcquisition?,
+  reset_write: RecoveryWriteRecord,
+) -> ResetWriteAuthorization {
+  match recovery_write_reset_arm(record: reset_write) {
+    Absent => ResetWriteRefused {
+      cause: "the write record names no ResetToDefaults arm at all, so there is nothing to check clears the user table" as NonEmptyStr
+    }
     Present { value: a } =>
-      match reset_to_defaults_user_table_disposition(kind: a) {
+      if match reset_to_defaults_user_table_disposition(kind: a) {
+        // MATCHED THROUGH THE DISPOSITION, not asked a yes/no: the admitted arm has to be one the upstream
+        // enum's own effect says clears the table holding the credential, and the disposition's other arm
+        // says in its own words what would survive a gentler reset.
         ClearsUserTableIncludingUnknownCredential { kind: _ } => false
         LeavesUserTableIntact { kind: _, what_survives: _ } => true
+      } {
+        ResetWriteRefused {
+          cause: "the write record names a ResetToDefaults arm that does not clear the table holding the unknown credential" as NonEmptyStr
+        }
+      } else if match ruling_discharge_interlock_defect(site_ref: recovery_manager_reset_site(), ruling: under_ruling) {
+        Present { value: _ } => true
+        Absent => false
+      } {
+        ResetWriteRefused { cause: "the ruling's interlock is not rostered against this site, so no standing discharges it" as NonEmptyStr }
+      } else if match recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)) {
+        // THE WARRANT IS MATCHED ONCE. The two refusal arms each carry what was seen (the reading nobody
+        // measured, or the release key that will not resolve), so the refusal below is the ARM'S words and
+        // not a string this gate invents about a state it did not inspect.
+        WarrantedOnMeasuredRefusal { refusal: _, observed: _ } => false
+        NeverMeasuredOnThisController { observed: _ } => true
+        ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
+      } {
+        ResetWriteRefused {
+          cause: recovery_reset_warrant_refusal_text(
+            warrant: recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)),
+          ),
+        }
+      } else if match recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) {
+        // THE HOLD MISTAKE IS MATCHED, AND KEPT. Three mistakes used to arrive here as one `false`; each now
+        // carries what an operator needs -- the store's own refusal words, or WHICH unit is held versus which
+        // one this route stands on -- and the refusal below is derived from the arm that refused.
+        HoldHeldForThisUnit { proof: _ } => false
+        HoldNeverTaken => true
+        HoldRefusedByStore { reason: _ } => true
+        HoldHeldForAnotherUnit { held_for: _, this_unit: _ } => true
+      } {
+        ResetWriteRefused {
+          cause: recovery_hold_refusal_text(
+            unit_key: route.subject.subject.unit_key,
+            hold: unit_hold,
+          ),
+        }
+      } else {
+        // The admitted arm carries the ruling it stands under and the arm it cleared, so a later reader can
+        // see WHICH approval purchased WHICH destructive actuation. `reset_type: a` is the arm matched at the
+        // top of this function -- the same value the disposition above was decided on.
+        ResetWriteAdmitted {
+          reset_type: a,
+          authorized_by: recovery_manager_reset_site(),
+          operator_ruling: under_ruling,
+        }
       }
-    Absent => true
-  } {
-    ResetWriteRefused { cause: "the write record does not name a ResetToDefaults with the arm that clears the user table, so what would have been actuated is not the reset this row classifies" as NonEmptyStr }
-  } else if match recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)) {
-    // THE WARRANT IS MATCHED ONCE. The two refusal arms each carry what was seen (the reading nobody
-    // measured, or the release key that will not resolve), so the refusal below is the ARM'S words and not
-    // a string this gate invents about a state it did not inspect.
-    WarrantedOnMeasuredRefusal { refusal: _, observed: _ } => false
-    NeverMeasuredOnThisController { observed: _ } => true
-    ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
-  } {
-    ResetWriteRefused {
-      cause: recovery_reset_warrant_refusal_text(
-        warrant: recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)),
-      ),
-    }
-  } else if match recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) {
-    // THE HOLD MISTAKE IS MATCHED, AND KEPT. Three mistakes used to arrive here as one `false`; each now
-    // carries what an operator needs -- the store's own refusal words, or WHICH unit is held versus which
-    // one this route stands on -- and the refusal below is derived from the arm that refused.
-    HoldHeldForThisUnit { proof: _ } => false
-    HoldNeverTaken => true
-    HoldRefusedByStore { reason: _ } => true
-    HoldHeldForAnotherUnit { held_for: _, this_unit: _ } => true
-  } {
-    ResetWriteRefused {
-      cause: recovery_hold_refusal_text(
-        unit_key: route.subject.subject.unit_key,
-        hold: unit_hold,
-      ),
-    }
-  } else {
-    // The admitted arm carries the ruling it stands under and the arm it cleared, so a later reader can see
-    // WHICH approval purchased WHICH destructive actuation. The arm is read out of the write record, and by
-    // the branch above it can only be ResetAll here -- the match is the extraction, not a second check.
-    ResetWriteAdmitted {
-      reset_type: match arm {
-        Present { value: a } => a
-        Absent => ResetAll
-      },
-      authorized_by: recovery_manager_reset_site(),
-      operator_ruling: under_ruling,
-    }
   }
 }
 
@@ -1163,6 +1383,11 @@ type InBandRecoveryOutcome
   | RecoveryControllerPolicyUnavailable { sighting: PublishedPasswordWritePolicySighting }
   | RecoveryWriteUnverified { kind: RecoveryActuationKind }
   | RecoveryWriteNotAdmitted { kind: RecoveryActuationKind, cause: NonEmptyStr }
+  // THE CENSUS REFUSED, AND THE CENSUS'S OWN DETAIL COMES ALONG. This arm exists so the ledger's verdict
+  // survives the whole way out: the gate carries it, the standing carries it, and the consumer that turns a
+  // standing into a next action reads it from here. Rendering it into the sibling arm's sentence would have
+  // re-made, one layer down, the loss the carrier was added to prevent.
+  | RecoveryWriteRefusedByLedger { kind: RecoveryActuationKind, site: DeclarationRef, cause: LedgerRefusalCause }
   | RecoveryReadbackRefusedFactoryCredential { readback: RecoveryFactoryCredentialReadback }
 
 type InBandRecoveryStanding sole_constructor {
@@ -1298,6 +1523,16 @@ fn converge_in_band_recovery(
         // password write is the earlier actuation -- reporting the later failure first would send someone
         // to fix the reset while the write that precedes it is still refused.
         match in_band_admission {
+          PasswordWriteRefusedByLedger { site: site, cause: cause } =>
+            InBandRecoveryStanding {
+              subject: route.subject,
+              route: route,
+              outcome: RecoveryWriteRefusedByLedger {
+                kind: recovery_in_band_password_actuation(),
+                site: site,
+                cause: cause,
+              },
+            }
           PasswordWriteRefused { cause: cause } =>
             InBandRecoveryStanding {
               subject: route.subject,
@@ -1319,6 +1554,16 @@ fn converge_in_band_recovery(
               }
             } else {
               match reset_admission {
+                ResetWriteRefusedByLedger { site: site, cause: cause } =>
+                  InBandRecoveryStanding {
+                    subject: route.subject,
+                    route: route,
+                    outcome: RecoveryWriteRefusedByLedger {
+                      kind: recovery_reset_actuation(),
+                      site: site,
+                      cause: cause,
+                    },
+                  }
                 ResetWriteRefused { cause: cause } =>
                   InBandRecoveryStanding {
                     subject: route.subject,
@@ -1446,6 +1691,10 @@ type RecoveryRouteUnavailable
   // itself, so no release can be named for the measurement the reset would rest on.
   | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
   | RecoveryReadbackInconclusive { detail: NonEmptyStr }
+  // WHICH WRITE THE CENSUS WOULD NOT ADMIT, WITH WHAT THE CENSUS COMPUTED. Distinct from
+  // RecoveryReadbackInconclusive because the two send different people to different work: one re-reads a
+  // controller, the other fixes a census row or funds an evidence need.
+  | RecoveryCensusDoesNotAdmit { kind: RecoveryActuationKind, site: DeclarationRef, cause: LedgerRefusalCause }
 
 // THERE IS NO `recovery_route_is_available`. One question about a standing gets one name; a second name
 // for it is a second representation, free to disagree with the first. Consumers match the outcome arms.
@@ -1470,6 +1719,12 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
       "this board's catalog files a refusal whose release key does not resolve in its own capability catalog: fix the filing before any reset is admitted" as NonEmptyStr
     RecoveryReadbackInconclusive { detail: _ } =>
       "re-read the controller after the reset: the route is only believed once the login answers with the password-change refusal" as NonEmptyStr
+    // The census refusal's sentence is DERIVED from the carrier it holds, never written beside it: which
+    // write was refused, at which site, and what the census said about why.
+    RecoveryCensusDoesNotAdmit { kind: _, site: site, cause: cause } =>
+      join(["fix the ledger before touching the board again: ",
+            ledger_refusal_text(site_ref: site, cause: cause) as String,
+            " -- no credential actuation is admitted until the row admits it"], "") as NonEmptyStr
   }
 }
 
@@ -1492,6 +1747,8 @@ fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRo
     // because "go find a rescue USB" would be the wrong next action for it.
     RecoveryWriteNotAdmitted { kind: _, cause: cause } =>
       Present { value: RecoveryReadbackInconclusive { detail: cause } }
+    RecoveryWriteRefusedByLedger { kind: kind, site: site, cause: cause } =>
+      Present { value: RecoveryCensusDoesNotAdmit { kind: kind, site: site, cause: cause } }
     RecoveryReadbackRefusedFactoryCredential { readback: _ } =>
       Present { value: RecoveryReadbackInconclusive { detail: "the post-reset readback named no PasswordChangeRequired message" } }
   }
@@ -1772,6 +2029,7 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
               && declaration_ref_eq(a: issuer, b: recovery_manager_reset_site())
               && r.ruling_text == recovery_reset_operator_ruling.ruling_text
           ResetWriteRefused { cause: _ } => false
+          ResetWriteRefusedByLedger { site: _, cause: _ } => false
         })
     // ...and the password write's admission is its OWN type: it cannot even be asked whether it stands
     // under the reset's gate, so no refusal has to be written for that question.
@@ -1779,6 +2037,7 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
           PasswordWriteAdmitted { authorized_by: issuer } =>
             declaration_ref_eq(a: issuer, b: recovery_in_band_password_write_site())
           PasswordWriteRefused { cause: _ } => false
+          PasswordWriteRefusedByLedger { site: _, cause: _ } => false
         })
 }
 
@@ -2225,6 +2484,7 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
     ResetWriteRefused { cause: cause } =>
       starts_with(s: cause as String, prefix: "the durable unit hold was never acquired")
     ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    ResetWriteRefusedByLedger { site: _, cause: _ } => false
   })
     // REFUSED BY THE STORE: the store's own words travel into the cause -- the half the Bool discarded.
     && (match admit_recovery_manager_reset_to_defaults(
@@ -2239,6 +2499,7 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
         starts_with(s: cause as String, prefix: "the durable unit hold was refused by the store: ")
           && string_contains(s: cause as String, pattern: "boot-run-41")
       ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteRefusedByLedger { site: _, cause: _ } => false
     })
     // THE REFUSALS ARE NOT THE SAME STRING, which is what the Bool made all three of them.
     && (match admit_recovery_manager_reset_to_defaults(
@@ -2256,8 +2517,10 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
         ) {
           ResetWriteRefused { cause: never_taken } => (refused_by_store as String) != (never_taken as String)
           ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+          ResetWriteRefusedByLedger { site: _, cause: _ } => false
         }
       ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+      ResetWriteRefusedByLedger { site: _, cause: _ } => false
     })
     // THE KEY DECISION, BOTH WAYS. Two units whose keys share a prefix are two chassis; the refusal keeps
     // BOTH names so an operator can see which two, instead of being told "mismatch".
@@ -2272,6 +2535,88 @@ test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
     })
 }
 
+// THE LEDGER, CALLED THROUGH -- BOTH WAYS ROUND, INCLUDING THE ARMS THE FIXTURES NEVER PRODUCE. The
+// fixtures in this module are the census's own rows, so the conforming path was the only one ever exercised
+// and the ledger's refusals were decoration. A site the census has never filed is a real configuration (the
+// row is a declaration in the tree; delete it and every write becomes unclassified), and the refusal has to
+// arrive as THAT: naming the site, so "add the row" is actionable, and not as one of the four channel/record
+// sentences that would send someone to check a cable.
+test fn a_write_the_census_never_classified_is_refused_naming_the_site() -> Bool {
+  let unfiled = decl_ref(
+    module_path: "gunbc.machine_intake.bmc_recovery_route",
+    decl_name: "a_declaration_the_census_has_never_filed",
+  )
+  match recovery_ledger_admits_password_write(site_ref: unfiled) {
+    LedgerConforms { verdict: _ } => false
+    LedgerRefusal { cause: CensusRowMissing { site: site } } => {
+      // the refusal names WHICH site it looked for, rather than "the ledger declined"
+      let said = ledger_refusal_text(site_ref: unfiled, cause: CensusRowMissing { site: site })
+      declaration_ref_eq(a: site, b: unfiled)
+        && string_contains(s: said as String, pattern: "a_declaration_the_census_has_never_filed")
+        // and it does NOT blame the channel, which is what a Bool collapsed this into
+        && string_contains(s: said as String, pattern: "credential-free") == false
+    }
+    LedgerRefusal { cause: _ } => false
+  }
+}
+
+// THE TWO LEDGER QUESTIONS AT THE SITES THEY ARE ASKED AT. Both write gates consume one of these, so this
+// also proves the gates' own admissions are emitted from a verdict the census really returned rather than
+// from a value this module asserts about itself.
+test fn both_recovery_writes_are_admitted_by_their_own_filed_rows() -> Bool {
+  (match recovery_ledger_admits_password_write(site_ref: recovery_in_band_password_write_site()) {
+    LedgerConforms { verdict: _ } => true
+    LedgerRefusal { cause: _ } => false
+  })
+    && (match recovery_ledger_selects_operator_approval(site_ref: recovery_manager_reset_site()) {
+      LedgerConforms { verdict: _ } => true
+      LedgerRefusal { cause: _ } => false
+    })
+    // THE RESET'S GATE IS STRICTER, AND THAT IS CHECKABLE: the password row conforms at its own site and
+    // is NOT what the reset's gate accepts, because the reset asks the selection as well as the row. Two
+    // gates with the same answer everywhere would be one gate wearing two names.
+    && (match recovery_ledger_selects_operator_approval(site_ref: recovery_in_band_password_write_site()) {
+      LedgerConforms { verdict: _ } => false
+      // the password row's selection is a real pattern that is not the operator-approved capability: it
+      // arrives named, so the reason the reset is not admitted by that row is readable from the refusal
+      LedgerRefusal { cause: PatternIsNotOperatorApproved { selected: selected } } =>
+        match selected {
+          OperatorApprovedCapability => false
+          _ => true
+        }
+      LedgerRefusal { cause: _ } => false
+    })
+}
+
+// A CENSUS REFUSAL SURVIVES THE WHOLE ROUTE, AND IS NOT RE-RENDERED AS A CHANNEL PROBLEM ON THE WAY OUT.
+// The fold hands the gate's ledger arm to the standing, the standing hands it to the unavailability sum, and
+// the next action derives its sentence from the carrier. If any layer dropped it into the generic sentence,
+// an operator whose census row was deleted would be told to go find a rescue USB.
+test fn a_census_refusal_reaches_the_next_action_with_the_census_words_intact() -> Bool {
+  let unfiled = decl_ref(
+    module_path: "gunbc.machine_intake.bmc_recovery_route",
+    decl_name: "a_declaration_the_census_has_never_filed",
+  )
+  match recovery_ledger_admits_password_write(site_ref: unfiled) {
+    LedgerRefusal { cause: cause } => {
+      let unavailable = RecoveryCensusDoesNotAdmit {
+        kind: recovery_in_band_password_actuation(),
+        site: unfiled,
+        cause: cause,
+      }
+      let advice = recovery_route_next_action(unavailable: unavailable)
+      // the operator is sent to the ledger, not to the hardware
+      string_contains(s: advice as String, pattern: "fix the ledger")
+        && string_contains(s: advice as String, pattern: "a_declaration_the_census_has_never_filed")
+        // and the advice is not the one a missing rescue medium gets
+        && advice != recovery_route_next_action(unavailable: NoReachableRescueHost {
+             cause: RescueMediumNotExecuted,
+           })
+    }
+    LedgerConforms { verdict: _ } => false
+  }
+}
+
 // THE PASSWORD GATE, CALLED. The admitted arm is the one the fold consumes, so this also proves the fold's
 // input is what the gate actually emits. The refusal exercised here is a write of the WRONG KIND: the
 // password gate is handed the reset's write record and must refuse, naming the arm it arrived in rather
@@ -2283,10 +2628,12 @@ test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind
     PasswordWriteAdmitted { authorized_by: authorized_by } =>
       declaration_ref_eq(a: authorized_by, b: recovery_in_band_password_write_site())
     PasswordWriteRefused { cause: _ } => false
+    PasswordWriteRefusedByLedger { site: _, cause: _ } => false
   })
     && (match admit_recovery_in_band_password_write(route: route, write: recovery_reset_write_record()) {
       PasswordWriteRefused { cause: cause } => string_length(cause) > 0
       PasswordWriteAdmitted { authorized_by: _ } => false
+      PasswordWriteRefusedByLedger { site: _, cause: _ } => false
     })
 }
 
