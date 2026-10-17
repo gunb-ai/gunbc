@@ -8735,19 +8735,19 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
   if type_var_in_fn_generic_scope(id: field_leaf, generic_param_names: generic_param_names) || native_scalar != none { return ty }
   let layer = shared_layer_of_type_expr(shared_types: shared_types, type_expr: rt_field, type_decl_items: type_decl_items, source_indices: source_indices, generic_param_names: generic_param_names)
   match layer {
-    SharedLayerRefuse { leaf: leaf, cause: cause } => return shared_layer_refuse_expr(leaf: leaf, cause: cause)
-    _ => layer
-  }
-  match needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
-    NeedsBox => concat("Box<", ty, ">")
-    NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
-    NeedsNoBox =>
-      match rust_carrier_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
-        SharedLayerAtShared =>
-          if !rust_type_is_rc_wrapped(type_name: ty) { wrap_shared_type(target: Rust, inner: ty) } else { ty }
-        SharedLayerAtValue => ty
-        SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
-      }
+    SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
+    _ =>
+    match needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
+      NeedsBox => concat("Box<", ty, ">")
+      NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
+      NeedsNoBox =>
+        match rust_carrier_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types, type_decl_items: type_decl_items, generic_param_names: generic_param_names) {
+          SharedLayerAtShared =>
+            if !rust_type_is_rc_wrapped(type_name: ty) { wrap_shared_type(target: Rust, inner: ty) } else { ty }
+          SharedLayerAtValue => ty
+          SharedLayerRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
+        }
+    }
   }
 }
 
