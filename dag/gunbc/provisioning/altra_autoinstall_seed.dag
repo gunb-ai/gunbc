@@ -219,15 +219,6 @@ type SeedDeliveryStrategy =
 // the BMC's own virtual-media channel with no console path at all. The seed's response is one clause,
 // derived — never a field beside the strategy, because two fields that must agree is two fields that can
 // disagree.
-fn delivery_is_console_reachable(strategy: SeedDeliveryStrategy) -> Bool {
-  match strategy {
-    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } => true
-    PxeStrategy { boot_mode: UefiHttpBoot } => true
-    PxeStrategy { boot_mode: _ } => false
-    VirtualMediaStrategy { media_stem: _ } => false
-  }
-}
-
 // THE TRANSPORT TOKEN SPREADS THE WHOLE AXIS, INCLUDING THE BOOT MODE. Collapsing the three
 // ClientNetworkBootMode members to one "pxe" spelling would put two genuinely different installs — a
 // TFTP-delivered one and an HTTP-boot one, which differ in who owns the failure when a firmware release
@@ -260,43 +251,111 @@ fn client_network_boot_mode_token(mode: ClientNetworkBootMode) -> NonEmptyStr {
 // 2. The package and driver sets, and what makes either of them interactive by accident.
 // ---------------------------------------------------------------------------
 
-// THE INSTALL-TIME DRIVER SET IS CLOSED BECAUSE ITS MEMBERSHIP IS A BOARD FACT, NOT A CHOICE. The
-// installer cannot consult our policy halfway through: every driver the board needs in order to see its
-// OWN DISK and its OWN NIC during the install has to be named before subiquity starts, or the install
-// discovers an NVMe namespace it cannot open and refuses the disk. A driver outside this set can enter
-// only through PackageIntent (where the caller takes responsibility for its debconf posture) or through a
-// lateconfig stage, which runs after the base system is up and cannot strand an install. A new board
-// generation adds a member here and is then FORCED to re-read the interactive-audit table below, which is
-// the point of keeping the two as separate closed sets rather than one list of strings.
+// TWO AXES, NOT ONE LIST: A PACKAGE AND A KERNEL MODULE ARE DIFFERENT KINDS OF THING, AND WERE MIXED.
+// "ahci", "r8169-firmware", "realtek-firmware", "dca-tools" and "xserver-xorg-video-ast" — five of the seven
+// spellings this set first carried — are not packages: they are what a kernel MODULE is called, wearing a
+// package's clothing. That mistake is invisible to every check short of the install itself, because apt
+// reports a missing package at minute twelve of an unattended run, after the board's disk has been
+// partitioned, with nobody at the console and the failure blamed on the network or the media. So the axis is
+// split into the two kinds, and each kind is checked the way ITS kind is checked: a package against the
+// archive, a module against the Kconfig/Makefile that makes it exist.
+//
+// WHY THIS IS CLOSED WHEN PackageIntent Is Open. The closed sets are the members WE guarantee; anything else
+// enters through PackageIntent, where the caller names it and carries its debconf burden. A member added here
+// is a claim this module defends with a citation.
 type AltraInstallDriver =
     NvmeCliDriver
-  | Ast2500VideoDriver
-  | Ast2500AhcDriver
-  | AhciPlatformDriver
-  | RealtekR8169Driver
-  | PhyRealtekDriver
-  | DcaDriver
+  | IpmiToolDriver
+  | DmidecodeDriver
+  | LinuxFirmwareDriver
 
-// THE WIRE SPELLING IS DERIVED, NEVER STORED. A package name beside the variant would be a second
-// source of truth that can disagree with the variant it claims to spell; this function is the only place
-// the spelling exists, and a witness pins each row to the arm that produced it.
+// THE PACKAGE NAME IS DERIVED FROM ONE ROW, AND THE ROW CARRIES ITS WARRANT. This function is the only place
+// any of these spellings exists, so a seed cannot name a package its driver set does not contain. The
+// authority is per-row rather than one module-wide constant on purpose: a single citation covering the whole
+// set would let one checked row launder an unchecked one, which is exactly how five fabricated spellings
+// survived their first green run. Each row was admitted against the archive for THIS architecture —
+// packages.ubuntu.com/noble/arm64/<name> resolving to a "Details of package" page, and the name published for
+// arm64. linux-firmware is here because the r8169 driver requests firmware at probe time (drivers/net/
+// ethernet/realtek/r8169_main.c at v6.8 calls request_firmware), so a board with the 8125-class NIC the S2
+// probe reports cannot bring its own link up without it — an install-time need, not a cosmetic one.
 fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
   match driver {
     NvmeCliDriver => "nvme-cli"
-    Ast2500VideoDriver => "xserver-xorg-video-ast"
-    Ast2500AhcDriver => "ast-ahc"
-    AhciPlatformDriver => "ahci"
-    RealtekR8169Driver => "r8169-firmware"
-    PhyRealtekDriver => "realtek-firmware"
-    DcaDriver => "dca-tools"
+    IpmiToolDriver => "ipmitool"
+    DmidecodeDriver => "dmidecode"
+    LinuxFirmwareDriver => "linux-firmware"
   }
 }
 
-// THE POST-INSTALL MODULE SET, CLOSED FOR THE SAME REASON AND SEPARATED FOR A DIFFERENT ONE. These are
-// the modules the RUNNING system needs that the installer did not have to have. The separation is not
-// tidiness: an install-time package list is paid for at boot time, on every boot, and mixing the two sets
-// is how a board ends up carrying an AST DRM driver it cannot use while its BMC IPMI channels — the only
-// way anyone sees this board — are absent.
+// THE KERNEL-MODULE AXIS, KEPT APART BECAUSE IT IS NOT CHECKABLE AGAINST APT. What the board must have loaded
+// inside the installer environment is not something the installer can apt-install: the installer's kernel is
+// already running, so a `.ko` is a claim about which kernel package carries it, verified against the source
+// tree that declares it. The rule that makes a row legal is the TRISTATE: a `bool` Kconfig symbol is built in
+// and cannot be a module at all, so a row claiming one names a file no modules/* tree contains; a `tristate`
+// symbol can be `m`, and the Makefile line `obj-$(CONFIG_X) += <stem>.o` is what names the object. Each row
+// below was read at v6.8 — the GA flavour this fleet ships — at elixir.bootlin.com/linux/v6.8/source/<path>,
+// and the symbol/stem pair is carried as data so a reviewer can check one row without reading code. A row
+// whose symbol turns out to be `bool` is not a typo to fix but a row to DELETE: the thing it names is not
+// loadable, and no seed may claim otherwise.
+//
+// THE FIRST FOUR ARE WHAT THE INSTALLER MUST DRIVE; THE LAST THREE ARE DERIVED FROM THE RECEIVED TRANSPORT.
+// nvme/ahci_platform/r8169/realtek are the disk and NIC the installer has to open. usb-storage/uas/sd_mod
+// exist here because a BMC virtual-media install hands the board a USB mass-storage device — a board missing
+// those three cannot read the media it is installing from. That is a consequence of the delivery strategy
+// arriving as data, not a machine-name branch: the same rule would fire for any unit delivered that way.
+type AltraLoadableModule =
+    NvmeBlockModule
+  | AhciPlatformModule
+  | R8169NicModule
+  | RealtekPhyModule
+  | UsbStorageModule
+  | UasModule
+  | SdModuleModule
+
+fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
+  match driver {
+    NvmeBlockModule => "nvme"
+    AhciPlatformModule => "ahci_platform"
+    R8169NicModule => "r8169"
+    RealtekPhyModule => "realtek"
+    UsbStorageModule => "usb-storage"
+    UasModule => "uas"
+    SdModuleModule => "sd_mod"
+  }
+}
+
+// WHICH KCONFIG SYMBOL DECLARES THE MODULE, AND IN WHICH FILE IT WAS READ. Derived pairs, so a row cannot
+// carry a stem that its own symbol's Makefile line does not produce. The paths are the citation: a reviewer
+// checking one row opens one file.
+fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
+  match driver {
+    NvmeBlockModule => "BLK_DEV_NVME"
+    AhciPlatformModule => "SATA_AHCI_PLATFORM"
+    R8169NicModule => "R8169"
+    RealtekPhyModule => "REALTEK_PHY"
+    UsbStorageModule => "USB_STORAGE"
+    UasModule => "USB_UAS"
+    SdModuleModule => "BLK_DEV_SD"
+  }
+}
+
+fn loadable_module_kconfig_path(driver: AltraLoadableModule) -> NonEmptyStr {
+  match driver {
+    NvmeBlockModule => "drivers/nvme/host/Kconfig"
+    AhciPlatformModule => "drivers/ata/Kconfig"
+    R8169NicModule => "drivers/net/ethernet/realtek/Kconfig"
+    RealtekPhyModule => "drivers/net/phy/Kconfig"
+    UsbStorageModule => "drivers/usb/storage/Kconfig"
+    UasModule => "drivers/usb/storage/Kconfig"
+    SdModuleModule => "drivers/scsi/Kconfig"
+  }
+}
+
+// THE POST-INSTALL MODULE SET, CLOSED FOR THE SAME REASON AND SEPARATED FOR A DIFFERENT ONE. These are the
+// modules the RUNNING system needs that the installer did not have to have — the BMC channels through which
+// anyone sees this board at all, and the display path the BMC's video pipeline offers. Same tristate rule as
+// above: each row is a `tristate` stanza in the named file with the named Makefile object (v6.8,
+// drivers/char/ipmi/Kconfig + Makefile, drivers/gpu/drm/ast/Kconfig + Makefile).
 type AltraLateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
 
 fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
@@ -308,15 +367,90 @@ fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
   }
 }
 
-// WHERE THE OPEN WORLD ENTERS, AND WHO CARRIES THE BURDEN FOR IT. The closed sets cannot express "this
-// fleet also wants the node exporter", so an intent carries the name PLUS the debconf seed that answers
-// its questions. Naming a prompting package and seeding nothing yields a seed the audit hangs on
-// PackagePrompts — the honest outcome, chosen by the caller who named the package, rather than a
-// permission check that pretends to know what a package asks.
-type PackageIntent {
-  name: NonEmptyStr
-  debconf_seed: Optional<NonEmptyStr>
+fn altra_late_driver_kconfig_symbol(driver: AltraLateDriver) -> NonEmptyStr {
+  match driver {
+    KipmiIpmbDriver => "IPMI_IPMB"
+    KipmiSiDriver => "IPMI_SI"
+    Ast2500DrmDriver => "DRM_AST"
+    IpmiWatchdogDriver => "IPMI_WATCHDOG"
+  }
 }
+
+// THE AUTHORITY FOR THE MODULE AXES: the source tree the tristate stanzas were read from. Carried as data so
+// a witness can name it and a reviewer can follow it; the per-row path above is where to look within it.
+data module_axis_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "elixir.bootlin.com/linux/v6.8/source"
+  }
+}
+
+// THE AUTHORITY FOR THE PACKAGE AXIS: the archive the four package names were resolved against, for arm64
+// specifically. An x86-only package would pass a name check against the wrong architecture's index and fail
+// on the board, which is why the architecture is part of the authority rather than an assumption beside it.
+data package_axis_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "packages.ubuntu.com/noble/arm64"
+  }
+}
+
+// WHERE THE OPEN WORLD ENTERS, AND WHICH QUESTION THE CALLER HAS TO ANSWER TO DO IT. The closed sets cannot
+// express "this fleet also wants the node exporter", so an intent enters — but it enters as ONE OF THREE
+// CLOSED ARMS, not as a string. The first version of this type was `{ name: NonEmptyStr, debconf_seed:
+// Optional<NonEmptyStr> }`, and that string was the hole: the audit could only ask whether the name appeared
+// in the prompting table, and a name that did not appear fell through to "nothing to answer", so ANY
+// prompting package outside the table got a green non-interactive proof. That is a fabricated default under
+// DESIGN.md §5 ("no plausible output is fabricated"), and the module's own comment above the table said the
+// opposite — an unclassified package is absent evidence, never cleared.
+//
+// THE THREE ARMS ARE THE THREE STATES OF KNOWLEDGE, WHICH A STRING CANNOT EXPRESS.
+//   * QuestionAnswered: the package is in the table AND an answer was supplied. The audit counts it closed.
+//   * QuestionUnanswered: the package is in the table AND nobody supplied an answer. The audit refuses with
+//     the question named, so the operator sees which debconf key to seed.
+//   * Unclassified: nobody has checked whether it prompts. The audit REFUSES, because the seed's claim is
+//     "nothing will ever be asked" and an unchecked package cannot support that claim. It is not refused
+//     because the package is bad; it is refused because THIS MODULE DOES NOT KNOW, and Unobserved is a
+//     first-class verdict here rather than an error.
+// The name lives in exactly one place for the known arms (known_prompting_package_name, below), which is also
+// what makes a drift between the table and the audit impossible: there is no second spelling to drift.
+// A future requirement (a package whose prompting has been checked and found silent) adds a FOURTH arm —
+// PackageVerifiedSilent { name, checked_against } — with its own citation, rather than loosening Unclassified
+// into a pass.
+type PackageIntent =
+    QuestionAnswered { package: KnownPromptingPackage, debconf_seed: NonEmptyStr }
+  | QuestionUnanswered { package: KnownPromptingPackage }
+  | UnclassifiedPackage { name: NonEmptyStr, debconf_seed: Optional<NonEmptyStr> }
+
+// THE AUDIT'S VERDICT ON ONE INTENT, IN THE SAME THREE PARTS THE INTENT IS STATED IN. Derived, never stored:
+// an intent that carried its own classification could disagree with the table it was checked against. The
+// question text travels with the unanswered arm so a refusal names the debconf key to seed rather than
+// pointing at a package and leaving the operator to look it up.
+type PackagePromptingVerdict =
+    ClosedQuestion { name: NonEmptyStr, question: NonEmptyStr }
+  | OpenQuestion { name: NonEmptyStr, question: NonEmptyStr }
+  | UnclassifiedPrompting { name: NonEmptyStr }
+
+fn package_prompting_verdict(intent: PackageIntent) -> PackagePromptingVerdict {
+  match intent {
+    QuestionAnswered { package: named, debconf_seed: _ } =>
+      ClosedQuestion {
+        name: known_prompting_package_name(package: named),
+        question: known_prompting_package_question(package: named),
+      }
+    QuestionUnanswered { package: named } =>
+      OpenQuestion {
+        name: known_prompting_package_name(package: named),
+        question: known_prompting_package_question(package: named),
+      }
+    UnclassifiedPackage { name: un, debconf_seed: _ } => UnclassifiedPrompting { name: un }
+  }
+}
+
+// THE ONE PLACE A KNOWN PROMPTING PACKAGE'S NAME IS SPELLED, for the known arms of PackageIntent and for the
+// diagnostics. Before this restructure the same six spellings existed twice — once here, once in a
+// string-keyed lookup that turned an intent's name back into a variant — and any drift between the two
+// copies landed in that lookup's fail-open `_` arm.
 
 // WHY THIS IS NOT A LIST OF STRINGS. A prompting package with no console is not a slow install; it is an
 // install that never finishes, and nobody is coming to answer. So each member names the QUESTION it asks,
@@ -324,6 +458,12 @@ type PackageIntent {
 // runbook. A package that prompts and is NOT listed here is not thereby safe — it is merely unrefuted by
 // this table, and the audit treats an unclassified interactive package as absent evidence (Refused), never
 // as cleared. A new member is added with its question named, which is the whole discipline.
+// openssh-server and cloud-init are here because BOTH ship a debconf config script that asks something on a
+// fresh install (git.launchpad.net ubuntu/noble: debian/openssh-server.{templates,config},
+// debian/cloud-init.templates), and both are packages this fleet genuinely installs. They were the first real
+// case the old fail-open audit got wrong: openssh-server appeared in a fixture as an unseeded, unclassified
+// package and earned a green non-interactive proof. A row is added by citing its template, never by deciding a
+// package "probably" does not ask.
 type KnownPromptingPackage =
     ConsoleSetupPackage
   | KeyboardConfigurationPackage
@@ -331,6 +471,8 @@ type KnownPromptingPackage =
   | PostfixPackage
   | IfupdownPackage
   | NtpPackage
+  | OpenSshServerPackage
+  | CloudInitPackage
 
 fn known_prompting_package_question(package: KnownPromptingPackage) -> NonEmptyStr {
   match package {
@@ -340,6 +482,9 @@ fn known_prompting_package_question(package: KnownPromptingPackage) -> NonEmptyS
     PostfixPackage => "postfix/main_mailer_type: which mail configuration"
     IfupdownPackage => "ifupdown/interactive_loopback: whether to configure interfaces"
     NtpPackage => "ntp/utc: whether the hardware clock is UTC"
+    OpenSshServerPackage =>
+      "openssh-server/password-authentication: whether to allow password authentication"
+    CloudInitPackage => "cloud-init/datasources: which data sources to search"
   }
 }
 
@@ -351,22 +496,26 @@ fn known_prompting_package_name(package: KnownPromptingPackage) -> NonEmptyStr {
     PostfixPackage => "postfix"
     IfupdownPackage => "ifupdown"
     NtpPackage => "ntp"
+    OpenSshServerPackage => "openssh-server"
+    CloudInitPackage => "cloud-init"
   }
 }
 
-fn known_prompting_package_names() -> List<NonEmptyStr> {
+// THE TABLE AS DATA, FOR THE WITNESS THAT THE TABLE IS THE WHOLE CLAIM. An intent's arm already carries the
+// variant, so nothing in the audit path asks a name back — this list exists only so a witness can assert
+// coverage over every row and catch a row added without its question being stated. It is derived from the
+// same two functions the refusals print, so it cannot drift from them.
+fn known_prompting_packages() -> List<KnownPromptingPackage> {
   [
-    known_prompting_package_name(package: ConsoleSetupPackage),
-    known_prompting_package_name(package: KeyboardConfigurationPackage),
-    known_prompting_package_name(package: TzdataPackage),
-    known_prompting_package_name(package: PostfixPackage),
-    known_prompting_package_name(package: IfupdownPackage),
-    known_prompting_package_name(package: NtpPackage),
+    ConsoleSetupPackage,
+    KeyboardConfigurationPackage,
+    TzdataPackage,
+    PostfixPackage,
+    IfupdownPackage,
+    NtpPackage,
+    OpenSshServerPackage,
+    CloudInitPackage,
   ]
-}
-
-fn package_is_known_prompting(name: NonEmptyStr) -> Bool {
-  known_prompting_package_names().any(candidate => candidate == name)
 }
 
 // WHAT A MISSING MIRROR IS, MODELLED. It is not an empty string and not a placeholder host: it is the
@@ -497,13 +646,6 @@ fn authorised_key_count(authorisation: AdminAccessAuthorisation) -> Int {
   list_length(items: authorisation.authorised_keys)
 }
 
-fn console_entry_is_unlocked(authorisation: AdminAccessAuthorisation) -> Bool {
-  match authorisation.console_entry {
-    ConsoleEntryUnlocked { reason: _ } => true
-    ConsoleEntryLocked => false
-  }
-}
-
 // The keyboard layout the seed states. This axis EXISTS because the upstream payload requires a
 // keyboard_layout string on a machine with no keyboard: the honest answer is that the value is
 // ceremonial, and saying so in the type is what stops a future edit from treating it as a real setting
@@ -541,13 +683,6 @@ type SeedAddressing = InstallerManaged | SeededNetplan { source: NonEmptyStr }
 // narrower promise. The audit treats them identically today, and keeping them apart is what lets a
 // future row say "dual-stack with no v6 route observed is a prompt" without rewriting the type.
 type SeedAddressFamily = DualStack | Ipv4Only
-
-fn addressing_is_seeded(addressing: SeedAddressing) -> Bool {
-  match addressing {
-    SeededNetplan { source: _ } => true
-    InstallerManaged => false
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 5. Target-disk selection: a rule over observed identity, never a device name.
@@ -685,43 +820,41 @@ fn first_unexamined_candidate(
   selector: TargetDiskSelector,
   observed: List<StorageDevice>,
 ) -> Optional<DiskSelectionRefusalCause> {
-  match observed.filter(device => rule_reaches_without_identity(selector: selector, device: device)).first() {
-    Present { value: device } => rule_reaches_but_identity_missing(selector: selector, device: device)
+  match observed
+    .filter(device => candidate_identity_is_unexamined(selector: selector, device: device))
+    .first() {
+    Present { value: device } => unexamined_candidate(selector: selector, device: device)
     Absent => Absent
   }
 }
 
-fn rule_reaches_without_identity(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
-  match selector {
-    ByObservedSerial { serial: _ } => disk_identity_is_unread(device: device)
-    ByCatalogIdentity { part_number: _, capacity_bytes: _ } => false
+// THE FILTER PREDICATE FOR THE ABOVE, a total match over the classifier's own result rather than a Bool
+// stored anywhere: it exists because the search has to say "keep this device", and a new StorageDevice or
+// TargetDiskSelector member has to land on one side of it. The decision itself stays in unexamined_candidate;
+// this function reports only whether that decision is a refusal worth surfacing.
+fn candidate_identity_is_unexamined(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  match unexamined_candidate(selector: selector, device: device) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
-// EXPORTED because "the probe never read this disk's serial" is a claim about the OBSERVATION, not about
-// the rule, and both the selection path and a witness need to state it the same way. Only an NVMe device
-// can be an unexamined candidate: a bare device with no serial has no catalog row to have missed, so it is
-// simply not the kind of thing a serial rule reaches.
-fn disk_identity_is_unread(device: StorageDevice) -> Bool {
-  match storage_device_serial(d: device) {
-    Present { value: _ } => false
-    Absent =>
-      match device {
-        NvmeDevice { catalog: _, serial: _, persistence: _ } => true
-        BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } =>
-          false
-      }
-  }
-}
-
-// THE PROBE IS ALLOWED TO HAVE NOT SEEN A SERIAL, AND THAT MUST BE SAID, NOT INFERRED. A disk whose
-// serial could not be read is neither a match nor a non-match: it is an unexamined candidate. Reporting
-// it as "zero matches" would tell the operator to tighten a rule that is already correct.
-fn rule_reaches_but_identity_missing(
+// ONE TOTAL FUNCTION OVER (SELECTOR, DEVICE), REPLACING THREE THAT each restated a match on a sum type as a
+// Bool that the next function then re-matched as True/False. The device match is exhaustive over
+// StorageDevice, so a new device kind must say whether an unread serial on it is a reportable state; it
+// cannot inherit "nothing to report" the way the deleted `_`-shaped helpers let it. EXPORTED because "the
+// probe never read this disk's serial" is a claim about the OBSERVATION, not about the rule, and both the
+// selection path and a witness must state it the same way.
+//
+// Only an NVMe device can be an unexamined candidate: a bare device with no serial has no catalog row to
+// have missed, so there is nothing for the probe to have failed to read, and a catalog-identity selector
+// names a part number and a size that the probe DID read — an unread serial does not block it.
+fn unexamined_candidate(
   selector: TargetDiskSelector,
   device: StorageDevice,
 ) -> Optional<DiskSelectionRefusalCause> {
   match selector {
+    ByCatalogIdentity { part_number: _, capacity_bytes: _ } => Absent
     ByObservedSerial { serial: _ } =>
       match storage_device_serial(d: device) {
         Present { value: _ } => Absent
@@ -732,7 +865,6 @@ fn rule_reaches_but_identity_missing(
             Absent
         }
       }
-    ByCatalogIdentity { part_number: _, capacity_bytes: _ } => Absent
   }
 }
 
@@ -753,11 +885,18 @@ type SeedAudit
 // scheme that hands the choice back, a missing mirror, and an entrypoint that does not exist. "A timezone
 // question" is the TzdataPackage mechanism with its question named, not a fifth mechanism — and that
 // decomposition is what lets a new package enter through PackageIntent without reopening the audit's shape.
+// FOUR WAYS A SEED BECOMES A QUESTION, PLUS THE FIFTH WE COULD NOT RULE OUT. The first four are mechanisms we
+// can name and have seen; the fifth is the honest limit of the model — a package nobody has checked. It is a
+// REFUSAL ARM, not a warning, because the claim the green arm makes is "nothing can ever be asked", and one
+// unexamined package is enough to make that claim false. Collapsing it into PackagePrompts would name a
+// question we have not observed (DESIGN.md §5, "no plausible output is fabricated"); collapsing it into
+// Success is the defect this enum's existence was supposed to prevent.
 type SeedInteractiveCause
   = PackagePrompts { name: NonEmptyStr, question: NonEmptyStr }
+  | PackagePromptingUnclassified { name: NonEmptyStr }
   | AddressingIsInstallerManaged
   | ArchiveMirrorAbsent
-  | NoEntrypointAtAll { keys: Int, console_unlocked: Bool }
+  | NoEntrypointAtAll { keys: Int, console_entry: ConsoleEntryAuthorisation }
 
 // THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
 // same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
@@ -774,13 +913,21 @@ type NonInteractiveProof {
 // the transport cannot honour.
 type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended { reason: NonEmptyStr }
 
+// THE STANZA IS DERIVED BY MATCHING THE TRANSPORT, NEVER BY RE-READING A BOOL THAT ALREADY FLATTENED IT.
+// The two arms are the two things the seed says on the kernel command line: either a console exists and is
+// answered by the unattended answer file, or there is no console to answer at all.
 fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleStanza {
-  match delivery_is_console_reachable(strategy: strategy) {
-    True =>
+  match strategy {
+    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } =>
       ConsoleAnsweredByUnattended {
         reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
       }
-    False => ConsoleSuppressed
+    PxeStrategy { boot_mode: UefiHttpBoot } =>
+      ConsoleAnsweredByUnattended {
+        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
+      }
+    PxeStrategy { boot_mode: LegacyBiosPxe { tftp_root: _ } } => ConsoleSuppressed
+    VirtualMediaStrategy { media_stem: _ } => ConsoleSuppressed
   }
 }
 
@@ -797,54 +944,73 @@ fn audit_altra_autoinstall_seed(
   entry: AdminAccessAuthorisation,
   strategy: SeedDeliveryStrategy,
 ) -> SeedAudit {
-  match list_length(items: entry.authorised_keys) == 0 && !console_entry_is_unlocked(authorisation: entry) {
-    True =>
-      SeedRefused {
-        cause: NoEntrypointAtAll {
-          keys: list_length(items: entry.authorised_keys),
-          console_unlocked: console_entry_is_unlocked(authorisation: entry),
-        },
+  match entry.console_entry {
+    ConsoleEntryLocked =>
+      match list_length(items: entry.authorised_keys) {
+        0 =>
+          SeedRefused {
+            cause: NoEntrypointAtAll { keys: 0, console_entry: entry.console_entry },
+          }
+        n => audit_seed_interactivity(
+          network: network,
+          install_packages: install_packages,
+          late_packages: late_packages,
+          locale: locale,
+          strategy: strategy,
+        )
       }
-    False =>
-      match prompt_over_locale(locale: locale) {
-        Present { value: question } =>
-          SeedRefused { cause: PackagePrompts { name: "locale" as NonEmptyStr, question: question } }
-        Absent =>
-          match archive_mirror_host(mirror: network.mirror) {
-            Absent => SeedRefused { cause: ArchiveMirrorAbsent }
-            Present { value: _ } =>
-              match addressing_is_seeded(addressing: network.addressing) {
-                False => SeedRefused { cause: AddressingIsInstallerManaged }
-                True =>
-                  match first_unseeded_prompter(intents: install_packages) {
-                    Present { value: offender } => SeedRefused {
-                      cause: PackagePrompts { name: offender.name, question: offender.question },
-                    }
+    ConsoleEntryUnlocked { reason: _ } => audit_seed_interactivity(
+      network: network,
+      install_packages: install_packages,
+      late_packages: late_packages,
+      locale: locale,
+      strategy: strategy,
+    )
+  }
+}
+
+// THE INTERACTIVITY CHAIN, PULLED OUT SO THE ENTRYPOINT GUARD STAYS ONE MATCH OVER THE CONSUMER'S SUM TYPE.
+// Ordered by which question the installer would ask FIRST, because the refusal an operator sees should be the
+// one they hit first: a locale question fires before the archive is ever contacted, and a missing mirror makes
+// the archive-location question unanswerable before any package is installed.
+fn audit_seed_interactivity(
+  network: SeedNetworkPosture,
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  locale: SeedLocale,
+  strategy: SeedDeliveryStrategy,
+) -> SeedAudit {
+  match prompt_over_locale(locale: locale) {
+    Present { value: question } =>
+      SeedRefused { cause: PackagePrompts { name: "locale" as NonEmptyStr, question: question } }
+    Absent =>
+      match network.mirror {
+        MirrorAbsent => SeedRefused { cause: ArchiveMirrorAbsent }
+        NamedMirror { host: _ } =>
+          match network.addressing {
+            InstallerManaged => SeedRefused { cause: AddressingIsInstallerManaged }
+            SeededNetplan { source: _ } =>
+              match first_blocking_refusal(intents: install_packages) {
+                Present { value: offender } => SeedRefused { cause: offender }
+                Absent =>
+                  match first_blocking_refusal(intents: late_packages) {
+                    Present { value: late_offender } => SeedRefused { cause: late_offender }
                     Absent =>
-                      match first_unseeded_prompter(intents: late_packages) {
-                        Present { value: late_offender } => SeedRefused {
-                          cause: PackagePrompts {
-                            name: late_offender.name,
-                            question: late_offender.question,
-                          },
-                        }
-                        Absent =>
-                          SeedIsNonInteractive {
-                            evidence: NonInteractiveProof {
-                              questions_closed: questions_closed_count(
-                                install_packages: install_packages,
-                                late_packages: late_packages,
-                                network: network,
-                              ),
-                              console_stanza: console_stanza_for(strategy: strategy),
-                            },
-                          }
+                      SeedIsNonInteractive {
+                        evidence: NonInteractiveProof {
+                          questions_closed: questions_closed_count(
+                            install_packages: install_packages,
+                            late_packages: late_packages,
+                            network: network,
+                          ),
+                          console_stanza: console_stanza_for(strategy: strategy),
+                        },
                       }
                   }
+              }
           }
       }
   }
-}
 }
 
 // A LOCALE CAN ITSELF BE THE QUESTION. Today both closed members are answerless, so this always returns
@@ -860,72 +1026,86 @@ fn prompt_over_locale(locale: SeedLocale) -> Optional<NonEmptyStr> {
 
 // AN OFFENDER IS A PACKAGE THAT PROMPTS AND WAS NOT SEEDED. A seeded prompter is not removed from the
 // tally: the debconf seed is what closed it, and the proof's count is the evidence of that work.
-type PromptingOffender { name: NonEmptyStr, question: NonEmptyStr }
-
-fn question_for_prompting_package(name: NonEmptyStr) -> Optional<NonEmptyStr> {
-  match name {
-    "console-setup" => Present { value: known_prompting_package_question(package: ConsoleSetupPackage) }
-    "keyboard-configuration" =>
-      Present { value: known_prompting_package_question(package: KeyboardConfigurationPackage) }
-    "tzdata" => Present { value: known_prompting_package_question(package: TzdataPackage) }
-    "postfix" => Present { value: known_prompting_package_question(package: PostfixPackage) }
-    "ifupdown" => Present { value: known_prompting_package_question(package: IfupdownPackage) }
-    "ntp" => Present { value: known_prompting_package_question(package: NtpPackage) }
-    _ => Absent
-  }
-}
-
-fn first_unseeded_prompter(intents: List<PackageIntent>) -> Optional<PromptingOffender> {
-  match intents.filter(intent => is_unseeded_prompter(intent: intent)).first() {
-    Present { value: offender } =>
-      match question_for_prompting_package(name: offender.name) {
-        Present { value: question } =>
-          Present { value: PromptingOffender { name: offender.name, question: question } }
-        Absent => Absent
-      }
+// THE AUDIT ASKS THE INTENT, NEVER THE STRING. Each intent becomes its own verdict, and the first verdict that
+// is not a ClosedQuestion becomes the refusal — so the mapping never needs an arm for a verdict that is not a
+// problem, and there is no `_` arm for an unknown package to fall through into. Removing the string-keyed
+// lookup is the actual fix: it could only answer "is this in the table", and its fail-open `_ => Absent` was
+// read by the audit as "nothing to answer", so an unclassified package earned the green arm.
+fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteractiveCause> {
+  match intents.filter(intent => intent_leaves_a_question(intent: intent)).first() {
+    Present { value: intent } => blocking_refusal(intent: intent)
     Absent => Absent
   }
 }
 
-// THE DEBCONF TEST IS PRESENCE OF A SEED, NOT ITS CONTENT. A seeded answer could still be wrong and this
-// module does not pretend to read debconf values; what it can say, and what determines whether the install
-// hangs, is whether an answer was supplied at all. Optional rather than Bool keeps "we have the value" from
-// being confused with "we have a value": Absent here means nobody will ever answer.
-fn debconf_seed_is_present(seed: Optional<NonEmptyStr>) -> Bool {
-  match seed {
+// THE FILTER PREDICATE FOR THE ABOVE, total over PackageIntent so a new arm must state whether it leaves a
+// question open; the refusal itself is produced only by blocking_refusal, so the two can never disagree.
+fn intent_leaves_a_question(intent: PackageIntent) -> Bool {
+  match blocking_refusal(intent: intent) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn is_unseeded_prompter(intent: PackageIntent) -> Bool {
-  package_is_known_prompting(name: intent.name) && !debconf_seed_is_present(seed: intent.debconf_seed)
+// ONE INTENT, ONE VERDICT, AT MOST ONE CAUSE. ClosedQuestion yields Absent because nothing is wrong; an
+// OpenQuestion names the debconf key to seed; the unclassified arm deliberately carries NO question field,
+// because this module has not observed a question from that package and printing one would be fabricating the
+// very evidence the refusal is complaining about.
+fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
+  match intent {
+    QuestionAnswered { package: _, debconf_seed: _ } => Absent
+    QuestionUnanswered { package: named } => Present {
+      value: PackagePrompts {
+        name: known_prompting_package_name(package: named),
+        question: known_prompting_package_question(package: named),
+      },
+    }
+    UnclassifiedPackage { name: un, debconf_seed: _ } =>
+      Present { value: PackagePromptingUnclassified { name: un } }
+  }
 }
 
-fn is_seeded_prompter(intent: PackageIntent) -> Bool {
-  package_is_known_prompting(name: intent.name) && debconf_seed_is_present(seed: intent.debconf_seed)
-}
-
+// THE ONE PREDICATE OVER AN OPTIONAL CAUSE, USED IN A FILTER. Total over both arms, so a future arm on
+// Optional here would be a compile error rather than a default.
 // HOW MANY QUESTIONS THE SEED CLOSED, WHICH IS THE SEED'S OWN EVIDENCE OF ITS INDEPENDENCE. Counted, not
 // asserted: a reader comparing two seed digests can see that the newer one closes more questions, which is
-// the only way a "we fixed the hang" claim becomes checkable rather than remembered. The final +1 is the
-// entrypoint question, closed by the authorisation the caller had to earn to get here.
+// the only way a "we fixed the hang" claim becomes checkable rather than remembered. Only an answered question
+// counts — an unclassified package contributes nothing, because it answered nothing. The final +1 is the
+// entrypoint question, closed by the authorisation the caller had to earn to get here. The addressing and
+// mirror terms match their source sum types directly rather than through a Bool helper.
+fn intent_answered_its_question(intent: PackageIntent) -> Bool {
+  match intent {
+    QuestionAnswered { package: _, debconf_seed: _ } => true
+    QuestionUnanswered { package: _ } => false
+    UnclassifiedPackage { name: _, debconf_seed: _ } => false
+  }
+}
+
 fn questions_closed_count(
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   network: SeedNetworkPosture,
 ) -> Int {
-  let seeded_prompters = install_packages.filter(intent => is_seeded_prompter(intent: intent)).length() + late_packages.filter(intent => is_seeded_prompter(intent: intent)).length()
-  let addressing_closed = match addressing_is_seeded(addressing: network.addressing) {
-    True => 1
-    False => 0
+  // COUNTED OVER THE INTENTS THEMSELVES, not over verdicts mapped from them. Mapping to a verdict and then
+  // filtering it would be a second, decorative pass: the green arm of the audit is only reachable when every
+  // intent left no question open, so such a filter is necessarily true of everything it sees — the shape the
+  // review called predicate dissolution, one layer deeper than the helpers it named. Counting the answered arm
+  // directly says the same thing once, and a new PackageIntent arm must state whether it counts as closed.
+  let closed = install_packages.filter(intent => intent_answered_its_question(intent: intent)).length() + late_packages.filter(intent => intent_answered_its_question(intent: intent)).length()
+  let addressing_closed = match network.addressing {
+    SeededNetplan { source: _ } => 1
+    InstallerManaged => 0
   }
-  let mirror_closed = match archive_mirror_host(mirror: network.mirror) {
-    Present { value: _ } => 1
-    Absent => 0
+  let mirror_closed = match network.mirror {
+    NamedMirror { host: _ } => 1
+    MirrorAbsent => 0
   }
-  seeded_prompters + addressing_closed + mirror_closed + 1
+  closed + addressing_closed + mirror_closed + 1
 }
+
+// TOTAL OVER PackageIntent, and the only place the proof's arithmetic decides what a closed question is. An
+// unanswered or unclassified intent contributes nothing: the first did not answer and the second was never
+// asked about. A new arm must say which side it is on rather than inheriting a count.
 
 // ---------------------------------------------------------------------------
 // 7. The seed record, its constructor, and the projection into upstream's payload.
@@ -940,6 +1120,7 @@ type AltraAutoinstallSeed sole_constructor {
   target: AltraAutoinstallTargetStanding,
   network: SeedNetworkPosture,
   install_drivers: List<AltraInstallDriver>,
+  loadable_modules: List<AltraLoadableModule>,
   late_drivers: List<AltraLateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
@@ -961,6 +1142,7 @@ fn build_altra_autoinstall_seed(
   target: AltraAutoinstallTarget,
   network: SeedNetworkPosture,
   install_drivers: List<AltraInstallDriver>,
+  loadable_modules: List<AltraLoadableModule>,
   late_drivers: List<AltraLateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
@@ -989,6 +1171,7 @@ fn build_altra_autoinstall_seed(
               target: admitted,
               network: network,
               install_drivers: install_drivers,
+              loadable_modules: loadable_modules,
               late_drivers: late_drivers,
               install_packages: install_packages,
               late_packages: late_packages,
@@ -1105,6 +1288,7 @@ fn render_altra_autoinstall_seed(seed: AltraAutoinstallSeed) -> NonEmptyStr {
     concat("entry=", entrypoint_diagnostic(entry: seed.entry)),
     concat("password=", credential_diagnostic(posture: seed.credential)),
     concat("drivers=", install_driver_list_diagnostic(drivers: seed.install_drivers)),
+    concat("modules=", loadable_module_list_diagnostic(modules: seed.loadable_modules)),
     concat("late=", late_driver_list_diagnostic(drivers: seed.late_drivers)),
     concat("packages=", package_list_diagnostic(intents: seed.install_packages)),
     concat("latepackages=", package_list_diagnostic(intents: seed.late_packages)),
@@ -1219,12 +1403,15 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
   to_string(count) as NonEmptyStr
 }
 
+// THE CONSOLE TOKEN IS DERIVED FROM THE CONSUMER'S OWN SUM TYPE, not from a Bool beside it. The key count is
+// rendered in every case — including 0 — because "keys=0,console=unlocked" and "keys=1,console=unlocked" are
+// different postures and a digest that flattened them would hide a dropped authorized key.
 fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
   match authorised_key_count(authorisation: entry) {
     0 =>
-      match console_entry_is_unlocked(authorisation: entry) {
-        True => "keys=0,console=unlocked"
-        False => "keys=0,console=locked"
+      match entry.console_entry {
+        ConsoleEntryUnlocked { reason: _ } => "keys=0,console=unlocked"
+        ConsoleEntryLocked => "keys=0,console=locked"
       }
     n => concat(concat("keys=", to_string(n) as NonEmptyStr), ",console=irrelevant") as NonEmptyStr
   }
@@ -1251,13 +1438,36 @@ fn credential_diagnostic(posture: AdminCredentialPosture) -> NonEmptyStr {
 // and the second is worthless as evidence.
 fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmptyStr {
   render_sorted_names(
-    names: drivers.map(driver => altra_install_driver_package(driver: driver)).map(name => name as String),
+    names: drivers
+      .map(driver => concat("pkg:", altra_install_driver_package(driver: driver)) as String),
+  )
+}
+
+// THE LOADABLE-MODULE LIST, RENDERED BY ITS OWN TOKEN so the digest distinguishes "load this module" from
+// "install this package" even where the two share a spelling — a firmware package and a driver module can both
+// plausibly be called r8169, and the two decisions fail differently (apt fails loudly at minute twelve; a
+// missing module fails as "no disks found" and gets blamed on the backplane). The Kconfig symbol rides in the
+// token: two rows claiming one object stem from different symbols is a real modeling error, and a digest that
+// equated them would hide it.
+fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmptyStr {
+  render_sorted_names(
+    names: modules
+      .map(module =>
+        concat(
+          concat("mod:", altra_loadable_module(driver: module)),
+          concat("=", loadable_module_kconfig_symbol(driver: module)),
+        ) as String),
   )
 }
 
 fn late_driver_list_diagnostic(drivers: List<AltraLateDriver>) -> NonEmptyStr {
   render_sorted_names(
-    names: drivers.map(driver => altra_late_driver_module(driver: driver)).map(name => name as String),
+    names: drivers
+      .map(driver =>
+        concat(
+          concat("mod:", altra_late_driver_module(driver: driver)),
+          concat("=", altra_late_driver_kconfig_symbol(driver: driver)),
+        ) as String),
   )
 }
 
@@ -1271,10 +1481,14 @@ fn package_list_diagnostic(intents: List<PackageIntent>) -> NonEmptyStr {
   )
 }
 
+// ONE TOKEN PER CLOSED ARM, DERIVED FROM THE VERDICT RATHER THAN FROM A PRESENCE PREDICATE. An answered
+// question, an unanswered one and an unclassified one are three different things to a reader comparing two
+// seed digests, and the old code could not tell the last two apart because both had no seed to print.
 fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
-  match debconf_seed_is_present(seed: intent.debconf_seed) {
-    True => concat(intent.name, "+seeded") as NonEmptyStr
-    False => intent.name
+  match package_prompting_verdict(intent: intent) {
+    ClosedQuestion { name: n, question: _ } => concat(n, "+answered") as NonEmptyStr
+    OpenQuestion { name: n, question: _ } => concat(n, "+UNANSWERED") as NonEmptyStr
+    UnclassifiedPrompting { name: n } => concat(n, "+unclassified") as NonEmptyStr
   }
 }
 
