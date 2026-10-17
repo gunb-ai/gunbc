@@ -39,7 +39,6 @@ data verify_obligation_run_bound: Second = second(count: 2700)
 data review_obligation_run_bound: Second = second(count: 2700)
 data audit_obligation_run_bound: Second = second(count: 2700)
 data acceptance_outcome_obligation_run_bound: Second = second(count: 2700)
-data acceptance_outcome_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
