@@ -40,6 +40,16 @@ type FirstDuplicateScan<T>
   = FirstDuplicateNotFound { seen: Map<String, Bool> }
   | FirstDuplicateFound { value: T }
 
+// The first element a predicate keeps, in list order.
+fn first_where<T>(xs: List<T>, keep: fn(T) -> Bool) -> T? {
+  fold(xs, init: none, f: fn(acc, x) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if keep(x) { Present { value: x } } else { none }
+    }
+  })
+}
+
 fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
   match fold(xs, init: FirstDuplicateNotFound { seen: empty_map() }, f: fn(acc, x) {
     match acc {

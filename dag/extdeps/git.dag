@@ -1024,6 +1024,27 @@ type SafeDirectoryGrant {
 
 data git_safe_directory_key: String = "safe.directory"
 
+// GIT'S OWN PARTIAL-CLONE CONFIGURATION KEYS, cited from git-config(1) (git-scm.com/docs/git-config).
+// `extensions.partialClone` names the promisor remote; `remote.<name>.promisor` marks that remote as
+// a promisor; `remote.<name>.partialclonefilter` is the filter-spec (`blob:none` for a clone
+// `--filter=blob:none`). The regexp forms are git config --get-regexp's patterns, not nicknames.
+data git_config_key_extensions_partial_clone: String = "extensions.partialClone"
+
+data git_config_regexp_remote_promisor: String = "remote\\..*\\.promisor"
+
+data git_config_regexp_remote_partialclonefilter: String = "remote\\..*\\.partialclonefilter"
+
+data git_rev_parse_is_shallow_true: String = "true"
+
+// git-upload-pack(1) ENVIRONMENT GIT_NO_LAZY_FETCH (git-scm.com/docs/git-upload-pack):
+// when serving a partial clone, upload-pack internally sets this variable to 1 so it will
+// not lazy-fetch missing objects from the source's promisor remote. GIT_NO_LAZY_FETCH=0 is
+// the documented override. These are git's names; a host's packaged version is a receipt
+// in the observing layer, not a fact of git.
+data git_no_lazy_fetch_environment: String = "GIT_NO_LAZY_FETCH"
+
+data git_no_lazy_fetch_internally_set_value: String = "1"
+
 fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]
 }
@@ -1126,6 +1147,17 @@ fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
 
 fn shape_git_rev_parse_head_args() -> List<String> {
   ["rev-parse", "HEAD"]
+}
+
+// A worktree removal WITHOUT force: git itself refuses a tree with uncommitted changes, so the
+// release's own cleanliness check is backed by the tool's.
+fn shape_git_worktree_remove_argv(path: FilePath) -> List<String> {
+  ["worktree", "remove", path as String]
+}
+
+// Remote-tracking branches containing HEAD; non-empty means the head is on a remote.
+fn shape_git_branch_remote_contains_head_args() -> List<String> {
+  ["branch", "-r", "--contains", "HEAD"]
 }
 
 fn shape_git_merge_base_args(left: String, right: String) -> List<String> {

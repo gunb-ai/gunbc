@@ -251,12 +251,13 @@ fn artifact_signature(a: FleetConvergePlanArtifact) -> String {
 }
 
 fn signature_of(request: FleetConvergeRequest) -> String {
-  artifact_signature(
-    a: fleet_converge_plan_artifact_of_request(
-      request: request,
-      prior_generation: 0,
-    ),
-  )
+  match fleet_converge_plan_artifact_of_request(
+    request: request,
+    prior_generation: 0,
+  ) {
+    Absent => "LEASE_GENERATION_REFUSED"
+    Present { value: a } => artifact_signature(a: a)
+  }
 }
 
 fn projections_differ(a: FleetConvergeRequest, b: FleetConvergeRequest) -> Bool {
@@ -306,20 +307,21 @@ test fn the_same_cap_population_moves_the_full_host_projection() -> Bool {
 }
 
 test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
-  string_contains(
-    s: fleet_converge_plan_artifact_of_request(
-      request: FullHostConverge {
-        host: operator_host_srv3 as NonEmptyStr,
-        observed_timers: [],
-        observed_caps: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
-        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-        observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
-        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-      },
-      prior_generation: 0,
-    ).plan_body,
-    pattern: "REFUSED-OBSERVATION fabric-cell",
-  )
+  match fleet_converge_plan_artifact_of_request(
+    request: FullHostConverge {
+      host: operator_host_srv3 as NonEmptyStr,
+      observed_timers: [],
+      observed_caps: [],
+      observed_slots: [],
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
+    },
+    prior_generation: 0,
+  ) {
+    Absent => false
+    Present { value: a } =>
+      string_contains(s: a.plan_body, pattern: "REFUSED-OBSERVATION fabric-cell")
+  }
 }

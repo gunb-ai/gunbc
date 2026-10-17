@@ -365,6 +365,8 @@ type LaunchUnitStanding {
   dashboard: DashboardServiceStanding
   exit_path: BeltEventPathStanding
   answer_path: BeltEventPathStanding
+  publication_path: BeltEventPathStanding
+  publication_helper: BeltOneshotStanding
   oneshot: BeltOneshotStanding
 }
 
@@ -397,6 +399,8 @@ fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
     dashboard_service_standing_text(s: s.dashboard), "; ",
     belt_event_path_standing_text(s: s.exit_path), "; ",
     belt_event_path_standing_text(s: s.answer_path), "; ",
+    belt_event_path_standing_text(s: s.publication_path), "; ",
+    belt_oneshot_standing_text(s: s.publication_helper), "; ",
     belt_oneshot_standing_text(s: s.oneshot),
   ], "")
 }
