@@ -459,9 +459,9 @@ fn route_eq(a: FirmwareNetworkBootPreparationRoute, b: FirmwareNetworkBootPrepar
         RedfishBiosAttributes { service_root: br, attribute: ba } => ar == br && aa == ba
         _ => false
       }
-    UefiShellOverSol { sol_channel: ac, script: as } =>
+    UefiShellOverSol { sol_channel: ac, script: asc } =>
       match b {
-        UefiShellOverSol { sol_channel: bc, script: bs } => ac == bc && as == bs
+        UefiShellOverSol { sol_channel: bc, script: bs } => ac == bc && asc == bs
         _ => false
       }
     HumanConsole { instruction: ai } =>
