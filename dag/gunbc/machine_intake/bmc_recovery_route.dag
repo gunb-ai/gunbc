@@ -788,7 +788,7 @@ fn admit_recovery_manager_reset_to_defaults(
   } {
     ResetWriteRefused {
       cause: recovery_reset_warrant_refusal_text(
-        sighting: recovery_policy_sighted_on_controller(route: route),
+        warrant: recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)),
       ),
     }
   } else if match recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) {
@@ -1003,16 +1003,18 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
   match readback {
     FactoryCredentialActiveAwaitingChange { message_id: message_id, evidence: evidence, observed_at: observed_at } =>
       if redfish_message_id_is_password_change_required(id: message_id as String) {
-        Present {
-          value: ProvenResetReadback {
-            message_id: message_id,
-            evidence: evidence,
-            observed_at: observed_at,
-            // the bytes the proof rests on travel with it, so a reader of the standing reaches the
-            // capture without leaving the model
-            capture: recovery_post_reset_readback_capture_ref,
-          },
+        // BOUND BEFORE BEING WRAPPED, not nested inside `value:`: `value: ProvenResetReadback { ... }`
+        // reads as a type annotation followed by a block, and the compiler resolved the two if-branches
+        // to ProvenResetReadback vs Optional and refused the function.
+        let proven_readback = ProvenResetReadback {
+          message_id: message_id,
+          evidence: evidence,
+          observed_at: observed_at,
+          // the bytes the proof rests on travel with it, so a reader of the standing reaches the
+          // capture without leaving the model
+          capture: recovery_post_reset_readback_capture_ref,
         }
+        Present { value: proven_readback }
       } else {
         Absent
       }
@@ -1086,7 +1088,14 @@ type RecoveryInBandRoute {
 type InBandRecoveryOutcome
   = RecoveryHandedToOnboarding {
       controller: BmcAccessObservation
-      readback: RecoveryFactoryCredentialReadback
+      // SEALED, AND MINTED ONLY FROM A READBACK THAT PROVES THE RESET (review 81308's requested fix). This
+      // used to be a bare RecoveryFactoryCredentialReadback plus recovery_standing_handed_off re-checking
+      // it on every call -- validation standing where construction was available (§5), and the reason a
+      // hand-off could be BUILT around a ReadbackInconclusive. The arm is now unwritable with an unproven
+      // readback: the only mint of ProvenResetReadback is recovery_readback_proves_reset, it answers
+      // Absent unless the message identity matches, and the type is sole_constructor so nothing outside
+      // this module can build one. The Bool is deleted; consumers match the arm.
+      proven: ProvenResetReadback
       writes: List<RecoveryWriteRecord>
     }
   | RecoveryHostUnreachable { cause: RecoveryRequiresReachableHostOS }
