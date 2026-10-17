@@ -1978,6 +1978,13 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
       DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
       DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
+      // The posture op is declared and ordered but not yet executed by this apply; the claim
+      // (test.claim.roadmap.worker_dedicated_account_witness
+      // the_shared_repository_posture_runs_before_the_attempt_worktree_is_added) pins its presence in
+      // the plan and its position, and roadmap_dashboard_instance_apply owns the exec step beside the
+      // migration argv. Executing it here while the plan is dry-run would make the apply run a write
+      // the plan does not know about.
+      DashboardEnsureGitSharedRepositoryPosture { repo: _ } => false
     })
 }
 
