@@ -980,30 +980,11 @@ pub fn peel_never_identity_candidate(n: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> 
     }
 }
 
-pub fn never_home_local_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    match (env.module_path.clone() == never_type_declaration().module_path.clone()) {
-        true => match v1_rt::map_get(
-            &env.str_bindings.clone(),
-            never_type_declaration().decl_name.clone(),
-        ) {
-            Some(binding) => Some(binding.resolved.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-        false => std::option::Option::None,
-    }
-}
-
 pub fn never_identity_node(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    match crate::v1_compiler_infer_env::symbol_index_lookup(
+    crate::v1_compiler_infer_env::symbol_index_lookup(
         env.symbol_index.clone(),
         crate::std_primitive_projection::never_type_qualified_path(),
-    ) {
-        Some(indexed) => Some(indexed.clone()),
-        std::option::Option::None => match never_home_local_declaration(env.clone()) {
-            Some(local) => Some(local.clone()),
-            std::option::Option::None => std::option::Option::None,
-        },
-    }
+    )
 }
 
 pub fn candidate_joins_never_identity(n: Rc<Node>, identity: Rc<Node>) -> bool {

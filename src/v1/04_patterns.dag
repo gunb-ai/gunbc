@@ -571,26 +571,8 @@ fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
   }
 }
 
-fn never_home_local_declaration(env: TypeEnv) -> Optional<Node> {
-  match env.module_path == (never_type_declaration.module_path as String) {
-    true =>
-      match map_get(env.str_bindings, never_type_declaration.decl_name as String) {
-        Present { value: binding } => Present { value: binding.resolved }
-        Absent => Absent
-      }
-    false => Absent
-  }
-}
-
 fn never_identity_node(env: TypeEnv) -> Optional<Node> {
-  match symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path()) {
-    Present { value: indexed } => Present { value: indexed }
-    Absent =>
-      match never_home_local_declaration(env: env) {
-        Present { value: local } => Present { value: local }
-        Absent => Absent
-      }
-  }
+  symbol_index_lookup(index: env.symbol_index, qualified_name: never_type_qualified_path())
 }
 
 // IDENTITY, NOT SPELLING: Node.ident is the parser's interned NAME, so joining on it would admit
