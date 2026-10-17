@@ -368,7 +368,12 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
 
 data recovery_witness_run: ConvergenceRunId = "inband-recovery-witness-run" as ConvergenceRunId
 
-data recovery_witness_unit_key: StepSubjectKey = "recovery-unit-inband-witness" as StepSubjectKey
+// THE SAME UNIT THE ROUTE FIXTURES STAND ON, ON PURPOSE: the guard in access_discover compares the
+// standing's unit key against the step instance's, so a witness key that did not name the fixture's unit
+// would make every "the arm fires" claim false. It was not hypothetical: while this entry refused to
+// compile, no claim body executed at all, so a key mismatch that made all of these false was never
+// observed. The foreign-unit key below is what a genuine cross-wire looks like.
+data recovery_witness_unit_key: StepSubjectKey = "bmc-recovery-fixture-unit" as StepSubjectKey
 
 data recovery_other_unit_key: StepSubjectKey = "some-other-unit-inband-witness" as StepSubjectKey
 
@@ -397,6 +402,27 @@ fn recovery_completed_standing() -> InBandRecoveryStanding {
 fn access_refusal_is_the_recovery_arm(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
   match step_outcome_refusal(outcome: o) {
     Present { value: AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: _ } } => true
+    _ => false
+  }
+}
+
+// WHICH ARM THE STEP REFUSED WITH, so a claim can insist on the MISTAKE rather than on "some refusal". A
+// claim that only asked for "not the recovery arm" would stay green when a crossed wire was silently
+// dropped, which is precisely the behaviour that used to be the defect.
+fn access_refusal_is_wrong_unit_arm(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: _, step_unit: _ } } => true
+    _ => false
+  }
+}
+
+// THE PAIRING, READ OUT OF THE REFUSAL. Both keys travel in the carrier, so the claim can check WHICH two
+// units were crossed rather than settling for "a refusal happened".
+fn access_wrong_unit_pair(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match step_outcome_refusal(outcome: o) {
+    Present { value: AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: s, step_unit: u } } =>
+      (s as String) == (recovery_witness_unit_key as String)
+        && (u as String) == (recovery_other_unit_key as String)
     _ => false
   }
 }
@@ -443,6 +469,37 @@ test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route
         locked: Present { value: recovery_locked_standing_on_a_release_nobody_measured() },
       ),
     ) == false
+}
+
+// THE CROSS-WIRE IS REFUSED LOUDLY, NOT DROPPED SILENTLY. The check above only insists that a foreign
+// standing does not purchase the recovery arm -- which a silent `none` also satisfied, and satisfying it
+// that way was the defect: the caller handed in an observation and the step behaved as though none had
+// been supplied. So the pairing gets its own refusal, and this claim asks for THAT one and for both unit
+// keys inside it. A unit-key mismatch is a defect in whoever wired the fold, and §5's "a failure arm
+// refuses, never widens" means the run stops rather than continuing down the out-of-band path.
+test fn a_recovery_standing_wired_to_the_wrong_unit_refuses_naming_both_units() -> Bool {
+  // one standing, two wirings: the ONLY difference between the two calls below is which unit the step
+  // instance names, so the pair of refusals is entirely about the pairing
+  let standing = recovery_locked_standing_on_a_release_nobody_measured()
+  let crossed = access_discover(
+    key: step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_other_unit_key),
+    read: read_mtjade1_current_manager_read(),
+    locked: Present { value: standing },
+  )
+  // it IS a refusal, it is the wrong-unit one, and the carrier names which two units were crossed
+  access_refusal_is_wrong_unit_arm(o: crossed)
+    && access_wrong_unit_pair(o: crossed)
+    // it is NOT the recovery arm: a foreign standing still buys nothing for this board
+    && access_refusal_is_the_recovery_arm(o: crossed) == false
+    // the SAME standing against the unit it names still gets the recovery arm -- so the new refusal has
+    // not swallowed the case it was added beside, which is the way this kind of guard usually goes wrong
+    && access_refusal_is_the_recovery_arm(
+      o: access_discover(
+        key: step_instance_key(run: recovery_witness_run, step: access_discover_step_ref, subject: recovery_witness_unit_key),
+        read: read_mtjade1_current_manager_read(),
+        locked: Present { value: standing },
+      ),
+    )
 }
 
 // THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS. §3: "a stale symbol is

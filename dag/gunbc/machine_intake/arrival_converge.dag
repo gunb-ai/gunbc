@@ -524,6 +524,18 @@ type ArrivalStepRefusal
   // access, and nothing downstream may treat it as such -- it stops the run exactly like any other
   // refusal. IntakePhase is untouched: this is a refusal of a step already in the phase order, not a
   // new phase, so IntakePhase in this module stays the only authority over the order (§3).
+  // THE CALLER'S WIRING MISTAKE IS REFUSED, NOT IGNORED. The standing must name the unit the step instance
+  // names -- both sides are branded strings from different modules, so they are compared as whole strings,
+  // and compared at all rather than trusting the caller passed the right recovery. What this function may
+  // NOT do is answer `none` to a mismatch: that is indistinguishable from "nobody supplied an observation",
+  // so a caller that paired this board with another board's standing would send the run down the
+  // out-of-band path as if nothing had been said -- the wrong-unit observation disappears and the defect
+  // stays in the wiring. §5: "every path succeeds fully or fails with a typed, located diagnostic", and "a
+  // failure arm refuses, never widens". This module already refuses the same class of mistake loudly
+  // (IdentityBindAccessForAnotherInstance, BmcSecureIdentityForAnotherInstance, AccessReadForAnotherUnit),
+  // which is why the silent `none` here was the outlier. Both keys travel so the pairing is checkable
+  // from the refusal alone.
+  | AccessDiscoverRecoveryStandingForAnotherUnit { standing_unit: NonEmptyStr, step_unit: StepSubjectKey }
   | AccessDiscoverCredentialUnknownRecoveryRouteAvailable { cause: RecoveryRouteUnavailable }
   | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
   | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }
@@ -619,7 +631,17 @@ fn access_discover_refusal_for_locked_credential(
       // trusting that the caller passed the right recovery: minting this arm from another unit's locked
       // standing would send a healthy board off to find a rescue USB.
       if (s.subject.subject.unit_key as NonEmptyStr) != (key.subject as NonEmptyStr) {
-        none
+        // REFUSED, NOT DROPPED. `none` here meant "no observation was supplied", which is a different fact:
+        // an observation WAS supplied and it belongs to another unit. A caller that crossed two boards'
+        // wires got a run that quietly continued as if nothing had been observed, so the only trace of the
+        // defect was a healthy board walking the out-of-band path. §5: "every path succeeds fully or fails
+        // with a typed, located diagnostic" -- and "a failure arm refuses, never widens".
+        Present {
+          value: AccessDiscoverRecoveryStandingForAnotherUnit {
+            standing_unit: s.subject.subject.unit_key as NonEmptyStr,
+            step_unit: key.subject,
+          },
+        }
       } else {
         match recovery_route_unavailability(standing: s) {
           Present { value: cause } =>
