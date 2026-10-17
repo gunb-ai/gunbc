@@ -409,6 +409,7 @@ mod probe {
         );
 
         let sources = corpus_on_disk();
+        let content_by_path: BTreeMap<String, String> = sources.iter().cloned().collect();
         let module_by_path: BTreeMap<String, String> = sources
             .iter()
             .map(|(p, c)| (p.clone(), module_of(c)))
@@ -511,13 +512,61 @@ mod probe {
             return;
         }
 
+        // MODE PERFILE: run each candidate through the SAME host function the .dag probes call
+        // (gunbc.compile_census_probe's `compile_dag_diagnostic_census` builtin), one file at a time.
+        // That is the measurement the corpus's own probes make, so the numbers here are the numbers
+        // those probes see; the cost is one compile per file, with imports read from disk.
+        if mode.trim() == "PERFILE" || mode.trim().starts_with("PERFILE:") {
+            let list: Vec<String> = if mode.trim() == "PERFILE" {
+                candidate_paths.iter().cloned().collect()
+            } else {
+                mode.split_once(':')
+                    .map(|(_, rest)| {
+                        rest.split(',')
+                            .map(|p| p.trim().to_string())
+                            .filter(|p| !p.is_empty())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            for path in list.iter() {
+                let content = match content_by_path.get(path) {
+                    Some(c) => c.clone(),
+                    std::option::Option::None => {
+                        println!("PERFILE_SKIP\t{path}\tnot-in-corpus");
+                        continue;
+                    }
+                };
+                let census = crate::cli_run::emit_host::compile_dag_diagnostic_census(&content);
+                match census {
+                    crate::cli_run::CompileDiagnosticCensus::Observed(rows) => {
+                        for row in rows.iter() {
+                            println!(
+                                "ROW\t{path}\tclass={}\tsubject={}\tblocking={}\tcount={}",
+                                row.diagnostic_class, row.subject_name, row.blocking, row.count
+                            );
+                        }
+                        println!("PERFILE_DONE\t{path}\trows={}", rows.len());
+                    }
+                    crate::cli_run::CompileDiagnosticCensus::NotRunnable(cause) => {
+                        println!("PERFILE_NOT_RUNNABLE\t{path}\tcause={cause}");
+                    }
+                }
+            }
+            println!(
+                "PROBE phase=perfile-done files={} t={}s",
+                list.len(),
+                elapsed_secs(&started)
+            );
+            return;
+        }
+
         // ---- MODE COMPILE: the named files plus their transitive imports, through resolve+infer
         let path_by_module: BTreeMap<String, String> = module_by_path
             .iter()
             .filter(|(_, m)| !m.is_empty())
             .map(|(p, m)| (m.clone(), p.clone()))
             .collect();
-        let content_by_path: BTreeMap<String, String> = sources.iter().cloned().collect();
         let mut selected: BTreeSet<String> = Default::default();
         if mode.trim() == "ALL" {
             selected = candidate_paths.clone();
