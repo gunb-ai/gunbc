@@ -9,7 +9,7 @@ import std.optional { Optional, Present, Absent }
 // rebuilt each step with two fields changed and the rest carried unchanged.
 // STANDING: UNQUALIFIED. The seed emitter's realization exceeds the stated minimum: allocation ops and
 // bytes per step are orders of magnitude above the same algorithm with the accumulator moved (re-derived
-// on every run of tools/emit_state_threading_reading.sh, which states its predictions before the numbers). The boundary is three layers and each blocks the next: the ownership fact
+// on every run of `gunbc test //gunbc/instruments:native-allocation-observation`, which prints the counts beside the declared reference). The boundary is three layers and each blocks the next: the ownership fact
 // (field-granular last use of a dying owned record; src/v1/ownership.dag), then the representation
 // (an owned record that dies need not be an Rc; v1 wrap_decision/translate), then the emit. The trigger
 // that retires this standing is the emitted form meeting the minimum, not the ownership fact alone.

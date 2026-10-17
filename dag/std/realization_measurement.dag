@@ -34,6 +34,7 @@ import std.realization_schedule {
   cost_account_time_count,
 }
 import std.optional { Absent, Present }
+import std.checked_arithmetic { checked_int_to_nat }
 
 // PEAK AND CURRENT ARE DIFFERENT QUESTIONS AND ONLY ONE OF THEM CAN SEE A RELEASE.
 //
@@ -111,9 +112,30 @@ resource AllocationCounter {
   release {}
 }
 
+// AllocationObserved IS A SPAN: the operations and requested bytes between two readings of the monotone
+// counters. AllocationUnobservable names which axis could not be taken and why; it is the only arm a
+// process that selected no counting allocator can produce, and it carries no number.
 type AllocationObservation
   = AllocationObserved { operations: Int, bytes_requested: ByteSize }
   | AllocationUnobservable { axis: String, reason: String }
+
+// THE ONE FOLD FROM RAW READINGS TO THE TYPED OBSERVATION. A caller reads the counters only after
+// observed_allocation_available answered true -- the realization's own statement that the selected main
+// registered the counting allocator before any read, never an inference from a count -- so an empty span in
+// a selecting process is AllocationObserved with zero operations. A byte counter that went backwards has no
+// ByteSize and is unobservable on that axis, never a fabricated zero.
+fn allocation_span_observation(operations_before: Int, operations_after: Int, bytes_before: Int, bytes_after: Int) -> AllocationObservation {
+  match checked_int_to_nat(n: bytes_after - bytes_before) {
+    Present { value: n } => AllocationObserved { operations: operations_after - operations_before, bytes_requested: byte_size(count: n) }
+    Absent => AllocationUnobservable { axis: "bytes_requested", reason: "the byte counter read lower than its earlier reading" }
+  }
+}
+
+// The answer for a process whose selection did not register the counting allocator. It carries no number,
+// so a process that still allocates reads unobservable, not zero.
+fn allocation_provider_not_selected() -> AllocationObservation {
+  AllocationUnobservable { axis: "allocation", reason: "this process did not select the counting allocator" }
+}
 
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
   match o {
@@ -180,6 +202,15 @@ type NativeResidencySample {
 // AllocationCounter-demanding native entry is built with (see AllocationCounter). The label plays
 // observed_monotonic_nanos's anti-memoization role and is never identity material. A process whose
 // allocator is not the counting one REFUSES; zero is a reading and absence is not.
+
+// HAND-RUST GATE explicit deferral for the allocation seam. The interpreter arms free_call.observed_allocation_available
+// (answers false), free_call.observed_allocation_operations and free_call.observed_allocation_bytes (refuse) in
+// v1_interpreter.rs are bounded seed-retained arms of the modeled ObserveAllocationAtSubject effect, not a
+// decision authority: the interpreter has no counting allocator to read. Lane: v1-hand-queue-drain. Concrete
+// ROADMAP row: 'Get hand-written Rust in this repository down to zero' (authority
+// dag/gunbc/v1/v1_deletion_plan.dag). Dissolve-on: v1-interpreter-delete removes the seed arms. The
+// CountingAllocator itself is emitted-runtime text (src/v1/runtime_rust.dag), not hand Rust: v1_rt.rs is its
+// generated mirror, and its per-method calibration is the generated counting_allocator_tests module.
 
 // HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
 // v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject

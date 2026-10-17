@@ -19630,8 +19630,18 @@ fn native_claim_allocator_lines(bindings: List<NativeEffectBindingText>, crate_n
   if native_binds_allocation_counter(bindings: bindings, crate_name: crate_name) {
     concat(
       "#[global_allocator]", "\n",
-      "static COUNTING_ALLOCATOR: ", crate_name, "::v1_rt::CountingAllocator = ", crate_name, "::v1_rt::CountingAllocator;", "\n",
+      "static COUNTING_ALLOCATOR: ", crate_name, "::v1_rt::CountingAllocator = ", crate_name, "::v1_rt::CountingAllocator::new();", "\n",
       "\n")
+  } else { "" }
+}
+
+// AVAILABILITY IS THE SELECTION'S OWN STATEMENT, MADE BEFORE ANY READ. The same predicate that renders the
+// allocator renders its registration as the first statement of main, so a binary that installed the
+// counting allocator says so and a binary that did not says nothing: the reader's `unobservable` is then
+// the absence of that statement, never an inference from a count and never set in every binary.
+fn native_claim_allocator_registration_lines(bindings: List<NativeEffectBindingText>, crate_name: String) -> String {
+  if native_binds_allocation_counter(bindings: bindings, crate_name: crate_name) {
+    concat("    ", crate_name, "::v1_rt::register_counting_allocator(&COUNTING_ALLOCATOR);", "\n")
   } else { "" }
 }
 
@@ -19651,6 +19661,7 @@ fn emit_native_claim_driver_effect_main_rs(crate_name: String, pipeline_mod: Str
       native_claim_allocator_lines(bindings: bindings, crate_name: crate_name),
       "#[tokio::main(flavor = \"current_thread\")]", "\n",
       "async fn main() \{", "\n",
+      native_claim_allocator_registration_lines(bindings: bindings, crate_name: crate_name),
       binding_lines,
       "    let report = match native_claim_report(", effect_args, ").await \{", "\n",
       "        Ok(report) => report,", "\n",

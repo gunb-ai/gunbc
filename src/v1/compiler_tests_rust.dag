@@ -1853,7 +1853,13 @@ fn ct_allocator_is_installed_only_by_demand_test() -> String {
     "        });\n",
     "        assert!(!render(Vec::new()).contains(\"#[global_allocator]\"), \"a pure main must carry no allocator\");\n",
     "        assert!(!render(vec![other.clone()]).contains(\"#[global_allocator]\"), \"an effect main without the AllocationCounter must carry no allocator\");\n",
-    "        assert!(render(vec![other, counter]).contains(\"#[global_allocator]\"), \"positive control: a main binding the AllocationCounter carries it\");\n",
+    "        let registered = |main: &str| main.contains(\"register_counting_allocator(&COUNTING_ALLOCATOR)\");\n",
+    "        assert!(!registered(&render(Vec::new())), \"a pure main must register no provider\");\n",
+    "        assert!(!registered(&render(vec![other.clone()])), \"an effect main without the AllocationCounter must register no provider\");\n",
+    "        let demanding = render(vec![other, counter]);\n",
+    "        assert!(demanding.contains(\"#[global_allocator]\"), \"positive control: a main binding the AllocationCounter carries it\");\n",
+    "        assert!(registered(&demanding), \"the allocator and its registration come from the one selection\");\n",
+    "        assert!(demanding.find(\"register_counting_allocator\").unwrap() < demanding.find(\"native_claim_report(\").unwrap(), \"registration precedes the first read\");\n",
     "    }\n\n",
   )
 }

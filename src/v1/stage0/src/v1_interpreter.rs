@@ -24124,6 +24124,16 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
             // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
             // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
             // reading (std.realization_measurement AllocationCounter).
