@@ -1,3 +1,9 @@
 module test.fixture.imported_arms.provider
 
+import std.types { Int }
+
 type ArmT = ArmX | ArmY
+
+fn arm_plain_fn(x: Int) -> Int {
+  x
+}

@@ -7071,17 +7071,11 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       ) == false
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
-    let type_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
-    )
-    let other_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) == false
-    )
-    let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
+    let direct_mods = unique_strings(items: merged_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     ))
-    let type_direct_lines = type_direct_mods |> flat_map(def_mod =>
-      let group = type_direct_names |> filter(n =>
+    let direct_lines = direct_mods |> flat_map(def_mod =>
+      let group = merged_direct_names |> filter(n =>
         graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
       )
       if group |> count > 0 {
@@ -7091,13 +7085,6 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
       } else { [] }
     )
-    let other_direct_line = if other_direct_names |> count > 0 {
-      let names_str = other_direct_names |> map(n =>
-        emit_import_name(owner_module: import_module, n: n, registry: registry)
-      ) |> join(separator: ", ")
-      [RustUseLine { target_module: mod_name, text: concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};") }]
-    } else { [] }
-    let direct_lines = concat(type_direct_lines, other_direct_line)
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
         match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
