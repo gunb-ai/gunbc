@@ -1339,8 +1339,8 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
 // ONE TYPE, SEVERAL PRINTINGS (gunbc.recurring_failure_mode optional_equality_answers_by_representation).
 // A declaration's unapplied spelling (a leaf, or a Disj coproduct that prints its name) and its
 // applied spelling (a NoConnective node carrying the arguments) name one type; only the applied side
-// carries arguments, so there is nothing to descend into and the head name decides, exactly as the
-// leaf-against-struct arms above decide. Two APPLIED spellings still descend element-wise below,
+// carries arguments, so there is nothing to descend into and the head DECLARATION identity decides (applied_argument_heads_identical: the
+// carried declaration ref, else the reference identity key), never the printed name. Two APPLIED spellings still descend element-wise below,
 // so FreeMonoid<Int> against FreeMonoid<Bool> keeps refusing.
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   if text_crossing_in_judgment(left: left, right: right, text: text) {
@@ -1380,7 +1380,7 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
     type_name_compatible(a: left_name, b: right_name)
   }
   else if (left_applied && (right_leaf || right_struct)) || (right_applied && (left_leaf || left_struct)) {
-    type_name_compatible(a: left_name, b: right_name)
+    applied_argument_heads_identical(left: left, right: right, source_indices: source_indices)
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
