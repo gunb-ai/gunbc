@@ -28,7 +28,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // CLOSED OVER THE RELEASES WE HAVE PINNED. A new point release is a new constructor and a new
 // pin row, never a version string a caller types: the version token below is derived from the
 // variant, so a pin cannot name a release the origin was not measured against.
-type UbuntuRelease = Noble2404Point5
+type UbuntuRelease =
+  | Noble2404Point5
 
 fn ubuntu_release_version_token(edition: UbuntuRelease) -> NonEmptyStr {
   match edition {
