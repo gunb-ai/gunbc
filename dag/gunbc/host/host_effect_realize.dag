@@ -70,6 +70,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
+import std.algebra { FreeSemigroup, non_empty_to_list }
 import gunbc.host_command_binding { admitted_scratch_path }
 import gunbc.managed_directory { managed_directory_admit, managed_directory_permissions, ManagedDirectoryAdmitted, ManagedDirectoryRefused }
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -5256,8 +5257,8 @@ fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Lis
   ]
 }
 
-fn dark_slice_control_legs(units: List<SliceControlUnit>) -> List<DarkLeg> {
-  flat_map(units, u =>
+fn dark_slice_control_legs(units: FreeSemigroup<SliceControlUnit>) -> List<DarkLeg> {
+  flat_map(non_empty_to_list(xs: units), u =>
     list_map(xs: slice_control_converge_argvs_for_unit(u: u), f: argv =>
       DarkLegArgv { step: DarkStepSliceControl, command: sudo_elevate_command(command: argv) }))
 }
