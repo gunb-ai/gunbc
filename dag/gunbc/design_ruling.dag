@@ -210,6 +210,27 @@ data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
 }
 
+data dimm_population_is_admitted_permissively: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
+  decided: "2026-10-17",
+  section: "4d",
+  provenance: "Operator, to session merry-fox-82, after mtcollins1 trained a mixed population (four 1R 2666 and four 2R 2133 RDIMMs at 2133, run 39010930690): 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or an observation of that platform (the Altra firmware refusal of an NV-RDIMM/RDIMM mix, run 39005709187, and its acceptance of a 1R/2R RDIMM mix, run 39010930690, are such observations). The DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted.",
+}
+
+data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
+  decided: "2026-10-17",
+  section: "6",
+  provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. Approved: mtcollins1 is enrolled for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
+}
+
+data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
+  decided: "2026-10-17",
+  section: "3",
+  provenance: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).",
+}
+
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
@@ -265,6 +286,9 @@ fn design_rulings() -> List<DesignRuling> {
     machine_mode_names_drop_the_unit,
     one_physical_machine_boot_transaction,
     physical_and_guest_control_remain_distinct,
+    dimm_population_is_admitted_permissively,
+    mtcollins1_ci_runner_enrolment_approved,
+    operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,
     flex_market_policy_is_operator_decided,
