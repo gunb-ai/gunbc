@@ -29,14 +29,14 @@ timeout 300 $BIN compile --help > .sdm/run/help_$V.log 2>&1
 echo "help_rc=$?"
 grep -iE "source-root|entry|target|output-dir|claim" .sdm/run/help_$V.log | head -25
 set -e
-cp .sdm/fixtures/pf_probe.dag ./sd503_pf_probe.dag
+
 # Each attempt is (name, where the probe file is placed, how --entry is spelled, roots).
 # Placed probe files are uniquely named so they can never collide with a tracked module.
 FIXDIR=""; FIXENTRY=""; SOURCE_ROOT_ARGS=""
 try_attempt() { # name probe_dir entry roots
   local name="$1" dir="$2" entry="$3" roots="$4"
   rm -rf .sdm/run/pf_out; mkdir -p "$dir"
-  cp .sdm/fixtures/pf_probe.dag "$dir/sd503_pf_probe_unique_9f3c.dag"
+  cp .sdm/fixtures_pristine/pf_probe.dagx "$dir/sd503_pf_probe_unique_9f3c.dag"
   echo "--- attempt $name: probe=$dir entry=$entry roots=$roots"
   set +e
   timeout 600 $BIN compile $roots --entry "$entry" --target rust \
@@ -57,18 +57,17 @@ if ! { try_attempt repo-root-dagtest  "dag/test" "dag/test/sd503_pf_probe_unique
   echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the probe; aborting rather than emitting an empty A/B"
   exit 14
 fi
-# fixtures live in EXACTLY the directory the preflight proved, and nowhere else
+# Fixtures live in EXACTLY the directory the preflight proved, under their real .dag name,
+# and nowhere else (one module path, one file). They are re-staged from the pristine .dagx
+# copies before every variant so a re-run cannot leave a stale or duplicated copy behind.
+PRE=.sdm/fixtures_pristine
 rm -f "$FIXDIR"/gap_depth_*.dag "$FIXDIR"/garr_*.dag
-mv .sdm/fixtures/gap_depth_*.dag .sdm/fixtures/garr_*.dag "$FIXDIR"/
-rm -rf .sdm/fixtures
-# the entry spelling that worked, turned into a prefix for bare fixture names
-case "$FIXENTRY" in
-  *sd503_pf_probe_unique_9f3c.dag) FIX_PREFIX="${FIXENTRY%sd503_pf_probe_unique_9f3c.dag}" ;;
-  *) FIX_PREFIX="" ;;
-esac
-[ "$FIXDIR" = "." ] && FIX_PREFIX=""
-WITNESS_ENTRY="${FIX_PREFIX}claim/generic_argument_recheck_witness.dag"
-[ -f "$WITNESS_ENTRY" ] || WITNESS_ENTRY="dag/test/claim/generic_argument_recheck_witness.dag"
+for f in "$PRE"/gap_depth_*.dagx "$PRE"/garr_*.dagx; do
+  base=$(basename "$f" .dagx)
+  cp "$f" "$FIXDIR/$base" || { echo "FIXTURE-STAGE-FAILED $f"; exit 15; }
+done
+echo "fixtures staged into $FIXDIR: $(ls "$FIXDIR"/gap_depth_*.dag "$FIXDIR"/garr_*.dag | wc -l) files; elsewhere under the root: $(find . -name 'gap_depth_*.dag' -o -name 'garr_*.dag' | grep -v "^./$FIXDIR" | wc -l)"
+
 echo "PREFLIGHT SUMMARY fixdir=$FIXDIR entry_prefix=$FIX_PREFIX roots=$SOURCE_ROOT_ARGS witness=$WITNESS_ENTRY"
 
 # ---- depth series ------------------------------------------------------------------

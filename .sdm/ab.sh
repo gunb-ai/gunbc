@@ -23,17 +23,24 @@ mkdir -p "$CARGO_TARGET_DIR"
 TREE=$PWD
 DAG=src/v1/04_infer.dag
 MIRROR=src/v1/stage0/src/v1_compiler_infer.rs
-for f in .sdm/pairs/control/04_infer.dag .sdm/pairs/control/v1_compiler_infer.rs \
-         .sdm/dag_variants/keep/04_infer.dag .sdm/dag_variants/delete/04_infer.dag \
+for f in .sdm/pairs/control/04_infer.dagx .sdm/pairs/control/v1_compiler_infer.rs \
+         .sdm/dag_variants/keep/04_infer.dagx .sdm/dag_variants/delete/04_infer.dagx \
          .sdm/gen_keep_v1_compiler_infer.rs .sdm/gen_delete_v1_compiler_infer.rs \
          .sdm/gap_block.rs .sdm/hooks.py .sdm/measure_variant.sh; do
   [ -f "$f" ] || { echo "MISSING $f"; exit 2; }
 done
-# Fixtures must live in exactly ONE directory under the source root: source discovery
-# refuses the whole compile when a module path is declared by two files.
-cp .sdm/fixtures/gap_depth_*.dag .sdm/fixtures/garr_*.dag dag/test/
-rm -rf .sdm/fixtures
-echo "fixtures staged: $(ls dag/test/gap_depth_*.dag dag/test/garr_*.dag | wc -l) files, .sdm/fixtures=$([ -d .sdm/fixtures ] && echo YES-BUG || echo gone)"
+# NO .dag PAYLOAD MAY LIVE UNDER THE ACTION CWD. Source discovery takes every *.dag under
+# --source-root, so a harness copy of a .dag redeclares its module and the WHOLE compile is
+# refused -- both by the copy itself and by the collision with the tracked file it mirrors.
+# So every harness .dag payload is stored with a .dagx extension and is given the .dag name
+# only when it is placed at its real, single location by measure_variant.sh. (This is the
+# same failure that voided an earlier dispatch when the witness was copied to .sdm.)
+find .sdm -name '*.dag' | head -5 | sed 's/^/DISCOVERABLE-DAG-UNDER-SDM /'
+[ -z "$(find .sdm -name '*.dag' -print -quit)" ] || { echo "ABORT: discoverable .dag under .sdm"; exit 4; }
+for f in .sdm/fixtures_pristine/gap_depth_1.dagx .sdm/fixtures_pristine/garr_1.dagx \
+         .sdm/fixtures_pristine/pf_probe.dagx; do
+  [ -f "$f" ] || { echo "MISSING-FIXTURE-SOURCE $f"; exit 2; }
+done
 marks() {
   printf "gate=%s contains=%s stale=%s planned=%s recheck=%s sm_after=%s" \
     "$(grep -c 'fn call_needs_generic_rebinding_pass' "$1" || true)" \
@@ -45,9 +52,9 @@ marks() {
 }
 compose() { # variant
   case "$1" in
-    control)   cp .sdm/pairs/control/04_infer.dag "$DAG";               cp .sdm/pairs/control/v1_compiler_infer.rs "$MIRROR" ;;
-    keep)      cp .sdm/dag_variants/keep/04_infer.dag "$DAG";           cp .sdm/gen_keep_v1_compiler_infer.rs "$MIRROR" ;;
-    delete)    cp .sdm/dag_variants/delete/04_infer.dag "$DAG";         cp .sdm/gen_delete_v1_compiler_infer.rs "$MIRROR" ;;
+    control)   cp .sdm/pairs/control/04_infer.dagx "$DAG";               cp .sdm/pairs/control/v1_compiler_infer.rs "$MIRROR" ;;
+    keep)      cp .sdm/dag_variants/keep/04_infer.dagx "$DAG";           cp .sdm/gen_keep_v1_compiler_infer.rs "$MIRROR" ;;
+    delete)    cp .sdm/dag_variants/delete/04_infer.dagx "$DAG";         cp .sdm/gen_delete_v1_compiler_infer.rs "$MIRROR" ;;
     *) echo "UNKNOWN VARIANT $1"; return 2 ;;
   esac
   echo "COMPOSED $1 dag($(marks $DAG)) mirror($(marks $MIRROR))"

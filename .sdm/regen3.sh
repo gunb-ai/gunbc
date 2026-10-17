@@ -17,7 +17,7 @@ echo "############ REGEN3 start $(date -u +%H:%M:%S)"
 echo "cwd=$PWD head=$(git rev-parse HEAD 2>/dev/null || echo NO-GIT)"
 DAG=src/v1/04_infer.dag
 MIRROR=src/v1/stage0/src/v1_compiler_infer.rs
-for f in "$DAG" "$MIRROR" .sdm/dag_variants/keep/04_infer.dag .sdm/dag_variants/delete/04_infer.dag; do
+for f in "$DAG" "$MIRROR" .sdm/dag_variants/keep/04_infer.dagx .sdm/dag_variants/delete/04_infer.dagx; do
   [ -f "$f" ] || { echo "MISSING $f"; exit 2; }
 done
 marks() {
@@ -44,7 +44,7 @@ CE="target/release/claim_executor"
 
 gen() { # variant
   V="$1"
-  cp ".sdm/dag_variants/$V/04_infer.dag" "$DAG"
+  cp ".sdm/dag_variants/$V/04_infer.dagx" "$DAG"
   echo "--- variant $V dag $(marks $DAG)"
   set +e
   "$CE" --regen-round-cost --source-root dag --source-root src/v2 > /tmp/regen_$V.log 2>&1
@@ -60,5 +60,5 @@ gen() { # variant
 gen keep
 gen delete
 # leave the tree on the keep variant, which is the PR-bound authority
-cp .sdm/dag_variants/keep/04_infer.dag "$DAG"
+cp .sdm/dag_variants/keep/04_infer.dagx "$DAG"
 echo "############ REGEN3 done $(date -u +%H:%M:%S)"
