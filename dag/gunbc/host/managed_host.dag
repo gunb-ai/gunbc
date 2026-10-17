@@ -620,6 +620,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
     decl_ref(module_path: "test.claim.auth.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
     decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
+    decl_ref(module_path: "test.claim.host.managed_host_witness", decl_name: "w_a_refused_smpro_site_on_a_bound_route_reports_a_refused_site_not_a_missing_controller"),
     // The two platform-arm claims: both re-point a real row's SMpro standing (not-carried, and the
     // supplied x86 specimen that carries no site at all), which needs a constructor for the same reason
     // the cross-wired rows above do — the admission cannot mint that shape through the admitted path.
@@ -631,6 +632,8 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_second_machine_with_the_same_profile_gets_the_same_selection"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_a_reflash_resolves_the_new_builds_row_or_refuses_with_no_per_unit_edit"),
     decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_observed_reflash_to_0_45_3_resolves_that_builds_row_and_still_admits"),
+    // The 0.45.3 attestation claim rebuilds the host fixture at that release, so it is an admitted caller too.
+    decl_ref(module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_0_45_3_row_is_attested_and_never_rendered_as_machine_read"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation"),
     decl_ref(module_path: "test.claim.host.megarac_managed_host_witness", decl_name: "w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation"),

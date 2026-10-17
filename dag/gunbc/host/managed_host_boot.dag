@@ -8,12 +8,8 @@ import gunbc.host.boot_medium { BootMedium }
 import gunbc.host.board_platform_facts { host_board_architecture }
 import gunbc.host.controller_capability { controller_capability, CapabilityUnestablished }
 import gunbc.host.host_capability_row {
-  host_capability_row, host_capability_row_in, HostCapabilityRowKnown,
+  host_capability_row, HostCapabilityRowKnown,
   HostCapabilityRowUncatalogued, HostCapabilityRowAmbiguous, HostCapabilityRowUnobserved,
-  HostCapabilityRowIncoherent,
-}
-import gunbc.host.bmc_release_capability_catalog {
-  MegaRacReleaseCapabilityEntry, megarac_release_capability_catalog,
 }
 import gunbc.host.virtual_media_boot_selection {
   VirtualMediaBootSelectionOutcome,
@@ -41,38 +37,30 @@ import gunbc.host.bmc_control_binding {
 
 // THE BOOT'S ONE-SHOT SELECTION IS BOOT POLICY for the pair (host, boot), so it is decided here and
 // never passed in: gunbc.host.host_reset_boot_selection decides the reset arm's own, and neither
-// admission accepts the other's value. The selection is DERIVED from the host's facts — the
-// platform architecture its board establishes and the controller's virtual-media capability — with
-// no host-name branch: a second machine whose board admits the same SoC and whose controller row
-// carries the same media profile gets the same selection with no code change. A host that cannot
-// have a selection decided for it is not bootable however capable its controller.
+// admission accepts the other's value. The selection is DERIVED from the host's facts -- the
+// platform architecture its board admits and the controller's virtual-media capability, both read
+// through the release the controller REPORTS -- with no host-name branch: a second machine whose board
+// admits the same SoC and whose controller row carries the same media profile gets the same selection
+// with no code change. A host that cannot have a selection decided for it is not bootable however
+// capable its controller.
+//
+// THERE IS NO SUPPLIED-TABLE SIBLING ANY MORE. It existed so a claim could put a DRIFTED release row
+// under a real host and assert the boot refused; review 81366 removed the drifted state from the model
+// (the catalog derives each row's release from the artifact the entry carries), so there is no such row
+// to supply and a second entry point would only be a path a consumer could be routed around, with no
+// claim left that can go red on it.
 fn boot_selection(host: ManagedHost) -> VirtualMediaBootSelectionOutcome {
-  boot_selection_in(table: megarac_release_capability_catalog, host: host)
-}
-
-// THE SAME DERIVATION OVER A SUPPLIED RELEASE TABLE, so a claim can put a DRIFTED row under a real
-// host and assert that boot selection refuses before any effect (see
-// gunbc.host.host_capability_row.host_capability_row_in for why a supplied table is the only way to
-// reach that state). The shipped entry above passes the shipped catalog and both go through this one
-// implementation, so the refusal cannot be routed around by a consumer -- and admit_boot_subject below
-// calls this, so a drifted row reaches BootSubjectNoSelection rather than an attach.
-fn boot_selection_in(
-  table: List<MegaRacReleaseCapabilityEntry>,
-  host: ManagedHost,
-) -> VirtualMediaBootSelectionOutcome {
   let arch = host_board_architecture(access: host.access)
   let media =
-    match host_capability_row_in(table: table, access: host.access) {
+    match host_capability_row(access: host.access) {
       HostCapabilityRowKnown { row: row } => controller_capability(row: row).virtual_media
-      // Named arm by arm, deliberately: a drifted row must be VISIBLE as the reason a selection
-      // refuses, not absorbed into a catch-all that cannot distinguish "nobody read the controller"
-      // from "the row disagrees with its own evidence". All four answer the same way -- an
-      // unestablished capability cannot admit a selection -- but each is its own arm so a future
-      // divergence has somewhere to live.
+      // Named arm by arm, deliberately: each refusal reason stays VISIBLE as a reason a selection
+      // refuses, not absorbed into a catch-all that cannot distinguish "nobody read the controller" from
+      // "nobody has read this build". All three answer the same way -- an unestablished capability cannot
+      // admit a selection -- but each is its own arm so a future divergence has somewhere to live.
       HostCapabilityRowUncatalogued { firmware: _ } => CapabilityUnestablished
       HostCapabilityRowAmbiguous { firmware: _, count: _ } => CapabilityUnestablished
       HostCapabilityRowUnobserved { endpoint: _ } => CapabilityUnestablished
-      HostCapabilityRowIncoherent { firmware: _ } => CapabilityUnestablished
     }
   virtual_media_boot_selection(arch: arch, media: media)
 }
