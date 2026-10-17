@@ -157,6 +157,13 @@ fn purpose_spelling(host: HostIdentity, purpose: HostUnitSlotPurpose, registrati
 // capture carries is a sum, and its historical-attempt arm is not a boot; the two render identically,
 // so a slot carrying the sum would lose the arm in its name and the parse would have to fabricate one.
 // The slot therefore carries the boot id itself, and this is the only way a run identity becomes one.
+// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
+// The production caller is the fleet-converge mode (operator answer Q3), which reads the admitted boot's
+// run identity from gunbc.runner.runner_host_medium runner_host_up_readback and hands it through here
+// to service_slot_population and lost_boot_sweep; that wiring lands with the mode, not before it.
+// ServiceSlot.index is an Int whose only producers are the population (0..N-1) and the parse
+// (decimal digits); a std.integer NonNegativeInt carrier is the next-rung trigger, taken when the
+// width and to_string consumers accept it.
 fn service_boot_id_of(run: HostCaptureRunIdentity) -> NonEmptyStr? {
   match run {
     KernelBootId { boot_id: b } => Present { value: b }
@@ -243,6 +250,10 @@ type ServiceSlotPopulation
 // from the host's fleet compute offer (gunbc.runner.runner_slot_allocation gunbc_runner_committed_width);
 // an unresolved width is carried, never read as zero. No host is named: a host's population differs
 // from another's only by its offer.
+// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
+// Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
+// on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
+// is the same mode's other half.
 fn service_slot_population(host: HostControlStanding, boot_id: NonEmptyStr) -> ServiceSlotPopulation {
   match host {
     HostControlRefused { refusal: r } => ServiceSlotsHostNotControlled { refusal: r }
