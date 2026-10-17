@@ -2,16 +2,15 @@ module v1.compiler.infer_emit_info
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v1.std.core {
+import v1.std.core { type_is_optional,
   Node,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_required_cardinality,
+  
   Connective, Conj, NoConnective, Arrow,
-  CardOptional,
   param_node_name_at,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -854,7 +853,7 @@ fn find_variant_parent(type_summaries: TypeSummaryIndex, variant_name: String, s
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
-  let is_optional = normed.return_cardinality == CardOptional
+  let is_optional = type_is_optional(n: normed)
   if is_optional { OptionalValue }
   else { PlainValue }
 }

@@ -18,7 +18,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.target_representation { VariantParentIdentity }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
+import gunbc.structural_realization_bindings { optional_declaration_ref }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -62,7 +63,7 @@ type TokenShape
 
 type Connective = Conj | Disj | NoConnective | Arrow
 
-type Cardinality = Required | CardOptional
+type Cardinality = Required
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
@@ -1613,7 +1614,7 @@ type FunctionSizeEffect
   | PropertyContraction { domain_size: Int }
 
 data function_size_effects: Map<String, FunctionSizeEffect> = {
-  "with_required_cardinality": PropertyContraction { domain_size: 2 },
+  "optional_payload": PropertyContraction { domain_size: 2 },
   "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
   "field_binding_pattern": TreeSizeReducing,
@@ -2833,23 +2834,70 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
   )
 }
 
-fn with_optional_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+// `T?` IS THE std.optional APPLICATION, minted here and never a cardinality on T: the node references the
+// declaration gunbc.structural_realization_bindings optional_declaration_ref names, BY THAT IDENTITY (the
+// declaration slot is stamped now), applied to the payload. Its spelling is the kernel-span form
+// authored_name_at reads for compiler-generated nodes, so no scope can capture it and the user module
+// imports nothing; resolve binds a node carrying a declaration by that identity, not by lookup.
+fn optional_application_node(occurrence_identity: NodeOccurrenceIdentity, payload: Node, span: SourceSpan) -> Node {
+  let generated_name = optional_declaration_ref.decl_name as String
+  let generated_span = kernel_span(name: generated_name)
+  Node { occurrence_identity: occurrence_identity, name: generated_name, span: span, ident_span: Present { value: generated_span }, children: [payload], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: Present { value: optional_declaration_ref }, expr_data: NoExprData }
 }
 
-fn with_required_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+// THE std.optional APPLICATION OF A PAYLOAD TYPE, built where no occurrence is minted (builtin signatures,
+// derived result types): the same marked node the parser mints for `T?`.
+fn optional_of(payload: Node) -> Node {
+  optional_application_node(occurrence_identity: OccurrenceSynthetic, payload: payload, span: payload.span)
 }
 
-fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
-  let merge_optional = left == CardOptional || right == CardOptional
-  if merge_optional { CardOptional } else { right }
+// THE DECLARATION A TYPE NODE IS AN APPLICATION OF, read from the stamped declaration the parser and
+// resolve write, through at most `hops` resolutions.
+fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
+  match n.declaration {
+    Present { value: d } =>
+      match d.field {
+        WholeDeclaration => Present { value: d }
+        NamedField { field_name: _ } => none
+        TypeParameter { name: _ } => none
+      }
+    Absent =>
+      if hops <= 0 { none } else {
+        match n.inferred {
+          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
+          _ => none
+        }
+      }
+  }
 }
 
-fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
-  let joined = join_optional_cardinality(outer.return_cardinality, inner.return_cardinality)
-  let needs_restore = joined == CardOptional && inner.return_cardinality != CardOptional
-  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
+// WHETHER A TYPE NODE IS THE std.optional APPLICATION: asked of the declaration identity it carries,
+// never of a spelling or a cardinality flag.
+fn type_is_optional(n: Node) -> Bool {
+  match declaration_carried_through_resolution(n: n, hops: 3) {
+    Present { value: d } => d == optional_declaration_ref
+    Absent => false
+  }
+}
+
+// THE PAYLOAD OF AN OPTIONAL APPLICATION, read from the node that carries the declaration (its type
+// arguments are its children); a node that is not optional is its own payload.
+fn optional_payload(n: Node) -> Node {
+  match n.declaration {
+    Present { value: d } =>
+      if d == optional_declaration_ref && n.connective == NoConnective {
+        match n.children |> first { Present { value: p } => p  Absent => n }
+      } else { n }
+    Absent =>
+      match n.inferred {
+        Present { value: Resolved { node: r } } => if type_is_optional(n: n) { optional_payload(n: r) } else { n }
+        _ => n
+      }
+  }
+}
+
+fn preserve_outer_optional(outer: Node, inner: Node) -> Node {
+  if type_is_optional(n: outer) && !type_is_optional(n: inner) { optional_of(payload: inner) } else { inner }
 }
 
 fn module_path_segments(path: String) -> List<String> {
