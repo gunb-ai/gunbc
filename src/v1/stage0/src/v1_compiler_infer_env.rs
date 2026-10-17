@@ -493,6 +493,16 @@ pub fn bare_occurrence_import(
     }
 }
 
+pub fn declared_module_owner(index: Rc<SymbolIndex>, name: String) -> Option<String> {
+    {
+        let owner = qualified_all_but_last(name.clone());
+        match v1_rt::map_get(&index.module_named_imports.clone(), owner.clone()) {
+            Some(_) => Some(owner.clone()),
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn symbol_index_named_import_source(
     index: Rc<SymbolIndex>,
     module_path: String,
