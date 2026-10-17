@@ -50,13 +50,13 @@ import gunbc.fleet.runtime_identity_match {
   QueryUnsupported,
   ReplyUnreadable,
   RuntimeIdentityVerdict,
+  TextPair,
+  AddressSetPair,
+  axes_agree,
   same_runtime_identity_axis,
   Unprovable,
   runtime_identity_axis_rows,
   runtime_identity_match,
-  runtime_identity_verdict_is_match,
-  runtime_identity_verdict_is_mismatch,
-  runtime_identity_verdict_is_unprovable,
   runtime_identity_verdict_unit,
 }
 
@@ -126,13 +126,9 @@ test fn test_verdict_predicates_are_exclusive() -> Bool {
   let agreed = runtime_identity_match(pre: pre_all_read(), post: post_agreeing())
   let diverged = runtime_identity_match(pre: pre_all_read(), post: post_with_other_serial())
   let mute = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
-  runtime_identity_verdict_is_match(verdict: agreed)
-    && !runtime_identity_verdict_is_mismatch(verdict: agreed)
-    && !runtime_identity_verdict_is_unprovable(verdict: agreed)
-    && runtime_identity_verdict_is_mismatch(verdict: diverged)
-    && !runtime_identity_verdict_is_match(verdict: diverged)
-    && runtime_identity_verdict_is_unprovable(verdict: mute)
-    && !runtime_identity_verdict_is_match(verdict: mute)
+  classifies_as_match(verdict: agreed)
+    && classifies_as_mismatch(verdict: diverged)
+    && classifies_as_unprovable(verdict: mute)
     && runtime_identity_verdict_unit(verdict: agreed) == fixture_unit
 }
 
@@ -244,7 +240,7 @@ fn post_with_serial_unobserved() -> PostBootIdentityReport {
 test fn test_missing_reading_is_unprovable_not_mismatch() -> Bool {
   let verdict = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
   match verdict {
-    Unprovable { why: gaps, unit: _ } => gaps.length() == 1 && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis) && !runtime_identity_verdict_is_mismatch(verdict: verdict)
+    Unprovable { why: gaps, unit: _ } => gaps.length() == 1 && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
     _ => false
   }
 }
@@ -348,13 +344,13 @@ test fn test_fold_is_total_over_a_mixed_observation() -> Bool {
 
 fn verdict_is_coherent(pre: PreBootIdentityStanding, post: PostBootIdentityReport) -> Bool {
   let verdict = runtime_identity_match(pre: pre, post: post)
-  (runtime_identity_verdict_is_match(verdict: verdict) || runtime_identity_verdict_is_mismatch(verdict: verdict) || runtime_identity_verdict_is_unprovable(verdict: verdict))
+  classifies_as_match(verdict: verdict) || classifies_as_mismatch(verdict: verdict) || classifies_as_unprovable(verdict: verdict)
     && exactly_one_of_three(verdict: verdict)
     && runtime_identity_verdict_unit(verdict: verdict) == fixture_unit
 }
 
 fn exactly_one_of_three(verdict: RuntimeIdentityVerdict) -> Bool {
-  let n = (if runtime_identity_verdict_is_match(verdict: verdict) { 1 } else { 0 }) + (if runtime_identity_verdict_is_mismatch(verdict: verdict) { 1 } else { 0 }) + (if runtime_identity_verdict_is_unprovable(verdict: verdict) { 1 } else { 0 })
+  let n = (if classifies_as_match(verdict: verdict) { 1 } else { 0 }) + (if classifies_as_mismatch(verdict: verdict) { 1 } else { 0 }) + (if classifies_as_unprovable(verdict: verdict) { 1 } else { 0 })
   n == 1
 }
 
@@ -403,7 +399,7 @@ fn post_with_every_refused() -> PostBootIdentityReport {
 // NOTHING IS EVER PROVEN WHEN NOTHING WAS READ. With both sides fully silent the verdict cannot be a Match
 // under any reading of the table -- the decisive axes have no readings to agree.
 test fn test_total_silence_is_never_a_match() -> Bool {
-  !runtime_identity_verdict_is_match(verdict: runtime_identity_match(pre: pre_with_every_unobserved(), post: post_with_every_unobserved()))
+  !classifies_as_match(verdict: runtime_identity_match(pre: pre_with_every_unobserved(), post: post_with_every_unobserved()))
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +409,7 @@ test fn test_total_silence_is_never_a_match() -> Bool {
 // ONE SHARED ADDRESS IS ENOUGH: the firmware lists two interfaces and the OS brought up one of them. This
 // is the fleet's ordinary case, and an exact-equality rule here would Unprovable every real unit.
 test fn test_one_shared_address_binds() -> Bool {
-  runtime_identity_verdict_is_match(verdict: runtime_identity_match(pre: pre_all_read(), post: post_agreeing()))
+  classifies_as_match(verdict: runtime_identity_match(pre: pre_all_read(), post: post_agreeing()))
 }
 
 // A PRE-BOOT SET WITH NO ADDRESSES is a reading that reported nothing, and the intersection rule must
@@ -539,12 +535,93 @@ fn first_gap_side(gaps: List<RuntimeIdentityGap>) -> IdentitySide {
 // declares fails here rather than looking audited (DESIGN section 3b, a home that does not resolve is a
 // citation defect). Four rows, so the count is asserted too -- a row silently dropped would otherwise
 // leave the remaining citations looking complete.
+// An axis may only be judged by the rule its comparison names. The cross combinations of (comparison,
+// evidence kind) are unreachable through the fold -- `axis_reading_pair` builds exactly the pair each
+// comparison needs -- so the module's `axes_agree` fails them closed rather than asserting. This witness
+// calls `axes_agree` directly with those unreachable pairs, because "unreachable" is a claim about the
+// fold and only a direct call tests the closed half of the union: if the fail-closed arms were flipped to
+// agree, a text axis could be blessed by an address comparison and the fold would never tell us. The rows
+// come from the module's own table, not from copies here, so the witness cannot drift from the policy it
+// is testing.
+test fn test_an_axis_never_agrees_on_evidence_its_comparison_does_not_name() -> Bool {
+  let text_rows = runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: ModelAxis))
+  let address_rows = runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: NicSetAxis))
+  let same_text = TextPair { pre_text: fixture_model, post_text: fixture_model }
+  let shared_addresses = AddressSetPair { pre_addresses: [fixture_mac_b()], post_addresses: [fixture_mac_b()] }
+  // the table still holds exactly one row per axis, or the quantifiers below are vacuous
+  text_rows.length() == 1
+    && address_rows.length() == 1
+    // each rule agrees on its own evidence...
+    && text_rows.all(row => axes_agree(row: row, pair: same_text))
+    && address_rows.all(row => axes_agree(row: row, pair: shared_addresses))
+    // ...and neither agrees on the other's, however well that evidence would satisfy it.
+    && text_rows.all(row => !axes_agree(row: row, pair: shared_addresses))
+    && address_rows.all(row => !axes_agree(row: row, pair: same_text))
+}
+
 test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bool {
-  cited("gunbc.machine_intake.subject", "BoardSerialObservation")
-    && cited("gunbc.machine_intake.ampere_dram_console_observation", "AmpereDramBlock")
-    && cited("gunbc.machine_intake.subject", "PhysicalDimmLabelBinding")
-    && cited("gunbc.network_boot_delivery", "ObservedDhcpPxeClient")
+  every_row_cites_two_homes(rows: runtime_identity_axis_rows)
+    && every_row_citation_resolves(rows: runtime_identity_axis_rows)
+    && cited("gunbc.machine_intake.subject", "BoardSerialObservation")
+    && cited("gunbc.machine_intake.subject", "UnitKeyStanding")
+    && cited("gunbc.machine_intake.subject", "FirmwareManifest")
+    && cited("gunbc.board_authority_binding", "firmware_generation_owns_currently_running_software")
+    && cited("gunbc.machine_intake.mtjade1_access_observation", "FruIdentityFields")
+    && cited("gunbc.board_authority_binding", "board_extra_binds_the_capture_to_this_unit")
+    && cited("extdeps.network.mac", "mac_address_value")
+    && cited("extdeps.network.mac", "mac_is_permanent_interface_identity")
     && runtime_identity_axis_rows.length() == 4
+}
+
+// A row may not name one home twice and pretend it covers both claims. Emptiness is not checked here
+// because the field types already forbid it -- both refs are NonEmptyStr, so a blank citation is unnameable
+// and an assertion against it would be a test of the type system, not of the policy. What IS checkable, and
+// what this checks, is that a row cannot satisfy the two-home requirement by citing one declaration under
+// two names: the reading home and the binding home must be different declarations, since a home that owns
+// the field does not thereby own the identity claim (DESIGN section 3b, scope mismatch).
+fn every_row_cites_two_homes(rows: List<RuntimeIdentityAxisRow>) -> Bool {
+  rows.all(row => !(row.reading_authority.module_path == row.binding_authority.module_path
+    && row.reading_authority.decl_name == row.binding_authority.decl_name))
+}
+
+// EVERY authority the TABLE carries must resolve to exactly one declaration in the corpus. The explicit
+// `cited(...)` literals above name the intended homes and would survive a swap of two real names; this
+// check is derived from the rows themselves, so it cannot be satisfied by updating the literals and
+// forgetting a row. It is the mechanical half of DESIGN section 3b: an fn cannot judge whether a home OWNS
+// a claim, but it can refuse a row that cites a spelling the corpus does not declare -- the defect review
+// 38602 round 2 found in three rows, and the same defect my own first replacement citations committed.
+fn every_row_citation_resolves(rows: List<RuntimeIdentityAxisRow>) -> Bool {
+  rows.all(row =>
+    cited(module_path: row.reading_authority.module_path, decl_name: row.reading_authority.decl_name)
+      && cited(module_path: row.binding_authority.module_path, decl_name: row.binding_authority.decl_name))
+}
+
+// The three classifiers ARE the union, matched exhaustively: adding a fourth verdict arm stops this file
+// compiling, which is the closure the module's fold is claimed to have. Written as matches rather than as
+// `is_match`/`is_mismatch` predicates on the module, because a predicate that shadows a variant can drift
+// from it, and a drift is exactly what a witness exists to catch (review 38602 finding, round 2).
+fn classifies_as_match(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Match { axes_matched: _, unit: _ } => true
+    Mismatch { diverged: _, unit: _ } => false
+    Unprovable { why: _, unit: _ } => false
+  }
+}
+
+fn classifies_as_mismatch(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Match { axes_matched: _, unit: _ } => false
+    Mismatch { diverged: _, unit: _ } => true
+    Unprovable { why: _, unit: _ } => false
+  }
+}
+
+fn classifies_as_unprovable(verdict: RuntimeIdentityVerdict) -> Bool {
+  match verdict {
+    Match { axes_matched: _, unit: _ } => false
+    Mismatch { diverged: _, unit: _ } => false
+    Unprovable { why: _, unit: _ } => true
+  }
 }
 
 fn cited(module_path: NonEmptyStr, decl_name: NonEmptyStr) -> Bool {

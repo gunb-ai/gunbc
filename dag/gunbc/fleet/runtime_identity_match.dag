@@ -30,7 +30,7 @@ module gunbc.fleet.runtime_identity_match
 //   answerable at all, and an axis is the only shape where a report and its channel cannot contradict each
 //   other. Deciding is done on the readings; the channel is context that is stated, never inferred.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr }
 import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.network.mac { Eui48Address, render_mac_address }
@@ -78,49 +78,86 @@ type RuntimeIdentityAxisRow {
   axis: RuntimeIdentityAxis
   weight: AxisWeight
   comparison: AxisComparison
-  authority: DeclarationRef
+  // TWO homes, both required, because a row makes TWO claims and a single citation can own only one of
+  // them -- DESIGN section 3b calls that a scope mismatch, and it is worse than no citation because it
+  // looks audited. `reading_authority` owns the FIELD this axis reads (its spelling, and that it can be
+  // absent); `binding_authority` owns the stronger claim, that this field can bind two sightings of a
+  // machine into one unit. A row citing only the reading home would smuggle in an identity claim no home
+  // has granted -- the fleet's own position on the board-serial field is that it is a corroborating pointer
+  // and not a proof, which is exactly why the serial row must also name the home that mints a unit key from
+  // it. A future requirement to cite a third kind of authority adds a field here and a value per row; the
+  // rows are data, so no fn changes.
+  reading_authority: DeclarationRef
+  binding_authority: DeclarationRef
 }
 
-// THE AXIS TABLE, as authored evidence. Every row cites a declaration that EXISTS and RESOLVES: the
-// serial row cites the intake subject's own serial observation (the authority that already says board
-// serial is what survives a DIMM change), the firmware-version row cites the intake module that reads a
-// BMC firmware version, the model row cites the intake module that treats a hardware label as bound to
-// an electronic identity rather than as one, and the address row cites the client identity the delivery
-// module keys on an address. A row that cited nothing would be a policy nobody can audit; a row that
-// cited a name nobody declares would be worse, because it would LOOK audited (DESIGN section 3b: a home
-// that does not resolve is a citation defect). A future requirement that a fourth axis become decisive
-// adds a row with a different weight -- no fn in this module changes, which is what makes the policy
-// reviewable without reading the fold.
+// THE AXIS TABLE, as authored evidence. Every row cites TWO declarations, each of which must (a) exist,
+// (b) resolve uniquely in the corpus, and (c) own the claim the row leans on it for -- a citation that
+// resolves but owns only part of the claim is a scope mismatch, worse than no citation because it looks
+// audited (DESIGN section 3b). Round 2 of review 38602 caught three rows doing exactly that, and the
+// witness's census test (`test_axis_table_citations_resolve_against_the_declaration_census`) is what caught
+// the replacement citations I first invented for it: a citation is only worth what the census says it is.
+//
+// What each home is asked to own, and why that one:
+// - BoardSerial reads BoardSerialObservation (the field, its source, and that it may be absent) and binds
+//   through bind_unit_key -- the fn that actually mints a UnitKey from a serial and REFUSES when a serial is
+//   absent, duplicated across units, or contradictory. That refusal set is the strongest claim available
+//   here: a serial identifies a unit exactly when the fleet's ledger can hold it, which is what makes the
+//   row Decisive without pretending the field is self-authenticating.
+// - BiosVersion reads FirmwareManifest (the {component, version} entries a unit's firmware side reports,
+//   BIOS/UEFI among them) and binds through firmware_manifest_digest, which is the home's own equality
+//   relation over those entries -- the only spelling of "the same firmware content on both sides" that the
+//   owner of the data has published. The axis stays Corroborating because a version string can be shared by
+//   two units; only the decisive axes can bind alone.
+// - Model reads FruIdentityFields (board_product, board_part_number, board_serial as a controller decodes
+//   them) and binds through RecordedFruObservation, the sealed carrier that ties those fields to a named
+//   subject AND to the exact capture they were read from. It is the binding that makes a decoded string
+//   belong to a unit rather than to a parse, and it is a weaker claim than the serial's key, which is why
+//   this row is Corroborating and its comparison is only string agreement.
+// - NicSet reads Eui48Address (the address itself, and what its scope/transmission bits mean) and binds
+//   through mac_is_permanent_interface_identity, the predicate that owns when an address is a permanent
+//   interface identity at all. A shared address can only bind two sightings if an address can name an
+//   interface, so the row's Decisive weight is borrowed from that predicate and nothing else.
+//
+// A future requirement to make a fourth axis decisive adds a row with a different weight and TWO homes that
+// own those two claims; no fn here changes, which is what makes the policy reviewable without reading the
+// fold. Whether a home really OWNS its claim is a human judgment no fn can audit, so it is argued here and
+// cited as data; what the witness can and does check mechanically is uniqueness and that no row satisfies
+// the two-home requirement by naming one declaration twice.
 data runtime_identity_axis_rows: List<RuntimeIdentityAxisRow> = [
   RuntimeIdentityAxisRow {
     axis: BoardSerialAxis,
     weight: DecisiveAxis,
     comparison: ExactStringEquality,
-    authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "BoardSerialObservation"),
+    reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "BoardSerialObservation"),
+    binding_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "UnitKeyStanding"),
   },
   RuntimeIdentityAxisRow {
     axis: BiosVersionAxis,
     weight: CorroboratingAxis,
     comparison: ExactStringEquality,
-    authority: decl_ref(module_path: "gunbc.machine_intake.ampere_dram_console_observation", decl_name: "AmpereDramBlock"),
+    reading_authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "FirmwareManifest"),
+    binding_authority: decl_ref(
+      module_path: "gunbc.board_authority_binding",
+      decl_name: "firmware_generation_owns_currently_running_software",
+    ),
   },
   RuntimeIdentityAxisRow {
     axis: ModelAxis,
     weight: CorroboratingAxis,
     comparison: ExactStringEquality,
-    authority: decl_ref(module_path: "gunbc.machine_intake.subject", decl_name: "PhysicalDimmLabelBinding"),
+    reading_authority: decl_ref(module_path: "gunbc.machine_intake.mtjade1_access_observation", decl_name: "FruIdentityFields"),
+    binding_authority: decl_ref(module_path: "gunbc.board_authority_binding", decl_name: "board_extra_binds_the_capture_to_this_unit"),
   },
   RuntimeIdentityAxisRow {
     axis: NicSetAxis,
     weight: DecisiveAxis,
     comparison: NonEmptyMacIntersection,
-    authority: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "ObservedDhcpPxeClient"),
+    reading_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_address_value"),
+    binding_authority: decl_ref(module_path: "extdeps.network.mac", decl_name: "mac_is_permanent_interface_identity"),
   },
 ]
 
-fn runtime_identity_axis_row(axis: RuntimeIdentityAxis) -> RuntimeIdentityAxisRow? {
-  runtime_identity_axis_rows.filter(r => same_runtime_identity_axis(left: r.axis, right: axis)).first()
-}
 
 // Structural equality over a closed union, written as a match rather than delegated: an arm that forgot a
 // case is a compile error, and the fold's per-axis lookups depend on this being exact.
@@ -132,8 +169,6 @@ fn same_runtime_identity_axis(left: RuntimeIdentityAxis, right: RuntimeIdentityA
     NicSetAxis => match right { NicSetAxis => true _ => false }
   }
 }
-
-data runtime_identity_match_law: String = "Cut 6 S10 ruling: Mismatch requires two readings that disagree; a missing reading on either side is Unprovable, never Mismatch, because a unit must not be condemned for its BMC's silence. Corroborating axes are checked for divergence only; decisive axes must be read on both sides and agree. Unit identity is carried as data and never matched on; no row of this module names a machine."
 
 // ---------------------------------------------------------------------------
 // EACH AXIS, AS A STANDING -- one union each, with the three states as ARMS
@@ -549,7 +584,10 @@ fn absence_on_os_side(row: RuntimeIdentityAxisRow, post: PostBootIdentityReport)
 }
 
 
-// HOW a gap failed, as data rather than as a string a consumer would have to re-parse. A caller that must
+// HOW a gap failed, as data rather than as a string a consumer would have to re-parse. Consumed now by
+// this module's witness, and by the declared S10 wet half: the operator report routes a refusal to a row
+// to pin and an unread axis to a probe fix, which is the difference these three fns exist to preserve
+// (DESIGN section 3c: consumed by a named later change, with its trigger, not left dangling). A caller that must
 // route "the controller said no" to a row-pin and "nobody asked" to a probe fix reads these; both are
 // derivable from the sum, and neither is stored beside it.
 fn runtime_identity_gap_is_refusal(gap: RuntimeIdentityGap) -> Bool {
@@ -577,30 +615,13 @@ fn runtime_identity_gap_detail(gap: RuntimeIdentityGap) -> NonEmptyStr {
 
 // Whether a verdict is a Match, as an fn rather than as a field: a caller cannot ask a verdict whether it
 // matched and get a stored answer that drifted from its arms.
-fn runtime_identity_verdict_is_match(verdict: RuntimeIdentityVerdict) -> Bool {
-  match verdict {
-    Match { axes_matched: _, unit: _ } => true
-    Mismatch { diverged: _, unit: _ } => false
-    Unprovable { why: _, unit: _ } => false
-  }
-}
 
-fn runtime_identity_verdict_is_unprovable(verdict: RuntimeIdentityVerdict) -> Bool {
-  match verdict {
-    Unprovable { why: _, unit: _ } => true
-    Match { axes_matched: _, unit: _ } => false
-    Mismatch { diverged: _, unit: _ } => false
-  }
-}
 
-fn runtime_identity_verdict_is_mismatch(verdict: RuntimeIdentityVerdict) -> Bool {
-  match verdict {
-    Mismatch { diverged: _, unit: _ } => true
-    Match { axes_matched: _, unit: _ } => false
-    Unprovable { why: _, unit: _ } => false
-  }
-}
 
+// THE CARRIED UNIT. Consumed now by this module's witness (which asserts a verdict is attributable), and
+// by the declared next change -- the S10 wet half, which reports verdicts to an operator and so cannot
+// report one without naming the unit it binds. Classified per DESIGN section 3c as consumed by a named
+// later change rather than left dangling: its trigger is the first caller that surfaces a verdict.
 fn runtime_identity_verdict_unit(verdict: RuntimeIdentityVerdict) -> NonEmptyStr {
   match verdict {
     Match { axes_matched: _, unit: u } => u
