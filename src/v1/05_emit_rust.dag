@@ -3418,14 +3418,14 @@ fn is_clone_allocation_free(summary: TypeSummary, recursive_type_set: Set<String
   }
 }
 
-fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
+fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool, by_value_records: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
     StructRepr => true
     EnumRepr { unit_only: unit_only } => unit_only == false
   }
   if summary_declares_grounded_coproduct_native_alias(summary: summary) {
     acc
-  } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) && !is_clone_allocation_free(summary: summary, recursive_type_set: recursive_type_set) {
+  } else if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) && !(by_value_records && is_clone_allocation_free(summary: summary, recursive_type_set: recursive_type_set)) {
     set_insert(acc, summary.name)
   } else {
     acc
@@ -3440,21 +3440,21 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
 // elsewhere needs sharing. The set is one of the indexes
 // gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer still
 // names as leaf-keyed; this rule is what makes its leaf answer independent of fold order.
-fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Bool {
+fn shared_by_every_declarer(type_summaries: TypeSummaryIndex, name: String, recursive_type_set: Set<String>, target_needs_sharing: Bool, by_value_records: Bool) -> Bool {
   type_summary_keys_of_leaf(index: type_summaries, leaf: name) |> all(key =>
     match type_summary_decided(index: type_summaries, key: key) {
-      Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing), name)
+      Present { value: summary } => set_contains(maybe_mark_shared_type(acc: empty_set(), summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: target_needs_sharing, by_value_records: by_value_records), name)
       Absent => true
     }
   )
 }
 
-fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
+fn build_shared_types(type_summaries: TypeSummaryIndex, recursive_type_set: Set<String>, target: RenderTarget, by_value_records: Bool) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
   let user_shared = type_summary_values(index: type_summaries) |> fold(init: empty_set(), f: (acc, summary) =>
-    if shared_by_every_declarer(type_summaries: type_summaries, name: summary.name, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing) {
-      maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
+    if shared_by_every_declarer(type_summaries: type_summaries, name: summary.name, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing, by_value_records: by_value_records) {
+      maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing, by_value_records: by_value_records)
     } else { acc }
   )
 
@@ -3643,7 +3643,7 @@ type EmitRustContext {
 fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules, registry: typed.item_registry)
   let ownership = build_ownership_results(modules: typed.modules)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: !compiler_pipeline_entry_is_retained_host(modules: typed.modules))
   let closure_source_indices = merged_module_source_indices(modules: typed.modules)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
@@ -4348,7 +4348,7 @@ fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bo
 
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let base_info = build_emit_graph_info(modules: [typed_module], registry: registry)
-  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
+  let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust, by_value_records: false)
   let clone_bounded = v1_clone_bounded_type_params(
     type_decl_items: base_info.type_decl_items,
     source_indices: merged_module_source_indices(modules: [typed_module])
@@ -8379,6 +8379,10 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
+// By-value clone-free records (is_clone_allocation_free) are for corpora with NO retained-host driver: the
+// seed's own realization (compiler_entry_retained_host_driver) is peered by hand-authored Rust that pins the
+// Rc representation, so the stage0 mirror target keeps today's sharing. The exclusion dissolves as that
+// hand Rust migrates.
 // A record that is not Rc-shared derives Copy only when it is a Copy constant; the clone-allocation-free
 // records of is_clone_allocation_free are by-value but hold Rc fields, so they take the heap roster
 // (Clone, no Copy). Asked of the same summary the sharing decision read, never re-derived from fields.
