@@ -15662,10 +15662,29 @@ fn wrap_rust_record_field_value(raw: String, value_node: Node?, scope: InferScop
     rust_callable_field_value_wrap(raw: raw, value_node: value_node, scope: scope)
   } else {
     match rust_record_field_needs_box(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name) {
-      NeedsBox => concat("Box::new(", raw, ")")
+      NeedsBox => concat("/*DBG6:", dbg6_box_tag(scope: scope, emit_info: emit_info, shared_types: shared_types, struct_name: struct_name, field_name: field_name), "*/Box::new(", raw, ")")
       NeedsNoBox => raw
       NeedsBoxRefuse { leaf: leaf, cause: cause } => shared_layer_refuse_expr(leaf: leaf, cause: cause)
     }
+  }
+}
+
+fn dbg6_box_tag(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
+  match rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: struct_name, field_name: field_name) {
+    Present { value: ft } =>
+      let layer = match shared_layer_of_type_expr(shared_types: shared_types, type_expr: ft, type_decl_items: emit_info.type_decl_items, source_indices: scope.type_env.source_indices, generic_param_names: []) {
+        SharedLayerAtShared => "shared"
+        SharedLayerAtValue => "value"
+        SharedLayerRefuse { leaf: l, cause: c } => concat("refuse ", l)
+      }
+      let res = match resolve_type_decl_routed(index: emit_info.type_decl_items, type_expr: ft, source_indices: scope.type_env.source_indices).resolution {
+        TypeDeclResolved { identity: id, decl: _ } => concat("resolved ", id, if set_contains(shared_types, id) { " inset" } else { " notinset" })
+        TypeDeclLeafAmbiguous { leaf: l } => concat("ambiguous ", l)
+        TypeDeclKernelSpellingUndecided { leaf: l } => concat("undecided ", l)
+        TypeDeclNotDeclared => "notdeclared"
+      }
+      concat(layer, " ", res, " name=", authored_name_at(source_indices: scope.type_env.source_indices, node: ft))
+    Absent => "nofield"
   }
 }
 
