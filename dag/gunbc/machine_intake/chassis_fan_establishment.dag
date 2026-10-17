@@ -2,7 +2,7 @@ module gunbc.machine_intake.chassis_fan_establishment
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { rpm_count, sdr_undecoded_line_count_value }
+import std.measure { rpm_count }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine, SdrFanRpm, SdrFanDuty, SdrFanNoReading, SdrFanReadingUnrecognised, sdr_fan_reading }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable }
@@ -135,9 +135,9 @@ fn chassis_refusal(chassis: ChassisPowerObservation) -> PostPowerFanRefusal? {
 fn fan_read_refusal(fans: FanSensorObservation, fitted: FittedFanSet) -> PostPowerFanRefusal? {
   match fans {
     FanSensorsUnreadable => Present { value: FanReadUnreadable }
-    FanSensorsRead { lines: lines, undecoded_line_count: u } =>
-      if (sdr_undecoded_line_count_value(c: u) as Int) > 0 {
-        Present { value: FanRowsUndecoded { count: sdr_undecoded_line_count_value(c: u) as Int } }
+    FanSensorsRead { lines: lines, undecoded_lines: u } =>
+      if u.length() > 0 {
+        Present { value: FanRowsUndecoded { count: u.length() } }
       } else {
         first_fitted_header_refusal(lines: lines, headers: fitted_set_headers(fitted: fitted))
       }

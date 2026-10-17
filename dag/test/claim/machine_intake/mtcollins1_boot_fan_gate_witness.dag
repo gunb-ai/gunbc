@@ -2,7 +2,6 @@ module test.claim.machine_intake.mtcollins1_boot_fan_gate_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { string_contains }
-import std.measure { sdr_undecoded_line_count }
 import std.process { ExitSuccess, ExitFailure }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisUnreadable }
@@ -20,7 +19,7 @@ fn row(name: NonEmptyStr, reading: NonEmptyStr) -> SdrTypeLine {
 }
 
 fn round(on: Bool, lines: List<SdrTypeLine>) -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsRead { lines: lines, undecoded_line_count: sdr_undecoded_line_count(count: 0) } }
+  FanObservationRound { observed_at: "2026-10-17T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisPowerRead { power_on: on }, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsRead { lines: lines, undecoded_lines: [] } }
 }
 
 
