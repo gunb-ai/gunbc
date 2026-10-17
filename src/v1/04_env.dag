@@ -321,6 +321,22 @@ fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> 
   }
 }
 
+// THE ONE QUESTION "IS THIS A CALL INTO A MODULE, OR SOMETHING ELSE", ANSWERED FROM DECLARATIONS.
+// A name qualifies exactly when its owner prefix IS a module of the census (module_named_imports is
+// keyed by every census module's authored path), never because the spelling contains a dot: a
+// dotted spelling whose prefix is a value, a service or a type is not a module call, and a bare
+// spelling is never one. Every call path -- direct call, pipe callee, method form on a module
+// path, signature lookup, census borrow -- reads this result; a site that re-derives the answer
+// from the spelling is the fork gunbc.recurring_failure_mode
+// a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling records.
+fn declared_module_owner(index: SymbolIndex, name: String) -> String? {
+  let owner = qualified_all_but_last(name: name)
+  match map_get(index.module_named_imports, owner) {
+    Present { value: _ } => Present { value: owner }
+    Absent => none
+  }
+}
+
 fn symbol_index_named_import_source(index: SymbolIndex, module_path: String, name: String) -> String? {
   match map_get(index.module_named_imports, module_path) {
     Absent => none

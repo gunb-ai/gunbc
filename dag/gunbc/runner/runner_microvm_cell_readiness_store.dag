@@ -491,6 +491,11 @@ fn encode_workload(workload: MicroVmWorkload) -> JsonValue {
       json_kv(key: "image_identity", value: json_string(s: i as String)),
       json_kv(key: "lease_expires_unix", value: json_int(n: e)),
     ])
+    ClaimSetWorkload { grant: g, tree: t } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "claim-set")),
+      json_kv(key: "grant", value: json_string(s: g as String)),
+      json_kv(key: "tree", value: json_string(s: t as String)),
+    ])
   }
 }
 
@@ -517,6 +522,14 @@ fn decode_workload(v: JsonValue) -> Decoded<MicroVmWorkload> {
       }
     } else if k == "workspace" {
       decode_workspace_workload(v: v)
+    } else if k == "claim-set" {
+      match decoded_nonempty(obj: v, key: "grant") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: g } => match decoded_nonempty(obj: v, key: "tree") {
+          DecodeRefused { reason: r } => DecodeRefused { reason: r }
+          DecodeOk { value: t } => DecodeOk { value: ClaimSetWorkload { grant: g, tree: t } }
+        }
+      }
     } else {
       DecodeRefused { reason: "unknown microVM workload kind" as NonEmptyStr }
     }
