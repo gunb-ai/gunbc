@@ -134,8 +134,14 @@ type SitePxeEdgeSecureBootStanding
   | SecureBootUnobserved { why: NonEmptyStr }
   | SecureBootRefused { why: NonEmptyStr }
 
+// embedded_revision is the DECISION field: the exact five hex characters iPXE's Makefile appends as "(g<5>)"
+// to the version it prints into the image, which is the only revision the artefact itself can testify to.
+// built_from_commit is the full upstream SHA kept as build provenance for a reader reproducing the build;
+// NO gate reads it, because the image cannot confirm the other 35 characters, so a gate on it would be a
+// check the artefact cannot answer. Gating on the full SHA would need a source the image does not carry.
 type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
-  upstream_revision: NonEmptyStr
+  embedded_revision: NonEmptyStr
+  built_from_commit: NonEmptyStr
   build_target: IpxeBuildTarget
   architecture: Architecture
   digest: ContentHash
@@ -144,7 +150,8 @@ type SitePxeEdgeChainloaderBuildReceipt sole_constructor {
 }
 
 fn site_pxe_edge_chainloader_build_receipt(
-  upstream_revision: NonEmptyStr,
+  embedded_revision: NonEmptyStr,
+  built_from_commit: NonEmptyStr,
   build_target: IpxeBuildTarget,
   architecture: Architecture,
   digest: ContentHash,
@@ -152,7 +159,8 @@ fn site_pxe_edge_chainloader_build_receipt(
   secure_boot: SitePxeEdgeSecureBootStanding,
 ) -> SitePxeEdgeChainloaderBuildReceipt {
   SitePxeEdgeChainloaderBuildReceipt {
-    upstream_revision: upstream_revision,
+    embedded_revision: embedded_revision,
+    built_from_commit: built_from_commit,
     build_target: build_target,
     architecture: architecture,
     digest: digest,
@@ -181,7 +189,8 @@ type SitePxeEdgeChainloaderPin
 // observed boot attempt, recorded as SecureBootObserved evidence.
 data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderPinned {
   build: site_pxe_edge_chainloader_build_receipt(
-    upstream_revision: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
+    embedded_revision: "c51ca",
+    built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
     build_target: ipxe_arm64_efi_snponly,
     architecture: Aarch64,
     digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
@@ -189,6 +198,29 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
     secure_boot: SecureBootUnobserved { why: "self-built iPXE is unsigned and no Altra board's Secure Boot state has been read; an enrolled certificate or an observed boot attempt would settle it" },
   ),
 }
+
+// A LOCAL READ OF THE COMMITTED IMAGE, sealed so its three facts cannot be separated: the path, the digest
+// `sha256sum` printed for it and the raw stdout of the embedded-revision grep. It is the local-build
+// observation only; the srv4 file is read later by observe_site_pxe_edge_embedded_revision, and until that
+// runs the real route reports the revision Unobservable. The witness parses grep_output with the production
+// parser and binds the digest to the pin, so a re-built or swapped image cannot keep this row green.
+type SitePxeEdgeLocalBuildObservation sole_constructor {
+  path: NonEmptyStr
+  digest: ContentHash
+  grep_output: String
+}
+
+fn site_pxe_edge_local_build_observation(path: NonEmptyStr, digest: ContentHash, grep_output: String) -> SitePxeEdgeLocalBuildObservation {
+  SitePxeEdgeLocalBuildObservation { path: path, digest: digest, grep_output: grep_output }
+}
+
+// Evidence: `sha256sum artifacts/ipxe/snponly-arm64.efi` and `grep -a -o -E "[(]g[0-9a-f]{5}[)]" artifacts/ipxe/snponly-arm64.efi`
+// run in the build worktree; the image prints "(gc51ca)" three times, which the parser reads as one revision.
+data site_pxe_edge_local_build_observed: SitePxeEdgeLocalBuildObservation = site_pxe_edge_local_build_observation(
+  path: "artifacts/ipxe/snponly-arm64.efi",
+  digest: Sha256Hash(Sha256Digest { hex: "18b1cbd27420fb4961e7a58d266e98a66cba49b3047e6abfc2c697733aaa7e05" }),
+  grep_output: "(gc51ca)\n(gc51ca)\n(gc51ca)\n",
+)
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildReceipt? {
   match pin {
@@ -312,7 +344,7 @@ type SitePxeEdgeProbe
   | SitePxeEdgeProbeNotAttempted { reason: String }
 
 // THE REVISION THE BINARY ITSELF CARRIES. iPXE prints its git abbreviation into the image ("2.0.0+ (gc51ca)"),
-// so the pinned upstream_revision is checkable against the artefact rather than trusted: a digest says WHICH
+// so the pinned embedded_revision is checkable against the artefact rather than trusted: a digest says WHICH
 // bytes, the embedded revision says the receipt's claim about where they came from is not a different build's.
 // Unobservable is its own arm because "the image carries no revision" and "grep could not run" are both a
 // failure to read, never a mismatch.
@@ -379,7 +411,7 @@ fn site_pxe_edge_gate_causes(
       }) + (match embedded {
         EmbeddedRevisionUnobservable { reason: r } => [ChainloaderEmbeddedRevisionUnobservable { reason: r }]
         EmbeddedRevisionRead { abbreviated: a } =>
-          if site_pxe_edge_revision_abbreviates(abbreviated: a, full: b.upstream_revision) { [] } else { [ChainloaderEmbeddedRevisionMismatch { embedded: a, pinned: b.upstream_revision }] }
+          if (a as String) == (b.embedded_revision as String) { [] } else { [ChainloaderEmbeddedRevisionMismatch { embedded: a, pinned: b.embedded_revision }] }
       }) + (if b.build_target == ipxe_arm64_efi_snponly {
         []
       } else {
@@ -484,36 +516,35 @@ fn site_pxe_edge_digest_observation(path: NonEmptyStr, success: Bool, line: Stri
   }
 }
 
-// A full git SHA is abbreviated by iPXE to a prefix of itself; splitting the SHA on the abbreviation leaves
-// an empty head exactly when the SHA begins with it. An empty abbreviation matches everything, so it is refused.
-fn site_pxe_edge_revision_abbreviates(abbreviated: NonEmptyStr, full: NonEmptyStr) -> Bool {
-  match get(xs: split(s: full as String, delimiter: abbreviated as String), index: 0) {
-    Absent => false
-    Present { value: head } => head.length() == 0
-  }
-}
-
 // THE ONE PATH THAT READS A REVISION, shared by production and the witness. `output` is stdout of
-// `grep -a -o -E "[(]g[0-9a-f]+[)]"` over the image; the first match "(gc51ca)" yields "c51ca".
+// `grep -a -o -E "[(]g[0-9a-f]{5}[)]"` over the image. iPXE prints the same "(g<5>)" into the image
+// several times (version string, SBOM), so repeated IDENTICAL matches are one reading; no match, a match
+// that is not exactly five characters, or two DISTINCT matches are unobservable, never a guess at which
+// one is the build's.
 fn site_pxe_edge_embedded_revision(success: Bool, output: String) -> SitePxeEdgeEmbeddedRevision {
   if success == false {
     EmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }
   } else {
-    match get(xs: split(s: trim(s: output), delimiter: "\n"), index: 0) {
+    let lines = split(s: trim(s: output), delimiter: "\n")
+    match get(xs: lines, index: 0) {
       Absent => EmbeddedRevisionUnobservable { reason: "grep printed no line" }
-      Present { value: line } =>
-        match get(xs: split(s: line, delimiter: "(g"), index: 1) {
-          Absent => EmbeddedRevisionUnobservable { reason: "embedded revision line has no (g<hex>) group" }
-          Present { value: rest } =>
-            match get(xs: split(s: rest, delimiter: ")"), index: 0) {
-              Absent => EmbeddedRevisionUnobservable { reason: "embedded revision group is not closed" }
-              Present { value: hex } =>
-                if hex.length() == 0 {
-                  EmbeddedRevisionUnobservable { reason: "embedded revision group is empty" }
-                } else {
-                  EmbeddedRevisionRead { abbreviated: hex as NonEmptyStr }
-                }
-            }
+      Present { value: first } =>
+        if !all(lines, l => l == first) {
+          EmbeddedRevisionUnobservable { reason: "the image carries more than one distinct embedded revision" }
+        } else {
+          match get(xs: split(s: first, delimiter: "(g"), index: 1) {
+            Absent => EmbeddedRevisionUnobservable { reason: "embedded revision line has no (g<hex>) group" }
+            Present { value: rest } =>
+              match get(xs: split(s: rest, delimiter: ")"), index: 0) {
+                Absent => EmbeddedRevisionUnobservable { reason: "embedded revision group is not closed" }
+                Present { value: hex } =>
+                  if hex.length() == 5 {
+                    EmbeddedRevisionRead { abbreviated: hex as NonEmptyStr }
+                  } else {
+                    EmbeddedRevisionUnobservable { reason: "embedded revision is not exactly five characters" }
+                  }
+              }
+          }
         }
     }
   }
@@ -559,7 +590,7 @@ fn observe_site_pxe_edge_embedded_revision(target: SshTarget, context: FleetSshE
   match site_pxe_edge_chainloader_target(pin: pin) {
     Absent => EmbeddedRevisionUnobservable { reason: "no pinned chainloader to read a revision from" }
     Present { value: c } =>
-      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["grep", "-a", "-o", "-E", "[(]g[0-9a-f]+[)]", site_pxe_edge_chainloader_path(target: c) as String]) {
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["grep", "-a", "-o", "-E", "[(]g[0-9a-f]{5}[)]", site_pxe_edge_chainloader_path(target: c) as String]) {
         TypedArgvExecRefused { reason: why } => EmbeddedRevisionUnobservable { reason: why }
         TypedArgvExecConverged { result: r } => site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
       }

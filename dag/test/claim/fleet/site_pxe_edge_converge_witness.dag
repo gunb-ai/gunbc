@@ -67,7 +67,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   AdministratorPrivilegeRefused,
   site_pxe_edge_digest_observation,
   site_pxe_edge_embedded_revision,
-  site_pxe_edge_revision_abbreviates,
+  site_pxe_edge_local_build_observed,
   SitePxeEdgeEmbeddedRevision,
   EmbeddedRevisionRead,
   EmbeddedRevisionUnobservable,
@@ -87,12 +87,10 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
 
-// What `grep -a -o -E "[(]g[0-9a-f]+[)]"` printed over the committed image: the embedded revision enters the
-// witness as that raw output, through the same fn production parses it with, never as a ready-made value.
-data landed_revision_output: String = "(gc51ca)\n"
-
+// The sealed local read of the committed image (raw grep output, parsed by the production fn, digest bound to
+// the pin by landed_local_build_is_the_pinned_image): the embedded revision never enters as a ready-made value.
 fn landed_embedded() -> SitePxeEdgeEmbeddedRevision {
-  site_pxe_edge_embedded_revision(success: true, output: landed_revision_output)
+  site_pxe_edge_embedded_revision(success: true, output: site_pxe_edge_local_build_observed.grep_output)
 }
 
 fn booted() -> SitePxeEdgeSecureBootStanding {
@@ -105,7 +103,8 @@ fn build(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Architect
 
 fn build_with(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Architecture, digest: ContentHash, secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloaderBuildReceipt {
   site_pxe_edge_chainloader_build_receipt(
-    upstream_revision: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
+    embedded_revision: "c51ca",
+    built_from_commit: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394",
     build_target: target,
     architecture: architecture,
     digest: digest,
@@ -210,7 +209,8 @@ fn landed_digest() -> ContentHash {
 }
 
 // WHAT REMAINS CLOSED TODAY, ENUMERATED: with the file not yet on srv4 (digest unobservable), dnsmasq
-// and privilege not yet probed, the landed pin yields exactly the four causes that are still true.
+// and privilege not yet probed, the landed pin yields exactly the four causes that are still true GIVEN the sealed local read of the image;
+// on the real route the srv4 revision read is also absent, which the next test counts as the fifth.
 test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
   let texts = map(site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
@@ -225,6 +225,19 @@ test fn the_landed_pin_leaves_exactly_the_four_unanswered_causes() -> Bool {
   length(texts) == 4
     && contains(join(texts, "\n"), "chainloader-unobservable: file not placed on srv4\nchainloader-secure-boot-unobserved: ")
     && contains(join(texts, "\n"), "\ndnsmasq-binary-unobservable: not probed\nadministrator-privilege-unobservable: not probed")
+}
+
+test fn the_real_route_before_placement_has_five_causes() -> Bool {
+  length(site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: site_pxe_edge_chainloader_pin,
+    chainloader: ChainloaderDigestUnobservable { reason: "file not placed on srv4" },
+    embedded: EmbeddedRevisionUnobservable { reason: "file not placed on srv4" },
+    dnsmasq_binary: SitePxeEdgeProbeUnobservable { reason: "not probed" },
+    privilege: SitePxeEdgeProbeUnobservable { reason: "not probed" },
+  )) == 5
 }
 
 // Acceptance is the gate's absence of a Secure Boot cause: only an observed boot is accepted; unobserved, refused and an
@@ -564,9 +577,15 @@ test fn embedded_revision_is_parsed_from_grep_output_and_unreadable_output_is_un
   (match landed_embedded() {
     EmbeddedRevisionRead { abbreviated: a } => (a as String) == "c51ca"
     EmbeddedRevisionUnobservable { reason: _ } => false
-  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(gc51ca)\n(gdeadbe)\n") {
-    EmbeddedRevisionRead { abbreviated: a } => (a as String) == "c51ca"
-    EmbeddedRevisionUnobservable { reason: _ } => false
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(gc51ca)\n(gdeadb)\n") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(g5)\n") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
+  }) && (match site_pxe_edge_embedded_revision(success: true, output: "(gc51ca7)\n") {
+    EmbeddedRevisionRead { abbreviated: _ } => false
+    EmbeddedRevisionUnobservable { reason: _ } => true
   }) && (match site_pxe_edge_embedded_revision(success: false, output: "") {
     EmbeddedRevisionRead { abbreviated: _ } => false
     EmbeddedRevisionUnobservable { reason: _ } => true
@@ -579,19 +598,50 @@ test fn embedded_revision_is_parsed_from_grep_output_and_unreadable_output_is_un
   })
 }
 
-// An abbreviation is a PREFIX of the pinned SHA: a substring from the middle, or a different SHA, is not.
-test fn an_abbreviation_matches_only_a_prefix_of_the_pinned_revision() -> Bool {
-  site_pxe_edge_revision_abbreviates(abbreviated: "c51ca", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
-    && !site_pxe_edge_revision_abbreviates(abbreviated: "51ca7", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
-    && !site_pxe_edge_revision_abbreviates(abbreviated: "deadbe", full: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394")
+// The sealed local read binds one image: its digest is the pin's, and the revision the production parser reads
+// from its grep output is the pin's decision field. Swapping the image or the pin breaks one side.
+test fn landed_local_build_is_the_pinned_image() -> Bool {
+  (match site_pxe_edge_chainloader_target(pin: site_pxe_edge_chainloader_pin) {
+    Absent => false
+    Present { value: b } =>
+      b.digest == site_pxe_edge_local_build_observed.digest
+        && (match landed_embedded() {
+          EmbeddedRevisionRead { abbreviated: a } => (a as String) == (b.embedded_revision as String)
+          EmbeddedRevisionUnobservable { reason: _ } => false
+        })
+  })
 }
 
-// RED: an image whose embedded revision differs from the pinned one closes the gate with a typed mismatch
-// carrying both values; the matching image adds no revision cause; an unreadable one closes as its own cause.
+// The full SHA is provenance no gate reads: the same five embedded characters with a different 35-character
+// suffix change no cause, while a different embedded revision does.
+test fn the_full_commit_is_not_decision_bearing() -> Bool {
+  let other = site_pxe_edge_chainloader_build_receipt(
+    embedded_revision: "c51ca",
+    built_from_commit: "c51caffffffffffffffffffffffffffffffffff0",
+    build_target: ipxe_arm64_efi_snponly,
+    architecture: Aarch64,
+    digest: digest_a,
+    installed_filename: ipxe_arm64_efi_snponly.image,
+    secure_boot: booted(),
+  )
+  site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: SitePxeEdgeChainloaderPinned { build: other },
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    embedded: landed_embedded(),
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == []
+}
+
+// RED: an image whose embedded revision differs from the pinned one (including by a single character) closes
+// the gate with a typed mismatch; the matching image adds no revision cause; an unreadable one is its own cause.
 test fn an_embedded_revision_that_differs_from_the_pin_is_a_typed_refusal() -> Bool {
   (embedded_causes(embedded: landed_embedded()) == [])
-    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: true, output: "(gdeadbe)\n"))
-        == [ChainloaderEmbeddedRevisionMismatch { embedded: "deadbe", pinned: "c51ca76a6e56c5627aea6dc32da4c18d5e6cf394" }])
+    && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: true, output: "(gc51cb)\n"))
+        == [ChainloaderEmbeddedRevisionMismatch { embedded: "c51cb", pinned: "c51ca" }])
     && (embedded_causes(embedded: site_pxe_edge_embedded_revision(success: false, output: ""))
         == [ChainloaderEmbeddedRevisionUnobservable { reason: "grep found no embedded iPXE revision in the image" }])
 }
