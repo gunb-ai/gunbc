@@ -115,7 +115,7 @@ fn s_authorization() -> ScopedAuthorization<ServingKeySubject> {
 }
 
 test fn a_pending_authorization_is_not_a_bound_grant() -> Bool {
-  match serving_key_grant_bind(subject: s_subject(), authorization: AuthorizationPending { request: s_request() }, selection: serving_key_pattern()) {
+  match serving_key_grant_bind(subject: s_subject(), authorization: AuthorizationPending { request: s_request() }) {
     ServingKeyGrantRefused { cause: c } => c == serving_key_grant_pending_cause
     ServingKeyGrantBound { grant: _ } => false
   }
@@ -125,7 +125,6 @@ fn s_key_binding() -> ServingServeKeyBinding {
   match serving_key_grant_bind(
     subject: s_subject(),
     authorization: s_authorization(),
-    selection: serving_key_pattern(),
   ) {
     ServingKeyGrantBound { grant: g } => ServingServeKeyBound { grant: g }
     ServingKeyGrantRefused { cause: c } => ServingServeKeyUnbound { grant_name: c }

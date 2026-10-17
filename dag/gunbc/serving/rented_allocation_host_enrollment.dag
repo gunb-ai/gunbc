@@ -72,4 +72,14 @@ data rented_allocation_host_enrollment_frontier_rows: List<FrontierRow> = [
     reason: "no Vast adapter yields a GuestEntitlement (disk, nested virtualization, identity URL) or the API account resource, so the entitlement is a supplied reading that is unread for every real allocation and no real rented card is enrolled",
     dissolution: unbound_dissolution(description: "trigger: a vast_ai offer or instance read yields GuestEntitlement (disk, nested-virt, identity url) and the resource, and #13989 lands with the current card — sufficient for a real fleet_enrollments row derived through this function"),
   ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.harness.rented_allocation_seat", decl_name: "rented_allocation_seat"),
+    reason: "the seat is derived from an allocation but no harness fold reads it yet, because no real allocation is enrolled",
+    dissolution: unbound_dissolution(description: "trigger: #13989 lands with the current card — sufficient for harness_bind_seat to be called with this seat for the real allocation"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.serving_key_grant", decl_name: "serving_key_grant_bind"),
+    reason: "no caller supplies a granted key authorization, because no operator escalation and no secret source for the serving key exist yet",
+    dissolution: unbound_dissolution(description: "trigger: a secret source delivers the granted key and the launch leg calls serving_key_grant_bind with the operator-granted authorization — sufficient for a bound ServingServeKeyBinding in a real launch"),
+  ),
 ]

@@ -87,8 +87,8 @@ data serving_key_grant_pending_cause: NonEmptyStr = "the key delivery authorizat
 
 data serving_key_grant_denied_cause: NonEmptyStr = "the operator denied the key delivery authorization, so no grant is bound" as NonEmptyStr
 
-fn serving_key_grant_bind(subject: ServingKeySubject, authorization: ScopedAuthorization<ServingKeySubject>, selection: AuthorizationPatternSelection) -> ServingKeyGrantBinding {
-  match selection {
+fn serving_key_grant_bind(subject: ServingKeySubject, authorization: ScopedAuthorization<ServingKeySubject>) -> ServingKeyGrantBinding {
+  match serving_key_pattern() {
     PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } =>
       match authorization {
         AuthorizationPending { request: _ } => ServingKeyGrantRefused { cause: serving_key_grant_pending_cause }
