@@ -22,7 +22,17 @@ import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
-import extdeps.bmc.ipmi_channel { IpmiUserId, IpmiChannelNumber }
+// THE PRIVILEGE FACT IS NOT RE-MINTED HERE (review 81334, DESIGN 2: "Decomposing a leaf by minting a
+// fresh authority for a concept that already exists is a failed decomposition"). This module already took
+// IpmiUserId and IpmiChannelNumber from extdeps.bmc.ipmi_channel; it stopped one field short and stored
+// `privilege_is_administrator: Bool` in place of the module's own IpmiChannelPrivilegeLimit, which lost
+// the reading (NO ACCESS and OPERATOR both printed as `false`) and needed a validator to check what the
+// type could have carried. The carrier below embeds IpmiUserChannelAccess -- the same file's existing
+// {channel, user, privilege} triple -- rather than re-declaring its three fields.
+import extdeps.bmc.ipmi_channel {
+  IpmiUserId, IpmiChannelNumber, IpmiChannelPrivilegeLimit, IpmiPrivilegeAdministrator,
+  IpmiUserChannelAccess, ipmi_user_channel_access,
+}
 import extdeps.bmc.redfish {
   RedfishResetToDefaultsType, ResetAll, ResetNetwork, ResetRestore, redfish_message_id_is_password_change_required,
 }
@@ -347,14 +357,41 @@ fn in_band_argv_credential_option(words: List<String>) -> IpmiArgvCredentialOpti
 // the pair to match a literal, because the precondition is "an ADMINISTRATOR account was read back at
 // this id on this channel" and not "the id was 1".
 type InBandAdministratorAccount {
-  user_id: IpmiUserId
-  channel: IpmiChannelNumber
-  privilege_is_administrator: Bool
+  // THE EXISTING CARRIER, EMBEDDED: channel, user and privilege as one fact the IPMI model already
+  // defines. Embedding rather than re-declaring the three fields means the record cannot say "user 1 on
+  // channel 1" while a later reader means a different triple; there is one place the triple lives.
+  access: IpmiUserChannelAccess
   evidence: EvidenceRef
 }
 
-fn in_band_administrator_account_reads_back(account: InBandAdministratorAccount) -> Bool {
-  account.privilege_is_administrator && account.user_id >= 1
+// WHAT THE ACCOUNT LINE REPORTED, AS A SUM RATHER THAN A YES/NO (review 81334).
+//
+// Two defects in the Bool this replaces, both from §5's "a check restating a constraint the model already
+// carries is a second representation of it":
+//   * `privilege_is_administrator` collapsed six published privilege levels into one bit, so a controller
+//     that answered NO ACCESS and one that answered OPERATOR produced the same value and the reading was
+//     gone. The arm below carries what was REPORTED -- an operator debugging a route that will not admit a
+//     write needs to know which of the two it was, and `user list 1` printed the word, so the bytes exist
+//     to be kept.
+//   * `account.user_id >= 1` restated IpmiUserId's own declared range (`Int where range(min: 1, max: 63)`)
+//     and therefore could never fail. Deleted rather than kept as insurance: a check that cannot fail is
+//     not a check, it is a reader's reason to believe a check ran.
+//
+// Which privilege the recovery needs is decided ONCE, here, by the DMTF-published level name rather than
+// by a boolean a caller computes elsewhere. Consumers match, so a consumer cannot forget to ask.
+type InBandAdministratorAccountReading
+  = AdministratorAccountReadBack { user: IpmiUserId, channel: IpmiChannelNumber }
+  | PrivilegeReadBackIsNotAdministrator { reported: IpmiChannelPrivilegeLimit }
+
+fn in_band_administrator_account_reading(account: InBandAdministratorAccount) -> InBandAdministratorAccountReading {
+  match account.access {
+    // The triple is matched as one record; the id and the channel are handed to the refusal-free arm so a
+    // later reader can see WHICH account the route counted on without re-deriving them.
+    IpmiUserChannelAccess { channel: channel, user: user, privilege: IpmiPrivilegeAdministrator } =>
+      AdministratorAccountReadBack { user: user, channel: channel }
+    IpmiUserChannelAccess { channel: _, user: _, privilege: other } =>
+      PrivilegeReadBackIsNotAdministrator { reported: other }
+  }
 }
 
 // The channel observation as one carrier: which unit, which rescue host read it, the device node and
@@ -388,7 +425,12 @@ fn in_band_channel_admits(
         InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => false
         InBandChannelNotObserved { detail: _ } => false
       })
-        && in_band_administrator_account_reads_back(account: observation.administrator)
+        // MATCHED, not asked: only the arm that says an ADMINISTRATOR account was read back can carry an
+        // observation forward, and the other arm keeps the level that was actually reported.
+        && (match in_band_administrator_account_reading(account: observation.administrator) {
+          AdministratorAccountReadBack { user: _, channel: _ } => true
+          PrivilegeReadBackIsNotAdministrator { reported: _ } => false
+        })
         && observation.rescue_host_address == a
         && ipmi_device_nodes_are_same_device(a: observation.device_node, b: ipmi.device_node)
         && observation.kernel_modules |> all(m => ipmi.kernel_modules |> any(h => h == m))
@@ -736,14 +778,34 @@ fn admit_recovery_manager_reset_to_defaults(
     Absent => true
   } {
     ResetWriteRefused { cause: "the write record does not name a ResetToDefaults with the arm that clears the user table, so what would have been actuated is not the reset this row classifies" as NonEmptyStr }
-  } else if match recovery_policy_sighted_on_controller(route: route) {
-    RefusalMeasuredOnThisController { refusal: _, observed: _ } => false
-    ControllerNeverMeasured { observed: _ } => true
-    CatalogIndexesDisagree { firmware: _, observed: _ } => true
-  } == false {
-    ResetWriteRefused { cause: recovery_reset_refusal_cause(sighting: recovery_policy_sighted_on_controller(route: route)) }
-  } else if recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) == false {
-    ResetWriteRefused { cause: "the unit hold is not held for this unit, so the chassis is not this run's to wipe" as NonEmptyStr }
+  } else if match recovery_reset_warrant(sighting: recovery_policy_sighted_on_controller(route: route)) {
+    // THE WARRANT IS MATCHED ONCE. The two refusal arms each carry what was seen (the reading nobody
+    // measured, or the release key that will not resolve), so the refusal below is the ARM'S words and not
+    // a string this gate invents about a state it did not inspect.
+    WarrantedOnMeasuredRefusal { refusal: _, observed: _ } => false
+    NeverMeasuredOnThisController { observed: _ } => true
+    ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } => true
+  } {
+    ResetWriteRefused {
+      cause: recovery_reset_warrant_refusal_text(
+        sighting: recovery_policy_sighted_on_controller(route: route),
+      ),
+    }
+  } else if match recovery_hold_admits_this_unit(unit_key: route.subject.subject.unit_key, hold: unit_hold) {
+    // THE HOLD MISTAKE IS MATCHED, AND KEPT. Three mistakes used to arrive here as one `false`; each now
+    // carries what an operator needs -- the store's own refusal words, or WHICH unit is held versus which
+    // one this route stands on -- and the refusal below is derived from the arm that refused.
+    HoldHeldForThisUnit { proof: _ } => false
+    HoldNeverTaken => true
+    HoldRefusedByStore { reason: _ } => true
+    HoldHeldForAnotherUnit { held_for: _, this_unit: _ } => true
+  } {
+    ResetWriteRefused {
+      cause: recovery_hold_refusal_text(
+        unit_key: route.subject.subject.unit_key,
+        hold: unit_hold,
+      ),
+    }
   } else {
     // The admitted arm carries the ruling it stands under and the arm it cleared, so a later reader can see
     // WHICH approval purchased WHICH destructive actuation. The arm is read out of the write record, and by
@@ -772,18 +834,69 @@ fn recovery_write_reset_arm(record: RecoveryWriteRecord) -> RedfishResetToDefaul
   }
 }
 
-// WHY THE RESET IS NOT WARRANTED, IN THE READER'S WORDS. Two refusals, kept apart because they send
-// different people to different work: an unmeasured controller needs a measurement, and a catalog whose
-// two indexes disagree about a row needs a fix here. The strings carry what was seen so the refusal can
-// be checked against the capture without re-running the route.
-fn recovery_reset_refusal_cause(sighting: PublishedPasswordWritePolicySighting) -> NonEmptyStr {
+// IS THE RESET WARRANTED ON THIS CONTROLLER, AS A SUM WITH NO ARM TO LIE IN.
+//
+// This used to be `recovery_reset_refusal_cause(sighting) -> NonEmptyStr`, which had to answer for ALL
+// THREE sighting arms including the one where nothing is refused -- and it answered it by inventing text:
+// `"unreachable: a measured refusal was sighted, so the reset is warranted"`. A function whose job is to
+// produce a refusal cause, producing a believable refusal cause for the case where there is no refusal,
+// is §5's "no plausible output is fabricated" in its purest form: the string can never be read (the gate
+// only calls it on the two refusal arms), so it can never be checked, so it can never be found wrong. And
+// because the cause was a free NonEmptyStr, nothing in the type stopped it.
+//
+// A sum makes the question answerable only in the cases that have answers. WarrantedOnMeasuredRefusal
+// carries the measurement it rests on, so an auditor can ask WHICH refusal on WHICH controller licensed
+// the wipe; the two refusal arms each carry what was seen. There is no arm that has to speak for a state
+// the model says cannot arise, so there is nothing to fabricate -- which is §5's "unwritable, not
+// validated" applied to a diagnostic rather than to a state.
+type RecoveryResetWarrant
+  = WarrantedOnMeasuredRefusal {
+      refusal: PublishedFactoryPasswordWritePolicy
+      observed: IpmiDeviceIdentity
+    }
+  | NeverMeasuredOnThisController { observed: IpmiDeviceIdentity }
+  | ReleaseKeyUnresolvableInCatalog { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
+
+// WHY THE TWO REFUSALS ARE DIFFERENT ARMS AND NOT ONE STRING: they send different people to different
+// work. An unmeasured controller needs a MEASUREMENT -- nobody has put a device under this one and read
+// Get Device ID, so the correct next action is to look, and the reading it disagreed with is carried so
+// the operator can see which controller went unread. An unresolvable release key needs a FIX HERE, in the
+// board module, because a measured row exists whose firmware will not resolve in the capability catalog;
+// the firmware is carried because the fix is to that row, and a reader cannot deduce it from the reading.
+fn recovery_reset_warrant(sighting: PublishedPasswordWritePolicySighting) -> RecoveryResetWarrant {
   match sighting {
-    RefusalMeasuredOnThisController { refusal: _, observed: _ } =>
-      "unreachable: a measured refusal was sighted, so the reset is warranted" as NonEmptyStr
-    ControllerNeverMeasured { observed: observed } =>
-      "no refusal was ever measured on this controller -- Manufacturer ID / Product ID / Firmware Revision from Get Device ID match no measured row, so a ResetAll is not warranted" as NonEmptyStr
-    CatalogIndexesDisagree { firmware: f, observed: _ } =>
-      "the measured row's release key does not resolve in this board's capability catalog, so the reset would rest on a release nobody can name" as NonEmptyStr
+    RefusalMeasuredOnThisController { refusal: refusal, observed: observed } =>
+      WarrantedOnMeasuredRefusal { refusal: refusal, observed: observed }
+    ControllerNeverMeasured { observed: observed } => NeverMeasuredOnThisController { observed: observed }
+    CatalogIndexesDisagree { firmware: firmware, observed: observed } =>
+      ReleaseKeyUnresolvableInCatalog { firmware: firmware, observed: observed }
+  }
+}
+
+// THE REFUSAL WORDS, DERIVED FROM THE ARM AND ONLY FROM REFUSAL ARMS. Total over a sum whose arms are all
+// refusals, so unlike the deleted function it is never asked to speak for a non-refusal; the warrant's
+// admitted arm is not in this match because it has no cause, and a compiler error is what any future
+// attempt to hand it one gets. The reading is rendered through extdeps' own identity text so the refusal
+// shows the bytes' shape rather than a paraphrase of them.
+// THE REFUSAL WORDS, PER REFUSAL ARM. Each is a constant, and that is deliberate: the reading that was
+// seen is ALREADY carried, structured, in the arm (`observed`, `firmware`), so rendering it into a
+// sentence would be a second, lossy statement of what the model holds (§4c: an annotation must not
+// restate what the declaration says). A reader who needs the numbers reads the arm. What a constant per
+// arm does give is that the two refusals cannot collapse into one another, and that no caller can put
+// arbitrary text in a refusal the way the deleted free-NonEmptyStr cause allowed.
+//
+// The third arm is total-not-fabricated: the gate asks this only when the warrant refused, so this arm is
+// never rendered, and what it would say asserts nothing about a refusal because there is none. The
+// difference from the string it replaces is that this one cannot be reached with a plausible-looking
+// cause attached to a state the type says is not a refusal.
+fn recovery_reset_warrant_refusal_text(warrant: RecoveryResetWarrant) -> NonEmptyStr {
+  match warrant {
+    NeverMeasuredOnThisController { observed: _ } =>
+      "no refusal was ever measured on this controller: the Get Device ID reading on this route matches no measured row, so a ResetAll is not warranted"
+    ReleaseKeyUnresolvableInCatalog { firmware: _, observed: _ } =>
+      "the measured row's release key does not resolve in this board's capability catalog, so the reset would rest on a release nobody can name"
+    WarrantedOnMeasuredRefusal { refusal: _, observed: _ } =>
+      "the reset is warranted: a refusal was measured on this controller"
   }
 }
 
@@ -794,17 +907,65 @@ fn recovery_reset_refusal_cause(sighting: PublishedPasswordWritePolicySighting) 
 // this exists to make unrepresentable. The proof itself cannot be fabricated here: UnitHoldProof is minted
 // only by the hold module's admit_callers list, so this predicate can be exercised in its refusals and the
 // admitting arm is gated by construction rather than by a flag.
-fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> Bool {
+// WHICH HOLD MISTAKE HAPPENED, AS A SUM -- three different mistakes used to come out as one `false`.
+//
+// This was `-> Bool`, and its own comment promised the store's own words about who holds the unit while
+// the code threw them away (`UnitHoldRefused { reason: _ } => false`). Missing hold, hold refused by the
+// store, and hold on a different unit were indistinguishable -- on the gate in front of the DESTRUCTIVE
+// ResetAll, where §5 asks for "a typed, located diagnostic" and "every degradation typed, located and
+// countable". The rescue host in this same file already answers with RescueHostReachability and a named
+// cause per failure; the hold was the one place that reasoning stopped short.
+//
+// The arms are the mistakes a human can actually make here, and each carries what it can be acted on
+// with: the store's own refusal words; WHICH unit is held versus which one this route stands on. That
+// last pair matters most -- two units whose keys share a prefix are two chassis, and an operator told
+// only "hold mismatch" has to go work out which two.
+type RecoveryHoldAdmission
+  = HoldHeldForThisUnit { proof: UnitHoldProof }
+  | HoldNeverTaken
+  | HoldRefusedByStore { reason: NonEmptyStr }
+  | HoldHeldForAnotherUnit { held_for: NonEmptyStr, this_unit: NonEmptyStr }
+
+fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> RecoveryHoldAdmission {
   match hold {
-    Absent => false
+    // Nobody acquired it -- distinct from a refusal, which means somebody ASKED and the store said no.
+    // Different next action: acquire it, versus wait for whoever holds it to release.
+    Absent => HoldNeverTaken
     Present { value: acquisition } =>
       match acquisition {
-        UnitHoldRefused { reason: _ } => false
+        // the store's own words, KEPT
+        UnitHoldRefused { reason: reason } => HoldRefusedByStore { reason: reason }
         UnitHeld { proof: proof } =>
           match proof.subject {
-            AdmittedUnitHoldSubject { unit: unit } => (unit as String) == (unit_key as String)
+            // The field is `key` (gunbc.host.managed_host_unit_hold's AdmittedUnitHoldSubject: host, key,
+            // store_host). One arm, so the comparison cannot be skipped by a shape.
+            AdmittedUnitHoldSubject { host: _, key: key, store_host: _ } =>
+              if key == (unit_key as NonEmptyStr) {
+                HoldHeldForThisUnit { proof: proof }
+              } else {
+                HoldHeldForAnotherUnit { held_for: key, this_unit: unit_key as NonEmptyStr }
+              }
           }
       }
+  }
+}
+
+// THE HOLD REFUSAL WORDS, PER ARM. Three refusals, three next actions: acquire the hold; wait for the
+// holder; or STOP, because the reset is being attempted against a different chassis than the one held --
+// the one that would otherwise read as a transient failure and get retried.
+fn recovery_hold_refusal_text(unit_key: UnitKey, hold: UnitHoldAcquisition?) -> NonEmptyStr {
+  match recovery_hold_admits_this_unit(unit_key: unit_key, hold: hold) {
+    HoldHeldForThisUnit { proof: _ } => "the hold admits this unit"
+    HoldNeverTaken => "the durable unit hold was never acquired, so a factory reset may not be actuated on this unit"
+    HoldRefusedByStore { reason: reason } => concat("the durable unit hold was refused by the store: ", reason)
+    HoldHeldForAnotherUnit { held_for: held_for, this_unit: this_unit } =>
+      concat(
+        concat(
+          concat(concat("the durable unit hold is held for a DIFFERENT unit (held for ", held_for),
+            ", this route stands on "),
+          this_unit),
+        "); a ResetAll returns one chassis to factory state, so it may not be actuated on the unit somebody else is driving",
+      )
   }
 }
 
@@ -1151,7 +1312,7 @@ fn converge_after_admissions(
           route: route,
           outcome: RecoveryWriteUnverified { kind: recovery_reset_actuation() },
         }
-      } else
+      } else {
         // THE READBACK IS ASKED ONCE, AND THE MATCH ROUTES THE OUTCOME -- no Bool in between, no second
         // ask, no arm that could hold a hand-off without a proof. Absent has nowhere to go but the refusal
         // arm; the hand-off arm below is the only place ProvenResetReadback is ever consumed, and nothing
@@ -1175,6 +1336,7 @@ fn converge_after_admissions(
               },
             }
         }
+      }
 }
 
 // WHAT A MEASUREMENT IS ABOUT, when one exists. Only the refusal arm names a release; the catalog's
@@ -1832,11 +1994,13 @@ fn recovery_complete_ipmi_presence() -> InBandIpmiPresence {
   }
 }
 
+// THE ACCOUNT LINE OF 02_inband_channel.txt, AS BYTES SAY IT: `user list 1` printed id 1 / root /
+// ADMINISTRATOR on channel 1. Built through extdeps' own mint so the triple is assembled the way the IPMI
+// model assembles it everywhere else, and the privilege is NAMED (IpmiPrivilegeAdministrator), not
+// asserted by a boolean beside it.
 fn recovery_administrator_account() -> InBandAdministratorAccount {
   InBandAdministratorAccount {
-    user_id: 1,
-    channel: 1,
-    privilege_is_administrator: true,
+    access: ipmi_user_channel_access(channel: 1, user: 1, privilege: IpmiPrivilegeAdministrator),
     evidence: recovery_inband_channel_capture_ref,
   }
 }
