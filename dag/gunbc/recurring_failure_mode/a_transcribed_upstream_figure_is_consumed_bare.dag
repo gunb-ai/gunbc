@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_transcribed_upstream_figure_is_consumed_bare
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_transcribed_upstream_figure_is_consumed_bare: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_transcribed_upstream_figure_is_consumed_bare" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a figure an upstream's operator STATED (a limit, a field spelling, a token) is typed as a bare value and a consumer enforces or parses by it as if it had been read. HARM: the figure is a bet consumed as deduced fact (DESIGN 4d); when the live service differs, the consumer fails or silently mis-parses at the first real use. Found at PR 14244 (pool front limits and reasoning spellings), reviews 81458, 81465, 81526.",
+    "RECOGNITION RULE: a number or spelling in an extdeps module whose citation is a message from the service's operator, read by a consumer with no standing check. REPAIRED where a lab-policy fallback exists: CitedFigure<T> (extdeps.external_authority) carries the figure's standing and cited_figure_read answers only for a cited or observed figure, so the harness enforces its own PoolBudgetPolicy until the figure is read. WHERE NO FALLBACK EXISTS the rest of the stated contract (path, model ids, certificate, 503 semantics) is a consumed bet whose standing is pool_front_contract_standing (TranscribedUncited), discharged at the lab qualification's first live read. RUNG FOUND AT: mitigatable; CEILING: structurally guaranteed for figures with a policy fallback, a boundary obligation for the rest. NEXT TRIGGER: the lab qualification's live reads promote each figure to ObservedByReceipt.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.external_authority", decl_name: "CitedFigure", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.pool.pool_front", decl_name: "pool_front_contract_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_reasoning_wire", decl_name: "pool_budget_enforced", field: WholeDeclaration },
+  ],
+}
