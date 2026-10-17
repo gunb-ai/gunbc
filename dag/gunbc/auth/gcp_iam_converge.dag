@@ -35,7 +35,12 @@ import gunbc.auth.mtjade1_arrival_federation_provision { mtjade1_arrival_dedicat
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
-import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, cursor_api_key_harness_accessor_row, fleet_accessor_grant }
+import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_accessor_row, oracle_oci_api_signing_key_accessor_row, FleetAccessorGrantRow, fleet_accessor_grant_roster, fleet_accessor_grant }
+import gunbc.fleet.host_credential_custody_converge {
+  HostCustodyCredential, host_custody_credential_roster, host_credential_custody_row,
+  ControllerAppKey, ApprovalNtfyPublisherToken, FabricStateWriterKey, CursorWorkerTurnApiKey, CodexWorkerTurnAuth,
+  OracleOciApiSigningKey, ClaudeCodeOauthHarnessToken, TrackerWebTestOauthClientSecret, GunbaiBotPublicationAppKey, FlexVastApiKey,
+}
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -304,23 +309,57 @@ type GrantSet {
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
   GrantSet { label: "fleet accessor cells applied by hand", grants: hand_applied_accessor_grants() },
-  GrantSet { label: "worker-turn custody accessor cells", grants: worker_turn_custody_accessor_grants() },
+  GrantSet { label: "custody accessor cells", grants: custody_accessor_grants() },
 ]
 
-// THE CURSOR WORKER-TURN KEY'S ACCESSOR CELL, NEVER APPLIED BY HAND: gunbc.fleet.host_credential_custody_converge
-// reads cursor-api-key-harness over WIF for srv2, and the cell that read needs is declared once by the
-// roster (cursor_api_key_harness_accessor_row). Its own set, not a third hand-picked entry in
-// hand_applied_accessor_grants, because that set's label and witness say its cells were applied by hand.
-// THE SET IS SELECTED, NOT YET DERIVED from the custody rows. Deriving it from every row of
-// host_custody_credential_roster would hand this converge the secrets of the controller GitHub App key
-// (gunbai_ci_app_pem_secret), the fabric state key, the claude token, the ntfy token and codex: the
-// bootstrap would create each bare and bind secretPolicy on it, widening what the estate's approval
-// covers well past the one grant asked for, and codex is host-authoritative with a separate
-// versionAdder cell, a different contract. Next step, trigger: when a second custody credential needs
-// a converge-owned accessor cell, derive the set from the custody rows named by an explicit
-// closed selection over host_credential_custody_row's `secret`, not before.
-fn worker_turn_custody_accessor_grants() -> List<SecretAccessGrant> {
-  map([cursor_api_key_harness_accessor_row], row => fleet_accessor_grant(row: row))
+// WHICH CUSTODY CREDENTIALS' ACCESSOR CELLS THIS CONVERGE OWNS: an explicit closed selection over the custody
+// coproduct (gunbc.fleet.host_credential_custody_converge HostCustodyCredential), one arm per credential, so a
+// new credential cannot join or stay out of the estate's approval without a decision here. The trigger the
+// earlier hand-picked set named has arrived: a second custody credential (the flex pool's Vast key) needs a
+// converge-owned accessor cell. Selecting a credential has the bootstrap create its secret bare and bind
+// secretPolicy on it, widening what the estate's approval covers, so a credential nobody asked to move is
+// AccessorCellNotRequested: the widening is the operator's decision, not a consequence of having a row.
+type CustodyAccessorCellOwner
+  = AccessorCellConvergeOwned
+  | AccessorCellNotRequested
+  | AccessorCellOwnedByAnotherSet { label: String }
+  | AccessorCellDifferentContract { contract: String }
+
+fn custody_accessor_cell_owner(c: HostCustodyCredential) -> CustodyAccessorCellOwner {
+  match c {
+    CursorWorkerTurnApiKey => AccessorCellConvergeOwned
+    FlexVastApiKey => AccessorCellConvergeOwned
+    OracleOciApiSigningKey => AccessorCellOwnedByAnotherSet { label: "fleet accessor cells applied by hand" }
+    CodexWorkerTurnAuth => AccessorCellDifferentContract { contract: "host-authoritative: the custody converge writes the rotated file back through a separate versionAdder cell (fleet_version_adder_grant_roster)" }
+    ControllerAppKey => AccessorCellNotRequested
+    ApprovalNtfyPublisherToken => AccessorCellNotRequested
+    FabricStateWriterKey => AccessorCellNotRequested
+    ClaudeCodeOauthHarnessToken => AccessorCellNotRequested
+    TrackerWebTestOauthClientSecret => AccessorCellNotRequested
+    GunbaiBotPublicationAppKey => AccessorCellNotRequested
+  }
+}
+
+fn custody_accessor_cell_converge_owned(c: HostCustodyCredential) -> Bool {
+  match custody_accessor_cell_owner(c: c) {
+    AccessorCellConvergeOwned => true
+    AccessorCellNotRequested => false
+    AccessorCellOwnedByAnotherSet { label: _ } => false
+    AccessorCellDifferentContract { contract: _ } => false
+  }
+}
+
+// THE ROSTER STAYS THE CELL'S ONE DECLARER: the set is the roster rows whose target is the custody row's
+// `secret` for each selected credential, never a grant minted here. A selected credential with no roster
+// row contributes nothing and is red in test.claim.gcp_iam_converge_witness (the identity join).
+fn custody_accessor_roster_rows() -> List<FleetAccessorGrantRow> {
+  flat_map(filter(host_custody_credential_roster, c => custody_accessor_cell_converge_owned(c: c)), c =>
+    filter(fleet_accessor_grant_roster, r => (r.target.secret as String) == (host_credential_custody_row(c: c).secret.secret as String))
+  )
+}
+
+fn custody_accessor_grants() -> List<SecretAccessGrant> {
+  map(custody_accessor_roster_rows(), row => fleet_accessor_grant(row: row))
 }
 
 // THE TWO ACCESSOR CELLS THE OPERATOR APPLIED BY HAND, DERIVED FROM THE ROSTER: the cell is declared once,
