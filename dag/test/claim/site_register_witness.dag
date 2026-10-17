@@ -6,6 +6,7 @@ import gunbc.design.theme {
   themes_coherent, theme_gaps, theme_area_coherent, theme_contrast_ok,
   CanvasRole, night_canvas, warm_starlight, role_area, role_var,
 }
+import extdeps.languages.css.media_queries { SchemeDark }
 import gunbc.design.material {
   Material, PointArea,
   chroma_admissible, quiet_envelope, area_key,
@@ -87,7 +88,7 @@ fn witness_focus_boundary_differ_by_area() -> Bool {
 }
 
 fn witness_theme_gap_is_located() -> Bool {
-  let partial = Theme { name: "partial", scheme: "dark", assignments: [
+  let partial = Theme { name: "partial", scheme: SchemeDark, assignments: [
     assign(role: CanvasRole, material: night_canvas),
   ] }
   theme_gaps(t: partial, roles: theme_roles).length() == theme_roles.length() - 1
@@ -96,7 +97,7 @@ fn witness_theme_gap_is_located() -> Bool {
 }
 
 fn witness_role_area_mismatch_refused() -> Bool {
-  let field_on_figure = Theme { name: "mismatched", scheme: "dark", assignments: [
+  let field_on_figure = Theme { name: "mismatched", scheme: SchemeDark, assignments: [
     assign(role: FigureRole, material: night_canvas),
   ] }
   !theme_area_coherent(t: field_on_figure)
