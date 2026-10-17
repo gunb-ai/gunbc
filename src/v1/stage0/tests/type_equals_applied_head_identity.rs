@@ -193,3 +193,67 @@ fn hand_built_box_pair_agrees_on_same_arguments_and_refuses_different_ones() {
         "reverse operand order must refuse too"
     );
 }
+
+// A CHILDLESS spelling of the SAME declaration is no proof of an argument-free instantiation: Box<Int>
+// declared in m.one against a bare Box declared in m.one passes head identity, so only the missing
+// arguments refuse it. Both operand orders (the existing m.two negative tests identity, not evidence).
+#[test]
+fn an_application_refuses_a_childless_spelling_of_its_own_declaration_in_both_orders() {
+    let applied_x = declared_in((*applied("X", vec![leaf("Int")])).clone(), "m.one");
+    let bare_x = declared_in((*leaf("X")).clone(), "m.one");
+    assert!(
+        !equals(applied_x.clone(), bare_x.clone()),
+        "X<Int> vs bare X, same declaration: no argument evidence, must refuse"
+    );
+    assert!(
+        !equals(bare_x, applied_x),
+        "reverse operand order must refuse too"
+    );
+}
+
+// AN ARGUMENT THAT VANISHES FROM THE EXPANSION: Pair<T, U> whose body mentions only T. The real producer
+// builds Pair<Int, Bool> and Pair<Int, Int>; their expansions are identical, so expansion equality
+// alone cannot separate the instantiations. Each application argument must occur in the other side.
+fn pair_application(first: &str, second: &str) -> Rc<Node> {
+    let (t, u) = (leaf("T"), leaf("U"));
+    let mut decl = named(
+        "Pair",
+        Connective::Disj,
+        vec![Rc::new(named("Wrap", Connective::Conj, vec![t.clone()]))],
+    );
+    decl.params = Rc::new(vec![t, u].into_iter().collect());
+    let use_site = named(
+        "Pair",
+        Connective::NoConnective,
+        vec![leaf(first), leaf(second)],
+    );
+    let env = Rc::new((*empty_type_env()).clone());
+    generic_declaration_application(
+        Rc::new(use_site),
+        Rc::new(decl),
+        "Pair".to_string(),
+        Rc::new(vec![leaf(first), leaf(second)].into_iter().collect()),
+        Rc::new(
+            im::HashMap::unit("T".to_string(), leaf(first)).update("U".to_string(), leaf(second)),
+        ),
+        env,
+    )
+}
+
+#[test]
+fn an_argument_that_vanishes_from_the_expansion_refuses_in_both_orders() {
+    let int_bool = pair_application("Int", "Bool");
+    let expansion = expansion_of(&pair_application("Int", "Int"));
+    assert!(
+        equals(expansion_of(&int_bool), expansion.clone()),
+        "premise: the two expansions are equal, so expansion equality cannot tell the instantiations apart"
+    );
+    assert!(
+        !equals(int_bool.clone(), expansion.clone()),
+        "Pair<Int, Bool> vs the expansion of Pair<Int, Int>: Bool is unrecoverable"
+    );
+    assert!(
+        !equals(expansion, int_bool),
+        "reverse operand order must refuse too"
+    );
+}

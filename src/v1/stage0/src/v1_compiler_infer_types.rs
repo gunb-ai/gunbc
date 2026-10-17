@@ -3,7 +3,6 @@
 
 use self::TextJudgment::*;
 use self::TextNotAskedReason::*;
-use self::TypeRead::*;
 use self::TypeResolutionVerdict::*;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
@@ -107,65 +106,6 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum TypeRead {
-    ReadResolved {
-        node: Rc<Node>,
-    },
-    ReadUnbound {
-        id: String,
-    },
-    ReadErrored {
-        message: String,
-        span: Rc<SourceSpan>,
-    },
-    ReadDivergent,
-    ReadUninferred,
-}
-
-pub fn type_read(n: Rc<Node>) -> Rc<TypeRead> {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            Rc::new(TypeRead::ReadResolved { node: rt.clone() })
-        }
-        Some(InferredNode::TypeVariable { id: id, .. }) => {
-            Rc::new(TypeRead::ReadUnbound { id: id.clone() })
-        }
-        Some(InferredNode::CompilerError {
-            message: m,
-            span: sp,
-            ..
-        }) => Rc::new(TypeRead::ReadErrored {
-            message: m.clone(),
-            span: sp.clone(),
-        }),
-        Some(InferredNode::Divergent) => Rc::new(TypeRead::ReadDivergent),
-        std::option::Option::None => Rc::new(TypeRead::ReadUninferred),
-    }
-}
-
-pub fn child_resolution_verdict(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypeResolutionVerdict> {
-    if ((ch.inferred.clone() == std::option::Option::None)
-        || (ch.connective.clone() == Connective::Arrow))
-    {
-        type_resolution_verdict(ch.clone(), source_indices.clone())
-    } else {
-        match (*type_read(ch.clone())).clone() {
-            TypeRead::ReadResolved { node: rt, .. } => {
-                type_resolution_verdict(rt.clone(), source_indices.clone())
-            }
-            TypeRead::ReadUnbound { id: _, .. } => Rc::new(TypeResolutionVerdict::UnderResolved),
-            TypeRead::ReadErrored { .. } => Rc::new(TypeResolutionVerdict::UnderResolved),
-            TypeRead::ReadDivergent => Rc::new(TypeResolutionVerdict::DivergentExpression),
-            TypeRead::ReadUninferred => Rc::new(TypeResolutionVerdict::UnderResolved),
-        }
-    }
 }
 
 pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
@@ -483,49 +423,65 @@ pub fn type_resolution_verdict(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeResolutionVerdict> {
-    if (n.connective.clone() == Connective::Arrow) {
-        callable_resolution_verdict(n.clone(), source_indices.clone())
-    } else {
-        {
-            let self_is_type_var = match n.inferred.clone() {
-                Some(inf) => is_type_variable(inf.clone()),
-                std::option::Option::None => false,
-            };
-            if type_is_divergent(n.clone()) {
-                Rc::new(TypeResolutionVerdict::DivergentExpression)
-            } else {
-                if self_is_type_var.clone() {
-                    Rc::new(TypeResolutionVerdict::UnderResolved)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.connective.clone() == Connective::Arrow) {
+            callable_resolution_verdict(n.clone(), source_indices.clone())
+        } else {
+            {
+                let self_is_type_var = match n.inferred.clone() {
+                    Some(inf) => is_type_variable(inf.clone()),
+                    std::option::Option::None => false,
+                };
+                if type_is_divergent(n.clone()) {
+                    Rc::new(TypeResolutionVerdict::DivergentExpression)
                 } else {
-                    match (*crate::v1_std_core::authored_container_spelling_verdict(
-                        n.clone(),
-                        source_indices.clone(),
-                    ))
-                    .clone()
-                    {
-                        ContainerSpellingVerdict::ContainerSpellingUnknown {
-                            container_leaf: _,
-                            ..
-                        } => Rc::new(TypeResolutionVerdict::ContainerSpellingUnresolvable {
-                            name: crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                n.clone(),
-                            ),
-                        }),
-                        ContainerSpellingVerdict::ContainerSpellingDeclared {
-                            arity: expected,
-                            ..
-                        } => {
-                            if ((n.children.clone().len() as i64) < expected.clone()) {
-                                Rc::new(TypeResolutionVerdict::UnderResolved)
-                            } else {
+                    if self_is_type_var.clone() {
+                        Rc::new(TypeResolutionVerdict::UnderResolved)
+                    } else {
+                        match (*crate::v1_std_core::authored_container_spelling_verdict(
+                            n.clone(),
+                            source_indices.clone(),
+                        ))
+                        .clone()
+                        {
+                            ContainerSpellingVerdict::ContainerSpellingUnknown {
+                                container_leaf: _,
+                                ..
+                            } => Rc::new(TypeResolutionVerdict::ContainerSpellingUnresolvable {
+                                name: crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    n.clone(),
+                                ),
+                            }),
+                            ContainerSpellingVerdict::ContainerSpellingDeclared {
+                                arity: expected,
+                                ..
+                            } => {
+                                if ((n.children.clone().len() as i64) < expected.clone()) {
+                                    Rc::new(TypeResolutionVerdict::UnderResolved)
+                                } else {
+                                    n.children.clone().iter().cloned().fold(
+                                        Rc::new(TypeResolutionVerdict::FullyResolved),
+                                        |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
+                                            combine_resolution_verdicts(
+                                                acc,
+                                                type_resolution_verdict(
+                                                    child_type_node(ch.clone()),
+                                                    source_indices.clone(),
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                            ContainerSpellingVerdict::NotAContainerSpelling => {
                                 n.children.clone().iter().cloned().fold(
                                     Rc::new(TypeResolutionVerdict::FullyResolved),
                                     |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
                                         combine_resolution_verdicts(
                                             acc,
-                                            child_resolution_verdict(
-                                                ch.clone(),
+                                            type_resolution_verdict(
+                                                child_type_node(ch.clone()),
                                                 source_indices.clone(),
                                             ),
                                         )
@@ -533,25 +489,11 @@ pub fn type_resolution_verdict(
                                 )
                             }
                         }
-                        ContainerSpellingVerdict::NotAContainerSpelling => {
-                            n.children.clone().iter().cloned().fold(
-                                Rc::new(TypeResolutionVerdict::FullyResolved),
-                                |acc: Rc<TypeResolutionVerdict>, ch: Rc<Node>| {
-                                    combine_resolution_verdicts(
-                                        acc,
-                                        child_resolution_verdict(
-                                            ch.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                    )
-                                },
-                            )
-                        }
                     }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn is_fully_resolved(
@@ -3173,20 +3115,25 @@ pub fn applied_spelling_arguments_agree(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     text: Rc<TextJudgment>,
 ) -> bool {
-    if (((other.children.clone().len() as i64) == 0) || ((other.params.clone().len() as i64) > 0)) {
-        true
+    if ((other.children.clone().len() as i64) == 0) {
+        false
     } else {
         match applied.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
                 node: expansion, ..
             }) => {
                 if is_coproduct_type(expansion.clone()) {
-                    node_type_equals(
+                    (node_type_equals(
                         expansion.clone(),
                         other.clone(),
                         source_indices.clone(),
                         text.clone(),
-                    )
+                    ) && applied_arguments_recovered(
+                        applied.clone(),
+                        other.clone(),
+                        source_indices.clone(),
+                        text.clone(),
+                    ))
                 } else {
                     arguments_agree_in_lockstep(
                         applied.children.clone(),
@@ -3209,6 +3156,59 @@ pub fn applied_spelling_arguments_agree(
             ),
         }
     }
+}
+
+pub fn applied_arguments_recovered(
+    applied: Rc<Node>,
+    other: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    {
+        let mut __all = true;
+        for a in applied.children.clone().iter().cloned() {
+            if !(type_occurs_in(
+                other.clone(),
+                child_type_node(a.clone()),
+                source_indices.clone(),
+                text.clone(),
+            )) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    }
+}
+
+pub fn type_occurs_in(
+    tree: Rc<Node>,
+    wanted: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        (node_type_equals(
+            tree.clone(),
+            wanted.clone(),
+            source_indices.clone(),
+            text.clone(),
+        ) || !{
+            let mut __all = true;
+            for c in tree.children.clone().iter().cloned() {
+                if !(!type_occurs_in(
+                    child_type_node(c.clone()),
+                    wanted.clone(),
+                    source_indices.clone(),
+                    text.clone(),
+                )) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        })
+    })
 }
 
 pub fn node_type_equals_core(
