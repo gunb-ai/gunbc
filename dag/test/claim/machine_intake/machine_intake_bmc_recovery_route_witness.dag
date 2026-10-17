@@ -352,9 +352,13 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
       ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => true
       NotExecuted { kind: _ } => false
     })
+    // BOTH FIXTURE WRITES ARE OBSERVED-ONLY, AND THE CAPTURE SAYS SO FOR EACH. 00_README.txt records
+    // write 1 as "NOT reproducible and was not saved as bytes" (the reset wiped the temporary password)
+    // and write 2 as "Response bodies were not saved"; so neither module fixture may present itself as a
+    // captured exchange, and a fixture that started doing so without a capture behind it turns this red.
     && (match recovery_in_band_write_record() {
-      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
-      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
+      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => false
+      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => true
       NotExecuted { kind: _ } => false
     })
     && recovery_write_was_attempted(record: wrong_kind, kind: recovery_reset_actuation()) == false
