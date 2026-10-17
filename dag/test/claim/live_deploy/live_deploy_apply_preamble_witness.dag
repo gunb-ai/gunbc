@@ -58,7 +58,7 @@ data preamble_principal: NonEmptyStr = "gunbc-publish" as NonEmptyStr
 
 // How many grant legs the fixture's roster produces. EVERY count below is derived from this, so the
 // claims do not hard-code a roster length that a sibling can change.
-data preamble_grant_count: Int = list_length(xs: ci_deploy_srv1_access.privileged_commands)
+data preamble_grant_count: Int = list_length(items: ci_deploy_srv1_access.privileged_commands)
 
 // stage + visudo-check + install + policy-final, then one leg per grant, then ONE principal leg
 // (the script's `id || useradd` is a single leg — see the Either arm).
@@ -158,8 +158,8 @@ test fn the_legs_are_written_in_the_scripts_order() -> Bool {
     // the four sudoers commands, in order, before anything else
   string_contains(s: joined, pattern: "sudoers-stage,sudoers-visudo-check,sudoers-install,sudoers-policy-final,")
     // one grant leg per roster row, and the principal leg LAST
-    && list_length(xs: names) == preamble_leg_count
-    && list_length(xs: names) == 4 + preamble_grant_count + 1
+    && list_length(items: names) == preamble_leg_count
+    && list_length(items: names) == 4 + preamble_grant_count + 1
     && string_contains(s: joined, pattern: "principal-check,principal-ensure")
 }
 
@@ -204,12 +204,14 @@ test fn the_install_argv_is_its_policy_owners_0440_from_the_granted_path() -> Bo
 // body was ONE string with `set -e` and `|| exit 1`; a leg that could carry either would put the old
 // control flow back where a caller could edit it.
 test fn no_leg_carries_a_shell_metacharacter_or_a_second_command() -> Bool {
-  let all = join(list_map(xs: w_legs(), f: leg => w_words(leg: leg)), "\u{1f41f}")
-    && (!string_contains(s: all, pattern: "&&"))
-    && (!string_contains(s: all, pattern: ";"))
-    && (!string_contains(s: all, pattern: "set -e"))
-    && (!string_contains(s: all, pattern: "|| exit"))
-    && (!string_contains(s: all, pattern: "trap "))
+  // Bound on its own line: the && continuation below is part of THIS let's right-hand side, so a name
+  // introduced here is not yet in scope inside it.
+  let joined_leg_words = join(list_map(xs: w_legs(), f: leg => w_words(leg: leg)), "\u{1f41f}")
+  (!string_contains(s: joined_leg_words, pattern: "&&"))
+    && (!string_contains(s: joined_leg_words, pattern: ";"))
+    && (!string_contains(s: joined_leg_words, pattern: "set -e"))
+    && (!string_contains(s: joined_leg_words, pattern: "|| exit"))
+    && (!string_contains(s: joined_leg_words, pattern: "trap "))
 }
 
 // The `A || B` leg really is ONE leg with a check and an act, not two legs. Two legs would mean "check,
