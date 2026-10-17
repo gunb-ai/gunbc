@@ -441,7 +441,7 @@ fn host_fixed_overhead_from_capture(envelope: BoundHostCaptureEnvelope) -> Obser
 // mtcollins1_census_capture_file_is_the_committed_receipt reads the derived path). The RAM reading and
 // the CPU model reading both fold over it. Named frontier, not this change: the boot job emitting an
 // evidence record the corpus can fold over, which removes this row edit.
-data mtcollins1_census_boot_run: NonEmptyStr = "38979496315"
+data mtcollins1_census_boot_run: NonEmptyStr = "39010930690"
 
 fn mtcollins1_census_boot_capture_path_of(run: NonEmptyStr) -> String {
   join(["artifacts/bmc/mtcollins1-boot-run-", run as String, "/mtcollins1-boot-sol.capture"], "")
