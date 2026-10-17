@@ -7,7 +7,8 @@ import gunbc.runner.runner_microvm { gunbc_runner_microvm_declared_realization_a
 import extdeps.virtualization.firecracker { FirecrackerDrive, firecracker_block_sector_size }
 import gunbc.runner.runner_microvm { jit_drive_utf8_size }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
-import extdeps.systemd.systemd_run { NamedUnitSetting, EmptyCapabilityBoundingSet }
+import extdeps.systemd.systemd_run { SystemdRunProperty }
+import extdeps.systemd { MemoryMax }
 import gunbc.runner.runner_revision_job_launch { revision_job_vm_config, revision_job_jailer_memory_property }
 import gunbc.runner.runner_revision_job_guest { revision_job_guest_memory, revision_job_claim_envelope, revision_job_guest_os_allowance }
 import gunbc.runner.runner_revision_job_stage { revision_job_spec_device_content }
@@ -40,8 +41,8 @@ test fn the_vm_ram_exceeds_the_claim_envelope_and_the_spec_fills_whole_sectors()
 // guest OS allowance. (Before, the VM asked for the row plus both allowances inside a cell of the row.)
 fn jailer_memory_value() -> String {
   match revision_job_jailer_memory_property() {
-    NamedUnitSetting { property: _, value: v } => v as String
-    EmptyCapabilityBoundingSet => ""
+    SystemdRunProperty { property: MemoryMax, value: v } => v as String
+    _ => ""
   }
 }
 
