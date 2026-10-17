@@ -805,11 +805,37 @@ fn expected_decided_variant_value(texpr: Node, name: String, decided: Node, expe
       name: name,
       expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: decided_name, parent_identity: variant_parent_identity_of(owner: Present { value: decided }, scope: scope) } } },
       children: [],
-      inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided) } },
+      inferred: Present { value: Resolved { node: expected_decided_variant_type(name: name, decided: decided, decided_name: decided_name, expected: expected, scope: scope) } },
       span: texpr.span,
       name_span: texpr.span
     ),
     diagnostics: variant_value_reference_diagnostics(scope: scope, name: name, span: texpr.span, owner: Present { value: decided })
+  }
+}
+
+// THE NULLARY ARM OF THE OPTIONAL, UNDER AN OPTIONAL EXPECTATION, HAS THE EXPECTED OPTIONAL AS ITS ONLY
+// TYPE. `Absent` carries no payload, so the kernel coproduct that elected it types the value with an
+// unbound payload (`Optional<T>` with T a variable), and an `if c { Absent } else { <T?> }` join then
+// compares that unbound payload against T?. variant_reference_inferred_node refuses an Optional
+// expectation on purpose -- `Mod` against `BinOp?` is a coercion the emitter owes a wrap for -- but
+// that hazard is a payload-carrying arm of ANOTHER coproduct; the Optional's own nullary arm is
+// already the optional.
+fn expected_decided_variant_type(name: String, decided: Node, decided_name: String, expected: Node?, scope: InferScope) -> Node {
+  match expected {
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional && optional_nullary_arm_of(owner: decided, name: name, scope: scope) {
+        exp
+      } else {
+        variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+      }
+    Absent => variant_reference_inferred_node(expected: expected, name: name, owner_name: decided_name, scope: scope, fallback: decided)
+  }
+}
+
+fn optional_nullary_arm_of(owner: Node, name: String, scope: InferScope) -> Bool {
+  match find_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+    Present { value: arm } => (arm.children |> count) == 0
+    Absent => false
   }
 }
 
@@ -2155,19 +2181,6 @@ fn type_node_is_established(n: Node, source_indices: Map<String, NewlineIndex>) 
   authored_name_at(source_indices: source_indices, node: n) != ""
     || n.children |> count > 0
     || n.params |> count > 0
-}
-
-// CALLABILITY IS THE ARROW CONNECTIVE; A NON-EMPTY PARAMETER LIST IS SUFFICIENT, NEVER NECESSARY.
-// Every callable value type is minted as an Arrow node (make_callable_type, parse_callable_type_expr),
-// and a nullary `fn() -> R` is an Arrow with an empty parameter list. This predicate used to be
-// `params |> count > 0` alone, which read "takes an argument" as "is a function type": every nullary
-// function type answered false, so the call seam discarded a found nullary local and retried its
-// name as a global ("function 'pick' not found in scope"), and the nominal brand checks below treated
-// a nullary arrow as a named type. The params disjunct is kept because a declaration-shaped node
-// carries its formals in params, and on such a node a non-empty list IS a callable fact.
-// gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
-fn type_node_is_callable(n: Node) -> Bool {
-  n.connective == Arrow || n.params |> count > 0
 }
 
 // THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
@@ -7743,7 +7756,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
 // accumulator type was fully known). The lambda arm still admits the return as the body's
 // expected type only when it is established and fully resolved, so an accumulator whose own
 // type is unknown expects nothing, as before.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node?, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -7754,14 +7767,16 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         Present { value: fi } => fi
         Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
       }
-    } else if is_fold && fold_info != none {
+    } else if is_fold && fold_info != none && fold_acc_type != none {
+      match fold_acc_type {
+      Present { value: fold_acc } =>
       let fold_params = [
-        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc, default_value: none, span: no_span(), name_span: no_span()),
         make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
       let fold_callable = Node {
         occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
-        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc_type } },
+        connective: NoConnective, params: fold_params, inferred: Present { value: Resolved { node: fold_acc } },
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
@@ -7787,6 +7802,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -8963,9 +8980,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let call_method_args = call_args |> skip(1)
       let call_method_name = Present { value: func_name }
       let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
-      let call_fold_acc_type = match call_fold_info {
-        Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
-        Absent => error_type
+      let call_fold_acc_type: Node? = match call_fold_info {
+        Present { value: fi } => Present { value: resolved_type(n: arg_value(n: fi.typed_arg)) }
+        Absent => none
       }
       let declared_formal_authority_failed = match call_target {
         DeclaredCallableResolved { sig: _, declared: _ } => !formal_authority_available
@@ -9142,14 +9159,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Present { value: ta } => arg_value(n: ta)
           Absent => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_indices: scope.type_env.source_indices)
-          || fold_accumulator_is_unapplied_generic(n: call_fold_acc_type)
-        let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
-          match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-            Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
-            Absent => call_fold_acc_type
-          }
-        } else { call_fold_acc_type }
+        let refined_call_fold_acc_type: Node? = match call_fold_acc_type {
+          Present { value: acc } =>
+            if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) || fold_accumulator_is_unapplied_generic(n: acc) {
+              match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+                Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+                Absent => call_fold_acc_type
+              }
+            } else { call_fold_acc_type }
+          Absent => none
+        }
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
           KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
@@ -9157,7 +9176,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             receiver: method_receiver,
             receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
             method_name: func_name,
-            fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
+            fold_accumulator_type: refined_call_fold_acc_type,
             service_registry: scope.service_registry,
             source_indices: scope.type_env.source_indices
           )
@@ -9181,7 +9200,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: t } =>
                     if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
-                      let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
+                      let fold_overrides = match refined_call_fold_acc_type {
+                        Present { value: acc } => fold_override_map(key: "FoldAccumulator", value: acc)
+                        Absent => empty_override_map()
+                      }
                       resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
                     } else {
                       KernelTypeBuild { ty: base_result_type, diagnostics: [] }
@@ -9531,27 +9553,30 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       let mc_method_name = Present { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
-      let fold_acc_type = match fold_info {
-        Present { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
-        Absent => error_type
+      let fold_acc_type: Node? = match fold_info {
+        Present { value: fi } => Present { value: resolved_type(n: arg_value(n: fi.typed_arg)) }
+        Absent => none
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
       let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices, expand_field_type: n => expand_type_for_field_access(n: n, env: scope.type_env, module_name: scope.module_name).resolved)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
-      let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
-        match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-          Present { value: lambda_arg } => resolved_type(n: arg_value(n: lambda_arg))
-          Absent => fold_acc_type
-        }
-      } else { fold_acc_type }
+      let refined_fold_acc_type: Node? = match fold_acc_type {
+        Present { value: acc } =>
+          if !is_fully_resolved(n: acc, source_indices: scope.type_env.source_indices) {
+            match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
+              Present { value: lambda_arg } => Present { value: resolved_type(n: arg_value(n: lambda_arg)) }
+              Absent => fold_acc_type
+            }
+          } else { fold_acc_type }
+        Absent => none
+      }
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
         method_name: method_name,
-        fold_accumulator_type: if fold_info != none { Present { value: refined_fold_acc_type } } else { none },
+        fold_accumulator_type: refined_fold_acc_type,
         service_registry: scope.service_registry,
         source_indices: scope.type_env.source_indices
       )
@@ -9571,7 +9596,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               Present { value: t } =>
                 if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
-                  let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
+                  let mc_fold_overrides = match refined_fold_acc_type {
+                    Present { value: acc } => fold_override_map(key: "FoldAccumulator", value: acc)
+                    Absent => empty_override_map()
+                  }
                   resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
                 } else {
                   KernelTypeBuild { ty: base_result_type, diagnostics: [] }
@@ -11053,16 +11081,6 @@ fn node_is_std_optional(n: Node, scope: InferScope) -> Bool {
   }
 }
 
-fn std_optional_declaration_ref() -> DeclarationRef {
-  decl_ref(module_path: "std.optional", decl_name: "Optional")
-}
-
-// CANONICAL DeclarationRef EQUALITY against the one reference the kernel mint is bound to; no
-// module-path or name part is compared on its own.
-fn declaration_is_std_optional(d: DeclarationRef) -> Bool {
-  d == std_optional_declaration_ref()
-}
-
 // THE PRESENT ARM AND ITS MEMBER, READ FROM THE CANONICAL DECLARATION: the arm of
 // std.optional::Optional that carries a member, and that member's name. Neither is a spelling
 // compared against "Present" / "value".
@@ -11088,13 +11106,6 @@ fn std_optional_payload_member_name(scope: InferScope) -> String? {
         Absent => none
       }
     Absent => none
-  }
-}
-
-fn absent_adopts_expected(expected: Node?, scope: InferScope) -> Bool {
-  match expected {
-    Present { value: exp } => node_is_std_optional(n: exp, scope: scope) || exp.return_cardinality == CardOptional
-    Absent => false
   }
 }
 
@@ -11130,34 +11141,6 @@ fn optional_declaration_reading(n: Node, scope: InferScope) -> OptionalDeclarati
   match carried {
     Present { value: d } => if declaration_is_std_optional(d: d) { IsStdOptional } else { IsOtherType }
     Absent => optional_reading_by_census(n: n, scope: scope, spelling: spelling)
-  }
-}
-
-// THE IDENTITY A REFERENCE CARRIES: a type application's resolved node is stamped with the
-// declaration it applies (generic_declaration_application), and the reference reads it through
-// `inferred`. A use-site reference's own span declares nothing, so the span join cannot recover it.
-fn whole_declaration_carried(n: Node) -> DeclarationRef? {
-  match n.declaration {
-    Present { value: d } =>
-      match d.field {
-        WholeDeclaration => Present { value: d }
-        NamedField { field_name: _ } => none
-        TypeParameter { name: _ } => none
-      }
-    Absent => none
-  }
-}
-
-fn declaration_carried_through_resolution(n: Node, hops: Int) -> DeclarationRef? {
-  match whole_declaration_carried(n: n) {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      if hops <= 0 { none } else {
-        match n.inferred {
-          Present { value: Resolved { node: r } } => declaration_carried_through_resolution(n: r, hops: hops - 1)
-          _ => none
-        }
-      }
   }
 }
 
@@ -11732,13 +11715,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else {
       variant_literal_expected_application(owner: present_application_owner, expected: expected, scope: scope)
     }
-    let resolved_node = if !is_present_ctor && parent_is_std_optional && absent_adopts_expected(expected: expected, scope: scope) {
-      // THE ABSENT ARM CARRIES NO PAYLOAD, SO THE EXPECTED OPTIONAL IS ITS ONLY TYPE. Without this the
-      // literal kept the kernel coproduct whose payload type is unbound, and an `if c { Absent } else
-      // { <T?> }` join compared that unbound payload against T? (v1.compiler.infer ExprIf). It sits
-      // before the expected-owner application, which answers the coproduct for a `T?` expectation.
-      match expected { Present { value: exp } => exp  Absent => raw_resolved }
-    } else if applied_expected_owner != none {
+    let resolved_node = if applied_expected_owner != none {
       applied_expected_owner.value
     } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => name_is_std_optional_payload_member(scope: scope, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices))) |> first
@@ -15427,19 +15404,6 @@ fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: M
   )
 }
 
-fn node_declaration_file(n: Node) -> String {
-  match n.ident_span {
-    Present { value: sp } => sp.file
-    Absent => ""
-  }
-}
-
-fn node_declaration_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  type_declaration_identity_key(
-    decl_file: node_declaration_file(n: n),
-    declared_name: authored_name_at(source_indices: source_indices, node: n))
-}
-
 fn type_reference_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Present { value: Resolved { node: rt } } => node_declaration_identity(n: rt, source_indices: source_indices)
@@ -15591,8 +15555,9 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
 // v1.compiler.infer_resolve with_authored_identity keeps only the alias's ident_span and takes the
 // target's declaration, so both branches name the same DeclarationRef. They agree when both carry a
 // whole-declaration ref (whole_declaration_carried), the refs are equal, the optional layer
-// matches, and every applied argument agrees pairwise. transparent_alias_identity_agrees cannot
-// answer this: it admits only bare-name aliases and deliberately records no edge for `type A = B<C>`.
+// matches, and every applied argument is identical (applied_argument_types_identical).
+// transparent_alias_identity_agrees cannot answer this: it admits only bare-name aliases and
+// deliberately records no edge for `type A = B<C>`.
 // A side with no declaration declines, so the mismatch stays loud: a branch typed straight from a
 // parameter's declared type reference carries none today, so `if c { a } else { b }` over
 // `a: IntBox, b: Boxed<Int>` still refuses. This is the if-join instance only; node_type_compatible
@@ -15617,38 +15582,8 @@ fn if_branch_types_agree_through_alias_identity(left: Node, right: Node, scope: 
     }
     same_declaration
       && (left_args |> count) == (right_args |> count)
-      && if_branch_type_arguments_agree(left_args: left_args, right_args: right_args, scope: scope)
+      && applied_arguments_identical(left_args: left_args, right_args: right_args, source_indices: scope.type_env.source_indices)
   }
-}
-
-fn if_branch_type_arguments_agree(left_args: List<Node>, right_args: List<Node>, scope: InferScope) -> Bool {
-  match left_args |> first {
-    Present { value: l } =>
-      match right_args |> first {
-        Present { value: r } =>
-          if_branch_argument_types_agree(left: child_type_node(ch: l), right: child_type_node(ch: r), scope: scope)
-            && if_branch_type_arguments_agree(left_args: left_args |> skip(1), right_args: right_args |> skip(1), scope: scope)
-        Absent => false
-      }
-    Absent => true
-  }
-}
-
-// AN ARGUMENT AGREES BY ITS WHOLE STRUCTURE, NOT ITS HEAD. node_type_compatible reads a non-container
-// application's head name and none of its arguments, so Inner<Int> and Inner<Bool> agree there; this
-// relation recurses through every applied argument so the alias admission cannot extend that. The
-// head-only reading itself is node_type_compatible's and is untouched here: `if c { a } else { b }` over
-// `a: Boxed<Int>, b: Boxed<Bool>` is admitted on main without any alias.
-fn if_branch_argument_types_agree(left: Node, right: Node, scope: InferScope) -> Bool {
-  let heads_agree = node_type_compatible(
-    left: left,
-    right: right,
-    source_indices: scope.type_env.source_indices,
-    text: TextJudgedIn { env: scope.type_env })
-    || if_branch_types_agree_through_alias_identity(left: left, right: right, scope: scope)
-  heads_agree
-    && (left.children |> count) == (right.children |> count)
-    && if_branch_type_arguments_agree(left_args: left.children, right_args: right.children, scope: scope)
 }
 
 // A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
