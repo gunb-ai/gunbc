@@ -485,9 +485,9 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
 // without minting a sentinel every caller would have to branch on, exactly as the inline arm already
 // does -- it does not assert that the runtime answers under that name.
 //
-// THE ABSENT ARM IS UNREACHABLE FOR BOTH UNITS THIS HARNESS SERVES, because both rows it reads carry
-// a projection today. It exists so that adding a unit whose runtime has never served cannot silently
-// unwrap into a fabricated name, which is what the previous bare-typed signature would have done.
+// THE ABSENT ARM IS REACHABLE: the pool-front unit's reasoning field is an uncited figure and answers none until
+// the lab qualification reads it. It also keeps a unit whose runtime has never served from silently unwrapping
+// into a fabricated name, which is what the previous bare-typed signature would have done.
 fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? {
   match harness_unit_reasoning_projection(unit: unit) {
     Absent => harness_unit_model_reasoning_field(unit: unit)
