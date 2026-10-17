@@ -10762,9 +10762,6 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
 // and a name test alone would call every alias of a union a constructor. Only the structural shapes
 // answer: a name that resolves to nothing, to a primitive, or to a conjunction is left to the
 // refusals that already judge it, so this widens on none of them.
-// (Grammar note, from the parse this file must survive: the seed parser rejects `let x = if ...` --
-// a `let` whose right-hand side is an if-expression -- so the branches are spelled as blocks whose
-// bodies hold the lets, the shape every other function in this file uses.)
 fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Absent => none
@@ -11810,7 +11807,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     } else { [] }
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags)
+      diagnostics: concat(concat(concat(concat(concat(concat(concat(concat(union_name_no_record_constructor_diags, fi_diags), alias_struct_diags), type_diags), sole_ctor_diags), missing_field_diags), presence_ambiguity_diags), optional_owner_unrecovered_diags))
     }
   }
 }
