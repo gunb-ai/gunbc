@@ -81,7 +81,9 @@ build() { # dir label
     tail -40 /tmp/build_$V.log || true
     return 1
   fi
-  echo "built $V $(date -u +%H:%M:%S) target=$(du -sh $CARGO_TARGET_DIR 2>/dev/null | cut -f1)"
+  local B="$CARGO_TARGET_DIR/release/gunbc"
+  if [ ! -x "$B" ]; then echo "BUILD-OK-NO-BINARY $V at $B"; return 1; fi
+  echo "built $V $(date -u +%H:%M:%S) target=$(du -sh $CARGO_TARGET_DIR 2>/dev/null | cut -f1) bin_sha256=$(sha256sum "$B" | cut -d' ' -f1) bin_bytes=$(stat -c %s "$B")"
 }
 run_variant() { # dir label hooksidew fatal skiphook
   D="$1"; V="$2"; H="$3"; FATAL="${4:-yes}"; SKIP="${5:-no}"
@@ -100,7 +102,16 @@ run_variant() { # dir label hooksidew fatal skiphook
   bash .sdm/measure_variant.sh "$V" || echo "MEASURE-REPORTED-FAILURE $V"
   echo "@@@@ VARIANT=$V end $(date -u +%H:%M:%S)"
 }
+START_EPOCH=$(date +%s)
 run_variant $A/ctrl  control    control   yes
 run_variant $A/treat treatment  treatment yes
-run_variant $A/ctrl  control2   control   yes    yes
+# The runner has killed an action at ~18 min once (DeadlineExceeded), and a killed
+# action loses the repetitions after it. control2 is a repetition, not an authority,
+# so it is dropped rather than risking the two real variants.
+ELAPSED=$(( $(date +%s) - START_EPOCH ))
+if [ "$ELAPSED" -lt 900 ]; then
+  run_variant $A/ctrl  control2   control   yes    yes
+else
+  echo "SKIPPED control2 (elapsed ${ELAPSED}s > 900s deadline guard)"
+fi
 echo "AB_DONE $(date -u +%H:%M:%S)"

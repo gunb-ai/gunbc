@@ -165,7 +165,19 @@ def main():
     for got, want, what in checks:
         if got != want:
             die("post-check %s: %d != %d" % (what, got, want))
-    print("GAP-HOOK OK side=%s" % side)
+    # The side string must describe the bytes that are ACTUALLY on disk after the
+    # post-check, because the A/B judges "did the two variants really differ" from
+    # this line plus the instrument dump -- not from what the launcher intended.
+    import hashlib
+    ih = hashlib.sha256(infer2.encode()).hexdigest()[:16]
+    ch = hashlib.sha256(comp2.encode()).hexdigest()[:16]
+    print("GAP-HOOK OK side=%s infer_sha=%s compile_sha=%s gate=%d recheck=%d stale=%d lambda=%d" % (
+        side, ih, ch, infer2.count("call_needs_generic_rebinding_pass("),
+        infer2.count("argument_needs_generic_recheck("),
+        infer2.count("typed_expr_is_stale("),
+        infer2.count("expr_contains_lambda(")))
+    return 0
+
 
 
 main()

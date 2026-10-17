@@ -5,7 +5,13 @@ set -e
 # program's exclusive cost.
 V="$1"
 export GUNBC_GENERIC_ARG_PASS_ACCOUNT=1
-BIN=./target/release/gunbc
+# The build uses a SHARED CARGO_TARGET_DIR across variants (so the ~200 dependency
+# crates compile once, not three times). With a shared target dir the binary is NOT
+# under ./target -- reading the wrong path gives rc=127 and a silently empty A/B.
+# Variants are built+measured strictly in sequence, so each measures its own binary.
+BIN="${CARGO_TARGET_DIR:?CARGO_TARGET_DIR must be exported by ab.sh}/release/gunbc"
+if [ ! -x "$BIN" ]; then echo "NO-BINARY at $BIN -- refusing to emit an empty measurement"; exit 12; fi
+echo "binary=$BIN sha256=$(sha256sum "$BIN" | cut -d' ' -f1)"
 mkdir -p .sdm/run
 fail=0
 for SERIES in gap_depth garr; do
