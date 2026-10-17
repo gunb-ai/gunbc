@@ -626,7 +626,9 @@ data publish_allowance: Second = second(count: 60)
 // host_capture_envelope) imports a controller-protocol (MegaRAC/IPMI/Redfish) type, and
 // SpanConsoleReading / span_console_readings are protocol-neutral (a span of the capture
 // classified by firmware/grub/module text) -- they are defined in mtcollins1_power_on_account
-// today and move to a neutral home when that mtcollins1_ root retires (a separate cut). The
+// today and move to a neutral home when that mtcollins1_ root retires. That cut is not prose-only:
+// it is the row this module cites at THE DEBT below (node://adhoc-de73c7a1-87b, review 81761 -- a
+// deferral with no lane or row is an open-ended one). The
 // capture is therefore a boot fact every controller produces, and it lives in this core, not in
 // the MegaRAC adapter.
 //

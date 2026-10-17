@@ -22,7 +22,7 @@ module test.claim.machine_intake.megarac_boot_row_witness
 // pass and so no way to ask for another machine, and no seam a mismatch could be detected at.
 
 import std.types { NonEmptyStr, String }
-import std.measure { byte_size, second }
+import std.measure { byte_size, second, second_count }
 import std.algebra { string_contains }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.tools.sha256sum { Sha256FileDigestUnavailable }
@@ -36,6 +36,7 @@ import gunbc.machine_intake.mtcollins1_boot_row {
   mtcollins1_boot_row, MegaRacBootRowStanding, BootRowFor, BootRowEndpointMismatch,
 }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_slots }
 import gunbc.host.boot_attempt {
   AttemptRunId, ConsoleNotConfigured, ConsoleReading, CaptureContents, CaptureContentsRead,
   console_reading,
@@ -221,6 +222,73 @@ test fn the_row_admits_the_endpoint_its_receipts_were_measured_on() -> Bool {
       row.controller.host == mtcollins1_endpoint.host
         && row.retained_artifact_prefix == "artifacts/mtcollins1-boot-"
         && count(row.sensor_sockets) == 2
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+// ── THE READ BOUNDS ARE GROUNDED IN THE ROW'S OWN RECEIPTS (review 81761) ──────────
+//
+// The row sets three bounds -- how many Redfish reads one attempt may make, how many pages a
+// collection may walk, how large a collection may be -- and no external or versioned authority fixes
+// those numbers: they are EXPLICIT POLICY BUDGETS the row sets for itself. That is admissible only if
+// they are grounded and their effect on refusal is decidable, so the claims below compare each bound
+// against the census receipts on the SAME row (DESIGN §5: a bounding literal must be grounded in a
+// controlled fixture, an external authority, or an explicit policy budget). The refusal paths
+// themselves -- a page bound hit with a nextLink pending, a count over the member bound -- are claimed
+// in megarac_boot_diagnostic_bundle_witness, which builds those refusals out of the row's own numbers;
+// these claims cover the other half: that the numbers still describe THIS board's measured population,
+// and that a second board is never handed them.
+
+test fn the_read_budget_pays_for_this_rows_measured_population() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      // One read per census slot plus one per socket, which is what the inventory walk actually makes
+      // (one member read per Memory slot, one per Processor), is what the budget has to cover. A budget
+      // cut below the population it was sized for stops paying for reads the census says exist.
+      row.redfish.read_budget >= count(mtcollins1_slots) + count(row.sensor_sockets)
+        // ...and a budget that cannot pay for even one read is a bound that refuses everything.
+        && row.redfish.read_budget >= 1
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_member_bound_clears_the_census_population_it_was_sized_for() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      row.redfish.collection_member_bound >= count(mtcollins1_slots)
+        && row.redfish.collection_member_bound >= 1
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_page_bound_admits_the_measured_walk_and_stays_inside_the_budget() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      // The census measured ONE page per collection for this BMC, so the load-bearing floor is that the
+      // bound admits at least a collection's first page: at 0, fetch_collection_pages refuses before any
+      // read and both inventory sections come back BmcCollectionIncomplete on a BMC that answers fine.
+      row.redfish.collection_page_bound >= 1
+        // ...and the bound stays reachable: it may not demand more pages than the row's own read budget
+        // can pay for, or the walk is refused by the budget before the page bound is ever consulted and
+        // the number in the refusal names a bound that could never have been hit.
+        && row.redfish.collection_page_bound <= row.redfish.read_budget
+        && row.redfish.collection_member_bound <= row.redfish.read_budget
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_second_boards_bounds_are_its_own_not_this_rows() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } => {
+      let other = another_board_row()
+      // None of the three bounds is inherited: srv9's are every one different, and smaller, because
+      // it was measured with one socket and eight DIMMs. If a bound were a constant the two rows would
+      // agree on it, which is the failure these claims are here to catch.
+      row.redfish.read_budget != other.redfish.read_budget
+        && row.redfish.collection_page_bound != other.redfish.collection_page_bound
+        && row.redfish.collection_member_bound != other.redfish.collection_member_bound
+        && second_count(s: row.redfish.read_deadline) != second_count(s: other.redfish.read_deadline)
+    }
     BootRowEndpointMismatch { expected: _, observed: _ } => false
   }
 }

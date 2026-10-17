@@ -50,13 +50,41 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
 data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
 data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
 
-// The Redfish service root this BMC answers on, and the budget one inventory walk may spend. Both were
-// established against THIS controller: the bounds are how many pages a collection of this BMC's size
-// walks and how many reads one attempt's budget pays for.
+// The Redfish service root this BMC answers on, and the three EXPLICIT POLICY BUDGETS one attempt's
+// inventory walk may spend. Each is a bound this row sets for itself -- no external or versioned
+// authority fixes these numbers, and none is a domain unit needing a std.measure carrier (they count
+// reads, pages and members). What grounds each is stated with it, and what a bound does when it is hit
+// is a REFUSAL that names the bound in the bundle, never a silent truncation.
+//
+// DEADLINE: one Redfish read runs under this coreutils bound, the same one the IPMI reads use.
 data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
+
+// READ BUDGET: reads are counted against it and a read the budget cannot pay for is NOT made -- that
+// section records BmcDeadlineReached naming what was not reached, and the attempt still shreds its
+// netrc and writes the bundle. So the worst case is a sum of bounds and an unbounded collection cannot
+// push the step past its timeout before cleanup and publish run.
+//
+// 48 is sized for this board's inventory AS THE CENSUS OBSERVED IT -- the service root, 1 Systems page,
+// the system, 1 Processors page and 2 processors, 1 Memory page and 32 slots: 39 reads -- with room for
+// extra pages. A firmware that pages more finely spends the rest and says so. These are the row's own
+// receipts (mtcollins1_census_sockets and the slot population below), so the measurement that sized the
+// budget and the budget itself live on the same row.
 data mtcollins1_boot_redfish_read_budget: Int = 48
+
+// PAGE BOUND: how many pages the collector will follow through Members@odata.nextLink before refusing.
+// 8 admits this BMC's measured walk -- the census found one page per collection, two collections --
+// with seven spare. Hitting it is CollectionFetchFailed { cause: BmcCollectionIncomplete } naming the
+// bound reached with a nextLink still pending, because a controller that pages that finely is not
+// answering the way this row was measured answering.
 data mtcollins1_boot_collection_page_bound: Int = 8
+
+// MEMBER BOUND: the largest Members@odata.count the collector will accept. 40 clears this board's
+// census population (32 slots on the two sockets mtcollins1_census_sockets reports) with headroom for
+// a population change, and refuses above it: a count over the bound is CollectionRefused naming the
+// count and the bound, rather than a truncation that would report a partial inventory as the whole
+// one. A second board sets its own from ITS population; it is not handed this row's.
 data mtcollins1_boot_collection_member_bound: Int = 40
+
 data mtcollins1_boot_redfish_service_root_path: NonEmptyStr = "/redfish/v1/"
 
 // THE REFERENCE THIS ROW'S CONSOLE CAPTURES ARE COMPARED AGAINST: the census run of 2026-09-10/11,
