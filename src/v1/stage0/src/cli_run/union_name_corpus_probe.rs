@@ -530,7 +530,7 @@ mod probe {
             // diff the list the numbers were taken from against the one the scan produces today.
             let list: Vec<String> = if mode.trim() == "PERFILE" {
                 candidate_paths.iter().cloned().collect()
-            } else if let Some(rest) = mode.trim().strip_prefix("PERFILE-CHUNK=") {
+            } else if mode.trim().starts_with("PERFILE-CHUNK=") {
                 // SHARDING IS PART OF THE MEASUREMENT, not a convenience: the runner caps one invocation
                 // at 60 minutes of wall clock, the census costs ~35s a file because each file is compiled
                 // with its transitive imports, and a measurement that is killed before it prints prints
