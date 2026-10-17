@@ -220,5 +220,6 @@ test fn w_archive_census_does_not_claim_a_write_the_wet_door_refuses() -> Bool {
         RealizedApprovalCapability => false
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedHostAccountPeer => false
       })
 }

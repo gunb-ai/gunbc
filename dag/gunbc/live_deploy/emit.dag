@@ -227,7 +227,8 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
+  deployment_agent_door_socket_of, deployment_agent_door_unit_name, deployment_agent_door_unit_path, deployment_agent_door_function_suffix,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -772,6 +773,36 @@ fn live_deploy_tailnet_door_unit_file_at(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second,
 ) -> LiveDeployTailnetDoorUnitEmission {
   live_deploy_tailnet_door_unit_file(spec: spec, revision: revision, now_epoch: Present { value: now_epoch })
+}
+
+// THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
+// spec's agent-door directory demand names. Emitted only for a spec that carries that demand.
+fn live_deploy_agent_door_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
+) -> LiveDeployTailnetDoorUnitEmission {
+  match live_deploy_oidc_unit_env_for(spec: spec, now_epoch: now_epoch) {
+    LiveDeployOidcEnvRefused { cause } =>
+      LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: cause }
+    LiveDeployOidcEnvAdmitted { directives } =>
+      match deployment_agent_door_socket_of(spec: spec) {
+        Absent => LiveDeployTailnetDoorUnitNotDeployed
+        Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
+          file: live_deploy_serve_unit_file_over_listener(
+            spec: spec, revision: revision, oidc_env: directives,
+            description: "gunbc roadmap lab agent door (gunbc serve)" as NonEmptyStr,
+            function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
+            listener: concat(" --unix-socket ", socket as String),
+          )
+        }
+      }
+  }
+}
+
+fn apply_agent_door_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
+  [deploy_raw(command: deploy_stage_write_command(
+    stage_name: deployment_agent_door_unit_name(names: spec.names) as String,
+    content: render(doc: doc_text(text: serialize_systemd_unit_file(file: file)), proto: live_deploy_protocol),
+  ))]
 }
 
 fn apply_tailnet_door_unit_write_steps(spec: DeploymentSpec, file: SystemdUnitFile) -> List<PipelineStep> {
@@ -1659,6 +1690,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         FabricStorageServeUnit => none
         FabricStorageServeMapping => none
         TailnetDoorServeUnit => none
+        AgentDoorServeUnit => none
       }
     }
     Dependency { step: _ } => none
@@ -3825,6 +3857,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
+    ComposeOwned { kind: AgentDoorServeUnit } => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_agent_door_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+      ]
+    )
     ComposeOwned { kind: FabricStorageServeUnit } => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
       [
@@ -4286,6 +4325,40 @@ fn tailnet_door_admitted_mutate_steps(
   )
 }
 
+fn agent_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
+  if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: AgentDoorServeUnit })) {
+    []
+  } else {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: revision, now_epoch: oidc_now) {
+    LiveDeployTailnetDoorUnitEmitted { file } =>
+      host_script_member_proceed(
+        member: "agent-door" as NonEmptyStr,
+        mutate_steps: concat(
+          apply_agent_door_unit_write_steps(spec: spec, file: file),
+          [
+            deploy_raw(command: deploy_stage_install_command(
+              stage_name: deployment_agent_door_unit_name(names: spec.names) as String,
+              mode: install_file_shared_mode,
+              dest: deployment_agent_door_unit_path(names: spec.names) as String,
+            )),
+            deploy_effect(inv: systemctl_daemon_reload_effect()),
+            deploy_effect(inv: systemctl_enable_effect(unit: deployment_agent_door_unit_name(names: spec.names))),
+            deploy_effect(inv: systemctl_restart_effect(unit: deployment_agent_door_unit_name(names: spec.names))),
+          ],
+        ),
+      )
+    LiveDeployTailnetDoorUnitNotDeployed =>
+      host_script_member_proceed(member: "agent-door" as NonEmptyStr, mutate_steps: [])
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause } =>
+      host_script_member_refused(
+        member: "agent-door" as NonEmptyStr,
+        cause: cause as String,
+        command: oidc_readback_refused_command(cause: cause as String),
+      )
+  }
+  }
+}
+
 fn tailnet_door_fragments(spec: DeploymentSpec, oidc_now: Second?, revision: ReleaseRevisionBinding) -> List<HostScriptFragment> {
   if !(spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: TailnetDoorServeUnit })) {
     []
@@ -4393,6 +4466,8 @@ fn artifact_apply_fragments(
         }
       TailnetDoorServeUnit =>
         tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+      AgentDoorServeUnit =>
+        agent_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
       FleetConvergeTimerUnit =>
         fleet_converge_timer_fragments(spec: spec)
     }
@@ -4741,6 +4816,7 @@ fn retract_or_apply_effect_fragments(
           FabricStorageServeUnit => fabric_storage_fragments(spec: spec, revision: revision)
           FabricStorageServeMapping => fabric_storage_fragments(spec: spec, revision: revision)
           TailnetDoorServeUnit => tailnet_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
+          AgentDoorServeUnit => agent_door_fragments(spec: spec, oidc_now: oidc_now, revision: revision)
           FleetConvergeTimerUnit => fleet_converge_timer_fragments(spec: spec)
         }
         UpsertOwned { kind: uk } =>

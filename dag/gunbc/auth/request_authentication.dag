@@ -1,6 +1,7 @@
 module gunbc.auth.request_authentication
 
 import std.types { NonEmptyStr, String, Bool, List, Timestamp, Int }
+import std.algebra { non_empty }
 import std.access {
   AccessRequest, AccessContext, AccessEvidence, AccessDecision, Permit, Deny,
   AccessRefusal, AccessRefusalCause, AccessRefusalLocation,
@@ -29,7 +30,9 @@ import gunbc.auth.session {
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
   google_oidc_principal_authority, google_accounts_principal_namespace,
+  host_account_principal_authority, srv1_host_accounts_principal_namespace,
 }
+import gunbc.deployment_risk { DeploymentId, srv1_lab_codex_feedback_deployment }
 
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
 // as its AccessPath type argument. It moved from that module because which front doors this
@@ -170,7 +173,29 @@ type RequestAuthenticationEvidence
   = GoogleOidcSession { session: AuthenticatedSession }
   | FabricServiceEvidence { kind: FabricServiceEvidenceKind, authenticated_at: Timestamp }
   | SessionStandingInvalid { standing: SessionCookieStanding }
+  | HostAccountPeerEvidence { account: NonEmptyStr, principal: PrincipalRef }
   | AuthAbsent
+
+// A LOCAL PROCESS'S HOST ACCOUNT, as the serving host's KERNEL attests it (SO_PEERCRED on the
+// unix-socket listener, handed to the handler as peer_user). The evidence is minted only by
+// host_account_evidence_of_ingress, and only for an ingress that is IngressAttestedPeer naming an
+// ENROLLED account: a name a caller claims (a header, a form field) reaches no constructor, and an
+// unenrolled account (the lab's own service account, whose workers run model-driven code) mints nothing.
+type HostAccountEnrolment {
+  account: NonEmptyStr
+  principal: PrincipalRef
+}
+
+fn host_account_evidence_of_ingress(ingress: RequestIngress, enrolments: List<HostAccountEnrolment>) -> RequestAuthenticationEvidence? {
+  match ingress {
+    IngressUnattested => none
+    IngressAttestedPeer { peer_user: who } =>
+      match (enrolments |> filter(e => (e.account as String) == who)).first() {
+        Absent => none
+        Present { value: e } => Present { value: HostAccountPeerEvidence { account: e.account, principal: e.principal } }
+      }
+  }
+}
 
 // A COOKIE THAT DID NOT RESOLVE TO A LIVE SESSION IS EVIDENCE TO REFUSE WITH, never silently
 // the same as absence: the standing carries WHICH non-valid arm arrived (a forged cookie, an
@@ -353,8 +378,14 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
 // approve: the exact stable-principal roster (the ruling's first production cut; hd alone is
 // org membership, never approval authority). The roster begins EMPTY -- refuse-all is the
 // fail-closed default until the first approver's principal is enrolled as a deployment row.
+//
+// agent_roster is the host-account principals a deployment lets act as THEMSELVES on the actions
+// serve_route_action_agent_admissible names (retire-lineage today). It is a separate roster from
+// approve_roster on purpose: an agent is never an approver, so ServeActionApproveDecision reads
+// approve_roster alone and the production approve roster stays exactly the operator.
 type ServeWriteAuthorizationPolicy {
   approve_roster: List<PrincipalRef>
+  agent_roster: List<PrincipalRef>
 }
 
 // THE FIRST APPROVER, ENROLLED AS THE DEPLOYMENT ROW THE ROSTER WAITED FOR. The operator signed in to
@@ -368,6 +399,65 @@ data operator_approver_principal: PrincipalRef = PrincipalRef {
 
 data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
   approve_roster: [operator_approver_principal],
+  agent_roster: [],
+}
+
+// THE LAB AGENT (LAB-AGENT-OPERATOR-1). Grant, operator in chat 2026-10-17 ~04:55Z: "I really don't
+// care for dev right now - you should be allowed to completely control your dev environment, you
+// shouldn't need me". The agent that owns the srv1 lab acts as ITSELF under a dedicated host account
+// that no lab process, worker, verification or candidate code runs as (the lab runs as briansrls,
+// and a unix socket is connectable from any unit not restricting address families, so admitting the
+// lab's own account would admit model-driven code).
+//
+// DECLARED HERE, NOT YET IN gunbc.fleet.fleet_posix_accounts: that roster is a closed key coproduct
+// whose members carry allocated uids and prod-side convergence, and this account is lab-scoped and
+// created by the lab's owning agent at qualification (bright-moth-475 ruling). Modeling it there
+// means a FleetPosixAccountKey arm plus a lab-scoped convergence, which needs the uid allocation the
+// account does not have yet; the evidence below decides on the NAME the kernel attests, so the
+// declaration gap widens no admission. Trigger: the account exists on srv1 and its uid is observed.
+data lab_agent_host_account: NonEmptyStr = "gunbc-lab-agent" as NonEmptyStr
+
+data lab_agent_principal: PrincipalRef = PrincipalRef {
+  authority: host_account_principal_authority,
+  namespace: srv1_host_accounts_principal_namespace,
+  subject: lab_agent_host_account,
+}
+
+data srv1_host_account_enrolments: List<HostAccountEnrolment> = [
+  HostAccountEnrolment { account: lab_agent_host_account, principal: lab_agent_principal },
+]
+
+// THE SCOPE IS POLICY KEYED ON THE DEPLOYMENT, not a forked code path: the lab deployment admits the
+// agent principal on its agent door; every other deployment gets the tracker policy, whose agent
+// roster is empty, so the same evidence is refused there.
+data lab_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
+  approve_roster: [operator_approver_principal],
+  agent_roster: [lab_agent_principal],
+}
+
+fn write_authorization_policy_for(deployment: DeploymentId) -> ServeWriteAuthorizationPolicy {
+  if deployment == srv1_lab_codex_feedback_deployment { lab_write_authorization_policy } else { tracker_write_authorization_policy }
+}
+
+// Whether a deployment has an agent door at all is this policy's answer: a deployment that rosters
+// no agent principal has nobody the door could admit (gunbc.live_deploy.spec deployment_agent_door_socket).
+fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
+  non_empty(xs: write_authorization_policy_for(deployment: deployment).agent_roster)
+}
+
+// The actions an agent peer may take when its deployment rosters it. Everything else (approval, the
+// browser-only composers, allocations) stays a human act.
+fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
+  match action {
+    ServeActionAssignIssue => false
+    ServeActionCreateIssue => false
+    ServeActionCommentIssue => false
+    ServeActionSaveOwnView => false
+    ServeActionApproveDecision => false
+    ServeActionCreateAllocation => false
+    ServeActionReleaseAllocation => false
+    ServeActionRetireLineage => true
+  }
 }
 
 // ── The human-write law, projected into std.access ─────────────────────────────────────────────
@@ -428,6 +518,7 @@ fn human_authentication_decision(
         security: security,
         cause: AccessEvidenceRejected { evidence: "fabric-service-evidence", reason: "service evidence authorizes service writes, never human writes" },
       )
+    HostAccountPeerEvidence { account: _, principal: _ } => Permit
     GoogleOidcSession { session } =>
       if session_not_expired(session: session, observed_at: observed_at) {
         Permit
@@ -483,6 +574,17 @@ fn human_action_authorization_decision(
             )
           }
       }
+    HostAccountPeerEvidence { account: _, principal: who } =>
+      if serve_route_action_agent_admissible(action: action) && principal_in_approve_roster(principal: who, roster: policy.agent_roster) {
+        Permit
+      } else {
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessActionNotGranted { action: serve_route_action_label(action: action) as String },
+        )
+      }
     FabricServiceEvidence { kind: _, authenticated_at: _ } =>
       write_refused(
         route_path: route_path,
@@ -510,6 +612,10 @@ fn human_action_authorization_decision(
 // CSRF IS A SEPARATE PROOF, never implied by the cookie. A mutation without the session's token
 // refuses even with a valid session -- login state != CSRF token -- and the service arm refuses
 // here because service writes present service evidence, not browser CSRF.
+//
+// CSRF defends an ambient browser credential (a cookie) against a forged cross-site request. A
+// kernel-attested unix-socket peer carries no ambient credential a browser can be made to
+// present: the conjunct has no subject here, and the proof is the peer itself.
 fn csrf_write_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
@@ -528,6 +634,7 @@ fn csrf_write_decision(
             cause: AccessEvidenceRejected { evidence: "csrf-token", reason: csrf_refusal_reason(c: c) },
           )
       }
+    HostAccountPeerEvidence { account: _, principal: _ } => Permit
     FabricServiceEvidence { kind: _, authenticated_at: _ } =>
       write_refused(
         route_path: route_path,
@@ -604,6 +711,13 @@ fn service_write_authentication_decision(
 ) -> AccessDecision {
   match security.authentication {
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Permit
+    HostAccountPeerEvidence { account: _, principal: _ } =>
+      write_refused(
+        route_path: route_path,
+        action: action,
+        security: security,
+        cause: AccessEvidenceRejected { evidence: "host-account-peer", reason: "a host-account peer is not Fabric service evidence and authorizes no service write" },
+      )
     GoogleOidcSession { session: _ } =>
       write_refused(
         route_path: route_path,
@@ -667,6 +781,7 @@ fn human_write_access_request(
 fn evidence_subject_label(evidence: RequestAuthenticationEvidence) -> String {
   match evidence {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal)
+    HostAccountPeerEvidence { account: _, principal: who } => principal_ref_label(p: who)
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "fabric-service-evidence" as String
     SessionStandingInvalid { standing: _ } => "session-standing-invalid" as String
     AuthAbsent => "auth-absent" as String
@@ -699,6 +814,7 @@ fn write_refused(
 fn authenticated_viewer_label(evidence: RequestAuthenticationEvidence) -> String {
   match evidence {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal)
+    HostAccountPeerEvidence { account: _, principal: who } => principal_ref_label(p: who)
     FabricServiceEvidence { kind: _, authenticated_at: _ } => fabric_display_alias as String
     SessionStandingInvalid { standing: _ } => ""
     AuthAbsent => ""

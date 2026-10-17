@@ -2965,11 +2965,17 @@ test fn witness_lineage_retire_offer_renders_form_to_the_route() -> Bool {
   }
 }
 
-// Signed out: the offer renders but its submit is disabled.
-test fn witness_lineage_retire_offer_is_disabled_without_a_session() -> Bool {
+// Signed out (claim 5): the control is replaced by a VISIBLE sign-in prompt linking to the login
+// route; no submit button is rendered, disabled or otherwise, so a stale session is legible.
+test fn witness_lineage_retire_offer_shows_a_sign_in_prompt_without_a_session() -> Bool {
   match retire_panel_html(panel: gunbc.roadmap.roadmap_lineage_retire.LineageRetirePanelOffer { attempt_key: "bb29307f8f9bf3f9", branch: "attempt/bb29" }, csrf: "") {
     EmitRejected { reason: _ } => false
-    EmitOk { html: h } => string_contains(s: h, pattern: "disabled")
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "href=\"/auth/login\"")
+        && string_contains(s: h, pattern: "Sign in to retire this lineage")
+        && string_contains(s: h, pattern: "not signed in")
+        && !string_contains(s: h, pattern: "disabled")
+        && !string_contains(s: h, pattern: "<button")
   }
 }
 

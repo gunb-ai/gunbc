@@ -354,6 +354,42 @@ fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> No
   join([owned_directory_path(t: dashboard_instance_tailnet_door_directory(instance: instance)) as String, "/door.sock"], "") as NonEmptyStr
 }
 
+// THE LAB AGENT'S DOOR directory, beside the tailnet door's and with the same traverse-for-all mode:
+// the socket the seed opens to every class is walled by nothing but the kernel peer uid the handler
+// is handed, so the account that connects needs only to reach it.
+fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "agent-door" as NonEmptyStr,
+    path: lab_agent_door_host_prepared_directory,
+    owner: instance.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+  }
+}
+
+// HOST-PREPARED, outside the home tree. The instance roots sit under a home whose parents are not
+// other-traversable (srv1: .local/share is drwx--x---), and opening that would expose every instance
+// directory to every account, so the lab agent's account could never reach a socket beneath it. The
+// directory is created once by the operator-side qualification step (sudo, owner = the service user,
+// mode 0711), exactly as the gunbc-lab-agent account is; the deploy then re-asserts it as an ordinary
+// owned-directory demand. Only a deployment with an agent door demands it.
+data lab_agent_door_host_prepared_directory: FilePath = "/var/lib/gunbc-lab-agent-door" as FilePath
+
+fn dashboard_instance_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
+  agent_door_socket_in(directory: dashboard_instance_agent_door_directory(instance: instance))
+}
+
+// The one place the socket's name inside its directory is spelled: the instance names the socket
+// through it, and the deploy spec reads the socket back out of the directory demand through it.
+fn agent_door_socket_in(directory: OwnedDirectoryTarget) -> NonEmptyStr {
+  join([owned_directory_path(t: directory) as String, "/agent.sock"], "") as NonEmptyStr
+}
+
+// The agent door's directory is identified by the one host-prepared path it is declared at, not by a
+// second spelling of its member tag.
+fn owned_directory_is_agent_door(t: OwnedDirectoryTarget) -> Bool {
+  owned_directory_path(t: t) == lab_agent_door_host_prepared_directory
+}
+
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root

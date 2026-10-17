@@ -65,6 +65,13 @@ data gunbc_workflows_principal_namespace: NonEmptyStr = "workflows" as NonEmptyS
 
 data fabric_workflow_principal_subject: NonEmptyStr = "fabric" as NonEmptyStr
 
+// THE HOST-ACCOUNT AUTHORITY: a POSIX account on a named host, attested by the kernel of that host
+// (SO_PEERCRED on a unix-socket listener), is a principal under this authority, never under
+// google-oidc. The namespace names the host whose passwd database resolves the subject; the subject is the account name.
+data host_account_principal_authority: NonEmptyStr = "host-account" as NonEmptyStr
+
+data srv1_host_accounts_principal_namespace: NonEmptyStr = "srv1" as NonEmptyStr
+
 // THE ISSUER THE google-oidc AUTHORITY DENOTES. PrincipalRef.authority carries the short
 // authority name; this row binds it to https://accounts.google.com once, and the gunb.ai login
 // policy (gunbc.auth.google_workspace_login) cites THIS row as its verdict policy's expected

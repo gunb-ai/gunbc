@@ -56,7 +56,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket, FabricStorageOwnershipMarkerSpec, fabric_storage_ownership_marker_spec }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -69,7 +69,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
+  dashboard_instance_agent_door_directory,
+  agent_door_socket_in,
+  owned_directory_is_agent_door,
 }
+import gunbc.auth.request_authentication { deployment_admits_agent_peer }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_lab_https_port,
   tracker_web_oidc_serve_placement,
@@ -130,6 +134,7 @@ type ComposeOwnedArtifactKind =
   | FabricStorageServeUnit
   | FabricStorageServeMapping
   | TailnetDoorServeUnit
+  | AgentDoorServeUnit
   | OidcConfigArtifact
 
 type UpsertArtifactKind =
@@ -219,6 +224,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
       FabricStorageServeUnit => TeardownActs
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs
+      AgentDoorServeUnit => TeardownActs
       OidcConfigArtifact => TeardownActs
     }
     UpsertOwned { kind: uk } => match uk {
@@ -737,6 +743,55 @@ fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtif
   }
 }
 
+// THE LAB AGENT'S DOOR (LAB-AGENT-OPERATOR-1). A second unix-socket `gunbc serve` beside the
+// loopback one, launched on the lab's agent-door entry, whose only reader is the host account the
+// lab's write policy rosters (gunbc.auth.request_authentication lab_agent_host_account). WHETHER a
+// deployment has one is the write policy's own answer (deployment_admits_agent_peer), read through
+// the instance's deployment, so a deployment whose policy rosters no agent derives no socket, no
+// unit and no directory: there is no second list of lab deployments here. The socket is opened to
+// every class by the seed's listener and its directory is traversable by every class; the kernel
+// peer uid, not the mode, decides.
+fn deployment_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr? {
+  if deployment_admits_agent_peer(deployment: instance.deployment) {
+    Present { value: dashboard_instance_agent_door_socket(instance: instance) }
+  } else {
+    none
+  }
+}
+
+// The spec carries the door as the directory demand it joined; the unit reads the socket back out of
+// that demand, so the directory the provider ensures and the socket the unit binds cannot differ.
+fn deployment_agent_door_socket_of(spec: DeploymentSpec) -> NonEmptyStr? {
+  match filter(spec.directories, d => owned_directory_is_agent_door(t: d)) |> first() {
+    Absent => none
+    Present { value: d } => Present { value: agent_door_socket_in(directory: d) }
+  }
+}
+
+fn deployment_agent_door_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match deployment_agent_door_socket(instance: instance) {
+    Present { value: _ } => [dashboard_instance_agent_door_directory(instance: instance)]
+    Absent => []
+  }
+}
+
+fn deployment_agent_door_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-agent-door.service"], "") as NonEmptyStr
+}
+
+fn deployment_agent_door_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_agent_door_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+data deployment_agent_door_function_suffix: String = "_agent_door"
+
+fn deployment_agent_door_steps(instance: HostDashboardInstance, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match deployment_agent_door_socket(instance: instance) {
+    Absent => []
+    Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: AgentDoorServeUnit }, path: deployment_agent_door_unit_path(names: names) }]
+  }
+}
+
 fn deployment_belt_service_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.service"], "") as NonEmptyStr
 }
@@ -1156,7 +1211,7 @@ fn deployment_owned_steps(
       path: deployment_publication_path_unit_path(names: names),
     },
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
-  ], concat(deployment_tailnet_door_steps(names: names), concat([
+  ], concat(deployment_tailnet_door_steps(names: names), concat(deployment_agent_door_steps(instance: instance, names: names), concat([
     DeploymentArtifactStep {
       kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
@@ -1164,7 +1219,7 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  ))))))
+  )))))))
 }
 
 // THE OIDC CONFIG FILE IS A PLACEMENT-SCOPED MEMBER, not an instance-kind every twin must share.
@@ -1457,7 +1512,7 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
-    directories: concat(dashboard_instance_directory_demands(realization: realization, instance: instance), deployment_tailnet_door_directories(instance: instance, names: names)),
+    directories: concat(dashboard_instance_directory_demands(realization: realization, instance: instance), concat(deployment_tailnet_door_directories(instance: instance, names: names), deployment_agent_door_directories(instance: instance))),
   }
 }
 

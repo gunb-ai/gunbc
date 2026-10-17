@@ -87,6 +87,7 @@ type RealizedAuthorization
   | RealizedApprovalCapability
   | RealizedHumanStep
   | RealizedOperatorSession { arm: OperatorSessionArm }
+  | RealizedHostAccountPeer
   | RealizedUnauthorized
 
 // A REASON IS A STATEMENT PLUS THE CONDITION UNDER WHICH IT STOPS BEING ONE. A bare string moved a
@@ -131,6 +132,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedApprovalCapability => false
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedHostAccountPeer => false
         RealizedUnauthorized => false
       }
     OperatorApprovedCapability =>
@@ -140,6 +142,7 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedHumanStep => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedHostAccountPeer => false
         RealizedUnauthorized => false
       }
     HumanOnlyStep { step: _ } =>
@@ -149,11 +152,13 @@ fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorizat
         RealizedRunSelected => false
         RealizedApprovalCapability => false
         RealizedOperatorSession { arm: _ } => false
+        RealizedHostAccountPeer => false
         RealizedUnauthorized => false
       }
     OperatorOwnSession =>
       match realized {
         RealizedOperatorSession { arm: _ } => true
+        RealizedHostAccountPeer => false
         RealizedFederatedGrant => false
         RealizedRunSelected => false
         RealizedApprovalCapability => false
@@ -743,7 +748,33 @@ fn ruling_discharge_for(scope: OperatorScopeRuling, site_ref: DeclarationRef) ->
   }
 }
 
+// RETIRING A LINEAGE ON A DEPLOYMENT'S ROADMAP (gunbc.roadmap.roadmap_serve serve_lineage_retire_response_over).
+// A write to the deployment's own durable store, first decision stands: not undone by a reapply, so
+// irreversible. No provider credential is minted or read, no bill, no dispatched run carries it, and
+// the principal that asks is a local host account (gunbc.auth.request_authentication
+// lab_agent_host_account), which is no cloud principal, so the identity is unbindable. The
+// authorization is the deployment's write policy (gunbc.auth.request_authentication
+// write_authorization_policy_for), not a credential choice.
+fn lineage_retire_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "retire one lineage attempt on a deployment's roadmap store, first decision stands" as NonEmptyStr,
+    frequency: EveryOperatorRequest,
+    reversibility: IrreversibleEffect { what_is_lost: "a retired attempt stays retired; a later decision for the same attempt does not replace the first" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "the asking principal is a host account on one machine; no federated cloud principal exists to bind" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+data lineage_retire_host_account_pattern_unmodeled: DivergenceReason = DivergenceReason {
+  statement: "the authorization pattern vocabulary has no arm for a deployment-scoped principal authenticated by a kernel-attested host account (LAB-AGENT-OPERATOR-1); the operator's grant covers the dev lab deployment only, and the site is realized by gunbc.auth.request_authentication human_write_admission under write_authorization_policy_for" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an AuthorizationPattern arm for policy-scoped host-account principals, selected from the effect characteristics, so this row conforms instead of diverging" as NonEmptyStr),
+}
+
 data privileged_effect_census: List<PrivilegedEffectSite> = [
+  PrivilegedEffectSite {site:site(module_path:"gunbc.roadmap.roadmap_serve",decl_name:"serve_lineage_retire_response_over"),effect:lineage_retire_effect(),realized:RealizedHostAccountPeer,divergence_reason:Present {value:lineage_retire_host_account_pattern_unmodeled}},
   PrivilegedEffectSite {site:site(module_path:"product.printed_chassis.print_workflow",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_workflow_run",decl_name:"run"),effect:printer_start_effect(),realized:RealizedFederatedGrant,divergence_reason:Present {value:printer_approval_enforced_in_reviewed_code}},
   PrivilegedEffectSite {site:site(module_path:"gunbc.fleet.printer_operator_approval",decl_name:"run"),effect:printer_start_effect(),realized:RealizedOperatorSession {arm:OperatorTokenFile},divergence_reason:Present {value:printer_operator_token_transition}},

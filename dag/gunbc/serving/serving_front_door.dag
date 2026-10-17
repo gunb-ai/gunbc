@@ -398,6 +398,7 @@ type FrontDoorCaller
 fn front_door_caller(evidence: RequestAuthenticationEvidence) -> FrontDoorCaller {
   match evidence {
     FabricServiceEvidence { kind: _, authenticated_at: _ } => FrontDoorCallerAuthenticated { principal: fabric_service_principal() }
+    HostAccountPeerEvidence { account: _, principal: _ } => FrontDoorCallerUnauthenticated { evidence: "host-account-peer" as NonEmptyStr }
     GoogleOidcSession { session: s } => FrontDoorCallerAuthenticated { principal: s.principal }
     SessionStandingInvalid { standing: _ } => FrontDoorCallerUnauthenticated { evidence: "session-standing-invalid" as NonEmptyStr }
     AuthAbsent => FrontDoorCallerUnauthenticated { evidence: "absent" as NonEmptyStr }

@@ -67,6 +67,10 @@ import gunbc.auth.request_authentication {
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
+  write_authorization_policy_for,
+  host_account_evidence_of_ingress,
+  HostAccountPeerEvidence,
+  srv1_host_account_enrolments,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
   ServeActionCreateIssue,
@@ -682,7 +686,7 @@ fn serve_lineage_retire_response_over(
   let observed_at = human_write_observed_at(security: request.security)
   if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "node not found") }
   else { match human_write_admission(route_path: concat("/dispatch/", concat(node_id, "/retire-lineage")) as NonEmptyStr,
-    action: ServeActionRetireLineage, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    action: ServeActionRetireLineage, security: request.security, authorization_policy: write_authorization_policy_for(deployment: instance.deployment),
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => lineage_retire_outcome_response(outcome: belt_lineage_retire_for_instance(
@@ -882,6 +886,7 @@ fn serve_issue_detail_response_over(
         let context = match request.security.authentication {
           GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
           FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+          HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
@@ -965,6 +970,7 @@ fn serve_issue_assignment_context_over(
     AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
     SessionStandingInvalid { standing: _ } => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Your session has expired or is unavailable. Sign in again.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
+    HostAccountPeerEvidence { account: _, principal: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
   }
 }
 
@@ -1005,6 +1011,7 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, R
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
+    HostAccountPeerEvidence { account: _, principal: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     SessionStandingInvalid { standing: _ } => ""
     AuthAbsent => ""
   }
@@ -1148,6 +1155,7 @@ fn authenticated_write_author_principal(security: RequestSecurityContext<Request
   match security.authentication {
     GoogleOidcSession { session } => Present { value: session.principal }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    HostAccountPeerEvidence { account: _, principal: who } => Present { value: who }
     SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
@@ -1160,6 +1168,7 @@ fn authenticated_write_author_label(security: RequestSecurityContext<RequestAcce
   match security.authentication {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
+    HostAccountPeerEvidence { account: _, principal: who } => principal_ref_label(p: who) as NonEmptyStr
     SessionStandingInvalid { standing: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
     AuthAbsent => "unreachable: admitted human write without a session principal" as NonEmptyStr
   }
@@ -1528,6 +1537,7 @@ fn roadmap_serve_invoke_over(
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
       GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+      HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
       SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
       AuthAbsent => IssueFormContext { operation: "", csrf: "" }
     }))
@@ -1782,7 +1792,10 @@ fn roadmap_serve_request_security(
 ) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
-    authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+    authentication: match host_account_evidence_of_ingress(ingress: ingress, enrolments: srv1_host_account_enrolments) {
+      Present { value: attested } => attested
+      Absent => roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header)
+    },
   }
 }
 
@@ -2146,6 +2159,33 @@ fn roadmap_serve_handle_srv1_lab(
   )
 }
 
+// THE AGENT DOOR: the lab's owning agent's listener. Same instance and the same routes as
+// roadmap_serve_handle_srv1_lab; the only difference is that the kernel-attested peer user is
+// supplied, so host_account_evidence_of_ingress can enrol gunbc-lab-agent. A peer that is not enrolled
+// (e.g. the operator's host account) authenticates as nothing here and is refused by the write admission.
+fn roadmap_serve_handle_srv1_lab_agent_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
 fn roadmap_serve_handle_srv2_preview(
   method: String,
   path: String,
@@ -2308,6 +2348,11 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2362,6 +2407,11 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2384,6 +2434,7 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
     AuthAbsent => AllocationViewerSignedOut
     SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
     FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
+    HostAccountPeerEvidence { account: _, principal: _ } => AllocationViewerSignedOut
   }
   match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
@@ -2432,6 +2483,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
     AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
     SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+    HostAccountPeerEvidence { account: _, principal: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
   }
 }
 

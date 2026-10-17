@@ -24,6 +24,7 @@ import gunbc.live_deploy.spec {
   FabricStorageServeMapping,
   ApprovalBrokerFrontDoor,
   TailnetDoorServeUnit,
+  AgentDoorServeUnit,
   GunbcSourceTree,
   ServeBinary,
   SystemdUnit,
@@ -247,6 +248,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
       FabricStorageServeUnit => ""
       FabricStorageServeMapping => ""
       TailnetDoorServeUnit => ""
+      AgentDoorServeUnit => ""
       SystemdUnit => ""
       FleetConvergeTimerUnit => ""
       OidcConfigArtifact => ""
