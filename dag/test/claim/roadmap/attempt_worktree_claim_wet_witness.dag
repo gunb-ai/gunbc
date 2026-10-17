@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
-  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed,
+  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent }
@@ -46,7 +46,7 @@ fn pass(
     loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
-    remove_tree: p => shell.Remove.RecursiveForce(path: p).success,
+    remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
     capture_of: (n, k) => capture) {
     WorktreeClaimPassRan { outcomes } => outcomes
     WorktreeClaimPassRefused { detail: _ } => []
@@ -57,6 +57,8 @@ fn is_noop(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subj
 fn is_removed(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => true  WorktreeClaimClosed { subject: _, detail: _ } => false  WorktreeClaimKept { subject: _, reason: _ } => false  WorktreeClaimRed { subject: _, reason: _ } => false } }
 fn is_closed(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => false  WorktreeClaimClosed { subject: _, detail: _ } => true  WorktreeClaimKept { subject: _, reason: _ } => false  WorktreeClaimRed { subject: _, reason: _ } => false } }
 fn is_kept(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimNoop { subject: _, why: _ } => false  WorktreeClaimRemoved { subject: _, detail: _ } => false  WorktreeClaimClosed { subject: _, detail: _ } => false  WorktreeClaimKept { subject: _, reason: _ } => true  WorktreeClaimRed { subject: _, reason: _ } => false } }
+
+fn is_red(o: WorktreeClaimOutcome) -> Bool { match o { WorktreeClaimRed { subject: _, reason: _ } => true  _ => false } }
 
 fn only(os: List<WorktreeClaimOutcome>, check: fn(WorktreeClaimOutcome) -> Bool) -> Bool {
   os.length() == 1 && all(os, o => check(o))
@@ -163,4 +165,25 @@ test fn a_second_claim_for_the_same_attempt_does_not_overwrite() -> Bool {
   let first = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
   let second = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 2000)
   cleaned(dirs: [cd, td], verdict: first && !second)
+}
+
+// A host that cannot run git is RED with its own cause, never "git declined": the tree stays and the record stays open.
+test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
+  let dir = fresh_dir(tag: "w10")
+  let cd = fresh_dir(tag: "w10c")
+  let td = fresh_dir(tag: "w10t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let outcomes = match worktree_claim_ensure_pass_at(
+    stores: stores_at(dir: dir), claims_root: cd as NonEmptyStr, host: host,
+    path_of: (n, k) => tree_path(td: td, n: n, k: k),
+    loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
+    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
+    content_of: p => ClaimContentPushed,
+    remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
+    capture_of: (n, k) => ClaimCaptureSettled) {
+    WorktreeClaimPassRan { outcomes } => outcomes
+    WorktreeClaimPassRefused { detail: _ } => []
+  }
+  cleaned(dirs: [dir, cd, td], verdict: opened && planted && only(os: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
 }

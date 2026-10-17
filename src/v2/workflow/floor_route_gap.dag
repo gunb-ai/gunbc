@@ -2259,6 +2259,8 @@ fn floor_route_gap_expectation_chunk_44() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.attempt_worktree_claim_wet_witness.a_second_claim_for_the_same_attempt_does_not_overwrite", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.attempt_worktree_claim_wet_witness.a_git_that_could_not_run_is_red_and_keeps_the_tree", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.belt_capture_intent_wet_witness.a_kill_after_the_scm_save_does_not_double_capture", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.belt_capture_intent_wet_witness.a_kill_after_the_commit_does_not_lose_the_capture", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -2281,7 +2283,7 @@ fn floor_route_gap_expectation_chunk_44() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.session_activation_ensure_wet_witness.an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  } } } } } } } } } } } } } } } } } } } }
+  } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

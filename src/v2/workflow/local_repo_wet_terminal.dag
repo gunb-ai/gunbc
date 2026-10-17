@@ -3259,6 +3259,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.attempt_worktree_claim_wet_witness", function: "a_git_that_could_not_run_is_red_and_keeps_the_tree" },
+      entry: "dag/test/claim/roadmap/attempt_worktree_claim_wet_witness.dag",
+      function: "a_git_that_could_not_run_is_red_and_keeps_the_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.belt_capture_intent_wet_witness", function: "a_kill_after_the_scm_save_does_not_double_capture" },
       entry: "dag/test/claim/roadmap/belt_capture_intent_wet_witness.dag",
       function: "a_kill_after_the_scm_save_does_not_double_capture",

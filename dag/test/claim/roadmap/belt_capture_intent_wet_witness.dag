@@ -32,7 +32,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_claim_tree_at, belt_claim_content_of, belt_claim_remove_tree,
 }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
-  ClaimTreePresent, ClaimTreeAbsent, ClaimContentDirty, ClaimContentPushed,
+  ClaimTreePresent, ClaimTreeAbsent, ClaimContentDirty, ClaimContentPushed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoval,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound, submission_capture_basename,
@@ -222,6 +222,20 @@ test fn a_kill_after_the_commit_does_not_lose_the_capture() -> Bool {
   held && cleaned.success
 }
 
+fn declined(removal: ClaimRemoval) -> Bool {
+  match removal {
+    ClaimRemoveDeclined { detail: _ } => true
+    _ => false
+  }
+}
+
+fn was_removed(removal: ClaimRemoval) -> Bool {
+  match removal {
+    ClaimRemoved => true
+    _ => false
+  }
+}
+
 fn tree_present(instance: HostDashboardInstance, worktree: String) -> Bool {
   match belt_claim_tree_at(instance: instance, path: worktree) {
     ClaimTreePresent => true
@@ -253,11 +267,11 @@ test fn the_real_claim_adapters_observe_judge_and_remove_a_linked_worktree() -> 
   let remote_ref = worktree != "" && run_git(dir: seed, args: ["update-ref", "refs/remotes/origin/main", "HEAD"])
   let seen = remote_ref && tree_present(instance: instance, worktree: worktree)
   let dirty = seen && content_is_dirty(instance: instance, worktree: worktree)
-  let refused = dirty && !belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree)
+  let refused = dirty && declined(removal: belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree))
     && tree_present(instance: instance, worktree: worktree)
   let pushed = refused && run_git(dir: worktree, args: ["checkout", "--", "src.dag"])
     && content_is_pushed(instance: instance, worktree: worktree)
-  let removed = pushed && belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree)
+  let removed = pushed && was_removed(removal: belt_claim_remove_tree(instance: instance, repo_workdir: seed, path: worktree))
     && match belt_claim_tree_at(instance: instance, path: worktree) {
       ClaimTreeAbsent => true
       _ => false

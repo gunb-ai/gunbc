@@ -247,6 +247,11 @@ fn worktree_claim_record_before_add(root: NonEmptyStr, claim: WorktreeClaim) -> 
 
 // ── OBSERVATIONS THE DECISION READS, each a closed standing ─────────────────────────────────────
 
+type ClaimRemoval
+  = ClaimRemoved
+  | ClaimRemoveDeclined { detail: String }
+  | ClaimRemoveUnexecuted { detail: String }
+
 type ClaimTree
   = ClaimTreePresent
   | ClaimTreeAbsent
@@ -443,7 +448,7 @@ fn worktree_claim_ensure_one(
   now: EpochSecs,
   tree_of: fn(String) -> ClaimTree,
   content_of: fn(String) -> ClaimContent,
-  remove_tree: fn(String) -> Bool,
+  remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
 ) -> WorktreeClaimOutcome {
   let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key)
@@ -468,9 +473,10 @@ fn worktree_claim_ensure_one(
                 other => WorktreeClaimRed { subject: reference, reason: join(["the record could not be closed: ", attempt_transition_wire(t: other)], "") }
               }
             ClaimRemoveTree { path, reason } =>
-              if !remove_tree(path) {
-                WorktreeClaimKept { subject: reference, reason: join(["git declined to remove the worktree at ", path, " (", reason, "); it is kept"], "") }
-              } else {
+              match remove_tree(path) {
+                ClaimRemoveDeclined { detail } => WorktreeClaimKept { subject: reference, reason: join(["git declined to remove the worktree at ", path, " (", reason, "): ", detail, "; it is kept"], "") }
+                ClaimRemoveUnexecuted { detail } => WorktreeClaimRed { subject: reference, reason: join(["git could not be run to remove the worktree at ", path, ": ", detail], "") }
+                ClaimRemoved =>
                 match tree_of(path) {
                   ClaimTreeAbsent =>
                     match worktree_claim_close_recorded(root: root, reference: reference, generation: g, detail: reason) {
@@ -503,7 +509,7 @@ fn worktree_claim_ensure_pass_at(
   now: EpochSecs,
   tree_of: fn(String) -> ClaimTree,
   content_of: fn(String) -> ClaimContent,
-  remove_tree: fn(String) -> Bool,
+  remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
 ) -> WorktreeClaimPass {
   match cas_slot_keys(root: claims_root) {

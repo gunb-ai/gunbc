@@ -677,7 +677,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add, worktree_claim_slots_root,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
-  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown,
+  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
 }
 import gunbc.roadmap.roadmap_workflow_command {
@@ -1723,16 +1723,16 @@ fn belt_claim_content_of(instance: HostDashboardInstance, worktree: String) -> C
   }
 }
 
-fn belt_claim_remove_tree(instance: HostDashboardInstance, repo_workdir: String, path: String) -> Bool {
+fn belt_claim_remove_tree(instance: HostDashboardInstance, repo_workdir: String, path: String) -> ClaimRemoval {
   match belt_exec(
     cmd: host_exec_argv(
       program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
       args: shape_git_worktree_remove_argv(path: path as FilePath)),
     workdir: repo_workdir,
   ) {
-    ExecOk { stdout: _ } => true
-    ExecFailed { program: _, exit_code: _, stderr: _ } => false
-    ExecRefused { program: _, reason: _ } => false
+    ExecOk { stdout: _ } => ClaimRemoved
+    ExecFailed { program: _, exit_code: _, stderr } => ClaimRemoveDeclined { detail: stderr }
+    ExecRefused { program: _, reason } => ClaimRemoveUnexecuted { detail: reason }
   }
 }
 
