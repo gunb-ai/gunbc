@@ -8354,12 +8354,12 @@ fn belt_capture_intent_write(instance: HostDashboardInstance, node_id: RoadmapNo
     path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
     content: submission_capture_text(capture: capture),
   )
-  if write.success { Absent } else { Present { value: write.error } }
+  if write.success { none } else { Present { value: write.error } }
 }
 
 fn belt_capture_intent_clear(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
   let gone = Filesystem.Delete(path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key))
-  if gone.success { Absent } else { Present { value: gone.error } }
+  if gone.success { none } else { Present { value: gone.error } }
 }
 
 fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head: String, intent: SubmissionCapture) -> String? {
@@ -8378,7 +8378,7 @@ fn belt_capture_record_write(instance: HostDashboardInstance, node_id: RoadmapNo
       submission: intent.submission,
     }),
   )
-  if write.success { Absent } else { Present { value: write.error } }
+  if write.success { none } else { Present { value: write.error } }
 }
 
 // A rerun's first move: if an intent names a base head the worktree has moved past, the git commit happened
