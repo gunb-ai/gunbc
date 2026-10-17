@@ -8059,82 +8059,12 @@ fn argument_needs_generic_recheck(still_missing_after: List<String>, subst_final
   })
 }
 
-fn empty_shadowed_names() -> Map<String, Bool> {
-  empty_map()
-}
-
-fn typed_expr_is_stale(n: Node, scope: InferScope, shadowed: Map<String, Bool>) -> Bool {
-  match n.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: n, source_indices: scope.type_env.source_indices)
-      if map_has(shadowed, name) { false }
-      else {
-        match map_get(scope.locals, name) {
-          Absent => false
-          Present { value: binding } =>
-            match n.inferred {
-              Present { value: Resolved { node: rt } } =>
-                !node_type_equals(left: rt, right: binding.resolved, source_indices: scope.type_env.source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
-              _ => true
-            }
-        }
-      }
-    ExprLambda =>
-      let names = lambda_param_names_at(texpr: n, source_indices: scope.type_env.source_indices)
-      let inner_shadowed = fold(names, init: shadowed, f: (acc, name) => map_insert(acc, name, true))
-      typed_expr_is_stale(n: lambda_body(texpr: n), scope: scope, shadowed: inner_shadowed)
-    _ => n.children |> any(c => typed_expr_is_stale(n: c, scope: scope, shadowed: shadowed))
-  }
-}
-
-fn recheck_expr(source: Node, prior: Node, scope: InferScope, expected: Node?, shadowed: Map<String, Bool>) -> InferResult {
-  match source.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-    ExprLambda =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-    ExprBlock =>
-      if (source.children |> count) != (prior.children |> count) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        let parts = source.children |> enumerate |> map(pair =>
-          match prior.children |> skip(pair.first) |> first {
-            Absent => infer_expr(texpr: pair.second, scope: scope, expected: none)
-            Present { value: prior_stmt } =>
-              let stmt_expected = if pair.first == ((source.children |> count) - 1) { expected } else { none }
-              recheck_expr(source: pair.second, prior: prior_stmt, scope: scope, expected: stmt_expected, shadowed: shadowed)
-          }
-        )
-        InferResult {
-          typed: make_expr_node(occurrence_identity: source.occurrence_identity, expr_data: ExprBlock, children: parts |> map(p => p.typed), inferred: match parts |> last {
-            Present { value: last } => last.typed.inferred
-            Absent => none
-          }, span: source.span),
-          diagnostics: flat_map(parts, p => p.diagnostics)
-        }
-      }
-    _ =>
-      if typed_expr_is_stale(n: prior, scope: scope, shadowed: shadowed) {
-        infer_expr(texpr: source, scope: scope, expected: expected)
-      } else {
-        InferResult { typed: prior, diagnostics: [] }
-      }
-  }
-}
 
 fn infer_planned_lambda_recheck(plan: CallArgumentPlan, expected_context: CallArgumentExpectedContext, first: ArgumentFirstReading, scope: InferScope) -> ArgInferResult {
   let source = arg_value(n: plan.argument)
-  let prior = arg_value(n: first.result.typed_arg)
-  let shadowed = empty_shadowed_names()
-  let ar_inferred = recheck_expr(source: source, prior: prior, scope: scope, expected: expected_context.expected, shadowed: shadowed)
+  // Item-5 deletion variant: plain full re-inference of the lambda argument against the
+  // settled expected context. No staleness predicate, no structural walk -- one infer_expr.
+  let ar_inferred = infer_expr(texpr: source, scope: scope, expected: expected_context.expected)
   let ar = if expected_context.formal_is_code_point_sequence {
     InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: expected_context.code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
   } else { ar_inferred }
