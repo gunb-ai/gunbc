@@ -316,33 +316,36 @@ data gcp_iam_converge_grant_sets: List<GrantSet> = [
 // coproduct (gunbc.fleet.host_credential_custody_converge HostCustodyCredential), one arm per credential, so a
 // new credential cannot join or stay out of the estate's approval without a decision here. The trigger the
 // earlier hand-picked set named has arrived: a second custody credential (the flex pool's Vast key) needs a
-// converge-owned accessor cell. Only credentials whose cell is a plain store-authoritative accessor, read
-// over WIF by the custody converge and owned by no other set, are selected; every other arm says why not,
-// because deriving from every row would hand this converge secrets well past the grants asked for (the
-// bootstrap creates each bare and binds secretPolicy on it).
+// converge-owned accessor cell. Selecting a credential has the bootstrap create its secret bare and bind
+// secretPolicy on it, widening what the estate's approval covers, so a credential nobody asked to move is
+// AccessorCellNotRequested: the widening is the operator's decision, not a consequence of having a row.
 type CustodyAccessorCellOwner
   = AccessorCellConvergeOwned
-  | AccessorCellNotConvergeOwned { reason: String }
+  | AccessorCellNotRequested
+  | AccessorCellOwnedByAnotherSet { label: String }
+  | AccessorCellDifferentContract { contract: String }
 
 fn custody_accessor_cell_owner(c: HostCustodyCredential) -> CustodyAccessorCellOwner {
   match c {
     CursorWorkerTurnApiKey => AccessorCellConvergeOwned
     FlexVastApiKey => AccessorCellConvergeOwned
-    ControllerAppKey => AccessorCellNotConvergeOwned { reason: "the controller GitHub App key is the CI estate's signing identity; its custody is not an iam-converge approval" }
-    ApprovalNtfyPublisherToken => AccessorCellNotConvergeOwned { reason: "the ntfy publisher token is the approval channel itself; granting it under that approval would be circular" }
-    FabricStateWriterKey => AccessorCellNotConvergeOwned { reason: "the fabric state key is placed on every runner host under its own reader group; not a single-reader accessor cell" }
-    CodexWorkerTurnAuth => AccessorCellNotConvergeOwned { reason: "codex is host-authoritative with a separate versionAdder cell, a different contract" }
-    OracleOciApiSigningKey => AccessorCellNotConvergeOwned { reason: "its cell is already owned by the hand-applied set; one owner per cell" }
-    ClaudeCodeOauthHarnessToken => AccessorCellNotConvergeOwned { reason: "the claude subscription token's first version is the operator's; its cell has not been moved to this converge" }
-    TrackerWebTestOauthClientSecret => AccessorCellNotConvergeOwned { reason: "the tracker-web test client secret is a lab test credential outside the estate's approval" }
-    GunbaiBotPublicationAppKey => AccessorCellNotConvergeOwned { reason: "the gunbai-bot App key is a publication identity; its custody is not an iam-converge approval" }
+    OracleOciApiSigningKey => AccessorCellOwnedByAnotherSet { label: "fleet accessor cells applied by hand" }
+    CodexWorkerTurnAuth => AccessorCellDifferentContract { contract: "host-authoritative: the custody converge writes the rotated file back through a separate versionAdder cell (fleet_version_adder_grant_roster)" }
+    ControllerAppKey => AccessorCellNotRequested
+    ApprovalNtfyPublisherToken => AccessorCellNotRequested
+    FabricStateWriterKey => AccessorCellNotRequested
+    ClaudeCodeOauthHarnessToken => AccessorCellNotRequested
+    TrackerWebTestOauthClientSecret => AccessorCellNotRequested
+    GunbaiBotPublicationAppKey => AccessorCellNotRequested
   }
 }
 
 fn custody_accessor_cell_converge_owned(c: HostCustodyCredential) -> Bool {
   match custody_accessor_cell_owner(c: c) {
     AccessorCellConvergeOwned => true
-    AccessorCellNotConvergeOwned { reason: _ } => false
+    AccessorCellNotRequested => false
+    AccessorCellOwnedByAnotherSet { label: _ } => false
+    AccessorCellDifferentContract { contract: _ } => false
   }
 }
 
