@@ -100,6 +100,12 @@ witness; no conversion exists because there is one carrier declaration.**
   which std declarations realize which acknowledged operations, and records any stated departure. What `std`
   adds beyond the acknowledged surface is ordinary std, owing nothing to `extdeps`.
 
+**Mostly convention, grounded on real sources (operator, 2026-10-17).** Most of this design is a naming and
+placement convention, not new machinery. Its anchor is that every `extdeps` declaration cites the real source
+it transcribes (standard, spec, reference text), so "is this faithful?" can be checked against something outside
+the repo. A declaration with no source to cite is not an acknowledgement and belongs in `std`. Mechanical gates
+(§8) are kept to what convention alone cannot hold; they are not the point of the design.
+
 Consequence for disposition (§5.4): any `extdeps` declaration that encodes *our* design choices rather than the
 external source is misplaced and moves to `std`. Any `std` declaration that merely restates an external
 definition with no interpretation added is misplaced and moves to `extdeps`.
