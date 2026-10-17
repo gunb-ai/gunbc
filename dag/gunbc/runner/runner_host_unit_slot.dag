@@ -107,6 +107,11 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
   }
 }
 
+// ARCHITECTURE FRONTIER (DESIGN section 3c): the runner binary is selected for Aarch64 unconditionally,
+// which holds for every host that registers through this fold today (all Altra boards). Trigger: a
+// non-AArch64 service host's compute offer. It must be sufficient for deriving the runner binary's
+// architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
+// replacing the Aarch64 literal here and in provider_guest_slot_for.
 // THE FOLD, over the registration labels it is handed. host_unit_slot_for hands it the host's own
 // (runner_registration_labels); the labels are a boundary because the one production host's offer is
 // not yet in the fleet catalog, so the service arm's success path is reachable only by supplying them.
