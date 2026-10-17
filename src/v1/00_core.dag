@@ -2886,7 +2886,10 @@ fn optional_payload(n: Node) -> Node {
   match n.declaration {
     Present { value: d } =>
       if d == optional_declaration_ref && n.connective == NoConnective {
-        match n.children |> first { Present { value: p } => p  Absent => n }
+        match n.children |> first {
+          Present { value: p } => p
+          Absent => n
+        }
       } else { n }
     Absent =>
       match n.inferred {
