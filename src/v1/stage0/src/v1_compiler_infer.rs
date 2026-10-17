@@ -17213,23 +17213,28 @@ pub fn record_lit_name_declares_union(
         Some(decl) => {
             if decl.connective.clone() == Connective::Disj {
                 Some(decl.clone())
-            } else if decl.connective.clone() == Connective::NoConnective {
-                let expanded_result = expand_type_for_field_access(
-                    decl.clone(),
-                    scope.type_env.clone(),
-                    scope.module_name.clone(),
-                );
-                let expanded = expanded_result.resolved.clone();
-                if expanded.connective.clone() == Connective::Disj {
-                    Some(expanded)
-                } else {
-                    std::option::Option::None
-                }
             } else {
-                std::option::Option::None
+                record_lit_expansion_declares_union(decl.clone(), scope.clone())
             }
         }
         std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn record_lit_expansion_declares_union(
+    decl: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    let expanded_result = expand_type_for_field_access(
+        decl.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+    );
+    let expanded = expanded_result.resolved.clone();
+    if expanded.connective.clone() == Connective::Disj {
+        Some(expanded)
+    } else {
+        std::option::Option::None
     }
 }
 
