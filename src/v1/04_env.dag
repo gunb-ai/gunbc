@@ -2086,7 +2086,8 @@ fn text_representations_cross(a: TextRepresentation, b: TextRepresentation) -> B
 // settles by chasing the alias right-hand side the resolver recorded (TypeBinding.alias_rhs, written in
 // the alias's own scope), never by re-reading a spelling, so `IntBox` and `Boxed<Int>` settle to the
 // declaration of Boxed with the argument Int. A side that identifies no declaration, an alias whose
-// right-hand side is not retained, or a parameterized alias applied to arguments does not settle: the
+// right-hand side is not retained does not settle (resolve retains alias_rhs only for a non-parameterized
+// alias, so a node of an alias head carries the alias's expansion, never its own arguments): the
 // relation answers false and the spelling comparison keeps its refusal (fail closed, DESIGN 5).
 // gunbc.recurring_failure_mode carrier_alias_refuses_its_own_carriers_constructor.
 type SettledType {
@@ -2100,7 +2101,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         Absent => Present { value: SettledType { head: d, args: n.children } }
         Present { value: rhs } =>
-          if fuel <= 0 || (n.children |> count) > 0 { none }
+          if fuel <= 0 { none }
           else {
             match rhs.declaration {
               Present { value: rhs_head } => settled_rhs(rhs: rhs, head: rhs_head, source_indices: source_indices, env: env, fuel: fuel - 1)
@@ -2118,7 +2119,7 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
     Present { value: next } =>
       match next.declaration {
         Present { value: next_head } =>
-          if fuel <= 0 || (rhs.children |> count) > 0 { none }
+          if fuel <= 0 { none }
           else { settled_rhs(rhs: next, head: next_head, source_indices: source_indices, env: env, fuel: fuel - 1) }
         Absent => none
       }
