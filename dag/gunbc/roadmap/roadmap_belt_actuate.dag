@@ -67,7 +67,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
 }
-import extdeps.git { shape_git_merge_base_args }
+import extdeps.git { shape_git_merge_base_args, shape_git_worktree_remove_argv, shape_git_branch_remote_contains_head_args }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -673,6 +673,13 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
+import gunbc.roadmap.roadmap_attempt_worktree_claim {
+  WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add, worktree_claim_slots_root,
+  ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
+  ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
+  ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown,
+  WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
+}
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
@@ -1653,7 +1660,127 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
     SessionStoresResolved { stores } =>
       match belt_session_slots_ensure(instance: instance, stores: stores) {
         Present { value: why } => SessionSettlePassRefused { detail: why }
-        Absent => session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores))
+        Absent => belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
+      }
+  }
+}
+
+// THE WORKTREE CLAIM IS RECORDED BEFORE `git worktree add` (gunbc.roadmap.roadmap_attempt_worktree_claim): the
+// attempt's identity, derived path and launch deadline, written create-only and read back. Any other
+// standing refuses the spawn step, so no tree is created that a record does not name.
+fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> WorktreeClaimWritten {
+  match now_epoch_seconds() {
+    Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the worktree claim has no launch deadline" }
+    Present { value: now } =>
+      worktree_claim_record_before_add(
+        root: worktree_claim_slots_root(records_dir: session_placement_records_dir(instance: instance)),
+        claim: worktree_claim_new(
+          node_id: node_id, attempt_key: attempt_key,
+          worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+          opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+  }
+}
+
+// HOST ADAPTERS for the claim ensure. The tree is read through the existing listing-based observation; content
+// and removal go through the trusted git route (belt_commit_git), so no other git invocation is introduced.
+// The tree is observed at the path the claim DERIVES, through the same listing-and-gitfile observation the spawn
+// readback uses: its directory name is read back out of the derived path, never taken from the record.
+fn belt_claim_tree_at(instance: HostDashboardInstance, path: String) -> ClaimTree {
+  let root = dashboard_instance_dispatch_worktree_root(instance: instance) as String
+  let name = replace(path, join([root, "/"], ""), "")
+  let listing = Filesystem.List(path: root)
+  let read = Filesystem.Read(path: join([path, "/.git"], ""))
+  match attempt_worktree_observation_of(
+    path: path,
+    marker: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error),
+      name: name,
+      path: join([path, "/.git"], ""),
+      read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+    ),
+  ) {
+    AttemptWorktreePresent { path: _ } => ClaimTreePresent
+    AttemptWorktreeAbsent { path: _ } => ClaimTreeAbsent
+    AttemptWorktreeUnobserved { path: _, cause } => ClaimTreeUnobserved { detail: cause }
+  }
+}
+
+fn belt_claim_content_of(instance: HostDashboardInstance, worktree: String) -> ClaimContent {
+  match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
+    ExecOk { stdout } =>
+      if trim(stdout) != "" {
+        ClaimContentDirty { detail: "git status lists changes" }
+      } else {
+        match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_branch_remote_contains_head_args()) {
+          ExecOk { stdout: remotes } =>
+            if trim(remotes) != "" { ClaimContentPushed } else { ClaimContentUnpushedCommits { detail: "no remote-tracking branch contains HEAD" } }
+          ExecFailed { program: _, exit_code: _, stderr } => ClaimContentUnobserved { detail: stderr }
+          ExecRefused { program: _, reason } => ClaimContentUnobserved { detail: reason }
+        }
+      }
+    ExecFailed { program: _, exit_code: _, stderr } => ClaimContentUnobserved { detail: stderr }
+    ExecRefused { program: _, reason } => ClaimContentUnobserved { detail: reason }
+  }
+}
+
+fn belt_claim_remove_tree(instance: HostDashboardInstance, repo_workdir: String, path: String) -> Bool {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+      args: shape_git_worktree_remove_argv(path: path as FilePath)),
+    workdir: repo_workdir,
+  ) {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+// CAPTURE IS SETTLED AT THE COMMIT STEP: the head-bound commit-step record (belt_commit_outcome_persist), never
+// the absence of a capture file. An unobservable head or unreadable record is unknown, which keeps the tree.
+fn belt_claim_capture_of(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ClaimCapture {
+  match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key)) {
+    WorktreeHeadUnobserved { reason } => ClaimCaptureUnknown { detail: reason }
+    WorktreeHeadObserved { revision } =>
+      match belt_capture_absence_for_attempt(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, head_sha: revision as String) {
+        CaptureAbsent => ClaimCaptureSettled
+        CaptureForHead { capture: _ } => ClaimCaptureSettled
+        CaptureNotAttempted { reason } => ClaimCaptureOwed { detail: reason }
+        CaptureUnreadable { reason } => ClaimCaptureUnknown { detail: reason }
+      }
+  }
+}
+
+// THE BELT'S ONE CLAIM-ENSURE CALL, run after the activation ensure so the worker's standing is read after any
+// rollback. A refused store or clock is a refused pass, not a skipped one.
+fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPlacementStores, settled: SessionSettlePass) -> SessionSettlePass {
+  match settled {
+    SessionSettlePassRefused { detail: _ } => settled
+    SessionSettlePassRan { settlements } =>
+      match now_epoch_seconds() {
+        Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the worktree claim ensure compares against the launch deadline" }
+        Present { value: now } =>
+          match worktree_claim_ensure_pass_at(
+            stores: stores,
+            claims_root: worktree_claim_slots_root(records_dir: session_placement_records_dir(instance: instance)),
+            host: instance.host_identity as String,
+            path_of: (n, k) => dispatch_worktree_path_for_instance(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
+            loaded_of: u => attempt_unit_observation(unit: u),
+            lifecycle_of: u => session_worker_unit_lifecycle_for_instance(instance: instance, unit: u),
+            now: now,
+            tree_of: p => belt_claim_tree_at(instance: instance, path: p),
+            content_of: p => belt_claim_content_of(instance: instance, worktree: p),
+            remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
+            capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
+          ) {
+            WorktreeClaimPassRan { outcomes } =>
+              if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
+                SessionSettlePassRefused { detail: worktree_claim_pass_wire(p: WorktreeClaimPassRan { outcomes: outcomes }) }
+              } else {
+                SessionSettlePassRan { settlements: settlements }
+              }
+            WorktreeClaimPassRefused { detail } => SessionSettlePassRefused { detail: detail }
+          }
       }
   }
 }
@@ -3255,6 +3382,16 @@ fn belt_spawn_admitted(
   let node = addressing.node
   let attempt_key = addressing.attempt_key
   let session_name = addressing.session_name
+  match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
+    WorktreeClaimNotRecorded { detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "worktree-claim",
+        detail: detail,
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    WorktreeClaimRecorded =>
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -3403,6 +3540,7 @@ fn belt_spawn_admitted(
           }
       }
       }
+  }
   }
 }
 
@@ -8483,7 +8621,17 @@ fn belt_commit_outcome_persist(
         ),
       )),
     )
-    outcome
+    if write.success {
+      outcome
+    } else {
+      CommitFailed {
+        node_id: node_id,
+        detail: join([
+          "the commit step's outcome record could not be written (", write.error,
+          "): the step is unsettled at this head and the worktree release waits on it",
+        ], ""),
+      }
+    }
   }
 }
 
