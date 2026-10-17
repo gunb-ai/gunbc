@@ -170,51 +170,6 @@ type BuildCacheEnsureRun =
       refusal: BuildCacheDigestRefusal,
     }
 
-// THE LEGS A RUN DECISION PERMITS, in order. The executor iterates this and nothing else; a witness reads
-// the same accessor, which is what keeps "the executor ran exactly these" a check rather than an assumption.
-fn build_cache_ensure_run_legs(run: BuildCacheEnsureRun) -> List<BuildCacheEnsureOp> {
-  match run {
-    Runs { legs: legs } => legs
-    RefusedBeforeInstall { legs: legs, op: _, refusal: _ } => legs
-  }
-}
-
-// THE FIRST READ-DIGEST LEG, which is the gate itself — reported by its own argv when it refuses, on the
-// same principle as every other failure in this effect: the operator is told WHICH command, not that
-// "something" in the sequence stopped.
-fn build_cache_plan_gate_op(ops: List<BuildCacheEnsureOp>) -> Optional<BuildCacheEnsureOp> {
-  fold(
-    ops,
-    init: none,
-    f: (acc, op) =>
-      match acc {
-        Present { value: seen } => Present { value: seen }
-        Absent => if op.kind == ReadDigest { Present { value: op } } else { none }
-      },
-  )
-}
-
-// THE REFUSAL FOR ONE OBSERVED LINE, as the value the effect reports: the cited admission's reason plus
-// BOTH digests. Absent means the line is admitted (or was never read, which is not a match) — the caller
-// asks this only after build_cache_ensure_run says RefusedBeforeInstall, so a missing refusal can never be
-// read as a passed gate.
-fn build_cache_digest_refusal(
-  digest: Digest,
-  observed_sha256sum_line: String,
-) -> Optional<BuildCacheDigestRefusal> {
-  match verified_binary_install_admission(expected: digest, observed_sha256sum_line: observed_sha256sum_line) {
-    Verified { observed: _ } => none
-    Refused { reason: why, expected: e, observed_line: read } =>
-      Present {
-        value: DigestRefused {
-          reason: why,
-          expected_hex: e.hex as String,
-          observed_line: read,
-        },
-      }
-  }
-}
-
 // THE DECISION FOR ONE LEG, PURE, so the `set -e` this effect replaces is something a claim can exercise
 // without a host. `set -e` said two things with one exit code — this operation failed, AND therefore
 // nothing after it runs. Splitting them is what lets a stop be a REPORTED refusal rather than an accident
@@ -326,25 +281,31 @@ fn build_cache_ensure_run(
   digest: Digest,
   observed_digest_line: Optional<String>,
 ) -> BuildCacheEnsureRun {
-  let scan = build_cache_gate_scan(ops: ops)
-  if !scan.at_gate {
-    Runs { legs: ops }
-  } else if build_cache_digest_line_is_admitted(digest: digest, observed_sha256sum_line: observed_digest_line) {
-    Runs { legs: ops }
-  } else {
-    match build_cache_plan_gate_op(ops: ops) {
-      Absent => Runs { legs: ops }
-      Present { value: gate } =>
+  let gate = build_cache_plan_gate_op(ops: ops)
+  let prefix = build_cache_ensure_gate_prefix(ops: ops)
+  match gate {
+    // NO GATE AT ALL: the plan has no digest read because it installs nothing, so every leg is permitted
+    // under either reading of `observed_digest_line`. This arm is what keeps the already-installed host from
+    // being gated on a read it does not need.
+    Absent => Runs { legs: ops }
+    Present { value: gate_op } =>
+      if build_cache_digest_line_is_admitted(digest: digest, observed_sha256sum_line: observed_digest_line) {
+        Runs { legs: ops }
+      } else {
         match observed_digest_line {
-          Absent => Runs { legs: scan.legs } // Nothing has been refused yet; only the prefix is permitted.
+          // NOTHING HAS BEEN REFUSED YET — the read simply has not happened. What is permitted is the
+          // prefix: fetch, then the read, and nothing past it.
+          Absent => Runs { legs: prefix }
+          // THE LINE WAS READ AND DOES NOT MATCH. Same prefix, plus the refusal that names both digests and
+          // the gate command that produced the line.
           Present { value: line } =>
             match build_cache_digest_refusal(digest: digest, observed_sha256sum_line: line) {
               Absent => Runs { legs: ops }
               Present { value: why } =>
-                RefusedBeforeInstall { legs: scan.legs, op: gate, refusal: why }
+                RefusedBeforeInstall { legs: prefix, op: gate_op, refusal: why }
             }
         }
-    }
+      }
   }
 }
 
