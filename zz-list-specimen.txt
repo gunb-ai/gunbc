@@ -1,0 +1,3 @@
+dag/test/claim/record_literal_names_a_union_type_witness.dag
+dag/test/claim/compute_unit_stop_observation_witness.dag
+dag/gunbc/compute/work_provider_local.dag
