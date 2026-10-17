@@ -23,7 +23,7 @@ module gunbc.firmware_network_boot_standing
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.algebra { length, string_contains }
-import std.optional { Optional, Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot {
@@ -367,19 +367,24 @@ type NetworkBootAttempt {
   unit_label: NonEmptyStr
 }
 
+// CONSTRUCTION IS A VERDICT, NOT AN OPTIONAL. Absent would say 'no attempt' and lose the reason;
+// an attempt that drove a mechanism the fleet owns no catalog row for is a one-off nobody can
+// reproduce or audit, so it is refused at the boundary where refusal is still cheap, and the
+// refusal says which route was unknown.
+type NetworkBootAttemptConstruction
+  = AttemptConstructed { attempt: NetworkBootAttempt }
+  | AttemptRouteUncataloged { route: FirmwareNetworkBootPreparationRoute }
+
 fn network_boot_attempt(
   route: FirmwareNetworkBootPreparationRoute,
   boot_control: BootControlReceiptStanding,
   reset_observed_at: EpochMs,
   resulting_dhcp: AttemptDhcpStanding,
   unit_label: NonEmptyStr
-) -> Optional<NetworkBootAttempt> {
-  // A cataloged route, or nothing. An attempt that drove a mechanism the fleet does not own a
-  // route for is a one-off that nobody can reproduce or audit, so it is refused at the boundary
-  // where it is still cheap to refuse.
+) -> NetworkBootAttemptConstruction {
   if route_is_cataloged(route: route) {
-    Present {
-      value: NetworkBootAttempt {
+    AttemptConstructed {
+      attempt: NetworkBootAttempt {
         route: route,
         boot_control: boot_control,
         reset_observed_at: reset_observed_at,
@@ -388,7 +393,7 @@ fn network_boot_attempt(
       },
     }
   } else {
-    Absent
+    AttemptRouteUncataloged { route: route }
   }
 }
 
