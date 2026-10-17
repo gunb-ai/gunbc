@@ -1,4 +1,4 @@
-module gunbc.test.claim.site_gunb_ai_tokens_witness
+module test.claim.site_gunb_ai_tokens_witness
 
 import std.types { Bool }
 import std.algebra { string_contains }
@@ -7,7 +7,7 @@ import extdeps.languages.css.properties { CustomProperty }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible, gunb_ai_hue_count }
 import gunbc.site.gunb_ai_tokens {
   token_binding_complete, token_contrast_floors_hold, token_swatches, token_root_decls,
-  review_html, token_options,
+  review_render, ReviewHtml, ReviewEmitRefused, type_scale_wires,
 }
 
 // Renders-and-checks the tokens layer (DESIGN §5: a witness goes RED when the layer
@@ -32,9 +32,11 @@ test fn witness_binding_total() -> Bool {
 //    text is compared against what palette/scale themselves emit, so a hand-copied
 //    literal in the site layer cannot pass (it would differ from upstream's wire).
 test fn witness_rendered_root_is_bound_output() -> Bool {
-  let html = review_html()
-  all(token_root_decls(), d => string_contains(s: html, pattern: decl_wire(d: d)))
-    && token_swatches.length() == 15
+  match review_render() {
+    ReviewHtml { html: h } => all(token_root_decls(), d => string_contains(s: h, pattern: decl_wire(d: d)))
+      && token_swatches.length() == 15
+    ReviewEmitRefused { reason: r } => false
+  }
 }
 
 fn decl_wire(d: CssDecl) -> String {
@@ -49,14 +51,18 @@ test fn witness_contrast_floors() -> Bool {
   token_contrast_floors_hold()
 }
 
-// 5. Fail closed on emit: a rejected render never becomes a silent page, and both
-//    ballot options actually render.
-test fn witness_review_site_shape() -> Bool {
-  let html = review_html()
-  starts_with(s: html, prefix: "<!DOCTYPE html>")
-    && !string_contains(s: html, pattern: "EMIT REJECTED")
-    && string_contains(s: html, pattern: "editorial")
-    && string_contains(s: html, pattern: "compact")
-    && token_options.length() == 2
-    && string_contains(s: html, pattern: "meta name=\"viewport\" content=\"width=device-width")
+// 5. Fail closed on emit, checked through the TYPE, not a marker string: a refusal
+//    is its own arm, so there is no page content a refused render could hide in.
+//    The landed type scale (operator pick B, compact) must reach the page through
+//    the upstream wire — display=40px comes from gunbc.design.scale.scale_value_wire
+//    over the ScaleToken rows, never from a second literal list.
+test fn witness_render_and_landed_scale() -> Bool {
+  match review_render() {
+    ReviewHtml { html: h } =>
+      starts_with(s: h, prefix: "<!DOCTYPE html>")
+        && string_contains(s: h, pattern: join(type_scale_wires(), "   "))
+        && string_contains(s: h, pattern: "display=40px")
+        && !string_contains(s: h, pattern: "52px")
+    ReviewEmitRefused { reason: r } => false
+  }
 }

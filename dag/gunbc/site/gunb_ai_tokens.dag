@@ -13,7 +13,7 @@ import gunbc.design.gunb_ai_hues {
   gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
   moss, moss_deep, clay, clay_deep, brass, brass_deep,
 }
-import gunbc.design.scale { ScaleToken, LengthValue, scale_decl, named_length_token }
+import gunbc.design.scale { ScaleToken, LengthValue, scale_decl, scale_value_wire, named_length_token }
 import gunbc.site.markup { txt, el, el_class }
 
 // THE TOKEN BINDING for the generated gunb.ai — the tokens layer of the projection
@@ -24,14 +24,14 @@ import gunbc.site.markup { txt, el, el_class }
 // palette. Nothing in the site layer writes an hsl/hex literal.
 //
 // Measures and the gap rhythm carry the live page's own values as ScaleToken rows
-// (named_length_token, px); the type scale is this layer's first proposal, rendered to
-// the review site as options for the operator pick. The live page hand-wrote these as
-// px/rem literals in assets/site.css with no .dag home — the inventory's gap row;
-// they are modelled here instead of transcribed.
+// (named_length_token, px); the type scale is the operator's landed pick (B compact,
+// relayed 2026-10-17, below). The live page hand-wrote these as px/rem literals in
+// assets/site.css with no .dag home — the inventory's gap row; they are modelled
+// here instead of transcribed.
 //
-// Consumers (DESIGN §3c): gunbc.test.claim.site_gunb_ai_tokens_witness (claim-run:
+// Consumers (DESIGN §3c): test.claim.site_gunb_ai_tokens_witness (claim-run:
 // binding completeness + contrast floors), gunbc.site.gunb_ai_tokens_review (renders
-// review_html() to the srv1 review directory).
+// review_render() to the srv1 review directory).
 
 type TokenSwatch = TokenSwatch {
   // The site-vocabulary role name (custom property --role). This module is its home.
@@ -90,15 +90,23 @@ data gap_md: ScaleToken = named_length_token(name: "gap-md", px: 20)
 data gap_lg: ScaleToken = named_length_token(name: "gap-lg", px: 40)
 data gap_xl: ScaleToken = named_length_token(name: "gap-xl", px: 64)
 
-data scale_display: ScaleToken = named_length_token(name: "display", px: 52)
-data scale_heading: ScaleToken = named_length_token(name: "heading", px: 24)
-data scale_body: ScaleToken = named_length_token(name: "body", px: 17)
-data scale_small: ScaleToken = named_length_token(name: "small", px: 14)
-data scale_label: ScaleToken = named_length_token(name: "label", px: 12)
+// The operator's pick (option B — compact), relayed 2026-10-17; the review site
+// rendered options A editorial (52/24/17/14/12) and B compact before the pick, and
+// the option rows were deleted with the pick. One storage: these ScaleToken rows are
+// the type scale — the review page below reads them, it never re-declares magnitudes.
+data scale_display: ScaleToken = named_length_token(name: "display", px: 40)
+data scale_heading: ScaleToken = named_length_token(name: "heading", px: 22)
+data scale_body: ScaleToken = named_length_token(name: "body", px: 16)
+data scale_small: ScaleToken = named_length_token(name: "small", px: 13)
+data scale_label: ScaleToken = named_length_token(name: "label", px: 11)
 
 data gap_tokens: List<ScaleToken> = [gap_xs, gap_sm, gap_md, gap_lg, gap_xl]
 data measure_tokens: List<ScaleToken> = [measure_page, measure_wide, measure_prose, measure_title]
 data type_scale_tokens: List<ScaleToken> = [scale_display, scale_heading, scale_body, scale_small, scale_label]
+
+fn type_scale_wires() -> List<String> {
+  map(type_scale_tokens, t => join([t.name, "=", scale_value_wire(v: t.value)], ""))
+}
 
 fn token_scale_tokens() -> List<ScaleToken> {
   concat(gap_tokens, concat(measure_tokens, type_scale_tokens))
@@ -135,42 +143,17 @@ fn token_contrast_floors_hold() -> Bool {
 }
 
 // --- review surface ----------------------------------------------------------
-// Renders the token layer for the operator pick: every hue-set swatch as a named
-// chip (proving the value's one home), the full role table, and one specimen per
-// type-scale option. Options differ ONLY in the type scale — the swatches and role
-// bindings are fixed by pick A and are not on the ballot.
-
-type TokenOption = TokenOption {
-  id: String
-  title: String
-  note: String
-  display: Int
-  heading: Int
-  body: Int
-  small: Int
-  label: Int
-}
-
-data option_editorial: TokenOption = TokenOption {
-  id: "editorial",
-  title: "Option A — editorial (the live page's ratios)",
-  note: "display 52px ≈ 3× body; keeps what gunb.ai shows today.",
-  display: 52, heading: 24, body: 17, small: 14, label: 12,
-}
-
-data option_compact: TokenOption = TokenOption {
-  id: "compact",
-  title: "Option B — compact",
-  note: "display 40px ≈ 2.4× body; denser masthead, fits above the fold at 800px.",
-  display: 40, heading: 22, body: 16, small: 13, label: 11,
-}
-
-data token_options: List<TokenOption> = [option_editorial, option_compact]
+// Renders the token layer: every hue-set swatch as a named chip (proving the value's
+// one home), the full role table, and one specimen rendered FROM the type scale
+// itself (CSS reads var(--display)/var(--body)/…, the wires are listed via
+// gunbc.design.scale.scale_value_wire — no magnitude is written twice). The ballot
+// (options A editorial / B compact) ran on this page and the operator picked B on
+// 2026-10-17; the option rows were deleted with the pick.
 
 fn swatch_chip(sw: Swatch) -> Fragment {
   el_class("div", "chip", [
     Element { tag: "i", attributes: [
-      attr(name: "style", value: join(["background: ", swatch_paint(sw: sw), "; border: 1px solid #fff3;"], "")),
+      attr(name: "style", value: join(["background: ", swatch_paint(sw: sw), ";"], "")),
     ], children: [] },
     el("code", [ txt(join([sw.name, "  ", swatch_paint(sw: sw)], "")) ]),
   ])
@@ -203,7 +186,10 @@ fn review_page() -> Fragment {
       el("title", [ txt("gunb.ai tokens — operator pick") ]),
       el("style", [ txt(join([
         review_css_text(),
-        " body\{background:var(--canvas);color:var(--text);font-family:system-ui,sans-serif;font-size:17px;margin:0\}",
+        " body\{background:var(--canvas);color:var(--text);font-family:system-ui,sans-serif;font-size:var(--body);margin:0\}",
+        " .spec-display\{font-size:var(--display);color:var(--text);margin:0 0 var(--gap-xs) 0\} .spec-heading\{font-size:var(--heading);color:var(--text-dim);margin:0 0 var(--gap-sm) 0\}",
+        " .body-sample\{font-size:var(--body);color:var(--text-dim);max-width:var(--measure-prose)\} .label-sample\{font-size:var(--label);color:var(--highlight);letter-spacing:0.12em\}",
+        " .wires\{font-size:var(--small);color:var(--accent)\}",
         " main\{max-width:var(--measure-page);margin:0 auto;padding:var(--gap-lg)\}",
         " h1\{font-size:var(--display)\} h2\{font-size:var(--heading);color:var(--text-dim)\}",
         " .chip\{display:inline-block;margin:0 var(--gap-xs) var(--gap-xs) 0;padding:var(--gap-xs);background:var(--canvas-raised);border:1px solid var(--border)\}",
@@ -222,23 +208,30 @@ fn review_page() -> Fragment {
         el("div", map(swatches_of(s: gunb_ai_hues), swatch_chip)),
         el("h2", [ txt("site role → swatch bindings") ]),
         el("table", map(token_swatches, role_row)),
-        el("h2", [ txt("type-scale options — pick one") ]),
+        el("h2", [ txt("type scale — operator pick: compact (B), landed as ScaleTokens") ]),
         el_class("div", "specimen", [
-          el("p", [ txt(join(["A · editorial — display ", to_string(value: option_editorial.display), "px, body ", to_string(value: option_editorial.body), "px — the live page's ratios"], "")) ]),
-          el_class("p", "note", [ txt(option_editorial.note) ]),
-        ]),
-        el_class("div", "specimen", [
-          el("p", [ txt(join(["B · compact — display ", to_string(value: option_compact.display), "px, body ", to_string(value: option_compact.body), "px — fits the hero above the fold at 800px"], "")) ]),
-          el_class("p", "note", [ txt(option_compact.note) ]),
+          el_class("p", "spec-display", [ txt("One structural description.") ]),
+          el_class("p", "spec-heading", [ txt("A compiler with one input: a .dag module.") ]),
+          el_class("p", "body-sample", [ txt("The module is the program — not a DSL bolted onto a host language, not a schema generator with an escape hatch into arbitrary code.") ]),
+          el_class("p", "label-sample", [ txt("GUNBC · TOKENS LAYER · PICK LANDED") ]),
+          el_class("p", "wires", [ txt(join(type_scale_wires(), "   ")) ]),
         ]),
       ]),
     ]),
   ] }
 }
 
-fn review_html() -> String {
+// A rejected render is a TYPED refusal, not page content (DESIGN §5: every path
+// succeeds fully or fails with a located diagnostic — nothing is fabricated). The
+// writer must handle ReviewEmitRefused explicitly; there is no string that lets a
+// refused emit pass as a rendered page.
+type ReviewRender
+  = ReviewHtml { html: String }
+  | ReviewEmitRefused { reason: String }
+
+fn review_render() -> ReviewRender {
   match try_serialize_html_source(node: review_page()) {
-    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
-    EmitRejected { reason: r } => concat("GUNB_AI_TOKENS REVIEW EMIT REJECTED: ", r)
+    EmitOk { html: h } => ReviewHtml { html: concat("<!DOCTYPE html>\n", h) }
+    EmitRejected { reason: r } => ReviewEmitRefused { reason: r }
   }
 }
