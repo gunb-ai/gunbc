@@ -8,7 +8,8 @@ import gunbc.compile_clean_diagnostic_policy {
   Enforced
 }
 
-// The three predicates below carry the CLI-vs-floor agreement and nothing else does (DESIGN §4c).
+// The three predicates below carry the CLI-vs-floor agreement and nothing else does (DESIGN §4c,
+// "Source annotations (prose the substrate can see)").
 
 fn witness_policy_row_is_floor_not_yet() -> Bool {
   compile_clean_unlisted_import_use_enforcement == FloorNotYet
