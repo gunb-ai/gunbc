@@ -2885,7 +2885,7 @@ fn type_is_optional(n: Node) -> Bool {
 fn optional_payload(n: Node) -> Node {
   match n.declaration {
     Present { value: d } =>
-      if d == optional_declaration_ref && n.connective == NoConnective {
+      if (d == optional_declaration_ref) && (n.connective == NoConnective) {
         match n.children |> first {
           Present { value: p } => p
           Absent => n
