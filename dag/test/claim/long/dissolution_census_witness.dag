@@ -21,7 +21,7 @@ import gunbc.dissolution_census {
   dissolution_census_refused_keys,
   frontier_rows_bound_count,
 }
-import std.roster_frontier { frontier_rows_well_formed }
+import std.roster_frontier { frontier_rows_well_formed, frontier_subject_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,4 +102,11 @@ test fn nothing_is_fired_and_still_present_today() -> Bool {
     DissolutionCensusRefused { undecided: _ } => false
     DissolutionCensusAnswered { report: r } => r.fired_still_present_count == 0
   }
+}
+
+// Two rows for one subject let either trigger retire the deficit while the other still holds, and
+// concat_frontier_row_groups (a flat_map) and frontier_rows_well_formed (one row at a time) refuse neither.
+test fn every_frontier_subject_is_enrolled_once() -> Bool {
+  let rows = census_closure_frontier_rows()
+  !any(rows, row => count(filter(rows, other => frontier_subject_eq(a: other.subject, b: row.subject))) != 1)
 }

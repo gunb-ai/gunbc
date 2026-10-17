@@ -459,13 +459,8 @@ data rented_release_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
-    reason: "binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step, so no flex caller invokes rented_release_receipt yet",
-    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
-    reason: "no claim executes rented_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed and the real Destroy route is unexecuted",
-    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation); then a claim drives rented_destroy_perform over it and asserts the route"),
+    reason: "two causes keep rented_destroy_perform unexecuted. (1) No flex caller invokes rented_release_receipt, because binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step. (2) No claim executes the real Destroy route: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
+    dissolution: unbound_dissolution(description: "trigger:BOTH hold, and neither alone is sufficient. (1) the flex wet create produces an Acquired allocation per card, and flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode; (2) an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives rented_destroy_perform over it asserting the route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
