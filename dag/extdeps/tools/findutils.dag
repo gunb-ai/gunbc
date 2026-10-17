@@ -173,3 +173,81 @@ fn find_command_runs_another_program(command: ArgvCommand) -> Bool {
 fn find_path_probe_command(path: String, kind: String, clause: List<String>) -> ArgvCommand {
   argv_command(program: find_program(), arguments: concat([path, "-maxdepth", "0", "-type", kind], clause))
 }
+
+// THE BOUNDED SUBTREE WALK, AS THREE SEALED BUILDERS (WORKER-ROOT-EQUIVALENT-3). These exist because
+// the mint of extdeps.exec.command ArgvCommand admits only named builders homed in the tool's own
+// module: a roadmap may not spell find's flags for find. They are also where the SHAPE of a subtree
+// grant is decided once, for every consumer, so no roadmap can compose an unbounded or unsafe walk by
+// hand. THE FIVE PROPERTIES, each a word in the argv below:
+//   ONE, BOUNDED. `-maxdepth 32`: an object store nests two levels (fan-out dir + object) and a git
+//     ref nest is `refs/heads/<branch>` plus its reflog mirror; 32 is nowhere near a real depth and
+//     far from unbounded, so a symlink loop or a pathological tree cannot hang the apply.
+//   TWO, CONFINED NAMES PRUNED BEFORE THE WALK. hooks, info, branches and pack -- each with its
+//     contents -- are pruned, so a subtree grant can never reach a path #13942 confines to root even
+//     if the grant list is later widened. The prune precedes the predicate rather than filtering after
+//     it, so those directories are not descended into at all.
+//   THREE, NO SYMLINKS. `-not -type l` keeps the walk off links entirely: chgrp --no-dereference
+//     alone would not do it, because chmod -R follows, and a link under objects/ would then carry a
+//     mode change to a file outside the repository.
+//   FOUR, ONE PATH PER ARGUMENT, `{} +`: batched, and never through a shell, so no path can be split
+//     or reinterpreted.
+//   FIVE, GROUP ONLY, never an owner. The chgrp form carries --no-dereference and NO user field, so
+//     the owner of every path in the repository stays exactly who it was.
+data dashboard_git_subtree_pruned_names: List<String> = [
+  "*/hooks", "*/hooks/*", "*/info", "*/info/*", "*/branches", "*/branches/*", "*/pack", "*/pack/*",
+]
+
+data dashboard_git_subtree_max_depth: String = "32"
+
+fn find_subtree_confined_prune_words() -> List<String> {
+  fold(
+    dashboard_git_subtree_pruned_names,
+    init: [] as List<String>,
+    f: (acc, name) => concat(concat(acc, ["(", "-path", name, ")", "-prune", "-o"]), []),
+  )
+}
+
+fn find_subtree_walk_words(target: String) -> List<String> {
+  concat(
+    concat([target, "-maxdepth", dashboard_git_subtree_max_depth], find_subtree_confined_prune_words()),
+    ["-not", "-type", "l"],
+  )
+}
+
+// Re-group a subtree to one group. No user field: this cannot re-own anything.
+fn find_subtree_regroup_command(target: String, group: String) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target),
+      ["-exec", "chgrp", "--no-dereference", group, "{}", "+"],
+    ),
+  )
+}
+
+// Group-writable on everything the walk reaches, and setgid on DIRECTORIES ONLY. The `-type d` guard on
+// the second action is the whole point: setgid on a file is a privilege shape (and RestrictSUIDSGID
+// would refuse it anyway), while setgid on a directory is what makes a fan-out directory git creates
+// later inherit the group rather than the creating process's primary group.
+fn find_subtree_group_writable_command(target: String) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(
+      find_subtree_walk_words(target: target),
+      ["-exec", "chmod", "g+w", "{}", "+", "(", "-type", "d", "-exec", "chmod", "g+s", "{}", "+"],
+    ),
+  )
+}
+
+// THE RECEIPT for one subtree: one line per entry, `<mode-in-octal> <path>`, with nothing read but
+// metadata (%m is the octal mode of the inode find already stat'd, %P the path relative to the target).
+// The migration's readback is this command's OUTPUT, and the model's predicates
+// (dashboard_git_worker_directory_mode_is_granted / _file_mode_is_granted) decide whether it is a
+// grant -- so a hand step on srv1 is a declared, bounded step whose readback the model checks rather
+// than a thing a person asserts.
+fn find_subtree_mode_readback_command(target: String) -> ArgvCommand {
+  argv_command(
+    program: find_program(),
+    arguments: concat(find_subtree_walk_words(target: target), ["-printf", "%m %P\n"]),
+  )
+}

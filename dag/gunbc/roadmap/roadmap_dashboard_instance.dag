@@ -1,6 +1,15 @@
 module gunbc.roadmap.roadmap_dashboard_instance
 
 import extdeps.tools.env { env_absolute_program }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.findutils {
+  find_subtree_regroup_command, find_subtree_group_writable_command,
+  find_subtree_mode_readback_command,
+}
+import extdeps.git {
+  git_program, git_shared_repository_group_config_argv, git_repack_quiet_command, git_pack_refs_all_command,
+  git_core_shared_repository_config_key, git_gc_auto_config_key, git_maintenance_auto_config_key,
+}
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.measure { ByteSize }
 import std.materialization_store_grant {
@@ -1812,7 +1821,19 @@ fn dashboard_instance_provider_state_directory(instance: HostDashboardInstance) 
 // DECLARED RESIDUALS: the provider asserts these directories, not their existing contents (it does not
 // recurse), and packed-refs plus the per-attempt .git/worktrees/<key> are a file and a runtime-created
 // directory it cannot assert; both are read back by the lab qualification (a live worker commits).
+// THE THREE SHARED SUBTREES, as children of the repo root, plus the per-attempt entry the dispatch
+// actuator names (below, at WORKER-ROOT-EQUIVALENT-3, because this module has no business naming an
+// attempt). `.git/worktrees` itself is deliberately NOT in this list: a worker's commit never creates
+// an entry there -- the root-owned `git worktree add` does -- so the parent needs traverse, not
+// write, and a group-writable parent would let a worker create entries of its own. The entry UNDER it
+// is what the commit writes (its own index, HEAD, reflog and ORIG_HEAD), and it is granted as a
+// subtree where the attempt key lives.
 data dashboard_git_worker_directory_children: List<NonEmptyStr> = [".git/objects", ".git/refs", ".git/logs"] as List<NonEmptyStr>
+
+// THE CHILD OF THE REPO ROOT UNDER WHICH EVERY ATTEMPT'S PRIVATE GIT ENTRY SITS. Root-owned to
+// create, world-traversable, never group-writable: git creates an entry there, and the worker's own
+// commit only ever writes inside the one entry the unit's ReadWritePaths= names.
+data dashboard_git_worktrees_child: NonEmptyStr = ".git/worktrees"
 
 fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   match instance.worker {
@@ -1825,6 +1846,276 @@ fn dashboard_instance_worker_git_directories(instance: HostDashboardInstance) ->
     })
   }
 }
+
+// THE COMMIT WRITE-SET, AS DATA (WORKER-ROOT-EQUIVALENT-3). A `git commit` in a LINKED WORKTREE of a
+// non-bare repository writes exactly these shapes under .git, and nothing else. Derived by running
+// the commit and diffing the tree (git 2.43 and 2.47, detached from any host this repo models), not
+// by reading git's documentation at one remove:
+//
+//   objects/<xx>/<rest>        loose objects. git creates a MISSING fan-out directory itself, so the
+//                              PARENT (.git/objects) must be group-writable AND carry setgid, or the
+//                              new fan-out lands in the wrong group; git creates the object file 0444
+//                              under core.sharedRepository=group and 0444 is already read-only to all.
+//   refs/heads/<branch>        the branch ref, written loose: 0664 under the shared posture.
+//   logs/refs/heads/<branch>   the branch reflog, appended.
+//   <entry>/…                  the worktree's OWN HEAD, index(+.lock), logs/HEAD, ORIG_HEAD,
+//                              COMMIT_EDITMSG, under .git/worktrees/<key> -- see
+//                              dispatch_attempt_worker_git_entry, and .git/COMMIT_EDITMSG for the
+//                              `git commit` editor scratch, which git removes again.
+//
+// NOT WRITTEN, and each is a claim rather than an omission:
+//   .git itself        never. `git commit` creates and unlinks .git/COMMIT_EDITMSG, and a linked
+//                      worktree's HEAD/index live in the ENTRY, so the directory needs no write at
+//                      all -- measured with it 0555, 25 consecutive commits.
+//   packed-refs        never, for this write-set. A new branch is written LOOSE and a loose ref
+//                      shadows the packed one; git rewrites packed-refs only for `pack-refs`, a
+//                      branch delete, or the auto-GC/maintenance sweep. Those are root's jobs; the
+//                      worker's own commit must not, and the confined path list below says so.
+//   config, HEAD, description, index (repo-level), hooks/, info/, branches/, objects/pack/,
+//   objects/info/, .git/COMMIT_EDITMSG's parent grant -- all stay as #13942 left them.
+data dashboard_git_worker_commit_write_set: List<NonEmptyStr> = [
+  ".git/objects/<fan-out>/<object>", ".git/refs/heads/<branch>", ".git/logs/refs/heads/<branch>",
+] as List<NonEmptyStr>
+
+// THE CONFIG THE POSTURE NEEDS, written by the ROOT-owned step before any attempt worktree is added
+// (extdeps/git git_shared_repository_group_config_argv). Two keys, both load-bearing and both
+// measured:
+//   core.sharedRepository=group  git's own shared-repository behaviour. Without it git creates under
+//                                the process umask -- the fan-out directory 0755, the reflog 0644 --
+//                                and a second writer arriving through the group cannot write at all.
+//   gc.auto=0, maintenance.auto=false  `git commit` spawns `git maintenance run --auto`, which
+//                                reaches for packed-refs.lock IN .git ITSELF -- a path #13942
+//                                confines to root. The attempt still commits (the child's failure is
+//                                a stderr error, not the commit's), but it is not noise the model
+//                                should be teaching a worker to tolerate: the automatic repack is a
+//                                root maintenance job, so the auto trigger is switched off for the
+//                                repository instead of the confined write being granted.
+data dashboard_git_worker_local_config_keys: List<NonEmptyStr> = [
+  "core.sharedRepository", "gc.auto", "maintenance.auto",
+] as List<NonEmptyStr>
+
+// WHAT MUST STAY OUT OF REACH of the group, named rather than left to the walk. This is #13942's
+// carve-out restated as the thing the recursive step must never touch: .git itself and the entries
+// that make up the repository's identity and behaviour. The claim
+// (test.claim.roadmap.worker_dedicated_account_witness the_worker_commit_never_writes_inside_the_git_directory_itself)
+// reads the derived write-set against this list, so a grant that ever reaches one of them fails here
+// rather than on srv1.
+data dashboard_git_worker_unwritable_children: List<NonEmptyStr> = [
+  ".git", ".git/config", ".git/HEAD", ".git/description", ".git/index", ".git/COMMIT_EDITMSG",
+  ".git/packed-refs", ".git/hooks", ".git/info", ".git/branches", ".git/objects/pack", ".git/objects/info",
+] as List<NonEmptyStr>
+
+fn dashboard_instance_worker_git_unwritable_paths(instance: HostDashboardInstance) -> List<FilePath> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => map(
+      dashboard_git_worker_unwritable_children,
+      child => dashboard_instance_child(root: instance.repo_root, child: child as String),
+    )
+  }
+}
+
+// THE ONE-TIME MIGRATION OF THE EXISTING SUBTREE (WORKER-ROOT-EQUIVALENT-3, the fork the brief
+// asked to be decided). REASON IT IS A MIGRATION AND NOT A RECURSIVE PROVIDER: the provider asserts
+// one directory and does not recurse (gunbc.owned_directory ensure_owned_directory_provider_argv),
+// and making it recurse is the wrong instrument here -- a recursive assert over .git would descend
+// into hooks, info and objects/pack, which #13942 confines to root, and it would run on every apply
+// over an object store that grows without bound. A migration runs ONCE, its readback is the
+// receipt, and it can name what it must not touch. A hand step on srv1 is therefore not needed: the
+// step below is the bounded, declared form of it, and its readback is the claim below, not a person.
+//
+// WHAT IT DOES, and the four constraints that make it bounded:
+//   ONE, it re-GROUPS and never re-OWNS: chgrp with no chown argument, so the owner stays the service
+//   user everywhere. Nothing the service user owns becomes worker-writable except through the group.
+//   TWO, it walks ONLY the granted subtrees, and prunes the confined ones by NAME before descending,
+//   so hooks, info, branches and the two objects/ subdirectories can never be reached even if the
+//   grant list changes. (The walk also never follows a symlink: -P is find's default and the
+//   predicate list contains no -L; chgrp/chmod -R act on the link itself, not its target, measured
+//   against a link to /etc/passwd whose mode was unchanged.)
+//   THREE, one file per argument: -print0 into xargs -0 -I, so no path can be split or reinterpreted.
+//   FOUR, setgid on DIRECTORIES ONLY (find -type d), which is what makes a fan-out directory git
+//   creates later inherit the attempt group instead of the creator's primary group.
+//
+// The directory mode ends 2775 and the file mode 0664 -- exactly what core.sharedRepository=group
+// makes git ask for, so the migrated contents and the contents git creates later are one shape and
+// neither route can leave a file the other cannot write.
+// THE MIGRATION STEPS. The group is the SAME value the declared demands carry
+// (dashboard_instance_worker_writable_owner), so the migration cannot drift from the model it is
+// preparing the ground for. THE PRUNES COME BEFORE THE WALK and restate the confinement: a granted
+// subtree is never under one of those names, so the walk cannot reach hooks, info, branches or pack
+// whatever the grant list says, and a later reader cannot "simplify" a prune away without the
+// confinement claim noticing.
+fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr) -> ArgvCommand {
+  find_subtree_regroup_command(target: target, group: group as String)
+}
+
+// Group-writable on everything in ONE subtree, and setgid on its DIRECTORIES ONLY -- the bit that
+// makes a fan-out directory git creates later inherit the attempt group.
+fn dashboard_git_worker_subtree_chmod_command(target: String) -> ArgvCommand {
+  find_subtree_group_writable_command(target: target)
+}
+
+fn dashboard_git_worker_subtree_path(instance: HostDashboardInstance, child: NonEmptyStr) -> String {
+  dashboard_instance_child(root: instance.repo_root, child: child as String) as String
+}
+
+// THE ORDERED MIGRATION for one instance: re-group every shared subtree, then assert its modes.
+// Empty on the staged arm, so prod gets no step at all (WorkerIsServiceUser). The per-attempt entry
+// is NOT here -- it is the dispatch actuator's, next to the attempt key, at the spawn that creates
+// it.
+fn dashboard_instance_worker_git_subtree_migration(instance: HostDashboardInstance) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => concat(
+      map(
+        dashboard_git_worker_directory_children,
+        child => dashboard_git_worker_subtree_chgrp_command(
+          target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+          group: fleet_posix_worker_shared_group_name,
+        ),
+      ),
+      map(
+        dashboard_git_worker_directory_children,
+        child => dashboard_git_worker_subtree_chmod_command(
+          target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+        ),
+      ),
+    )
+  }
+}
+
+// THE ROOT-OWNED REPOSITORY MAINTENANCE JOB (WORKER-ROOT-EQUIVALENT-3). Switching the automatic
+// repack off is a CONSUMER OBLIGATION under DESIGN section 3c: a deferred trigger needs an owner, or
+// loose objects and packs in the lab repository grow without bound -- a cost-shape defect, not a
+// style point. THE JOB IS NAMED HERE, beside the migration and the two keys that defer to it, rather
+// than left as prose:
+//
+//   WHAT        `git -C <repo> gc --quiet`, then `git -C <repo> pack-refs --all`. Both rewrite
+//               packed-refs and both write under .git/objects/pack -- the exact paths #13942 confines
+//               to root, which is why no attempt can run them and why deferring to a root job is the
+//               only shape that closes the noise rather than granting a confined write.
+//   AS WHOM     root (the instance's apply principal, the same one the migration steps run as). NOT
+//               the service user: the confinement story is that the worker's group can write four
+//               subtrees and root owns the discipline, so the repack runs where the ownership sits.
+//   ON WHAT     a systemd timer, 03:30 daily with a randomized delay, matching the shape of the
+//               machine's other opportunistic sweep (gunbc.fleet.fleet_converge_timer). Nightly and
+//               untimed-at-boot so the sweep never competes with an attempt's worktree add.
+//   ITS POSTURE unprivileged beyond file ownership: NoNewPrivileges, PrivateTmp, ProtectSystem=strict
+//               with the instance's repo root the only write target. It is not a dispatch unit and
+//               shares nothing with the worker's contract.
+//
+// THE FRONTIER, declared rather than implied: THIS PR DECLARES the unit; it does not install it. The
+// remaining step is the apply that writes the two unit files and enables the timer, owned by
+// gunbc.roadmap.roadmap_dashboard_instance_apply beside the migration argv -- which is exactly where
+// the migration's own argv is consumed, so the two land together or not at all. Until then the lab
+// repository accumulates loose objects at the rate attempts commit, which is the cost the timer
+// bounds. The claim (test.claim.roadmap.worker_dedicated_account_witness
+// the_deferred_repack_has_one_named_root_owner) pins the pair: the number of deferred keys equals the
+// number of keys the maintenance job's own argv re-enables, and a unit whose principal is not root is
+// refused.
+data dashboard_git_maintenance_unit_stem: NonEmptyStr = "git-maintenance"
+data dashboard_git_maintenance_service_suffix: String = ".service"
+data dashboard_git_maintenance_timer_suffix: String = ".timer"
+data dashboard_git_maintenance_timer_on_calendar: String = "*-*-* 03:30:00"
+data dashboard_git_maintenance_principal: NonEmptyStr = "root"
+
+fn dashboard_git_maintenance_service_unit_name(instance: HostDashboardInstance) -> String {
+  join(
+    [
+      "gunbc-dashboard-", instance.instance_id as String, "-",
+      dashboard_git_maintenance_unit_stem as String, dashboard_git_maintenance_service_suffix,
+    ],
+    "",
+  )
+}
+
+fn dashboard_git_maintenance_timer_unit_name(instance: HostDashboardInstance) -> String {
+  join(
+    [
+      "gunbc-dashboard-", instance.instance_id as String, "-",
+      dashboard_git_maintenance_unit_stem as String, dashboard_git_maintenance_timer_suffix,
+    ],
+    "",
+  )
+}
+
+// The unit's ExecStart pair, as the argv it will be rendered from. Both are nulled the way every
+// other managed git invocation is nulled: an ambient operator config must not be able to redirect
+// the sweep to another repository, and an ambient `gc.auto` must not make the nightly sweep
+// conditional on a threshold nobody declared.
+fn dashboard_git_maintenance_exec_commands(instance: HostDashboardInstance) -> List<ArgvCommand> {
+  match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      git_repack_quiet_command(repo: instance.repo_root),
+      git_pack_refs_all_command(repo: instance.repo_root),
+    ]
+  }
+}
+
+// The keys the maintenance job OWNS, i.e. the deferred auto triggers it stands in for. Exactly the
+// last two of dashboard_git_worker_local_config_keys: core.sharedRepository is not a repack trigger
+// and no maintenance task re-enables it.
+data dashboard_git_maintenance_owned_config_keys: List<NonEmptyStr> = [
+  "gc.auto", "maintenance.auto",
+] as List<NonEmptyStr>
+
+// POSIX MODE BITS. This language has no octal literal, so every mode this slice cares about is written
+// as a DECIMAL with its octal spelling beside it, and the predicates are the one place the decimal is
+// decoded -- a consumer never compares a hand-typed 1533 of its own. The arithmetic is shown rather
+// than trusted: the setuid/setgid/sticky high bits are 04000 = 2048, 02000 = 1024, 01000 = 512 (so
+// 02775 = 1024 + 509 = 1533), and the low nine are three rwx triples of 4-2-1: 0775 = (256+128+64) +
+// (32+16+8) + (4+1) = 509. A mode is read by leg: mode / step % 8 peels one triple at a time, with the
+// owner triple at step 64, the group triple at step 8 and the other triple at step 1 -- so a group leg
+// of 6 is rw-, and an other leg of 4 (r--) rather than 6 (rw-) is what refuses a world-writable file
+// that is otherwise group-writable.
+//   1533 == 02775  the granted DIRECTORY: owner and attempt group rwx, other r-x, setgid
+//    436 == 0664   the granted FILE: owner and group rw, other r--  (loose objects are 0444 = 292,
+//                 read-only to everyone including their owner: git does that on purpose and nobody
+//                 needs to write them)
+//    509 == 0775   the state srv1 measured, and the reason this slice exists: right legs, NO setgid
+//    438 == 0666   group-writable but world-writable: refused
+// The octal spellings are comments only. If one is ever retyped, the readback claims compare the
+// decimal, so a drifted comment cannot make a wrong mode pass.
+data posix_mode_setgid_bit: Int = 1024
+data posix_mode_owner_triple_step: Int = 64
+data posix_mode_group_triple_step: Int = 8
+data dashboard_git_worker_granted_directory_mode: Int = 1533
+data dashboard_git_worker_granted_file_mode: Int = 436
+
+// THE OWNER/GROUP/OTHER TRIPLE of one leg: r=4, w=2, x=1, read positionally. Steps are 8 to that
+// power: 64 (owner), 8 (group), 1 (other).
+fn posix_mode_leg(mode: Int, step: Int) -> Int {
+  mode / step % 8
+}
+
+// A GRANTED DIRECTORY is exactly 02775: the owner and the attempt group read, write and traverse,
+// nobody else, and the setgid bit that makes a fan-out directory git creates later inherit the
+// attempt group instead of the creating process's primary group.
+fn dashboard_git_worker_directory_mode_is_granted(mode: Int) -> Bool {
+  mode == dashboard_git_worker_granted_directory_mode
+}
+
+// A GRANTED FILE is group-writable, traversable-or-not as it happens, and NOT world-writable. The
+// loose object is deliberately excluded: git writes it 0444 and no consumer needs to write it.
+fn dashboard_git_worker_file_mode_is_granted(mode: Int) -> Bool {
+  posix_mode_leg(mode: mode, step: posix_mode_group_triple_step) % 8 == 6
+    && posix_mode_leg(mode: mode, step: 1) == 4
+}
+
+// THE RECEIPT FOR THE PRE-MIGRATION STATE, stated as its negation so the claim can point at it
+// directly: the shape srv1 measured — 0775, the service user's own group, no setgid — is NOT a
+// grant. The group leg is right (7) but the setgid bit is missing, so the next fan-out directory
+// git creates under .git/objects inherits the creating process's primary group and the attempt
+// worker cannot write into it. Claim (2) reads this against the state BEFORE the migration runs.
+fn dashboard_git_worker_directory_mode_is_unmigrated(mode: Int) -> Bool {
+  mode == unmigrated_directory_mode_measured
+}
+
+// 0775 in decimal: 256+128+64 (owner rwx) + 32+16+8 (group rwx) + 4+1 (other r-x) = 509. Stated as
+// its own constant because it is EVIDENCE, read off srv1, and the number that appears in the PR body
+// and in the readback claim has to be the same one.
+data unmigrated_directory_mode_measured: Int = 509
 
 // THE BUNDLE INBOX: where a bundle-seeded instance stages its source bundle. Demanded only by an
 // instance whose source seed IS a bundle, and the staged bundle path is built under the same function
@@ -2017,6 +2308,16 @@ type DashboardInstanceProvisionOp
       executable: FilePath,
       state_root: FilePath,
     }
+  // THE SHARED-REPOSITORY POSTURE, as a declared op (WORKER-ROOT-EQUIVALENT-3). THE ORDER IS THE
+  // CLAIM: it runs after the repository exists and BEFORE any attempt's `git worktree add`, because
+  // core.sharedRepository governs the modes git gives the private entry's files WHEN IT IS CREATED --
+  // set afterwards and the entry arrives 0644/0755 and the group write dies on the worker's first
+  // index.lock. Three root-owned `git config --local --replace-all` writes (extdeps/git), the only
+  // writes this roadmap ever makes to a managed .git/config; the file itself stays read-only to the
+  // worker. Empty on the staged arm, so prod gets no op.
+  | DashboardEnsureGitSharedRepositoryPosture {
+      repo: FilePath,
+    }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -2044,6 +2345,12 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
         controller_repo: controller_repo,
         anchor_ref: anchor_ref,
       },
+    ]
+  }
+  let shared_git_posture = match instance.worker {
+    WorkerIsServiceUser => []
+    WorkerDedicatedAccount => [
+      DashboardEnsureGitSharedRepositoryPosture { repo: instance.repo_root },
     ]
   }
   let common = [
@@ -2085,9 +2392,10 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops,
+  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+    shared_git_posture,
     dashboard_instance_provider_verification_ops(instance: instance),
-  )))
+  ))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -2192,6 +2500,12 @@ fn dashboard_instance_provision_op_row(
         kind: "verify-provider-auth" as NonEmptyStr,
         target: state_root as String,
         detail: executable as String,
+      }
+    DashboardEnsureGitSharedRepositoryPosture { repo } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-git-shared-repository-posture" as NonEmptyStr,
+        target: repo as String,
+        detail: "core.sharedRepository=group, gc.auto=0, maintenance.auto=false; root-owned, before any attempt worktree is added",
       }
   }
 }
