@@ -92,9 +92,18 @@ def main():
     out = out.replace(LAMBDA_RECHECK_OLD, LAMBDA_RECHECK_NEW)
     # `prior` existed only to feed the staleness walk; with it deleted the binding is
     # unused, so drop it as well rather than leaving dead state behind.
-    prior_line = "  let prior = arg_value(n: first.result.typed_arg)\n"
-    if out.count(prior_line) == 1:
-        out = out.replace(prior_line, "")
+    for dead in ("  let prior = arg_value(n: first.result.typed_arg)\n",
+                 "  let shadowed = empty_shadowed_names()\n"):
+        # both existed only to feed the staleness walk; leaving them would be dead state
+        if out.count(dead) == 1:
+            out = out.replace(dead, "")
+    # empty_shadowed_names is now unreferenced; it was introduced for this walk only, so
+    # the deletion takes it too rather than leaving an orphan helper.
+    orphan_sig = "fn empty_shadowed_names() -> Map<String, Bool> {"
+    if out.count(orphan_sig) == 1 and "empty_shadowed_names()" not in out.replace(out[out.index(orphan_sig):out.index(orphan_sig)+200], ""):
+        i = out.index(orphan_sig)
+        j = out.index("\n}\n\n", i) + 3
+        out = out[:i] + out[j:]
     for gone in ("typed_expr_is_stale", "recheck_expr("):
         if gone in out:
             print("RESIDUE after deletion: %s (count %d)" % (gone, out.count(gone))); return 4

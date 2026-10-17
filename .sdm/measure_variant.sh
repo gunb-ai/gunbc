@@ -16,46 +16,64 @@ mkdir -p .sdm/run
 fail=0
 # ---- preflight ---------------------------------------------------------------------
 # Several dispatches were burned on rc=1/rc=127 with no stderr shown: the failure branch
-# printed a tail of a file that was empty (stderr went to a different file) and the
-# entry/source-root spelling was assumed rather than learned. So print the real CLI
-# surface, then try the fixture under every (entry-spelling x source-root) combination and
-# adopt the first that compiles, showing each attempt's FULL output. Measurement only.
+# tailed a file that was empty (stderr went elsewhere) and the entry / --source-root
+# spelling was assumed rather than learned. So print the real CLI surface, then try the
+# fixture under each candidate (entry-spelling x source-root) pair and adopt the first
+# that compiles, printing each attempt's FULL output. The winning pair is reused verbatim
+# by the depth loop, so the A/B is not measured under a shape that cannot compile.
+# Fixtures live in exactly ONE directory: a module path may be declared by only one file
+# (source-discovery refuses the whole compile otherwise), which is what a second copy of
+# the witness did to the previous dispatch.
 echo "@@@ VARIANT=$V PREFLIGHT"
 set +e
 timeout 300 $BIN compile --help > .sdm/run/help_$V.log 2>&1
 echo "help_rc=$?"
 grep -iE "source-root|entry|target|output-dir|claim" .sdm/run/help_$V.log | head -25
 set -e
-cp .sdm/fixtures/gap_depth_2.dag ./gap_depth_2.dag
-ENTRY_KIND=""; SOURCE_ROOT_ARGS=""
-for combo in "root|one" "root|two" "abs|one" "abs|two"; do
-  KIND=${combo%%|*}; SR=${combo##*|}
-  if [ "$KIND" = root ]; then E=gap_depth_2.dag; else E="$PWD/.sdm/fixtures/gap_depth_2.dag"; fi
-  if [ "$SR" = one ]; then set -- --source-root "$PWD"; else set -- --source-root "$PWD" --source-root dag; fi
-  echo "--- attempt entry=$KIND source_roots=$SR ---"
+ENTRY_PREFIX=""; SOURCE_ROOT_ARGS=""
+for combo in \
+    "dag/test/|--source-root $PWD" \
+    "dag/test/|--source-root $PWD --source-root dag" \
+    "|--source-root $PWD" \
+    "|--source-root $PWD --source-root dag" \
+    "$PWD/.sdm/fixtures/|--source-root $PWD" \
+    "test/|--source-root dag" ; do
+  EP="${combo%%|*}"; SR="${combo#*|}"
+  # the bare and dag-relative spellings need the fixture at a matching location
+  case "$EP" in
+    ""|test/) cp .sdm/fixtures/gap_depth_2.dag ./"gap_depth_2.dag" 2>/dev/null || true ;;
+  esac
+  E="${EP}gap_depth_2.dag"
+  [ -f "$E" ] || E="${EP}.sdm/fixtures/gap_depth_2.dag"
+  echo "--- attempt entry=$E roots=$SR ---"
   set +e
-  timeout 900 $BIN compile "$@" --entry "$E" --target rust \
-    --output-dir .sdm/run/preflight_${KIND}_${SR} > .sdm/run/preflight_${KIND}_${SR}.log 2>&1
+  timeout 900 $BIN compile $SR --entry "$E" --target rust \
+    --output-dir .sdm/run/preflight_$(echo "$EP$SR" | tr -dc 'a-zA-Z0-9') > .sdm/run/pf.log 2>&1
   prc=$?
   set -e
-  echo "preflight_${KIND}_${SR} rc=$prc"
-  head -40 .sdm/run/preflight_${KIND}_${SR}.log
-  if [ $prc -eq 0 ]; then ENTRY_KIND="$KIND"; SOURCE_ROOT_ARGS="$*"; echo "PREFLIGHT-OK entry=$KIND source_roots=$SR"; break; fi
+  echo "preflight rc=$prc"
+  head -40 .sdm/run/pf.log
+  if [ $prc -eq 0 ]; then
+    ENTRY_PREFIX="$EP"; SOURCE_ROOT_ARGS="$SR"
+    echo "PREFLIGHT-OK entry_prefix=$EP roots=$SR"
+    break
+  fi
 done
 rm -f ./gap_depth_2.dag
-if [ -z "$ENTRY_KIND" ]; then
+if [ -z "$ENTRY_PREFIX" ] && [ -z "${SOURCE_ROOT_ARGS:-}" ]; then
   echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the fixture; aborting rather than emitting an empty A/B"
   exit 14
 fi
 
 for SERIES in gap_depth garr; do
   for d in 1 2 3 4 5 6; do
-    f="dag/test/${SERIES}_${d}.dag"
+    f="${ENTRY_PREFIX}${SERIES}_${d}.dag"
+    echo "using entry=$f roots=${SOURCE_ROOT_ARGS}"
     [ -f "$f" ] || { echo "MISSING-FIXTURE $f"; fail=1; continue; }
     printf "@@@ VARIANT=%s SERIES=%s DEPTH=%s\n" "$V" "$SERIES" "$d"
     set +e
     t0=$(date +%s)
-    eval $BIN compile ${SOURCE_ROOT_ARGS} --entry "$f" --target rust \
+    $BIN compile ${SOURCE_ROOT_ARGS} --entry "$f" --target rust \
         --output-dir ".sdm/run/out_${V}_${SERIES}_$d" \
         > .sdm/run/o_${V}_${SERIES}_$d.log 2> .sdm/run/e_${V}_${SERIES}_$d.log
     rc=$?
