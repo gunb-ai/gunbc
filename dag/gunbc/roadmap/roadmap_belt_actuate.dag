@@ -8349,12 +8349,25 @@ fn belt_capture_intent_read(instance: HostDashboardInstance, worktree: String, n
   }
 }
 
-fn belt_capture_intent_write(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, capture: SubmissionCapture) -> String? {
-  let write = Filesystem.Write(
-    path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    content: submission_capture_text(capture: capture),
-  )
-  if write.success { none } else { Present { value: write.error } }
+fn belt_capture_intent_write(instance: HostDashboardInstance, worktree: String, node_id: RoadmapNodeId, attempt_key: String, capture: SubmissionCapture) -> String? {
+  let dir = belt_capture_intent_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+      args: ["-d", "-m", "0700", dir],
+    ),
+    workdir: worktree,
+  ) {
+    ExecFailed { program: _, exit_code: _, stderr } => Present { value: join(["intent directory: ", stderr], "") }
+    ExecRefused { program: _, reason } => Present { value: join(["intent directory refused: ", reason], "") }
+    ExecOk { stdout: _ } => {
+      let write = Filesystem.Write(
+        path: belt_capture_intent_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
+        content: submission_capture_text(capture: capture),
+      )
+      if write.success { none } else { Present { value: write.error } }
+    }
+  }
 }
 
 fn belt_capture_intent_clear(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
@@ -8484,7 +8497,7 @@ fn belt_capture_candidate_mint(
           Absent => CommitFailed { node_id: node_id, detail: "unreachable: a persisted capture without an intent" }
         }
       } else {
-        match belt_capture_intent_write(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, capture: minted) {
+        match belt_capture_intent_write(instance: instance, worktree: worktree, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key, capture: minted) {
           Present { value: e } =>
             CommitFailed { node_id: node_id, detail: join(["the capture intent could not be written, so the SCM capture was not taken: ", e], "") }
           Absent =>

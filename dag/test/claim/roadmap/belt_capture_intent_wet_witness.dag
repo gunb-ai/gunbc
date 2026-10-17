@@ -122,7 +122,7 @@ fn through_scm_save(instance: HostDashboardInstance, worktree: String) -> Int {
         head_sha: base_of(worktree: worktree), scm_repository: path, scm_commit_ordinal: commit_ordinal,
         scm_root_locator: SubmissionCaptureRootBound { locator: commit_root_locator }, digest: "d", submission: sub(),
       }
-      let wrote = match belt_capture_intent_write(instance: instance, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, capture: intent) {
+      let wrote = match belt_capture_intent_write(instance: instance, worktree: worktree, node_id: wit_node as RoadmapNodeId, attempt_key: wit_attempt, capture: intent) {
         Present { value: _ } => false
         Absent => true
       }
