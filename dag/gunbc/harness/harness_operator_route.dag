@@ -1,5 +1,6 @@
 module gunbc.harness.harness_operator_route
 
+import gunbc.fleet.fleet_intent_network { srv2_host_lan_endpoint }
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, HttpStatus }
 import std.algebra { trim, list_init }
 import std.nat { Nat }
@@ -45,7 +46,8 @@ data operator_placement_ruling: DeclarationRef = decl_ref(
 // THE LAB'S DEPLOYMENT OF THE FRONT, parameters of this binding and not upstream facts: the LAN origin, and the
 // self-signed mkcert development certificate (notAfter 2028-09-17) the lab pins. The two paths are the front's own
 // declarations (extdeps.pool.pool_front), not a second spelling of them.
-data operator_pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr
+// The host is the fleet model's srv2 LAN endpoint (written once there); the port is the front's deployment.
+data operator_pool_front_origin: NonEmptyStr = join(["https://", srv2_host_lan_endpoint.address as String, ":3737"], "") as NonEmptyStr
 
 data operator_pinned_certificate: PoolFrontCertificate = PoolFrontCertificate {
   sha256_fingerprint: "23:34:E0:C1:03:32:F8:0C:82:CA:D8:7F:D1:32:1E:1C:DF:0C:B6:CE:CF:B2:98:73:73:A0:12:3C:A4:F7:F1:CF" as NonEmptyStr,

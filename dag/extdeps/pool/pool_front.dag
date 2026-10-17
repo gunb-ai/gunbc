@@ -17,8 +17,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // the pool operator's statement of 2026-10-17 (ctrl #2375, typed as pool_front_contract_standing), not an
 // upstream-published page, so it is a transcription of a named party's word and not a deduction. The first
 // live reading of each figure is the lab qualification that follows this module's landing.
+// The anchor is the pool operator's statement (ctrl #2375), not the lab's deployment address.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "192.168.1.188:3737/pool/v1/models" as NonEmptyStr }
+  uri: Uri { scheme: Https, locator: "github.com/gunb-ai/ctrl/issues/2375" as NonEmptyStr }
 }
 
 data pool_front_program: NonEmptyStr = "pool-front" as NonEmptyStr
