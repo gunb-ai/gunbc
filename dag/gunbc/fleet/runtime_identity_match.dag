@@ -24,9 +24,11 @@ module gunbc.fleet.runtime_identity_match
 //   of who the fleet's machines are, next to the intake subject that already owns that.
 // - NO PER-HOST BRANCHING. Nothing here is keyed on a machine name, and no axis policy varies by unit. The
 //   unit is CARRIED (as data, on both sides) and never matched on: the proof is entirely in the axes.
-// - NO TRANSPORT NAMES. The pre-boot side is what the firmware reported and the post-boot side is what the
-//   running OS reported; how each was obtained is a channel, modelled as a semantic axis, never a command
-//   line, a tool, or a protocol verb.
+// - NO TRANSPORT IN THE DECISION. Nothing that decides a verdict is a transport fact: no command line, no
+//   tool, no protocol verb appears in any type or fn here. The post-boot side does carry WHICH KIND OF
+//   CHANNEL reported -- as a semantic axis, in one place -- because a channel determines which axes are
+//   answerable at all, and an axis is the only shape where a report and its channel cannot contradict each
+//   other. Deciding is done on the readings; the channel is context that is stated, never inferred.
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
