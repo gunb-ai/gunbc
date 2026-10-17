@@ -336,6 +336,28 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
   ]))
 }
 
+// THE POOL FRONT'S 503 IS THE SAME RECOVERY, WITH ITS OWN EXPLAINED CAUSE. No TLS card serving means nothing was
+// forwarded and the request had no effect, so the session stopped at the validated state `messages` holds and
+// the belt resumes it (the same turn.recovery_needed event, the same bound, the same worktree, conversation and
+// x-pool-session) rather than ending it. It is not an UnexplainedEngineRefusal: the front said why.
+fn session_cause_text_no_capacity(round: Int, held: Int) -> String {
+  join([
+    "round ", to_string(value: round), ": the pool front answered 503 (no TLS card serving) for ", to_string(value: held + 1),
+    " attempts; nothing was forwarded and the request had no effect",
+  ], "")
+}
+
+fn session_event_recovery_needed_no_capacity(round: Int, held: Int, validation: SessionValidation) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.recovery_needed")),
+    json_kv(key: "round", value: json_int(n: round)),
+    json_kv(key: "status", value: json_int(n: 503)),
+    json_kv(key: "cause", value: json_string(s: session_cause_text_no_capacity(round: round, held: held))),
+    json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
+    json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
+  ]))
+}
+
 fn session_event_resumed(ordinal: Int, round: Int, cause: String) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.resumed")),

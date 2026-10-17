@@ -461,10 +461,10 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
 // THE ABSENT ARM IS UNREACHABLE FOR BOTH UNITS THIS HARNESS SERVES, because both rows it reads carry
 // a projection today. It exists so that adding a unit whose runtime has never served cannot silently
 // unwrap into a fabricated name, which is what the previous bare-typed signature would have done.
-fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? {
   match harness_unit_reasoning_projection(unit: unit) {
     Absent => harness_unit_model_reasoning_field(unit: unit)
-    Present { value: ParsedReasoningField { field: f } } => f
+    Present { value: ParsedReasoningField { field: f } } => Present { value: f }
     Present { value: InlineReasoning { end_token: _ } } => harness_unit_model_reasoning_field(unit: unit)
   }
 }
@@ -473,13 +473,13 @@ fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 // wire carries reasoning for such a unit, so any name is unused by the decoder; naming the model's own
 // field keeps the answer meaningful if that unit is later relaunched WITH a parser, and keeps this
 // function total without inventing a sentinel the caller would have to branch on.
-fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
-    DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
-    Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
-    NemotronUltraFreeOnOpenRouter => openrouter_message_reasoning_field
-    Qwen3_8_27bOnNinfer => ninfer_message_reasoning_field
-    Qwen38FlashNextOnPoolFront => pool_front_message_reasoning_field.value
+    DeepseekV4FlashOnVllm => Present { value: deepseek_v4_chat_reasoning_field }
+    Glm53FlashOnVllm => Present { value: glm_5_3_flash_chat_reasoning_field }
+    NemotronUltraFreeOnOpenRouter => Present { value: openrouter_message_reasoning_field }
+    Qwen3_8_27bOnNinfer => Present { value: ninfer_message_reasoning_field }
+    Qwen38FlashNextOnPoolFront => pool_front_figure_read(figure: pool_front_message_reasoning_field)
   }
 }
 
@@ -493,7 +493,11 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match harness_unit_reasoning_projection(unit: unit) {
     Absent => [] as List<NonEmptyStr>
-    Present { value: ParsedReasoningField { field: _ } } => [harness_unit_model_reasoning_field(unit: unit)]
+    Present { value: ParsedReasoningField { field: _ } } =>
+      match harness_unit_model_reasoning_field(unit: unit) {
+        Present { value: f } => [f]
+        Absent => [] as List<NonEmptyStr>
+      }
     Present { value: InlineReasoning { end_token: _ } } => [] as List<NonEmptyStr>
   }
 }
@@ -556,20 +560,21 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
     Glm53FlashOnVllm => true
     NemotronUltraFreeOnOpenRouter => true
     Qwen3_8_27bOnNinfer => true
-    Qwen38FlashNextOnPoolFront => true
+    // Not read from the front (the reasoning figures are uncited), so no parse is claimed.
+    Qwen38FlashNextOnPoolFront => false
   }
 }
 
 // THE INLINE CLOSER, for the client-side split the unit above still needs. Carried even where the
 // server parses, because a parser can be absent from a rebuilt engine and the token is the model's
 // either way.
-fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
+fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
-    DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
-    Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
-    NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
-    Qwen3_8_27bOnNinfer => ninfer_inline_think_end_token.token
-    Qwen38FlashNextOnPoolFront => pool_front_thinking_end_token.value
+    DeepseekV4FlashOnVllm => Present { value: deepseek_v4_thinking_end_token }
+    Glm53FlashOnVllm => Present { value: glm_5_3_flash_thinking_end_token }
+    NemotronUltraFreeOnOpenRouter => Present { value: nemotron_ultra_thinking_end_token }
+    Qwen3_8_27bOnNinfer => Present { value: ninfer_inline_think_end_token.token }
+    Qwen38FlashNextOnPoolFront => pool_front_figure_read(figure: pool_front_thinking_end_token)
   }
 }
 

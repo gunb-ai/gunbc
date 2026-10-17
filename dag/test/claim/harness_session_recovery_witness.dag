@@ -8,7 +8,7 @@ import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_res
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
-  session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
+  session_event_recovery_needed, session_event_recovery_needed_no_capacity, session_event_resumed, session_recovery_of_events, session_resume_bound,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -176,4 +176,32 @@ test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bo
       ContinuationRefused { reason } => reason.contains("cause")
       _ => false
     })
+}
+
+// POOL-FRONT-ROUTE-1. A turn held by the front's 503 writes the same recovery event, and the continuation decision
+// over it resumes the SAME attempt's session (never Ended, never a fresh spawn); it is bounded like any recovery.
+fn no_capacity_lines(request: String, rounds: Int) -> List<String> {
+  [session_event_recovery_needed_no_capacity(round: rounds, held: 3, validation: validation_of(request: request))]
+}
+
+test fn pool_claim_a_503_held_turn_is_recovery_needed_and_the_belt_resumes_the_same_session() -> Bool {
+  (match session_recovery_of_events(lines: no_capacity_lines(request: validated_request(), rounds: 12)) {
+    SessionRecoveryPending { causes, resumes_made, interrupted_calls: _, resume_round } =>
+      resumes_made == 0 && resume_round == 12 && any(causes, c => c.contains("503") && c.contains("no TLS card"))
+    SessionRecoveryNone => false
+    SessionRecoveryMalformed { mismatch: _ } => false
+  }) && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: no_capacity_lines(request: validated_request(), rounds: 12))) }) {
+    ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => attempt_key == "a1" && ordinal == 1
+    _ => false
+  })
+}
+
+test fn pool_claim_a_503_hold_past_the_resume_bound_ends_with_every_cause_recorded() -> Bool {
+  let needed = no_capacity_lines(request: validated_request(), rounds: 12)
+  let resumed = [session_event_resumed(ordinal: 1, round: 12, cause: "c")]
+  let lines = concat(concat(concat(needed, resumed), concat(concat(needed, resumed), concat(needed, resumed))), needed)
+  match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
+    ContinuationEnded { reason } => reason.contains("every recorded cause")
+    _ => false
+  }
 }

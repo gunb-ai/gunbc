@@ -35,11 +35,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
-// The standing of every figure in this module, in type: the pool operator's word (ctrl #2375, 2026-10-17;
-// ctrl #2376 is the TLS card whose absence makes 503 the live answer), not an upstream-published page.
-data pool_front_contract_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read path, header, model ids, certificate, auth, 503 semantics, limits, reasoning field and end token from the live front at the lab qualification" as NonEmptyStr
-}
+// THE STANDING OF THE FRONT'S STATED CONTRACT (path, header, model ids, certificate, auth, 503 semantics and the
+// limits below): the pool operator's own statement of 2026-10-17 (ctrl #2375; ctrl #2376 is the TLS card whose absence
+// makes 503 the live answer), cited to the live service it describes. The two reasoning figures are the exception:
+// the statement does not give them, so each carries its own TranscribedUncited standing (PoolFrontFigure) and is
+// read only through pool_front_figure_read.
+data pool_front_contract_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
 
 // ── THE SURFACE ─────────────────────────────────────────────────────────────────────────────────
 data pool_front_origin: NonEmptyStr = "https://192.168.1.188:3737" as NonEmptyStr

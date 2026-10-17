@@ -970,12 +970,16 @@ fn harness_chat_message_blocks(unit: HarnessServingUnit, msg: JsonValue) -> Harn
 // two spellings are one fact, so a null on one of them is not yet an answer about the fact. Only
 // when the alias fold also reports null or absence is there no reasoning to carry.
 fn harness_chat_message_reasoning(unit: HarnessServingUnit, msg: JsonValue) -> HarnessBlocksRead {
-  match harness_member_string(doc: msg, key: harness_unit_reasoning_field(unit: unit) as String) {
-    StringRead { value: r } => BlocksRead { blocks: [WireThinkingBlock { thinking: r }] }
-    StringMalformed { cause: c } =>
-      BlocksUnreadable { cause: join(["the chat message's reasoning field is unreadable: ", c], "") }
-    StringNull => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
-    StringAbsent => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
+  match harness_unit_reasoning_field(unit: unit) {
+    Absent => BlocksRead { blocks: [] }
+    Present { value: field } =>
+      match harness_member_string(doc: msg, key: field as String) {
+        StringRead { value: r } => BlocksRead { blocks: [WireThinkingBlock { thinking: r }] }
+        StringMalformed { cause: c } =>
+          BlocksUnreadable { cause: join(["the chat message's reasoning field is unreadable: ", c], "") }
+        StringNull => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
+        StringAbsent => harness_chat_message_reasoning_alias(unit: unit, msg: msg)
+      }
   }
 }
 

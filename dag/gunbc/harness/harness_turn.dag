@@ -30,7 +30,7 @@ import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnre
 import gunbc.harness.harness_operator_route { OperatorRoundFault, OperatorNoCapacity, OperatorCertificateNotPinned, operator_round_fault, operator_pinned_ca_file, operator_pinned_pubkey_file }
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
-  session_validation_resumable, session_event_recovery_needed, session_cause_text,
+  session_validation_resumable, session_event_recovery_needed, session_cause_text, session_event_recovery_needed_no_capacity,
   SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
 }
@@ -820,25 +820,34 @@ fn harness_tool_contract_wire(shape: HarnessWireShape) -> String {
 // format; that rule was this harness's invention, and it stopped a sixteen-round Think Max run that
 // had done nothing wrong. The encoder's one assertion, a MISSING closer under thinking, stands.
 fn harness_split_text_block(unit: HarnessServingUnit, text: String) -> List<HarnessWireBlock> {
-  let parts = split(s: text, delimiter: harness_unit_thinking_end_token(unit: unit) as String)
-  match parts.first() {
+  match harness_unit_thinking_end_token(unit: unit) {
     Absent => [WireTextBlock { text: text }]
-    Present { value: reasoning } =>
-      if list_length(items: parts) < 2 {
-        [WireTextBlock { text: text }]
-      } else {
-        let speech = join(parts.skip(n: 1), harness_unit_thinking_end_token(unit: unit) as String)
-        concat(
-          if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
-          if speech == "" { [] } else { [WireTextBlock { text: speech }] },
-        )
+    Present { value: token } => {
+      let parts = split(s: text, delimiter: token as String)
+      match parts.first() {
+        Absent => [WireTextBlock { text: text }]
+        Present { value: reasoning } =>
+          if list_length(items: parts) < 2 {
+            [WireTextBlock { text: text }]
+          } else {
+            let speech = join(parts.skip(n: 1), token as String)
+            concat(
+              if reasoning == "" { [] } else { [WireThinkingBlock { thinking: reasoning }] },
+              if speech == "" { [] } else { [WireTextBlock { text: speech }] },
+            )
+          }
       }
+    }
   }
 }
 
 fn harness_split_inline_reasoning(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
   flat_map(blocks, b => match b {
-    WireTextBlock { text } => if text.contains(harness_unit_thinking_end_token(unit: unit) as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+    WireTextBlock { text } =>
+      match harness_unit_thinking_end_token(unit: unit) {
+        Absent => [b]
+        Present { value: token } => if text.contains(token as String) { harness_split_text_block(unit: unit, text: text) } else { [b] }
+      }
     WireThinkingBlock { thinking: _ } => [b]
     WireToolUseBlock { id: _, name: _, input: _ } => [b]
   })
@@ -884,7 +893,10 @@ fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<Ha
   json_object(concat(concat(
     [json_kv(key: "role", value: json_string(s: "assistant")),
      json_kv(key: "content", value: json_string(s: speech))],
-    if reasoning == "" { [] } else { [json_kv(key: harness_unit_reasoning_field(unit: unit) as String, value: json_string(s: reasoning))] }),
+    match harness_unit_reasoning_field(unit: unit) {
+      Absent => []
+      Present { value: field } => if reasoning == "" { [] } else { [json_kv(key: field as String, value: json_string(s: reasoning))] }
+    }),
     if list_length(items: calls) == 0 { [] } else { [json_kv(key: "tool_calls", value: json_array(elements: calls))] }))
 }
 
@@ -1786,7 +1798,10 @@ fn harness_turn_after_post(
             match posted_round.pool_fault {
               Present { value: OperatorNoCapacity } => {
                 let held = list_length(items: posted_round.transport_retries)
-                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                let failed = concat(events_after_wire, [
+                  harness_event_turn_failed(message: c),
+                  session_event_recovery_needed_no_capacity(round: steps_taken + 1, held: held, validation: session_messages_validation(messages: messages)),
+                ])
                 match harness_write_events(config: config, events: failed) {
                   HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
                   HarnessEventsWritten => TurnPoolNoCapacity { retries: held, steps_taken: steps_taken }

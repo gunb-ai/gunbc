@@ -1,6 +1,6 @@
 module test.claim.operator_endpoint_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route {
   harness_operator_route, operator_models_url, operator_chat_completions_url,
@@ -20,15 +20,17 @@ import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
   harness_unit_reasoning_projection,
-  Qwen38FlashNextOnPoolFront, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  Qwen38FlashNextOnPoolFront, Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
-  harness_unit_model_id, harness_unit_reasoning_field, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
+  harness_unit_model_id, harness_unit_reasoning_field, harness_unit_thinking_end_token, harness_unit_model_reasoning_field, harness_unit_reasoning_field_aliases, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
   DeepseekV4FlashOnVllm,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
 import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
+import gunbc.harness.harness_cli { harness_turn_exit }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
 import extdeps.http.header_dump { HeaderDumpRead }
 import v2.std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
@@ -192,7 +194,8 @@ test fn the_retired_cards_model_name_is_not_admitted_by_the_fronts_list() -> Boo
 }
 
 test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
-  (harness_unit_reasoning_field(unit: Qwen38FlashNextOnPoolFront) as String) == "reasoning_content"
+  (match harness_unit_reasoning_field(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
+    && (match harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) { Present { value: f } => (f as String) == "reasoning_content"  Absent => false })
 }
 
 // ═══ POOL-FRONT-ROUTE-1 CLAIMS (supplied values at each interface) ══════════════════════════════
@@ -324,4 +327,19 @@ test fn an_uncited_pool_figure_is_not_read_and_the_projection_parses_nothing() -
   (match pool_front_figure_read(figure: pool_front_message_reasoning_field) { Present { value: _ } => false  Absent => true })
     && (match pool_front_figure_read(figure: pool_front_thinking_end_token) { Present { value: _ } => false  Absent => true })
     && (match harness_unit_reasoning_projection(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
+}
+
+// The real harness CLI's exit derivation maps the held turn to exit 1 labelled pool-no-capacity (not success).
+test fn a_503_held_turn_exits_failure_labelled_pool_no_capacity() -> Bool {
+  match harness_turn_exit(outcome: TurnPoolNoCapacity { retries: 3, steps_taken: 2 }) {
+    ExitSuccess => false
+    ExitFailure { code, reason } => code == 1 && reason.contains("pool-no-capacity")
+  }
+}
+
+// CONSUMERS RESPECT THE GATE: while the figures are uncited, no consumer reads a reasoning member, an alias or a closer.
+test fn no_consumer_reads_the_uncited_pool_figures() -> Bool {
+  (match harness_unit_thinking_end_token(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
+    && (match harness_unit_model_reasoning_field(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
+    && list_length(items: harness_unit_reasoning_field_aliases(unit: Qwen38FlashNextOnPoolFront)) == 0
 }
