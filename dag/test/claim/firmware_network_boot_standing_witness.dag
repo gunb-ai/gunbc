@@ -9,7 +9,7 @@ import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { uri_https }
-import extdeps.provisioning.network_boot { UefiPxe, UefiHttpBoot }
+import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiPxe, UefiHttpBoot }
 import gunbc.network_boot_delivery { BootControlObserved, BootControlPredecessor, BootControlReceiptStanding, BootControlUnobserved }
 import gunbc.firmware_network_boot_standing {
   BootOptionsObserved,
@@ -39,14 +39,11 @@ import gunbc.firmware_network_boot_standing {
   HumanConsole,
   IpmiOneShotOverride,
   NetworkBootAttempt,
-  NetworkBootProtocol,
   NicsObserved,
   NicsObservation,
   NicsRefused,
   NicsUnobserved,
   PreparationBlockingOn,
-  ProtocolDhcpProxy,
-  ProtocolHttpBoot,
   ReadyEvidence,
   RedfishBiosAttributes,
   RedfishOneShotOverride,
@@ -100,7 +97,7 @@ fn standing_of(observation: FirmwareBootObservation) -> FirmwareNetworkBootStand
     observation: observation,
     authority: witness_authority,
     observed_at: witness_epoch,
-    edge_protocol: ProtocolDhcpProxy,
+    boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
   )
 }
 
@@ -156,18 +153,14 @@ fn with_bios(bios_version: BiosVersionObservation) -> FirmwareBootObservation {
 
 test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
   match standing_of(observation: good_observation()) {
-    Ready { firmware_mode: mode, network_interface: nic, protocol: proto, evidence: ev } =>
+    Ready { firmware_mode: mode, network_interface: nic, evidence: ev } =>
       match mode {
         UefiPxe { tftp_root: _ } =>
-          match proto {
-            ProtocolDhcpProxy =>
-              nic == "eth0"
-                && match ev.observation.bios_version {
-                     BiosVersionObserved { version: v } => v == "1.08"
-                     _ => false
-                   }
-            _ => false
-          }
+          nic == "eth0"
+            && match ev.observation.bios_version {
+                 BiosVersionObserved { version: v } => v == "1.08"
+                 _ => false
+               }
         _ => false
       }
     _ => false
@@ -307,7 +300,7 @@ test fn the_readiness_fn_is_total_over_a_mixed_observation_matrix() -> Bool {
 
 fn is_standing(standing: FirmwareNetworkBootStanding) -> Bool {
   match standing {
-    Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => true
+    Ready { firmware_mode: _, network_interface: _, evidence: _ } => true
     NeedsPreparation { route: _, blocking: _ } => true
     Unobserved { unanswered: _ } => true
     Refused { cause: _ } => true
@@ -424,9 +417,9 @@ test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool 
     observation: observation,
     authority: witness_authority,
     observed_at: witness_epoch,
-    edge_protocol: ProtocolHttpBoot,
+    boot_mode: UefiHttpBoot,
   ) {
-    Ready { firmware_mode: UefiHttpBoot, network_interface: _, protocol: ProtocolHttpBoot, evidence: ev } =>
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: ev } =>
       ev.observed_at == witness_epoch
         && match ev.observation.bios_version {
              BiosVersionObserved { version: v } => v == "1.08"
@@ -436,12 +429,44 @@ test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool 
   }
 }
 
-// THE PROTOCOL DERIVES THE MODE, IT IS NOT STORED BESIDE IT: a Ready handed DhcpProxy gets
-// UefiPxe, one handed HttpBoot gets UefiHttpBoot. A pair stored side by side could state
-// (DhcpProxy, UefiHttpBoot) — a URL over an offer that cannot carry one.
-test fn the_firmware_mode_is_derived_from_the_edge_protocol_never_stored_beside_it() -> Bool {
-  match standing_of(observation: good_observation()) {
-    Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, protocol: ProtocolDhcpProxy, evidence: _ } => true
+// THE SEAM CANNOT MINT A MODE, ONLY CARRY ONE (review 81689). The same edge-facts-bearing
+// observation, offered to the seam with each of the two UEFI modes, yields a Ready carrying the
+// mode it was handed and nothing else: no second protocol field exists to contradict it, and the
+// seam has no TFTP root or URL of its own to fill one. If a site constant ever reappears in the
+// seam, or a second axis reappears beside the mode, THIS test cannot still pass, because the
+// match below names the arm's fields exactly.
+test fn the_seam_carries_the_edge_mode_it_was_given_and_adds_none_of_its_own() -> Bool {
+  match firmware_network_boot_standing(
+    observation: good_observation(),
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: UefiHttpBoot,
+  ) {
+    Ready { firmware_mode: UefiHttpBoot, network_interface: _, evidence: _ } =>
+      match firmware_network_boot_standing(
+        observation: good_observation(),
+        authority: witness_authority,
+        observed_at: witness_epoch,
+        boot_mode: UefiPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+      ) {
+        Ready { firmware_mode: UefiPxe { tftp_root: _ }, network_interface: _, evidence: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A LEGACY-BIOS UNIT IS REFUSED, NOT SILENTLY READY: the cut-6 edge serves UEFI only, so the
+// honest standing is a refusal naming the edge as the limitation. It must not read Unobserved (we
+// know the mode and we know our edge) and must not read Ready (it would boot nothing).
+test fn a_legacy_bios_unit_is_refused_because_the_edge_cannot_serve_it() -> Bool {
+  match firmware_network_boot_standing(
+    observation: good_observation(),
+    authority: witness_authority,
+    observed_at: witness_epoch,
+    boot_mode: LegacyBiosPxe { tftp_root: uri_https(locator: "edge.invalid/pxe") },
+  ) {
+    Refused { cause: FirmwareModeUnsupportedByEdge { why: _ } } => true
     _ => false
   }
 }
@@ -451,7 +476,69 @@ test fn the_firmware_mode_is_derived_from_the_edge_protocol_never_stored_beside_
 // never said.
 test fn the_ready_names_the_firmware_spelled_interface_verbatim() -> Bool {
   match standing_of(observation: with_nics(nics: NicsObserved { nics: ["NIC-Port-1"] })) {
-    Ready { firmware_mode: _, network_interface: nic, protocol: _, evidence: _ } => nic == "NIC-Port-1"
+    Ready { firmware_mode: _, network_interface: nic, evidence: _ } => nic == "NIC-Port-1"
     _ => false
   }
+}
+
+// THE ATTEMPT RECEIPT IS NOT MINTABLE WITHOUT ALL THREE PARTS. The receipt type is
+// sole_constructor, and the only way through it is an attempt, the standing that resulted, and
+// gunbc.network_boot_delivery's own boot-control receipt. This test mints the foreign-offer
+// case specifically: an attempt whose reset produced an offer from SOMEONE ELSE (another edge,
+// or the router answering when it should not be) still receipts completely, because 'the boot
+// went wrong in this specific way' is a fact worth keeping, not a reason to lose the receipt.
+test fn the_attempt_receipt_keeps_the_outcome_and_the_foreign_offer_too() -> Bool {
+  match synthetic_attempt(route: RedfishOneShotOverride { service_root: "redfish:Systems/Self" }) {
+    AttemptConstructed { attempt: built } =>
+      match firmware_network_boot_attempt_receipt(
+        attempt: built,
+        outcome: Refused { cause: FirmwareModeUnsupportedByEdge { why: "edge serves UEFI only" } },
+      ) {
+        receipt =>
+          match receipt.attempt.resulting_dhcp {
+            DhcpOfferObserved { offer_ref: _ } => true
+            _ => false
+          }
+            && match receipt.outcome {
+                 Refused { cause: FirmwareModeUnsupportedByEdge { why: _ } } => true
+                 _ => false
+               }
+      }
+    AttemptRouteUncataloged { route: _ } => false
+  }
+}
+
+// The foreign/silent DHCP standings are distinct facts (no packet vs. someone else answered) and
+// both must survive an attempt unchanged — collapsing them is how 'two edges are both answering'
+// gets reported as 'PXE is broken'.
+test fn the_dhcp_standing_survives_the_attempt_unchanged_and_distinguishes_silence_from_foreign() -> Bool {
+  match network_boot_attempt(
+    route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+    boot_control: BootControlUnobserved,
+    reset_observed_at: witness_epoch,
+    resulting_dhcp: DhcpForeignOffer { observed_from: "192.0.2.9" },
+    unit_label: "synthetic-unit",
+  ) {
+    AttemptConstructed { attempt: built } =>
+      match built.resulting_dhcp {
+        DhcpForeignOffer { observed_from: seen } => seen == "192.0.2.9"
+        DhcpSilent { why: _ } => false
+        DhcpOfferObserved { offer_ref: _ } => false
+      }
+    AttemptRouteUncataloged { route: _ } => false
+  }
+    && match network_boot_attempt(
+         route: IpmiOneShotOverride { channel: "ipmi:chassis-boot-override" },
+         boot_control: BootControlUnobserved,
+         reset_observed_at: witness_epoch,
+         resulting_dhcp: DhcpSilent { why: "no offer within timeout" },
+         unit_label: "synthetic-unit",
+       ) {
+         AttemptConstructed { attempt: built } =>
+           match built.resulting_dhcp {
+             DhcpSilent { why: w } => w == "no offer within timeout"
+             _ => false
+           }
+         AttemptRouteUncataloged { route: _ } => false
+       }
 }

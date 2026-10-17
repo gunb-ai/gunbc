@@ -31,10 +31,7 @@ import extdeps.provisioning.network_boot {
   UefiHttpBoot,
   UefiPxe,
 }
-import gunbc.network_boot_delivery {
-  NetworkBootBootControlReceipt,
-  BootControlReceiptStanding,
-}
+import gunbc.network_boot_delivery { BootControlReceiptStanding }
 
 // ---------------------------------------------------------------------------
 // THE UNIT OBSERVATION: the firmware-side facts a standing is computed from.
@@ -278,9 +275,16 @@ fn route_eq(a: FirmwareNetworkBootPreparationRoute, b: FirmwareNetworkBootPrepar
 // THE SEAM.
 // ---------------------------------------------------------------------------
 
-type NetworkBootProtocol
-  = ProtocolDhcpProxy
-  | ProtocolHttpBoot
+// READY CARRIES ONE AXIS, NOT TWO (review 81689). An earlier cut of this type stored a
+// ClientNetworkBootMode beside a second `NetworkBootProtocol` enum of mine. That enum was a
+// nickname: its two arms were extdeps.provisioning.network_boot's DhcpBootDirection.ProxyDhcp and
+// ClientNetworkBootMode.UefiHttpBoot wearing new names, and having an axis of my own beside the
+// upstream one is what let a Ready state the pair (DhcpProxy, UefiHttpBoot) -- a URL handed over a
+// proxy offer that cannot carry one -- and what forced the seam to invent a TFTP root to fill the
+// derived half. DESIGN.md 5: correctness by construction, not validation. So the second axis is
+// gone: what the unit is booting IS ClientNetworkBootMode, stated once, by its upstream type, and
+// supplied by the caller that actually knows the edge. The DHCP direction is a wire fact the site
+// edge receipts (S7) observe; it is not the unit's standing.
 
 // READY IS NOT AUTHORABLE. ReadyEvidence is sole_constructor and its only constructor takes the
 // observation it was computed from, the authority that published it, and the moment it was taken.
@@ -310,7 +314,6 @@ type FirmwareNetworkBootStanding
   = Ready {
       firmware_mode: ClientNetworkBootMode,
       network_interface: NonEmptyStr,
-      protocol: NetworkBootProtocol,
       evidence: ReadyEvidence,
     }
   | NeedsPreparation { route: FirmwareNetworkBootPreparationRoute, blocking: PreparationBlockingOn }
@@ -408,22 +411,19 @@ type AttemptDhcpStanding
 
 // An attempt's receipt: the standing it ended in plus the change it made. Sole_constructor, so a
 // receipt cannot be authored without the attempt it receipts and the standing it produced.
+// NO control_receipt FIELD. The attempt already owns the boot-control standing (absorbed from
+// gunbc.network_boot_delivery); carrying a second copy here would give the same fact two homes
+// that can disagree, which is the defect this seam exists to remove.
 type FirmwareNetworkBootAttemptReceipt sole_constructor {
   attempt: NetworkBootAttempt
   outcome: FirmwareNetworkBootStanding
-  control_receipt: NetworkBootBootControlReceipt
 }
 
 fn firmware_network_boot_attempt_receipt(
   attempt: NetworkBootAttempt,
-  outcome: FirmwareNetworkBootStanding,
-  control_receipt: NetworkBootBootControlReceipt
+  outcome: FirmwareNetworkBootStanding
 ) -> FirmwareNetworkBootAttemptReceipt {
-  FirmwareNetworkBootAttemptReceipt {
-    attempt: attempt,
-    outcome: outcome,
-    control_receipt: control_receipt,
-  }
+  FirmwareNetworkBootAttemptReceipt { attempt: attempt, outcome: outcome }
 }
 
 // ---------------------------------------------------------------------------
@@ -439,9 +439,19 @@ fn firmware_network_boot_standing(
   observation: FirmwareBootObservation,
   authority: CitedFigureStanding,
   observed_at: EpochMs,
-  edge_protocol: NetworkBootProtocol
+  boot_mode: ClientNetworkBootMode
 ) -> FirmwareNetworkBootStanding {
-  match observation.boot_order {
+  // The edge's own capability outranks every firmware answer, because a unit whose firmware the
+  // edge cannot serve is not "unready firmware", it is a mismatch between the unit and OUR edge,
+  // and the report has to say which one has to change.
+  if legacy_bios_is_unserviceable(boot_mode: boot_mode) {
+    Refused {
+      cause: FirmwareModeUnsupportedByEdge {
+        why: "the site PXE edge of cut 6 serves UEFI only; a PXE BIOS unit has no boot target here",
+      },
+    }
+  } else {
+    match observation.boot_order {
     BootOrderUnobserved { reason: r } =>
       Unobserved { unanswered: [BootOrderAxisUnanswered { reason: r }] }
     BootOrderRefused { refusal: f } =>
@@ -487,12 +497,13 @@ fn firmware_network_boot_standing(
                       authority: authority,
                       observed_at: observed_at,
                       observation: observation,
-                      edge_protocol: edge_protocol,
+                      boot_mode: boot_mode,
                     )
                   }
               }
           }
       }
+    }
   }
 }
 
@@ -507,7 +518,7 @@ fn decide(
   authority: CitedFigureStanding,
   observed_at: EpochMs,
   observation: FirmwareBootObservation,
-  edge_protocol: NetworkBootProtocol
+  boot_mode: ClientNetworkBootMode
 ) -> FirmwareNetworkBootStanding {
   if length(xs: devices) == 0 {
     NeedsPreparation {
@@ -543,9 +554,11 @@ fn decide(
     // refusal here rather than an out-of-range surprise on a live attempt.
     match (nics |> first) {
       Present { value: nic } => Ready {
-        firmware_mode: mode_for(protocol: edge_protocol),
+        // The mode is the caller's edge fact, carried through untouched. The seam adds no site
+        // knowledge of its own: it has no TFTP root, no URL, no board spelling beyond the network
+        // match below, so nothing here can drift out of date when srv4 moves.
+        firmware_mode: boot_mode,
         network_interface: nic,
-        protocol: edge_protocol,
         evidence: ready_evidence(
           observation_authority: authority,
           observed_at: observed_at,
@@ -574,13 +587,15 @@ fn any_network(texts: List<NonEmptyStr>) -> Bool {
   length(xs: network_stack_spellings |> filter(spelling => any(texts, t => string_contains(s: t, pattern: spelling)))) > 0
 }
 
-// The protocol the edge speaks decides the firmware mode the unit must be given. This is derived,
-// never stored beside it: a Ready that recorded both a protocol and a mode could state the pair
-// (DhcpProxy, UefiHttpBoot), which is a client that would be handed a URL over a proxy offer that
-// cannot carry one.
-fn mode_for(protocol: NetworkBootProtocol) -> ClientNetworkBootMode {
-  match protocol {
-    ProtocolDhcpProxy => UefiPxe { tftp_root: uri_https(locator: "srv4.site/pxe") }
-    ProtocolHttpBoot => UefiHttpBoot
+// A legacy-BIOS unit is not Ready for THIS fleet, and the reason is a refusal, not a silence: the
+// cut-6 edge (gunbc.site_uefi_arm64_pxe_edge) serves UEFI only, so a unit that can only do PXE
+// BIOS has nowhere to boot from. Naming it a refusal rather than Unobserved keeps the finding --
+// 'the unit is fine, our edge is not' -- visible to whoever reads the standing next. A future
+// legacy-capable edge adds the arm together with the evidence that it exists; it does not add a
+// silent pass.
+fn legacy_bios_is_unserviceable(boot_mode: ClientNetworkBootMode) -> Bool {
+  match boot_mode {
+    LegacyBiosPxe { tftp_root: _ } => true
+    _ => false
   }
 }
