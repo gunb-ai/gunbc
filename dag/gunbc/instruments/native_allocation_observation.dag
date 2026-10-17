@@ -3,6 +3,9 @@ module gunbc.instruments.native_allocation_observation
 import std.types { Bool, Int, List }
 import std.optional { Optional, Present, Absent }
 import std.realization_measurement { AllocationCounter }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.nat { Nat, nat_to_decimal_string }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 
@@ -53,7 +56,7 @@ type RefAcc {
 type AllocationWindow {
   tokens: List<Int>
   operations: Int
-  bytes: Int
+  bytes: ByteSize?
 }
 
 fn reference_walk(src: List<Int>) -> List<Int> {
@@ -77,7 +80,7 @@ fn window_of_specimen(src: List<Int>) -> AllocationWindow uses counter: Allocati
   let tokens = spec_walk_tokens(src: src)
   let ops_after = observed_allocation_operations("")
   let bytes_after = observed_allocation_bytes("")
-  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_between(before: bytes_before, after: bytes_after) }
 }
 
 fn window_of_reference(src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
@@ -86,7 +89,7 @@ fn window_of_reference(src: List<Int>) -> AllocationWindow uses counter: Allocat
   let tokens = reference_walk(src: src)
   let ops_after = observed_allocation_operations("")
   let bytes_after = observed_allocation_bytes("")
-  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_between(before: bytes_before, after: bytes_after) }
 }
 
 fn window_of_cloning(src: List<Int>) -> AllocationWindow uses counter: AllocationCounter {
@@ -95,7 +98,7 @@ fn window_of_cloning(src: List<Int>) -> AllocationWindow uses counter: Allocatio
   let tokens = cloning_walk(src: src)
   let ops_after = observed_allocation_operations("")
   let bytes_after = observed_allocation_bytes("")
-  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+  AllocationWindow { tokens: tokens, operations: ops_after - ops_before, bytes: bytes_between(before: bytes_before, after: bytes_after) }
 }
 
 fn window_of_nothing() -> AllocationWindow uses counter: AllocationCounter {
@@ -103,7 +106,7 @@ fn window_of_nothing() -> AllocationWindow uses counter: AllocationCounter {
   let bytes_before = observed_allocation_bytes("")
   let ops_after = observed_allocation_operations("")
   let bytes_after = observed_allocation_bytes("")
-  AllocationWindow { tokens: [], operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+  AllocationWindow { tokens: [], operations: ops_after - ops_before, bytes: bytes_between(before: bytes_before, after: bytes_after) }
 }
 
 // A KNOWN ALLOCATION: a string grown to 4096 characters is at least 4096 requested bytes and at least one
@@ -118,7 +121,7 @@ fn window_of_known_text() -> AllocationWindow uses counter: AllocationCounter {
   let text = grown_text(n: 4096)
   let ops_after = observed_allocation_operations("")
   let bytes_after = observed_allocation_bytes("")
-  AllocationWindow { tokens: [string_length(text)], operations: ops_after - ops_before, bytes: bytes_after - bytes_before }
+  AllocationWindow { tokens: [string_length(text)], operations: ops_after - ops_before, bytes: bytes_between(before: bytes_before, after: bytes_after) }
 }
 
 type AllocationCase {
@@ -127,12 +130,44 @@ type AllocationCase {
   observed: String
 }
 
+// BYTES ARE A ByteSize, NOT A BARE Int (the one carrier std.measure owns, the same one
+// ResidencyObserved holds). The host counter is monotone, so a window's byte count is the non-negative
+// difference of two readings; a counter that went backwards has no ByteSize and the reading is ABSENT
+// (checked_int_to_nat), which every case below reads as not held -- never a fabricated zero.
+fn bytes_between(before: Int, after: Int) -> ByteSize? {
+  match checked_int_to_nat(n: after - before) {
+    Present { value: n } => Present { value: byte_size(count: n) }
+    Absent => none
+  }
+}
+
+fn bytes_are_zero(b: ByteSize?) -> Bool {
+  match b {
+    Present { value: v } => byte_size_count(b: v) == 0
+    Absent => false
+  }
+}
+
+fn bytes_at_least(b: ByteSize?, floor: Nat) -> Bool {
+  match b {
+    Present { value: v } => byte_size_count(b: v) >= floor
+    Absent => false
+  }
+}
+
+fn bytes_text(b: ByteSize?) -> String {
+  match b {
+    Present { value: v } => nat_to_decimal_string(value: byte_size_count(b: v))
+    Absent => "unreadable"
+  }
+}
+
 fn count_text(label: String, n: Int) -> String {
   concat(label, "=", to_string(value: n))
 }
 
 fn window_text(label: String, w: AllocationWindow) -> String {
-  concat(count_text(label: concat(label, "_ops"), n: w.operations), " ", count_text(label: concat(label, "_bytes"), n: w.bytes))
+  concat(count_text(label: concat(label, "_ops"), n: w.operations), " ", concat(label, "_bytes=", bytes_text(b: w.bytes)))
 }
 
 fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
@@ -145,8 +180,8 @@ fn allocation_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let cloning = window_of_cloning(src: src)
   let reads_qualified = specimen.operations <= reference.operations
   [
-    AllocationCase { identity: "observation_empty_window_reads_zero", held: empty.operations == 0 && empty.bytes == 0, observed: window_text(label: "empty", w: empty) },
-    AllocationCase { identity: "observation_known_allocation_reads_both_axes", held: known.operations >= 1 && known.bytes >= 4096, observed: window_text(label: "known_4096_text", w: known) },
+    AllocationCase { identity: "observation_empty_window_reads_zero", held: empty.operations == 0 && bytes_are_zero(b: empty.bytes), observed: window_text(label: "empty", w: empty) },
+    AllocationCase { identity: "observation_known_allocation_reads_both_axes", held: known.operations >= 1 && bytes_at_least(b: known.bytes, floor: 4096), observed: window_text(label: "known_4096_text", w: known) },
     AllocationCase { identity: "observation_walks_return_the_given_sequence", held: specimen.tokens == src && reference.tokens == src && cloning.tokens == src, observed: count_text(label: "tokens", n: count(src)) },
     AllocationCase { identity: "calibration_cloning_control_reads_above_reference", held: cloning.operations > reference.operations, observed: concat(window_text(label: "cloning", w: cloning), " ", window_text(label: "reference", w: reference)) },
     AllocationCase {

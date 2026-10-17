@@ -112,7 +112,7 @@ resource AllocationCounter {
 }
 
 type AllocationObservation
-  = AllocationObserved { operations: Int, bytes_requested: Int }
+  = AllocationObserved { operations: Int, bytes_requested: ByteSize }
   | AllocationUnobservable { axis: String, reason: String }
 
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
