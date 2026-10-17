@@ -1,0 +1,253 @@
+module gunbc.runner.runner_service_slot_controller
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand }
+import extdeps.github.actions_jit_runner { EncodedJitConfig }
+import extdeps.github.actions_runner { actions_runner_jitconfig_env_name }
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
+import product.host_identity { HostIdentity }
+import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.host.host_effect_realize { run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused }
+import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
+import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.github_effect_perform {
+  JitMintPerformance, JitMintReceived, service_slot_app_key,
+}
+import gunbc.runner.runner_host_unit_slot {
+  HostUnitSlot, HostUnitSlotPurpose, RecoveredServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+  host_unit_slot_for, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
+}
+import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
+import gunbc.runner.runner_jit_deregistration {
+  JitSlotExit, SlotJobCompleted, SlotJobFailed, SlotNeverLaunched, JitRegistration, JitDeregistration, JitRunnerDeregistered,
+}
+import gunbc.runner.runner_jit_perform {
+  JitCredentialBoundToAttempt, JitCredentialNotDispatched, JitCredentialMintNotCreated,
+}
+import gunbc.runner.runner_jit_mint_binding {
+  JitMintBinding, JitBoundMint, jit_mint_binding, mint_for_binding, observe_jit_mint_control_plane,
+  deregister_binding_registration, JitBindingDeregistration, JitBindingDeregistrationRan, JitBindingDeregistrationTokenRefused,
+}
+import gunbc.runner.runner_microvm_slot_unit { microvm_locus_execstart }
+
+// THE HOST-UNIT SERVICE SLOT'S MAINPID: one mint -> deliver -> run one job -> deregister pass, the
+// host-unit binding of the rule gunbc.runner.runner_jit_mint_binding shares with the microVM attempt.
+// This module owns only what differs: WHO is registered (the rebuilt service slot's subject), WHICH
+// group admits it, and HOW the credential reaches the listener. The re-mint is the unit's supervisor
+// restarting this process, so a registration never outlives the pass that minted it.
+//
+// THE CREDENTIAL IS IN THE LISTENER'S ENVIRONMENT AND NOWHERE ELSE. It is the encoded JIT config
+// (actions_runner_jitconfig_env_name), piped on stdin to a fixed `sh -c` wrapper that exports it and
+// execs the listener -- so it is in no argv (gunbc.credential_argv_exposure), no unit file, and no file
+// at all (extdeps.posix.sh_invocation posix_sh_export_from_stdin_then_exec_command).
+
+data service_slot_unit_env_name: String = "GUNBC_SERVICE_SLOT_UNIT"
+
+// FRONTIER (trigger: the org approves creating this group, restricted to service_slot_selected_workflow,
+// the way gunbc.runner.runner_group_restriction_ensure ensures its roster): until then the mint refuses
+// RunnerGroupAbsent from the observed group, fail-closed, rather than minting into an unrestricted one.
+data service_slot_runner_group_name: NonEmptyStr = "service-slot"
+
+fn service_slot_mint_binding(slot: HostUnitSlot) -> JitMintBinding {
+  jit_mint_binding(
+    subject: host_unit_registration_subject(standing: HostUnitSlotBound { slot: slot }),
+    runner_group_name: service_slot_runner_group_name,
+    selected_workflow: slot.workflow,
+    signer: service_slot_app_key,
+  )
+}
+
+// ── the slot, rebuilt from its own unit name ────────────────────────────────────────────────────
+
+type ServiceSlotRebuild
+  = ServiceSlotRebuilt { slot: HostUnitSlot }
+  | ServiceSlotUnitUnparsed { unit: String }
+  | ServiceSlotNotBound { refusal: HostUnitSlotRefusal }
+  | ServiceSlotUnitNotRebuilt { listed: String, rebuilt: String }
+
+// THE UNIT NAME IS A CANDIDATE, NOT AN AUTHORITY: it is parsed through the service-slot grammar, the
+// slot is rebuilt by the same fold that names it, and it is admitted only when the rebuilt name equals
+// the unit this process runs as exactly -- so the boot id and index minted into the registration are
+// the ones the unit was created with. The parsed name is an untrusted candidate, so it enters only as a
+// RecoveredServiceSlot (never as a ServiceBootId, which only service_boot_id_of mints from KernelBootId);
+// that the unit's boot is the admitted one is the boot leg's check (frontier (d)).
+fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, unit: String) -> ServiceSlotRebuild {
+  match service_slot_name_parse(host: identity, name: unit) {
+    Absent => ServiceSlotUnitUnparsed { unit: unit }
+    Present { value: parsed } =>
+      match host_unit_slot_for(host: host, purpose: RecoveredServiceSlot { name: parsed }, workflow: service_slot_selected_workflow()) {
+        HostUnitSlotRefused { refusal: r } => ServiceSlotNotBound { refusal: r }
+        HostUnitSlotBound { slot: s } =>
+          if (s.unit as String) == unit {
+            ServiceSlotRebuilt { slot: s }
+          } else {
+            ServiceSlotUnitNotRebuilt { listed: unit, rebuilt: s.unit as String }
+          }
+      }
+  }
+}
+
+// ── the exit, as the deregistration's vocabulary ────────────────────────────────────────────────
+
+type ListenerRun
+  = ListenerNotLaunched { cause: NonEmptyStr }
+  | ListenerExited { exit_code: Int }
+
+// EVERY ARM MAPS TO AN EXIT, SO EVERY ARM DEREGISTERS: a listener that never started leaves a
+// registration exactly as one that ran a job does.
+fn service_slot_exit_of(run: ListenerRun) -> JitSlotExit {
+  match run {
+    ListenerNotLaunched { cause: c } => SlotNeverLaunched { cause: c }
+    ListenerExited { exit_code: code } =>
+      if code == 0 {
+        SlotJobCompleted
+      } else {
+        SlotJobFailed { cause: join(["listener exited with status ", to_string(code)], "") as NonEmptyStr }
+      }
+  }
+}
+
+// ── delivering the credential ───────────────────────────────────────────────────────────────────
+
+fn service_slot_credential_of(mint: JitMintPerformance) -> EncodedJitConfig? {
+  match mint {
+    JitMintReceived { delivery: d } =>
+      match d {
+        JitCredentialBoundToAttempt { bound: b } => Present { value: b.credential }
+        JitCredentialNotDispatched { refusal: _ } => none
+        JitCredentialMintNotCreated { outcome: _ } => none
+      }
+    _ => none
+  }
+}
+
+type ServiceSlotListenerCommand
+  = ServiceSlotListenerReady { command: ArgvCommand }
+  | ServiceSlotListenerUnbuilt { cause: NonEmptyStr }
+
+fn service_slot_listener_command() -> ServiceSlotListenerCommand {
+  match admit_posix_shell_name(spelling: actions_runner_jitconfig_env_name()) {
+    PosixShellNameRefused { spelling: s } =>
+      ServiceSlotListenerUnbuilt { cause: join(["the listener's JIT environment name is not a shell name: ", s], "") as NonEmptyStr }
+    PosixShellNameAdmitted { name: n } =>
+      match posix_sh_export_from_stdin_then_exec_command(name: n, command: host_unit_slot_listener_argv()) {
+        PosixShExportExecReady { command: c } => ServiceSlotListenerReady { command: c }
+        PosixShExportExecEmitRefused { name: _ } => ServiceSlotListenerUnbuilt { cause: "the stdin export wrapper did not emit" as NonEmptyStr }
+      }
+  }
+}
+
+fn run_listener_with(credential: EncodedJitConfig) -> ListenerRun {
+  match service_slot_listener_command() {
+    ServiceSlotListenerUnbuilt { cause: c } => ListenerNotLaunched { cause: c }
+    ServiceSlotListenerReady { command: c } =>
+      match run_argv_stdin_over_host_effect_transport(command: c, stdin_payload: credential.encoded as String, transport: LocalShell) {
+        RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["listener launch refused: ", r], "") as NonEmptyStr }
+        RunArgvTransportObserved { observed: o } => ListenerExited { exit_code: o.exit_code }
+      }
+  }
+}
+
+// ── one pass ────────────────────────────────────────────────────────────────────────────────────
+
+type ServiceSlotPass
+  = ServiceSlotPassDeregistered { unit: String, exit: JitSlotExit }
+  | ServiceSlotPassNothingRegistered { unit: String, cause: String }
+  | ServiceSlotPassRegistrationRemains { unit: String, exit: JitSlotExit, detail: String }
+
+fn service_slot_pass(slot: HostUnitSlot) -> ServiceSlotPass
+  uses net: Network
+{
+  let binding = service_slot_mint_binding(slot: slot)
+  let state = observe_jit_mint_control_plane(
+    signer: service_slot_app_key,
+    reason: "the service slot controller observes the gunbai-ci App control plane before minting its JIT registration" as NonEmptyStr,
+  )
+  let minted = mint_for_binding(binding: binding, state: state)
+  let exit = match service_slot_credential_of(mint: minted.performance) {
+    Absent => SlotNeverLaunched { cause: "the mint delivered no credential" as NonEmptyStr }
+    Present { value: credential } => service_slot_exit_of(run: run_listener_with(credential: credential))
+  }
+  match minted.registration {
+    Absent => ServiceSlotPassNothingRegistered { unit: slot.unit as String, cause: "no dispatch was sent, so no registration can exist" }
+    Present { value: registration } =>
+      match deregister_binding_registration(binding: binding, state: state, registration: registration, exit: exit) {
+        JitBindingDeregistrationTokenRefused { performance: _ } =>
+          ServiceSlotPassRegistrationRemains { unit: slot.unit as String, exit: exit, detail: "the installation token for the deregistration was not minted" }
+        JitBindingDeregistrationRan { deregistration: d } =>
+          match d {
+            JitRunnerDeregistered { receipt: _ } => ServiceSlotPassDeregistered { unit: slot.unit as String, exit: exit }
+            _ => ServiceSlotPassRegistrationRemains { unit: slot.unit as String, exit: exit, detail: "the deregistration readback did not show the runner absent" }
+          }
+      }
+  }
+}
+
+// ── the entry the unit execs ────────────────────────────────────────────────────────────────────
+
+fn service_slot_env(name: String) -> String? {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => none
+    Present { value: v } => if trim(s: v) == "" { none } else { Present { value: trim(s: v) } }
+  }
+}
+
+fn service_slot_host_control(identity: HostIdentity) -> HostControlStanding? {
+  match managed_host_binding_for(host: identity as NonEmptyStr) {
+    ManagedHostFound { standing: s } => Present { value: bmc_controlled_host(standing: s) }
+    ManagedHostFoundUnderDeclaredDrop { standing: s, drop: _, standing_subject: _, current_subject: _ } => Present { value: bmc_controlled_host(standing: s) }
+    ManagedHostNotManaged { host: _ } => none
+  }
+}
+
+fn service_slot_pass_exit(pass: ServiceSlotPass) -> ProcessExit {
+  match pass {
+    ServiceSlotPassDeregistered { unit: _, exit: _ } => ExitSuccess
+    ServiceSlotPassNothingRegistered { unit: u, cause: c } => exit_failure(reason: join(["service slot ", u, ": ", c], ""))
+    ServiceSlotPassRegistrationRemains { unit: u, exit: _, detail: d } => exit_failure(reason: join(["service slot ", u, ": ", d], ""))
+  }
+}
+
+fn service_slot_controller_main() -> ProcessExit
+  uses net: Network
+{
+  match service_slot_env(name: service_slot_unit_env_name) {
+    Absent => exit_failure(reason: join(["service slot controller: ", service_slot_unit_env_name, " is not set"], ""))
+    Present { value: unit } =>
+      match hostname_short_read(transport: LocalShell) {
+        HostnameShortCaptureRefused { reason: r } => exit_failure(reason: join(["service slot ", unit, ": hostname unread: ", r], ""))
+        HostnameShortCaptured { value: v } => {
+          let identity = trim(s: v) as HostIdentity
+          match service_slot_host_control(identity: identity) {
+            Absent => exit_failure(reason: join(["service slot ", unit, ": host ", trim(s: v), " is not a managed host"], ""))
+            Present { value: control } =>
+              match service_slot_rebuild(host: control, identity: identity, unit: unit) {
+                ServiceSlotRebuilt { slot: s } => service_slot_pass_exit(pass: service_slot_pass(slot: s))
+                ServiceSlotUnitUnparsed { unit: u } => exit_failure(reason: join(["service slot ", u, ": not a service-slot unit name"], ""))
+                ServiceSlotNotBound { refusal: _ } => exit_failure(reason: join(["service slot ", unit, ": the slot is not bound"], ""))
+                ServiceSlotUnitNotRebuilt { listed: l, rebuilt: r } => exit_failure(reason: join(["service slot ", l, ": rebuilds as ", r], ""))
+              }
+          }
+        }
+      }
+  }
+}
+
+// THE UNIT'S ExecStart, rendered by the one builder the microVM controller's unit uses, over this
+// module's entry. CONSUMER FRONTIER (DESIGN section 3c, trigger: boot leg (d) emits the service
+// units for the admitted boot): no emitter consumes this today.
+data service_slot_controller_entry_file: String = "dag/gunbc/runner/runner_service_slot_controller.dag"
+
+data service_slot_controller_entry_function: String = "service_slot_controller_main"
+
+fn service_slot_controller_execstart(release_dir: String) -> NonEmptyStr {
+  microvm_locus_execstart(release_dir: release_dir, entry: service_slot_controller_entry_file, function: service_slot_controller_entry_function)
+}
