@@ -286,6 +286,40 @@ fn fit_becomes_evidence_only_when_the_counter_is_faced(rs: List<GpuBenchRequestV
   }
 }
 
+// THE OTHER SIDE OF THAT GATE. On a grounded standing the ONLY thing separating WarmValid from a
+// refusal is whether ninfer replayed the prefix: a counter that reads tokens is a cold prefix that was
+// recomputed, and a warm timing built on it is not warm evidence. The rows, the run, the cohort and the
+// capacity are identical to the claim above -- only the counter's value differs, which is what makes
+// the pair a test of the gate rather than of the arithmetic. Without this claim the refusal below was
+// unreachable from any witness, and disabling it left every claim green.
+fn replayed_counter_refuses_the_fit(rs: List<GpuBenchRequestV2>) -> Bool {
+  let admitted = gpu_bench_warm_run_admission(records: rs)
+  match admitted {
+    WarmRunRefused { cause: _ } => false
+    WarmRunAdmitted { working_set_tokens: _ } =>
+      match gpu_bench_warm_standing_after_replay(
+        check: gpu_bench_warm_capacity_check(
+          admission: admitted,
+          measured_kv: Present { value: token_count(count: 200) },
+        ),
+        replayed: NinferReplayedTokensRead { tokens: token_count(count: 12) },
+      ) {
+        WarmRejected { cause: c } =>
+          string_contains(s: c as String, pattern: "prefix restore was not a snapshot hit")
+        WarmValid { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmOverCapacity { working_set_tokens: _, measured_kv_tokens: _ } => false
+        WarmCapacityUnread { cause: _ } => false
+      }
+  }
+}
+
+test fn a_replayed_prefix_refuses_what_an_unreplayed_one_funds() -> Bool {
+  match gpu_bench_parse_jsonl(text: fx_ok_prime) {
+    GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
+    GpuBenchRequestV2Parsed { records: rs } => replayed_counter_refuses_the_fit(rs: rs)
+  }
+}
+
 test fn the_capacity_fit_becomes_evidence_only_when_the_counter_is_faced() -> Bool {
   match gpu_bench_parse_jsonl(text: fx_ok_prime) {
     GpuBenchRequestV2StreamUnreadable { line: _, cause: _ } => false
