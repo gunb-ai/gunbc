@@ -39,7 +39,7 @@ import gunbc.auth.fleet_secret_accessor_roster { openrouter_free_tier_key_access
 import gunbc.fleet.host_credential_custody_converge {
   HostCustodyCredential, host_custody_credential_roster, host_credential_custody_row,
   ControllerAppKey, ApprovalNtfyPublisherToken, FabricStateWriterKey, CursorWorkerTurnApiKey, CodexWorkerTurnAuth,
-  OracleOciApiSigningKey, ClaudeCodeOauthHarnessToken, TrackerWebTestOauthClientSecret, GunbaiBotPublicationAppKey, FlexVastApiKey,
+  OracleOciApiSigningKey, ClaudeCodeOauthHarnessToken, TrackerWebTestOauthClientSecret, GunbaiBotPublicationAppKey, FlexVastApiKey, ServiceSlotAppKey,
 }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
@@ -337,6 +337,7 @@ fn custody_accessor_cell_owner(c: HostCustodyCredential) -> CustodyAccessorCellO
     ClaudeCodeOauthHarnessToken => AccessorCellNotRequested
     TrackerWebTestOauthClientSecret => AccessorCellNotRequested
     GunbaiBotPublicationAppKey => AccessorCellNotRequested
+    ServiceSlotAppKey => AccessorCellNotRequested
   }
 }
 

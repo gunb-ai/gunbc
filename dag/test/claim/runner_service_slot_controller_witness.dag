@@ -1,0 +1,61 @@
+module test.claim.runner_service_slot_controller_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import extdeps.github.actions_runner { actions_runner_jitconfig_env_name }
+import gunbc.runner.runner_jit_deregistration { SlotJobCompleted, SlotJobFailed, SlotNeverLaunched }
+import gunbc.runner.runner_service_slot_controller {
+  ListenerNotLaunched, ListenerExited, service_slot_exit_of,
+  service_slot_listener_command, ServiceSlotListenerReady, ServiceSlotListenerUnbuilt,
+  service_slot_rebuild, ServiceSlotUnitUnparsed,
+}
+import gunbc.host.host_control_route { HostControlStanding, HostControlRefused, BmcHostNotManaged }
+
+// EVERY EXIT ARM MAPS, so every arm reaches ensure_jit_runner_deregistered.
+test fn a_clean_listener_exit_is_job_completed() -> Bool {
+  match service_slot_exit_of(run: ListenerExited { exit_code: 0 }) {
+    SlotJobCompleted => true
+    SlotJobFailed { cause: _ } => false
+    SlotNeverLaunched { cause: _ } => false
+  }
+}
+
+// RED: a nonzero status must not read as completed.
+test fn a_nonzero_listener_exit_is_job_failed() -> Bool {
+  match service_slot_exit_of(run: ListenerExited { exit_code: 3 }) {
+    SlotJobFailed { cause: c } => (c as String) == "listener exited with status 3"
+    SlotJobCompleted => false
+    SlotNeverLaunched { cause: _ } => false
+  }
+}
+
+test fn an_unlaunched_listener_is_never_launched() -> Bool {
+  match service_slot_exit_of(run: ListenerNotLaunched { cause: "x" as NonEmptyStr }) {
+    SlotNeverLaunched { cause: _ } => true
+    SlotJobCompleted => false
+    SlotJobFailed { cause: _ } => false
+  }
+}
+
+// THE CREDENTIAL REACHES THE LISTENER BY STDIN INTO AN ENV EXPORT: the wrapper program names the
+// environment variable and reads stdin; no argument carries a value for it.
+test fn the_listener_command_exports_the_jit_env_name_and_carries_no_value_in_argv() -> Bool {
+  match service_slot_listener_command() {
+    ServiceSlotListenerUnbuilt { cause: _ } => false
+    ServiceSlotListenerReady { command: c } =>
+      starts_with(s: join(c.arguments, " "), prefix: "-c ")
+        && join(c.arguments, " ").contains(actions_runner_jitconfig_env_name())
+        && join(c.arguments, " ").contains("cat")
+  }
+}
+
+// RED: a unit name outside the service-slot grammar rebuilds no slot.
+test fn a_non_service_slot_unit_name_is_unparsed() -> Bool {
+  let refused = HostControlRefused { refusal: BmcHostNotManaged { host: "mtcollins1" as HostIdentity } }
+  match service_slot_rebuild(host: refused, identity: "mtcollins1" as HostIdentity, unit: "ssh.service") {
+    ServiceSlotUnitUnparsed { unit: _ } => true
+    _ => false
+  }
+}

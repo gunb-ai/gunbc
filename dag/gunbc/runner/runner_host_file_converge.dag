@@ -572,10 +572,16 @@ type RunnerHostPathMetadata
 // The directories a file's safety rests on: every ancestor from the write scope's root down to the
 // file's own directory. Each is a prefix of the path ending just before one of its separators.
 fn runner_host_path_ancestors(path: String) -> List<String> {
+  path_ancestors_within_scope(scope: runner_host_file_scope, path: path)
+}
+
+// THE SAME RULE OVER ANY WRITE SCOPE: a custody row on a different medium roots its ancestors at its
+// own scope (gunbc.fleet.host_credential_custody_converge custody_medium_scope), not at /etc.
+fn path_ancestors_within_scope(scope: FileTreeScope, path: String) -> List<String> {
   filter(
     path_ancestor_prefixes(path: path),
-    a => a == (runner_host_file_scope.root_path as String)
-      || starts_with(s: a, prefix: concat(runner_host_file_scope.root_path as String, "/")),
+    a => a == (scope.root_path as String)
+      || starts_with(s: a, prefix: concat(scope.root_path as String, "/")),
   )
 }
 
