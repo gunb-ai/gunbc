@@ -58,6 +58,7 @@ fn rust_source_binding(module_path: String, decl_name: String, representation: R
 data rust_source_type_binding_rows: List<SourceTypeTargetBinding<RustRepresentation>> = [
   rust_source_binding(module_path: "v2.std.node", decl_name: "Symbol", representation: RustStdString),
   rust_source_binding(module_path: "v2.std.node", decl_name: "String", representation: RustStdString),
+  rust_source_binding(module_path: "std.host_text", decl_name: "HostText", representation: RustStdString),
   rust_source_binding(module_path: "std.types", decl_name: "Secret", representation: RustStdString),
   rust_source_binding(module_path: "std.integer", decl_name: "Int", representation: RustI64),
   rust_source_binding(module_path: "std.types", decl_name: "Bool", representation: RustBool),

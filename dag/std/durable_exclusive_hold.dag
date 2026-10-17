@@ -179,10 +179,11 @@ fn durable_hold_release_assess(
 // RECOVERY IS DECIDED BY AN OBSERVATION OF THE HOLDER, NEVER BY AGE. There is deliberately no clock,
 // timestamp or duration anywhere in this assessment: a hold is never broken because it is old, only
 // because its holder was OBSERVED gone. How a holder is observed is the consumer's (a process by boot,
-// pid and start time; a lease by its declared deadline), so the protocol takes the verdict, not the
+// pid and start time; a systemd unit by InvocationID), so the protocol takes the verdict, not the
 // method -- and takes it BOUND to the holder and generation it is about, so a verdict taken of one
-// hold cannot recover another. Three verdicts, and the third is the reason there are three: a holder
-// that could not be observed is not dead, and a recovery over it would be ⊤-as-ignorance.
+// hold cannot recover another. A declared lease deadline is NOT an observation of death: age is
+// not liveness. Three verdicts, and the third is the reason there are three: a holder that could
+// not be observed is not dead, and a recovery over it would be ⊤-as-ignorance.
 type DurableHoldHolderLiveness
   = HolderObservedLive { evidence: NonEmptyStr }
   | HolderObservedDead { evidence: NonEmptyStr }

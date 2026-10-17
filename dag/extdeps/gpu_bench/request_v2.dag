@@ -1,0 +1,265 @@
+module extdeps.gpu_bench.request_v2
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.optional { Present, Absent }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, File }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, json_field_nat,
+  FieldRead, FieldAbsent, FieldMalformed,
+}
+
+// THE GPU-BENCH KIT'S PER-REQUEST LINE, not a serving-engine contract and not a home-serving
+// observation. Independently versioned on srv2:~/gpu-bench (git); schema identity is the string
+// `gpu-bench/request/v2` each line carries. Cited commit 1a128b28ffd3fd526fd4c347dd64b01aca9ad952
+// (`gpu-bench kit: request/v2 per-request output, phase counter snapshots`); later kit commits
+// (including 12a4983) did not change this schema. One line per attempted request, failures included.
+
+data gpu_bench_request_v2_schema: NonEmptyStr = "gpu-bench/request/v2" as NonEmptyStr
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "gpu-bench/longctx.py@1a128b28ffd3fd526fd4c347dd64b01aca9ad952" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.gpu_bench.request_v2",
+      decl_name: "gpu_bench_request_v2_schema",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data gpu_bench_request_v2_schema_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+type GpuBenchPhase
+  = GpuBenchPhaseShort
+  | GpuBenchPhasePrime
+  | GpuBenchPhaseWarm
+
+type GpuBenchRequestStatus
+  = GpuBenchRequestOk
+  | GpuBenchRequestError { detail: String? }
+
+type GpuBenchRequestV2 {
+  run: String
+  phase: GpuBenchPhase
+  round: Nat
+  n_active: Nat
+  retained: Nat
+  session: Nat
+  max_tokens: TokenCount
+  prompt_tokens: TokenCount?
+  completion_tokens: TokenCount?
+  status: GpuBenchRequestStatus
+}
+
+type GpuBenchRequestV2Read
+  = GpuBenchRequestV2Read { record: GpuBenchRequestV2 }
+  | GpuBenchRequestV2Unreadable { cause: NonEmptyStr }
+
+type GpuBenchRequestV2Stream
+  = GpuBenchRequestV2Parsed { records: List<GpuBenchRequestV2> }
+  | GpuBenchRequestV2StreamUnreadable { line: Nat, cause: NonEmptyStr }
+
+fn gpu_bench_phase_of_wire(s: String) -> GpuBenchPhase? {
+  if s == "short" {
+    Present { value: GpuBenchPhaseShort }
+  } else {
+    if s == "prime" {
+      Present { value: GpuBenchPhasePrime }
+    } else {
+      if s == "warm" {
+        Present { value: GpuBenchPhaseWarm }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+type GpuBenchOptionalTokenRead
+  = GpuBenchOptionalTokenRead { value: TokenCount? }
+  | GpuBenchOptionalTokenUnreadable { cause: NonEmptyStr }
+
+fn gpu_bench_optional_token_count(obj: JsonValue, key: String) -> GpuBenchOptionalTokenRead {
+  match json_field_nat(obj: obj, key: key) {
+    FieldAbsent => GpuBenchOptionalTokenRead { value: none }
+    FieldMalformed { cause: c } => GpuBenchOptionalTokenUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: n } => GpuBenchOptionalTokenRead { value: Present { value: token_count(count: n) } }
+  }
+}
+
+fn gpu_bench_request_v2_from_json(obj: JsonValue) -> GpuBenchRequestV2Read {
+  match json_field_string(obj: obj, key: "schema") {
+    FieldAbsent => GpuBenchRequestV2Unreadable { cause: "schema member absent" as NonEmptyStr }
+    FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+    FieldRead { value: schema } =>
+      if schema != (gpu_bench_request_v2_schema as String) {
+        GpuBenchRequestV2Unreadable { cause: "schema is not gpu-bench/request/v2" as NonEmptyStr }
+      } else {
+        match json_field_string(obj: obj, key: "run") {
+          FieldAbsent => GpuBenchRequestV2Unreadable { cause: "run member absent" as NonEmptyStr }
+          FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+          FieldRead { value: run } =>
+            match json_field_string(obj: obj, key: "phase") {
+              FieldAbsent => GpuBenchRequestV2Unreadable { cause: "phase member absent" as NonEmptyStr }
+              FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+              FieldRead { value: phase_wire } =>
+                match gpu_bench_phase_of_wire(s: phase_wire) {
+                  Absent => GpuBenchRequestV2Unreadable { cause: "phase is not short, prime, or warm" as NonEmptyStr }
+                  Present { value: phase } =>
+                    match json_field_nat(obj: obj, key: "round") {
+                      FieldAbsent => GpuBenchRequestV2Unreadable { cause: "round member absent" as NonEmptyStr }
+                      FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                      FieldRead { value: round } =>
+                        match json_field_nat(obj: obj, key: "n_active") {
+                          FieldAbsent => GpuBenchRequestV2Unreadable { cause: "n_active member absent" as NonEmptyStr }
+                          FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                          FieldRead { value: n_active } =>
+                            match json_field_nat(obj: obj, key: "retained") {
+                              FieldAbsent => GpuBenchRequestV2Unreadable { cause: "retained member absent" as NonEmptyStr }
+                              FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                              FieldRead { value: retained } =>
+                                match json_field_nat(obj: obj, key: "session") {
+                                  FieldAbsent => GpuBenchRequestV2Unreadable { cause: "session member absent" as NonEmptyStr }
+                                  FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                                  FieldRead { value: session } =>
+                                    match json_field_nat(obj: obj, key: "max_tokens") {
+                                      FieldAbsent => GpuBenchRequestV2Unreadable { cause: "max_tokens member absent" as NonEmptyStr }
+                                      FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                                      FieldRead { value: max_tokens } =>
+                                        match gpu_bench_optional_token_count(obj: obj, key: "prompt_tokens") {
+                                          GpuBenchOptionalTokenUnreadable { cause: c } => GpuBenchRequestV2Unreadable { cause: c }
+                                          GpuBenchOptionalTokenRead { value: prompt_tokens } =>
+                                            match gpu_bench_optional_token_count(obj: obj, key: "completion_tokens") {
+                                              GpuBenchOptionalTokenUnreadable { cause: c } => GpuBenchRequestV2Unreadable { cause: c }
+                                              GpuBenchOptionalTokenRead { value: completion_tokens } =>
+                                                match json_field_string(obj: obj, key: "status") {
+                                                  FieldAbsent => GpuBenchRequestV2Unreadable { cause: "status member absent" as NonEmptyStr }
+                                                  FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                                                  FieldRead { value: status_wire } =>
+                                                    if status_wire == "ok" {
+                                                      GpuBenchRequestV2Read {
+                                                        record: GpuBenchRequestV2 {
+                                                          run: run,
+                                                          phase: phase,
+                                                          round: round,
+                                                          n_active: n_active,
+                                                          retained: retained,
+                                                          session: session,
+                                                          max_tokens: token_count(count: max_tokens),
+                                                          prompt_tokens: prompt_tokens,
+                                                          completion_tokens: completion_tokens,
+                                                          status: GpuBenchRequestOk,
+                                                        }
+                                                      }
+                                                    } else {
+                                                      if status_wire == "error" {
+                                                        match json_field_string(obj: obj, key: "error") {
+                                                          FieldMalformed { cause: c } => GpuBenchRequestV2Unreadable { cause: c as NonEmptyStr }
+                                                          FieldAbsent => GpuBenchRequestV2Read {
+                                                            record: GpuBenchRequestV2 {
+                                                              run: run,
+                                                              phase: phase,
+                                                              round: round,
+                                                              n_active: n_active,
+                                                              retained: retained,
+                                                              session: session,
+                                                              max_tokens: token_count(count: max_tokens),
+                                                              prompt_tokens: prompt_tokens,
+                                                              completion_tokens: completion_tokens,
+                                                              status: GpuBenchRequestError { detail: Absent },
+                                                            }
+                                                          }
+                                                          FieldRead { value: e } => GpuBenchRequestV2Read {
+                                                            record: GpuBenchRequestV2 {
+                                                              run: run,
+                                                              phase: phase,
+                                                              round: round,
+                                                              n_active: n_active,
+                                                              retained: retained,
+                                                              session: session,
+                                                              max_tokens: token_count(count: max_tokens),
+                                                              prompt_tokens: prompt_tokens,
+                                                              completion_tokens: completion_tokens,
+                                                              status: GpuBenchRequestError { detail: Present { value: e } },
+                                                            }
+                                                          }
+                                                        }
+                                                      } else {
+                                                        GpuBenchRequestV2Unreadable { cause: "status is not ok or error" as NonEmptyStr }
+                                                      }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn gpu_bench_request_v2_from_line(line: String) -> GpuBenchRequestV2Read {
+  if line == "" {
+    GpuBenchRequestV2Unreadable { cause: "empty line" as NonEmptyStr }
+  } else {
+    match parse_json_document(s: line) {
+      JsonDocumentUnreadable { gap: _ } => GpuBenchRequestV2Unreadable { cause: "line is not a JSON document" as NonEmptyStr }
+      JsonDocumentParsed { value: v } => gpu_bench_request_v2_from_json(obj: v)
+    }
+  }
+}
+
+type GpuBenchParseFold
+  = GpuBenchParseOpen { records: List<GpuBenchRequestV2>, next_line: Nat }
+  | GpuBenchParseRefused { line: Nat, cause: NonEmptyStr }
+
+fn gpu_bench_parse_jsonl(text: String) -> GpuBenchRequestV2Stream {
+  if text == "" {
+    GpuBenchRequestV2Parsed { records: [] }
+  } else {
+    let lines = split(s: text, delimiter: "\n")
+    let state = fold(
+      lines,
+      init: GpuBenchParseOpen { records: [], next_line: 1 },
+      f: fn(acc, line) {
+        match acc {
+          GpuBenchParseRefused { line: n, cause: c } => GpuBenchParseRefused { line: n, cause: c }
+          GpuBenchParseOpen { records: rs, next_line: n } =>
+            if line == "" {
+              GpuBenchParseOpen { records: rs, next_line: n + 1 }
+            } else {
+              match gpu_bench_request_v2_from_line(line: line) {
+                GpuBenchRequestV2Unreadable { cause: c } => GpuBenchParseRefused { line: n, cause: c }
+                GpuBenchRequestV2Read { record: r } => GpuBenchParseOpen { records: rs |> list_push(r), next_line: n + 1 }
+              }
+            }
+        }
+      },
+    )
+    match state {
+      GpuBenchParseRefused { line: n, cause: c } => GpuBenchRequestV2StreamUnreadable { line: n, cause: c }
+      GpuBenchParseOpen { records: rs, next_line: _ } => GpuBenchRequestV2Parsed { records: rs }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_value_of_any_type_is_admitted_at_an_opaque_declared_type
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_value_of_any_type_is_admitted_at_an_opaque_declared_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_value_of_any_type_is_admitted_at_an_opaque_declared_type" as NonEmptyStr,
+
+  receipts: [
+    "**a value of any type is admitted at an opaque declared type** (invalid state: a value of an unrelated type, an Int for instance, accepted at a parameter or return whose declared type is a bodiless `type H` declaration. Harm: a silent admission, DESIGN section 5; the declared type carries no constructor the value could be, and nothing refuses it).",
+
+    "RECOGNITION RULE: THE SEED'S INHABITANCE RELATION CONTRADICTS ONLY SETTLED HEADS (kernel scalar, product, coproduct); AN OPAQUE OR STUCK HEAD RESOLVES TO NO IDENTITY IT MAY CONTRADICT, SO IT ADMITS EVERYTHING. A bodiless declaration is treated as unsettled whether it is a host-realized opaque (its inhabitants given by a realization binding) or has no constructor at all.",
+
+    "MEASURED (2026-10-16, neat-wolf-39, gunbc#14022; the v1 seed's compile_dag_diagnostic_census over a whole compile, blocking-row count, claim_batch at a private target; the row set is the whole compile's so the count is a bound on the probed source). RECEIPT 1: `fn g(h: H) -> Int { 0 }` with a bodiless local `type H`, called as `g(i)` with `i: Int`: ZERO blocking rows. RECEIPT 2: the same call with `type H = A | B` (a coproduct): refused, at least one blocking row; the same call at `n: Never` from std.error_primitives (also bodiless): ZERO blocking rows, which is why `absurd(i: Int)` and `absurd(0)` were accepted.",
+
+    "Rung found at: below the ladder (silent) on the seed path for bodiless declared types. Ceiling: structurally guaranteed, because the relation is decidable once it can tell a host-realized opaque type (inhabitants given by a realization binding) from a declaration with no constructor and no realization. The Never position is one leaf, refused by identity (v1.compiler.infer value_at_never_declared_type, gunbc#14022); that arm is to be folded into the general relation when this class is fixed, not extended into a parallel one.",
+
+    "POPULATION ADDED (gunbc#14022, measured at a986d9211c by claim_batch): a TYPE VARIABLE at the Never parameter, `fn f<T>(x: T) -> Int { absurd(x) }`, is ADMITTED (the probe claim reported FAIL, so zero blocking rows). v1.compiler.infer value_at_never_declared_type deliberately skips a generic or type-variable produced type, because the seed does not distinguish a rigid declared T from a callee formal still awaiting instantiation at this seam, and refusing the latter would fabricate a refusal (DESIGN section 5, both readings). It is one more member of this class and folds into the same trigger. An UNNAMED CALLABLE type, `fn f(g: (Int) -> Int) -> Int { absurd(g) }`, is also ADMITTED: measured at ee4ac1055b and bf40184759 by claim_batch (the probe FAILed with the guard widened to arrow types and, at bf40184759, with an arrow also exempted from the generic test), so the produced-side guard is not what admits it and the earliest unjustified boundary for this shape is still unlocated. Both shapes are population of this class and fold into the same trigger; neither has a RED in gunbc#14022 because a probe that FAILs on the real path would be a standing red.",
+
+    "NEXT-RUNG TRIGGER, a capability: the seed's inhabitance relation distinguishing host-realized opaque types (whose inhabitants are given by a realization binding) from declarations with no constructor, and refusing a value of an unrelated type at the latter. Not built; the wider leniency is untouched by gunbc#14022.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.never_eliminator_witness", decl_name: "absurd_applied_to_int_must_refuse", field: WholeDeclaration },
+  ],
+}

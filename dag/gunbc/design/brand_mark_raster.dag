@@ -1,0 +1,264 @@
+module gunbc.design.brand_mark_raster
+
+import std.types { Int, List }
+import std.logic { Bool }
+import std.optional { Absent, Present }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.w3c.png { PngIndexedImage, PngPaletteEntry, PngSrgbRenderingIntent }
+import gunbc.design.brand_mark { BrandMark, BrandMarkBox, BrandMarkDisc, BrandMarkShape, RoundedBox, Disc, brand_mark_frame }
+
+// THE MARK AS PIXELS. A BrandMark is exact geometry in its 1200-tenth frame; this module samples it
+// into an indexed image for a PNG target. It draws the Stencil treatment -- the body paint over the
+// shell and antenna, the features cut through to whatever is behind -- because that is the mark every
+// raster target shows; a treatment whose paint is a host theme value has no pixels to give.
+//
+// THE CANVAS AND THE PLACEMENT ARE THE TARGET'S, NOT THE MARK'S. A target says how many canvas units
+// its square is, what the ground is (clear, or a badge with a corner radius), and where the mark's
+// frame sits on it -- the favicon's "face at (10, 12), 108 across, on a 128 badge with corner 28" is
+// that sentence. The raster maps every pixel back into those units; nothing here knows a target.
+//
+// ANTI-ALIASING IS COVERAGE, COUNTED EXACTLY. Each pixel is sampled on a 4 x 4 grid at the centres of
+// its sixteen cells, and every test is integer arithmetic on coordinates scaled by a common
+// denominator, so two runs on any host draw the same pixels. A pixel's colour is the fraction of
+// samples inside the ground (its alpha) and inside the mark's ink. Alpha is STRAIGHT (unassociated):
+// PNG stores colour unmultiplied, so an edge pixel's colour is the true blend of the paints it covers
+// and its transparency is separate -- premultiplied edges would darken against another background.
+
+data brand_raster_grid: Int = 4
+
+fn brand_raster_samples() -> Int {
+  brand_raster_grid * brand_raster_grid
+}
+
+type BrandRasterGround = BrandClearGround | BrandBadgeGround { paint: Srgb8, corner: Int }
+
+type BrandRasterPlacement {
+  x: Int
+  y: Int
+  extent: Int
+}
+
+type BrandRasterSpec {
+  pixels: Int
+  canvas: Int
+  ground: BrandRasterGround
+  placement: BrandRasterPlacement
+  ink: Srgb8
+  intent: PngSrgbRenderingIntent
+}
+
+type BrandRasterRefusal =
+    BrandRasterSizeOutOfRange { pixels: Int }
+  | BrandRasterCanvasEmpty { canvas: Int, extent: Int }
+  | BrandRasterMarkOutsideGround { row: Int, column: Int }
+
+type BrandRasterOutcome = BrandRastered { image: PngIndexedImage } | BrandRasterRefused { cause: BrandRasterRefusal }
+
+// The scaled coordinates below reach 2 * grid * pixels * canvas * 1200 in magnitude, and a distance
+// test sums two of their squares, so each must stay below about 2^31 * 1.4 for the sum to fit a
+// 64-bit Int. A target past this bound refuses; 1024 pixels on a 128-unit canvas is 1.26e9.
+data brand_raster_coordinate_bound: Int = 2000000000
+
+fn brand_raster_in_bounds(spec: BrandRasterSpec) -> Bool {
+  spec.pixels >= 1 && 2 * brand_raster_grid * spec.pixels * spec.canvas * brand_mark_frame <= brand_raster_coordinate_bound
+}
+
+// ═══ CONTAINMENT, AT A COMMON SCALE ═══
+
+fn brand_raster_clamp(v: Int, lo: Int, hi: Int) -> Int {
+  if v < lo { lo } else if v > hi { hi } else { v }
+}
+
+// A rounded box scaled by `s` contains (x, y) when the point is inside its bounds and within the
+// corner radius of the nearest point of its inner rectangle. A zero radius is the plain rectangle.
+fn brand_raster_box_contains(b: BrandMarkBox, s: Int, x: Int, y: Int) -> Bool {
+  let x0 = b.x * s
+  let y0 = b.y * s
+  let x1 = (b.x + b.w) * s
+  let y1 = (b.y + b.h) * s
+  let r = b.r * s
+  let nx = brand_raster_clamp(v: x, lo: x0 + r, hi: x1 - r)
+  let ny = brand_raster_clamp(v: y, lo: y0 + r, hi: y1 - r)
+  x >= x0 && x <= x1 && y >= y0 && y <= y1 && (x - nx) * (x - nx) + (y - ny) * (y - ny) <= r * r
+}
+
+fn brand_raster_disc_contains(c: BrandMarkDisc, s: Int, x: Int, y: Int) -> Bool {
+  (x - c.cx * s) * (x - c.cx * s) + (y - c.cy * s) * (y - c.cy * s) <= c.r * s * c.r * s
+}
+
+fn brand_raster_shape_contains(shape: BrandMarkShape, s: Int, x: Int, y: Int) -> Bool {
+  match shape {
+    RoundedBox { box } => brand_raster_box_contains(b: box, s: s, x: x, y: y)
+    Disc { disc } => brand_raster_disc_contains(c: disc, s: s, x: x, y: y)
+  }
+}
+
+// The Stencil ink: inside the shell and outside every feature, or on the antenna.
+fn brand_raster_ink_contains(mark: BrandMark, s: Int, x: Int, y: Int) -> Bool {
+  let shell = brand_raster_box_contains(b: mark.shell, s: s, x: x, y: y)
+    && !brand_raster_shape_contains(shape: mark.left_eye, s: s, x: x, y: y)
+    && !brand_raster_shape_contains(shape: mark.right_eye, s: s, x: x, y: y)
+    && !brand_raster_box_contains(b: mark.mouth, s: s, x: x, y: y)
+  shell || brand_raster_antenna_contains(mark: mark, s: s, x: x, y: y)
+}
+
+fn brand_raster_antenna_contains(mark: BrandMark, s: Int, x: Int, y: Int) -> Bool {
+  match mark.antenna {
+    Absent => false
+    Present { value } => brand_raster_box_contains(b: value.stem, s: s, x: x, y: y) || brand_raster_disc_contains(c: value.tip, s: s, x: x, y: y)
+  }
+}
+
+fn brand_raster_ground_contains(spec: BrandRasterSpec, s: Int, x: Int, y: Int) -> Bool {
+  match spec.ground {
+    BrandClearGround => false
+    BrandBadgeGround { paint: _, corner } => brand_raster_box_contains(b: BrandMarkBox { x: 0, y: 0, w: spec.canvas, h: spec.canvas, r: corner }, s: s, x: x, y: y)
+  }
+}
+
+// ═══ ONE PIXEL ═══
+//
+// Sample (i, j) of pixel (px, py) is at canvas coordinate ((2g px + 2i + 1) / (2g N)) * U for grid g,
+// N pixels and U canvas units. Scaled by 2gN that is (2g px + 2i + 1) U, an integer; the ground is
+// tested at that scale. The mark's frame coordinate is (canvas - placement) * 1200 / extent; scaled by
+// 2gN * extent it is ((2g px + 2i + 1) U - 2gN * placement) * 1200, again an integer.
+
+// Counts over one pixel's samples. `escaped` is the samples that are ink and not ground: a sample's
+// own fact, which the two totals cannot recover (one escaped sample beside ground-only samples
+// leaves ink <= ground).
+type BrandRasterCoverage {
+  ground: Int
+  ink: Int
+  escaped: Int
+}
+
+fn brand_raster_sample(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int, i: Int, j: Int, acc: BrandRasterCoverage) -> BrandRasterCoverage {
+  let g2n = 2 * brand_raster_grid * spec.pixels
+  let cx = (2 * brand_raster_grid * px + 2 * i + 1) * spec.canvas
+  let cy = (2 * brand_raster_grid * py + 2 * j + 1) * spec.canvas
+  let fx = (cx - g2n * spec.placement.x) * brand_mark_frame
+  let fy = (cy - g2n * spec.placement.y) * brand_mark_frame
+  let ink = if brand_raster_ink_contains(mark: mark, s: g2n * spec.placement.extent, x: fx, y: fy) { 1 } else { 0 }
+  let ground = if brand_raster_ground_contains(spec: spec, s: g2n, x: cx, y: cy) { 1 } else { 0 }
+  let escaped = if ink == 1 && ground == 0 { 1 } else { 0 }
+  BrandRasterCoverage { ground: acc.ground + ground, ink: acc.ink + ink, escaped: acc.escaped + escaped }
+}
+
+fn brand_raster_range(n: Int) -> List<Int> {
+  brand_raster_range_from(i: 0, n: n, acc: [])
+}
+
+fn brand_raster_range_from(i: Int, n: Int, acc: List<Int>) -> List<Int> {
+  if i >= n { acc } else { brand_raster_range_from(i: i + 1, n: n, acc: acc |> list_push(i)) }
+}
+
+fn brand_raster_coverage(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int) -> BrandRasterCoverage {
+  fold(brand_raster_range(n: brand_raster_grid), init: BrandRasterCoverage { ground: 0, ink: 0, escaped: 0 }, f: (row, j) =>
+    fold(brand_raster_range(n: brand_raster_grid), init: row, f: (acc, i) => brand_raster_sample(mark: mark, spec: spec, px: px, py: py, i: i, j: j, acc: acc)))
+}
+
+// ═══ THE PALETTE ═══
+//
+// A pixel is its opaque coverage a (samples inside the ground or the ink) and its ink coverage m,
+// with m <= a. Every such pair is one palette entry, in the triangular order a(a+1)/2 + m: 153 entries
+// for sixteen samples, fixed, so the palette does not depend on the picture.
+
+fn brand_raster_index(a: Int, m: Int) -> Int {
+  a * (a + 1) / 2 + m
+}
+
+fn brand_raster_channel(ground: Int, ink: Int, a: Int, m: Int) -> Int {
+  if a == 0 { ink } else { (ground * (a - m) * 2 + ink * m * 2 + a) / (2 * a) }
+}
+
+fn brand_raster_ground_paint(spec: BrandRasterSpec) -> Srgb8 {
+  match spec.ground {
+    BrandClearGround => spec.ink
+    BrandBadgeGround { paint, corner: _ } => paint
+  }
+}
+
+fn brand_raster_entry(spec: BrandRasterSpec, a: Int, m: Int) -> PngPaletteEntry {
+  let g = brand_raster_ground_paint(spec: spec)
+  PngPaletteEntry {
+    color: Srgb8 {
+      r: brand_raster_channel(ground: g.r, ink: spec.ink.r, a: a, m: m),
+      g: brand_raster_channel(ground: g.g, ink: spec.ink.g, a: a, m: m),
+      b: brand_raster_channel(ground: g.b, ink: spec.ink.b, a: a, m: m),
+    },
+    alpha: (a * 255 * 2 + brand_raster_samples()) / (2 * brand_raster_samples()),
+  }
+}
+
+fn brand_raster_palette(spec: BrandRasterSpec) -> List<PngPaletteEntry> {
+  fold(brand_raster_range(n: brand_raster_samples() + 1), init: [], f: (acc, a) =>
+    fold(brand_raster_range(n: a + 1), init: acc, f: (row, m) => row |> list_push(brand_raster_entry(spec: spec, a: a, m: m))))
+}
+
+// ═══ THE IMAGE ═══
+
+type BrandRasterRows {
+  rows: List<List<Int>>
+  refusal: BrandRasterRefusal?
+}
+
+// On a clear ground the ink is the whole opaque coverage. On a badge the ink must lie inside it: any
+// one ink sample outside the badge is a mark escaping its ground, a placement error to refuse rather
+// than a pixel to paint. It is judged per sample, never from the totals.
+fn brand_raster_pixel(mark: BrandMark, spec: BrandRasterSpec, px: Int, py: Int) -> Int? {
+  let c = brand_raster_coverage(mark: mark, spec: spec, px: px, py: py)
+  match spec.ground {
+    BrandClearGround => Present { value: brand_raster_index(a: c.ink, m: c.ink) }
+    BrandBadgeGround { paint: _, corner: _ } => if c.escaped > 0 { none } else { Present { value: brand_raster_index(a: c.ground, m: c.ink) } }
+  }
+}
+
+fn brand_raster_row(mark: BrandMark, spec: BrandRasterSpec, st: BrandRasterRows, py: Int) -> BrandRasterRows {
+  match st.refusal {
+    Present { value: _ } => st
+    Absent => brand_raster_row_fresh(mark: mark, spec: spec, st: st, py: py)
+  }
+}
+
+type BrandRasterRow {
+  pixels: List<Int>
+  refusal: BrandRasterRefusal?
+}
+
+fn brand_raster_push(mark: BrandMark, spec: BrandRasterSpec, row: BrandRasterRow, px: Int, py: Int) -> BrandRasterRow {
+  match row.refusal {
+    Present { value: _ } => row
+    Absent => match brand_raster_pixel(mark: mark, spec: spec, px: px, py: py) {
+      Present { value } => BrandRasterRow { pixels: row.pixels |> list_push(value), refusal: Absent }
+      Absent => BrandRasterRow { pixels: row.pixels, refusal: Present { value: BrandRasterMarkOutsideGround { row: py, column: px } } }
+    }
+  }
+}
+
+fn brand_raster_row_fresh(mark: BrandMark, spec: BrandRasterSpec, st: BrandRasterRows, py: Int) -> BrandRasterRows {
+  let row = fold(brand_raster_range(n: spec.pixels), init: BrandRasterRow { pixels: [], refusal: Absent }, f: (acc, px) => brand_raster_push(mark: mark, spec: spec, row: acc, px: px, py: py))
+  match row.refusal {
+    Present { value: _ } => BrandRasterRows { rows: st.rows, refusal: row.refusal }
+    Absent => BrandRasterRows { rows: st.rows |> list_push(row.pixels), refusal: Absent }
+  }
+}
+
+fn brand_mark_raster(mark: BrandMark, spec: BrandRasterSpec) -> BrandRasterOutcome {
+  if !brand_raster_in_bounds(spec: spec) {
+    BrandRasterRefused { cause: BrandRasterSizeOutOfRange { pixels: spec.pixels } }
+  } else if spec.canvas < 1 || spec.placement.extent < 1 || spec.placement.extent > spec.canvas {
+    BrandRasterRefused { cause: BrandRasterCanvasEmpty { canvas: spec.canvas, extent: spec.placement.extent } }
+  } else {
+    let drawn = fold(brand_raster_range(n: spec.pixels), init: BrandRasterRows { rows: [], refusal: Absent }, f: (st, py) => brand_raster_row(mark: mark, spec: spec, st: st, py: py))
+    match drawn.refusal {
+      Present { value } => BrandRasterRefused { cause: value }
+      Absent => BrandRastered { image: PngIndexedImage {
+        width: spec.pixels,
+        height: spec.pixels,
+        intent: spec.intent,
+        palette: brand_raster_palette(spec: spec),
+        rows: drawn.rows,
+      } }
+    }
+  }
+}

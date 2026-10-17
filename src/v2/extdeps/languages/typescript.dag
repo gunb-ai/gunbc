@@ -104,6 +104,7 @@ import v2.std.compilers.target_model {
   ProducedParamName,
   ProducedParamType,
   ProducedSignatureDeclName,
+  ProducedSignatureTypeParams,
   ProducedSignatureFixed,
   ProducedSignatureParams,
   ProducedSignatureReturnType,
@@ -779,6 +780,7 @@ fn ts_bodied_arrow_signature_with_open() -> List<ConcreteSyntaxToken> {
             [FixedToken { token_class: token_class }]
           ProducedSignatureDeclName { token_class: token_class } =>
             [BoundToken { token_class: token_class, binding: ^ts_binding_fn_add }]
+          ProducedSignatureTypeParams { open: _, separator: _, close: _, name_class: _ } => []
           ProducedSignatureParams =>
             ts_bodied_arrow_sample_params_tokens(rows: ts_produced_decl_render_rows)
           ProducedSignatureReturnType =>

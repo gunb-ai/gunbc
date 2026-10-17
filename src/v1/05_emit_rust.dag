@@ -2,7 +2,7 @@ module v1.compiler.emit_rust
 
 import std.unicode.scalar { ascii_lowercase }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -14,7 +14,8 @@ import std.repair_input_origin {
   qualified_item_emit_surface_compatibility_names,
 }
 import std.primitive_projection {
-  primitive_identity_runtime_name, primitive_projection_row_for_declaration
+  primitive_identity_runtime_name, primitive_projection_row_for_declaration,
+  never_type_declaration, never_eliminator_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
 import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
@@ -34,7 +35,7 @@ import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_trait
 
 import std.algebra { trim, AlgebraFieldTemplate }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core { Unmarked,
+import v1.std.core { Unmarked, expr_literal_int_optional,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -188,7 +189,7 @@ import v1.compiler.trait_bound_witness {
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
-  lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
+  is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
   TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
@@ -248,7 +249,7 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve {
-  resolve_node, is_width_nat_type_literal,
+  resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position,
 }
 import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown, InductiveField }
@@ -278,7 +279,7 @@ import v1.compiler.emit {
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken, NativeEffectDeclSite, native_effect_resolution,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteBytes, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
@@ -534,6 +535,7 @@ fn rust_shared_wrap_ctor(inner_expr: String) -> String {
   if starts_with(s: inner_expr, prefix: "panic!(")
     || starts_with(s: inner_expr, prefix: "compile_error!(")
     || starts_with(s: inner_expr, prefix: "unreachable!(")
+    || starts_with(s: inner_expr, prefix: "v1_rt::pure_dag_seam_unreachable(")
   {
     inner_expr
   } else {
@@ -586,6 +588,12 @@ fn every_declarer_is_grounded_coproduct_native_alias(decls: TypeDeclIndex, name:
   (identities |> count) > 0 && identities |> all(identity =>
     declaration_is_grounded_coproduct_native_alias(module_path: "", decl_name: identity)
   )
+}
+
+// A coproduct that realizes as a Rust native alias (`pub type Bool = bool`) has no enum module to glob,
+// whichever module the importer reached it through: the import module's own declarations and every declarer count.
+fn name_realizes_as_native_alias(import_module: String, decls: TypeDeclIndex, name: String) -> Bool {
+  declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: name) || every_declarer_is_grounded_coproduct_native_alias(decls: decls, name: name) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: name)
 }
 
 // A TypeSummary key is `<module>.<name>`: the identity type_decl_identity minted for it.
@@ -695,7 +703,7 @@ fn render_rust_diagnostics_carrier_applied(shared_types: Set<String>) -> String 
 fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   match n.children |> first {
     Present { value: elem } =>
-      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      render_rust_applied_type_arg(n: elem, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: false)
     Absent => emit_rust_compile_error_expr(message: concat("optional carrier payload type node absent for ", n.name, " at ", n.span.file, ":", to_string(n.span.start)))
   }
 }
@@ -1498,11 +1506,19 @@ fn is_machine_width_phantom_token(name: String) -> Bool {
   name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
 }
 
+fn emit_width_type_arg_identity_refusal(n: Node, name: String) -> String {
+  emit_rust_compile_error_expr(message: concat("width type argument has no Rust type identity at ", n.span.file, ":", to_string(n.span.start), " (", name, ")"))
+}
+
 // A type argument's Rust identity is decided from the declaration visible in this module, never
 // from the syntactic position that happened to render it. Unit variants admitted by the resolver's
 // identity-bearing phantom index already receive distinct zero-sized Rust marker declarations;
 // erasing those markers to `()` makes distinct source types identical in the projection.
-fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+// A non-negative width Nat literal is the StaticWidthIndex<N> const-generic marker; a negative
+// literal or a Word8–128 token has no Rust type identity and is a located compile_error! carrying the
+// source span (same shape as UnitVariantPhantomEvidenceUnavailable) -- silent `()` was a second
+// identity for every such argument.
+fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, width_position: Bool) -> String? {
   let name = type_leaf_name_for_collapse(n: n, source_indices: source_indices)
   if generic_param_names |> any(g => g == name) {
     none
@@ -1510,8 +1526,19 @@ fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, s
     match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
       UnitVariantPhantomPresent { variant: _ } => Present { value: name }
       UnitVariantPhantomAbsent =>
-        if is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: name) {
-          Present { value: "()" }
+        if is_width_nat_type_literal(n: n) && !width_position {
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+        } else if is_width_nat_type_literal(n: n) {
+          match expr_literal_int_optional(expr: n) {
+            Present { value: v } =>
+              match static_width_index_declaring_module(env: env) {
+                Present { value: declaring } => Present { value: concat("crate::", module_to_filename(name: declaring), "::", static_width_index_arm_name(), "<", to_string(v), ">") }
+                Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+              }
+            Absent => Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
+          }
+        } else if is_machine_width_phantom_token(name: name) {
+          Present { value: emit_width_type_arg_identity_refusal(n: n, name: name) }
         } else { none }
       UnitVariantPhantomEvidenceUnavailable =>
         Present { value: emit_rust_compile_error_expr(message: concat("unit-variant marker identity evidence unavailable for ", name, " at ", n.span.file, ":", to_string(n.span.start))) }
@@ -1532,27 +1559,27 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
   }
 }
 
-fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env, width_position: width_position) {
     Present { value: identity } => identity
     Absent =>
     render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
 }
 
-fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) {
+fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) {
     Present { value: identity } => identity
     Absent =>
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, width_position: Bool) -> String {
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
-    rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
+  } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position) != none {
+    rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: width_position).value
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
   } else {
@@ -1604,9 +1631,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
@@ -1619,9 +1646,9 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
     let args = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
       }
     ) |> join(separator: ", ")
     concat(base, "<", args, ">")
@@ -1820,9 +1847,9 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let arg_list = n.children |> map(arg =>
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
           if peel {
-            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-          } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
-            rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
+            render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+          } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)) != none {
+            rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env)).value
           } else {
             match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types, env: env) {
               Present { value: scalar } => scalar
@@ -2034,8 +2061,8 @@ fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String,
 // The root alias renderer below never calls rust_type_arg_identity_spelling: a bare
 // alias RHS is a declaration-level type reference, not an argument merely because
 // recursive applied children share the rest of its rendering machinery.
-fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>, width_position: Bool) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env, width_position: width_position) {
     Present { value: identity } => identity
     Absent => render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
@@ -2104,9 +2131,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let arg_list = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       } else {
-        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       }
     )
     let args = arg_list |> join(separator: ", ")
@@ -2123,9 +2150,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let arg_list = n.children |> map(arg =>
       if peel {
-        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       } else {
-        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: scope.type_env))
       }
     )
     let args = arg_list |> join(separator: ", ")
@@ -3279,23 +3306,15 @@ fn rust_render_type_leaf_name(name: String, variant_to_enum: Map<String, String>
   }
 }
 
-fn rust_phantom_zst_marker_def(vname: String) -> String {
+// std.machine_constraints WidthResolution's StaticWidthIndex arm is indexed by a std.nat Nat; its
+// marker carries that index as a const generic so MachineWidth<8> and MachineWidth<16> are distinct
+// Rust types. PointerWidth and every other unit variant stay the bare unit marker.
+fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
+  let index_params = if indexed { "<const N: u128>" } else { "" }
   concat(
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
-    rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, ";"
+    rust_visibility_prefix(), rust_items().struct_keyword, " ", vname, index_params, ";"
   )
-}
-
-fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> String {
-  let markers = children
-    |> filter(child => child.children |> count == 0)
-    |> filter(child => is_phantom_unit_variant_type_arg(env: env, variant_name: authored_name(env: env, node: child)))
-    |> map(child =>
-      let vname = authored_name(env: env, node: child)
-      rust_phantom_zst_marker_def(vname: vname)
-    )
-    |> join(separator: "\n")
-  markers
 }
 
 fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
@@ -3305,7 +3324,13 @@ fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indi
   )
 }
 
-fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<String> {
+// One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
+type PhantomZstMarker {
+  name: String
+  indexed: Bool
+}
+
+fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZstMarker> {
   items
     |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
     |> fold(init: [], f: (acc, item) =>
@@ -3313,9 +3338,9 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
           if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !inner |> any(n => n == vname)
+            && !inner |> any(m => m.name == vname)
             && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
-            concat(inner, [vname])
+            concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
           } else { inner }
         } else { inner }
       )
@@ -3323,8 +3348,8 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
 }
 
 fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
-  collect_phantom_zst_marker_names(items: items, env: env)
-    |> map(vname => rust_phantom_zst_marker_def(vname: vname))
+  collect_phantom_zst_markers(items: items, env: env)
+    |> map(m => rust_phantom_zst_marker_def(vname: m.name, indexed: m.indexed))
     |> join(separator: "\n")
 }
 
@@ -5810,7 +5835,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
         || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
       )
       |> map(item => authored_name(env: scope.type_env, node: item)),
-    collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
+    collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env) |> map(m => m.name)
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)
@@ -5932,13 +5957,39 @@ fn emit_import_name(owner_module: String, n: String, registry: Map<String, ItemI
 // filename is what the emitted path needs; the PATH is what the registry is keyed on, and deriving
 // one from the other by re-spelling would be a second reduction of the same fact. Both read the same
 // re-export resolution, so they cannot disagree about which module owns the name.
+// THE DECLARING MODULE OF ANY IMPORTED ITEM, not only a type: the module whose own items carry the
+// name, reached by following the specific-import hop from the importing module. A relay that merely
+// imports a data item declares nothing, so the walk continues to the module that does.
+fn item_declaring_module_name(name: String, import_module: String, visited: List<String>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String? {
+  if visited |> any(v => v == import_module) {
+    Absent
+  } else {
+    match typed_module_by_name(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+      Absent => Absent
+      Present { value: tm } =>
+        if tm.items |> any(item => authored_name_at(source_indices: source_indices, node: item) == name) {
+          Present { value: import_module }
+        } else {
+          match explicit_import_source_module_for_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+            Present { value: hop } => item_declaring_module_name(name: name, import_module: hop, visited: concat(visited, [import_module]), typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+            Absent => Absent
+          }
+        }
+    }
+  }
+}
+
 fn graph_type_import_module_path(name: String, import_module: String, mod_name: String, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   if has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     import_module
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => src
-      Absent => import_module
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
     }
   }
 }
@@ -6357,7 +6408,11 @@ fn graph_type_import_module_filename(name: String, import_module: String, mod_na
   } else {
     match reexport_source_module_name(name: name, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
       Present { value: src } => module_to_filename(name: src)
-      Absent => mod_name
+      Absent =>
+        match item_declaring_module_name(name: name, import_module: import_module, visited: [], typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => module_to_filename(name: src)
+          Absent => mod_name
+        }
     }
   }
 }
@@ -6740,13 +6795,27 @@ fn is_parametric_opaque_type_decl_item(item: Node, source_indices: Map<String, N
     )
 }
 
-fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_uninhabited_empty_enum_decl(module_path: String, name: String) -> Bool {
+  declaration_ref_eq(a: decl_ref(module_path: module_path, decl_name: name), b: never_type_declaration)
+}
+
+fn rust_uninhabited_elim_allow_attr(module_path: String, name: String) -> String {
+  let here = decl_ref(module_path: module_path, decl_name: name)
+  if declaration_ref_eq(a: here, b: never_eliminator_declaration) {
+    "#[allow(unreachable_code)]\n"
+  } else {
+    ""
+  }
+}
+
+fn emit_zero_param_phantom_opaque_struct(item: Node, map_key_required: Bool, module_path: String, source_indices: Map<String, NewlineIndex>) -> String {
   let item_text = authored_name_at(source_indices: source_indices, node: item)
-  concat(
-    concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n"),
-    rust_visibility_prefix(),
-    rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);"
-  )
+  let derive = concat(rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(base: phantom_opaque_carrier_derive_traits(), map_key_required: map_key_required)), "\n")
+  if rust_uninhabited_empty_enum_decl(module_path: module_path, name: item_text) {
+    concat(derive, rust_visibility_prefix(), "enum ", item_text, " {}")
+  } else {
+    concat(derive, rust_visibility_prefix(), rust_items().struct_keyword, " ", item_text, "(pub std::marker::PhantomData<()>);")
+  }
 }
 
 fn emit_parametric_phantom_opaque_struct(item: Node, map_key_required: Bool, source_indices: Map<String, NewlineIndex>) -> String {
@@ -7048,17 +7117,11 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
       ) == false
     )
     let merged_direct_names = unique_strings(items: concat(direct_names, local_parent_names))
-    let type_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum)
-    )
-    let other_direct_names = merged_direct_names |> filter(n =>
-      is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index, variant_to_enum: emit_info.variant_to_enum) == false
-    )
-    let type_direct_mods = unique_strings(items: type_direct_names |> map(n =>
+    let direct_mods = unique_strings(items: merged_direct_names |> map(n =>
       graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
     ))
-    let type_direct_lines = type_direct_mods |> flat_map(def_mod =>
-      let group = type_direct_names |> filter(n =>
+    let direct_lines = direct_mods |> flat_map(def_mod =>
+      let group = merged_direct_names |> filter(n =>
         graph_type_import_module_filename(name: n, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) == def_mod
       )
       if group |> count > 0 {
@@ -7068,13 +7131,6 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
         [RustUseLine { target_module: def_mod, text: concat(rust_visibility_prefix(), "use crate::", def_mod, "::{", names_str, "};") }]
       } else { [] }
     )
-    let other_direct_line = if other_direct_names |> count > 0 {
-      let names_str = other_direct_names |> map(n =>
-        emit_import_name(owner_module: import_module, n: n, registry: registry)
-      ) |> join(separator: ", ")
-      [RustUseLine { target_module: mod_name, text: concat(rust_visibility_prefix(), "use crate::", mod_name, "::{", names_str, "};") }]
-    } else { [] }
-    let direct_lines = concat(type_direct_lines, other_direct_line)
     let parent_defining_mods = unique_strings(items: remote_parent_list |> map(p =>
       let rep_variant = deduped_names |> filter(n =>
         match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -7115,7 +7171,7 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let main_lines = concat(direct_lines, parent_main_lines)
     let variant_lines = parent_list |> flat_map(parent =>
-      if declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: parent) || every_declarer_is_grounded_coproduct_native_alias(decls: emit_info.type_decl_items, name: parent) || rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: parent) { [] } else {
+      if name_realizes_as_native_alias(import_module: import_module, decls: emit_info.type_decl_items, name: parent) { [] } else {
       let variants = deduped_names |> filter(n =>
         if n == "None" || n == "Some" {
           false
@@ -7148,11 +7204,17 @@ fn emit_specific_import_use_lines(import_module: String, mod_name: String, filte
     )
     let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
     let wildcard_enum_lines = final_imported_enums
-      |> filter(en => parent_list |> any(p => p == en) == false
-        && !declaration_is_grounded_coproduct_native_alias(module_path: import_module, decl_name: en)
-        && !rust_declaration_realizes_as_native_alias(module_path: import_module, decl_name: en)
+      |> filter(en =>
+        let declaring_module = match reexport_source_module_name(name: en, import_module: import_module, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
+          Present { value: src } => src
+          Absent => import_module
+        }
+        parent_list |> any(p => p == en) == false
+        && !name_realizes_as_native_alias(import_module: declaring_module, decls: emit_info.type_decl_items, name: en)
         && rust_kernel_grounded_type_decl(module_name: import_module, item_text: en) == none)
-      |> map(en => RustUseLine { target_module: mod_name, text: concat("use crate::", mod_name, "::", en, "::*;") })
+      |> map(en =>
+        let declaring_mod = graph_type_import_module_filename(name: en, import_module: import_module, mod_name: mod_name, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index)
+        RustUseLine { target_module: declaring_mod, text: concat("use crate::", declaring_mod, "::", en, "::*;") })
     concat(main_lines, variant_lines, wildcard_enum_lines)
   }
 }
@@ -7676,7 +7738,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), module_path: env.module_path, source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -10012,7 +10074,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   }
   if realized_seam && (value_params |> count) == 0 {
     let kw = rust_items().func_keyword
-    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
+    return concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "()", ret_str, " {\n",
       make_indent(level: 1), "v1_rt::", emit_ident(name: rust_runtime_bridge_name(function_name: rust_seam_primitive_name(module_path: scope.module_name, name: name)), target: Rust), "()\n}")
   }
   if use_tco {
@@ -10025,7 +10087,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     let return_is_unit = return_type_is_unit(n: inferred, source_indices: si)
-    emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit)
+    concat(rust_uninhabited_elim_allow_attr(module_path: scope.module_name, name: name), emit_fn_def_non_tco(name: name, type_params_str: type_params_str, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, shared_types: shared_types, emit_info: body_emit_info, needs_stacker: needs_stacker, return_is_unit: return_is_unit))
   }
 }
 
@@ -12079,12 +12141,51 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+// A PARAMETRIC DECLARATION NAMED WITHOUT ITS ARGUMENTS IS NOT A RENDERABLE TURBOFISH ARGUMENT. child_type_node
+// projects an alias reference to its resolved declaration node, and the env-resolved alias binding's
+// resolved_type drops the RHS type argument, so `Map<Symbol, QualifiedName>` (QualifiedName = FreeMonoid<Symbol>)
+// reached the renderer as the childless head `FreeMonoid` and emitted `rc_empty_map::<Symbol, Rc<FreeMonoid>>()`,
+// rustc E0107 (v2.compiler.resolve type_param_value_binders, #14084). The fact asked is the declaration's own
+// parameter count from the env binding, not a name: a node whose binding declares parameters but renders as its bare
+// head has lost its application, so the position defers to the target's inference exactly as an erased argument does.
+// The children of a Disj node are its ARMS, not type arguments: lookup_type_for resolves an arm's name to the
+// owning parametric declaration, so an arm such as std.list FirstDuplicateNotFound read as the declaration named
+// without its arguments, the fold lambda's accumulator widened to `_` beside the `_` seed, and rustc E0282 had
+// nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
+// own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
+fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+      || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+// The declaration's parameter count is read from the env binding; the render is bare when it is the head name
+// alone, with or without the shared wrap, whatever children the projected node still carries.
+fn rust_type_renders_bare_parametric_head(t: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
+  if !type_node_declares_parameters(n: t, env: emit_info.fn_type_env) {
+    false
+  } else {
+    let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: t))
+    let rendered = render_rust_type(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    rendered == head || rendered == concat("Rc<", head, ">")
+  }
+}
+
+fn type_node_declares_parameters(n: Node, env: TypeEnv) -> Bool {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: binding } => (binding.params |> count) > 0
+    Absent => false
+  }
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
   } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
     || type_node_carries_erased_type_argument(n: map_type)
+    || type_node_carries_applicationless_parametric_head(n: map_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     || map_type.children |> any(c => type_node_child_is_type_variable(c: c)) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
@@ -13768,7 +13869,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: acc_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let elem_render_has_spurious_generic = rust_fold_rendered_type_has_any_spurious_generic(type_str: elem_type_str, generic_param_names: emit_info.fn_generic_param_names)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic { "_" } else { acc_type_str }
+  let acc_carries_bare_parametric_head = type_node_carries_applicationless_parametric_head(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || acc_has_closure_unbound_generic || acc_render_has_spurious_generic || acc_carries_bare_parametric_head { "_" } else { acc_type_str }
   let fold_elem_type_str = if elem_render_has_spurious_generic { "_" } else { elem_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
@@ -14722,6 +14824,7 @@ type RcGroupedArmPlan {
   inner_pat_str: String
   plain_bindings: List<RcPlainFieldBinding>
   plain_refutable: Bool
+  deeper_rc: Bool
 }
 
 // A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
@@ -14744,7 +14847,7 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false, deeper_rc: false }
 }
 
 fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
@@ -14825,7 +14928,7 @@ fn variant_pattern_bare_name(pattern: MatchPattern) -> String {
   }
 }
 
-fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String) -> RcGroupedArmPlan {
+fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool) -> RcGroupedArmPlan {
   let si = scope.type_env.source_indices
   let arm_pat = arm_pattern(n: arm)
   let rc_raw = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
@@ -14849,10 +14952,10 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           Present { value: fb } =>
             let fb_pat = field_binding_pattern(n: fb)
             let inner_rc = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: si)
-            if inner_rc.needs_rc_pattern {
+            if inner_rc.needs_rc_pattern && !allow_deeper {
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
-              let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
+              let inner_pat_str = if inner_rc.needs_rc_pattern { "" } else { emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info) }
               RcGroupedArmPlan {
                 groupable: true,
                 variant: variant,
@@ -14860,7 +14963,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
                 ref_field: field_name,
                 inner_pat_str: inner_pat_str,
                 plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
-                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                deeper_rc: inner_rc.needs_rc_pattern
               }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
@@ -14877,7 +14981,8 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
           ref_field: "",
           inner_pat_str: "_",
           plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: "", source_indices: si),
-          plain_refutable: false
+          plain_refutable: false,
+          deeper_rc: false
         }
       }
   }
@@ -14906,10 +15011,41 @@ fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<R
 
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
-  let inner_arms = members |> map(e =>
-    concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
-  ) |> join(separator: "\n")
-  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
+  let inner_arms = if members |> any(e => e.plan.deeper_rc) {
+    emit_rc_deeper_inner_arm_strs(members: members, field: plan.ref_field, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type)
+  } else {
+    members |> map(e =>
+      concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
+    )
+  }
+  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms |> join(separator: "\n"), "\n} },")
+}
+
+// A DEEPER Rc LEVEL INSIDE THE DISCRIMINATED FIELD'S PATTERN IS THE SAME PROBLEM ONE LEVEL DOWN, so
+// it is the same construction: the inner match's arms are the members re-posed with the field's own
+// pattern as their pattern and grouped again, and an arm that discriminates nothing below the outer
+// variant is the inner match's wildcard. Without it the inner arms kept the #8570 guards, which rustc
+// ignores when checking exhaustiveness, so an enumerated nested arm set was E0004 one level in
+// (gunbc.recurring_failure_mode an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded).
+fn emit_rc_deeper_inner_arm_strs(members: List<RcGroupedArmEntry>, field: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> List<String> {
+  let si = scope.type_env.source_indices
+  let posed = members |> map(e =>
+    let inner_pattern = match variant_pattern_field_binding_named(pattern: arm_pattern(n: e.arm), field_name: field, source_indices: si) {
+      Present { value: fb } => field_binding_pattern(n: fb)
+      Absent => Wildcard
+    }
+    field_binding_with_pattern(field_binding: e.arm, pattern: inner_pattern)
+  )
+  // A wildcard arm is the inner match's only fallthrough for the refutable arms before it, and grouping
+  // would fold those into one inner match without it (E0004 over CoreEdgeLabel in v2.std.node
+  // resolved_reference_kind_of_label); the ordinary lowering likewise skips grouping then.
+  if posed |> any(a => match_pattern_is_irrefutable(pattern: arm_pattern(n: a))) {
+    posed |> enumerate |> map(pair => emit_typed_match_arm(arm: pair.second, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  } else {
+  rc_grouped_match_arm_strs(arms: posed, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: "", allow_deeper: true,
+    emit_group: (inner_members, inner_plan) => emit_rc_grouped_match_arm(members: inner_members, plan: inner_plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
+    emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: "", match_result_type: match_result_type, string_from_mode: false, present_binding: false))
+  }
 }
 
 // AN ARM THAT SEES AN OPTIONAL'S PRESENT VALUE IS EMITTED UNDER `Some(..)`. Which arms those are
@@ -14930,7 +15066,7 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
         present_binding: optional_match_arm_sees_present_value(scrutinee_type: scrut_rt, arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index))
     )
   } else {
-    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type,
+    rc_grouped_match_arm_strs(arms: arms, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: true,
       emit_group: (members, rep) => emit_rc_grouped_match_arm(members: members, plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type),
       emit_single: (index, arm) => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false, present_binding: false))
   }
@@ -14943,10 +15079,10 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
 // exhaustiveness, so an enumerated nested arm set in a tail-recursive fold was E0004
 // (gunbc.recurring_failure_mode tail_call_match_lowering_skips_rc_arm_grouping). `emit_single`
 // receives the arm's source index so a renderer can decide which arm sees an optional's value.
-fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
+fn rc_grouped_match_arm_strs(arms: List<Node>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo, scrut_type: String, allow_deeper: Bool, emit_group: fn(List<RcGroupedArmEntry>, RcGroupedArmPlan) -> String, emit_single: fn(Int, Node) -> String) -> List<String> {
   let entries = arms |> map(arm => RcGroupedArmEntry {
     arm: arm,
-    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
+    plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, allow_deeper: allow_deeper)
   })
   let folded = entries |> enumerate |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, pair) =>
     let e = pair.second
@@ -16755,7 +16891,7 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
           emit_typed_tco_match_arm(arm: pair.second, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
             present_binding: optional_match_arm_sees_present_value(scrutinee_type: resolved_type(n: s), arm_pattern: arm_pattern(n: pair.second), arm_index: pair.first, absent_arm_index: absent_arm_index)))
       } else {
-        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
+        rc_grouped_match_arm_strs(arms: arm_list, scope: frame.scope, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type, allow_deeper: false,
           emit_group: (members, rep) => emit_rc_grouped_tco_match_arm(members: members, plan: rep, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info),
           emit_single: (index, arm) =>
           emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type,
@@ -18133,6 +18269,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
   match verb {
     FileRead           => file_read_match_expr
     FileWrite          => file_write_expr
+    FileWriteBytes     => file_write_bytes_expr
     FileWriteOwnerOnly => file_write_owner_only_expr
     FileWriteCreateNew => file_write_create_new_expr
     FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr
@@ -18240,6 +18377,12 @@ data file_link_create_new_expr: String = "match v1_rt::gunbc_file_link_create_ne
 // `mode` is the declared permission-bit value (extdeps.access.posix file_mode_bits). A value that is
 // not a mode REFUSES as InvalidInput before anything is created; it is never truncated into one.
 data file_write_create_new_with_mode_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let declared_mode = u32::try_from(mode).ok().filter(|m| *m <= 0o7777);\n    let create_result = match declared_mode {\n        Some(m) => v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), Some(m)),\n        None => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!(\"write_create_new_with_mode refused: {} is not a permission-bit value\", mode))),\n    };\n    match create_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+
+// Write with Bytes content: the same write as file_write_expr over the content's octets. Collecting
+// into a boxed slice makes it one write for every Bytes realization (Vec<u8> in the seed's runtime,
+// im::Vector<u8> in the emitted v2 runtime); a `Vec<u8>` annotation here is itself rewritten to the
+// runtime's vector type, which is not a slice.
+data file_write_bytes_expr: String = "{\n    let octets: Box<[u8]> = content.iter().copied().collect();\n    let payload_bytes = octets.len() as i64;\n    match std::fs::write(&file_path, &octets) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64, file_io_error_kind(&write_err)),\n    }\n};"
 
 data file_write_owner_only_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64, file_io_error_kind(&owner_only_err)),\n    }\n};"
 
