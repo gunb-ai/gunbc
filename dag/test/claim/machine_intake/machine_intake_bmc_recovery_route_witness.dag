@@ -20,7 +20,7 @@ import gunbc.auth.authorization_pattern_selection {
 import std.decl_ref { declaration_ref_display_key }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
-  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_write_grounds_success, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
+  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
 import gunbc.machine_intake.arrival_converge {
   ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
@@ -333,7 +333,20 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
     detail: "the other arm of the same run, presented as the reset",
   }
   recovery_write_was_attempted(record: uncaptured_reset, kind: recovery_reset_actuation())
-    && recovery_write_grounds_success(record: uncaptured_reset) == false
+    // THE SUCCESS SIDE, MATCHED AS THE ARMS THEY ARE (review 81308). No predicate is consulted: the
+    // claim itself asks which arm can ground a success, and only one can. ExecutedWithoutByteCapture
+    // satisfies "was this attempted, against the arm the route names" and must NEVER satisfy "this
+    // happened and was recorded", which is the distinction the field exists to keep.
+    && (match uncaptured_reset {
+      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => false
+      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => true
+      NotExecuted { kind: _ } => false
+    })
+    && (match recovery_in_band_write_record() {
+      ExecutedWithCapturedExchange { kind: _, request: _, response: _, observed_at: _ } => true
+      ExecutedWithoutByteCapture { kind: _, observed_exit: _, detail: _ } => false
+      NotExecuted { kind: _ } => false
+    })
     && recovery_write_was_attempted(record: wrong_kind, kind: recovery_reset_actuation()) == false
 }
 
