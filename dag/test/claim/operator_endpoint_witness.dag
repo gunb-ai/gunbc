@@ -249,6 +249,26 @@ test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_differe
   }) && !harness_post_is_retryable(posted: p)
 }
 
+// The pin firing is curl exit 90 (the pinned public key did not match) and a peer the trust anchor refuses is 51:
+// both are a different certificate, typed NotPinned, never retried, never read as no capacity.
+fn peer_exit_is_typed_not_pinned_and_never_retried(code: Int) -> Bool {
+  let p = w_post(success: false, exit_code: code, status_line: "", body: "")
+  (match p.fault {
+    Present { value: OperatorCertificateNotPinned { curl_exit: x } } => x == code
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
+    Present { value: OperatorNoCapacity } => false
+    Absent => false
+  }) && !harness_post_is_retryable(posted: p)
+}
+
+test fn a_pinned_public_key_mismatch_curl_exit_90_is_not_pinned_and_never_retried() -> Bool {
+  peer_exit_is_typed_not_pinned_and_never_retried(code: 90)
+}
+
+test fn a_peer_certificate_curl_exit_51_is_not_pinned_and_never_retried() -> Bool {
+  peer_exit_is_typed_not_pinned_and_never_retried(code: 51)
+}
+
 // CLAIM 3. A 503 from the front yields the typed no-capacity outcome: a hold on the retry policy, recorded, and
 // NEITHER an unexplained engine refusal NOR an ended session.
 test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> Bool {
