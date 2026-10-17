@@ -7,14 +7,14 @@ import gunbc.compute.attempt_lifecycle { AttemptState, AttemptReserved }
 import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
 import gunbc.dispatch_credential_acquisition {
   CredentialAcquisitionRecord, credential_acquisition_reference, credential_record_decode, credential_record_json,
-  CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config,
+  CursorRuntimeRootRegistration, credential_cursor_runtime_registration_for, cursor_attempt_runtime_dirname,
 }
 
 fn cursor_reference() -> String {
   credential_acquisition_reference(identity: "id1", executor: CursorFromSnapshot) as String
 }
 
-fn record(word: String, reference: String, root: CursorAttemptRuntimeRoot?) -> CredentialAcquisitionRecord {
+fn record(word: String, reference: String, root: CursorRuntimeRootRegistration?) -> CredentialAcquisitionRecord {
   CredentialAcquisitionRecord {
     identity: "id1", node_id: "n", reference: reference, executor_word: word, snapshot_path: "/s",
     belt_unit: "u.service", control_group: "/g", opened_at: 10, launch_deadline: 40,
@@ -25,7 +25,7 @@ fn record(word: String, reference: String, root: CursorAttemptRuntimeRoot?) -> C
 fn decoded_root(text: String) -> String {
   match credential_record_decode(text: text) {
     Absent => "undecodable"
-    Present { value: back } => match back.cursor_runtime_root { Present { value: r } => r.base  Absent => "none" }
+    Present { value: back } => match back.cursor_runtime_root { Present { value: r } => r.parent_dirname  Absent => "none" }
   }
 }
 
@@ -35,23 +35,21 @@ test fn a_record_in_the_format_before_the_field_decodes_with_no_root() -> Bool {
   decoded_root(text: "{\"identity\":\"id1\",\"node_id\":\"n\",\"reference\":\"id1-claude\",\"executor\":\"claude\",\"snapshot_path\":\"/s\",\"belt_unit\":\"u.service\",\"control_group\":\"/g\",\"opened_at\":10,\"launch_deadline\":40,\"state\":\"reserved\",\"detail\":\"\"}") == "none"
 }
 
-test fn a_cursor_root_round_trips_and_derives_its_home_and_config() -> Bool {
-  let root = cursor_attempt_runtime_root(instance_root: "/srv/inst", reference: cursor_reference())
-  let text = credential_record_json(r: record(word: "cursor", reference: cursor_reference(), root: Present { value: root }))
-  decoded_root(text: text) == root.base
-    && cursor_attempt_runtime_home(root: root) == join([root.base, "home"], "/")
-    && cursor_attempt_runtime_config(root: root) == join([root.base, "config"], "/")
+test fn a_cursor_registration_round_trips() -> Bool {
+  match credential_cursor_runtime_registration_for(executor: CursorFromSnapshot) {
+    Absent => false
+    Present { value: reg } =>
+      decoded_root(text: credential_record_json(r: record(word: "cursor", reference: cursor_reference(), root: Present { value: reg }))) == cursor_attempt_runtime_dirname
+  }
 }
 
 test fn an_absent_root_is_omitted_from_the_wire_not_written_as_empty() -> Bool {
   !string_contains(s: credential_record_json(r: record(word: "claude", reference: "id1-claude", root: none)), pattern: "cursor_runtime_root")
 }
 
-test fn a_claude_record_cannot_carry_a_root_nor_name_another_attempts() -> Bool {
-  let own = cursor_attempt_runtime_root(instance_root: "/srv/inst", reference: cursor_reference())
-  let other = cursor_attempt_runtime_root(instance_root: "/srv/inst", reference: "idB-cursor")
-  let traversal = CursorAttemptRuntimeRoot { base: "/srv/inst/cursor-attempt-runtime/../../etc/id1-cursor" }
+test fn a_claude_record_or_a_foreign_dirname_is_refused_at_decode() -> Bool {
+  let own = CursorRuntimeRootRegistration { parent_dirname: cursor_attempt_runtime_dirname }
+  let foreign = CursorRuntimeRootRegistration { parent_dirname: "/etc/elsewhere" }
   decoded_root(text: credential_record_json(r: record(word: "claude", reference: "id1-claude", root: Present { value: own }))) == "undecodable"
-    && decoded_root(text: credential_record_json(r: record(word: "cursor", reference: cursor_reference(), root: Present { value: other }))) == "undecodable"
-    && decoded_root(text: credential_record_json(r: record(word: "cursor", reference: cursor_reference(), root: Present { value: traversal }))) == "undecodable"
+    && decoded_root(text: credential_record_json(r: record(word: "cursor", reference: cursor_reference(), root: Present { value: foreign }))) == "undecodable"
 }
