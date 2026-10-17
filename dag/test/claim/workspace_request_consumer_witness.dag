@@ -1,11 +1,15 @@
 module test.claim.workspace_request_consumer_witness
 
 import std.types { Bool, NonEmptyStr, Timestamp }
+import std.retry_law { RetryHistoryEvent, RealWorkFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation { WorkspaceRequest, SmallWorkspace, workspace_policy_ref }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted, WorkspaceRecorded, workspace_retired }
-import gunbc.workspace_request_consumer { workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare }
+import gunbc.workspace_request_consumer {
+  workspace_consumer_select, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare,
+  workspace_consumer_retry_from_history, WorkspaceConsumerRetry,
+}
 
 import extdeps.shell
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
@@ -141,4 +145,20 @@ test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() 
   } }
   let cleaned = shell.Remove.RecursiveForce(path: directory.path)
   passed && cleaned.success
+}
+
+test fn a_store_conflict_is_admissible_retry_until_the_law_exhausts_whole_history() -> Bool {
+  (match workspace_consumer_retry_from_history(history: [
+    RetryHistoryEvent { class: RealWorkFailure, at: 1 },
+  ]) {
+    WorkspaceConsumerRetry => true
+    _ => false
+  }) && (match workspace_consumer_retry_from_history(history: [
+    RetryHistoryEvent { class: RealWorkFailure, at: 1 },
+    RetryHistoryEvent { class: RealWorkFailure, at: 2 },
+    RetryHistoryEvent { class: RealWorkFailure, at: 3 },
+  ]) {
+    WorkspaceConsumerRefused { reason: r } => r == "workspace store conflicts exhausted the retry law"
+    _ => false
+  })
 }

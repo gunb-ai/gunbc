@@ -3,6 +3,7 @@ module extdeps.cloud.gcp.gcp
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.optional { Present, Absent }
 import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret, Unit, string_non_empty }
 import std.algebra { non_empty }
 import extdeps.ietf.http_semantics { POST }
@@ -33,9 +34,82 @@ type GcpServiceAccount {
   disabled: Bool
 }
 
+// THE LONG-RUNNING OPERATION a create answers with (google.longrunning.Operation,
+// cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.providers.operations/get
+// and cloud.google.com/iam/docs/reference/rest/v1/projects.locations.workloadIdentityPools.operations/get;
+// the Operation and google.rpc.Status resources, read 2026-10-16). proto3 JSON OMITS a false `done`
+// and a zero `code`, so absence on the wire is the proto3 default and never an unknown. `error` is
+// set only on a finished operation that failed; `metadata` and `response` are not modeled because
+// no consumer reads them (the created resource is read back by its own get).
+type GoogleRpcStatus {
+  code: Int?
+  message: String?
+}
+
 type GcpOperation {
   name: String
   done: Bool?
+  error: GoogleRpcStatus?
+}
+
+// THE STANDING OF AN OPERATION, decided once. Absent `done` is false (proto3), so it is Running.
+// A present `error` is a failure whatever `done` says: the upstream sets it only on a finished,
+// failed operation, and a status riding a not-done operation is not evidence of success. Absent
+// `code` is proto3 zero and absent `message` is empty, kept as such so a refusal always carries
+// what the upstream said.
+type GcpOperationStanding
+  = OperationRunning
+  | OperationDone
+  | OperationFailed { code: Int, message: String }
+
+fn gcp_operation_standing(done: Bool?, error: GoogleRpcStatus?) -> GcpOperationStanding {
+  match error {
+    Present { value: status } => OperationFailed {
+      code: match status.code { Present { value: c } => c  Absent => 0 },
+      message: match status.message { Present { value: m } => m  Absent => "" }
+    }
+    Absent => match done {
+      Present { value: d } => if d { OperationDone } else { OperationRunning }
+      Absent => OperationRunning
+    }
+  }
+}
+
+// WHICH SUBJECT AN OPERATION NAME IS ABOUT. The service answers a create with the operation's full
+// name, projects/{number}/locations/global/workloadIdentityPools/{pool}[/providers/{provider}]/operations/{id},
+// carrying the project NUMBER. Each segment is parsed out so a path hole receives one segment, never
+// a slash-bearing name (RFC 6570 simple expansion encodes "/"). A name that does not name the subject
+// just created is a typed mismatch, not something to poll.
+type WifOperationSubject
+  = WifPoolOperation { pool_id: String }
+  | WifProviderOperation { pool_id: String, provider_id: String }
+
+type WifOperationName
+  = WifOperationNamed { operation_id: String }
+  | WifOperationNameMismatch { reason: String }
+
+fn wif_operation_name_prefix(project_number: String, subject: WifOperationSubject) -> List<String> {
+  match subject {
+    WifPoolOperation { pool_id: p } => ["projects", project_number, "locations", "global", "workloadIdentityPools", p, "operations"]
+    WifProviderOperation { pool_id: p, provider_id: v } => ["projects", project_number, "locations", "global", "workloadIdentityPools", p, "providers", v, "operations"]
+  }
+}
+
+fn wif_operation_name_parse(name: String, project_number: String, subject: WifOperationSubject) -> WifOperationName {
+  let parts = split(s: name, delimiter: "/")
+  let prefix = wif_operation_name_prefix(project_number: project_number, subject: subject)
+  if parts.length() != prefix.length() + 1 {
+    WifOperationNameMismatch { reason: concat("operation name does not have the shape of the subject just created: ", name) }
+  } else {
+    if join(parts.take(n: prefix.length()), "/") != join(prefix, "/") {
+      WifOperationNameMismatch { reason: concat("operation name does not name the subject just created: ", name) }
+    } else {
+      match parts.skip(n: prefix.length()).first() {
+        Present { value: id } => if id == "" { WifOperationNameMismatch { reason: concat("operation name has an empty operation id: ", name) } } else { WifOperationNamed { operation_id: id } }
+        Absent => WifOperationNameMismatch { reason: concat("operation name has no operation id: ", name) }
+      }
+    }
+  }
 }
 
 type GcpOAuth2AccessTokenStrategy

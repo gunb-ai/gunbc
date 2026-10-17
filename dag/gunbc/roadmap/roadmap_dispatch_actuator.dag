@@ -56,7 +56,7 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty,
-  RemainAfterExitProperty, ExecStopPostProperty,
+  ExecStopPostProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty,
   systemd_service_unit_name, systemd_unit_name_wire, systemd_unit_name_refusal_detail,
   SystemdUnitNameAdmission, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty,
@@ -75,7 +75,7 @@ import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_command_argument_words,
 }
-import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
+import gunbc.compute.unit_bounds { worker_root_equivalent_socket_denial_properties, UnitProcessBounds, compute_grant_unit_properties, gunbc_user_work_transient_command }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1840,18 +1840,20 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
 // so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
 // and its record carries the exit; the belt reads a collected reviewer from that record
-// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
-// hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
-// this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
-// parameter is optional.
+// (gunbc.roadmap.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and now carries the same
+// hook (AttemptSupervisorRole): its convene gate reads the exit record, not a retained unit, so a
+// finished supervisor no longer stays loaded and blocks the continuation it authorized
+// (gunbc.recurring_failure_mode an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable).
+// ExecStopPost runs after a failed unit too, so a failed supervisor records its failure; RemainAfterExit
+// is gone from every role.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   log_path: String,
   review_dir: String,
-  exit_hook: NonEmptyStr?,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
-  concat([
+  concat(worker_root_equivalent_socket_denial_properties(), concat([
     NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1860,10 +1862,7 @@ fn dispatch_review_unit_properties(
     NamedUnitSetting { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     NamedUnitSetting { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     NamedUnitSetting { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-  ], match exit_hook {
-    Present { value: hook } => [NamedUnitSetting { property: ExecStopPostProperty, value: hook }]
-    Absent => [NamedUnitSetting { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
-  })
+  ], [NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook }]))
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -1930,7 +1929,7 @@ fn dispatch_review_unit_command(
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1992,7 +1991,7 @@ fn dispatch_audit_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: Present { value: exit_hook },
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -2047,6 +2046,7 @@ fn dispatch_supervisor_unit_command(
   turn: Int,
   worktree_path: String,
   brief: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   gunbc_user_work_transient_command(
@@ -2056,7 +2056,7 @@ fn dispatch_supervisor_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/supervisor-stdout.log"], ""),
       review_dir: dir,
-      exit_hook: none,
+      exit_hook: exit_hook,
     ),
     setenv_bindings: [],
     command_argv: [
