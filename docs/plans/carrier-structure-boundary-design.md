@@ -402,60 +402,39 @@ elements. A wrapper collapses into the operation it wraps only when its extra ou
 
 ## 8. Enforcement
 
-DESIGN §3 says the folders are "browsing conventions, not a direction rule". These two gates narrow that only
-where a namespace is declared semantic.
+Most of this design is convention grounded on real sources (§2). Checks exist only for what convention alone
+cannot hold. Module placement and the §5.2 diamond are conventions, reviewed like any other; the only hard
+dependency law stays DESIGN's existing acyclicity rule. (r2's role-by-role dependency matrix is dropped,
+operator 2026-10-17. Imports are retiring anyway, so any future dependency check would be stated over resolved
+declaration references, not `import` statements.)
 
-### 8.1 Dependency-role gate
+### 8.1 Source citation
 
-Modules carry a declared role: `Carrier`, `CarrierOperations`, `ExternalInterface`, `InterfaceImplementation`, `ExternalStructure`, `StructureInhabitance`,
-`Denotation`, `Conversion`, `Realization`, `ProductOrWorkflow`. A small dependency matrix is checked.
+Every `extdeps` declaration cites the real source it transcribes (standard, spec, reference text, upstream
+version). A declaration with nothing to cite is not an acknowledgement and is refused in `extdeps`; it belongs
+in `std`. This is the check that keeps `extdeps` honest.
 
-**Imports are going away** (operator, 2026-10-16). The gate is therefore stated over *resolved declaration
-references* (which declaration a name resolves to, by identity), not over `import` statements. It survives the
-retirement of imports unchanged; where this doc says "imports" it means "depends on". The matrix:
+### 8.2 One live authority per concept
 
-- carrier declarations do not import their inhabitance or denotation modules;
-- external structures do not import carrier operations, and import only the base carriers their signatures
-  need;
-- external interfaces depend only on the foundational carriers needed to spell signatures, never on std
-  implementation operations, and never name a host realization;
-- implementation (conformance) modules join an external interface with concrete carrier operations; a
-  carrier does not depend on its own conformance witness;
-- a realization cannot define or amend an external interface;
-- inhabitance and denotation modules may join carrier operations with structures;
-- realization modules define no source semantics;
-- product/workflow modules declare no carrier for a std concept.
+The name-based "second form" check would miss every fork in this area, because each pair has **different**
+names (`List`/`FreeMonoid`, `Map`/`FinitelySupportedFunction`, host/structural `String`). The rule instead:
 
-### 8.2 Authority-uniqueness gate
+> Two live declarations may not independently claim one concept. A declaration derived from another names its
+> §3 relation to it.
 
-The name-based "second form" check in r1 would miss every fork in this area, because they all have
-**different** names (`List`/`FreeMonoid`, `Map`/`FinitelySupportedFunction`, record algebra/Node algebra,
-host/structural `String`). The rule instead:
+Checked over the **whole** source population, not only what required CI compiles. Concretely it refuses: a plain
+carrier alias (`type List<T> = FreeMonoid<T>`); a compatibility re-export left after a migration; two std
+carriers for one concept; a std carrier claiming an external concept without an `Implements` edge. An
+interface and its implementation linked by `Implements` are not duplicates.
 
-> Every declaration derived from an existing semantic authority names a typed relation to it (§3). Two live
-> declarations may not independently claim one concept identity.
-
-Over the **whole** source-layout population (not only what required CI happens to compile):
-
-- one live carrier authority per concept; one live structure authority per structure;
-- every alternative representation carries a relation; no plain carrier alias; no compatibility re-export
-  after a migration;
-- structure projections are generated from the canonical declaration;
-- target representations are `RealizesAs`, never source aliases;
-- an external interface and its std implementation are **not** duplicates; the gate requires the
-  `Implements` edge between them. It refuses: an extdeps carrier alias; a std carrier that claims an external
-  ADT but has no `Implements` edge; two std carriers each claiming to be canonical for one concept; two
-  external interfaces with one concept identity; a copied interface inside `std`; interface operation slots
-  restated rather than bound by identity.
-
-Arbitrary semantic equivalence is not mechanically discoverable; what is enforceable is that every authored
-derivation or shared-concept claim carries a relation, and uniqueness over those claims. The existing
-`no_dual_representation` lens scans selected equality sites with partial coverage and is not this check.
+Arbitrary semantic equivalence is not mechanically discoverable. What is enforceable is that every authored
+shared-concept claim carries a relation, and uniqueness over those claims. The existing `no_dual_representation`
+lens has partial coverage and is not this check.
 
 ### 8.3 Recorded forks fire
 
-A comment or recurring-failure entry recording a fork ("held twice") carries a measurable trigger, or it is
-not admitted.
+A comment or recurring-failure entry recording a fork ("held twice", "kept in sync") carries a measurable
+trigger, or it is not admitted.
 
 ---
 
@@ -494,7 +473,8 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 2. **§3, replace** "model the accepted universal frameworks (classical logic, set theory, algebra)
    faithfully, and in `extdeps/` the real upstream spec" with a reference to (1).
 3. **§3, add the relation taxonomy** (§3 of this doc) and the authority-uniqueness rule (§8.2).
-4. **§3, narrow** "the folders are browsing conventions" to namespaces without a declared role (§8.1).
+4. **§3, add** that `extdeps` declarations cite their external source (§8.1); folders otherwise stay
+   browsing conventions.
 5. **§3b External facts, Owns:** add "accepted formal mathematics".
 6. **§4, replace** "operations come from inhabitance (no per-type ops)" with the rule in §7.3 (pending
    operator decision).
@@ -545,7 +525,7 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 ## 13. Migration order
 
 1. Freeze and retarget #14017.
-2. Land the N3 ruling, the DESIGN.md amendments, and the module-role and relation declarations.
+2. Land the N3 ruling, the DESIGN.md amendments, and the relation declarations.
 3. Establish the canonical structure and inhabitance forms (§6.2); make v2's synthetic signatures and the v1
    bridge projections of them.
 4. Move to `extdeps.math` only the structures the first cut needs, deleting their old source authority in the
@@ -569,7 +549,7 @@ DESIGN.md is generated from `gunbc.design_document`; these become edits there pl
 |---|---|---|
 | D1 | **Adopted 2026-10-16.** Adopt the operations rule in §7.3 (ordinary per-carrier operations; structure operations via witness; no automatic lifting; declared component action)? | Yes |
 | D2 | **Adopted 2026-10-16 (straight to `std.list`).** Does the List cut go straight to its final home `std.list`, or through `std.types` first? | Straight to `std.list`. Costs: the Map-backed algorithms leave `std.list` first (`std.list.keyed`), and the generated sweep rewrites ~3,590 importers once instead of twice |
-| D3 | **Adopted in principle 2026-10-16; DESIGN amendment text needs careful separate review before landing.** Adopt the relation taxonomy (§3) and the two gates (§8) as DESIGN amendments? | Yes |
+| D3 | **Adopted in principle 2026-10-16; DESIGN amendment text needs careful separate review before landing.** Adopt the relation taxonomy (§3) and the checks (§8: source citation, one live authority, forks fire) as DESIGN amendments? | Yes |
 
 **Design questions to settle in this doc:**
 
