@@ -1,0 +1,136 @@
+module gunbc.parse_verdict_restore
+
+import std.types { String, List }
+import std.optional { Present }
+import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.action_use_admission { cache_restore_action }
+import v2.cli.population_verb_names { cli_verb_parse_population }
+import extdeps.cache.github_actions { GhaCachePullRequestMergeRefScope }
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  Github,
+  ExpressionTemplate,
+  Interpolation,
+  serialize_expression,
+  serialize_template,
+  runner_temp,
+}
+import gunbc.parse_verdict_schema {
+  parse_verdict_request_family,
+  parse_compiler_sha_identity_cache_key,
+}
+import gunbc.parse_verdict_publish {
+  materialization_gha_cache_key_prefix,
+  materialization_scope_guard,
+  parse_verdict_compiler_expr,
+  parse_verdict_generation_one_bin,
+  parse_verdict_identity_blob_file,
+  parse_verdict_receipts_file,
+  parse_verdict_publish_memory_env,
+  source_root_argv,
+}
+
+// THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_publish is the main side).
+// A pull-request run restores the two entries main saved for base.sha, then walks the population
+// with `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
+// standing. NOTHING HERE DECIDES REUSE: a restore that found no entry leaves no file, and the verb
+// reads that as a typed miss (MissIdentityAbsent / MissEntryAbsent), so eviction is a re-parse and
+// never a pass and never an error (DESIGN.md section 5). The restore keys are exact; there are no
+// restore-keys, because a prefix hit would be a near identity and reuse is exact or it is a miss.
+//
+// The guard is derived from the pull-request scope in the cache model, as the publisher's is from the
+// default-branch scope, so the two sides cannot both fire on one event.
+
+data parse_verdict_identity_restore_step_name: String = "Restore parse-compiler identity for base.sha"
+data parse_verdict_receipts_restore_step_name: String = "Restore parse-verdict receipts for base.sha"
+data parse_verdict_reuse_walk_step_name: String = "Walk parse-population reusing base.sha receipts"
+
+fn parse_verdict_restore_if() -> String {
+  serialize_expression(expression: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope))
+}
+
+fn pull_request_base_sha_expr() -> String {
+  serialize_template(template: ExpressionTemplate {
+    segments: [Interpolation {
+      expression: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] }
+    }]
+  })
+}
+
+fn parse_verdict_restore_receipts_key() -> String {
+  join(
+    [
+      materialization_gha_cache_key_prefix(family: parse_verdict_request_family),
+      parse_verdict_compiler_expr(),
+      "-",
+      pull_request_base_sha_expr()
+    ],
+    ""
+  )
+}
+
+fn parse_verdict_cache_restore_step(name: String, path: String, cache_key: String) -> Step {
+  UsesStep {
+    name: Present { value: name },
+    id: none,
+    uses: cache_restore_action,
+    with: Present {
+      value: [
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "key", value: yaml_string(s: cache_key))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn parse_verdict_identity_restore_step() -> Step {
+  parse_verdict_cache_restore_step(
+    name: parse_verdict_identity_restore_step_name,
+    path: parse_verdict_identity_blob_file(),
+    cache_key: parse_compiler_sha_identity_cache_key(sha: pull_request_base_sha_expr())
+  )
+}
+
+fn parse_verdict_receipts_restore_step() -> Step {
+  parse_verdict_cache_restore_step(
+    name: parse_verdict_receipts_restore_step_name,
+    path: parse_verdict_receipts_file(),
+    cache_key: parse_verdict_restore_receipts_key()
+  )
+}
+
+fn parse_verdict_reuse_command() -> String {
+  join(
+    [
+      parse_verdict_generation_one_bin(),
+      " ",
+      cli_verb_parse_population,
+      " --compiler ",
+      parse_verdict_compiler_expr(),
+      " --reuse-from ",
+      serialize_template(template: ExpressionTemplate { segments: [Interpolation { expression: runner_temp() }] }),
+      source_root_argv()
+    ],
+    ""
+  )
+}
+
+fn parse_verdict_reuse_walk_step() -> Step {
+  RunStep {
+    name: Present { value: parse_verdict_reuse_walk_step_name },
+    id: none,
+    run: concat(parse_verdict_reuse_command(), "\n"),
+    shell: none,
+    env: Present { value: parse_verdict_publish_memory_env() },
+    working_directory: none,
+    if_condition: Present { value: parse_verdict_restore_if() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}

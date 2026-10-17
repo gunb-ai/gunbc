@@ -4896,8 +4896,6 @@ fn tree_install_directory_step(state: TreeInstallStepState, owner: NonEmptyStr, 
     command: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: owner, group: owner, path: path)))
 }
 
-// The binary is outside the dag/src-v2 tree walk, so it is read back on its own: both hashes are
-// observed through the transport and must be equal; an unreadable hash is a disagreement.
 // ONE READER FOR "the sha256 of a path, observed over a HostEffectTransport". The three ways it can
 // be unobserved stay distinct: a refused transport, a run that failed, and a line carrying no digest.
 type Sha256UnobservedCause
