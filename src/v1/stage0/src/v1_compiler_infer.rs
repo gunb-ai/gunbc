@@ -15796,10 +15796,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 elem.clone(),
                                             )
                                         }
-                                        std::option::Option::None => unit_type(),
+                                        std::option::Option::None => {
+                                            type_variable_node("empty_list_element".to_string())
+                                        }
                                     }
                                 } else {
-                                    unit_type()
+                                    type_variable_node("empty_list_element".to_string())
                                 }
                             }
                             std::option::Option::None => {
@@ -16781,8 +16783,9 @@ pub fn is_never_constrained_enclosing_generic_base(
                 }
                 __found
             };
-            (in_enclosing.clone()
-                && !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone()))
+            ((id.clone() == "empty_list_element".to_string())
+                || (in_enclosing.clone()
+                    && !field_base_is_in_flight_lambda_param(base_expr.clone(), scope.clone())))
         }
         _ => false,
     }
