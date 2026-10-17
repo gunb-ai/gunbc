@@ -1,0 +1,54 @@
+module test.claim.machine_intake.mtcollins1_dimm_admission_witness
+
+import std.types { Bool, Int, List }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.machine_intake.mtcollins1_dimm_admission {
+  ObservedDimm, Rdimm, NvRdimm, DimmAdmission, DimmPopulationAdmitted, DimmPopulationRefused,
+  DimmAdmissionBasis, OperatorDefaultSameRankSameType, PlatformObservationMixedRankAccepted,
+  PlatformObservationModuleTypeMixtureRefused,
+  mtcollins1_dimm_population_admission, mtcollins1_run_39005709187_population, mtcollins1_run_39010930690_population,
+}
+
+fn refused_for_type_mixture(a: DimmAdmission) -> Bool {
+  match a {
+    DimmPopulationRefused { basis: PlatformObservationModuleTypeMixtureRefused { run: _ } } => true
+    _ => false
+  }
+}
+
+fn admitted_as_mixed_rank(a: DimmAdmission) -> Bool {
+  match a {
+    DimmPopulationAdmitted { basis: PlatformObservationMixedRankAccepted { run: _ } } => true
+    _ => false
+  }
+}
+
+test fn mtcollins1_RED_nv_rdimm_rdimm_mixture_is_refused() -> Bool {
+  refused_for_type_mixture(a: mtcollins1_dimm_population_admission(modules: mtcollins1_run_39005709187_population))
+}
+
+test fn mtcollins1_mixed_rank_rdimm_population_is_admitted() -> Bool {
+  admitted_as_mixed_rank(a: mtcollins1_dimm_population_admission(modules: mtcollins1_run_39010930690_population))
+}
+
+test fn mtcollins1_default_same_rank_same_type_any_speed_is_admitted() -> Bool {
+  match mtcollins1_dimm_population_admission(modules: [
+    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+    ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2666 },
+  ]) {
+    DimmPopulationAdmitted { basis: OperatorDefaultSameRankSameType } => true
+    _ => false
+  }
+}
+
+test fn mtcollins1_admission_rows_inhabit_the_committed_firmware_tables() -> Bool {
+  let refused = Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-boot-sol.capture")
+  let accepted = Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture")
+  refused.success && accepted.success
+    && string_contains(s: refused.content, pattern: "NV-RDIMM[2c:80] 16GB 2666 ECC 1R")
+    && string_contains(s: refused.content, pattern: "Non-identical DIMM mixture NOT supported!")
+    && !string_contains(s: accepted.content, pattern: "NV-RDIMM")
+    && string_contains(s: accepted.content, pattern: "RDIMM[ad:80] 16GB 2666 ECC 1R")
+    && string_contains(s: accepted.content, pattern: "RDIMM[2c:80] 16GB 2133 ECC 2R")
+    && string_contains(s: accepted.content, pattern: "DRAM: 128GB DDR4 2133")
+}

@@ -1,0 +1,99 @@
+module gunbc.machine_intake.mtcollins1_dimm_admission
+
+import std.types { Bool, Int, List, NonEmptyStr }
+
+// THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
+// gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing
+// layer, not in extdeps.ampere.mt_collins_product_brief.memory_population: DESIGN section 3 keeps
+// observations this repository makes out of the observed upstream's module, and the Ampere brief models
+// the brief.
+//
+// THREE STANDINGS, KEPT APART (DESIGN 4d):
+//  - the DEFAULT is a typed operator assumption, not a vendor fact: modules of one type are admitted
+//    when ranks agree, whatever their speeds;
+//  - the PLATFORM ROWS are committed observations of this unit, each naming its run and capture;
+//  - the AUTHORITY on what a unit accepted is the DRAM firmware's own training verdict on the booted
+//    population. This function predicts that verdict from the observations; a booted population's verdict
+//    outranks it.
+//
+// Evidence: artifacts/bmc/mtcollins1-boot-run-39005709187/mtcollins1-boot-sol.capture (sha256
+// 8de445625f62298a5d18d29531fb80ce50c32ac0a6d6f9775a2208fc8ba131e4): four NV-RDIMM 1R 2666 (MC0, MC4,
+// MC5, MC6) with four RDIMM 2R 2133, refused: "Non-identical DIMM mixture NOT supported!".
+// artifacts/bmc/mtcollins1-boot-run-39010930690/mtcollins1-boot-sol.capture (sha256
+// 10ec5eb02ed88559d448b3273efa1557b57e0de1ef3eb51866636d35b63bddc1): the same four RDIMM 2R 2133
+// with four RDIMM 1R 2666 in place of the NV-RDIMMs, accepted and trained at 2133. The two populations
+// differ ONLY in module type of four modules, so the refusal is attributed to the type mixture and the
+// acceptance WIDENS the default on this platform to mixed rank within one module type.
+
+type DimmModuleType = Rdimm | NvRdimm
+
+type ObservedDimm {
+  module_type: DimmModuleType
+  rank_count: Int
+  megatransfers: Int
+}
+
+type DimmAdmissionBasis
+  = OperatorDefaultSameRankSameType
+  | PlatformObservationMixedRankAccepted { run: NonEmptyStr }
+  | PlatformObservationModuleTypeMixtureRefused { run: NonEmptyStr }
+  | OperatorDefaultRankMixtureNotObserved
+
+type DimmAdmission
+  = DimmPopulationAdmitted { basis: DimmAdmissionBasis }
+  | DimmPopulationRefused { basis: DimmAdmissionBasis }
+
+data mtcollins1_refused_run: NonEmptyStr = "39005709187"
+
+data mtcollins1_accepted_run: NonEmptyStr = "39010930690"
+
+fn dimm_of_type(m: ObservedDimm, t: DimmModuleType) -> Bool {
+  match m.module_type {
+    Rdimm => match t { Rdimm => true  NvRdimm => false }
+    NvRdimm => match t { NvRdimm => true  Rdimm => false }
+  }
+}
+
+fn dimm_population_has_type(modules: List<ObservedDimm>, t: DimmModuleType) -> Bool {
+  any(modules, m => dimm_of_type(m: m, t: t))
+}
+
+fn dimm_population_has_rank_mixture(modules: List<ObservedDimm>) -> Bool {
+  any(modules, a => any(modules, b => a.rank_count != b.rank_count))
+}
+
+fn mtcollins1_dimm_population_admission(modules: List<ObservedDimm>) -> DimmAdmission {
+  if dimm_population_has_type(modules: modules, t: Rdimm) && dimm_population_has_type(modules: modules, t: NvRdimm) {
+    DimmPopulationRefused { basis: PlatformObservationModuleTypeMixtureRefused { run: mtcollins1_refused_run } }
+  } else if dimm_population_has_rank_mixture(modules: modules) {
+    if dimm_population_has_type(modules: modules, t: Rdimm) {
+      DimmPopulationAdmitted { basis: PlatformObservationMixedRankAccepted { run: mtcollins1_accepted_run } }
+    } else {
+      DimmPopulationAdmitted { basis: OperatorDefaultRankMixtureNotObserved }
+    }
+  } else {
+    DimmPopulationAdmitted { basis: OperatorDefaultSameRankSameType }
+  }
+}
+
+data mtcollins1_run_39005709187_population: List<ObservedDimm> = [
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: NvRdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+]
+
+data mtcollins1_run_39010930690_population: List<ObservedDimm> = [
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 1, megatransfers: 2666 },
+  ObservedDimm { module_type: Rdimm, rank_count: 2, megatransfers: 2133 },
+]
