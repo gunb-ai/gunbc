@@ -1950,7 +1950,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
   let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
   match exact_leaf {
-    Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+    Present { value: exact } => render_rust_shared_type_with_optional(n: n, type_name: name, rendered: exact, shared_types: shared_types, type_decl_items: type_decl_items)
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types, type_decl_items: type_decl_items))
