@@ -259,8 +259,8 @@ fn role_is_critical(role: SalienceRole) -> Bool {
 // so the call site read count_roles(assignments, focal: false) to mean 'count the critical ones', a
 // domain concept encoded as a bare Bool and legible only by knowing which branch false picks. The
 // parameter now carries the admission predicate itself, which both names the intent at the call
-// site and leaves ONE fold instead of a two-mode one. Shape follows std.list
-// first_where, which takes keep: fn(T) -> Bool and is called with a lambda
+// site and leaves ONE fold instead of a two-mode one. Shape follows std.materialization_ladder
+// first_provider_where, which takes wanted: fn(CacheProvider) -> Bool and is called with a lambda
 // over a named coproduct predicate.
 
 fn count_roles_where(assignments: List<SalienceAssignment>, admits: fn(SalienceRole) -> Bool) -> Int {

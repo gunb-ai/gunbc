@@ -18,7 +18,6 @@ import std.cache_interface {
   CapacityUnobserved,
 }
 import std.optional { Absent, Present }
-import std.list { first_where }
 
 data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness.dag."
@@ -1131,6 +1130,11 @@ fn value_borrow_count(usage: ValueUsage) -> Int {
   usage.consumers |> filter(c => access_is_whole_value_borrow(a: c.access)) |> count
 }
 
+fn first_provider_where(providers: List<CacheProvider>, wanted: fn(CacheProvider) -> Bool) -> CacheProvider? {
+  let hits = providers |> filter(p => wanted(p))
+  hits.first()
+}
+
 fn value_materialization(usage: ValueUsage, providers: List<CacheProvider>) -> ValueMaterialization {
   let takes = value_take_count(usage: usage)
   let plurality = value_access_plurality(usage: usage)
@@ -1143,14 +1147,14 @@ fn value_materialization(usage: ValueUsage, providers: List<CacheProvider>) -> V
     if value_borrow_count(usage: usage) == 0 {
       ValueMoved { identity: usage.identity }
     } else {
-      match first_where(xs: providers, keep: p => provider_is_copy_tier(p: p)) {
+      match first_provider_where(providers: providers, wanted: p => provider_is_copy_tier(p: p)) {
         Present { value: copier } =>
           ValueDemotedToCopy { identity: usage.identity, copies: 1, provider_id: copier.id }
         Absent => ValueRefusedNoCarrierProvider { identity: usage.identity, needed: CopyTier }
       }
     }
   } else {
-    match first_where(xs: providers, keep: p => provider_is_reference_tier(p: p)) {
+    match first_provider_where(providers: providers, wanted: p => provider_is_reference_tier(p: p)) {
       Present { value: referencer } =>
         ValueSharedByReference {
           identity: usage.identity,
