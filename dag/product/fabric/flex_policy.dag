@@ -5,7 +5,7 @@ import std.nat { Nat, Zero, Succ }
 import std.rational { NonzeroNatFraction, nonzero_nat_fraction_field }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.decimal { ExactDecimal }
-import std.apply_mode { ApplyMode, Plan }
+import std.apply_mode { ApplyMode }
 import std.measure {
   MoneyAmountMicro, MoneyPerHour, MoneyPerSecond,
   money_amount_micro, money_amount_micro_count, money_per_hour_micros,
@@ -82,10 +82,6 @@ type FlexBidSubject
   = FlexNewAcquisition
   | FlexExistingAcquisition { current_bid: MoneyPerHour }
 
-type FlexActuationMode
-  = FlexActuationDry
-  | FlexActuationWet
-
 type FlexPolicy {
   fleet_rate_cap: MoneyPerHour
   // Fraction of comparable on-demand horizon cost (setup and transfer included).
@@ -95,9 +91,9 @@ type FlexPolicy {
   // Load-bearing isolation from ctrl on the same Vast account: no second account.
   // Cap occupancy, reconcile, cleanup and release select this label exactly.
   owner: FlexOwnerLabel
-  // Write loop. FlexActuationDry is observe/plan/record; Wet is the write loop.
-  // Trial and every current constructor are Dry.
-  actuation: FlexActuationMode
+  // Write loop. Plan is observe/plan/record; Apply is the write loop, and the Vast destroy takes this
+  // value as its mode. Trial and every current constructor are Plan.
+  actuation: ApplyMode
 }
 
 type FlexAcquisitionWindow {
@@ -811,12 +807,3 @@ fn flex_admit_revocable_target(
           }
         }
 }
-
-// WHETHER THE FLEX LANE'S VAST ACTUATION IS DRY OR WET is policy, so it is a row and not a literal in a call
-// site. Plan until the operator changes this row. The release realization (gunbc.serving.rented_release)
-// never reads it: its caller passes this row as the mode, and the first executing consumer is
-// test.claim.serving.rented_release_witness, which does exactly that.
-// It overlaps FlexPolicy.actuation: FlexActuationMode (Dry | Wet), which gates the whole flex lane; this row gates only
-// the Vast destroy and is typed ApplyMode because the release realization cannot import flex_policy. Consolidation
-// trigger: flex wet create lands and one of the two is derived from the other.
-data flex_vast_actuation_mode: ApplyMode = Plan

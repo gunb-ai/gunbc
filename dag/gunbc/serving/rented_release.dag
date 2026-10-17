@@ -35,8 +35,7 @@ import gunbc.serving.rented_host_grant { RentedHostSubject, rented_host_authoriz
 // and no partials are each a typed nothing-to-undo, so a failed startup cannot strand a paid card.
 //
 // DRAIN, REVOKE AND CLEAN RUN BEFORE THE DESTROY ALTHOUGH THE INSTANCE TAKES ITS DISK AND PROCESSES WITH IT,
-// because the destroy may be a Plan (the policy row product.fabric.flex_policy flex_vast_actuation_mode is
-// Plan) or the instance may be retained or reused: release must leave the host correct in either case.
+// because the destroy may be a Plan (a FlexPolicy actuation of Plan) or the instance may be retained or reused: release must leave the host correct in either case.
 type RentedLegDecision<P>
   = RentedLegNothingToUndo
   | RentedLegUndo { plan: P }
@@ -271,9 +270,15 @@ type RentedReleaseOutcome
   = RentedReleaseGone
   | RentedReleasePlanned { request: RentedDestroyRequest }
   | RentedReleasePending { request: RentedDestroyRequest, status: String? }
-  | RentedReleaseHeld { leg: String, reason: NonEmptyStr }
+  | RentedReleaseHeld { leg: RentedLeg, reason: NonEmptyStr }
   | RentedReleaseDestroyRefused { decision: RentedDestroyDecision }
   | RentedReleaseGoneReadRefused { reason: NonEmptyStr }
+
+// The legs that can hold a release. The anchor leg removes the lab-side known-host file; it does not revoke the grant.
+type RentedLeg
+  = RentedLegDrain
+  | RentedLegKnownHostAnchor
+  | RentedLegClean
 
 type RentedReleaseReceiptV1 {
   allocation: NonEmptyStr
@@ -350,13 +355,13 @@ fn rented_release_receipt(
   }
   let grant = rented_grant_standing(allocation: allocation, authorizations: readings.authorizations)
   let held = match rented_leg_refusal(outcome: drain) {
-    Present { value: r } => Present { value: RentedReleaseHeld { leg: "drain", reason: r } }
+    Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegDrain, reason: r } }
     Absent =>
       match rented_leg_refusal(outcome: anchor) {
-        Present { value: r } => Present { value: RentedReleaseHeld { leg: "revoke", reason: r } }
+        Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegKnownHostAnchor, reason: r } }
         Absent =>
           match rented_leg_refusal(outcome: clean) {
-            Present { value: r } => Present { value: RentedReleaseHeld { leg: "clean", reason: r } }
+            Present { value: r } => Present { value: RentedReleaseHeld { leg: RentedLegClean, reason: r } }
             Absent => none
           }
       }
@@ -395,7 +400,7 @@ data rented_release_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
     reason: "binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step, so no flex caller invokes rented_release_receipt yet",
-    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with flex_vast_actuation_mode"),
+    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),

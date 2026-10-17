@@ -1,5 +1,6 @@
 module product.fabric.flex_vast_shadow
 
+import std.apply_mode { ApplyMode, Plan, Apply }
 import std.types { NonEmptyStr, String, Bool, Int, List, Port }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.gpu.types { GpuModelCatalogRow }
@@ -21,7 +22,6 @@ import product.fabric.flex_policy {
   FlexBidAttempt, FlexBidAdmission, FlexBidRefused, FlexScreenedCandidate,
   FlexCandidateConsequencesUnestablished, FlexDecimalConversionRefused,
   FlexOccupancySummed, FlexOccupancyCurrencyMismatch,
-  FlexActuationMode, FlexActuationDry, FlexActuationWet,
   flex_bid_admission, occupancy_sum, AcquisitionActive,
   PhysicalMachineObservationIdentity, ProviderAccountObservationIdentity,
 }
@@ -354,8 +354,8 @@ fn flex_cap_from_roster(policy: FlexPolicy, roster: FlexInstancesStanding) -> Fl
 
 fn flex_write_decision(policy: FlexPolicy, roster: FlexInstancesStanding) -> FlexWriteDecision {
   match policy.actuation {
-    FlexActuationDry => FlexWriteHeldDry
-    FlexActuationWet =>
+    Plan => FlexWriteHeldDry
+    Apply =>
       match flex_cap_from_roster(policy: policy, roster: roster) {
         FlexCapUnreadable => FlexWriteBlockedUnreadable
         FlexCapUnobserved => FlexWriteBlockedUnobserved
@@ -390,7 +390,7 @@ data flex_trial_policy: FlexPolicy = FlexPolicy {
   on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
   acquisition_horizon: second(count: 3600),
   owner: flex_owner_label_gunbc_flex,
-  actuation: FlexActuationDry,
+  actuation: Plan,
 }
 
 data flex_delay_unvalued: MoneyPerSecond = MoneyRate {
@@ -666,7 +666,7 @@ type FlexShadowBidReceipt {
   machine: FlexMachineKey
   candidates: VastOfferCandidateStanding
   admission: FlexBidAdmission
-  actuation: FlexActuationMode
+  actuation: ApplyMode
 }
 
 fn flex_vast_offer_key(offer: VastAiOffer) -> OfferKey {

@@ -9,7 +9,6 @@ import extdeps.currency.currency { Usd }
 import std.decimal { ExactDecimal }
 import extdeps.cloud.vast_ai { VastAiInstance }
 import product.supplier.vast_ai { VastAiAskReceipt }
-import product.fabric.flex_policy { flex_vast_actuation_mode }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
 import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire }
 import gunbc.serving.rented_release {
@@ -17,7 +16,7 @@ import gunbc.serving.rented_release {
   RentedInstanceObserved, RentedInstanceAbsent, RentedInstanceReading, RentedDestroyDecision, RentedReleaseReadings,
   RentedLegNothingToUndo, RentedLegRefused, RentedLegOutcomeNothingToUndo,
   RentedDestroyPlanned, RentedDestroyAuthorized, RentedDestroyRefusedIdMismatch, RentedDestroyRefusedLabel,
-  RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
+  RentedReleaseHeld, RentedLegDrain, RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
   rented_destroy_decision, rented_clean_decision, rented_release_receipt, rented_bound_instance_id,
 }
 import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
@@ -119,7 +118,7 @@ test fn imported_without_the_label_is_admitted() -> Bool {
 }
 
 test fn plan_produces_the_request_and_authorizes_nothing() -> Bool {
-  match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: flex_vast_actuation_mode) {
+  match w_decide(a: w_imported(), i: w_instance(id: 1001, label: none), mode: Plan) {
     RentedDestroyPlanned { request: q } => q.instance_id == 1001
     _ => false
   }
@@ -211,10 +210,14 @@ test fn a_refused_drain_leaves_the_later_legs_not_reached() -> Bool {
     store: RentedStorePartials { entries: ["/root/serve/store/partial/abc.1"] }, before: listed, after: listed,
   }
   let r = rented_release_receipt(allocation: w_imported(), roots: w_roots, protected: w_protected, required_label: w_label, mode: Apply, readings: readings)
-  match r.anchor {
-    RentedLegOutcomeNotReached =>
-      match r.clean {
-        RentedLegOutcomeNotReached => true
+  match r.outcome {
+    RentedReleaseHeld { leg: RentedLegDrain, reason: _ } =>
+      match r.anchor {
+        RentedLegOutcomeNotReached =>
+          match r.clean {
+            RentedLegOutcomeNotReached => true
+            _ => false
+          }
         _ => false
       }
     _ => false
