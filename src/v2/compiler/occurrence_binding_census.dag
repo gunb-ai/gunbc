@@ -10,7 +10,7 @@ import v2.std.text { String }
 import v2.std.node { Node, Symbol, symbol_lexeme, Edge, ArrowSignatureOrderEdge, edge_is_core }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
 import v2.compiler.resolve {
-  ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, ResolvedReferenceIdentity,
+  ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, OccurrenceBindingEntry, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
   BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType, BoundByGeneratedReference,
   AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
@@ -298,7 +298,12 @@ fn binding_census_module_level_step(module: String, acc: BindingCensusFold, reco
 // ONE PRINTED LINE PER ROW, the shape the host-side readers split on. Tab-separated so a dotted path or
 // a kernel symbol never collides with the separator.
 fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
-  "binding\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target
+  "binding" + occurrence_binding_row_fields(row: row)
+}
+
+// A row's fields after its kind word; a complete row and a partial row (binding_partial) share them.
+fn occurrence_binding_row_fields(row: OccurrenceBindingCensusRow) -> String {
+  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target
 }
 
 fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
@@ -312,3 +317,25 @@ fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> Li
     item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings) + "\t" + to_string(c.unrecorded_references)
   )
 }
+
+// THE PARTIAL ROWS OF A MODULE WHOSE RESOLVE REFUSED: the bindings its accepted sites recorded
+// (v2.compiler.resolve ResolveWalkRefused.partial), keyed exactly as a resolved module's rows -- per
+// spelling, ordinal by occurrence order -- and printed as their own kind, binding_partial, which no
+// reader can mistake for a complete module: the module still prints binding_unreached and stays refused.
+// What they add is occurrence grain inside a refused module, so a wave that moves one name of a module
+// still refused for other names is judged by the binding diff instead of passing as unreached.
+// An occurrence recorded twice keeps its first record, as the resolved tree's map does.
+fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>) -> List<String> {
+  let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
+    if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
+  })
+  let ids = list_sort_by_key(xs: map_support_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
+  let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
+    match map_lookup(m: records, key: id) {
+      Absent => acc
+      Present { value: record } => binding_census_step(module: module, acc: acc, record: record)
+    }
+  })
+  fold_list(xs: folded.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_binding_row_fields(row: row)) })
+}
+
