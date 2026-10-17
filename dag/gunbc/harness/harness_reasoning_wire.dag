@@ -19,7 +19,8 @@ import gunbc.spark.serving_arm {
 import extdeps.ninfer.ninfer_serve { ninfer_message_reasoning_field, ninfer_inline_think_end_token }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
-import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read }
+import std.nat { Nat }
+import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, PoolFrontLimit, pool_front_limit_read }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -319,11 +320,36 @@ fn harness_pool_front_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
   }
 }
 
-// THE LARGEST OUTPUT BUDGET A REQUEST MAY ASK. Absent where no upstream states one; the pool front states
-// 32k per request, so a request budget above it is capped by harness_capped_max_tokens, never sent.
+// A BUDGET THE LAB CHOOSES, NOT A FACT THE UPSTREAM PROVED (DESIGN 4d). The pool operator's limits are its
+// word (extdeps.pool.pool_front PoolFrontLimit, TranscribedUncited), so what the harness enforces is this
+// policy: a declared value with the reason it was chosen. Once the upstream's own limit is read (cited or
+// observed) the enforced budget is the smaller of the two; until then the policy alone is enforced.
+type PoolBudgetPolicy {
+  value: Nat
+  reason: NonEmptyStr
+}
+
+fn pool_budget_enforced(policy: PoolBudgetPolicy, upstream: PoolFrontLimit) -> Nat {
+  match pool_front_limit_read(limit: upstream) {
+    Absent => policy.value
+    Present { value: read } => if read < policy.value { read } else { policy.value }
+  }
+}
+
+data pool_output_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 32768,
+  reason: "the pool operator's directive (ctrl #2375) is at most 32k output per request; the lab adopts it as its own cap before any live reading, because exceeding it can only be refused" as NonEmptyStr,
+}
+data pool_context_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 262144,
+  reason: "the pool operator's stated maximum context (ctrl #2375); the lab adopts it as its own ceiling before any live reading, so a turn over it refuses locally instead of being sent" as NonEmptyStr,
+}
+
+// THE LARGEST OUTPUT BUDGET A REQUEST MAY ASK. Absent where no upstream states one; the pool unit is capped by
+// pool_output_budget_policy, so a request budget above it is capped by harness_capped_max_tokens, never sent.
 fn harness_unit_output_cap(unit: HarnessServingUnit) -> Int? {
   match unit {
-    Qwen38FlashNextOnPoolFront => Present { value: pool_front_max_output_tokens }
+    Qwen38FlashNextOnPoolFront => Present { value: pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) as Int }
     DeepseekV4FlashOnVllm => none
     Glm53FlashOnVllm => none
     NemotronUltraFreeOnOpenRouter => none
@@ -586,6 +612,6 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
     Glm53FlashOnVllm => glm_5_3_flash_context_length
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
     Qwen3_8_27bOnNinfer => qwen3_8_27b_nvfp4_row.context_tokens
-    Qwen38FlashNextOnPoolFront => token_count(count: pool_front_max_context_tokens)
+    Qwen38FlashNextOnPoolFront => token_count(count: pool_budget_enforced(policy: pool_context_budget_policy, upstream: pool_front_max_context_tokens))
   }
 }

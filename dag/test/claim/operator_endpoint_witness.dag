@@ -16,6 +16,7 @@ import gunbc.harness.harness_backend {
   HarnessRosterServing, HarnessRosterNoneServing, HarnessBackendUnreachable, HarnessBackendUnreadable,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat }
+import gunbc.harness.harness_reasoning_wire { pool_budget_enforced, pool_output_budget_policy, pool_context_budget_policy }
 import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
@@ -27,7 +28,7 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
-import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
+import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, PoolFrontLimit, pool_front_limit_read, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -147,7 +148,7 @@ test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
 // ── 5. THE QUALITY FLOOR IS NOT SILENT ──────────────────────────────────────────────────────────
 test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admits_batch() -> Bool {
   (match operator_class_admission(route: harness_operator_route, class: InteractiveQualitySensitive) {
-    OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "27B")
+    OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "Qwen3.8-Flash-Next")
     OperatorClassAdmitted => false
   }) && (match operator_class_admission(route: harness_operator_route, class: BatchQualityTolerant) {
     OperatorClassAdmitted => true
@@ -307,7 +308,7 @@ test fn the_real_client_argv_inhabits_the_pool_request_shape() -> Bool {
 
 // ── THE FRONT'S STATED LIMITS ARE ENFORCED, NOT ONLY DECLARED ───────────────────────────────────
 test fn an_output_budget_above_the_fronts_32k_is_capped_before_sending() -> Bool {
-  harness_capped_max_tokens(unit: Qwen38FlashNextOnPoolFront, asked: 40000) == pool_front_max_output_tokens
+  harness_capped_max_tokens(unit: Qwen38FlashNextOnPoolFront, asked: 40000) == pool_output_budget_policy.value as Int
     && harness_capped_max_tokens(unit: Qwen38FlashNextOnPoolFront, asked: 16384) == 16384
 }
 
@@ -318,7 +319,7 @@ test fn a_unit_with_no_stated_output_cap_is_not_capped() -> Bool {
 // The turn refuses over config.context_budget = harness_context_budget_for(unit), which takes the unit's
 // declared ceiling; the ceiling is the front's stated maximum context.
 test fn the_pool_units_context_ceiling_is_the_fronts_max_context() -> Bool {
-  token_count_value(t: harness_unit_declared_context_ceiling(unit: Qwen38FlashNextOnPoolFront)) == pool_front_max_context_tokens
+  token_count_value(t: harness_unit_declared_context_ceiling(unit: Qwen38FlashNextOnPoolFront)) == pool_context_budget_policy.value
 }
 
 // An uncited guess is not consumed as a read fact: while the figures are TranscribedUncited the pool unit
@@ -342,4 +343,11 @@ test fn no_consumer_reads_the_uncited_pool_figures() -> Bool {
   (match harness_unit_thinking_end_token(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
     && (match harness_unit_model_reasoning_field(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
     && list_length(items: harness_unit_reasoning_field_aliases(unit: Qwen38FlashNextOnPoolFront)) == 0
+}
+
+// The upstream's limit is the operator's word until read: a transcribed limit is no reading, so the lab's own
+// policy is what is enforced; a limit that is read and smaller tightens the policy, never loosens it.
+test fn an_unread_pool_limit_is_no_reading_and_the_lab_policy_is_enforced() -> Bool {
+  (match pool_front_limit_read(limit: pool_front_max_output_tokens) { Present { value: _ } => false  Absent => true })
+    && pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) == pool_output_budget_policy.value
 }

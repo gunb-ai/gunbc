@@ -17,7 +17,7 @@ import extdeps.pool.pool_front {
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, harness_unit_model_id }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import std.list { list_member }
 
@@ -64,10 +64,10 @@ fn operator_chat_completions_url() -> NonEmptyStr? {
   operator_endpoint_url(path: pool_front_chat_completions_path)
 }
 
-// THE QUALITY FLOOR. Swapping GLM-5.3-Flash for a 27B model is a different quality product, and it must not
+// THE QUALITY FLOOR. Swapping GLM-5.3-Flash for the pool's Qwen3.8-Flash-Next is a different quality product, and it must not
 // be silent. The floor admits only the class that tolerates it; the other class REFUSES with the consequence
 // named. The declared consequence: a turn that needs the quality of the flagship fleet model is refused on
-// this route, never answered by it, and a batch turn placed here is answered by a 27B-parameter NVFP4 model.
+// this route, never answered by it, and a batch turn placed here is answered by the pool's model, whose size and quantization the pool operator has not stated.
 type OperatorQualityFloor {
   admitted_class: ServingCoTenancyClass
   consequence: NonEmptyStr
@@ -85,15 +85,22 @@ type HarnessOperatorRoute {
   quality_floor: OperatorQualityFloor
 }
 
+// The lab's own concurrency budget for the pool route: the operator said each card runs about 5-7 at once and
+// sets no per-client cap, so the lab chooses the high end as its ceiling before any live reading.
+data pool_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 7,
+  reason: "the pool operator states a card runs about 5-7 requests at once and no per-client cap (ctrl #2375); the lab bounds its own fan-out at the high end until the figure is read" as NonEmptyStr,
+}
+
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen38FlashNextOnPoolFront,
   group_wire: "operator:pool-front" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr,
   certificate_relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr,
-  concurrency_ceiling: pool_front_card_concurrency_high,
+  concurrency_ceiling: pool_budget_enforced(policy: pool_concurrency_budget_policy, upstream: pool_front_card_concurrency_high),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
-    consequence: "the operator route serves a 27B-parameter NVFP4 model, not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by the smaller model, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+    consequence: "the operator route serves the pool's Qwen3.8-Flash-Next (any card behind the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
   },
 }
 
