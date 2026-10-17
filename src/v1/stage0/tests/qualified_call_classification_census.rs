@@ -33,74 +33,54 @@ fn diagnostics_of(sources: &[(&str, &str)]) -> Vec<String> {
         .collect()
 }
 
-const PROVIDER_B: (&str, &str) = (
-    "fx/a/b.dag",
-    "module a.b\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n",
-);
-const PROVIDER_C: (&str, &str) = (
-    "fx/a/c.dag",
-    "module a.c\n\nfn f(xs: List<Int>) -> Int {\n  xs |> count\n}\n",
-);
-const SERVICE: (&str, &str) = (
+fn provider_b() -> (&'static str, &'static str) {
+    (
+        "fx/a/b.dag",
+        "module a.b\n\nfn f(xs: List<Int>) -> List<Int> {\n  xs\n}\n",
+    )
+}
+fn provider_c() -> (&'static str, &'static str) {
+    (
+        "fx/a/c.dag",
+        "module a.c\n\nfn f(xs: List<Int>) -> Int {\n  xs |> count\n}\n",
+    )
+}
+fn service() -> (&'static str, &'static str) {
+    (
     "fx/svc/probe.dag",
     "module svc.probe\nservice Probe {\n  operation Version {\n    input {}\n    output {\n      out: String from \"stdout\"\n    }\n    transport shell { argv: [\"git\", \"--version\"] }\n  }\n}\n",
-);
-
-struct Arm {
-    name: &'static str,
-    consumer: &'static str,
+    )
 }
 
-const ARMS: &[Arm] = &[
-    Arm {
-        name: "module_path_call_in_call_position",
-        consumer: "module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  a.b.f(xs: [1, 0, 2]) |> count\n}\n",
-    },
-    Arm {
-        name: "module_path_call_in_pipe_position",
-        consumer: "module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  [1, 0, 2] |> a.b.f() |> count\n}\n",
-    },
-    Arm {
-        name: "module_path_call_without_importing_the_leaf",
-        consumer: "module consumer\n\nimport a.b\n\nfn run() -> Int {\n  a.b.f(xs: [1]) |> count\n}\n",
-    },
-    Arm {
-        name: "same_leaf_in_two_modules_each_reaches_its_own",
-        consumer: "module consumer\n\nimport a.b\nimport a.c\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  a.c.f(xs: l)\n}\n",
-    },
-    Arm {
-        name: "same_named_local_fn_does_not_capture_the_qualified_call",
-        consumer: "module consumer\n\nimport a.b\n\nfn f(xs: List<Int>) -> Int {\n  0\n}\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  f(xs: l)\n}\n",
-    },
-    Arm {
-        name: "kernel_method_on_a_local_stays_a_method",
-        consumer: "module consumer\n\nimport a.b\n\nfn run(xs: List<Int>) -> Int {\n  xs |> count\n}\n",
-    },
-    Arm {
-        name: "local_root_shadowing_a_module_root_is_a_receiver",
-        consumer: "module consumer\n\nimport a.b\n\ntype Inner {\n  items: List<Int>\n}\n\ntype Holder {\n  b: Inner\n}\n\nfn run(a: Holder) -> Int {\n  a.b.items |> count\n}\n",
-    },
-    Arm {
-        name: "service_operation_through_an_imported_service_name",
-        consumer: "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = Probe.Version()\n  \"\"\n}\n",
-    },
-];
+fn arms() -> Vec<(&'static str, &'static str)> {
+    vec![
+    ("module_path_call_in_call_position", "module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  a.b.f(xs: [1, 0, 2]) |> count\n}\n"),
+    ("module_path_call_in_pipe_position", "module consumer\n\nimport a.b { f }\n\nfn run() -> Int {\n  [1, 0, 2] |> a.b.f() |> count\n}\n"),
+    ("module_path_call_without_importing_the_leaf", "module consumer\n\nimport a.b\n\nfn run() -> Int {\n  a.b.f(xs: [1]) |> count\n}\n"),
+    ("same_leaf_in_two_modules_each_reaches_its_own", "module consumer\n\nimport a.b\nimport a.c\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  a.c.f(xs: l)\n}\n"),
+    ("same_named_local_fn_does_not_capture_the_qualified_call", "module consumer\n\nimport a.b\n\nfn f(xs: List<Int>) -> Int {\n  0\n}\n\nfn run() -> Int {\n  let l = a.b.f(xs: [1])\n  f(xs: l)\n}\n"),
+    ("kernel_method_on_a_local_stays_a_method", "module consumer\n\nimport a.b\n\nfn run(xs: List<Int>) -> Int {\n  xs |> count\n}\n"),
+    ("local_root_shadowing_a_module_root_is_a_receiver", "module consumer\n\nimport a.b\n\ntype Inner {\n  items: List<Int>\n}\n\ntype Holder {\n  b: Inner\n}\n\nfn run(a: Holder) -> Int {\n  a.b.items |> count\n}\n"),
+    ("service_operation_through_an_imported_service_name", "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = Probe.Version()\n  \"\"\n}\n"),
+    ]
+}
 
 #[test]
 fn every_qualified_call_path_agrees_on_one_classification() {
     let mut refused = Vec::new();
-    for arm in ARMS {
-        let consumer = ("fx/consumer.dag", arm.consumer);
-        let messages = diagnostics_of(&[PROVIDER_B, PROVIDER_C, SERVICE, consumer]);
+    let arms = arms();
+    for (name, consumer) in &arms {
+        let consumer = ("fx/consumer.dag", *consumer);
+        let messages = diagnostics_of(&[provider_b(), provider_c(), service(), consumer]);
         if !messages.is_empty() {
-            refused.push(format!("{}: {:?}", arm.name, messages));
+            refused.push(format!("{}: {:?}", name, messages));
         }
     }
     assert!(
         refused.is_empty(),
         "qualified-call arms refused ({} of {}):\n{}",
         refused.len(),
-        ARMS.len(),
+        arms.len(),
         refused.join("\n")
     );
 }
@@ -115,7 +95,7 @@ fn module_qualified_service_spelling_is_refused_not_reclassified() {
         "fx/consumer.dag",
         "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = svc.probe.Probe.Version()\n  \"\"\n}\n",
     );
-    let messages = diagnostics_of(&[PROVIDER_B, PROVIDER_C, SERVICE, consumer]);
+    let messages = diagnostics_of(&[provider_b(), provider_c(), service(), consumer]);
     assert!(
         !messages.is_empty(),
         "a module-qualified service spelling must refuse, but compiled clean"
