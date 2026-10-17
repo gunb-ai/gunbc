@@ -238,14 +238,17 @@ fn arm_reads(r: BuildRule, needle: String) -> Bool {
 //    produced by the layer's own response_rule through material's serializer, the same
 //    route the page takes, so no length, selector or property name is typed in this
 //    witness. And a point no axis declares must appear in NO page.
-//    RED CONTROLS (each run on the runner, pattern asserted before writing, the run's
-//    FAIL line read back; each reddens THIS claim only):
-//    1. drop compact_point from the AdoptLiveBreakpoints arm — the fold over the axis and
-//       the page disagree once a point is missing;
+//    RED CONTROLS (four, each run on the runner; pattern asserted before writing, the
+//    run's FAIL line read back):
+//    1. drop compact_point from the AdoptLiveBreakpoints arm — reddens THIS claim and ALSO
+//       witness_ballot_options_are_distinguishable, which is the right blast radius rather
+//       than a leaky test: with the point gone, AdoptLiveBreakpoints renders the same
+//       stylesheet as StackOnly, so the ballot is a fake choice again;
 //    2. make response_rule ignore its argument's decls (emit tracks instead of the
-//       point's own declarations) — the block text no longer comes from the point;
-//    3. change compact_point's condition to 400px — the page's block no longer matches
-//       what the axis declares.
+//       point's own declarations) — reddens THIS claim only;
+//    3. change compact_point's condition to 400px — reddens THIS claim only;
+//    4. restore the first draft's defect, where compact_point repeated stack_point's
+//       declarations — reddens witness_response_points_act_and_differ only.
 //    A control that only DELETES a field is not a control: it fails to typecheck, so no
 //    claim runs and nothing is proven. An earlier attempt at control 2 did exactly that,
 //    produced no FAIL line, and is not claimed here.
