@@ -18,10 +18,15 @@ echo "regen HEAD=$(git rev-parse HEAD)"
 echo "BEFORE sha256=$(sha256sum $TARGET | cut -d' ' -f1) lines=$(wc -l < $TARGET)"
 cargo build --release -p v1-compiler --bin gunbc --bin claim_executor > /tmp/regenbuild.log 2>&1 || { echo "BUILD-FAILED"; tail -30 /tmp/regenbuild.log; exit 11; }
 echo "built $(date -u +%H:%M:%S)"
+CE="$CARGO_TARGET_DIR/release/claim_executor"
+# With a shared CARGO_TARGET_DIR the binaries are NOT under ./target (that path gave
+# rc=127 -- a "command not found" that looked like a regen failure). Assert it exists.
+if [ ! -x "$CE" ]; then echo "NO-CLAIM-EXECUTOR at $CE (built? shared target dir?)"; ls -la $CARGO_TARGET_DIR/release 2>/dev/null | head -20; exit 13; fi
 set +e
-target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2 > /tmp/regen.log 2>&1
+"$CE" --regen-round-cost --source-root dag --source-root src/v2 > /tmp/regen.log 2>&1
 echo "regen_rc=$?"
 set -e
+echo "regen log tail:"; tail -25 /tmp/regen.log
 grep -iE "changed_paths|convergence|installs|round" /tmp/regen.log | tail -20
 echo "AFTER sha256=$(sha256sum $TARGET | cut -d' ' -f1) lines=$(wc -l < $TARGET)"
 git status --porcelain | sed 's/^/CHANGED /'
