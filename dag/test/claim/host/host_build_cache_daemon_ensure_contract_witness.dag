@@ -27,6 +27,7 @@ import gunbc.host.build_cache_daemon_ensure {
   EnsureSkipped,
   EnsureTransportBlocked,
   ObserveAbsent,
+  Ran,
   ObserveMisconfigured,
   ObserveReadBlocked,
   ObserveStatsOk,
@@ -667,4 +668,25 @@ fn reason_of(refusal: BuildCacheDigestRefusal) -> String {
   match refusal {
     DigestRefused { reason: why, expected_hex: _, observed_line: _ } => why
   }
+}
+
+test fn a_digest_that_was_never_read_never_admits_an_install_leg() -> Bool {
+  // THE ARM THE OTHER GATE CLAIMS DO NOT TOUCH, and the one that would have stayed unclaimed: what the plan
+  // permits BEFORE the read has produced anything. It must be the fetch and the read, and nothing else. An
+  // implementation that treated an absent line as admitted -- which is what a `false` becoming a `true`
+  // looks like, and what a `get()`-style default would give for free -- would keep every other claim green:
+  // the mismatch claim supplies a line, the positive control supplies a line, the already-installed claim
+  // has no gate to fail.
+  let ops = build_cache_contract_install_plan()
+  let permitted = build_cache_ensure_run_legs(
+    run: build_cache_ensure_run(ops: ops, digest: sccache_release_0_15_0.digest_x86_64, observed_digest_line: none),
+  )
+  list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: InstallStep)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: UnitStep)) == 0
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: FetchArchive)) == 1
+    && list_length(items: build_cache_plan_legs_of_kind(ops: permitted, kind: ReadDigest)) == 1
+    // AND THE UNREAD CASE IS NOT THE REFUSED CASE. Nothing has been refused yet, so the effect is still
+    // progressing rather than stopped: reporting a digest refusal for a read that has not happened would
+    // accuse a download of being corrupt before it was downloaded.
+    && list_length(items: permitted) < list_length(items: ops)
 }
