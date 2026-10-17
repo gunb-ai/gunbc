@@ -880,8 +880,6 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         UnresolvedImport { module_path: s(), importing_module: s(), span: no_span() },
         MissingExport { name: s(), module_path: s(), importing_module: s(), span: no_span() },
         ImportShadowedByLocalDefinition { name: s(), module_path: s(), importing_module: s(), span: no_span() },
-        ImportCollidesWithKernelName { name: s(), module_path: s(), importing_module: s(), kernel_declaration_module: s(), span: no_span() },
-        KernelMintDeclarationAmbiguousAtImport { name: s(), module_path: s(), importing_module: s(), row_count: 0, span: no_span() },
         UnresolvedType { name: s(), span: no_span() },
         TypeArgumentKindMismatch { type_name: s(), param_name: s(), kind_name: s(), supplied: s(), span: no_span() },
         TypeParameterInValuePosition { name: s(), span: no_span() },
@@ -919,7 +917,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
-        KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
+        OptionalDeclarationShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
         ConstructorCallAdmissionRefused {
@@ -1338,10 +1336,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
             "ImportShadowedByLocalDefinition"
         }
-        CompilerDiagnostic::ImportCollidesWithKernelName { .. } => "ImportCollidesWithKernelName",
-        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { .. } => {
-            "KernelMintDeclarationAmbiguousAtImport"
-        }
         CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { .. } => {
             "UnitVariantPhantomIdentityEvidenceUnavailable"
@@ -1379,7 +1373,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
-        CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
+        CompilerDiagnostic::OptionalDeclarationShapeMismatch { .. } => {
+            "OptionalDeclarationShapeMismatch"
+        }
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
             "BareNoneNotAdmittedByFieldType"
@@ -1449,8 +1445,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
         CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
         CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
-        CompilerDiagnostic::ImportCollidesWithKernelName { name, .. } => name.clone(),
-        CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport { name, .. } => name.clone(),
         CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
         CompilerDiagnostic::UnitVariantPhantomIdentityEvidenceUnavailable { name, .. } => {
             name.clone()
@@ -1493,7 +1487,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
-        CompilerDiagnostic::KernelMintShapeMismatch {
+        CompilerDiagnostic::OptionalDeclarationShapeMismatch {
             declaration_name, ..
         } => declaration_name.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
