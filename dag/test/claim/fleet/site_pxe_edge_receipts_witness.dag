@@ -7,13 +7,14 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.provisioning.network_boot { ProxyDhcp }
-import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64, BiosX86, HttpBootX86_64, HttpBootArm64, DhcpProcessorArchitecture, dhcp_processor_architecture_code }
 import product.placement_supply { SiteIdentity }
 import gunbc.fleet.site_pxe_edge_receipts {
   EdgeOfferObservation, EdgeOfferObserved, EdgeOfferUnobserved,
   ClientRequestObservation, ClientRequestObserved, ClientRequestUnobserved,
   ClientResponseObservation, ClientResponseAccepted, ClientNoResponseAccepted,
   SiteEdgeReceipt, ClientNetbootReceipt,
+  client_architecture_claim, ClientArchitectureRecognized, ClientArchitectureUnrecognized,
   SiteEdgeBound, SiteEdgeBindingRefused, EdgeOfferNotObserved, EdgeOfferWithoutAuthority,
   ClientNetbootBound, ClientNetbootBindingRefused, ClientRequestNotObserved, ClientRequestWithoutAuthority,
   ClientRequestUnanswered, ClientArchitectureNotRecognized,
@@ -274,4 +275,15 @@ test fn same_client_with_a_different_transaction_is_not_the_offers_exchange() ->
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
     want: "no_edge_offer",
   )
+}
+
+fn round_trips(a: DhcpProcessorArchitecture) -> Bool {
+  match client_architecture_claim(code: dhcp_processor_architecture_code(a: a)) {
+    ClientArchitectureRecognized { architecture: got } => dhcp_processor_architecture_code(a: got) == dhcp_processor_architecture_code(a: a)
+    ClientArchitectureUnrecognized { code: _ } => false
+  }
+}
+
+test fn every_upstream_architecture_code_decodes_back_to_itself() -> Bool {
+  round_trips(a: BiosX86) && round_trips(a: UefiX86_64) && round_trips(a: UefiArm64) && round_trips(a: HttpBootX86_64) && round_trips(a: HttpBootArm64)
 }

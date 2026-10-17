@@ -33,6 +33,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// CONSUMER (§3c): none yet, by design. The binders are consumed by the wet half of S7 (cut 6 of
+// gunbc.plans.physical_machine_boot_program), which fires on the first real boot offer observed from
+// the converged srv4 edge and feeds it through bind_site_edge_receipt; the same trigger is stated by
+// gunbc.site_uefi_arm64_pxe_edge for site_edge_client_admission.
+
 // THIS MODULE HOLDS SHAPES AND BINDERS ONLY, AND NO `data` ROW IS A RECEIPT. A receipt here is a
 // claim that a real boot attempt happened; the repository has observed none through the site
 // edge, so any authored row would be invented fleet history that a later reader could not tell
@@ -51,27 +56,18 @@ type ClientArchitectureClaim
   = ClientArchitectureRecognized { architecture: DhcpProcessorArchitecture }
   | ClientArchitectureUnrecognized { code: Int }
 
+// The decode is the forward table read backwards, not a second table: every recognized
+// architecture is listed once and matched on the upstream code function, so the only spelling of a
+// code is extdeps.provisioning.dhcp_client_arch dhcp_processor_architecture_code. Adding an
+// architecture there needs one entry here (the witness round-trips every listed entry); moving the
+// inverse into that module is the cleaner home and is a follow-up, because this change may not edit
+// it.
+data recognized_client_architectures: List<DhcpProcessorArchitecture> = [BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64]
+
 fn client_architecture_claim(code: Int) -> ClientArchitectureClaim {
-  if code == dhcp_processor_architecture_code(a: BiosX86) {
-    ClientArchitectureRecognized { architecture: BiosX86 }
-  } else {
-    if code == dhcp_processor_architecture_code(a: UefiX86_64) {
-      ClientArchitectureRecognized { architecture: UefiX86_64 }
-    } else {
-      if code == dhcp_processor_architecture_code(a: UefiArm64) {
-        ClientArchitectureRecognized { architecture: UefiArm64 }
-      } else {
-        if code == dhcp_processor_architecture_code(a: HttpBootX86_64) {
-          ClientArchitectureRecognized { architecture: HttpBootX86_64 }
-        } else {
-          if code == dhcp_processor_architecture_code(a: HttpBootArm64) {
-            ClientArchitectureRecognized { architecture: HttpBootArm64 }
-          } else {
-            ClientArchitectureUnrecognized { code: code }
-          }
-        }
-      }
-    }
+  match first_where(xs: recognized_client_architectures, keep: a => dhcp_processor_architecture_code(a: a) == code) {
+    Present { value: a } => ClientArchitectureRecognized { architecture: a }
+    Absent => ClientArchitectureUnrecognized { code: code }
   }
 }
 
