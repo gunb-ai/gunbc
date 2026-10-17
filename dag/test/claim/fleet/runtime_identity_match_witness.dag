@@ -13,6 +13,7 @@ module test.claim.fleet.runtime_identity_match_witness
 // no fabricated identity rows in the model, synthetic fixtures in test fns only).
 
 import std.types { Bool, List, NonEmptyStr }
+import v2.std.decl_index { decl_facts_at }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.mac { Eui48Address, mac_address }
@@ -51,6 +52,7 @@ import gunbc.fleet.runtime_identity_match {
   RuntimeIdentityVerdict,
   same_runtime_identity_axis,
   Unprovable,
+  runtime_identity_axis_rows,
   runtime_identity_match,
   runtime_identity_verdict_is_match,
   runtime_identity_verdict_is_mismatch,
@@ -265,7 +267,39 @@ test fn test_refusal_is_unprovable_and_preserves_its_detail() -> Bool {
         && same_runtime_identity_axis(left: first_gap_axis(gaps: gaps), right: BoardSerialAxis)
         && first_gap_detail(gaps: gaps) == "the controller rejects the serial query"
         && first_gap_side(gaps: gaps) == PostBootOsSide
+        && first_gap_is_refusal(gaps: gaps)
+        && first_gap_refusal_kind(gaps: gaps) == "query-unsupported"
     _ => false
+  }
+}
+
+// A REFUSAL AND AN ABSENCE ARE DIFFERENT KINDS, all the way into the gap. Both siblings produce an
+// Unprovable of the same shape; only the sum inside the gap separates them. If the gap stored a bare
+// string, this witness goes RED because the kind would be unrecoverable -- which is the anemic-modeling
+// defect the finding named.
+test fn test_silence_and_refusal_are_distinguishable_kinds() -> Bool {
+  let refused = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_refused())
+  let unread = runtime_identity_match(pre: pre_all_read(), post: post_with_serial_unobserved())
+  match refused {
+    Unprovable { why: rg, unit: _ } => match unread {
+      Unprovable { why: ug, unit: _ } =>
+        first_gap_is_refusal(gaps: rg) && !first_gap_is_refusal(gaps: ug)
+          && first_gap_refusal_kind(gaps: rg) == "query-unsupported"
+          && first_gap_refusal_kind(gaps: ug) == "unread"
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn post_with_serial_refused() -> PostBootIdentityReport {
+  PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: BoardSerialRefused { refusal: QueryUnsupported { detail: "the controller rejects the serial query" } },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_model },
+    nics: NicSetReported { addresses: [fixture_mac_b()] },
   }
 }
 
@@ -463,7 +497,28 @@ fn first_gap_axis(gaps: List<RuntimeIdentityGap>) -> RuntimeIdentityAxis {
 
 fn first_gap_detail(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
   match gaps.first() {
-    Present { value: g } => g.detail
+    Present { value: g } => runtime_identity_gap_detail(gap: g)
+    Absent => "none"
+  }
+}
+
+fn first_gap_is_refusal(gaps: List<RuntimeIdentityGap>) -> Bool {
+  match gaps.first() {
+    Present { value: g } => runtime_identity_gap_is_refusal(gap: g)
+    Absent => false
+  }
+}
+
+fn first_gap_refusal_kind(gaps: List<RuntimeIdentityGap>) -> NonEmptyStr {
+  match gaps.first() {
+    Present { value: g } => match runtime_identity_gap_refusal(gap: g) {
+      Present { value: f } => match f {
+        QueryUnsupported { detail: _ } => "query-unsupported"
+        AuthenticationFailed { detail: _ } => "authentication-failed"
+        ReplyUnreadable { detail: _ } => "reply-unreadable"
+      }
+      Absent => "unread"
+    }
     Absent => "none"
   }
 }
@@ -475,3 +530,52 @@ fn first_gap_side(gaps: List<RuntimeIdentityGap>) -> IdentitySide {
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE AXIS TABLE'S CITATIONS RESOLVE
+// ---------------------------------------------------------------------------
+
+// Every axis row cites a declaration that EXISTS in the corpus. A comment claiming a policy is audited is
+// not evidence that it is: this reads the declaration census itself, so a row that cites a name nobody
+// declares fails here rather than looking audited (DESIGN section 3b, a home that does not resolve is a
+// citation defect). Four rows, so the count is asserted too -- a row silently dropped would otherwise
+// leave the remaining citations looking complete.
+test fn test_axis_table_citations_resolve_against_the_declaration_census() -> Bool {
+  cited("gunbc.machine_intake.subject", "BoardSerialObservation")
+    && cited("gunbc.machine_intake.ampere_dram_console_observation", "AmpereDramBlock")
+    && cited("gunbc.machine_intake.subject", "PhysicalDimmLabelBinding")
+    && cited("gunbc.network_boot_delivery", "ObservedDhcpPxeClient")
+    && runtime_identity_axis_rows.length() == 4
+}
+
+fn cited(module_path: NonEmptyStr, decl_name: NonEmptyStr) -> Bool {
+  decl_facts_at(pool_roots: ["dag", "src/v2"], qualified_name: concat(module_path, ".", decl_name)).length() == 1
+}
+
+// A citation that resolves to NOTHING is the defect the finding named; asserting the negative keeps the
+// positive witness from passing on a census that is empty for an unrelated reason.
+test fn test_an_uncited_invention_does_not_resolve() -> Bool {
+  decl_facts_at(pool_roots: ["dag", "src/v2"], qualified_name: "gunbc.plans.physical_machine_boot_program.board_serial_is_the_unit").length() == 0
+}
+
+// THE THIRD COMPARISON PATH, exercised on its own. The model string is a corroborating exact-string axis,
+// so it is the only arm of the comparison dispatch that the serial (decisive exact) and NIC (decisive
+// intersection) witnesses do not already cover. A policy arm nobody compares against is a policy arm that
+// has never been tested, and a wrong arm there would silently pass machines through.
+test fn test_model_divergence_is_a_corroborating_mismatch() -> Bool {
+  let post = PostBootIdentityReport {
+    unit: fixture_unit,
+    reported_over: NetworkSessionChannel,
+    board_serial: BoardSerialObserved { serial: fixture_serial },
+    bios_version: BiosVersionRead { version: fixture_bios },
+    model: ModelRead { model: fixture_other_model },
+    nics: NicSetReported { addresses: [fixture_mac_b()] },
+  }
+  match runtime_identity_match(pre: pre_all_read(), post: post) {
+    Mismatch { diverged: ds, unit: _ } =>
+      ds.length() == 1
+        && same_runtime_identity_axis(left: first_axis(divergences: ds), right: ModelAxis)
+        && first_pre_text(divergences: ds) == fixture_model
+        && first_post_text(divergences: ds) == fixture_other_model
+    _ => false
+  }
+}
