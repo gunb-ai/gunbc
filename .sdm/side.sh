@@ -53,6 +53,7 @@ else
   echo "harness=synced-action-cwd $SRC/.sdm"
   [ -f "$SRC/.sdm/gap_block.rs" ] || { echo "MISSING-INSTRUMENT both channels"; exit 8; }
 fi
+mkdir -p "$W/.sdm" "$W/dag/test"
 for f in gap_block.rs hooks.py measure_side.sh; do
   [ -f "$SRC/.sdm/$f" ] || { echo "MISSING-INSTRUMENT $f"; exit 8; }
   cp "$SRC/.sdm/$f" "$W/.sdm/"
