@@ -473,13 +473,22 @@ type IpmiCompletionCode {
 data ipmi_completion_code_invalid_data_field: IpmiCompletionCode = IpmiCompletionCode { code: 204 }
 
 // NO `as NonEmptyStr` on the literal (review 81294/81308 asked which of the two sibling spellings was
-// wrong). NEITHER IS A COMPILE ERROR -- both rows sit at this head today, and the whole tree spells
-// `data ... : NonEmptyStr = "literal"` BOTH ways (measured at this head: 1,430 rows without the cast,
-// 732 with). So this is not a broken-row fix; it is a choice, and the reason is §4c: "an annotation must
-// not restate what the declaration says". The declared type already says NonEmptyStr, and the cast
-// consults the SAME predicate (`string_non_empty`, std/types.dag:257) the declared type consults, so it
-// cannot make a non-empty literal safer nor make an empty one fail any earlier. It is a second
-// statement of a constraint the declaration carries, and §2 says model it once.
+// wrong; review 81374 then caught this comment citing counts and a line number, both fixed here).
+//
+// NEITHER SPELLING IS A COMPILE ERROR: both forms sit in the tree today and both compile, so this is not
+// a broken-row fix but a choice between two spellings of the same row. The choice is §4c's -- "an
+// annotation must not restate what the declaration says". The declared type already says NonEmptyStr, and
+// the cast consults the SAME predicate the declared type consults: `NonEmptyStr` in `std.types` is
+// declared as `String where string_non_empty`, and an `as NonEmptyStr` on a literal re-runs that same
+// `string_non_empty` check the declared type already forces. So the cast cannot make a non-empty literal
+// safer and cannot make an empty one fail any earlier -- it is a second statement of a constraint the
+// declaration carries, and §2 says state it once.
+//
+// Deliberately no counts here, and no `file:line`: a transcribed number rots unreachably the moment
+// anyone adds a row anywhere (§6, "Name the instrument, never transcribe its output"), and a positional
+// pointer to a repo-internal symbol is invalidated by any edit above the line (§3, "Cite the symbol, not
+// the position"). The claim below is the check that actually holds: it compares each completion code's
+// text against the ONE row that defines it.
 //
 // WHY THE SIBLING ROW MATTERS MORE THAN THE CAST: the two codes' English lives in exactly one row each,
 // which is what the claim below checks. Whether the literal carries a redundant cast does not affect
