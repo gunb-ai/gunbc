@@ -1035,6 +1035,40 @@ pub fn emit_info_with_fn_type_context(
     })
 }
 
+pub fn emit_info_with_type_decl_items(
+    emit_info: Rc<EmitGraphInfo>,
+    type_decl_items: Rc<TypeDeclIndex>,
+) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        item_leaf_owner_modules: emit_info.item_leaf_owner_modules.clone(),
+        type_summaries: emit_info.type_summaries.clone(),
+        type_decl_items: type_decl_items.clone(),
+        data_variant_wire_spellings: emit_info.data_variant_wire_spellings.clone(),
+        fn_decl_items: emit_info.fn_decl_items.clone(),
+        fn_map_key_bounds: emit_info.fn_map_key_bounds.clone(),
+        recursive_type_set: emit_info.recursive_type_set.clone(),
+        fielded_variants: emit_info.fielded_variants.clone(),
+        positional_payload_variants: emit_info.positional_payload_variants.clone(),
+        shared_types: emit_info.shared_types.clone(),
+        ownership_index: emit_info.ownership_index.clone(),
+        movable: emit_info.movable.clone(),
+        variant_to_enum: emit_info.variant_to_enum.clone(),
+        owned_bindings: emit_info.owned_bindings.clone(),
+        read_only_params_index: emit_info.read_only_params_index.clone(),
+        read_only_params: emit_info.read_only_params.clone(),
+        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
+        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+        map_key_bounded_type_params: emit_info.map_key_bounded_type_params.clone(),
+        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+        fn_type_env: emit_info.fn_type_env.clone(),
+        fn_return_type: emit_info.fn_return_type.clone(),
+        expected_type: emit_info.expected_type.clone(),
+        tco_cursor_param: emit_info.tco_cursor_param.clone(),
+        tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+    })
+}
+
 pub fn emit_info_with_fn_return(
     emit_info: Rc<EmitGraphInfo>,
     fn_return_type: Option<Rc<Node>>,
@@ -1211,10 +1245,23 @@ pub fn emit_graph_records_type_decl(
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
         std::option::Option::None => {
-            ((((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+            (((((item.module_item_kind.clone()
+                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
                 && (item.connective.clone() == Connective::NoConnective))
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
+                || ((item.module_item_kind.clone()
+                    == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    && (crate::v1_compiler_coercion::realized_checkpoint(
+                        crate::v1_compiler_coercion::declaration_realization(
+                            item.clone(),
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                item.clone(),
+                            ),
+                            RenderTarget::Rust,
+                        ),
+                    ) != std::option::Option::None)))
         }
     }
 }
