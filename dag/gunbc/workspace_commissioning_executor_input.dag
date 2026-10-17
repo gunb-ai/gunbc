@@ -28,7 +28,7 @@ import gunbc.workspace_commissioning_executor_plan {
 import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved, WorkspaceExecutorActorRefused }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
-import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_controller {
   bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused,
 }
@@ -76,7 +76,7 @@ fn workspace_executor_input_from_plan(plan: WorkspaceExecutorPlanBytes) -> Works
   match bind_slot_host(slot: plan.provenance.slot) {
     MicrovmHostBound { spec, host: _ } => match resolve_network_subject(slot: plan.provenance.slot) {
       NetworkSubjectResolved { subject } => {
-        let installed = approval_broker_release_dir(root: microvm_controller_root,
+        let installed = release_locus_dir(root: microvm_controller_root,
           revision: RevisionBoundAtEmission { revision: plan.provenance.source_revision as CommitSha })
         if !workspace_executor_installed_adapter_matches(release_dir: installed, slot: slot) {
           WorkspaceExecutorInputRefused { reason: "installed executor artifacts or loaded unit differ from the reviewed release" }
