@@ -4,6 +4,7 @@ import product.host_identity { HostIdentity }
 import gunbc.serving.rented_replica { RentedReplicaIdentity, rented_replica_wire }
 import gunbc.serving.session_store { ServingSessionEntry, serving_session_record_for_request }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_count }
 import std.nat { Nat, Zero, Succ, nat_range_inclusive, nat_min }
 import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount, Second, second_count, MoneyPerSecond, MoneyAmountMicro }
 import extdeps.accounting.encumbrance { Held, Expended, Released }
@@ -28,7 +29,9 @@ import product.capacity.event_chain {
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved, SeatRequest, PoolFold, PoolFolded, PoolFoldRefused, pool_fold,
 }
-import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, QuiescenceRequired, LeaseFence, lease_grant, lease_fence_of }
+import std.retry_law { RetryLaw }
+import std.resource_release_law { QuiescenceRequired }
+import product.capacity.lease { LeasePolicy, LeaseGrant, GrantIdentity, LeaseFence, lease_grant, lease_fence_of }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
   HeadExpectation, event_log_refusal_wire, SeatStoreRefused, SeatStandingStoreRefused, HeadObserved, HeadObservationRefused, event_log_observe_head, EventAppended,
@@ -1204,7 +1207,13 @@ fn harness_placement_round(acc: PlacementRound, session: ServingSessionRecord, c
   }
 }
 
-data harness_placement_rounds: Nat = 3
+data harness_seat_retry_law: RetryLaw = RetryLaw {
+  initial_delay: second(count: 0),
+  delay_cap: second(count: 1),
+  real_work_failure_bound: 3,
+}
+
+data harness_placement_rounds: Nat = harness_seat_retry_law.real_work_failure_bound
 
 // ── THE HARNESS CONSUMES THE CALLER'S DURABLE BACKLOG (gunbc.serving.caller_backlog) ──────────────────
 //
@@ -1468,7 +1477,10 @@ fn harness_current_grant_in(oldest_first: List<ChainEnvelope<PoolEvent>>, refere
       found: match env.event.payload {
         PoolAcquired { reference: r, amount: _, term_seconds: term } =>
           if (r as String) == (reference as String) {
-            Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: position), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) }
+            match cas_generation(n: position as Int) {
+              Absent => none
+              Present { value: cg } => Present { value: lease_grant(reference: r, fence: lease_fence_of(admitting_event: env.id, generation: cg), granted_at: env.event.recorded_at, policy: LeasePolicy { maximum_duration_seconds: term, release_law: QuiescenceRequired }) }
+            }
           } else {
             acc.found
           }
@@ -1862,7 +1874,7 @@ type HarnessReleaseCapability {
   ceiling: Nat
   reference: NonEmptyStr
   grant: GrantIdentity
-  generation: Nat
+  generation: CasGeneration
 }
 
 // THE CONSTRUCTOR IS TOTAL OVER THE GRANT, not optional over the binding. An earlier spelling took
@@ -1883,7 +1895,7 @@ fn harness_release_capability(partition: PartitionId, ceiling: Nat, grant: Lease
 }
 
 fn harness_release_capability_wire(c: HarnessReleaseCapability) -> String {
-  join([c.partition as String, "/", c.reference as String, "/", c.grant as String, "/", to_string(c.generation), "/", to_string(c.ceiling)], "")
+  join([c.partition as String, "/", c.reference as String, "/", c.grant as String, "/", to_string(cas_generation_count(g: c.generation)), "/", to_string(c.ceiling)], "")
 }
 
 fn harness_release_held(short_hostname: String, capability: HarnessReleaseCapability, reason: NonEmptyStr) -> HarnessSeatRelease {
@@ -1938,11 +1950,11 @@ fn admitting_event_for(walk: ChainWalk<PoolEvent>, reference: NonEmptyStr) -> Ev
 }
 
 fn harness_release_fenced(store: FabricStorageBinding, capability: HarnessReleaseCapability, observed: Nat, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
-  if observed < capability.generation {
+  if (observed as Int) < cas_generation_count(g: capability.generation) {
     HarnessSeatReleaseRefused {
       detail: join([
         "the seat pool at ", capability.partition as String, " reads generation ", to_string(observed),
-        " while the grant was issued at ", to_string(capability.generation),
+        " while the grant was issued at ", to_string(cas_generation_count(g: capability.generation)),
         ", so this capability does not name the pool that is standing",
       ], ""),
     }
