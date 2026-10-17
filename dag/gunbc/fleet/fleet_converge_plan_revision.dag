@@ -120,7 +120,8 @@ fn observe_checkout_head() -> CheckoutHeadAdmission {
 fn admit_checkout_at(expected: String) -> CheckoutHeadAdmission {
   match observe_checkout_head() {
     CheckoutHeadAdmitted { revision: observed } => admit_checkout_head(expected: expected, observed: observed)
-    other => other
+    CheckoutHeadMismatch { expected: e, observed: o } => CheckoutHeadMismatch { expected: e, observed: o }
+    CheckoutHeadUnreadable { cause: c } => CheckoutHeadUnreadable { cause: c }
   }
 }
 
