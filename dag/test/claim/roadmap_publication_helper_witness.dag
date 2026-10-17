@@ -1,6 +1,9 @@
 module test.claim.roadmap_publication_helper_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha, FilePath }
+import extdeps.filesystem.filesystem_io {
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemOtherFailure,
+}
 import std.layout { render }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.github { Repository }
@@ -26,6 +29,8 @@ import gunbc.roadmap.roadmap_publication_helper {
   PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
   publication_helper_run_standing,
   publication_request_admission,
+  publication_request_from_create,
+  PublicationRequestEnqueue, RequestEnqueued, RequestAlreadyPresent, RequestNotEnqueued,
   RequestAdmission, RequestAdmitted, RequestUndecodableDocument,
   RequestOutsideCapability, RequestMisaddressed,
 }
@@ -486,4 +491,17 @@ test fn the_publication_helper_is_triggered_by_a_path_unit_not_a_timer() -> Bool
     && any(lines, l => l == join(["Unit=", deployment_publication_service_unit_name(names: spec.names) as String], ""))
     && !any(lines, l => string_contains(s: l, pattern: "OnUnitInactiveSec"))
     && !any(deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons), s => string_contains(s: s.path as String, pattern: "-publication.timer"))
+}
+
+test fn a_second_write_of_the_same_publication_request_key_is_refused_not_overwritten() -> Bool {
+  (match publication_request_from_create(created: FilesystemCreated { path: "/spool/k.json" }) {
+    RequestEnqueued { path: p } => p == "/spool/k.json"
+    _ => false
+  }) && (match publication_request_from_create(created: FilesystemCreateTargetOccupied { path: "/spool/k.json" }) {
+    RequestAlreadyPresent { path: p } => p == "/spool/k.json"
+    _ => false
+  }) && (match publication_request_from_create(created: FilesystemCreateRefused { path: "/spool/k.json", kind: FilesystemOtherFailure, error: "eacces" }) {
+    RequestNotEnqueued { detail: d } => string_contains(s: d, pattern: "eacces")
+    _ => false
+  })
 }

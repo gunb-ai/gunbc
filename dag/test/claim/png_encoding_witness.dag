@@ -1,17 +1,16 @@
-module test.claim.png_stored_encoding_witness
+module test.claim.png_encoding_witness
 
 import std.types { Int, List, String }
 import std.optional { Absent, Present }
 import std.logic { Bool }
 import std.bytes { bytes_octets, utf8_encode_bytes }
-import std.bitwise { nibble_values }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.standards.rfc_1950 { rfc_1950_adler32 }
-import extdeps.standards.rfc_1951 { rfc_1951_stored_stream }
+import extdeps.standards.rfc_1951 { rfc_1951_fixed_stream }
 import extdeps.w3c.png {
   PngIndexedImage, PngPaletteEntry, PngEncoded, PngRefused, PngRefusal, PngRelativeColorimetric, PngAxis, PngWidth, PngHeight,
   PngRowWidth, PngIndexOutsidePalette, PngPaletteAlphaOutOfRange, PngPaletteColorInadmissible, PngDimensionOutOfRange,
-  PngIdatTooLarge, png_crc32, png_encode,
+  PngIdatUpperBoundExceedsLimit, png_crc32, png_encode,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -35,35 +34,34 @@ test fn adler32_matches_the_worked_example() -> Bool {
   rfc_1950_adler32(octets: png_witness_ascii(s: "Wikipedia")) == 300286872 && rfc_1950_adler32(octets: []) == 1
 }
 
-// ═══ STORED BLOCKS SPLIT AT THE 16-BIT LENGTH ═══
+// ═══ THE FIXED-HUFFMAN RUN STREAM AGAINST zlib ═══
+//
+// Each oracle is Python's zlib writing the same octets as one raw DEFLATE block with fixed codes
+// (compressobj(9, DEFLATED, -15, 9, Z_FIXED)), an independent encoder whose greedy matcher picks the
+// same runs on these inputs. The run input is a 0, six hundred and one 5s and the octets 0, 1, 2:
+// literals, two length-258 runs (symbol 285) and a length-83 run (symbol 278, extra value 0). The
+// high input is 7, eighty-five 200s, 255, 7: 8-bit literals below 144, 9-bit literals at 200 and 255,
+// and a length-84 run (symbol 278, four extra bits of value 1), whose nonzero extra value tells
+// least-significant-first packing from a reversed or dropped one. The end-of-block symbol is the
+// 7-bit range, so all three code ranges are exercised.
+data png_witness_run_input: List<Int> = concat(concat([0], fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, _) =>
+  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], init: acc, f: (a, _) => concat(a, [5, 5, 5, 5, 5, 5, 5, 5, 5, 5])))), [0, 1, 2])
 
-data png_witness_sixteen_to_the_fourth: List<Int> = fold(nibble_values(), init: [], f: (a, w) =>
-  fold(nibble_values(), init: a, f: (b, x) =>
-    fold(nibble_values(), init: b, f: (c, y) =>
-      fold(nibble_values(), init: c, f: (d, z) => d |> list_push(z)))))
+data png_witness_high_input: List<Int> = concat(concat([7, 200], fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], init: [], f: (acc, _) =>
+  concat(acc, [200, 200, 200, 200, 200, 200, 200]))), [255, 7])
 
-fn png_witness_at(s: List<Int>, i: Int) -> Int {
-  match get(s, i) {
-    Present { value } => value
-    Absent => -1
-  }
-}
-
-// 65536 octets are one full block of 65535 (not final) and one block of 1 (final); an empty input
-// is one empty final block.
-test fn a_stream_longer_than_one_block_splits_at_65535() -> Bool {
-  let s = rfc_1951_stored_stream(octets: png_witness_sixteen_to_the_fourth)
-  count(s) == 65536 + 10
-    && png_witness_at(s: s, i: 0) == 0 && png_witness_at(s: s, i: 1) == 255 && png_witness_at(s: s, i: 2) == 255
-    && png_witness_at(s: s, i: 3) == 0 && png_witness_at(s: s, i: 4) == 0
-    && png_witness_at(s: s, i: 65540) == 1 && png_witness_at(s: s, i: 65541) == 1 && png_witness_at(s: s, i: 65542) == 0
-    && png_witness_at(s: s, i: 65543) == 254 && png_witness_at(s: s, i: 65544) == 255
-    && rfc_1951_stored_stream(octets: []) == [1, 0, 0, 255, 255]
+test fn the_fixed_stream_is_zlibs_on_runs_and_literals() -> Bool {
+  rfc_1951_fixed_stream(octets: []) == [3, 0]
+    && rfc_1951_fixed_stream(octets: [0, 0, 1]) == [99, 96, 96, 4, 0]
+    && count(png_witness_run_input) == 604
+    && rfc_1951_fixed_stream(octets: png_witness_run_input) == [99, 96, 29, 5, 163, 128, 6, 128, 129, 145, 9, 0]
+    && count(png_witness_high_input) == 88
+    && rfc_1951_fixed_stream(octets: png_witness_high_input) == [99, 63, 65, 11, 240, 159, 29, 0]
 }
 
 // ═══ A WHOLE FILE, BYTE FOR BYTE ═══
 //
-// The oracle is the same image written by Python's zlib and struct (an independent CRC, Adler-32 and
+// The oracle is the same image written by Python's zlib (raw fixed-Huffman deflate as above) and struct (an independent CRC, Adler-32 and
 // chunk writer), with sRGB intent 1 (relative colorimetric) and gAMA 45455 between IHDR and PLTE;
 // `file` identifies it as "PNG image data, 2 x 1, 8-bit colormap, non-interlaced" and its IDAT
 // zlib.decompress reads back as the scanline [0, 0, 1].
@@ -72,7 +70,7 @@ data png_witness_stone_and_clear_ink: List<PngPaletteEntry> = [
   PngPaletteEntry { color: Srgb8 { r: 15, g: 15, b: 15 }, alpha: 0 },
 ]
 
-data png_witness_two_by_one_oracle: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 1, 8, 3, 0, 0, 0, 195, 252, 143, 184, 0, 0, 0, 1, 115, 82, 71, 66, 1, 217, 201, 44, 127, 0, 0, 0, 4, 103, 65, 77, 65, 0, 0, 177, 143, 11, 252, 97, 5, 0, 0, 0, 6, 80, 76, 84, 69, 244, 241, 236, 15, 15, 15, 222, 226, 35, 206, 0, 0, 0, 2, 116, 82, 78, 83, 255, 0, 229, 183, 48, 74, 0, 0, 0, 14, 73, 68, 65, 84, 120, 1, 1, 3, 0, 252, 255, 0, 0, 1, 0, 4, 0, 2, 11, 33, 139, 113, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]
+data png_witness_two_by_one_oracle: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 1, 8, 3, 0, 0, 0, 195, 252, 143, 184, 0, 0, 0, 1, 115, 82, 71, 66, 1, 217, 201, 44, 127, 0, 0, 0, 4, 103, 65, 77, 65, 0, 0, 177, 143, 11, 252, 97, 5, 0, 0, 0, 6, 80, 76, 84, 69, 244, 241, 236, 15, 15, 15, 222, 226, 35, 206, 0, 0, 0, 2, 116, 82, 78, 83, 255, 0, 229, 183, 48, 74, 0, 0, 0, 11, 73, 68, 65, 84, 120, 1, 99, 96, 96, 4, 0, 0, 4, 0, 2, 139, 47, 60, 19, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]
 
 test fn a_two_pixel_image_is_the_reference_file() -> Bool {
   match png_encode(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 2, height: 1, palette: png_witness_stone_and_clear_ink, rows: [[0, 1]] }) {
@@ -151,15 +149,21 @@ fn png_witness_refuses_oversized_dimension() -> Bool {
   }
 }
 
-// Both dimensions admissible, but one IDAT of 2^30 x 2 scanline octets exceeds the chunk-length limit.
-fn png_witness_refuses_oversized_idat() -> Bool {
-  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: 1073741824, height: 2, palette: png_witness_stone_and_clear_ink, rows: [] }) {
+// Both dimensions admissible, but the IDAT's upper bound exceeds the chunk-length limit. 2^30 x 2 is
+// just past it; 2^30 x 2^30 is 2^60 scanline octets, where 9 times that would overflow a 64-bit Int,
+// so the bound must still come back positive and past the limit rather than wrapped.
+fn png_witness_refuses_idat_bound(width: Int, height: Int) -> Bool {
+  match png_witness_refusal(image: PngIndexedImage { intent: PngRelativeColorimetric, width: width, height: height, palette: png_witness_stone_and_clear_ink, rows: [] }) {
     Present { value } => match value {
-      PngIdatTooLarge { octets } => octets > 2147483647
+      PngIdatUpperBoundExceedsLimit { upper_bound } => upper_bound > 2147483647
       _ => false
     }
     Absent => false
   }
+}
+
+fn png_witness_refuses_oversized_idat() -> Bool {
+  png_witness_refuses_idat_bound(width: 1073741824, height: 2) && png_witness_refuses_idat_bound(width: 1073741824, height: 1073741824)
 }
 
 test fn malformed_images_refuse_with_a_located_cause() -> Bool {

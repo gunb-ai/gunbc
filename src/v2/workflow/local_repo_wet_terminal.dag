@@ -1171,6 +1171,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.object_source_serve_real_execution", function: "a_complete_fixture_repository_yields_object_store_complete_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/object_source_serve_real_execution.dag",
+      function: "a_complete_fixture_repository_yields_object_store_complete_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.live_deploy.object_source_serve_real_execution", function: "a_promisor_fixture_repository_yields_partial_clone_promisor_by_real_execution" },
+      entry: "dag/test/claim/live_deploy/object_source_serve_real_execution.dag",
+      function: "a_promisor_fixture_repository_yields_partial_clone_promisor_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_publication_push_real_execution", function: "stage_linked_worktree_into_persistent_mirror_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_publication_push_real_execution.dag",
       function: "stage_linked_worktree_into_persistent_mirror_by_real_execution",

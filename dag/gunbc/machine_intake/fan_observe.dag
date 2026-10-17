@@ -247,6 +247,13 @@ fn fan_write_observation(host: FanObserveHost, policy: FanObservePolicy, series:
   }
 }
 
+// THE TWO RECEIPT PREFIXES ARE THE BOOT PHASE'S TYPED OUTCOME, AND THIS IS THE ONE PLACE THEY ARE SPELLED.
+// Every writer builds its line from them and the step's outcome tail reads them; the tail treats the
+// outcome as observed ONLY when the receipt opens with the taken prefix, so a drifted or unknown line
+// reads as refused (fail-closed), never as an observed reading.
+data fan_boot_phase_refused_prefix: String = "FanObserveBootPhaseRefused"
+data fan_boot_phase_taken_prefix: String = "FanObserveBootPhaseTaken"
+
 // BOOT-JOB WRAPPER: write the typed receipt and return success on observation refusal (non-gating,
 // and non-gating because the entry decides it in a receipt - no job-level continue-on-error absorbs
 // anything: an unwritable receipt fails the step, review 81077).
@@ -273,7 +280,7 @@ fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePoli
     FanObservationRefused { cause: cause } =>
       match fan_write_boot_phase_receipt(
         path: policy.receipt_path,
-        content: concat("FanObserveBootPhaseRefused cause=", cause as String),
+        content: concat(concat(fan_boot_phase_refused_prefix, " cause="), cause as String),
       ) {
         ExitSuccess => ExitSuccess
         ExitFailure { code: code, reason: written_reason } =>
@@ -283,7 +290,7 @@ fn fan_write_boot_phase_observation(host: FanObserveHost, policy: FanObservePoli
       fan_write_boot_phase_receipt(
         path: policy.receipt_path,
         content: concat(
-          "FanObserveBootPhaseTaken\n",
+          concat(fan_boot_phase_taken_prefix, "\n"),
           render_observation(host: host, window: policy.transition_window, rounds: rounds, interval: interval),
         ),
       )

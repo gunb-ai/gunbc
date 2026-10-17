@@ -1,0 +1,3 @@
+module test.fixture.imported_arms.provider
+
+type ArmT = ArmX | ArmY
