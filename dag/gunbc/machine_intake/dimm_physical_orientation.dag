@@ -14,7 +14,7 @@ import gunbc.mt_collins_dimm_physical_identity {
   PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
   resolve_dimm_diagram_identity,
 }
-import gunbc.host.managed_host { ManagedHostBinding }
+import extdeps.bmc.access_profile { BmcAccessObservation }
 import gunbc.host.baseboard_dimm_figure {
   BaseboardDimmFigure, BaseboardDimmFigureOf, BoardFigureUnmodeled,
   baseboard_dimm_figure, figure_banks, figure_channel_pairs, figure_population_rows,
@@ -32,20 +32,22 @@ import gunbc.machine_intake.dimm_row_orientation {
 }
 
 // THE PHYSICAL ORIENTATION OF A MANAGED HOST'S DIMM ROW. The board is read off the access observation
-// gunbc.host.managed_host managed_host_binding bound (never stored beside it), its figure is selected by
+// gunbc.host.bmc_control_binding BmcControlBoundRoute bound (never stored beside it), its figure is selected by
 // gunbc.host.baseboard_dimm_figure, and a board with no modeled figure refuses before any anchor is read.
 // The row logic is gunbc.machine_intake.dimm_row_orientation, over the figure this module hands it.
 // What a unit observed -- its boots, the frame its operator faced, its damage report, its connector
 // colours -- is supplied by the unit's own modules as parameters; nothing in this module names a unit.
 
 // THE ORIENTATION OF A BOUND HOST'S ROW, AND THE ONLY MINT OF ONE. The figure is the bound host's own
-// baseboard's: the board comes off the access observation inside the sealed ManagedHostBinding, so an
-// orientation can only ever be computed against the figure of the board the controller reported. A
-// host whose access is unobserved has no binding (managed_host_binding refuses it as
-// ManagedHostAccessUnobserved), so it is refused on that cause before this function is reachable, and
-// never collapses into BoardFigureUnmodeled. DimmOrientedHost is sole_constructor, so every reader
-// downstream -- the slot map, the population consequence -- takes its figure from here and cannot be
-// handed one host's name beside another board's figure.
+// baseboard's: the board comes off the access observation the bound CONTROL ROUTE carries
+// (gunbc.host.bmc_control_binding BmcControlBoundRoute -- the reading the join checked the observed
+// endpoint against), so an orientation can only ever be computed against the figure of the board the
+// controller reported, beside the identity of the row that route was joined for. A host whose access is
+// unobserved has no bound route (bmc_control_binding refuses it as BmcControlAccessUnobserved), so it is
+// refused on that cause before this function is reachable, and never collapses into
+// BoardFigureUnmodeled. DimmOrientedHost is sole_constructor, so every reader downstream -- the slot map,
+// the population consequence -- takes its figure from here and cannot be handed one host's name beside
+// another board's figure.
 type DimmOrientedHost sole_constructor {
   host: HostIdentity
   board: BoardAuthorityRef
@@ -57,11 +59,11 @@ type HostDimmOrientation
   = HostDimmOriented { oriented: DimmOrientedHost }
   | HostDimmBoardUnmodeled { host: HostIdentity, board: BoardAuthorityLookup }
 
-fn host_dimm_orientation(binding: ManagedHostBinding, anchors: List<DimmPlacementAnchor>) -> HostDimmOrientation {
-  match baseboard_dimm_figure(board: observed_board_authority(observation: binding.observation.identity.board)) {
-    BoardFigureUnmodeled { board: b } => HostDimmBoardUnmodeled { host: binding.host.host, board: b }
+fn host_dimm_orientation(host: HostIdentity, observation: BmcAccessObservation, anchors: List<DimmPlacementAnchor>) -> HostDimmOrientation {
+  match baseboard_dimm_figure(board: observed_board_authority(observation: observation.identity.board)) {
+    BoardFigureUnmodeled { board: b } => HostDimmBoardUnmodeled { host: host, board: b }
     BaseboardDimmFigureOf { board: b, figure: f } => HostDimmOriented { oriented: DimmOrientedHost {
-      host: binding.host.host,
+      host: host,
       board: b,
       figure: f,
       outcome: resolve_orientation(anchors: anchors, banks: figure_banks(figure: f), pairs: figure_channel_pairs(figure: f)),
@@ -70,7 +72,7 @@ fn host_dimm_orientation(binding: ManagedHostBinding, anchors: List<DimmPlacemen
 }
 
 
-// The damaged candidates on a bound host: the host's orientation and its own figure.
+// The damaged candidates on an oriented host: the host's orientation and its own figure.
 fn host_damaged_candidates(oriented: DimmOrientedHost, report: DimmDamagedConnectorReport) -> DimmDamagedCandidates {
   damaged_connector_candidates(report: report, orientation: oriented.outcome, banks: figure_banks(figure: oriented.figure))
 }

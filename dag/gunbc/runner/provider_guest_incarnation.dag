@@ -77,7 +77,7 @@ fn provider_guest_incarnation(
   adoption: ProviderGuestAdoption,
 ) -> IncarnationStanding {
   match controlled.route {
-    BmcControlRoute { binding: _ } => IncarnationRefused { refusal: IncarnationHostNotProviderControlled { host: controlled.host } }
+    BmcControlRoute { route: _ } => IncarnationRefused { refusal: IncarnationHostNotProviderControlled { host: controlled.host } }
     ProviderApiControlRoute { route: _, acquisition: held, observed: _ } =>
       if (held.resource_id as String) != (rebuild.acquisition.resource_id as String) {
         IncarnationRefused { refusal: IncarnationRebuildForAnotherResource { controlled: held.resource_id, rebuilt: rebuild.acquisition.resource_id } }

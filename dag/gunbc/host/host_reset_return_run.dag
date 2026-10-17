@@ -1,5 +1,6 @@
 module gunbc.host.host_reset_return_run
 
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import std.optional { Absent, Present }
 import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
@@ -80,6 +81,7 @@ import gunbc.host.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
+import gunbc.host.bmc_control_binding { bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster {
   AdmittedResetSubject,
   reset_lookup_subject,
@@ -400,13 +402,13 @@ data host_reset_down_watch_samples: Nat = 120
 data host_reset_back_watch_samples: Nat = 200
 
 fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
-  match admit_unit_hold_subject(host: candidate.binding.host) {
+  match admit_unit_hold_subject(host: candidate.host) {
     UnitHoldNotRequired { host: _ } => none
     UnitHoldSubjectAdmitted { subject: _ } =>
       match proof {
-        Absent => Present { value: join(["subject ", candidate.binding.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
+        Absent => Present { value: join(["subject ", candidate.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
         Present { value: p } =>
-          match unit_hold_proof_refusal(proof: p, host: candidate.binding.host.host, label: "host reset-return") {
+          match unit_hold_proof_refusal(proof: p, host: candidate.host.host, label: "host reset-return") {
             Present { value: why } => Present { value: why as NonEmptyStr }
             Absent => none
           }
@@ -415,6 +417,7 @@ fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) 
 }
 
 fn host_reset_return_attempt(
+  evidence: MegaRacOperationEvidence,
   proof: UnitHoldProof?,
   candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
@@ -423,14 +426,14 @@ fn host_reset_return_attempt(
   password_file: NonEmptyStr,
 ) -> ResetAttemptMint
 {
-  let subject = candidate.binding.host.host as NonEmptyStr
+  let subject = candidate.host.host as NonEmptyStr
   let selection = select_reset_observer(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
   )
-  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.binding.host.host)
+  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host.host)
   match reset_issuance_block(selection: selection, identity: identity) {
     Present { value: blocked } =>
       return mint_reset_attempt_receipt(
@@ -512,27 +515,42 @@ fn host_reset_return_issue_and_watch(
       )
     Absent => {}
   }
-  let outcome = oob_boot_handoff(
-    observation: candidate.binding.observation,
-    capability_row: candidate.binding.host.capability_row,
-    username: candidate.binding.account,
-    password_file: password_file,
-    selection: candidate.boot_selection,
-  )
-  let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
-  let observation = observe_reset_return(
-    host: candidate.binding.host.host as NonEmptyStr,
-    down_samples_max: host_reset_down_watch_samples,
-    back_samples_max: host_reset_back_watch_samples,
-  )
-  return mint_reset_attempt_receipt(
-    selection: selection,
-    attempt: attempt,
-    route: route,
-    self_identity: identity,
-    acknowledgement: ack,
-    observation: observation,
-  )
+  // THE ACCOUNT AND THE READING COME THROUGH THE BOUND ROUTE (gunbc.host.bmc_control_binding), never
+  // copied onto the subject. A route whose binding names no managed account refuses before any
+  // controller write rather than reaching for a credential of its own.
+  match bmc_control_route_account(route: candidate.route) {
+    Absent =>
+      return mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ResetNotAttempted { cause: "the bound route names no managed account; refusing before any controller write" },
+        observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
+      )
+    Present { value: account } => {
+      let outcome = oob_boot_handoff(
+        observation: bmc_control_route_observation(route: candidate.route),
+        username: account,
+        password_file: password_file,
+        selection: candidate.boot_selection,
+      )
+      let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
+      let observation = observe_reset_return(
+        host: candidate.host.host as NonEmptyStr,
+        down_samples_max: host_reset_down_watch_samples,
+        back_samples_max: host_reset_back_watch_samples,
+      )
+      return mint_reset_attempt_receipt(
+        selection: selection,
+        attempt: attempt,
+        route: route,
+        self_identity: identity,
+        acknowledgement: ack,
+        observation: observation,
+      )
+    }
+  }
 }
 
 // ── the entry the converge workflow invokes ────────────────────────────────────────────────────
@@ -619,6 +637,7 @@ fn host_reset_return_dispatch_admission_wet() -> ProcessExit
 data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE" as NonEmptyStr
 
 fn host_reset_return_attempt_exit(
+  evidence: MegaRacOperationEvidence,
   proof: UnitHoldProof?,
   candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
@@ -631,6 +650,7 @@ fn host_reset_return_attempt_exit(
   host_reset_return_exit(
     verdict: reset_return_verdict_of_mint(
       mint: host_reset_return_attempt(
+        evidence: evidence,
         proof: proof,
         candidate: candidate,
         observer: observer,
@@ -644,7 +664,7 @@ fn host_reset_return_attempt_exit(
   )
 }
 
-fn host_reset_return_wet() -> ProcessExit
+fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
 {
   let credential = shell.Env.Get(name: host_reset_bmc_credential_path_env).value
   let password_file_raw = match credential {
@@ -678,7 +698,7 @@ fn host_reset_return_wet() -> ProcessExit
     RouteEstablished { route: r } => r
   }
   let assignment = reset_dispatch_pairings(
-    subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
+    subject_roster: reset_roster_hosts(entries: reset_subject_roster(evidence: evidence)),
     peer_roster: reset_observer_peer_roster(),
   )
   return match subject_for_observer(assignment: assignment, observer: observer) {
@@ -688,14 +708,14 @@ fn host_reset_return_wet() -> ProcessExit
         remedy: "this runner is not an assigned observer, so it has no subject to watch",
       )
     Present { value: subject } =>
-      match reset_lookup_subject(lookup: reset_subject_for(host: subject)) {
+      match reset_lookup_subject(lookup: reset_subject_for(evidence: evidence, host: subject)) {
         Absent =>
           host_reset_return_preflight_exit(
             refusal: SubjectHasNoRosterRow { subject: subject },
             remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
-          match admit_unit_hold_subject(host: candidate.binding.host) {
+          match admit_unit_hold_subject(host: candidate.host) {
             UnitHoldNotRequired { host: _ } =>
               host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
             UnitHoldSubjectAdmitted { subject: held } =>

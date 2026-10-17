@@ -6,6 +6,7 @@ import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.machine_intake.subject { UnitKey, UnitKeyRefusalCause, UnitKeyStanding }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
@@ -52,7 +53,15 @@ type OwnedProvisioning
   | ApplianceFirstBoot
 
 type HostBacking
-  = OwnedMachine { provisioning: OwnedProvisioning }
+  // The `unit` fact is the host-to-hardware allocation: the UnitKey this owned machine
+  // is bound to. It is an Optional because a backing row exists the moment a machine is
+  // provisioned, but its board serial (the identity that grounds the UnitKey) is only
+  // read on first out-of-band observation. Absent means "no board-serial observation has
+  // been taken for this row"; Present carries bind_unit_key's standing, which itself keeps
+  // UnitKeyBound from UnitKeyRefused (a read serial that duplicates or contradicts is a
+  // different fact from a never-read one). An owned machine whose serial was read and found
+  // duplicated is not the same fact as one never read.
+  = OwnedMachine { provisioning: OwnedProvisioning, unit: UnitKeyStanding? }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
 
 // THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
@@ -64,5 +73,46 @@ fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
     OwnedMachine { provisioning: _ } => none
     ProviderGuest { route: _, entitlement: e, resource: _ } =>
       if e.nested_virtualization { none } else { Present { value: e.offer } }
+  }
+}
+
+// THE UNIT-KEY ALLOCATION, read off an owned machine's backing row. This is the join between fleet
+// identity (the HostIdentity that owns the row) and the physical unit it is bound to. A board swap is
+// a change to the row's `unit` standing, and it is what makes a receipt bound to the old unit refuse
+// against the new one. The three outcomes are kept distinct -- resolved (the serial was read and
+// uniquely bound a key), refused (it was read but the standing is UnitKeyRefused, carrying its cause),
+// and unobserved (no board-serial observation has been taken for this row) -- because each has a
+// different remedy: resolved is the only outcome from which a unit may be resolved, a refused row
+// refuses with its cause, and an unobserved row names the read obligation.
+type HostUnitAllocationStanding
+  = HostUnitResolved { unit: UnitKey }
+  | HostUnitRefused { cause: UnitKeyRefusalCause }
+  | HostUnitUnobserved { read_obligation: NonEmptyStr }
+  | HostUnitNotOwned
+
+// Provider guests are not physical machines: they carry no UnitKey, and that is correct -- there is
+// no board serial to read. They are therefore neither resolved nor unobserved.
+fn resolve_host_unit(backing: HostBacking) -> HostUnitAllocationStanding {
+  match backing {
+    OwnedMachine { provisioning: _, unit: unit_standing } =>
+      match unit_standing {
+        Absent => HostUnitUnobserved {
+          // The read that would bind the unit: the board serial, read from SMBIOS type 2 on the owned
+          // host, or from the FRU through its controller. Naming it keeps the unobserved row a tracked
+          // frontier (a real follow-up observation) rather than a bare state.
+          read_obligation: "read the board serial (SMBIOS type 2 on the owned host, or the FRU through its controller) and bind it to a unit",
+        }
+        Present { value: standing } =>
+          match standing {
+            UnitKeyBound { key: k } => HostUnitResolved { unit: k }
+            UnitKeyRefused { cause: c } => HostUnitRefused { cause: c }
+          }
+      }
+    ProviderGuest { route: _, entitlement: _, resource: _ } =>
+      // A provider guest is not a physical machine: there is no board serial to read and no unit to
+      // bind, so the allocation is not "unobserved" (which would owe a read) and not "refused" (which
+      // would carry a cause) -- it is simply not an owned machine. Naming it keeps a refactor that
+      // reclassified a rented guest as a unit visible.
+      HostUnitNotOwned
   }
 }

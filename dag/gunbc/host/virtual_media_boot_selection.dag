@@ -1,0 +1,81 @@
+// A VIRTUAL-MEDIA BOOT SELECTION, DERIVED FROM THE PLATFORM + CONTROLLER FACTS.
+//
+// This is the generic derivation that replaces the two host-name dispatches (the boot arm's
+// boot_selection and the reset arm's reset_boot_selection) that each branched on whether the host
+// was mtcollins1 and, if so, minted mtcollins1_virtual_media_boot_selection. Instead of a
+// host-name branch, the selection is DERIVED from two facts the host carries: the platform
+// architecture its board establishes (gunbc.host.board_platform_facts) and the controller's
+// virtual-media capability (gunbc.host.controller_capability). A second machine whose board
+// admits the same SoC (Aarch64) and whose controller row carries the same media profile gets the
+// same selection with no code change — only data rows.
+//
+// The refusal is TYPED, not collapsed to "no selection": the derivation refuses with a cause that
+// names WHY it could not decide — the architecture was unestablished (the board's families do not
+// agree, or no board fact was reachable), the architecture is established but not one the IPMI
+// virtual-media boot selection can express (today only Aarch64 is derivable), or the controller
+// does not establish a virtual-media surface. Each refusal names its cause so a caller can act on
+// it rather than treat a refused boot as an unselected one.
+module gunbc.host.virtual_media_boot_selection
+
+import std.types { NonEmptyStr, String }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, IpmiBootDevice, aarch64_uefi_once_boot_selection }
+import extdeps.board_soc { BoardSocArchitectureStanding }
+import gunbc.host.controller_capability { CapabilityFactStanding }
+
+// WHY A VIRTUAL-MEDIA BOOT SELECTION COULD BE REFUSED. Named for the failing fact so a caller can
+// distinguish the causes instead of collapsing them to "no selection". The arms are listed without
+// interleaved comments (the corpus convention the binding parser recovers):
+//   - ArchitectureUnestablished: the board establishes no firmware architecture -- its SoC families
+//     do not agree, or no board fact is reachable from the observed controller. There is no
+//     architecture to express the selection in.
+//   - ArchitectureUnsupported: the board establishes an architecture, but it is not one the IPMI
+//     virtual-media boot selection can express. Today only Aarch64 is derivable; the x86 constructor
+//     is a future addition, not a widened boolean, so a non-Aarch64 platform is refused with its
+//     architecture named.
+//   - VirtualMediaUnestablished: the platform architecture is established (Aarch64), but the
+//     controller does not establish a virtual-media surface: the IPMI row carries no virtual-media
+//     capability (virtual media, NBD-proxy media, or OEM remote media). There is no media surface to
+//     attach the boot image through.
+type VirtualMediaBootSelectionRefusal
+  = ArchitectureUnestablished
+  | ArchitectureUnsupported { architecture: Architecture }
+  | VirtualMediaUnestablished
+
+// THE OUTCOME OF THE DERIVATION: an admitted selection, or a typed refusal.
+type VirtualMediaBootSelectionOutcome
+  = VirtualMediaBootSelectionAdmitted { selection: IpmiBootSelection }
+  | VirtualMediaBootSelectionRefused { cause: VirtualMediaBootSelectionRefusal }
+
+// THE VIRTUAL-MEDIA BOOT SELECTION. Derive the one-shot IPMI boot selection from the platform
+// architecture the host's board establishes and the controller's virtual-media capability.
+//
+// The architecture gate runs first: an unestablished or non-expressible architecture refuses
+// before the media fact is even consulted, because without an expressible architecture there is
+// no selection to attach a media surface to. On an established Aarch64 platform, the media gate
+// decides whether the controller can attach a medium at all.
+fn virtual_media_boot_selection(arch: BoardSocArchitectureStanding, media: CapabilityFactStanding) -> VirtualMediaBootSelectionOutcome {
+  match arch {
+    Unestablished => VirtualMediaBootSelectionRefused { cause: ArchitectureUnestablished }
+    Established { architecture: a } =>
+      if a == Aarch64 {
+        match media {
+          CapabilityUnestablished => VirtualMediaBootSelectionRefused { cause: VirtualMediaUnestablished }
+          CapabilityEstablished =>
+            VirtualMediaBootSelectionAdmitted { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom) }
+        }
+      } else {
+        VirtualMediaBootSelectionRefused { cause: ArchitectureUnsupported { architecture: a } }
+      }
+  }
+}
+
+// THE REFUSAL'S TEXT, for a caller that prints it. Each cause names the failing fact so a refused
+// boot is located, not treated as an unselected one.
+fn virtual_media_boot_selection_refusal_text(cause: VirtualMediaBootSelectionRefusal) -> String {
+  match cause {
+    ArchitectureUnestablished => "its board establishes no firmware architecture (the SoC families it admits do not agree, or no board fact is reachable from its observed controller)"
+    ArchitectureUnsupported { architecture: a } => concat("its board establishes ", architecture_diagnostic_name(arch: a) as String, ", which the IPMI virtual-media boot selection cannot express (today only Aarch64 is derivable)")
+    VirtualMediaUnestablished => "its controller does not establish a virtual-media surface (the IPMI capability row carries no virtual-media, NBD-proxy, or OEM remote media value)"
+  }
+}

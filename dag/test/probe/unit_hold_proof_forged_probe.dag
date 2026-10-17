@@ -26,7 +26,7 @@ import gunbc.machine_intake.oob_boot_handoff { oob_boot_handoff, oob_power_actio
 import gunbc.machine_intake.megarac_media_attach { MegaRacObserve, megarac_attach_remote_image }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_observe_boot_presentation }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
 // The subject a forged proof names is a parameter: an AdmittedUnitHoldSubject cannot be authored here
 // either (test.claim.host.managed_host_unit_hold_forged_probe_witness pins that), and none of these
@@ -50,7 +50,7 @@ fn attach_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject, b: Admitt
 }
 
 fn power_cycle_through_the_generic_handoff_from_outside() -> String {
-  let _x = oob_boot_handoff(observation: mtcollins1_access_observation, capability_row: mtcollins1_capability_row, username: "admin", password_file: "/tmp/pw", selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom))
+  let _x = oob_boot_handoff(observation: mtcollins1_access_observation, username: "admin", password_file: "/tmp/pw", selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom))
   ""
 }
 

@@ -187,7 +187,7 @@ test fn owned_machine_is_not_adopted_as_a_guest() -> Bool {
   let owned = HostEnrollmentIntent {
     host: operator_host_srv1,
     participation: ci_runner_enrollment_participation,
-    backing: OwnedMachine { provisioning: BmcVirtualMediaInstall },
+    backing: OwnedMachine { provisioning: BmcVirtualMediaInstall, unit: Absent },
   }
   match adopt_provider_guest(intent: owned, read: cax41_observed(resource: "60000001", arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
     GuestAdoptionRefused { host: _, cause: HostIsNotAProviderGuest } => true
