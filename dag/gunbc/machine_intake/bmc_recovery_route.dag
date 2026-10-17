@@ -2307,7 +2307,7 @@ fn matches_the_readback_inconclusive(cause: RecoveryRouteUnavailable?, detail: N
 // extdeps.units.iso8601_calendar rather than being typed as round numbers, so a bound cannot
 // silently name a different day than the artifact does.
 type CapturedInstant
-  = CaptureTimeBand { band: OrderedClosedInterval<EpochMs, EpochMs> }
+  = CaptureTimeBand { band: OrderedClosedInterval<EpochMs> }
   | CaptureTimeBandInverted { reason: String }
 
 fn epoch_milliseconds_count(e: EpochMs) -> Int {
@@ -2342,7 +2342,7 @@ fn captured_minute_band(hour: Int, minute: Int) -> CapturedInstant {
 // the band, read out of the carrier rather than out of a chosen point: a reader gets the ordered pair
 // (with std.interval's own bounds proof attached) and cannot mistake either bound for a stopwatch
 // reading. No accessor hands out one instant.
-fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs, EpochMs>> {
+fn captured_instant_band(instant: CapturedInstant) -> Optional<OrderedClosedInterval<EpochMs>> {
   match instant {
     CaptureTimeBand { band: b } => Some(b)
     CaptureTimeBandInverted { reason: _ } => none
