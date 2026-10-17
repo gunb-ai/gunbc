@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.caret_symbol_inhabits_string_via_conformance_unjudged
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data caret_symbol_inhabits_string_via_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "caret_symbol_inhabits_string_via_conformance_unjudged" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: `fn f() -> String { ^tag }` is Accepted after LitSymbol is typed Symbol. There is no declared conversion from Symbol to String (no row in std.coercion / gunbc.structural_realization_bindings that names that pair). The accept is not node_type_compatible treating the names as equal.",
+
+    "DISTINGUISHING FACTS: v1.compiler.infer declared_type_conformance_diags_core reaches `!both_ground => []`. conformance_ground_type requires a name in std.types kernel_type_set. Symbol is not in that set. kernel_value_declared_type_mismatch also requires the produced name to be kernel (`is_kernel_type(actual_name)`), so a Symbol body at a String return does not fire that arm either. This is the unjudged declared-return silence, not an implicit-safe inhabitance route.",
+
+    "HARM: DESIGN section 4 — coercion is the implicit-safe subset of DECLARED conversions. A Symbol value inhabits a String obligation with no named conversion, so a later consumer reads host text where a symbol was produced.",
+
+    "RUNG FOUND AT: below the ladder — Accepted silent inhabitance (DESIGN section 4b), not mitigatable. CEILING: structurally guaranteed (decidable inhabitance once Symbol is ground or a conversion is declared). NEXT TRIGGER: declared_type_conformance judges Symbol against kernel String (add Symbol to the ground set, or a named conversion that the wall consumes), with a RED `-> String { ^tag }` and a green `-> Symbol { ^tag }`. Not #14082 (producer only).",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "declared_type_conformance_diags_core", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "conformance_ground_type", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.types", decl_name: "kernel_type_set", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_types", decl_name: "infer_literal_node", field: WholeDeclaration },
+  ],
+}
