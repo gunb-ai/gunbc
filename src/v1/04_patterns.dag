@@ -555,11 +555,10 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 }
 
 // An uninhabited SUM: a coproduct with zero arms, or Never keyed by DeclarationRef.
-// The index is the usual identity. When it is not built yet, the home module still
-// knows the declaration: env.module_path is never_type_declaration.module_path, and
-// the local env binds that DeclarationRef (str_bindings keyed by its decl_name).
-// That is the local declaration node, not the scrutinee's authored spelling
-// (operator 2026-10-15). A different module's `type Never` is not this ref.
+// Never is recognised only when its canonical declaration is present in the symbol index,
+// keyed by DeclarationRef identity, never by spelling. Absence is not uninhabited: no index
+// row means no Never, and no local binding stands in for it. A different module's `type Never`
+// is not this ref.
 fn peel_never_identity_candidate(n: Node, env: TypeEnv) -> Node {
   match lookup_type_for(env: env, node: n) {
     Present { value: def } => def
