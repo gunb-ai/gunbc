@@ -22,7 +22,8 @@ import v2.compiler.module_acquisition {
   acquisition_ingest,
   enumerate_bound_modules
 }
-import v2.cli.population_verbs { PopulationReport, check_layout, parse_population }
+import v2.cli.population_verbs { PopulationReport, check_layout, parse_population, parse_verdict_reuse_off, parse_verdict_reuse_requested }
+import v2.cli.parse_verdict_reuse { parse_verdict_base_read }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.cli.population_verb_names { cli_verb_check_layout, cli_verb_parse_population }
 import v2.cli.repository_layout { repository_storage_layout }
@@ -209,7 +210,7 @@ fn cli_roots_verb_spelling(kind: CliRootsVerb) -> String {
 fn cli_roots_verb_usage(kind: CliRootsVerb) -> String {
   match kind {
     CliRootsParsePopulation =>
-      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... [--compiler <identity>] [--write-identity <path>] [--receipts <path>]")
+      concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]... [--compiler <identity>] [--write-identity <path>] [--receipts <path>] [--reuse-from <dir>]")
     CliRootsDifferential =>
       concat("usage: <binary> ", cli_roots_verb_spelling(kind: kind), " --source-root <dir> [--source-root <dir>]...")
     CliRootsCheckLayout =>
@@ -322,6 +323,7 @@ data cli_option_compiler: String = "--compiler"
 data cli_option_write_identity: String = "--write-identity"
 
 data cli_option_receipts: String = "--receipts"
+data cli_option_reuse_from: String = "--reuse-from"
 
 data cli_option_entry: String = "--entry"
 
@@ -445,12 +447,51 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
                   }
               }
             } else {
-              CliParseFailed {
-                reason: ^cli_unknown_option,
-                detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+              if arg == cli_option_reuse_from {
+                match kind {
+                  CliRootsParsePopulation =>
+                    CliParseSeekReuseFromValue {
+                      kind: kind,
+                      roots: roots,
+                      compiler: compiler,
+                      write_identity: write_identity,
+                      receipts: receipts
+                    }
+                  CliRootsDifferential =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                  CliRootsCheckLayout =>
+                    CliParseFailed {
+                      reason: ^cli_unknown_option,
+                      detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                    }
+                }
+              } else {
+                CliParseFailed {
+                  reason: ^cli_unknown_option,
+                  detail: concat(concat("unknown option ", arg), concat(" -- ", cli_roots_verb_usage(kind: kind)))
+                }
               }
             }
           }
+        }
+      }
+    CliParseSeekReuseFromValue { kind: kind, roots: roots, compiler: compiler, write_identity: write_identity, receipts: receipts } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_reuse_from_missing_value,
+          detail: concat(cli_option_reuse_from, " takes a directory, and an option followed it")
+        }
+      } else {
+        CliParseSeekRootsOption {
+          kind: kind,
+          roots: roots,
+          compiler: compiler,
+          write_identity: write_identity,
+          receipts: receipts,
+          reuse_from: optional_present(value: arg)
         }
       }
     CliParseSeekCompilerValue { kind: kind, roots: roots, write_identity: write_identity, receipts: receipts, reuse_from: reuse_from } =>
@@ -581,6 +622,7 @@ fn cli_arg_is_option(arg: String) -> Bool {
     || (arg == cli_option_compiler)
     || (arg == cli_option_write_identity)
     || (arg == cli_option_receipts)
+    || (arg == cli_option_reuse_from)
 }
 
 fn cli_parse_finish(state: CliParseState) -> CliPlan {
@@ -603,6 +645,11 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
       CliPlanRefused {
         reason: ^cli_target_missing_value,
         detail: concat(cli_option_target, " takes a target name, and none followed it")
+      }
+    CliParseSeekReuseFromValue { kind: _, roots: _, compiler: _, write_identity: _, receipts: _ } =>
+      CliPlanRefused {
+        reason: ^cli_reuse_from_missing_value,
+        detail: concat(cli_option_reuse_from, " takes a directory, and none followed it")
       }
     CliParseSeekCompilerValue { kind: _, roots: _, write_identity: _, receipts: _, reuse_from: _ } =>
       CliPlanRefused {
@@ -930,6 +977,48 @@ fn parse_population_written(
   bindings: List<SourceRootBinding>,
   compiler: Optional<String>,
   write_identity: Optional<String>,
+  receipts: Optional<String>,
+  reuse_from: Optional<String>
+) -> PopulationReport {
+  match reuse_from {
+    Present { value: dir } => parse_population_reusing(bindings: bindings, compiler: compiler, write_identity: write_identity, receipts: receipts, dir: dir)
+    Absent => parse_population_published(bindings: bindings, compiler: compiler, write_identity: write_identity, receipts: receipts)
+  }
+}
+
+// REUSE IS THE PULL-REQUEST MODE AND PUBLISHING IS THE MAIN MODE; they do not combine. Reuse reports
+// counts where publishing reports the receipts, so writing receipts from a reuse walk would store
+// counts as a verdict. The combination is refused rather than ordered.
+fn parse_population_reusing(
+  bindings: List<SourceRootBinding>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
+  receipts: Optional<String>,
+  dir: String
+) -> PopulationReport {
+  match compiler {
+    Absent => PopulationReport { text: "", held: false, detail: "--reuse-from requires --compiler" }
+    Present { value: _ } =>
+      match write_identity {
+        Present { value: _ } => PopulationReport { text: "", held: false, detail: "--reuse-from does not combine with --write-identity or --receipts" }
+        Absent =>
+          match receipts {
+            Present { value: _ } => PopulationReport { text: "", held: false, detail: "--reuse-from does not combine with --write-identity or --receipts" }
+            Absent =>
+              parse_population(
+                bindings: bindings,
+                compiler: compiler,
+                reuse: parse_verdict_reuse_requested(base: parse_verdict_base_read(dir: dir))
+              )
+          }
+      }
+  }
+}
+
+fn parse_population_published(
+  bindings: List<SourceRootBinding>,
+  compiler: Optional<String>,
+  write_identity: Optional<String>,
   receipts: Optional<String>
 ) -> PopulationReport {
   let needs_compiler =
@@ -943,7 +1032,7 @@ fn parse_population_written(
           detail: "--write-identity and --receipts require --compiler"
         }
       Present { value: cid } => {
-        let report = parse_population(bindings: bindings, compiler: compiler)
+        let report = parse_population(bindings: bindings, compiler: compiler, reuse: parse_verdict_reuse_off())
         if !report.held {
           report
         } else {
@@ -959,7 +1048,7 @@ fn parse_population_written(
       }
     }
   } else {
-    parse_population(bindings: bindings, compiler: compiler)
+    parse_population(bindings: bindings, compiler: compiler, reuse: parse_verdict_reuse_off())
   }
 }
 
@@ -975,7 +1064,8 @@ fn cli_run_bound(plan: CliPlan, verb: CliVerb, bindings: List<SourceRootBinding>
           bindings: bindings,
           compiler: compiler,
           write_identity: write_identity,
-          receipts: receipts
+          receipts: receipts,
+          reuse_from: reuse_from
         )
       )
   }
