@@ -64,6 +64,19 @@ if [ -f .sdm/witness.dag ]; then
   set -e
   grep -ciE "TypeMismatch" .sdm/run/w_$V.log | sed 's/^/typemismatch_mentions=/'
   tail -6 .sdm/run/w_$V.log
+  # The strengthened witness must assert the EXACT diagnostic location, and the
+  # location is render_type_to_string(got) -- which is derived, never guessed. So ask
+  # the real compiler for the real diagnostics of the witness body, per variant, and
+  # print them verbatim. This is measurement only; no assertion changes here.
+  set +e
+  timeout 900 $BIN compile --source-root "$PWD" --source-root dag --entry .sdm/witness.dag \
+    --target rust --output-dir ".sdm/run/out_${V}_witnesscompile" \
+    > .sdm/run/cw_${V}.log 2> .sdm/run/cwe_${V}.log
+  echo "witness_compile_rc=$?"
+  set -e
+  grep -oE "type mismatch: expected [^ ]+ got [^ ]+ at [^ ]+ in [^ ]+" .sdm/run/cwe_${V}.log \
+    | sort | uniq -c | sed "s/^/WITNESS-DIAG $V /" || echo "WITNESS-DIAG $V none"
+  grep -cE "^gunbc: " .sdm/run/cwe_${V}.log | sed "s/^/WITNESS-BLOCKING-LINES $V /"
 else
   echo "@@@ VARIANT=$V WITNESS-ABSENT"
 fi
