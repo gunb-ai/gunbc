@@ -4,7 +4,6 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.measure { byte_size, finite_byte_size, positive_measure_count }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import extdeps.external_authority { TranscribedUncited }
 import std.os.types { NobleNumbat2404Lts }
@@ -12,11 +11,12 @@ import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   UbuntuInstallMediaMirrorRow,
   UbuntuLiveServer,
+  Aarch64,
   Amd64,
   CdimageUbuntuCom,
+  noble_numbat_2404_5_live_server_arm64,
   ubuntu_install_media_mirror_url,
 }
-import extdeps.provisioning.ubuntu_arm64_network_origin { noble_numbat_2404_5_live_server_arm64 }
 import gunbc.provisioning.ubuntu_arm64_network_origin_observation {
   ArtefactRead,
   ArtefactNotFetched,
@@ -139,7 +139,7 @@ test fn a_mismatch_outranks_an_unfetched_artefact() -> Bool {
 
 test fn the_origin_architecture_is_aarch64() -> Bool {
   match ubuntu_noble_arm64_network_origin() {
-    Present { value: o } => match o.architecture {
+    Present { value: o } => match o.installer_media.architecture {
       Aarch64 => true
       _ => false
     }
@@ -149,11 +149,11 @@ test fn the_origin_architecture_is_aarch64() -> Bool {
 
 test fn a_pin_refuses_malformed_hex() -> Bool {
   let standing = TranscribedUncited { read_obligation: "witness" }
-  let short = match pinned_artefact(sha256_hex: "abc", size: finite_byte_size(count: positive_measure_count(predecessor: 0)), standing: standing) {
+  let short = match pinned_artefact(sha256_hex: "abc", digest_standing: standing, size: finite_byte_size(count: positive_measure_count(predecessor: 0)), size_standing: standing) {
     Present { value: _ } => false
     Absent => true
   }
-  let upper = match pinned_artefact(sha256_hex: "B4567593BDA98A0723D9234603EC51D6EC7EE0553E1F36793A9DA3956A68183E", size: finite_byte_size(count: positive_measure_count(predecessor: 0)), standing: standing) {
+  let upper = match pinned_artefact(sha256_hex: "B4567593BDA98A0723D9234603EC51D6EC7EE0553E1F36793A9DA3956A68183E", digest_standing: standing, size: finite_byte_size(count: positive_measure_count(predecessor: 0)), size_standing: standing) {
     Present { value: _ } => false
     Absent => true
   }
@@ -177,7 +177,7 @@ test fn an_origin_refuses_another_architectures_media() -> Bool {
     sha256sums_authority: noble_numbat_2404_5_live_server_arm64.sha256sums_authority,
   }
   let standing = TranscribedUncited { read_obligation: "witness" }
-  match pinned_artefact(sha256_hex: kernel_hex, size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)), standing: standing) {
+  match pinned_artefact(sha256_hex: kernel_hex, digest_standing: standing, size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)), size_standing: standing) {
     Present { value: k } => match ubuntu_arm64_network_origin(
       media: amd64_row,
       installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
