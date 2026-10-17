@@ -738,16 +738,6 @@ pub fn declaration_is_grounded_coproduct_native_alias(
     }
 }
 
-pub fn name_realizes_as_native_alias(
-    import_module: String,
-    decls: Rc<TypeDeclIndex>,
-    name: String,
-) -> bool {
-    ((declaration_is_grounded_coproduct_native_alias(import_module.clone(), name.clone())
-        || every_declarer_is_grounded_coproduct_native_alias(decls.clone(), name.clone()))
-        || rust_declaration_realizes_as_native_alias(import_module.clone(), name.clone()))
-}
-
 pub fn every_declarer_is_grounded_coproduct_native_alias(
     decls: Rc<TypeDeclIndex>,
     name: String,
@@ -771,6 +761,16 @@ pub fn every_declarer_is_grounded_coproduct_native_alias(
             __all
         })
     }
+}
+
+pub fn name_realizes_as_native_alias(
+    import_module: String,
+    decls: Rc<TypeDeclIndex>,
+    name: String,
+) -> bool {
+    ((declaration_is_grounded_coproduct_native_alias(import_module.clone(), name.clone())
+        || every_declarer_is_grounded_coproduct_native_alias(decls.clone(), name.clone()))
+        || rust_declaration_realizes_as_native_alias(import_module.clone(), name.clone()))
 }
 
 pub fn summary_declares_grounded_coproduct_native_alias(summary: Rc<TypeSummary>) -> bool {
@@ -14831,36 +14831,38 @@ Rc::new(vec![Rc::new(RustUseLine {
                     for en in Rc::new({
                         let mut __result = Vec::new();
                         for en in final_imported_enums.iter().cloned() {
-                            if ((({
-                                let mut __found = false;
-                                for p in parent_list.iter().cloned() {
-                                    if (p.clone() == en.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            } == false)
-                                && !name_realizes_as_native_alias(
-                                    match reexport_source_module_name(
-                                        en.clone(),
-                                        import_module.clone(),
-                                        typed_modules.clone(),
-                                        export_sets.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                    ) {
-                                        Some(src) => src.clone(),
-                                        None => import_module.clone(),
-                                    },
-                                    emit_info.type_decl_items.clone(),
+                            if {
+                                let declaring_module = match reexport_source_module_name(
                                     en.clone(),
-                                ))
-                                && (rust_kernel_grounded_type_decl(
                                     import_module.clone(),
-                                    en.clone(),
-                                ) == std::option::Option::None))
-                            {
+                                    typed_modules.clone(),
+                                    export_sets.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                ) {
+                                    Some(src) => src.clone(),
+                                    std::option::Option::None => import_module.clone(),
+                                };
+                                ((({
+                                    let mut __found = false;
+                                    for p in parent_list.iter().cloned() {
+                                        if (p.clone() == en.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } == false)
+                                    && !name_realizes_as_native_alias(
+                                        declaring_module.clone(),
+                                        emit_info.type_decl_items.clone(),
+                                        en.clone(),
+                                    ))
+                                    && (rust_kernel_grounded_type_decl(
+                                        import_module.clone(),
+                                        en.clone(),
+                                    ) == std::option::Option::None))
+                            } {
                                 __result.push(en);
                             }
                         }
@@ -14869,31 +14871,33 @@ Rc::new(vec![Rc::new(RustUseLine {
                     .iter()
                     .cloned()
                     {
-                        let declaring_mod = graph_type_import_module_filename(
-                            en.clone(),
-                            import_module.clone(),
-                            mod_name.clone(),
-                            typed_modules.clone(),
-                            export_sets.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        );
-                        __result.push(Rc::new(RustUseLine {
-                            target_module: declaring_mod.clone(),
-                            text: v1_rt::concat(
-                                v1_rt::concat(
+                        __result.push({
+                            let declaring_mod = graph_type_import_module_filename(
+                                en.clone(),
+                                import_module.clone(),
+                                mod_name.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            );
+                            Rc::new(RustUseLine {
+                                target_module: declaring_mod.clone(),
+                                text: v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            "use crate::".to_string(),
-                                            declaring_mod.clone(),
+                                            v1_rt::concat(
+                                                "use crate::".to_string(),
+                                                declaring_mod.clone(),
+                                            ),
+                                            "::".to_string(),
                                         ),
-                                        "::".to_string(),
+                                        en.clone(),
                                     ),
-                                    en.clone(),
+                                    "::*;".to_string(),
                                 ),
-                                "::*;".to_string(),
-                            ),
-                        }));
+                            })
+                        });
                     }
                     __result
                 });
