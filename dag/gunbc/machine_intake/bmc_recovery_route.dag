@@ -1,6 +1,10 @@
 module gunbc.machine_intake.bmc_recovery_route
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Port, String, list_length }
+// THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
+// `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
+// in_band_argv_credential_option). Absent/Present are still needed for MATCHING.
+import std.optional { Present, Absent, optional_present, optional_absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.content_hash {
   Sha256Digest, content_hash_of_value,
@@ -306,7 +310,7 @@ fn in_band_channel_from_argv(
   interface_name: NonEmptyStr,
   argv_words: List<String>,
 ) -> InBandAccessWithoutCredential {
-  match ipmi_command_interface_from_wire(name: interface_name) {
+  match ipmi_command_interface_from_wire(wire: interface_name) {
     // Not a wire name ipmitool knows: there is no transport to stand on, so nothing is admitted. Refused,
     // never defaulted -- the reason review 81235 gave for the same rule on the transport side.
     IpmiCommandInterfaceUnrecognized { wire: _ } =>
@@ -327,14 +331,18 @@ fn in_band_channel_from_argv(
 // The first credential-bearing option on the line, if any. Order matters only for WHICH option gets named
 // in the refusal, not for whether one is refused: any of them routes out of the admitted arm.
 fn in_band_argv_credential_option(words: List<String>) -> IpmiArgvCredentialOption? {
+  // THE std.optional MINTS, NOT the variant constructors: `Present { value: IpmiArgvUserName }` parses as
+  // a type annotation followed by a block, so the if-branches resolved to the variant and to Optional
+  // separately and the function was refused. The mints name the same two arms and take the value as an
+  // argument, which is the spelling the rest of the tree uses when a branch has to produce an optional.
   if (any(xs: words, predicate: w => w == "-U")) {
-    Present { value: IpmiArgvUserName }
+    optional_present(value: IpmiArgvUserName)
   } else if (any(xs: words, predicate: w => w == "-P")) {
-    Present { value: IpmiArgvPassword }
+    optional_present(value: IpmiArgvPassword)
   } else if (any(xs: words, predicate: w => w == "-E")) {
-    Present { value: IpmiArgvPasswordFromEnv }
+    optional_present(value: IpmiArgvPasswordFromEnv)
   } else {
-    Absent
+    optional_absent()
   }
 }
 
@@ -680,6 +688,14 @@ fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Bool {
                 DivergesWithReason { reason: _ } => false
                 SiteNotDecidable { standing: _ } => false
               }
+            // ANY OTHER SELECTION IS A REFUSAL OF THIS GATE, and named rather than defaulted: the
+            // selection sum has other arms (a federated grant, a human-only pattern, a refused
+            // selection), and the one this gate accepts is the operator-approved capability because the
+            // effect's own classification forces it. Listing them keeps the question "which patterns
+            // exist?" answerable from this match instead of from a wildcard that would silently swallow a
+            // new arm the selection module later adds.
+            PatternSelected { pattern: _, receipt: _ } => false
+            PatternSelectionRefused { defects: _ } => false
             ManualStepRequired { step: _, receipt: _ } => false
             PatternSelectionRefused { defects: _ } => false
             PatternSelectionNeedsEvidence { needs: _ } => false
@@ -940,13 +956,35 @@ fn recovery_hold_admits_this_unit(unit_key: UnitKey, hold: UnitHoldAcquisition?)
             // The field is `key` (gunbc.host.managed_host_unit_hold's AdmittedUnitHoldSubject: host, key,
             // store_host). One arm, so the comparison cannot be skipped by a shape.
             AdmittedUnitHoldSubject { host: _, key: key, store_host: _ } =>
-              if key == (unit_key as NonEmptyStr) {
-                HoldHeldForThisUnit { proof: proof }
-              } else {
-                HoldHeldForAnotherUnit { held_for: key, this_unit: unit_key as NonEmptyStr }
+              match recovery_hold_key_verdict(held_key: key, this_unit: unit_key as NonEmptyStr) {
+                HoldKeyMatchesThisUnit => HoldHeldForThisUnit { proof: proof }
+                HoldKeyNamesAnotherUnit { held_for: held_for, this_unit: this_unit } =>
+                  HoldHeldForAnotherUnit { held_for: held_for, this_unit: this_unit }
               }
           }
       }
+  }
+}
+
+// THE KEY DECISION, SEPARATED FROM THE PROOF THAT CARRIES IT. UnitHoldProof is sole_constructor in
+// gunbc.host.managed_host_unit_hold and minted only by the live compare-and-set acquire, so NOTHING in
+// this module can build one -- which is the point, and also why the mismatch decision had to be reachable
+// on its own: with the comparison written inline, the arm that says "this hold is for a different
+// chassis" could never be exercised by a claim, and an unexercised arm is where a mistake lives quietly
+// (this is the same gap that let a nonsense field name survive here for several rounds).
+//
+// It is a comparison of two names and nothing else -- no authority, no minting, no way to use it to get a
+// hold. The gate still requires the real proof to reach its admitted arm; this only decides, from the two
+// keys, which of the two hold arms the gate would land in, and keeps both keys for the refusal.
+type RecoveryHoldKeyVerdict
+  = HoldKeyMatchesThisUnit
+  | HoldKeyNamesAnotherUnit { held_for: NonEmptyStr, this_unit: NonEmptyStr }
+
+fn recovery_hold_key_verdict(held_key: NonEmptyStr, this_unit: NonEmptyStr) -> RecoveryHoldKeyVerdict {
+  if held_key == this_unit {
+    HoldKeyMatchesThisUnit
+  } else {
+    HoldKeyNamesAnotherUnit { held_for: held_key, this_unit: this_unit }
   }
 }
 
@@ -1014,9 +1052,9 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
           // capture without leaving the model
           capture: recovery_post_reset_readback_capture_ref,
         }
-        Present { value: proven_readback }
+        optional_present(value: proven_readback)
       } else {
-        Absent
+        optional_absent()
       }
     CredentialNotAccepted { evidence: _, observed_at: _ } => Absent
     ReadbackInconclusive { detail: _ } => Absent
@@ -1424,7 +1462,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
 
 fn recovery_route_unavailability(standing: InBandRecoveryStanding) -> RecoveryRouteUnavailable? {
   match standing.outcome {
-    RecoveryHandedToOnboarding { controller: _, readback: _, writes: _ } => none
+    RecoveryHandedToOnboarding { controller: _, proven: _, writes: _ } => none
     RecoveryHostUnreachable { cause: c } => Present { value: NoReachableRescueHost { cause: c } }
     RecoveryChannelUnobserved { detail: d } => Present { value: RecoveryReadbackInconclusive { detail: d } }
     RecoveryControllerPolicyUnavailable { sighting: sighting } =>
@@ -2109,6 +2147,97 @@ fn recovery_factory_credential_readback() -> RecoveryFactoryCredentialReadback {
     evidence: recovery_post_reset_readback_capture_ref,
     observed_at: recovery_capture_instant(),
   }
+}
+
+// THE GATES ARE CALLED, NOT JUST NAMED. Until now nothing in this file CALLed either admission gate --
+// the census references them only as decl_ref STRINGS, which cannot catch a wrong field or parameter
+// name. That gap is how `AdmittedUnitHoldSubject { unit: }` (the record's field is `key`) and a fold
+// writing `proven:` into an arm declaring `readback:` survived: the compiler never saw those call sites
+// because there were none. Both gates are now called, on every arm they can be called on from here.
+//
+// WHICH HOLD ARMS ARE NOT EXERCISED HERE, AND WHY THAT IS NOT A HOLE. UnitHoldProof is sole_constructor
+// in gunbc.host.managed_host_unit_hold, minted only by the live compare-and-set acquire, so this module
+// cannot build one and no claim here asserts the admitted-hold arm: forging one would be the exact attack
+// that module's own forged-probe witness checks is refused at the literal. What IS exercised is every arm
+// reachable without a proof -- hold never taken, hold refused by the store -- plus the key decision that
+// separates "this chassis" from "somebody else's chassis", which was pulled out of the inline comparison
+// precisely so it could be tested (see recovery_hold_key_verdict).
+test fn the_reset_gate_refuses_by_naming_the_hold_mistake() -> Bool {
+  let route = recovery_test_route(reading: recovery_measured_identity())
+  // NO HOLD TAKEN: refused, and the cause says WHICH mistake, rather than the generic sentence a Bool
+  // produced for all three.
+  (match admit_recovery_manager_reset_to_defaults(
+    route: route,
+    under_ruling: recovery_reset_operator_ruling,
+    unit_hold: optional_absent(),
+    reset_write: recovery_reset_write_record(),
+  ) {
+    ResetWriteRefused { cause: cause } =>
+      starts_with(s: cause as String, prefix: "the durable unit hold was never acquired")
+    ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+  })
+    // REFUSED BY THE STORE: the store's own words travel into the cause -- the half the Bool discarded.
+    && (match admit_recovery_manager_reset_to_defaults(
+      route: route,
+      under_ruling: recovery_reset_operator_ruling,
+      unit_hold: optional_present(
+        value: UnitHoldRefused { reason: "unit is held by boot-run-41; no BMC actuation until it is released" },
+      ),
+      reset_write: recovery_reset_write_record(),
+    ) {
+      ResetWriteRefused { cause: cause } =>
+        starts_with(s: cause as String, prefix: "the durable unit hold was refused by the store: ")
+          && string_contains(s: cause as String, pattern: "boot-run-41")
+      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    })
+    // THE REFUSALS ARE NOT THE SAME STRING, which is what the Bool made all three of them.
+    && (match admit_recovery_manager_reset_to_defaults(
+      route: route,
+      under_ruling: recovery_reset_operator_ruling,
+      unit_hold: optional_present(value: UnitHoldRefused { reason: "store unavailable" }),
+      reset_write: recovery_reset_write_record(),
+    ) {
+      ResetWriteRefused { cause: refused_by_store } =>
+        match admit_recovery_manager_reset_to_defaults(
+          route: route,
+          under_ruling: recovery_reset_operator_ruling,
+          unit_hold: optional_absent(),
+          reset_write: recovery_reset_write_record(),
+        ) {
+          ResetWriteRefused { cause: never_taken } => (refused_by_store as String) != (never_taken as String)
+          ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+        }
+      ResetWriteAdmitted { reset_type: _, authorized_by: _, operator_ruling: _ } => false
+    })
+    // THE KEY DECISION, BOTH WAYS. Two units whose keys share a prefix are two chassis; the refusal keeps
+    // BOTH names so an operator can see which two, instead of being told "mismatch".
+    && (match recovery_hold_key_verdict(held_key: "altrad8ud-1l2t-6", this_unit: "altrad8ud-1l2t-6") {
+      HoldKeyMatchesThisUnit => true
+      HoldKeyNamesAnotherUnit { held_for: _, this_unit: _ } => false
+    })
+    && (match recovery_hold_key_verdict(held_key: "altrad8ud-1l2t-7", this_unit: "altrad8ud-1l2t-6") {
+      HoldKeyMatchesThisUnit => false
+      HoldKeyNamesAnotherUnit { held_for: held_for, this_unit: this_unit } =>
+        held_for == "altrad8ud-1l2t-7" && this_unit == "altrad8ud-1l2t-6"
+    })
+}
+
+// THE PASSWORD GATE, CALLED. The admitted arm is the one the fold consumes, so this also proves the fold's
+// input is what the gate actually emits. The refusal exercised here is a write of the WRONG KIND: the
+// password gate is handed the reset's write record and must refuse, naming the arm it arrived in rather
+// than emitting a generic sentence -- which is the mix-up the two separate authorization types make
+// unwritable, checked from the outside.
+test fn the_password_gate_admits_the_captured_channel_and_refuses_the_wrong_kind() -> Bool {
+  let route = recovery_test_route(reading: recovery_measured_identity())
+  (match admit_recovery_in_band_password_write(route: route, write: recovery_in_band_write_record()) {
+    PasswordWriteAdmitted { authorized_by: authorized_by } =>
+      declaration_ref_eq(a: authorized_by, b: recovery_in_band_password_write_site())
+    PasswordWriteRefused { cause: _ } => false
+  })
+    && (match admit_recovery_in_band_password_write(route: route, write: recovery_reset_write_record()) {
+      PasswordWriteRefused { cause: cause } => string_length(cause) > 0
+      PasswordWriteAdmitted { authorized_by: _ } => false
+    })
 }
 
 // THE CAPTURE'S INSTANT HAS A REFERENT OUTSIDE THIS FILE. Every capture-backed field carries
