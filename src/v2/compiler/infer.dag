@@ -4212,7 +4212,25 @@ fn infer_node_mention_contested(t: Node, bindings: SymbolIndex) -> Optional<Free
   }
 }
 
+// COMPOSE IS NOT A TRANSPARENT ALIAS. std.machine_constraints `type Compose<Algebra, MachineConstraint> = Phantom`
+// states that the composition has no inhabitant of its own, not that it denotes Phantom: unfolding it discarded the
+// carrier and the width, so the real std.integer UInt8 became an uninhabitable Phantom and every literal at a UInt8
+// formal refused application_argument_does_not_inhabit before the width was read (measured on the real closure,
+// v2.test.claim.compiler.width_literal_admission_real). Its arguments still normalize (UInt -> Nat), so the width
+// reader sees the carrier it names.
 fn infer_type_alias_unfolded_at(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
+  match infer_type_declaration_ref(t: t) {
+    Present { value: head } =>
+      if head == decl_ref(module_path: "std.machine_constraints", decl_name: "Compose") {
+        optional_absent()
+      } else {
+        infer_type_alias_unfolded_at_head(t: t, bodies: bodies, bindings: bindings)
+      }
+    Absent => infer_type_alias_unfolded_at_head(t: t, bodies: bodies, bindings: bindings)
+  }
+}
+
+fn infer_type_alias_unfolded_at_head(t: Node, bodies: SymbolIndex, bindings: SymbolIndex) -> Optional<Node> {
   let ha = infer_type_head_and_args(t: t)
   match declaration_reference_path_optional(node: ha.head) {
     Absent => optional_absent()

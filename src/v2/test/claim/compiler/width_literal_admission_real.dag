@@ -71,20 +71,14 @@ fn wlr_has_src(src: String, reason: Symbol) -> Bool {
   }
 }
 
-// MEASURED ON THE REAL CLOSURE (remote, 69 GB runner): a literal at the real UInt8 formal -- 255 as much as 300 --
-// is refused by application_argument_does_not_inhabit BEFORE the width is consulted, so the width refusal is not
-// reachable there today. The step that refuses it is std.integer's own phantom Compose (its header: a bare Int
-// reaches a UInt8 formal unchecked in v1, and Compose has no inhabitant in v2). These two claims pin THAT fact, so
-// the pairing gap is a counted frontier and not a vacuous green: when the formal admits an Int literal, 255 stops
-// refusing here and this goes red, which is the signal to restore the width-refusal controls on the real closure.
-test fn wlr_real_uint8_255_refuses_at_inhabitance_before_the_width() -> Bool {
-  wlr_has(literal: "255", reason: ^application_argument_does_not_inhabit)
-}
+// The baseline (the same program with no call) is Accepted, so on the real closure "accepted" is a sound reading of
+// the call alone: 255 at the real UInt8 is admitted and the program stays accepted; 300 draws the width's refusal.
+// BOTH DISCRIMINATE the pre-fix route: with std.machine_constraints Compose unfolded to Phantom (infer_type_alias_unfolded_at),
+// every literal -- 255 included -- was refused application_argument_does_not_inhabit before the width was read.
+test fn wlr_real_uint8_255_is_admitted() -> Bool { wlr_has(literal: "255", reason: ^accepted) }
 
-test fn wlr_real_uint8_300_refuses_at_inhabitance_before_the_width() -> Bool {
-  wlr_has(literal: "300", reason: ^application_argument_does_not_inhabit)
-    && !wlr_has(literal: "300", reason: ^infer_reason_literal_outside_machine_width)
-}
+test fn wlr_real_uint8_300_refuses_at_the_width() -> Bool { wlr_has(literal: "300", reason: ^infer_reason_literal_outside_machine_width) }
 
-test fn wlr_probe_base_inhabit() -> Bool { wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^application_argument_does_not_inhabit) }
-test fn wlr_probe_base_accepted() -> Bool { wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^accepted) }
+test fn wlr_real_uint8_baseline_without_the_call_is_accepted() -> Bool {
+  wlr_has_src(src: "module p\n\nimport std.integer { UInt8 }\n\nfn g(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  true\n}\n", reason: ^accepted)
+}
