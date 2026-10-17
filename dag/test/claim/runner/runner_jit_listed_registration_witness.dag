@@ -13,14 +13,14 @@ import gunbc.auth.github_credential { GitHubCredentialAuthority, ManagedAppInsta
 import gunbc.ci.ci_fleet { fleet_compute_offer_for }
 import gunbc.host.managed_host { ManagedHost, managed_hosts, managed_host_binding }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
-import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, host_capture_run_identity_value }
+import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
 import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, gunbc_runner_committed_width }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused, runner_registration_labels }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels }
 import gunbc.runner.runner_host_unit_slot {
   AttemptSlot, ServiceSlot, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRegistrationLabelsRefused,
   ServiceSlotsDerived, ServiceSlotsWidthUnresolved, host_unit_slot_for, host_unit_slot_over, service_slot_unit, service_slot_name_parse,
-  service_slot_population, service_slot_population_over, service_slot_selected_workflow,
+  service_slot_population, service_slot_population_over, service_boot_id_of, service_slot_selected_workflow,
 }
 import gunbc.runner.runner_jit_deregistration {
   ListedRegistrationAdmitted, ListedRegistrationRefused, ListedNameOutsideServiceGrammar, ListedNameDoesNotRoundTrip,
@@ -51,9 +51,9 @@ data authority: GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_ci_declared, installation: installation, profile: GitHubCredentialProfileRef { name: "fleet-converge" },
 }
 
-fn boot(id: String) -> HostCaptureRunIdentity { KernelBootId { boot_id: id as NonEmptyStr } }
+fn boot(id: String) -> NonEmptyStr { id as NonEmptyStr }
 
-fn unit(m: ManagedHost, id: String, index: Int) -> String { service_slot_unit(host: m.host, incarnation: boot(id: id), index: index) as String }
+fn unit(m: ManagedHost, id: String, index: Int) -> String { service_slot_unit(host: m.host, boot_id: boot(id: id), index: index) as String }
 
 fn listing(names: List<String>, total: Int) -> RestResult<OrganizationRunnerListWire> {
   RestAnswered { answer: OrganizationRunnerListWire {
@@ -90,14 +90,14 @@ test fn a_service_slot_takes_the_registration_labels_and_an_unoffered_host_refus
   match the_host() {
     Absent => false
     Present { value: m } =>
-      (match host_unit_slot_over(host: controlled(m: m), purpose: ServiceSlot { incarnation: boot(id: "b-1"), index: 3 }, workflow: service_slot_selected_workflow(), registration_labels: supplied_labels) {
+      (match host_unit_slot_over(host: controlled(m: m), purpose: ServiceSlot { boot_id: boot(id: "b-1"), index: 3 }, workflow: service_slot_selected_workflow(), registration_labels: supplied_labels) {
         HostUnitSlotBound { slot: s } =>
           (s.unit as String) == unit(m: m, id: "b-1", index: 3) && s.labels == ["self-hosted", "linux", "ARM64", "gunbc-heavy", "gunbc-host-x"]
         HostUnitSlotRefused { refusal: _ } => false
-      }) && (has_offer(m: m) || (match host_unit_slot_for(host: controlled(m: m), purpose: ServiceSlot { incarnation: boot(id: "b-1"), index: 0 }, workflow: service_slot_selected_workflow()) {
+      }) && (has_offer(m: m) || (match host_unit_slot_for(host: controlled(m: m), purpose: ServiceSlot { boot_id: boot(id: "b-1"), index: 0 }, workflow: service_slot_selected_workflow()) {
         HostUnitSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: h, cause: _ } } => h == m.host
         _ => false
-      })) && (match host_unit_slot_for(host: controlled(m: m), purpose: ServiceSlot { incarnation: boot(id: "b-1"), index: 0 }, workflow: service_slot_selected_workflow()) {
+      })) && (match host_unit_slot_for(host: controlled(m: m), purpose: ServiceSlot { boot_id: boot(id: "b-1"), index: 0 }, workflow: service_slot_selected_workflow()) {
         HostUnitSlotBound { slot: _ } => has_offer(m: m)
         HostUnitSlotRefused { refusal: HostUnitSlotRegistrationLabelsRefused { host: _, cause: _ } } => !has_offer(m: m)
         HostUnitSlotRefused { refusal: _ } => false
@@ -116,16 +116,16 @@ test fn the_population_follows_the_width() -> Bool {
     Absent => false
     Present { value: m } => {
       let c = controlled(m: m)
-      (match service_slot_population_over(host: c, width: RunnerWidthDerived { slots: 5 }, registration_labels: supplied_labels, incarnation: boot(id: "b-1")) {
+      (match service_slot_population_over(host: c, width: RunnerWidthDerived { slots: 5 }, registration_labels: supplied_labels, boot_id: boot(id: "b-1")) {
         ServiceSlotsDerived { slots: ss } => count(ss) == 5 && all(ss, s => match s { HostUnitSlotBound { slot: _ } => true _ => false })
         _ => false
-      }) && (match service_slot_population_over(host: c, width: RunnerWidthDerived { slots: 3 }, registration_labels: supplied_labels, incarnation: boot(id: "b-1")) {
+      }) && (match service_slot_population_over(host: c, width: RunnerWidthDerived { slots: 3 }, registration_labels: supplied_labels, boot_id: boot(id: "b-1")) {
         ServiceSlotsDerived { slots: ss } => count(ss) == 3
         _ => false
-      }) && (match service_slot_population_over(host: c, width: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: m.host } }, registration_labels: supplied_labels, incarnation: boot(id: "b-1")) {
+      }) && (match service_slot_population_over(host: c, width: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: m.host } }, registration_labels: supplied_labels, boot_id: boot(id: "b-1")) {
         ServiceSlotsWidthUnresolved { cause: _ } => true
         _ => false
-      }) && (match service_slot_population(host: c, incarnation: boot(id: "b-1")) {
+      }) && (match service_slot_population(host: c, boot_id: boot(id: "b-1")) {
         ServiceSlotsDerived { slots: ss } =>
           match gunbc_runner_committed_width(host: m.host) {
             RunnerWidthDerived { slots: n } => count(ss) == n
@@ -165,8 +165,8 @@ test fn a_listed_name_is_admitted_only_by_exact_round_trip() -> Bool {
     Present { value: m } => {
       let good = unit(m: m, id: "boot-7f-a", index: 12)
       (match reg(m: m, listed: good) {
-        ListedRegistrationAdmitted { registration: r, incarnation: i } =>
-          r.installation == installation && host_capture_run_identity_value(run: i) == "boot-7f-a"
+        ListedRegistrationAdmitted { registration: r, boot_id: i } =>
+          r.installation == installation && (i as String) == "boot-7f-a"
         _ => false
       })
         && is_no_round_trip(m: m, listed: concat(prefix(m: m), "boot-7f-a-012.service"))
@@ -201,4 +201,17 @@ test fn the_sweep_selects_stale_incarnations_only() -> Bool {
       })
     }
   }
+}
+
+// A SERVICE SLOT CARRIES A BOOT ID, NEVER A HISTORICAL ATTEMPT. Only the kernel-boot arm of a capture's
+// run identity yields the slot's incarnation; the attempt-ordinal arm yields nothing, so a name built
+// from one cannot exist and the parse has nothing to fabricate.
+test fn only_a_kernel_boot_id_becomes_a_service_incarnation() -> Bool {
+  (match service_boot_id_of(run: KernelBootId { boot_id: "boot-7f-a" as NonEmptyStr }) {
+    Present { value: b } => (b as String) == "boot-7f-a"
+    Absent => false
+  }) && (match service_boot_id_of(run: HistoricalAttemptOrdinal { ordinal: "4" as NonEmptyStr }) {
+    Present { value: _ } => false
+    Absent => true
+  })
 }
