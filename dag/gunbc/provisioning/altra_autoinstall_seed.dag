@@ -1,0 +1,1422 @@
+module gunbc.provisioning.altra_autoinstall_seed
+
+// THE SEED AN ALTRA BOARD NET-BOOTS INTO (physical-machine boot program, cut 6, step 2: "OS
+// installation through autoinstall from a pinned origin"). extdeps.os.ubuntu_autoinstall owns what
+// SUBIQUITY accepts; this module owns what WE choose to send it, for a board with no panel, no
+// keyboard, and no operator who could answer a question. What separates this seed from the NOCLOUD one
+// extdeps.provisioning.ubuntu_seeded_install_media builds is not its content but its audience: that
+// seed is carried inside an image and its author had a console nearby, this one is fetched at boot by a
+// machine nobody is watching. A question in a seed is therefore not a delay, it is a hung install until
+// a timeout fires — which makes "PROVEN ANSWERLESS" the property, not "written carefully".
+//
+// WHY gunbc.* AND NOT extdeps.*. Nothing below is a fact about Ubuntu. The package set, the
+// disk-selection rule, the credential posture and the binding are decisions this repository makes about
+// its own fleet; Canonical authors none of them, so they are not evidence about an external thing and do
+// not belong in the extdeps layer. The external shapes (extdeps.os.ubuntu_autoinstall,
+// extdeps.storage.types, extdeps.ssh.keys, extdeps.bmc.endpoint) are IMPORTED and projected into, never
+// restated — if a future edit re-declares what upstream already defines, that is the boundary being
+// crossed, and the fix is an import, not a copy.
+//
+// NO MACHINE IS NAMED AND NO DELIVERY IS CHOSEN HERE, and both refusals are structural rather than
+// stylistic, each witnessed. There is no field anywhere in this module that can carry a host name: a
+// hostname in a seed is a per-unit special case wearing a config field, which is the class of
+// undeclared rule this whole program exists to retire. Delivery arrives as DATA (the S0 seam's decision,
+// or a caller's strategy record) and its only consequence here is the console stanza, which is DERIVED
+// from the strategy rather than stored beside it — so a strategy name cannot quietly change what the
+// seed promises.
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.measure { ByteSize, byte_size_count, measure_le }
+import std.optional { Optional, Absent, Present }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.os.ubuntu_autoinstall {
+  AutoinstallIdentity,
+  AutoinstallStoragePolicy,
+  StoragePolicyDirectLayout,
+}
+import extdeps.ssh.keys { SshPublicKey }
+import extdeps.storage.types {
+  BareDevice,
+  CachedMirror,
+  Ephemeral,
+  NvmeDevice,
+  Persistent,
+  PersistenceKind,
+  StorageDevice,
+  storage_device_persistence,
+  storage_device_serial,
+}
+import extdeps.toolchain.types { Aarch64, Architecture }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.provisioning.network_boot {
+  ClientNetworkBootMode,
+  LegacyBiosPxe,
+  UefiHttpBoot,
+  UefiPxe,
+}
+import extdeps.os.ubuntu_kernel_nic_coverage { UbuntuKernelFlavour, r8169_claims_pci_device }
+import extdeps.pci.identity { PciDeviceId }
+import gunbc.machine_intake.bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake.subject {
+  IntakeAttemptId,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefusalCause,
+  UnitKeyStanding,
+}
+
+data gunbc_provisioning_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html"
+  }
+}
+
+// CITED, AND CITED FOR THE RIGHT THING: the autoinstall reference documents which sections may be
+// marked interactive, and that is exactly the clause this module's audit turns off. Its presence here
+// rather than beside the payload type is deliberate — the payload shape is upstream's, the decision to
+// demand proof of non-interactivity is ours.
+data interactive_sections_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#interactive-sections"
+  }
+}
+
+// The debconf preseed question is the mechanism by which a package can ask something during a
+// non-interactive install; the audit's PackagePrompts arm is only meaningful because debconf-seeding is
+// a real, documented escape hatch and not an invention of this model.
+data debconf_preseed_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "help.ubuntu.com/community/AutoInstallAndSeeding"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. What the seed may know about the unit it is for. It is not a name.
+// ---------------------------------------------------------------------------
+
+// THE TARGET STANDING IS CLOSED BECAUSE EACH MEMBER IS A REASON THE SEED COULD BE WRONG. Architecture
+// selects the package set; the BMC firmware family selects the console stanza; the role decides whether
+// the disks under this board are this board's to erase. A hostname is absent by design: two units of the
+// same model must need the same seed, and where units genuinely differ the difference belongs in the
+// BINDING, so "same config for two units" means "same seed, same digest, two bindings" — and a digest
+// that two units share is evidence nobody wrote a per-host rule. A future requirement that really does
+// need per-unit configuration (a unit-local mirror, say) adds a constructor to a closed axis below plus
+// the evidence that justifies it; it does not add a String field keyed on a label.
+type AltraAutoinstallTargetStanding sole_constructor {
+  architecture: Architecture
+  bmc_firmware: BmcFirmwareFamily
+  role: AltraAutoinstallTargetRole
+  kernel_flavour: UbuntuKernelFlavour
+}
+
+// THE ROLE AXIS IS PARTICIPATION, NOT MACHINE KIND (plan §2: "the model's axes are participation,
+// transport, role, and hardware — never the label"). Only the Altra provisioning target may be rendered
+// a seed for. The other roles are named so a caller holding a runner or a serving host is refused rather
+// than quietly formatted: the failure this axis prevents is a seed aimed at a board that is holding
+// somebody else's data.
+type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked { host: NonEmptyStr }
+
+// RENDERED OR REFUSED, WITH REFUSAL AS A VALUE. Refusal is an arm, not an error, because the program's
+// rule is "no route from absent evidence to a green claim": a seed that was never admitted is not an
+// exception to swallow, it is the record of why nothing was installed, and it has to survive to the
+// report.
+type AltraAutoinstallTarget
+  = TargetAdmitted { standing: AltraAutoinstallTargetStanding }
+  | TargetRefused { reason: TargetRefusalCause }
+
+// THE CAUSES NAME WHAT THE PROBE DID NOT OBSERVE, NOT WHAT WENT WRONG IN THIS MODULE. Each arm is a
+// piece of evidence that was absent at the seam; the module does not invent a reason, it reports which
+// standing failed to be present.
+type TargetRefusalCause
+  = UnitKeyUnbound { cause: UnitKeyRefusalCause }
+  | PlatformUnsupported { architecture: Architecture }
+  | BmcFirmwareFamilyUnobserved { discriminator: NonEmptyStr }
+  | NotAnAltraProvisioningTarget { role: AltraAutoinstallTargetRole }
+
+// THE ONLY DOOR INTO A TARGET STANDING, AND WHY EVERY ARGUMENT IS A STANDING RATHER THAN A FACT. A
+// caller holding an unbound UnitKey or an unobserved BMC family receives a refused arm out of the
+// signature itself and cannot reach the Admitted constructor by writing a record. This is where the
+// probe's (S2) and identity's (S1) outputs become load-bearing: an absent observation is never defaulted
+// here, it is turned away. A future requirement to admit, say, a board whose BMC family is unknown but
+// whose console has been observed directly adds a standing to
+// gunbc.machine_intake.bmc_first_contact_standing and a row in the match below — it does not add a
+// "guess the family" default.
+fn admit_altra_autoinstall_target(
+  unit_key: UnitKeyStanding,
+  architecture: Architecture,
+  bmc_firmware: BmcFirmwareFamilyStanding,
+  role: AltraAutoinstallTargetRole,
+  kernel_flavour: UbuntuKernelFlavour,
+) -> AltraAutoinstallTarget {
+  match unit_key {
+    UnitKeyBound { key: _ } =>
+      match bmc_firmware {
+        FamilyObserved { family: observed } =>
+          match architecture {
+            Aarch64 =>
+              match role {
+                AltraProvisioningTarget =>
+                  TargetAdmitted {
+                    standing: AltraAutoinstallTargetStanding {
+                      architecture: architecture,
+                      bmc_firmware: observed,
+                      role: role,
+                      kernel_flavour: kernel_flavour,
+                    },
+                  }
+                RunnerBacked { host: _ } => TargetRefused {
+                  reason: NotAnAltraProvisioningTarget { role: role },
+                }
+              }
+            _ => TargetRefused { reason: PlatformUnsupported { architecture: architecture } }
+          }
+        FamilyUnobserved { discriminator: d } => TargetRefused {
+          reason: BmcFirmwareFamilyUnobserved { discriminator: d },
+        }
+      }
+    UnitKeyRefused { cause: c } => TargetRefused { reason: UnitKeyUnbound { cause: c } }
+  }
+}
+
+fn refused_target(cause: TargetRefusalCause) -> AltraAutoinstallTarget {
+  TargetRefused { reason: cause }
+}
+
+fn target_standing(target: AltraAutoinstallTarget) -> Optional<AltraAutoinstallTargetStanding> {
+  match target {
+    TargetAdmitted { standing: s } => Present { value: s }
+    TargetRefused { reason: _ } => Absent
+  }
+}
+
+// THE CONSOLE FAMILY AND THE TRANSPORT ARE SEPARATE AXES BECAUSE THEY ANSWER DIFFERENT QUESTIONS, AND
+// THE SEED NEEDS BOTH ANSWERS WITHOUT ONE IMPLYING THE OTHER. Whether the BMC serves a serial-over-LAN
+// console is a property of the BMC firmware family (extdeps.bmc.endpoint's closed set — reused, not
+// restated). Whether the image arrives by PXE, HTTP boot, or BMC virtual media is a property of delivery,
+// which the S0 seam decides and hands over. Collapsing them would let a strategy name change what the
+// seed promises about its console, which is the per-host branching this program forbids.
+type SeedDeliveryStrategy =
+    PxeStrategy { boot_mode: ClientNetworkBootMode }
+  | VirtualMediaStrategy { media_stem: NonEmptyStr }
+
+// WHAT THE STRATEGY IS FOR, AS SEEN FROM HERE: whether the installer's serial console is opened by the
+// firmware on a link the operator controls (PXE, where a TFTP/HTTP conversation is already in progress
+// and a console prompt could in principle be answered by someone watching a SOL window) or arrives over
+// the BMC's own virtual-media channel with no console path at all. The seed's response is one clause,
+// derived — never a field beside the strategy, because two fields that must agree is two fields that can
+// disagree.
+fn delivery_is_console_reachable(strategy: SeedDeliveryStrategy) -> Bool {
+  match strategy {
+    PxeStrategy { boot_mode: UefiPxe { tftp_root: _ } } => true
+    PxeStrategy { boot_mode: UefiHttpBoot } => true
+    PxeStrategy { boot_mode: _ } => false
+    VirtualMediaStrategy { media_stem: _ } => false
+  }
+}
+
+// THE TRANSPORT TOKEN SPREADS THE WHOLE AXIS, INCLUDING THE BOOT MODE. Collapsing the three
+// ClientNetworkBootMode members to one "pxe" spelling would put two genuinely different installs — a
+// TFTP-delivered one and an HTTP-boot one, which differ in who owns the failure when a firmware release
+// drops a DHCP option — under a single digest. Two boards that booted differently would then answer "the
+// machine booted seed X" identically, which is exactly the memory-instead-of-evidence failure the binding
+// exists to remove. The rule for a diagnostic here: it must be as narrow as the axis it spells, so a new
+// ClientNetworkBootMode member forces a row here and cannot silently inherit "pxe".
+fn delivery_strategy_diagnostic(strategy: SeedDeliveryStrategy) -> NonEmptyStr {
+  match strategy {
+    PxeStrategy { boot_mode: mode } =>
+      concat("pxe-", client_network_boot_mode_token(mode: mode))
+    VirtualMediaStrategy { media_stem: stem } =>
+      concat("virtual-media-", stem)
+  }
+}
+
+// A FULL MATCH WITH NO DEFAULT, for the reason above: an unknown boot mode that borrowed another mode's
+// token would make two different transports hash alike. The TFTP locator is deliberately NOT part of the
+// token — it is a server-side address owned by the PXE edge, not a decision the seed makes, and letting an
+// edge's address move a seed digest would couple seed identity to a hostname.
+fn client_network_boot_mode_token(mode: ClientNetworkBootMode) -> NonEmptyStr {
+  match mode {
+    LegacyBiosPxe { tftp_root: _ } => "bios"
+    UefiPxe { tftp_root: _ } => "uefi-pxe"
+    UefiHttpBoot => "uefi-http"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. The package and driver sets, and what makes either of them interactive by accident.
+// ---------------------------------------------------------------------------
+
+// THE INSTALL-TIME DRIVER SET IS CLOSED BECAUSE ITS MEMBERSHIP IS A BOARD FACT, NOT A CHOICE. The
+// installer cannot consult our policy halfway through: every driver the board needs in order to see its
+// OWN DISK and its OWN NIC during the install has to be named before subiquity starts, or the install
+// discovers an NVMe namespace it cannot open and refuses the disk. A driver outside this set can enter
+// only through PackageIntent (where the caller takes responsibility for its debconf posture) or through a
+// lateconfig stage, which runs after the base system is up and cannot strand an install. A new board
+// generation adds a member here and is then FORCED to re-read the interactive-audit table below, which is
+// the point of keeping the two as separate closed sets rather than one list of strings.
+type AltraInstallDriver =
+    NvmeCliDriver
+  | Ast2500VideoDriver
+  | Ast2500AhcDriver
+  | AhciPlatformDriver
+  | RealtekR8169Driver
+  | PhyRealtekDriver
+  | DcaDriver
+
+// THE WIRE SPELLING IS DERIVED, NEVER STORED. A package name beside the variant would be a second
+// source of truth that can disagree with the variant it claims to spell; this function is the only place
+// the spelling exists, and a witness pins each row to the arm that produced it.
+fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
+  match driver {
+    NvmeCliDriver => "nvme-cli"
+    Ast2500VideoDriver => "xserver-xorg-video-ast"
+    Ast2500AhcDriver => "ast-ahc"
+    AhciPlatformDriver => "ahci"
+    RealtekR8169Driver => "r8169-firmware"
+    PhyRealtekDriver => "realtek-firmware"
+    DcaDriver => "dca-tools"
+  }
+}
+
+// THE POST-INSTALL MODULE SET, CLOSED FOR THE SAME REASON AND SEPARATED FOR A DIFFERENT ONE. These are
+// the modules the RUNNING system needs that the installer did not have to have. The separation is not
+// tidiness: an install-time package list is paid for at boot time, on every boot, and mixing the two sets
+// is how a board ends up carrying an AST DRM driver it cannot use while its BMC IPMI channels — the only
+// way anyone sees this board — are absent.
+type AltraLateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
+
+fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
+  match driver {
+    KipmiIpmbDriver => "ipmi_ipmb"
+    KipmiSiDriver => "ipmi_si"
+    Ast2500DrmDriver => "ast"
+    IpmiWatchdogDriver => "ipmi_watchdog"
+  }
+}
+
+// WHERE THE OPEN WORLD ENTERS, AND WHO CARRIES THE BURDEN FOR IT. The closed sets cannot express "this
+// fleet also wants the node exporter", so an intent carries the name PLUS the debconf seed that answers
+// its questions. Naming a prompting package and seeding nothing yields a seed the audit hangs on
+// PackagePrompts — the honest outcome, chosen by the caller who named the package, rather than a
+// permission check that pretends to know what a package asks.
+type PackageIntent {
+  name: NonEmptyStr
+  debconf_seed: Optional<NonEmptyStr>
+}
+
+// WHY THIS IS NOT A LIST OF STRINGS. A prompting package with no console is not a slow install; it is an
+// install that never finishes, and nobody is coming to answer. So each member names the QUESTION it asks,
+// and "what makes this seed interactive by accident" becomes data with an owner instead of folklore in a
+// runbook. A package that prompts and is NOT listed here is not thereby safe — it is merely unrefuted by
+// this table, and the audit treats an unclassified interactive package as absent evidence (Refused), never
+// as cleared. A new member is added with its question named, which is the whole discipline.
+type KnownPromptingPackage =
+    ConsoleSetupPackage
+  | KeyboardConfigurationPackage
+  | TzdataPackage
+  | PostfixPackage
+  | IfupdownPackage
+  | NtpPackage
+
+fn known_prompting_package_question(package: KnownPromptingPackage) -> NonEmptyStr {
+  match package {
+    ConsoleSetupPackage => "console-setup/ask_detect: which keyboard and font to use"
+    KeyboardConfigurationPackage => "keyboard-configuration/layout: which layout"
+    TzdataPackage => "tzdata/configure_timezone: which timezone"
+    PostfixPackage => "postfix/main_mailer_type: which mail configuration"
+    IfupdownPackage => "ifupdown/interactive_loopback: whether to configure interfaces"
+    NtpPackage => "ntp/utc: whether the hardware clock is UTC"
+  }
+}
+
+fn known_prompting_package_name(package: KnownPromptingPackage) -> NonEmptyStr {
+  match package {
+    ConsoleSetupPackage => "console-setup"
+    KeyboardConfigurationPackage => "keyboard-configuration"
+    TzdataPackage => "tzdata"
+    PostfixPackage => "postfix"
+    IfupdownPackage => "ifupdown"
+    NtpPackage => "ntp"
+  }
+}
+
+fn known_prompting_package_names() -> List<NonEmptyStr> {
+  [
+    known_prompting_package_name(package: ConsoleSetupPackage),
+    known_prompting_package_name(package: KeyboardConfigurationPackage),
+    known_prompting_package_name(package: TzdataPackage),
+    known_prompting_package_name(package: PostfixPackage),
+    known_prompting_package_name(package: IfupdownPackage),
+    known_prompting_package_name(package: NtpPackage),
+  ]
+}
+
+fn package_is_known_prompting(name: NonEmptyStr) -> Bool {
+  known_prompting_package_names().any(candidate => candidate == name)
+}
+
+// WHAT A MISSING MIRROR IS, MODELLED. It is not an empty string and not a placeholder host: it is the
+// ABSENCE of the closed member that names the mirror authority, and its consequence is DERIVED rather
+// than asserted. With no mirror, subiquity has nothing to answer the archive-location question with, so
+// the seed becomes interactive although no package in the list prompts — which is why the arm below is a
+// NonInteractiveProofFailure and not a note beside a default. A future requirement (a per-site mirror)
+// adds a NamedMirror row and keeps the audit's MirrorAbsent arm intact; it does not add a String field
+// that could be empty.
+type ArchiveMirror = NamedMirror { host: NonEmptyStr } | MirrorAbsent
+
+fn archive_mirror_host(mirror: ArchiveMirror) -> Optional<NonEmptyStr> {
+  match mirror {
+    NamedMirror { host: h } => Present { value: h }
+    MirrorAbsent => Absent
+  }
+}
+
+// THE LOCALE AXIS IS CLOSED TO THE TWO SPELLINGS THE INSTALLER ACCEPTS WITHOUT A FOLLOW-UP QUESTION. A
+// future requirement (a French-language install, a non-UTF-8 console) adds a constructor HERE, which
+// forces this module's interactive audit to be re-read; it does not let a caller paste a locale string
+// that subiquity will ask about at a console nobody is standing at.
+type SeedLocale = EnUsUtf8 | CUtf8
+
+fn seed_locale_wire(locale: SeedLocale) -> NonEmptyStr {
+  match locale {
+    EnUsUtf8 => "en_US.UTF-8"
+    CUtf8 => "C.UTF-8"
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. Identity and credentials: a handle or nothing, never the secret, never nothing-and-valid.
+// ---------------------------------------------------------------------------
+
+// A CREDENTIAL IS AN OPAQUE REFERENCE OR IT IS NOT A CREDENTIAL. The secret material stays in the
+// secret store; this handle carries a locator, a version, and NO READBACK — there is no accessor that
+// turns a handle into a password anywhere in this module, which is what keeps a seed renderable into a
+// log, an artifact name, or a digest without ever shipping a secret alongside it. The version is part of
+// the identity rather than metadata because a rotated secret must change the rendered seed's digest: a
+// unit that booted seed X should be answerable when X was the CURRENT credential, not a stale one. A
+// future requirement to render a seed for human audit must add an accessor in extdeps.secrets; it must
+// not add a String field here.
+type AdminPasswordHandle sole_constructor {
+  secret_locator: NonEmptyStr
+  secret_version: NonEmptyStr
+}
+
+fn admin_password_handle(secret_locator: NonEmptyStr, secret_version: NonEmptyStr) -> AdminPasswordHandle {
+  AdminPasswordHandle { secret_locator: secret_locator, secret_version: secret_version }
+}
+
+// WHY "NO PASSWORD" IS AN AFFIRMATIVE ARM AND NOT AN ABSENCE. On a headless board, declining a password
+// is a decision someone made (keys are the only way in, or the console is open), and recording it as
+// `none` would make a policy and an oversight indistinguishable — the exact confusion that lets a seed
+// ship with no way in. The wire spelling is derived from the posture by autoinstall_password_auth, never
+// stored next to it.
+type AdminCredentialPosture = PasswordHandle { handle: AdminPasswordHandle } | PasswordUnset
+
+fn autoinstall_password_auth(posture: AdminCredentialPosture) -> Bool {
+  match posture {
+    PasswordHandle { handle: _ } => true
+    PasswordUnset => false
+  }
+}
+
+// THE SECRET NEVER TRAVELS WITH THE SEED, AND THE TYPE SAYS SO. The payload projection upstream demands
+// a NonEmptyStr hashed_password; rather than fork that shape or fabricate a string, this module's
+// projection REFUSES when the posture is PasswordUnset and password authentication is being asked for.
+// The refusal is the honest rendering of "upstream's record cannot express our posture" (reported
+// upstream, not patched around here).
+fn password_handle_digest(handle: AdminPasswordHandle) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: handle.secret_locator),
+    right: content_hash_atom(value: handle.secret_version),
+  )
+}
+
+// A HEADLESS UNIT THAT IS NETWORK-REACHABLE MUST BE ENTERABLE, AND BOTH-WAYS-MISSING MUST BE
+// UNNAMEABLE. There is no expression that builds an AdminAccessAuthorisation with zero authorized keys
+// AND a locked console: the guard lives in the only constructor, so "the install succeeded and now nobody
+// can log in" cannot be represented as a valid seed, only as a refusal the audit reports. A future
+// requirement (an operator-attested break-glass console) adds a ConsoleEntryAuthorisation member and the
+// attestation that unlocks it; it does not relax the guard.
+type AdminAccessAuthorisation sole_constructor {
+  authorised_keys: List<SshPublicKey>
+  console_entry: ConsoleEntryAuthorisation
+}
+
+// THE CONSOLE IS AN AUTHORISATION, NOT A FEATURE. Unlocking a serial getty on a machine whose only other
+// door is closed is a security decision with a named reason; the reason travels with it so a reader of a
+// rendered seed can tell "the BMC console was opened deliberately, for SOL" from "someone forgot to lock
+// it". A future requirement that needs an unlocked console without a stated reason must add a reason, not
+// delete this one.
+type ConsoleEntryAuthorisation =
+    ConsoleEntryUnlocked { reason: ConsoleEntryUnlockReason }
+  | ConsoleEntryLocked
+
+type ConsoleEntryUnlockReason = SerialConsoleGettyUnlocked | BmcSolConsoleUnlocked
+
+fn admit_admin_access_authorisation(
+  authorised_keys: List<SshPublicKey>,
+  console_entry: ConsoleEntryAuthorisation,
+) -> Optional<AdminAccessAuthorisation> {
+  match list_length(items: authorised_keys) == 0 {
+    True =>
+      match console_entry {
+        ConsoleEntryUnlocked { reason: _ } =>
+          Present {
+            value: AdminAccessAuthorisation {
+              authorised_keys: authorised_keys,
+              console_entry: console_entry,
+            },
+          }
+        ConsoleEntryLocked => Absent
+      }
+    False =>
+      Present {
+        value: AdminAccessAuthorisation {
+          authorised_keys: authorised_keys,
+          console_entry: console_entry,
+        },
+      }
+  }
+}
+
+fn authorised_key_count(authorisation: AdminAccessAuthorisation) -> Int {
+  list_length(items: authorisation.authorised_keys)
+}
+
+fn console_entry_is_unlocked(authorisation: AdminAccessAuthorisation) -> Bool {
+  match authorisation.console_entry {
+    ConsoleEntryUnlocked { reason: _ } => true
+    ConsoleEntryLocked => false
+  }
+}
+
+// The keyboard layout the seed states. This axis EXISTS because the upstream payload requires a
+// keyboard_layout string on a machine with no keyboard: the honest answer is that the value is
+// ceremonial, and saying so in the type is what stops a future edit from treating it as a real setting
+// (and from letting a wrong one imply a prompt — a layout subiquity has never heard of is a question).
+type CeremonialKeyboardLayout = | UsLayout
+
+fn ceremonial_keyboard_layout_wire(layout: CeremonialKeyboardLayout) -> NonEmptyStr {
+  match layout { UsLayout => "us" }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Network posture: the non-interactive claim, made of parts rather than asserted.
+// ---------------------------------------------------------------------------
+
+// THE NETWORK CLAIM IS NOT A BOOL AND NOT THE STRING "system". A boolean would let a caller write
+// non_interactive: true; delegating to the installer's own renderer is exactly the thing that can ask a
+// question. So the claim is made of the parts that each CLOSE one question — who answers "which
+// interface", who answers "v4 or v6", who answers "which archive" — and the audit reads the parts, never
+// a flag. A future requirement (a bond, a VLAN) adds a member here and the audit row that proves it
+// still closes its question.
+type SeedNetworkPosture {
+  addressing: SeedAddressing
+  family: SeedAddressFamily
+  mirror: ArchiveMirror
+}
+
+// Installer-managed addressing is left as an arm because it is a real thing callers ask for and it is the
+// classic accidental prompt: with no carrier preference on a multi-NIC board the installer asks which
+// interface to use, and there is nobody to ask. Naming it lets the audit REFUSE it by name instead of
+// silently accepting a config that hangs.
+type SeedAddressing = InstallerManaged | SeededNetplan { source: NonEmptyStr }
+
+// WHY DUAL-STACK IS ITS OWN ARM AND NOT A FLAG. A seed that says "both" is promising the installer will
+// not fall back to asking when one family fails to configure; a seed that says v4-only states the
+// narrower promise. The audit treats them identically today, and keeping them apart is what lets a
+// future row say "dual-stack with no v6 route observed is a prompt" without rewriting the type.
+type SeedAddressFamily = DualStack | Ipv4Only
+
+fn addressing_is_seeded(addressing: SeedAddressing) -> Bool {
+  match addressing {
+    SeededNetplan { source: _ } => true
+    InstallerManaged => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5. Target-disk selection: a rule over observed identity, never a device name.
+// ---------------------------------------------------------------------------
+
+// "THE NVMe" IS NOT A SELECTOR, AND THE TYPE REFUSES TO NAME ONE. There is no member here that selects
+// by medium alone. On an 8-bay board a medium-only rule matches all eight bays, and a rule whose
+// discriminating power comes from the board's population rather than from an identity read off the device
+// is a guess wearing a rule. Every member below carries an IDENTITY-BEARING component — a serial read by
+// the probe, or a catalog part number joined with a capacity — so that the number of disks it can match
+// is a fact about the world the probe measured, and the selection can therefore answer "zero, one, or
+// many" instead of praying. BMC virtual media makes this concrete: the BMC presents the install image as
+// a USB-attached device on the board itself, so an extra device really does appear in the probe's view,
+// and only an identity-bearing rule can keep the install off it.
+//
+// A device NAME (/dev/nvme0n1) is absent for the same reason it is absent from every serious installer:
+// enumeration order is not identity, and on a multi-controller board it is not even stable across a
+// reboot. A future requirement (select by NVMe namespace, by subsystem NQN) adds a member with its own
+// probe-observable identity; it does not add a name.
+type TargetDiskSelector =
+    ByObservedSerial { serial: NonEmptyStr }
+  | ByCatalogIdentity { part_number: NonEmptyStr, capacity_bytes: ByteSize }
+
+// THE SELECTION RESULT, WITH ZERO AND MANY AS ANSWERS RATHER THAN AS ERRORS. Installing onto the wrong
+// disk on an 8-bay board is the worst thing this cut can do, so the shape's job is to make "I cannot tell
+// which one" the ordinary, reportable outcome rather than an exception a caller can swallow. Multiple
+// carries the candidates' serials so the report says WHICH TWO — a refusal that cannot name the twins is
+// a refusal nobody can act on.
+type TargetDiskSelection
+  = DiskSelected { device: StorageDevice }
+  | SelectionRefused { cause: DiskSelectionRefusalCause }
+
+type DiskSelectionRefusalCause
+  = NoDiskMatches { selector: TargetDiskSelector }
+  | MultipleDisksMatch { selector: TargetDiskSelector, candidates: List<NonEmptyStr> }
+  | CandidateIdentityUnobserved { part_number: NonEmptyStr }
+  | CandidateIsNotPersistent { serial: NonEmptyStr, persistence: PersistenceKind }
+
+// THE PERSISTENCE AXIS IS CHECKED BEFORE THE IDENTITY AXIS, AND THE ORDER IS THE POINT. An ephemeral or
+// mirror disk that happens to carry the right serial (a reprovisioned drive, a mislabelled tray) must be
+// refused as not-persistent, not selected-and-then-regretted: the failure mode is writing a root
+// filesystem onto a cache device. Ephemeral and CachedMirror are therefore excluded by rule, not by
+// convention.
+fn selector_admits_observed(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  match storage_device_persistence(d: device) {
+    Persistent =>
+      match selector {
+        ByObservedSerial { serial: wanted } =>
+          match storage_device_serial(d: device) {
+            Present { value: observed } => observed == wanted
+            Absent => false
+          }
+        ByCatalogIdentity { part_number: wanted_part, capacity_bytes: wanted_capacity } =>
+          match device {
+            NvmeDevice { catalog: c, serial: _, persistence: _ } =>
+              c.part_number == wanted_part && measure_le(a: c.capacity_bytes, b: wanted_capacity) && measure_le(a: wanted_capacity, b: c.capacity_bytes)
+            BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } => false
+          }
+      }
+    Ephemeral => false
+    CachedMirror => false
+  }
+}
+
+// WHY THE EMPTY AND MULTIPLE ARMS CANNOT BE SKIPPED BY A CALLER. This is the only function that turns a
+// rule plus a probe reading into "install here", it is total, and it returns a refusal when the rule is
+// not discriminating. There is no variant that says "picked the first match".
+fn select_target_disk(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> TargetDiskSelection {
+  let unexamined = match first_unexamined_candidate(selector: selector, observed: observed) {
+    Present { value: cause } => SelectionRefused { cause: cause }
+    Absent => match candidate_count(selector: selector, observed: observed) {
+      0 => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+      1 => match matched_candidate(selector: selector, observed: observed) {
+        Present { value: device } => DiskSelected { device: device }
+        Absent => SelectionRefused { cause: NoDiskMatches { selector: selector } }
+      }
+      _ => SelectionRefused {
+        cause: MultipleDisksMatch {
+          selector: selector,
+          candidates: matched_candidate_serials(selector: selector, observed: observed),
+        },
+      }
+    },
+  }
+  unexamined
+}
+
+// THE COUNT IS THE RULE'S DISCRIMINATING POWER, MEASURED. A selector that matches every disk on the
+// board is not closer to working than one that matches none; both are guesses, and the shape of the
+// refusal is what makes the caller go tighten the rule instead of trusting the ordering of a probe.
+fn candidate_count(selector: TargetDiskSelector, observed: List<StorageDevice>) -> Int {
+  observed.filter(device => selector_admits_observed(selector: selector, device: device)).length()
+}
+
+fn matched_candidate(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> Optional<StorageDevice> {
+  observed.filter(device => selector_admits_observed(selector: selector, device: device)).first()
+}
+
+// WHICH DISKS COLLIDED, BY SERIAL. A refusal that cannot name the twins is a refusal nobody can act on:
+// the operator's next step is reading the labels off the bays, and "two matched" does not say which two.
+// A candidate the probe never read a serial for is named by its part number, because an absent
+// observation is reported as absent, never as an empty string.
+fn matched_candidate_serials(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> List<NonEmptyStr> {
+  observed
+    .filter(device => selector_admits_observed(selector: selector, device: device))
+    .map(device => candidate_identity_label(device: device))
+}
+
+fn candidate_identity_label(device: StorageDevice) -> NonEmptyStr {
+  match storage_device_serial(d: device) {
+    Present { value: serial } => serial
+    Absent => match device {
+      NvmeDevice { catalog: c, serial: _, persistence: _ } => c.part_number
+      BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } =>
+        "device-without-serial-or-part-number" as NonEmptyStr
+    },
+  }
+}
+
+// A DISK THE RULE REACHES BUT WHOSE IDENTITY THE PROBE NEVER READ IS REPORTED AS SUCH. The probe (S2)
+// is allowed to have not seen a serial, and "we could not read it" must not be laundered into "no disk
+// matches": the fix is different (re-probe) and the blame is different (the observation, not the rule).
+// This is checked BEFORE the count, because a board whose only candidate has no readable serial must not
+// be reported as "zero matches" — that would tell the operator to change the rule when the rule is fine.
+fn first_unexamined_candidate(
+  selector: TargetDiskSelector,
+  observed: List<StorageDevice>,
+) -> Optional<DiskSelectionRefusalCause> {
+  match observed.filter(device => rule_reaches_without_identity(selector: selector, device: device)).first() {
+    Present { value: device } => rule_reaches_but_identity_missing(selector: selector, device: device)
+    Absent => Absent
+  }
+}
+
+fn rule_reaches_without_identity(selector: TargetDiskSelector, device: StorageDevice) -> Bool {
+  match selector {
+    ByObservedSerial { serial: _ } => disk_identity_is_unread(device: device)
+    ByCatalogIdentity { part_number: _, capacity_bytes: _ } => false
+  }
+}
+
+// EXPORTED because "the probe never read this disk's serial" is a claim about the OBSERVATION, not about
+// the rule, and both the selection path and a witness need to state it the same way. Only an NVMe device
+// can be an unexamined candidate: a bare device with no serial has no catalog row to have missed, so it is
+// simply not the kind of thing a serial rule reaches.
+fn disk_identity_is_unread(device: StorageDevice) -> Bool {
+  match storage_device_serial(d: device) {
+    Present { value: _ } => false
+    Absent =>
+      match device {
+        NvmeDevice { catalog: _, serial: _, persistence: _ } => true
+        BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } =>
+          false
+      }
+  }
+}
+
+// THE PROBE IS ALLOWED TO HAVE NOT SEEN A SERIAL, AND THAT MUST BE SAID, NOT INFERRED. A disk whose
+// serial could not be read is neither a match nor a non-match: it is an unexamined candidate. Reporting
+// it as "zero matches" would tell the operator to tighten a rule that is already correct.
+fn rule_reaches_but_identity_missing(
+  selector: TargetDiskSelector,
+  device: StorageDevice,
+) -> Optional<DiskSelectionRefusalCause> {
+  match selector {
+    ByObservedSerial { serial: _ } =>
+      match storage_device_serial(d: device) {
+        Present { value: _ } => Absent
+        Absent => match device {
+          NvmeDevice { catalog: c, serial: _, persistence: _ } =>
+            Present { value: CandidateIdentityUnobserved { part_number: c.part_number } }
+          BareDevice { capacity: _, medium: _, serial: _, read_bandwidth: _, write_bandwidth: _, persistence: _ } =>
+            Absent
+        }
+      }
+    ByCatalogIdentity { part_number: _, capacity_bytes: _ } => Absent
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6. The audit: the non-interactive claim, proved from the seed's parts.
+// ---------------------------------------------------------------------------
+
+// THE AUDIT IS A FUNCTION OF THE SEED'S AXES, NOT A FLAG ON THE SEED. A seed cannot claim to be
+// non-interactive; it can only be built from parts that survive this audit. Each refusal arm names the PART
+// that failed, so a refusal says which decision to go back and make, and no two arms can be merged into one
+// BadSeed because each has an independent reason to exist and an independent fix.
+type SeedAudit
+  = SeedIsNonInteractive { evidence: NonInteractiveProof }
+  | SeedRefused { cause: SeedInteractiveCause }
+
+// THE FOUR WAYS A SEED BECOMES INTERACTIVE BY ACCIDENT, NAMED AT THE LEVEL OF THE PART THAT BROKE. The
+// list is closed because each member is a MECHANISM, not an example: a package that asks, an addressing
+// scheme that hands the choice back, a missing mirror, and an entrypoint that does not exist. "A timezone
+// question" is the TzdataPackage mechanism with its question named, not a fifth mechanism — and that
+// decomposition is what lets a new package enter through PackageIntent without reopening the audit's shape.
+type SeedInteractiveCause
+  = PackagePrompts { name: NonEmptyStr, question: NonEmptyStr }
+  | AddressingIsInstallerManaged
+  | ArchiveMirrorAbsent
+  | NoEntrypointAtAll { keys: Int, console_unlocked: Bool }
+
+// THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
+// same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
+// re-running this function. An empty tally would be a lie rather than an absence, which is why the count is
+// a computed Int and the console stanza is a derived member.
+type NonInteractiveProof {
+  questions_closed: Int,
+  console_stanza: NonInteractiveConsoleStanza,
+}
+
+// THE CONSOLE STANZA, DERIVED FROM THE TRANSPORT. This is the ONLY thing the delivery strategy is allowed to
+// change about the seed, and its being derived is the point: a stored "no console" flag beside a strategy
+// field is two facts that can disagree, and when they disagree the seed promises something about a console
+// the transport cannot honour.
+type NonInteractiveConsoleStanza = ConsoleSuppressed | ConsoleAnsweredByUnattended { reason: NonEmptyStr }
+
+fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleStanza {
+  match delivery_is_console_reachable(strategy: strategy) {
+    True =>
+      ConsoleAnsweredByUnattended {
+        reason: "a reachable SOL console is still nobody at the panel; prompts stay suppressed" as NonEmptyStr,
+      }
+    False => ConsoleSuppressed
+  }
+}
+
+// THE AUDIT, IN THE ORDER THE FAILURES MATTER. The entrypoint check runs FIRST because a seed nobody can use
+// after install is worse than a seed that asks a question: a prompt can sometimes be answered by someone
+// watching SOL, a locked-out owner cannot. It runs LAST as a guarantee rather than a check, because the
+// constructor already made the both-empty case unnameable — reaching this arm requires a caller that
+// bypassed the constructor, which is the value of having both guards.
+fn audit_altra_autoinstall_seed(
+  network: SeedNetworkPosture,
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  locale: SeedLocale,
+  entry: AdminAccessAuthorisation,
+  strategy: SeedDeliveryStrategy,
+) -> SeedAudit {
+  match list_length(items: entry.authorised_keys) == 0 && !console_entry_is_unlocked(authorisation: entry) {
+    True =>
+      SeedRefused {
+        cause: NoEntrypointAtAll {
+          keys: list_length(items: entry.authorised_keys),
+          console_unlocked: console_entry_is_unlocked(authorisation: entry),
+        },
+      }
+    False =>
+      match prompt_over_locale(locale: locale) {
+        Present { value: question } =>
+          SeedRefused { cause: PackagePrompts { name: "locale" as NonEmptyStr, question: question } }
+        Absent =>
+          match archive_mirror_host(mirror: network.mirror) {
+            Absent => SeedRefused { cause: ArchiveMirrorAbsent }
+            Present { value: _ } =>
+              match addressing_is_seeded(addressing: network.addressing) {
+                False => SeedRefused { cause: AddressingIsInstallerManaged }
+                True =>
+                  match first_unseeded_prompter(intents: install_packages) {
+                    Present { value: offender } => SeedRefused {
+                      cause: PackagePrompts { name: offender.name, question: offender.question },
+                    }
+                    Absent =>
+                      match first_unseeded_prompter(intents: late_packages) {
+                        Present { value: late_offender } => SeedRefused {
+                          cause: PackagePrompts {
+                            name: late_offender.name,
+                            question: late_offender.question,
+                          },
+                        }
+                        Absent =>
+                          SeedIsNonInteractive {
+                            evidence: NonInteractiveProof {
+                              questions_closed: questions_closed_count(
+                                install_packages: install_packages,
+                                late_packages: late_packages,
+                                network: network,
+                              ),
+                              console_stanza: console_stanza_for(strategy: strategy),
+                            },
+                          }
+                      }
+                  }
+          }
+      }
+  }
+}
+}
+
+// A LOCALE CAN ITSELF BE THE QUESTION. Today both closed members are answerless, so this always returns
+// Absent — and that is precisely the row a future locale constructor must edit. Writing `=> none` in a
+// hardcoded match would be the placeholder version of this function; keeping it as a search over the closed
+// set is what makes adding a third locale force a decision here instead of inheriting silence.
+fn prompt_over_locale(locale: SeedLocale) -> Optional<NonEmptyStr> {
+  match locale {
+    EnUsUtf8 => Absent
+    CUtf8 => Absent
+  }
+}
+
+// AN OFFENDER IS A PACKAGE THAT PROMPTS AND WAS NOT SEEDED. A seeded prompter is not removed from the
+// tally: the debconf seed is what closed it, and the proof's count is the evidence of that work.
+type PromptingOffender { name: NonEmptyStr, question: NonEmptyStr }
+
+fn question_for_prompting_package(name: NonEmptyStr) -> Optional<NonEmptyStr> {
+  match name {
+    "console-setup" => Present { value: known_prompting_package_question(package: ConsoleSetupPackage) }
+    "keyboard-configuration" =>
+      Present { value: known_prompting_package_question(package: KeyboardConfigurationPackage) }
+    "tzdata" => Present { value: known_prompting_package_question(package: TzdataPackage) }
+    "postfix" => Present { value: known_prompting_package_question(package: PostfixPackage) }
+    "ifupdown" => Present { value: known_prompting_package_question(package: IfupdownPackage) }
+    "ntp" => Present { value: known_prompting_package_question(package: NtpPackage) }
+    _ => Absent
+  }
+}
+
+fn first_unseeded_prompter(intents: List<PackageIntent>) -> Optional<PromptingOffender> {
+  match intents.filter(intent => is_unseeded_prompter(intent: intent)).first() {
+    Present { value: offender } =>
+      match question_for_prompting_package(name: offender.name) {
+        Present { value: question } =>
+          Present { value: PromptingOffender { name: offender.name, question: question } }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+// THE DEBCONF TEST IS PRESENCE OF A SEED, NOT ITS CONTENT. A seeded answer could still be wrong and this
+// module does not pretend to read debconf values; what it can say, and what determines whether the install
+// hangs, is whether an answer was supplied at all. Optional rather than Bool keeps "we have the value" from
+// being confused with "we have a value": Absent here means nobody will ever answer.
+fn debconf_seed_is_present(seed: Optional<NonEmptyStr>) -> Bool {
+  match seed {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn is_unseeded_prompter(intent: PackageIntent) -> Bool {
+  package_is_known_prompting(name: intent.name) && !debconf_seed_is_present(seed: intent.debconf_seed)
+}
+
+fn is_seeded_prompter(intent: PackageIntent) -> Bool {
+  package_is_known_prompting(name: intent.name) && debconf_seed_is_present(seed: intent.debconf_seed)
+}
+
+// HOW MANY QUESTIONS THE SEED CLOSED, WHICH IS THE SEED'S OWN EVIDENCE OF ITS INDEPENDENCE. Counted, not
+// asserted: a reader comparing two seed digests can see that the newer one closes more questions, which is
+// the only way a "we fixed the hang" claim becomes checkable rather than remembered. The final +1 is the
+// entrypoint question, closed by the authorisation the caller had to earn to get here.
+fn questions_closed_count(
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  network: SeedNetworkPosture,
+) -> Int {
+  let seeded_prompters = install_packages.filter(intent => is_seeded_prompter(intent: intent)).length() + late_packages.filter(intent => is_seeded_prompter(intent: intent)).length()
+  let addressing_closed = match addressing_is_seeded(addressing: network.addressing) {
+    True => 1
+    False => 0
+  }
+  let mirror_closed = match archive_mirror_host(mirror: network.mirror) {
+    Present { value: _ } => 1
+    Absent => 0
+  }
+  seeded_prompters + addressing_closed + mirror_closed + 1
+}
+
+// ---------------------------------------------------------------------------
+// 7. The seed record, its constructor, and the projection into upstream's payload.
+// ---------------------------------------------------------------------------
+
+// THE SEED IS A STANDING, NOT A STRING. The rendered autoinstall is a projection of these axes, and keeping
+// the axes is what lets a seed be audited after the fact (which part closed which question), be re-rendered
+// against a fixed upstream change, and be digested without digesting formatting. sole_constructor because a
+// hand-written record could pair an audited proof with inputs the audit never saw: the proof and the inputs
+// it was computed from must not be independently assignable, or the field is decoration.
+type AltraAutoinstallSeed sole_constructor {
+  target: AltraAutoinstallTargetStanding,
+  network: SeedNetworkPosture,
+  install_drivers: List<AltraInstallDriver>,
+  late_drivers: List<AltraLateDriver>,
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  disk: TargetDiskSelector,
+  entry: AdminAccessAuthorisation,
+  credential: AdminCredentialPosture,
+  locale: SeedLocale,
+  delivery: SeedDeliveryStrategy,
+  keyboard: CeremonialKeyboardLayout,
+  proof: NonInteractiveProof,
+}
+
+// BUILDING A SEED RUNS THE AUDIT; IT DOES NOT ACCEPT ITS RESULT. The caller supplies inputs and receives
+// either a seed whose proof was computed just now from exactly those inputs, or Absent. There is no parameter
+// through which a caller can supply a proof, which is the difference between an audit and a stamp. A future
+// requirement (re-verifying a seed built before an upstream change) adds a re-audit function beside this one;
+// it does not add a proof parameter.
+fn build_altra_autoinstall_seed(
+  target: AltraAutoinstallTarget,
+  network: SeedNetworkPosture,
+  install_drivers: List<AltraInstallDriver>,
+  late_drivers: List<AltraLateDriver>,
+  install_packages: List<PackageIntent>,
+  late_packages: List<PackageIntent>,
+  disk: TargetDiskSelector,
+  entry: AdminAccessAuthorisation,
+  credential: AdminCredentialPosture,
+  locale: SeedLocale,
+  delivery: SeedDeliveryStrategy,
+  keyboard: CeremonialKeyboardLayout,
+) -> Optional<AltraAutoinstallSeed> {
+  match target {
+    TargetRefused { reason: _ } => Absent
+    TargetAdmitted { standing: admitted } =>
+      match audit_altra_autoinstall_seed(
+        network: network,
+        install_packages: install_packages,
+        late_packages: late_packages,
+        locale: locale,
+        entry: entry,
+        strategy: delivery,
+      ) {
+        SeedRefused { cause: _ } => Absent
+        SeedIsNonInteractive { evidence: established } =>
+          Present {
+            value: AltraAutoinstallSeed {
+              target: admitted,
+              network: network,
+              install_drivers: install_drivers,
+              late_drivers: late_drivers,
+              install_packages: install_packages,
+              late_packages: late_packages,
+              disk: disk,
+              entry: entry,
+              credential: credential,
+              locale: locale,
+              delivery: delivery,
+              keyboard: keyboard,
+              proof: established,
+            },
+          }
+      }
+  }
+}
+
+// THE RECEIPT IS A HASH, AND THE ONLY CONSTRUCTOR REFUSES ANYTHING THAT IS NOT ONE. Upstream's
+// AutoinstallIdentity carries a hashed_password string and subiquity writes that value into the image's
+// shadow entry. A crypt digest is not the secret — it is what the secret's verifier looks like once
+// published — but a caller who could put any string there could put a plaintext password there, and that is
+// the incident this shape prevents. So the sole door admits a SHA-512 crypt digest ("$6$", salt and digest)
+// and refuses anything unprefixed or too short to be one. The seed never holds this value: it is taken at the
+// projection edge by whoever writes the file and dropped immediately.
+type AdminPasswordHashReceipt sole_constructor { crypt_digest: NonEmptyStr }
+
+fn admin_password_hash_receipt(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordHashReceipt> {
+  match looks_like_sha512_crypt_digest(candidate: crypt_digest) {
+    True => Present { value: AdminPasswordHashReceipt { crypt_digest: crypt_digest } }
+    False => Absent
+  }
+}
+
+// THE PREFIX AND THE LENGTH FLOOR ARE BOTH CHECKED BECAUSE EITHER ALONE IS SATISFIABLE BY TEXT A CALLER
+// MIGHT PASTE. A future requirement to accept another crypt scheme (yescrypt's "$y$") adds a prefix row here
+// with its own length floor; it does not relax the refusal, and the witness over this function is what forces
+// that decision to be taken deliberately.
+fn looks_like_sha512_crypt_digest(candidate: NonEmptyStr) -> Bool {
+  candidate.starts_with(prefix: "$6$") && candidate.length() >= 20
+}
+
+// THE ONLY ROUTE FROM OUR SEED INTO UPSTREAM'S PAYLOAD, AND WHERE IT REFUSES. AutoinstallIdentity demands a
+// hostname and a NonEmptyStr hashed_password, and neither is something this module may supply from its own
+// state: a hostname inside a seed is the machine-name prohibition, enforced in code rather than prose, and a
+// password string held by the seed would be a secret sitting in a type. So the hostname is passed IN by the
+// binding layer — naming is that layer's job — and the digest arrives as a receipt already validated by its
+// own constructor. Two independent refusals follow: PasswordUnset cannot fill a field upstream requires (a
+// shape gap reported upstream, not patched around here), and a receipt that is not a digest cannot reach the
+// projection at all.
+fn project_autoinstall_identity(
+  seed: AltraAutoinstallSeed,
+  binding_hostname: NonEmptyStr,
+  receipt: Optional<AdminPasswordHashReceipt>,
+) -> Optional<AutoinstallIdentity> {
+  match seed.credential {
+    PasswordUnset => Absent
+    PasswordHandle { handle: _ } =>
+      match receipt {
+        Present { value: digest } =>
+          Present {
+            value: AutoinstallIdentity {
+              hostname: binding_hostname,
+              username: "gunbc-admin" as NonEmptyStr,
+              realname: "gunbc provisioning" as NonEmptyStr,
+              hashed_password: digest.crypt_digest,
+            },
+          }
+        Absent => Absent
+      }
+  }
+}
+
+// THE DISK POLICY IS DERIVED FROM THE SELECTION, NEVER FROM A NAME. Upstream's storage policy is a two-member
+// enum with no selector field, which is exactly why the selection must happen HERE, before the projection: the
+// payload can only say "lay down directly", and which disk that means is decided by the rule over the probe's
+// observations. A projection that accepted a device name would be the guess this module exists to prevent.
+fn project_storage_policy(selection: TargetDiskSelection) -> Optional<AutoinstallStoragePolicy> {
+  match selection {
+    DiskSelected { device: _ } => Present { value: StoragePolicyDirectLayout }
+    SelectionRefused { cause: _ } => Absent
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Rendering and the BINDING: so "the machine booted seed X" is answered with evidence.
+// ---------------------------------------------------------------------------
+
+// THE RENDERING IS A FUNCTION OF THE AXES AND NOTHING ELSE. Every wire spelling below is derived by the
+// fn that owns it — the locale by seed_locale_wire, the package names by altra_install_driver_package, the
+// console stanza by console_stanza_for, the transport by delivery_strategy_diagnostic — so the digest is a
+// digest of decisions, never of formatting or of a stored string that could disagree with the axis it
+// claims to spell. Field order is fixed by this function rather than by a map iteration, because a digest
+// that moves between two runs of the same seed is worthless as evidence.
+//
+// WHAT THE RENDERING DELIBERATELY OMITS, AND WHY THAT IS THE SECURITY PROPERTY: no password, no password
+// handle, no SSH key material, no hostname, no unit key. A rendered seed is safe to publish as an artifact
+// name, to print in a report, and to store beside a boot log precisely because the axes it renders are the
+// ones that contain no secret and no identity. The credential's VERSION still reaches the digest through a
+// locator-shaped atom — so a rotated secret changes the digest — without the secret itself ever being in
+// scope of a hash input.
+fn render_altra_autoinstall_seed(seed: AltraAutoinstallSeed) -> NonEmptyStr {
+  [
+    "autoinstall/1",
+    concat("arch=", architecture_token(architecture: seed.target.architecture)),
+    concat("bmc=", bmc_firmware_family_diagnostic(family: seed.target.bmc_firmware)),
+    concat("nic=", nic_driver_claim_diagnostic(flavour: seed.target.kernel_flavour)),
+    concat("locale=", seed_locale_wire(locale: seed.locale)),
+    concat("keyboard=", ceremonial_keyboard_layout_wire(layout: seed.keyboard)),
+    concat("delivery=", delivery_strategy_diagnostic(strategy: seed.delivery)),
+    concat("console=", console_stanza_diagnostic(stanza: seed.proof.console_stanza)),
+    concat("addressing=", addressing_diagnostic(addressing: seed.network.addressing)),
+    concat("family=", address_family_diagnostic(family: seed.network.family)),
+    concat("mirror=", mirror_diagnostic(mirror: seed.network.mirror)),
+    concat("disk=", selector_diagnostic(selector: seed.disk)),
+    concat("entry=", entrypoint_diagnostic(entry: seed.entry)),
+    concat("password=", credential_diagnostic(posture: seed.credential)),
+    concat("drivers=", install_driver_list_diagnostic(drivers: seed.install_drivers)),
+    concat("late=", late_driver_list_diagnostic(drivers: seed.late_drivers)),
+    concat("packages=", package_list_diagnostic(intents: seed.install_packages)),
+    concat("latepackages=", package_list_diagnostic(intents: seed.late_packages)),
+    concat("closed=", int_diagnostic(count: seed.proof.questions_closed)),
+  ].join("|") as NonEmptyStr
+}
+
+// THE ARCHITECTURE TOKEN IS THE FULL MATCH, NOT A DEFAULT: an architecture that has never been installed
+// this way must render its own name so a digest reveals the substitution rather than silently borrowing the
+// aarch64 spelling. A new architecture adds a row and the rendering changes, which is the behaviour a
+// default would hide.
+fn architecture_token(architecture: Architecture) -> NonEmptyStr {
+  match architecture {
+    Aarch64 => "aarch64"
+    X86_64 => "x86_64"
+    X86 => "x86"
+    Arm => "arm"
+    Armv7 => "armv7"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+  }
+}
+
+
+// THE DIGEST, TAGGED. The tag is not decoration: an untagged structural digest of a seed is byte-identical
+// to a digest of some other record that happens to render the same, and the whole purpose of the digest is
+// to be quotable as evidence years later. Adding a seed format (a non-autoinstall variant) means a new tag,
+// and a new tag cannot silently collide with this one.
+fn altra_autoinstall_seed_digest(seed: AltraAutoinstallSeed) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "gunbc.provisioning.altra_autoinstall_seed/1",
+    payload: content_hash_atom(value: render_altra_autoinstall_seed(seed: seed)),
+  )
+}
+
+// EVERY DERIVED SPELLING BELOW EXISTS SO THAT THE RENDERING NEVER READS A STORED STRING. Each is the only
+// place its wire token appears, and a missing row would be a compile error rather than a silent fallback —
+// which is why closed unions are the right carrier for these axes.
+fn bmc_firmware_family_diagnostic(family: BmcFirmwareFamily) -> NonEmptyStr {
+  match family {
+    OpenBmc => "openbmc"
+    AmiMegaRac => "amr-megrac"
+  }
+}
+
+// THE NIC CLAIM IS RENDERED THROUGH THE UPSTREAM TABLE RATHER THAN A STRING WE OWN: whether the running
+// kernel flavour's r8169 driver claims the board's NIC is a fact about Canonical's kernel, so it is asked
+// of extdeps.os.ubuntu_kernel_nic_coverage and the ANSWER is what enters the digest. A seed that rendered a
+// driver name we had chosen ourselves would be a seed whose digest survives an upstream kernel change it
+// should not survive.
+fn nic_driver_claim_diagnostic(flavour: UbuntuKernelFlavour) -> NonEmptyStr {
+  match r8169_claims_pci_device(flavour: flavour, device: rtl8125_device_id()) {
+    True => "r8169-claims-rtl8125"
+    False => "r8169-does-not-claim-rtl8125"
+  }
+}
+
+fn rtl8125_device_id() -> PciDeviceId {
+  "8125" as PciDeviceId
+}
+
+fn console_stanza_diagnostic(stanza: NonInteractiveConsoleStanza) -> NonEmptyStr {
+  match stanza {
+    ConsoleSuppressed => "suppressed"
+    ConsoleAnsweredByUnattended { reason: _ } => "unattended-answer"
+  }
+}
+
+fn addressing_diagnostic(addressing: SeedAddressing) -> NonEmptyStr {
+  match addressing {
+    SeededNetplan { source: _ } => "seeded-netplan"
+    InstallerManaged => "installer-managed"
+  }
+}
+
+fn address_family_diagnostic(family: SeedAddressFamily) -> NonEmptyStr {
+  match family {
+    DualStack => "dual"
+    Ipv4Only => "v4"
+  }
+}
+
+// AN ABSENT MIRROR RENDERS AS ITS OWN TOKEN. It must not be rendered as an empty segment, because then the
+// seed that has no mirror and the seed whose mirror is the empty string would digest identically — and the
+// first is a refusal while the second should not be expressible at all.
+fn mirror_diagnostic(mirror: ArchiveMirror) -> NonEmptyStr {
+  match mirror {
+    NamedMirror { host: h } => h
+    MirrorAbsent => "absent"
+  }
+}
+
+fn selector_diagnostic(selector: TargetDiskSelector) -> NonEmptyStr {
+  match selector {
+    ByObservedSerial { serial: s } => concat("serial=", s) as NonEmptyStr
+    ByCatalogIdentity { part_number: p, capacity_bytes: c } =>
+      concat(concat("catalog=", p), capacity_diagnostic(capacity: c)) as NonEmptyStr
+  }
+}
+
+// THE CAPACITY REACHES THE DIGEST AS A COUNT, NOT AS A MEASURE'S OWN SPELLING: the digest must not move if
+// the unit is restated in a different scale (Gibibyte vs ByteSize), only if the size it refers to changes.
+fn capacity_diagnostic(capacity: ByteSize) -> NonEmptyStr {
+  to_string(byte_size_count(b: capacity)) as NonEmptyStr
+}
+
+fn int_diagnostic(count: Int) -> NonEmptyStr {
+  to_string(count) as NonEmptyStr
+}
+
+fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
+  match authorised_key_count(authorisation: entry) {
+    0 =>
+      match console_entry_is_unlocked(authorisation: entry) {
+        True => "keys=0,console=unlocked"
+        False => "keys=0,console=locked"
+      }
+    n => concat(concat("keys=", to_string(n) as NonEmptyStr), ",console=irrelevant") as NonEmptyStr
+  }
+}
+
+// A ROTATED CREDENTIAL MOVES THE DIGEST, THE SECRET NEVER DOES. This renders the handle's locator and
+// version (both non-secret identifiers) and, for PasswordUnset, its own token — so a seed that dropped a
+// password is distinguishable from one that rotated it, which is exactly the pair of states a boot log has
+// to be able to tell apart.
+fn credential_diagnostic(posture: AdminCredentialPosture) -> NonEmptyStr {
+  match posture {
+    PasswordUnset => "unset"
+    PasswordHandle { handle: h } =>
+      concat(
+        concat(concat("locator=", h.secret_locator), "|version="),
+        h.secret_version,
+      ) as NonEmptyStr
+  }
+}
+
+// THE PACKAGE LIST IS RENDERED SORTED-BY-NAME, WHICH IS WHY THE SEED'S DIGEST IS ORDER-INDEPENDENT. Two
+// callers who list the same packages in different orders must produce the same seed — otherwise the digest
+// stops meaning "the same configuration" and starts meaning "the same configuration, typed the same way",
+// and the second is worthless as evidence.
+fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmptyStr {
+  render_sorted_names(
+    names: drivers.map(driver => altra_install_driver_package(driver: driver)).map(name => name as String),
+  )
+}
+
+fn late_driver_list_diagnostic(drivers: List<AltraLateDriver>) -> NonEmptyStr {
+  render_sorted_names(
+    names: drivers.map(driver => altra_late_driver_module(driver: driver)).map(name => name as String),
+  )
+}
+
+// A SEEDED PROMPTER IS RENDERED AS ITS NAME WITH A MARK; AN UNSEEDED ONE CANNOT APPEAR AT ALL, because the
+// audit would have refused the seed. The mark is in the digest so that a seed which seeded a prompter is
+// never confused with one that omitted it — those two are different decisions with different consequences,
+// and a digest that equated them would hide the exact bug this module exists to catch.
+fn package_list_diagnostic(intents: List<PackageIntent>) -> NonEmptyStr {
+  render_sorted_names(
+    names: intents.map(intent => package_intent_diagnostic(intent: intent)).map(name => name as String),
+  )
+}
+
+fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
+  match debconf_seed_is_present(seed: intent.debconf_seed) {
+    True => concat(intent.name, "+seeded") as NonEmptyStr
+    False => intent.name
+  }
+}
+
+// THE EMPTY CASE GETS ITS OWN TOKEN RATHER THAN AN EMPTY JOIN: an empty package list and a list that
+// renders to nothing must not be the same string, and the seed record should not be able to describe "no
+// drivers" and "drivers whose names are the empty string" identically.
+fn render_sorted_names(names: List<String>) -> NonEmptyStr {
+  match names.length() == 0 {
+    True => "none" as NonEmptyStr
+    False => names.sort_by(n => n).join(",") as NonEmptyStr
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. The BINDING: this seed, on this unit, on this attempt — with the digest as the evidence.
+// ---------------------------------------------------------------------------
+
+// WHY A BINDING IS ITS OWN RECORD AND NOT A FIELD ON THE SEED. The same seed is correct for many units
+// and no two attempts of one unit are the same event; putting unit or attempt on the seed would either
+// force a fresh seed object per unit (destroying the "same config, same digest" property the target
+// standing is built to guarantee) or force a shared seed to claim it belongs to one unit. Separated, the
+// pair of claims each has a home: the seed's digest says WHAT was booted, the binding says WHOSE board
+// and WHICH attempt, and a boot log answers "the machine booted seed X" by quoting a binding rather than
+// by remembering. The binding is sole_constructor for a sharper reason than the seed's: a hand-written
+// record could carry a digest that was never computed from the seed it names, which is precisely the
+// evidence-free claim this record exists to forbid. The constructor computes the digest itself; there is
+// no digest parameter.
+//
+// THE ORIGIN IS NOT A FIELD. The install origin (S3's kernel/initrd/filesystem digests and their mirror
+// provenance) is a property of the MEDIA the board net-booted from, and it is bound to this attempt by
+// whoever records the boot event — a seed does not restate origin digests, because then a seed would be
+// stale whenever the origin was republished byte-identically, and "which seed" would stop being a
+// question with one answer. The binding keeps the two records side by side, each with its own digest.
+type AltraAutoinstallSeedBinding sole_constructor {
+  unit_key: UnitKey
+  attempt: IntakeAttemptId
+  seed_digest: Fnv1a64Structural
+  seed_rendering: NonEmptyStr
+  delivery: SeedDeliveryStrategy
+  disk: TargetDiskSelector
+  disk_selection: BoundDiskEvidence
+}
+
+// THE DISK EVIDENCE, BOUND AT BINDING TIME. The selection is recorded INSIDE the binding rather than
+// recoverable from the seed, because the same seed on a different unit selects a different disk — the
+// disk the install actually targeted is a fact about the attempt. Carrying the selected serial means a
+// post-incident question ("what did that install write to?") is answerable from this record alone; a
+// binding that stored only the selector would require re-running the probe to reconstruct an event that
+// already happened.
+type BoundDiskEvidence = BoundDisk { serial: NonEmptyStr } | BoundDiskUnread { note: NonEmptyStr }
+
+type BindingBlocker
+  = TargetNotAdmitted
+  | DiskSelectionRefused { cause: DiskSelectionRefusalCause }
+
+// THE ONLY DOOR INTO A BINDING. It takes the SEED (so the digest is computed now, from this record), the
+// unit key and attempt (so the identity is bound, not assumed), and the live disk SELECTION (so a binding
+// cannot exist for a disk the rules refused — a binding whose install had no target disk is a record of an
+// install that could not have happened). A caller holding a refused selection receives Absent; the refusal
+// reason is carried out so the report says why there is no binding.
+fn bind_altra_autoinstall_seed(
+  seed: AltraAutoinstallSeed,
+  target: AltraAutoinstallTarget,
+  unit_key: UnitKey,
+  attempt: IntakeAttemptId,
+  selection: TargetDiskSelection,
+) -> Optional<AltraAutoinstallSeedBinding> {
+  match target {
+    TargetRefused { reason: _ } => Absent
+    TargetAdmitted { standing: _ } =>
+      match selection {
+        SelectionRefused { cause: _ } => Absent
+        DiskSelected { device: chosen } =>
+          Present {
+            value: AltraAutoinstallSeedBinding {
+              unit_key: unit_key,
+              attempt: attempt,
+              seed_digest: altra_autoinstall_seed_digest(seed: seed),
+              seed_rendering: render_altra_autoinstall_seed(seed: seed),
+              delivery: seed.delivery,
+              disk: seed.disk,
+              disk_selection: bound_disk_evidence(device: chosen),
+            },
+          }
+      }
+  }
+}
+
+fn bound_disk_evidence(device: StorageDevice) -> BoundDiskEvidence {
+  match storage_device_serial(d: device) {
+    Present { value: serial } => BoundDisk { serial: serial }
+    Absent => BoundDiskUnread { note: "probe observed no serial for the selected disk" as NonEmptyStr }
+  }
+}
+
+// THE ANSWER TO "DID THIS MACHINE BOOT SEED X?" — computed, never recalled. Re-rendering the seed in hand
+// and comparing digests is the whole check; a mismatch is not a comparison failure to retry, it is a
+// first-class verdict, because the two states it distinguishes (wrong seed vs same seed different config)
+// have opposite operational meanings.
+type BindingVerdict
+  = BootedThisSeed
+  | BootedADifferentSeed
+  | BindingIsForeign { note: NonEmptyStr }
+
+fn check_binding_against_seed(
+  binding: AltraAutoinstallSeedBinding,
+  seed: AltraAutoinstallSeed,
+  unit_key: UnitKey,
+  attempt: IntakeAttemptId,
+) -> BindingVerdict {
+  match binding.unit_key == unit_key && binding.attempt == attempt {
+    False => BindingIsForeign {
+      note: "binding names a different unit or attempt than the question asked" as NonEmptyStr,
+    }
+    True =>
+      match content_hash_eq_structural(
+        left: binding.seed_digest,
+        right: altra_autoinstall_seed_digest(seed: seed),
+      ) {
+        True => BootedThisSeed
+        False => BootedADifferentSeed
+      }
+  }
+}
+
+// THE BINDING'S OWN EVIDENCE TAG, for whoever stores bindings as addressable records: tagged separately
+// from the seed digest so a binding can be looked up by (unit, attempt) without being confusable with a
+// seed. A future requirement to store bindings content-addressed uses THIS and not the seed digest —
+// otherwise two units booting the same seed would collide in one address space, which is exactly the
+// ambiguity the separation exists to prevent.
+fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/1",
+    payload: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),
+        right: content_hash_atom(value: to_string(binding.attempt) as NonEmptyStr),
+      ),
+      right: content_hash_combine_structural(
+        left: binding.seed_digest,
+        right: content_hash_atom(value: binding.seed_rendering),
+      ),
+    ),
+  )
+}

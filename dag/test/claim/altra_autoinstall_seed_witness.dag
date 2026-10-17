@@ -1,0 +1,886 @@
+module test.claim.altra_autoinstall_seed_witness
+
+// WITNESSES FOR THE Altra autoinstall SEED and its BINDING (gunbc.provisioning.altra_autoinstall_seed).
+// Each test names the failure it exists to catch, and every one of them goes RED when the invariant it
+// guards is inverted — the required CI jobs do not evaluate witnesses, so this file is the only gate those
+// invariants have. The two that matter most are named in their own comments: the disk rule's two halves
+// (zero-match and multi-match refusals are different arms caught by different tests, because the worst
+// thing this cut can do is install onto the wrong disk of an 8-bay board) and the credential posture
+// (a headless box nobody can log into must be unrepresentable as valid).
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.measure { byte_size }
+import std.optional { Optional, Absent, Present }
+import extdeps.storage.types { storage_device_serial }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_eq_structural,
+}
+import extdeps.storage.types {
+  BareDevice,
+  CachedMirror,
+  Ephemeral,
+  EphemeralFs,
+  NvmeDevice,
+  Persistent,
+  StorageDevice,
+}
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+import extdeps.ssh.keys { Ed25519, SshPublicKey }
+import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
+import extdeps.uri { Https, Uri }
+import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
+import gunbc.machine_intake.bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake.subject {
+  BoardSerialAbsent,
+  IntakeAttemptId,
+  UnitKey,
+  UnitKeyBound,
+  UnitKeyRefused,
+  UnitKeyStanding,
+}
+import gunbc.provisioning.altra_autoinstall_seed {
+  AddressingIsInstallerManaged,
+  AdminAccessAuthorisation,
+  AdminCredentialPosture,
+  AltraAutoinstallSeed,
+  AltraAutoinstallSeedBinding,
+  AltraAutoinstallTarget,
+  AltraAutoinstallTargetRole,
+  AltraProvisioningTarget,
+  ArchiveMirror,
+  BmcSolConsoleUnlocked,
+  BootedADifferentSeed,
+  BootedThisSeed,
+  BoundDisk,
+  CandidateIdentityUnobserved,
+  ConsoleEntryAuthorisation,
+  ConsoleEntryLocked,
+  ConsoleEntryUnlocked,
+  ConsoleSuppressed,
+  ConsoleAnsweredByUnattended,
+  DiskSelected,
+  DiskSelectionRefusalCause,
+  DualStack,
+  EnUsUtf8,
+  InstallerManaged,
+  Ipv4Only,
+  MirrorAbsent,
+  MultipleDisksMatch,
+  NamedMirror,
+  NoDiskMatches,
+  NoEntrypointAtAll,
+  NonInteractiveConsoleStanza,
+  PackageIntent,
+  PackagePrompts,
+  PasswordHandle,
+  PasswordUnset,
+  PxeStrategy,
+  RunnerBacked,
+  SeededNetplan,
+  SeedAddressFamily,
+  SeedAddressing,
+  SeedAudit,
+  SeedDeliveryStrategy,
+  SeedIsNonInteractive,
+  SeedLocale,
+  SeedNetworkPosture,
+  SeedRefused,
+  SelectionRefused,
+  ByObservedSerial,
+  ByCatalogIdentity,
+  NvmeCliDriver,
+  AhciPlatformDriver,
+  KipmiSiDriver,
+  IpmiWatchdogDriver,
+  audit_altra_autoinstall_seed,
+  binding_digest,
+  SerialConsoleGettyUnlocked,
+  TargetAdmitted,
+  TargetDiskSelection,
+  TargetDiskSelector,
+  TargetRefused,
+  UsLayout,
+  VirtualMediaStrategy,
+  admit_admin_access_authorisation,
+  admit_altra_autoinstall_target,
+  admin_password_handle,
+  altra_autoinstall_seed_digest,
+  bind_altra_autoinstall_seed,
+  build_altra_autoinstall_seed,
+  check_binding_against_seed,
+  disk_identity_is_unread,
+  admin_password_hash_receipt,
+  console_stanza_for,
+  project_autoinstall_identity,
+  render_altra_autoinstall_seed,
+  select_target_disk,
+  selector_admits_observed,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------
+// Fixtures. A witness's evidence should be readable without a builder call chain; nothing here names a
+// fleet host, and the two disks that collide are named by serial alone.
+// ---------------------------------------------------------------------------
+
+data unit_a_key: UnitKey = "altra-unit-a" as UnitKey
+data unit_b_key: UnitKey = "altra-unit-b" as UnitKey
+data attempt_one: IntakeAttemptId = "intake-20261017-0001" as IntakeAttemptId
+data attempt_two: IntakeAttemptId = "intake-20261017-0002" as IntakeAttemptId
+
+data unit_key_bound_a: UnitKeyStanding = UnitKeyBound { key: unit_a_key }
+data unit_key_bound_b: UnitKeyStanding = UnitKeyBound { key: unit_b_key }
+data unit_key_unbound: UnitKeyStanding = UnitKeyRefused { cause: BoardSerialAbsent }
+data bmc_family_observed: BmcFirmwareFamilyStanding = FamilyObserved { family: AmiMegaRac }
+data bmc_family_unobserved: BmcFirmwareFamilyStanding = FamilyUnobserved {
+  discriminator: "AST2500 firmware string never read" as NonEmptyStr,
+}
+
+data target_altra: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+  unit_key: unit_key_bound_a,
+  architecture: Aarch64,
+  bmc_firmware: bmc_family_observed,
+  role: AltraProvisioningTarget,
+  kernel_flavour: Noble2404GaLinux68,
+)
+
+data target_altra_b: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+  unit_key: unit_key_bound_b,
+  architecture: Aarch64,
+  bmc_firmware: bmc_family_observed,
+  role: AltraProvisioningTarget,
+  kernel_flavour: Noble2404GaLinux68,
+)
+
+// Two bays carrying the SAME serial: the population an 8-bay board really presents when a tray is swapped
+// or a label copied, and the case a device-name selector would silently resolve by enumeration order.
+data twin_disk_one: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "TWIN-SERIAL-0001" },
+  persistence: Persistent,
+}
+
+data twin_disk_two: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "TWIN-SERIAL-0001" },
+  persistence: Persistent,
+}
+
+data unique_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: Persistent,
+}
+
+// The same serial on a disk that is NOT persistent: identity matches, kind does not.
+data ephemeral_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: Ephemeral,
+}
+
+data cached_mirror_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Present { value: "UNIQUE-SERIAL-0007" },
+  persistence: CachedMirror,
+}
+
+// A disk the probe could not read a serial for — reported as unexamined, never as "nothing matches".
+data serial_unread_disk: StorageDevice = NvmeDevice {
+  catalog: wd_black_sn850x_2tb_catalog,
+  serial: Absent,
+  persistence: Persistent,
+}
+
+// BMC virtual media presents the install image as an attached device on the board itself, so an extra
+// device really does appear in the probe's view during such an install. Only an identity-bearing rule
+// keeps the install off it.
+data bmc_virtual_media_device: StorageDevice = BareDevice {
+  capacity: byte_size(8589934592),
+  medium: EphemeralFs,
+  serial: Present { value: "BMC-VIRTUAL-CDROM" },
+  read_bandwidth: Absent,
+  write_bandwidth: Absent,
+  persistence: Ephemeral,
+}
+
+data bay_population: List<StorageDevice> = [unique_disk, twin_disk_one, twin_disk_two]
+
+data serial_selector: TargetDiskSelector = ByObservedSerial { serial: "UNIQUE-SERIAL-0007" }
+data twin_selector: TargetDiskSelector = ByObservedSerial { serial: "TWIN-SERIAL-0001" }
+data absent_selector: TargetDiskSelector = ByObservedSerial { serial: "NO-SUCH-DISK" }
+data catalog_selector: TargetDiskSelector = ByCatalogIdentity {
+  part_number: "WDS200T2X0E",
+  capacity_bytes: byte_size(2000398934016),
+}
+data wrong_capacity_selector: TargetDiskSelector = ByCatalogIdentity {
+  part_number: "WDS200T2X0E",
+  capacity_bytes: byte_size(1000000000000),
+}
+
+data provisioning_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIProvisioningKeyMaterialIsPublicAndNotASecret" as NonEmptyStr,
+  comment: "gunbc-provisioning",
+}
+
+data one_key: List<SshPublicKey> = [provisioning_key]
+data no_keys: List<SshPublicKey> = []
+
+data network_posture: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
+  family: Ipv4Only,
+  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+}
+
+data posture_no_mirror: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: SeededNetplan { source: "00-gunbc.yaml" as NonEmptyStr },
+  family: Ipv4Only,
+  mirror: MirrorAbsent,
+}
+
+data posture_installer_managed: SeedNetworkPosture = SeedNetworkPosture {
+  addressing: InstallerManaged,
+  family: DualStack,
+  mirror: NamedMirror { host: "mirror.internal.invalid" as NonEmptyStr },
+}
+
+data clean_packages: List<PackageIntent> = [
+  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
+  PackageIntent {
+    name: "postfix" as NonEmptyStr,
+    debconf_seed: Present { value: "postfix postfix/main_mailer_type select No configuration" },
+  },
+]
+
+// THE SAME TWO PACKAGES, OTHER ORDER. The digest must not move, or it stops meaning "the same
+// configuration" and starts meaning "the same configuration, typed the same way".
+data reversed_packages: List<PackageIntent> = [
+  PackageIntent {
+    name: "postfix" as NonEmptyStr,
+    debconf_seed: Present { value: "postfix postfix/main_mailer_type select No configuration" },
+  },
+  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
+]
+
+data unseeded_tzdata_packages: List<PackageIntent> = [
+  PackageIntent { name: "openssh-server" as NonEmptyStr, debconf_seed: Absent },
+  PackageIntent { name: "tzdata" as NonEmptyStr, debconf_seed: Absent },
+]
+
+data pxe_strategy: SeedDeliveryStrategy = PxeStrategy {
+  boot_mode: UefiPxe { tftp_root: Uri { scheme: Https, locator: "tftp.internal.invalid" } },
+}
+
+data http_boot_strategy: SeedDeliveryStrategy = PxeStrategy { boot_mode: UefiHttpBoot }
+
+data virtual_media_strategy: SeedDeliveryStrategy = VirtualMediaStrategy {
+  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
+}
+
+// BIOS PXE IS THE THIRD TRANSPORT AND THE ONLY ONE THAT SHARES A CONSOLE STANZA WITH VIRTUAL MEDIA: both
+// suppress the console, so any test of "the transport reaches the digest" that compares PXE against virtual
+// media can pass on the console clause alone. This fixture is what forces the transport token itself to
+// carry the difference.
+data legacy_bios_strategy: SeedDeliveryStrategy = PxeStrategy {
+  boot_mode: LegacyBiosPxe { tftp_root: Uri { scheme: Https, locator: "pxe-edge.internal.invalid" } },
+}
+
+data same_stem_virtual_media: SeedDeliveryStrategy = VirtualMediaStrategy {
+  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
+}
+
+data unlocked_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
+  reason: BmcSolConsoleUnlocked,
+}
+
+data locked_console: ConsoleEntryAuthorisation = ConsoleEntryLocked
+
+data seeded_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v7" as NonEmptyStr,
+  ),
+}
+
+data rotated_handle: AdminCredentialPosture = PasswordHandle {
+  handle: admin_password_handle(
+    secret_locator: "vault://gunbc/provisioning/altra/admin" as NonEmptyStr,
+    secret_version: "v8" as NonEmptyStr,
+  ),
+}
+
+// ---------------------------------------------------------------------------
+// The disk rule, in BOTH halves. Zero and many are different arms, caught by different tests: a single
+// test over both would pass if one arm were deleted.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a selector matching nothing being treated as "fine, install anyway".
+test fn zero_match_selection_is_refused_not_defaulted() -> Bool {
+  match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+    SelectionRefused { cause: NoDiskMatches { selector: _ } } => true
+    _ => false
+  }
+}
+
+// CATCHES: a selector matching several disks resolving to the first one — the wrong-disk install on an
+// 8-bay board, and the mutation that a "pick head" refactor would introduce.
+test fn multiple_match_selection_is_refused_and_names_no_single_disk() -> Bool {
+  match select_target_disk(selector: twin_selector, observed: bay_population) {
+    SelectionRefused { cause: MultipleDisksMatch { selector: _, candidates: candidates } } =>
+      list_length_is(candidates: candidates, expected: 2)
+    _ => false
+  }
+}
+
+// CATCHES: the refusal arms being swapped for each other (zero reported as many, many as zero).
+test fn zero_and_multiple_are_distinguishable_arms() -> Bool {
+  match select_target_disk(selector: absent_selector, observed: [unique_disk]) {
+    SelectionRefused { cause: MultipleDisksMatch { selector: _, candidates: _ } } => false
+    _ =>
+      match select_target_disk(selector: twin_selector, observed: bay_population) {
+        SelectionRefused { cause: NoDiskMatches { selector: _ } } => false
+        _ => true
+      }
+  }
+}
+
+// CATCHES: the discriminating count being computed wrongly, e.g. counting all observed disks rather
+// than admitted ones (which would make every rule refuse).
+test fn exactly_one_match_selects_that_device() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: bay_population) {
+    DiskSelected { device: _ } => true
+    SelectionRefused { cause: _ } => false
+  }
+}
+
+// CATCHES: the BMC's virtual-media device being installable onto. Such a device appears on the board
+// during a virtual-media install, and any rule that admits it has erased the operator's own image.
+test fn virtual_media_device_is_never_admitted() -> Bool {
+  !selector_admits_observed(selector: serial_selector, device: bmc_virtual_media_device)
+    && !selector_admits_observed(selector: catalog_selector, device: bmc_virtual_media_device)
+}
+
+// CATCHES: the persistence check being dropped, so an ephemeral drive with a matching serial is
+// selected — a root filesystem written onto a cache device.
+test fn matching_serial_on_a_non_persistent_disk_is_refused() -> Bool {
+  !selector_admits_observed(selector: serial_selector, device: ephemeral_disk)
+    && !selector_admits_observed(selector: serial_selector, device: cached_mirror_disk)
+}
+
+// CATCHES: "the probe could not read the serial" being laundered into "no disk matches", which tells the
+// operator to tighten a rule that is already correct.
+test fn unread_serial_is_reported_as_unexamined_not_as_no_match() -> Bool {
+  match select_target_disk(selector: serial_selector, observed: [serial_unread_disk]) {
+    SelectionRefused { cause: CandidateIdentityUnobserved { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// CATCHES: the fixture lying about the probe — if the unread-serial disk actually carries a serial, or a
+// bare device is counted as an unexamined candidate, the refusal above is meaningless.
+test fn the_probe_really_did_not_read_that_serial() -> Bool {
+  match storage_device_serial(d: serial_unread_disk) {
+    Absent =>
+      disk_identity_is_unread(device: serial_unread_disk)
+        && !disk_identity_is_unread(device: unique_disk)
+        && !disk_identity_is_unread(device: bmc_virtual_media_device)
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the catalog identity's capacity being decorative — a rule naming the right part number and
+// the wrong size must refuse, not select.
+test fn catalog_identity_requires_the_measured_capacity_to_agree() -> Bool {
+  match select_target_disk(selector: catalog_selector, observed: [unique_disk]) {
+    DiskSelected { device: _ } =>
+      match select_target_disk(selector: wrong_capacity_selector, observed: [unique_disk]) {
+        SelectionRefused { cause: _ } => true
+        DiskSelected { device: _ } => false
+      }
+    SelectionRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Credentials: a handle, and no-valid-way-in is unrepresentable.
+// ---------------------------------------------------------------------------
+
+// CATCHES: the guard being removed from the only constructor, so zero authorized keys and a locked
+// console becomes a legal record — a headless box that installs and then admits nobody.
+test fn no_keys_and_locked_console_cannot_be_constructed() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: locked_console) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the console-unlocked escape being widened into "no keys is always fine", which would make
+// the guard above decorative.
+test fn no_keys_is_admitted_only_when_the_console_is_deliberately_unlocked() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// CATCHES: the entrypoint audit arm firing for a unit that DOES have a way in (the guard inverted), or
+// failing to fire when the only way in was removed.
+test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: NoEntrypointAtAll { keys: _, console_unlocked: _ } } => false
+        _ => true
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the credential posture being decorative — a seed that dropped its password and one that kept
+// it would render identically, so a boot log could not tell "this unit authenticates by key alone" from
+// "someone forgot the handle", even though the operational consequences differ completely.
+test fn dropping_the_password_handle_changes_the_seed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: with_handle } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: without_handle } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: with_handle),
+            right: altra_autoinstall_seed_digest(seed: without_handle),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Non-interactivity: the four accidental-prompt mechanisms, each refused by name.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a prompting package entering the seed unseeded (the hang nobody can answer), or the audit
+// refusing seeded packages.
+test fn unseeded_prompting_package_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: unseeded_tzdata_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the missing mirror being treated as harmless. With no archive authority the installer has
+// nothing to answer the archive-location question with, so the seed is interactive although no package
+// prompts.
+test fn absent_mirror_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: posture_no_mirror, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: installer-managed addressing (the multi-NIC "which interface?" prompt) being accepted.
+test fn installer_managed_addressing_refuses_the_seed() -> Bool {
+  match build_seed_fixture( network: posture_installer_managed, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the audit being replaced by a constant, so a well-formed seed stops being accepted (the
+// other half of every refusal test above: those prove refusal, this proves acceptance).
+test fn a_fully_answerless_seed_is_accepted_with_its_proof() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The target gate: an absent observation is turned away, never defaulted.
+// ---------------------------------------------------------------------------
+
+// CATCHES: an unbound unit key being admitted (a seed bound to nothing is a seed replayable onto any
+// unit).
+test fn unbound_unit_key_cannot_reach_a_target_standing() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: defaulting an unobserved BMC firmware family, which would silently choose a console stanza
+// nobody observed the hardware to support.
+test fn unobserved_bmc_family_cannot_reach_a_target_standing() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_unobserved, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: a seed being rendered for a role whose disks are not its own to erase.
+test fn a_runner_role_is_refused_a_seed() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked { host: "some-runner" as NonEmptyStr }, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: the architecture gate, i.e. the arm64 package and driver set reaching an x86 unit.
+test fn a_non_aarch64_unit_is_refused() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } => true
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// CATCHES: a seed being buildable for a refused target.
+test fn a_refused_target_yields_no_seed() -> Bool {
+  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: _ } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    TargetAdmitted { standing: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The digest: a function of decisions, insensitive to order and sensitive to substance.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a rendering that reads a list in call order, which would make two callers with the same
+// package set produce two different seed identities.
+test fn package_order_does_not_move_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: first } =>
+      match build_seed_fixture( network: network_posture, packages: reversed_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: second } =>
+          content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: first),
+            right: altra_autoinstall_seed_digest(seed: second),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the delivery strategy being decorative in the digest — two installs that differ in transport
+// would be indistinguishable in a boot log.
+test fn the_transport_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: via_media } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+        Present { value: via_pxe } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: via_media),
+            right: altra_autoinstall_seed_digest(seed: via_pxe),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a rotated credential leaving the digest alone, which would let a boot log claim "seed X" for
+// an install that used a stale secret.
+test fn a_rotated_credential_moves_the_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: before } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: after } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: before),
+            right: altra_autoinstall_seed_digest(seed: after),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the console stanza being stored rather than derived from the transport — a virtual-media seed
+// must not promise a console a PXE seed may allow, and vice versa.
+test fn the_console_stanza_is_derived_from_the_transport() -> Bool {
+  match console_stanza_for(strategy: virtual_media_strategy) {
+    ConsoleSuppressed =>
+      match console_stanza_for(strategy: pxe_strategy) {
+        ConsoleAnsweredByUnattended { reason: _ } => true
+        ConsoleSuppressed => false
+      }
+    ConsoleAnsweredByUnattended { reason: _ } => false
+  }
+}
+
+// CATCHES: the transport token collapsing every ClientNetworkBootMode member to one spelling. BIOS PXE and
+// BMC virtual media both suppress the console, so these two seeds differ ONLY in the transport axis; if they
+// hash alike, the digest cannot answer "which transport did this board boot", and the pair of states a boot
+// log most needs to tell apart — firmware-side PXE vs BMC-served media — become one answer.
+test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+    Present { value: via_bios } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: same_stem_virtual_media, target: target_altra, ) {
+        Present { value: via_media } =>
+          match console_stanza_for(strategy: legacy_bios_strategy) {
+            ConsoleSuppressed =>
+              match console_stanza_for(strategy: same_stem_virtual_media) {
+                ConsoleSuppressed =>
+                  !content_hash_eq_structural(
+                    left: altra_autoinstall_seed_digest(seed: via_bios),
+                    right: altra_autoinstall_seed_digest(seed: via_media),
+                  )
+                ConsoleAnsweredByUnattended { reason: _ } => false
+              }
+            ConsoleAnsweredByUnattended { reason: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a boot-mode token with a default arm. UEFI-PXE and UEFI-HTTP-boot answer the same console
+// question and differ only in who owns the delivery failure, so the digest is the only place that
+// distinction survives — and a future ClientNetworkBootMode member must not be able to borrow either
+// spelling silently.
+test fn the_boot_mode_moves_the_digest_within_one_transport() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+    Present { value: via_tftp } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+        Present { value: via_http } =>
+          !content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: via_tftp),
+            right: altra_autoinstall_seed_digest(seed: via_http),
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The projection edge: upstream wants a hashed_password string, and the only door admits a digest.
+// ---------------------------------------------------------------------------
+
+// CATCHES: the receipt's constructor accepting anything — a caller who could put a plaintext password in
+// the field subiquity writes to the image's shadow entry is the incident this shape exists to prevent.
+test fn a_plaintext_password_is_refused_by_the_receipt() -> Bool {
+  let plaintext = admin_password_hash_receipt(crypt_digest: "hunter2" as NonEmptyStr)
+  let too_plain = admin_password_hash_receipt(crypt_digest: "password12345678901234" as NonEmptyStr)
+  let digest = admin_password_hash_receipt(
+    crypt_digest: "$6$salt$0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F" as NonEmptyStr,
+  )
+  match plaintext {
+    Absent =>
+      match too_plain {
+        Absent =>
+          match digest {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// CATCHES: the projection accepting an absent receipt, which would put a fabricated string into the
+// upstream record. The hostname is supplied by the caller's binding layer, never read from the seed.
+test fn the_projection_needs_a_receipt() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match project_autoinstall_identity(
+        seed: pair.seed,
+        binding_hostname: "unit-a-altra" as NonEmptyStr,
+        receipt: Absent,
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The binding.
+// ---------------------------------------------------------------------------
+
+// CATCHES: a binding whose digest was not computed from the seed it names — the evidence-free claim the
+// sole_constructor exists to forbid, checked by asking the binding to re-verify the seed.
+test fn a_binding_confirms_the_very_seed_it_was_built_from() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_one, ) {
+        BootedThisSeed => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a digest comparison that always says "same", which would let a wrong seed be reported as the
+// one that booted.
+test fn a_different_seed_is_reported_as_a_different_seed() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: other } =>
+          match check_binding_against_seed( binding: pair.binding, seed: other, unit_key: unit_a_key, attempt: attempt_one, ) {
+            BootedADifferentSeed => true
+            _ => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a binding answering a question about a different unit or attempt, which is the "answer from
+// memory" failure the binding record exists to remove.
+test fn a_binding_for_another_unit_or_attempt_is_foreign() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_b_key, attempt: attempt_one, ) {
+        BootedThisSeed => false
+        _ =>
+          match check_binding_against_seed( binding: pair.binding, seed: pair.seed, unit_key: unit_a_key, attempt: attempt_two, ) {
+            BootedThisSeed => false
+            _ => true
+          }
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the same seed on two units colliding in the binding address space — the seeds must agree (one
+// config, one digest) while the bindings must not (two events).
+test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra_b, ) {
+        Present { value: sibling } =>
+          content_hash_eq_structural(
+            left: altra_autoinstall_seed_digest(seed: seed),
+            right: altra_autoinstall_seed_digest(seed: sibling),
+          )
+            && !content_hash_eq_structural(
+              left: binding_digest_of(seed: seed, unit: unit_a_key, attempt: attempt_one),
+              right: binding_digest_of(seed: seed, unit: unit_b_key, attempt: attempt_one),
+            )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: a binding existing for a disk the rules refused — a record of an install that could not have
+// happened.
+test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
+        ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// CATCHES: the selected disk's identity not being recorded in the binding, which is what makes "what did
+// that install write to?" answerable from the record alone.
+test fn a_binding_records_the_serial_it_wrote_to() -> Bool {
+  match built_seed_and_binding() {
+    Present { value: pair } =>
+      match pair.binding.disk_selection {
+        BoundDisk { serial: recorded } => recorded == ("UNIQUE-SERIAL-0007" as NonEmptyStr)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers. Each returns Optional so the tests above stay single-assertion.
+// ---------------------------------------------------------------------------
+
+type SeedAndBinding {
+  seed: AltraAutoinstallSeed
+  binding: AltraAutoinstallSeedBinding
+}
+
+fn built_seed_and_binding() -> Optional<SeedAndBinding> {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+        ) {
+        Present { value: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn binding_digest_of(
+  seed: AltraAutoinstallSeed,
+  unit: UnitKey,
+  attempt: IntakeAttemptId,
+) -> Fnv1a64Structural {
+  match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+    ) {
+    Present { value: binding } => binding_digest(binding: binding)
+    Absent => binding_digest_of_unbound_placeholder()
+  }
+}
+
+// An unbound binding cannot be constructed — that is the point — so the comparison helper needs SOME
+// digest for the impossible case, and the honest one is the digest of an empty rendering rather than a
+// reused binding digest that could make two distinct bindings look equal.
+fn binding_digest_of_unbound_placeholder() -> Fnv1a64Structural {
+  content_hash_atom(value: "no-binding-exists" as NonEmptyStr)
+}
+
+fn build_seed_fixture(
+  network: SeedNetworkPosture,
+  packages: List<PackageIntent>,
+  entry_keys: List<SshPublicKey>,
+  console: ConsoleEntryAuthorisation,
+  credential: AdminCredentialPosture,
+  delivery: SeedDeliveryStrategy,
+  target: AltraAutoinstallTarget,
+) -> Optional<AltraAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
+    Present { value: entry } =>
+      build_altra_autoinstall_seed(
+        target: target,
+        network: network,
+        install_drivers: [NvmeCliDriver, AhciPlatformDriver],
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: packages,
+        late_packages: [],
+        disk: serial_selector,
+        entry: entry,
+        credential: credential,
+        locale: EnUsUtf8,
+        delivery: delivery,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
+  list_length(items: candidates) == expected
+}
