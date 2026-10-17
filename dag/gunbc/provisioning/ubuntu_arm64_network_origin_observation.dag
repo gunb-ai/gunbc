@@ -1,0 +1,147 @@
+module gunbc.provisioning.ubuntu_arm64_network_origin_observation
+
+// SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. The kernel and
+// initrd digests below were extracted by us from inside the ISO by a procedure we wrote, with no
+// upstream digest to cite, so we are the authority for them (hence TranscribedUncited), and what a
+// mirror served when we fetched and hashed it is our observation (DESIGN 3, External upstream
+// decomposition; 3b External facts). The verdict is descriptive only: it never says an origin is
+// admitted or selected; the first thing that decides from it is the later install step.
+// CONSUMER (DESIGN 3c): consumed by its witness in this change; executing consumer is a declared
+// later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
+// and the wet install step that calls verify_ubuntu_network_origin).
+
+import std.types { Bool, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.measure { ByteSize, byte_size_count, finite_byte_size, finite_byte_size_count, positive_measure_count }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.crypto.hash { Digest }
+import extdeps.provisioning.ubuntu_arm64_network_origin {
+  PinnedArtefact,
+  UbuntuRelease,
+  Noble2404Point5,
+  pinned_artefact,
+  ubuntu_noble_arm64_installer_filesystem_pin,
+}
+
+type OriginArtefactRole
+  = OriginKernel
+  | OriginInitrd
+  | OriginInstallerFilesystem
+
+// THE ARCHITECTURE IS NOT A PARAMETER. The one constructor fixes Aarch64, so an origin that
+// claims another architecture over these artefacts is unnameable; an x86_64 origin is a different
+// constructor with its own pins. architecture is a field so consumers (the PXE edge's
+// client-architecture roster) read the origin's architecture instead of assuming it.
+type UbuntuNetworkOrigin sole_constructor {
+  edition: UbuntuRelease
+  architecture: Architecture
+  kernel: PinnedArtefact
+  initrd: PinnedArtefact
+  installer_filesystem: PinnedArtefact
+}
+
+fn ubuntu_arm64_network_origin(edition: UbuntuRelease, kernel: PinnedArtefact, initrd: PinnedArtefact, installer_filesystem: PinnedArtefact) -> UbuntuNetworkOrigin {
+  UbuntuNetworkOrigin {
+    edition: edition,
+    architecture: Aarch64,
+    kernel: kernel,
+    initrd: initrd,
+    installer_filesystem: installer_filesystem,
+  }
+}
+
+fn origin_artefact(origin: UbuntuNetworkOrigin, role: OriginArtefactRole) -> PinnedArtefact {
+  match role {
+    OriginKernel => origin.kernel
+    OriginInitrd => origin.initrd
+    OriginInstallerFilesystem => origin.installer_filesystem
+  }
+}
+
+// WHAT A FETCH-AND-HASH PRODUCED FOR ONE ARTEFACT. Not fetching is a reading, not an error.
+type ArtefactReading
+  = ArtefactRead { digest: Digest, size: ByteSize }
+  | ArtefactNotFetched { why: NonEmptyStr }
+
+// VERIFIABLE OR REFUSED. Observed means every artefact was read and equals its pin; a mirror that
+// serves other bytes is Mismatch, which can never be mistaken for Observed, and an artefact nobody
+// fetched is Unfetched, which is not a pass either. A mismatch outranks an unfetched artefact: a
+// known-wrong file must not be hidden behind one that was not read.
+type OriginVerification
+  = OriginObserved { origin: UbuntuNetworkOrigin }
+  | OriginUnfetched { role: OriginArtefactRole, why: NonEmptyStr }
+  | OriginMismatch { role: OriginArtefactRole, expected: PinnedArtefact, actual: ArtefactReading }
+
+fn origin_digest_equal(a: Digest, b: Digest) -> Bool {
+  a == b
+}
+
+fn origin_reading_mismatches(pin: PinnedArtefact, reading: ArtefactReading) -> Bool {
+  match reading {
+    ArtefactRead { digest: d, size: s } => origin_digest_equal(a: d, b: pin.digest) == false || byte_size_count(b: s) != finite_byte_size_count(size: pin.size)
+    ArtefactNotFetched { why: _ } => false
+  }
+}
+
+fn origin_reading_unfetched(reading: ArtefactReading) -> NonEmptyStr? {
+  match reading {
+    ArtefactRead { digest: _, size: _ } => Absent
+    ArtefactNotFetched { why: w } => Present { value: w }
+  }
+}
+
+fn verify_ubuntu_network_origin(origin: UbuntuNetworkOrigin, kernel: ArtefactReading, initrd: ArtefactReading, installer_filesystem: ArtefactReading) -> OriginVerification {
+  if origin_reading_mismatches(pin: origin.kernel, reading: kernel) {
+    OriginMismatch { role: OriginKernel, expected: origin.kernel, actual: kernel }
+  } else if origin_reading_mismatches(pin: origin.initrd, reading: initrd) {
+    OriginMismatch { role: OriginInitrd, expected: origin.initrd, actual: initrd }
+  } else if origin_reading_mismatches(pin: origin.installer_filesystem, reading: installer_filesystem) {
+    OriginMismatch { role: OriginInstallerFilesystem, expected: origin.installer_filesystem, actual: installer_filesystem }
+  } else {
+    match origin_reading_unfetched(reading: kernel) {
+      Present { value: w } => OriginUnfetched { role: OriginKernel, why: w }
+      Absent => match origin_reading_unfetched(reading: initrd) {
+        Present { value: w } => OriginUnfetched { role: OriginInitrd, why: w }
+        Absent => match origin_reading_unfetched(reading: installer_filesystem) {
+          Present { value: w } => OriginUnfetched { role: OriginInstallerFilesystem, why: w }
+          Absent => OriginObserved { origin: origin }
+        }
+      }
+    }
+  }
+}
+
+data ubuntu_casper_member_read_obligation: NonEmptyStr = "Re-derive: curl -O http://cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.5-live-server-arm64.iso && sha256sum ubuntu-24.04.5-live-server-arm64.iso (must equal the SHA256SUMS line), then extract casper/vmlinuz and casper/initrd (xorriso -osirrox on -extract /casper/vmlinuz . or 7z e) and sha256sum each. Read on 2026-10-17 by parsing the ISO9660 casper directory directly. SHA256SUMS.gpg was not verified against the Ubuntu archive key."
+
+fn ubuntu_noble_arm64_kernel_pin() -> PinnedArtefact? {
+  pinned_artefact(
+    sha256_hex: "b4567593bda98a0723d9234603ec51d6ec7ee0553e1f36793a9da3956a68183e",
+    size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)),
+    standing: TranscribedUncited { read_obligation: ubuntu_casper_member_read_obligation },
+  )
+}
+
+fn ubuntu_noble_arm64_initrd_pin() -> PinnedArtefact? {
+  pinned_artefact(
+    sha256_hex: "993024a4daa493bd297ca34a6ed60efaf932225b25f901a3734d2ee6c57af187",
+    size: finite_byte_size(count: positive_measure_count(predecessor: 76091507)),
+    standing: TranscribedUncited { read_obligation: ubuntu_casper_member_read_obligation },
+  )
+}
+
+// The origin row, absent if any literal above fails the constructor's own admission.
+fn ubuntu_noble_arm64_network_origin() -> UbuntuNetworkOrigin? {
+  match ubuntu_noble_arm64_kernel_pin() {
+    Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
+      Present { value: i } => match ubuntu_noble_arm64_installer_filesystem_pin() {
+        Present { value: f } => Present {
+          value: ubuntu_arm64_network_origin(edition: Noble2404Point5, kernel: k, initrd: i, installer_filesystem: f)
+        }
+        Absent => Absent
+      }
+      Absent => Absent
+    }
+    Absent => Absent
+  }
+}
