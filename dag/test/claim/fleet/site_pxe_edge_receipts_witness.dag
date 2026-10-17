@@ -94,25 +94,46 @@ fn good_client(filename: String, from: Ipv4Address, digest: ContentHash?, accept
   bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 77, code: 11, requested: 10, response: synthetic_accept(filename: filename, from: from, digest: digest, at: accepted), source: Present { value: synthetic_source() }))
 }
 
-fn attempt_refusal_is(clients: List<ClientNetbootReceipt>, edges: List<SiteEdgeReceipt>, want: String) -> Bool {
+// The outcome of one pairing as a closed kind, so a witness names its expectation by variant and
+// a misspelled expectation cannot compile.
+type AttemptKind
+  = KindBound
+  | KindNoEdgeOffer
+  | KindEdgeDigestUnobserved
+  | KindClientDigestUnobserved
+  | KindFamilies
+  | KindDigest
+  | KindFilename
+  | KindFrom
+  | KindOfferBeforeRequest
+  | KindAcceptBeforeOffer
+
+fn attempt_kind(clients: List<ClientNetbootReceipt>, edges: List<SiteEdgeReceipt>) -> AttemptKind? {
   match clients.first() {
-    Absent => false
+    Absent => Absent
     Present { value: c } =>
       match bind_boot_attempt(client: c, edges: edges) {
-        BootAttemptBound { receipt: _ } => want == "bound"
+        BootAttemptBound { receipt: _ } => Present { value: KindBound }
         BootAttemptRefused { refusal: r } =>
           match r {
-            AcceptedResponseHasNoEdgeOffer { client_mac: _, transaction: _ } => want == "no_edge_offer"
-            EdgeDigestUnobserved => want == "edge_digest_unobserved"
-            ClientDigestUnobserved => want == "client_digest_unobserved"
-            DigestFamiliesIncomparable => want == "families"
-            DigestDisagrees { edge: _, client: _ } => want == "digest"
-            AcceptedFilenameDisagrees { offered: _, accepted: _ } => want == "filename"
-            AcceptedFromNotNextServer { next_server: _, accepted_from: _ } => want == "from"
-            OfferPrecedesRequest { requested_at: _, offered_at: _ } => want == "offer_before_request"
-            AcceptancePrecedesOffer { offered_at: _, accepted_at: _ } => want == "accept_before_offer"
+            AcceptedResponseHasNoEdgeOffer { client_mac: _, transaction: _ } => Present { value: KindNoEdgeOffer }
+            EdgeDigestUnobserved => Present { value: KindEdgeDigestUnobserved }
+            ClientDigestUnobserved => Present { value: KindClientDigestUnobserved }
+            DigestFamiliesIncomparable => Present { value: KindFamilies }
+            DigestDisagrees { edge: _, client: _ } => Present { value: KindDigest }
+            AcceptedFilenameDisagrees { offered: _, accepted: _ } => Present { value: KindFilename }
+            AcceptedFromNotNextServer { next_server: _, accepted_from: _ } => Present { value: KindFrom }
+            OfferPrecedesRequest { requested_at: _, offered_at: _ } => Present { value: KindOfferBeforeRequest }
+            AcceptancePrecedesOffer { offered_at: _, accepted_at: _ } => Present { value: KindAcceptBeforeOffer }
           }
       }
+  }
+}
+
+fn attempt_refusal_is(clients: List<ClientNetbootReceipt>, edges: List<SiteEdgeReceipt>, want: AttemptKind) -> Bool {
+  match attempt_kind(clients: clients, edges: edges) {
+    Absent => false
+    Present { value: got } => got == want
   }
 }
 
@@ -120,7 +141,7 @@ test fn synthetic_matching_exchange_binds() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "bound",
+    want: KindBound,
   )
 }
 
@@ -196,7 +217,7 @@ test fn accepted_answer_with_no_edge_offer_is_refused_distinctly() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: [],
-    want: "no_edge_offer",
+    want: KindNoEdgeOffer,
   )
 }
 
@@ -209,7 +230,7 @@ test fn digest_disagreement_between_views_is_refused() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_b() }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "digest",
+    want: KindDigest,
   )
 }
 
@@ -217,7 +238,7 @@ test fn missing_edge_digest_is_refused_not_assumed_equal() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: good_edge(digest: none, at: 20),
-    want: "edge_digest_unobserved",
+    want: KindEdgeDigestUnobserved,
   )
 }
 
@@ -225,7 +246,7 @@ test fn missing_client_digest_is_refused_not_assumed_equal() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: none, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "client_digest_unobserved",
+    want: KindClientDigestUnobserved,
   )
 }
 
@@ -233,7 +254,7 @@ test fn cross_family_digests_are_incomparable_not_different() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" }) }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "families",
+    want: KindFamilies,
   )
 }
 
@@ -241,7 +262,7 @@ test fn accepted_filename_that_was_not_offered_is_refused() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "other.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "filename",
+    want: KindFilename,
   )
 }
 
@@ -249,7 +270,7 @@ test fn accepted_from_a_host_other_than_next_server_is_refused() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 9), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "from",
+    want: KindFrom,
   )
 }
 
@@ -257,7 +278,7 @@ test fn client_accepting_before_the_edge_offered_is_refused() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 15),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "accept_before_offer",
+    want: KindAcceptBeforeOffer,
   )
 }
 
@@ -265,7 +286,7 @@ test fn offer_stamped_before_the_request_is_refused() -> Bool {
   attempt_refusal_is(
     clients: good_client(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, accepted: 30),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 5),
-    want: "offer_before_request",
+    want: KindOfferBeforeRequest,
   )
 }
 
@@ -273,7 +294,7 @@ test fn same_client_with_a_different_transaction_is_not_the_offers_exchange() ->
   attempt_refusal_is(
     clients: bound_client(obs: synthetic_client_obs(mac: synthetic_mac(last: 1), xid: 78, code: 11, requested: 10, response: synthetic_accept(filename: "synthetic-boot.efi", from: synthetic_ip(last: 2), digest: Present { value: synthetic_digest_a() }, at: 30), source: Present { value: synthetic_source() })),
     edges: good_edge(digest: Present { value: synthetic_digest_a() }, at: 20),
-    want: "no_edge_offer",
+    want: KindNoEdgeOffer,
   )
 }
 

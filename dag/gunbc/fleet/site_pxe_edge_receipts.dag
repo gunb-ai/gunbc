@@ -15,12 +15,7 @@ import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.provisioning.network_boot { DhcpBootDirection }
 import extdeps.provisioning.dhcp_client_arch {
   DhcpProcessorArchitecture,
-  BiosX86,
-  UefiX86_64,
-  UefiArm64,
-  HttpBootX86_64,
-  HttpBootArm64,
-  dhcp_processor_architecture_code
+  dhcp_processor_architecture_from_code
 }
 import product.placement_supply { SiteIdentity }
 import extdeps.uri { Uri, Https }
@@ -56,16 +51,8 @@ type ClientArchitectureClaim
   = ClientArchitectureRecognized { architecture: DhcpProcessorArchitecture }
   | ClientArchitectureUnrecognized { code: Int }
 
-// The decode is the forward table read backwards, not a second table: every recognized
-// architecture is listed once and matched on the upstream code function, so the only spelling of a
-// code is extdeps.provisioning.dhcp_client_arch dhcp_processor_architecture_code. Adding an
-// architecture there needs one entry here (the witness round-trips every listed entry); moving the
-// inverse into that module is the cleaner home and is a follow-up, because this change may not edit
-// it.
-data recognized_client_architectures: List<DhcpProcessorArchitecture> = [BiosX86, UefiX86_64, UefiArm64, HttpBootX86_64, HttpBootArm64]
-
 fn client_architecture_claim(code: Int) -> ClientArchitectureClaim {
-  match first_where(xs: recognized_client_architectures, keep: a => dhcp_processor_architecture_code(a: a) == code) {
+  match dhcp_processor_architecture_from_code(code: code) {
     Present { value: a } => ClientArchitectureRecognized { architecture: a }
     Absent => ClientArchitectureUnrecognized { code: code }
   }
