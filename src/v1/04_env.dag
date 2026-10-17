@@ -2155,6 +2155,11 @@ fn settled_args_agree(left: List<Node>, right: List<Node>, agree: fn(Node, Node)
   )
 }
 
+// DECLARED RESIDUAL WIDENING: a side with no applied arguments agrees with any argument list over the same head. The producer is
+// with_authored_identity: an alias-typed node is a structural expansion whose children are the expansion's FIELDS, and a bare
+// alias carries an empty path, so neither exposes type arguments to compare. Arguments are compared whenever both sides expose
+// them (the retained nested control refuses). Dissolution trigger: settled_type reading the applied arguments from the alias
+// declaration's rhs instead of the node's children, at which point unequal arity refuses. Not silent: this is the one arity leaf.
 fn alias_settled_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, agree: fn(Node, Node) -> Bool) -> Bool {
   match settled_type(n: left, source_indices: source_indices, env: env, fuel: 16) {
     Absent => false

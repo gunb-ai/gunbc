@@ -135,15 +135,3 @@ data bare_function_type_source: String = "module probe_alias_bare_bare_function_
 test fn w_alias_and_expansion_agree_at_bare_function_type() -> Bool {
   refusal_count(source: bare_function_type_source) == 0
 }
-
-fn class_count(source: String, wanted: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
-}
-
-
-
-
-
