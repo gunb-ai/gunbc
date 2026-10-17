@@ -19,7 +19,7 @@ import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.systemd { ExecStopProperty }
+import extdeps.systemd { ExecStopProperty, BindPathsProperty }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
@@ -411,11 +411,15 @@ fn provide_result_document(r: ProvideResult) -> String {
 // THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
 // request ran it hermetic while its identity said wet -- the key and the realization answering two
 // different questions. Both arms now name their mode, so the run is the operation the key describes.
+// THE ONE TARGET AUTHORITY IS cargo's --target-dir, NOT the CARGO_TARGET_DIR environment variable:
+// sccache hashes every CARGO_* variable of a rustc invocation into the Rust compile key
+// (extdeps.cache.sccache sccache_rust_key_facts), so exporting the per-identity target through the
+// environment made every identity's key unique and no Rust compile was ever reused across identities.
 fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
-        concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
+        concat([compute_program(instance: instance, cap: CargoCapability), "build", "--target-dir", layout.target_dir], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
         concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
@@ -461,8 +465,37 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<SystemdRunProperty> {
-  compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+  concat(
+    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none),
+    compute_path_virtualization_properties(layout: layout, path_virtualization: path_virtualization),
+  )
+}
+
+// THE ONLY PATH VIRTUALIZATION A UNIT MAY TAKE, CLOSED, a sibling of ComputeUnitStopObservation for the
+// same reason: a caller picks an arm and compute_run_unit alone maps it to BindPaths= (systemd.exec(5)),
+// so no caller can append a raw property. sccache's Rust key hashes the checkout path (CARGO_MANIFEST_DIR)
+// and the target path (CARGO_TARGET_DIR, OUT_DIR); two identities of one commit therefore miss each other
+// unless they present the same paths. The unit's OWN backing directories (layout.checkout, layout.target_dir)
+// are bound, in the unit's private mount namespace, onto paths the caller names; nothing is shared between
+// units, and the backing directories stay per identity. The destinations must already exist.
+type ComputeUnitPathVirtualization
+  = NoPathVirtualization
+  | CheckoutAndTargetAtStablePaths { checkout_at: String, target_at: String }
+
+fn compute_unit_working_directory(layout: ComputeLayout, path_virtualization: ComputeUnitPathVirtualization) -> String {
+  match path_virtualization {
+    NoPathVirtualization => layout.checkout
+    CheckoutAndTargetAtStablePaths { checkout_at, target_at: _ } => checkout_at
+  }
+}
+
+fn compute_path_virtualization_properties(layout: ComputeLayout, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+  match path_virtualization {
+    NoPathVirtualization => []
+    CheckoutAndTargetAtStablePaths { checkout_at, target_at } =>
+      [NamedUnitSetting { property: BindPathsProperty, value: join([layout.checkout, ":", checkout_at, " ", layout.target_dir, ":", target_at], "") as NonEmptyStr }]
+  }
 }
 
 // Run the operation as a transient user unit and wait for it: the unit carries THE MEMORY THE POOL
@@ -586,7 +619,7 @@ fn compute_stop_observation_properties(observation: ComputeUnitStopObservation) 
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observation: ComputeUnitStopObservation, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -600,11 +633,10 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     })
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: concat(compute_unit_properties(layout: layout, granted: granted), compute_stop_observation_properties(observation: stop_observation)),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), compute_stop_observation_properties(observation: stop_observation)),
       setenv_bindings: concat(
         concat(
           [
-            SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
             SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
           ],
           compute_unit_sccache_setenv(user_runtime_dir: user_runtime_dir),
@@ -2613,7 +2645,7 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation) {
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observation: NoStopObservation, path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
