@@ -104,3 +104,20 @@ fn every_qualified_call_path_agrees_on_one_classification() {
         refused.join("\n")
     );
 }
+
+/// A service is registered under its AUTHORED name (v1.compiler.infer scope fold: `svc_registry` is
+/// keyed by `authored_name_at(service item)`, its namespace root by `namespace_root_from_properties`),
+/// so a module path is not part of a service's identity and `svc.probe.Probe.Version()` names no
+/// service. It must REFUSE; the classifier may not turn it into a module call or a receiver method.
+#[test]
+fn module_qualified_service_spelling_is_refused_not_reclassified() {
+    let consumer = (
+        "fx/consumer.dag",
+        "module consumer\n\nimport svc.probe { Probe }\n\nfn run() -> String {\n  let r = svc.probe.Probe.Version()\n  \"\"\n}\n",
+    );
+    let messages = diagnostics_of(&[PROVIDER_B, PROVIDER_C, SERVICE, consumer]);
+    assert!(
+        !messages.is_empty(),
+        "a module-qualified service spelling must refuse, but compiled clean"
+    );
+}
