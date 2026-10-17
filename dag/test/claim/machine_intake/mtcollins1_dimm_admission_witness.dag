@@ -71,9 +71,10 @@ fn dimm_class_text(m: ObservedDimm) -> String {
 
 // The reader's rendering of one line: the tokens after "SK<n> MC<n> S<n>:" joined by single spaces.
 fn dimm_rendering(m: ObservedDimm) -> String {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(
-    dimm_class_text(m: m), "["), m.spd_manufacturer as String), "] 16GB "), dimm_rate_text(m: m)), " ECC "),
-    dimm_rank_text(m: m)), " x4 RCD["), m.controller as String), "] "), m.part_number as String), "")
+  let head = concat(concat(dimm_class_text(m: m), "["), m.spd_manufacturer as String)
+  let mid = concat(concat(concat("] 16GB ", dimm_rate_text(m: m)), " ECC "), dimm_rank_text(m: m))
+  let tail = concat(concat(" x4 RCD[", m.controller as String), concat("] ", m.part_number as String))
+  concat(concat(head, mid), tail)
 }
 
 fn block_has(block: AmpereDramBlock, m: ObservedDimm) -> Bool {
