@@ -22,7 +22,8 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names,
 }
 
-// WORKER-ROOT-EQUIVALENT-1, STRUCTURAL RUNG. The worker unit's User= is a dedicated account that holds
+// WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
+// gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
 // no root-equivalent group; the srv1 lab opts in, prod stays on the service user (the staged form of
 // the replacement migration; see HostDashboardInstance worker_user).
 
@@ -84,7 +85,8 @@ test fn the_live_worker_unit_still_runs_as_the_service_user() -> Bool {
     && !admits_user(instance: live, user: fleet_posix_worker_user.name)
 }
 
-// CLAIM 1: the account holds no root-equivalent group.
+// DECLARATION CHECK, NOT HOST EVIDENCE: compares two declared lists. It cannot go red if the host account
+// is hand-created inside docker; that needs a host readback (declared frontier, not built here).
 test fn the_worker_account_holds_no_root_equivalent_group() -> Bool {
   all(fleet_posix_worker_supplementary_groups, g =>
     !any(fleet_root_equivalent_group_names, bad => (bad as String) == (g as String)))
