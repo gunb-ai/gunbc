@@ -428,6 +428,16 @@ pub fn gibibyte_ceiling(b: ByteSize) -> Gibibyte {
     }
 }
 
+pub fn mebibyte_ceiling(b: ByteSize) -> Mebibyte {
+    {
+        let scale = mebibyte_scale_factor_bytes();
+        mebibyte(v1_rt::int_div(
+            v1_rt::int_add(byte_size_count(b.clone()), v1_rt::int_sub(scale.clone(), 1)),
+            scale.clone(),
+        ))
+    }
+}
+
 pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size(v1_rt::int_mul(
         gibibyte_count(g.clone()),

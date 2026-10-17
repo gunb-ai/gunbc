@@ -1,0 +1,67 @@
+module gunbc.design.gunb_ai_hues
+
+import std.types { String }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette {
+  Swatch, SwatchSet, SwatchSetProvenance, SwatchMember,
+  swatch_filed, swatches_of, swatch_set_admissible,
+}
+
+// Pick A, relayed from the operator 2026-10-16 (gunb.ai projection lane,
+// docs/plans carrier `gunbc.plans.gunb_ai_projection_plan` §6): gunbc.design.palette
+// gains gunb.ai's four hue families as named swatches so palette is the site's ONLY
+// colour authority and the live look is unchanged. Names describe the colour, not the
+// use — so a redesign renaming site usage never renames a swatch. Values are the live
+// page's HSL ramp, projected once into Srgb8: re-derive any of them from
+// gunb-ai/frontend's :root block (`grep -A40 ':root' assets/site.css`), never from
+// this file's comments. When the redesign retunes a hue, the edit is HERE — swatch is
+// the single value home (DESIGN §3). Consumer: gunbc.site.gunb_ai_tokens, which binds
+// each of these into the site token set; nothing else imports this module (DESIGN §3c).
+
+data gunb_ai_hues_provenance: SwatchSetProvenance = HouseAuthored {
+  note: "The four live gunb.ai hue families (warm/umber-sand neutrals, moss, clay, brass) plus their in-family steps, lifted from the hand-maintained site's :root block so palette becomes the only colour authority. Operator pick A 2026-10-16; values track the live look and move when the redesign retunes them.",
+}
+
+data near_black: Swatch = Swatch { name: "near-black", color: Srgb8 { r: 13, g: 13, b: 13 } }
+data soot: Swatch = Swatch { name: "soot", color: Srgb8 { r: 21, g: 21, b: 20 } }
+data graphite: Swatch = Swatch { name: "graphite", color: Srgb8 { r: 29, g: 28, b: 27 } }
+
+data sand: Swatch = Swatch { name: "sand", color: Srgb8 { r: 206, g: 197, b: 182 } }
+data taupe: Swatch = Swatch { name: "taupe", color: Srgb8 { r: 154, g: 143, b: 126 } }
+data umber: Swatch = Swatch { name: "umber", color: Srgb8 { r: 107, g: 99, b: 87 } }
+data warm_white: Swatch = Swatch { name: "warm-white", color: Srgb8 { r: 244, g: 241, b: 236 } }
+data off_white: Swatch = Swatch { name: "off-white", color: Srgb8 { r: 228, g: 223, b: 216 } }
+
+data moss: Swatch = Swatch { name: "moss", color: Srgb8 { r: 78, g: 166, b: 99 } }
+data moss_deep: Swatch = Swatch { name: "moss-deep", color: Srgb8 { r: 59, g: 125, b: 74 } }
+data clay: Swatch = Swatch { name: "clay", color: Srgb8 { r: 166, g: 83, b: 78 } }
+data clay_deep: Swatch = Swatch { name: "clay-deep", color: Srgb8 { r: 125, g: 62, b: 59 } }
+data brass: Swatch = Swatch { name: "brass", color: Srgb8 { r: 178, g: 155, b: 98 } }
+data brass_deep: Swatch = Swatch { name: "brass-deep", color: Srgb8 { r: 131, g: 114, b: 73 } }
+
+data gunb_ai_hue_members: List<SwatchMember> = [
+  swatch_filed(sw: near_black),
+  swatch_filed(sw: soot),
+  swatch_filed(sw: graphite),
+  swatch_filed(sw: sand),
+  swatch_filed(sw: taupe),
+  swatch_filed(sw: umber),
+  swatch_filed(sw: warm_white),
+  swatch_filed(sw: off_white),
+  swatch_filed(sw: moss),
+  swatch_filed(sw: moss_deep),
+  swatch_filed(sw: clay),
+  swatch_filed(sw: clay_deep),
+  swatch_filed(sw: brass),
+  swatch_filed(sw: brass_deep),
+]
+
+data gunb_ai_hues: SwatchSet = SwatchSet {
+  name: "gunb-ai-hues",
+  provenance: gunb_ai_hues_provenance,
+  members: gunb_ai_hue_members,
+}
+
+fn gunb_ai_hues_admissible() -> Bool {
+  swatch_set_admissible(s: gunb_ai_hues)
+}

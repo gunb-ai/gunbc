@@ -64,6 +64,39 @@ fn rented_drain_decision(allocation: RentedServingAllocation, reading: RentedDra
   }
 }
 
+// ---- THE HOST'S REACHABILITY, a typed reading and never a skip. The on-card legs (drain, clean) need the card;
+// a card that never got past acquisition (engine never up, ssh never answered) cannot be read. SILENCE IS NOT
+// DOWN: an ssh that did not answer is read as a down host only when a control from the same vantage reached
+// something else, which excludes a fault on our side. A silent host with a control that did not reach, or was
+// not read, is ambiguous and refuses, because it cannot tell a dead card from our own network. The same
+// distinction DESIGN 4d keeps between a probe that failed and an axis nobody probed (compare
+// gunbc.site_uefi_arm64_pxe_edge BootNetworkReachabilityDeficit); no shared reachability type carries a
+// vantage control, and extdeps.ssh.session Reachability answers a bare Bool that cannot make the distinction.
+type RentedVantageControl
+  = RentedVantageReached
+  | RentedVantageNotReached
+  | RentedVantageUnread { cause: NonEmptyStr }
+
+type RentedHostReading
+  = RentedHostAnswered { drain: RentedDrainReading, store: RentedStoreReading }
+  | RentedHostSilent { control: RentedVantageControl }
+  | RentedHostUnreadable { cause: NonEmptyStr }
+
+// The reason an on-card leg is held when the host did not answer and silence is not established as down.
+// Answered hosts never reach here.
+fn rented_host_ambiguity(host: RentedHostReading) -> NonEmptyStr? {
+  match host {
+    RentedHostAnswered { drain: _, store: _ } => none
+    RentedHostUnreadable { cause: c } => Present { value: join(["host reachability unreadable: ", c as String], "") as NonEmptyStr }
+    RentedHostSilent { control: c } =>
+      match c {
+        RentedVantageReached => none
+        RentedVantageNotReached => Present { value: "the host did not answer and the vantage control did not reach either, so a fault on our side is not excluded; refusing to read the host as down" as NonEmptyStr }
+        RentedVantageUnread { cause: u } => Present { value: join(["the host did not answer and the vantage control is unread, so a fault on our side is not excluded: ", u as String], "") as NonEmptyStr }
+      }
+  }
+}
+
 // ---- REVOKE. Two facts, kept apart.
 // THE GRANT IS NOT REVOKED: std.scoped_authorization models no early end (expires_at ends it, and a claim is
 // consumed per attempt), so the typed outcome states when it ends and nothing is removed. The row below carries
@@ -265,6 +298,7 @@ type RentedLegOutcome
   | RentedLegOutcomeToUndo { actions: List<String> }
   | RentedLegOutcomeRefused { reason: NonEmptyStr }
   | RentedLegOutcomeNotReached
+  | RentedLegOutcomeNotPerformedHostSilent
 
 type RentedReleaseOutcome
   = RentedReleaseGone
@@ -311,6 +345,17 @@ fn rented_leg_refusal(outcome: RentedLegOutcome) -> NonEmptyStr? {
     RentedLegOutcomeNothingToUndo => none
     RentedLegOutcomeToUndo { actions: _ } => none
     RentedLegOutcomeNotReached => none
+    RentedLegOutcomeNotPerformedHostSilent => none
+  }
+}
+
+// An on-card leg's outcome when the host did not answer: a host established silent yields NotPerformed (never
+// NothingToUndo, which would read an unread card as clean), and an ambiguous silence is a typed refusal. The
+// answered case computes the leg's own decision at its call site.
+fn rented_unanswered_on_card_outcome(host: RentedHostReading) -> RentedLegOutcome {
+  match rented_host_ambiguity(host: host) {
+    Present { value: r } => RentedLegOutcomeRefused { reason: r }
+    Absent => RentedLegOutcomeNotPerformedHostSilent
   }
 }
 
@@ -318,10 +363,9 @@ fn rented_leg_refusal(outcome: RentedLegOutcome) -> NonEmptyStr? {
 // read that proves the end, and it is supplied by a caller that has performed (or not) the actuation, so a
 // Plan with an unchanged world yields the pending verdict it should.
 type RentedReleaseReadings {
-  drain: RentedDrainReading
+  host: RentedHostReading
   authorizations: List<ScopedAuthorization<RentedHostSubject>>
   anchor: RentedAnchorReading
-  store: RentedStoreReading
   before: RentedInstanceReading
   after: RentedInstanceReading
 }
@@ -334,7 +378,10 @@ fn rented_release_receipt(
   mode: ApplyMode,
   readings: RentedReleaseReadings,
 ) -> RentedReleaseReceiptV1 {
-  let drain = rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: readings.drain))
+  let drain = match readings.host {
+    RentedHostAnswered { drain: d, store: _ } => rented_leg_outcome_of_words(decision: rented_drain_decision(allocation: allocation, reading: d))
+    other => rented_unanswered_on_card_outcome(host: other)
+  }
   let drain_refused = match rented_leg_refusal(outcome: drain) {
     Present { value: _ } => true
     Absent => false
@@ -351,7 +398,10 @@ fn rented_release_receipt(
   let clean = if drain_refused || anchor_refused {
     RentedLegOutcomeNotReached
   } else {
-    rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: readings.store))
+    match readings.host {
+      RentedHostAnswered { drain: _, store: st } => rented_leg_outcome_of_commands(decision: rented_clean_decision(roots: roots, protected: protected, reading: st))
+      other => rented_unanswered_on_card_outcome(host: other)
+    }
   }
   let grant = rented_grant_standing(allocation: allocation, authorizations: readings.authorizations)
   let held = match rented_leg_refusal(outcome: drain) {
@@ -398,13 +448,18 @@ data rented_release_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "a std.scoped_authorization early-end transition on ScopedAuthorization, sufficient for release to end a held grant and read the end back"),
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_release_receipt"),
+    reason: "no flex caller invokes rented_release_receipt yet: binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step",
+    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces RentedAllocationAcquired allocations per card and calls rented_release_receipt, resolving flex_release_pass's FlexDestroy to its allocation and passing the FlexPolicy actuation as mode"),
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_destroy_perform"),
-    reason: "binding product.fabric.flex_market FlexOwnedCard to its RentedServingAllocation is the flex lane's step, so no flex caller invokes rented_release_receipt yet",
-    dissolution: unbound_dissolution(description: "trigger:the flex wet create produces an Acquired allocation per card; then flex_release_pass's FlexDestroy is resolved to its allocation and passed with the FlexPolicy actuation as mode"),
+    reason: "no claim executes rented_destroy_perform: vast_ai.InstanceLifecycle Destroy is Bearer-authenticated, and extdeps.transports.rest RestAuthenticated replay is unexecuted because the invocation input_digest limbs still use a host hash, so only the decisions are witnessed",
+    dissolution: unbound_dissolution(description: "trigger:an authenticated REST replay route in extdeps.transports.rest executes (RestExchangeFixture matched against a RestAuthenticated invocation), and a claim drives rented_destroy_perform over it asserting the route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.rented_release", decl_name: "rented_drain_decision"),
-    reason: "an unreachable host reads as unreadable and holds the release at that leg rather than being skipped",
-    dissolution: unbound_dissolution(description: "an unreachable-host arm in the readings with a stated consequence for the destroy, sufficient for a dead card to release without a human"),
+    reason: "no producer yet supplies RentedHostReading: the vantage control and the ssh answer are read by the flex caller, not by this module",
+    dissolution: unbound_dissolution(description: "trigger:the flex caller that resolves a FlexDestroy to its allocation supplies the host reading from an ssh attempt and a control to a second endpoint"),
   ),
 ]
