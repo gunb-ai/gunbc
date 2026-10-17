@@ -1,0 +1,87 @@
+module test.claim.clone_allocation_free_record_sharing_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent controls for v1.compiler.emit_rust is_clone_allocation_free and the target gate
+// that reads std.compiler_entry RetainedHostCliKernel (build_emit_rust_context by_value_records).
+//
+// THE DISCRIMINATOR is how a record is spelled where another record holds it: `p: Pair` (by
+// value) against `p: Rc<Pair>` (shared). Pair holds a non-Copy field, so is_type_constant does
+// not already make it by-value: only the clone-allocation-free fact can.
+//
+//   flips          non-recursive, non-generic, no fn field, every field type decided
+//   stays Rc       recursive / generic / fn-typed field, one fixture each
+//   stays Rc       the SAME flipping record under a RetainedHostCliKernel entry: hand-authored
+//                  host Rust pins its Rc representation. The exclusion dissolves as that Rust
+//                  migrates; it is a row on the driver fact, never a type-name list.
+//
+// Not authored here: the fourth F condition (an undecided field type) has no source spelling
+// that survives resolution, so it rests on the fail-closed arm of the field_type_map count.
+
+fn w_clone_free_record_is_by_value() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.flip\n\ntype Pair {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
+    "src/cfree_flip.rs",
+    ["pub p: Pair"],
+    ["Rc<Pair>"]
+  )
+}
+
+fn w_recursive_record_stays_shared() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.rec\n\ntype Link {\n  name: String\n  next: List<Link>\n}\n\ntype Holder {\n  l: Link\n  tag: String\n}\n",
+    "src/cfree_rec.rs",
+    ["Rc<Link>"],
+    []
+  )
+}
+
+fn w_generic_record_stays_shared() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.gen\n\ntype Cell<T> {\n  value: T\n  name: String\n}\n\ntype Holder {\n  c: Cell<Int>\n  tag: String\n}\n",
+    "src/cfree_gen.rs",
+    ["Rc<Cell<"],
+    []
+  )
+}
+
+fn w_fn_field_record_stays_shared() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.fnf\n\ntype Hook {\n  run: fn(Int) -> Int\n  name: String\n}\n\ntype Holder {\n  h: Hook\n  tag: String\n}\n",
+    "src/cfree_fnf.rs",
+    ["Rc<Hook>"],
+    []
+  )
+}
+
+fn w_retained_host_entry_keeps_the_rc() -> Bool {
+  compile_dag_rust_emit_check(
+    "module cfree.host\n\ntype CompilerEntryDriver = RetainedHostCliKernel | NativeCliDriver\n\ndata entry: CompilerEntryDriver = RetainedHostCliKernel\n\ntype Pair {\n  name: String\n  items: List<Int>\n}\n\ntype Holder {\n  p: Pair\n  tag: String\n}\n",
+    "src/cfree_host.rs",
+    ["Rc<Pair>"],
+    []
+  )
+}
+
+test fn clone_allocation_free_record_is_held_by_value() -> Bool {
+  w_clone_free_record_is_by_value()
+}
+
+test fn recursive_record_stays_shared() -> Bool {
+  w_recursive_record_stays_shared()
+}
+
+test fn generic_record_stays_shared() -> Bool {
+  w_generic_record_stays_shared()
+}
+
+test fn fn_field_record_stays_shared() -> Bool {
+  w_fn_field_record_stays_shared()
+}
+
+test fn retained_host_entry_keeps_the_rc_on_a_flipping_record() -> Bool {
+  w_retained_host_entry_keeps_the_rc()
+}
