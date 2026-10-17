@@ -11,14 +11,14 @@ import extdeps.cloud.vast_ai { VastAiInstance }
 import product.supplier.vast_ai { VastAiAskReceipt }
 import product.fabric.flex_policy { flex_vast_actuation_mode }
 import gunbc.serving.serving_artifact_placement { ServingStoreRoots, ServingProtectedPaths }
-import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired }
+import gunbc.serving.rented_allocation { RentedServingAllocation, RentedAllocationAcquired, rented_allocation_wire }
 import gunbc.serving.rented_release {
   RentedDrainNotListening, RentedAnchorAbsent, RentedStoreNoPartials, RentedStorePartials,
   RentedInstanceObserved, RentedInstanceAbsent, RentedInstanceReading, RentedDestroyDecision, RentedReleaseReadings,
   RentedLegNothingToUndo, RentedLegRefused, RentedLegOutcomeNothingToUndo,
   RentedDestroyPlanned, RentedDestroyAuthorized, RentedDestroyRefusedIdMismatch, RentedDestroyRefusedLabel,
   RentedReleaseGone, RentedReleasePlanned, RentedReleasePending,
-  rented_destroy_decision, rented_clean_decision, rented_release_receipt,
+  rented_destroy_decision, rented_clean_decision, rented_release_receipt, rented_bound_instance_id,
 }
 import test.claim.serving.rented_allocation_witness { a_allocation, a_tunnel }
 
@@ -189,4 +189,15 @@ test fn clean_removes_a_stale_partial() -> Bool {
     RentedLegRefused { reason: _ } => false
     _ => true
   }
+}
+
+// INHABITANCE (DESIGN 3 pairing): the supplied instance rows above are hypotheses. This claim runs the real
+// allocation carrier (the rented_allocation witness producer) through the real release entry and asserts the
+// ROUTE: the receipt names the carrier's own wire id, and the id the guard binds is the carrier's identity
+// contract, which is the Vast instance id the Destroy operation addresses.
+test fn the_receipt_is_bound_to_the_real_carriers_identity_and_instance_id() -> Bool {
+  let a = w_imported()
+  let r = rented_release_receipt(allocation: a, roots: w_roots, protected: w_protected, required_label: w_label, mode: Plan, readings: w_readings(before: RentedInstanceAbsent, after: RentedInstanceAbsent))
+  (r.allocation as String) == (rented_allocation_wire(id: a.identity) as String)
+    && (rented_bound_instance_id(allocation: a) as String) == (a.identity.contract as String)
 }
