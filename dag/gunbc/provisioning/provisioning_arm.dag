@@ -1,0 +1,174 @@
+module gunbc.provisioning.provisioning_arm
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeChainloaderPin,
+  SitePxeEdgeChainloaderPinned,
+  SitePxeEdgeChainloaderUnpinned,
+  SitePxeEdgeChainloaderBuildReceipt,
+  SitePxeEdgeSecureBootStanding,
+  SecureBootObserved,
+  SecureBootUnobserved,
+  SecureBootRefused,
+  SecureBootVerdictRejected,
+  SecureBootVerdictBooted,
+}
+
+// ── Sibling imports (cut 6): ONE block. These modules are not on origin/main when this lands; the
+// paths are the integration contract, reconciled by the cut-6 parent (swift-wren-451). ──
+// S0, owner nimble-koi-194: the preparation route and the standing a firmware probe answers.
+import gunbc.firmware_network_boot_standing {
+  FirmwareNetworkBootPreparationRoute,
+  FirmwareNetworkBootStanding,
+  Ready,
+  NeedsPreparation,
+  Unobserved,
+  Refused,
+}
+// S3, owner quick-stag-169: the Ubuntu arm64 network origin an attempt fetches from.
+import extdeps.provisioning.ubuntu_arm64_network_origin { UbuntuArm64NetworkOrigin }
+// S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+
+// THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
+// one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
+// USB arm: the operator ruled a USB interim out for these boards, so a variant would model a decision
+// already made against. A fleet where USB is admitted adds the constructor here and one arm in
+// provisioning_arm_derive; nothing else in this module names a transport.
+type DeliveryStrategy
+  = PxeOrUefiHttp
+  | VirtualMedia
+
+// What the BMC says about presenting virtual media. Evidence the caller observes (the board's BMC
+// firmware capability catalog is its authority); it is never read off a host name.
+type VirtualMediaStanding
+  = VirtualMediaAvailable { capability_observation: DeclarationRef }
+  | VirtualMediaUnavailable { cause: NonEmptyStr }
+  | VirtualMediaUnobserved
+
+// WHICH MACHINE THE ARM COVERS, AS DATA ONLY. The unit identity is carried so a receipt can say whom
+// the attempt was for; no fn in this module matches on it, and the derivation's evidence record has no
+// field a host name could hide in.
+type AttemptBinding {
+  unit: HostIdentity
+  attempt: NonEmptyStr
+}
+
+// Everything the derivation may consult. Each field is an observation or an admitted sibling record;
+// absence of an origin or a seed is an Optional Absent, which the derivation reports as Unobserved.
+type DeliveryEvidence {
+  firmware: FirmwareNetworkBootStanding
+  chainloader: SitePxeEdgeChainloaderPin
+  virtual_media: VirtualMediaStanding
+  origin: UbuntuArm64NetworkOrigin?
+  seed: AltraAutoinstallSeedBinding?
+}
+
+// Network boot needs the firmware either already ready or prepared through exactly one named route.
+// Virtual media bypasses the NIC boot path, so its arm carries no firmware field at all.
+type FirmwarePreparation
+  = FirmwareAlreadyReady
+  | FirmwarePreparedVia { route: FirmwareNetworkBootPreparationRoute }
+
+type ArmMissingEvidence
+  = FirmwareStandingNotObserved
+  | ChainloaderNotPinned { obligation: NonEmptyStr }
+  | SecureBootStandingNotObserved { why: NonEmptyStr }
+  | VirtualMediaStandingNotObserved
+  | OriginNotObserved
+  | SeedBindingNotObserved
+
+type ArmRefusalCause
+  = FirmwareProbeRefused { standing: FirmwareNetworkBootStanding }
+  | SecureBootRejectsChainloader { evidence: NonEmptyStr }
+  | SecureBootStandingRefused { why: NonEmptyStr }
+  | VirtualMediaNotAvailable { cause: NonEmptyStr }
+
+// THE ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. There is NO field holding
+// alternates, fallbacks or an ordered list of strategies, and no constructor wraps another arm, so
+// "try PXE, then virtual media" is unwritable. An attempt that cannot proceed is Unobserved or
+// Refused; the next arm is produced by new evidence or a human choosing a strategy, never by this
+// value retrying itself.
+type ProvisioningArm
+  = ArmedPxeOrUefiHttp {
+      attempt: AttemptBinding
+      chainloader: SitePxeEdgeChainloaderBuildReceipt
+      firmware: FirmwarePreparation
+      origin: UbuntuArm64NetworkOrigin
+      seed: AltraAutoinstallSeedBinding
+    }
+  | ArmedVirtualMedia {
+      attempt: AttemptBinding
+      media_observation: DeclarationRef
+      origin: UbuntuArm64NetworkOrigin
+      seed: AltraAutoinstallSeedBinding
+    }
+  | ArmUnobserved { attempt: AttemptBinding, missing: ArmMissingEvidence }
+  | ArmRefused { attempt: AttemptBinding, cause: ArmRefusalCause }
+
+// THE DERIVATION. Total over (strategy, evidence); the match is on the STRATEGY and the evidence
+// fields, and `attempt` is only copied into the result. Evidence is checked in a fixed order so the
+// same evidence always yields the same missing/refused cause. There is no attempt-time fallback: a
+// Refused or Unobserved arm ends the attempt.
+fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  match strategy {
+    PxeOrUefiHttp => derive_pxe(evidence: evidence, attempt: attempt)
+    VirtualMedia => derive_virtual_media(evidence: evidence, attempt: attempt)
+  }
+}
+
+fn derive_pxe(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  match evidence.firmware {
+    Unobserved => ArmUnobserved { attempt: attempt, missing: FirmwareStandingNotObserved }
+    Refused { cause: _ } => ArmRefused { attempt: attempt, cause: FirmwareProbeRefused { standing: evidence.firmware } }
+    Ready { firmware_mode: _, network_interface: _, protocol: _, evidence: _ } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwareAlreadyReady)
+    NeedsPreparation { route: r } => derive_pxe_with(evidence: evidence, attempt: attempt, firmware: FirmwarePreparedVia { route: r })
+  }
+}
+
+fn derive_pxe_with(evidence: DeliveryEvidence, attempt: AttemptBinding, firmware: FirmwarePreparation) -> ProvisioningArm {
+  match evidence.chainloader {
+    SitePxeEdgeChainloaderUnpinned { obligation: o } => ArmUnobserved { attempt: attempt, missing: ChainloaderNotPinned { obligation: o } }
+    SitePxeEdgeChainloaderPinned { build: b } => match b.secure_boot {
+      SecureBootUnobserved { why: w } => ArmUnobserved { attempt: attempt, missing: SecureBootStandingNotObserved { why: w } }
+      SecureBootRefused { why: w } => ArmRefused { attempt: attempt, cause: SecureBootStandingRefused { why: w } }
+      SecureBootObserved { verdict: SecureBootVerdictRejected, evidence: e } => ArmRefused { attempt: attempt, cause: SecureBootRejectsChainloader { evidence: e } }
+      SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: _ } => bind_origin_and_seed(evidence: evidence, attempt: attempt, build: b, firmware: firmware)
+    }
+  }
+}
+
+fn bind_origin_and_seed(evidence: DeliveryEvidence, attempt: AttemptBinding, build: SitePxeEdgeChainloaderBuildReceipt, firmware: FirmwarePreparation) -> ProvisioningArm {
+  match evidence.origin {
+    Absent => ArmUnobserved { attempt: attempt, missing: OriginNotObserved }
+    Present { value: o } => match evidence.seed {
+      Absent => ArmUnobserved { attempt: attempt, missing: SeedBindingNotObserved }
+      Present { value: s } => ArmedPxeOrUefiHttp { attempt: attempt, chainloader: build, firmware: firmware, origin: o, seed: s }
+    }
+  }
+}
+
+fn derive_virtual_media(evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  match evidence.virtual_media {
+    VirtualMediaUnobserved => ArmUnobserved { attempt: attempt, missing: VirtualMediaStandingNotObserved }
+    VirtualMediaUnavailable { cause: c } => ArmRefused { attempt: attempt, cause: VirtualMediaNotAvailable { cause: c } }
+    VirtualMediaAvailable { capability_observation: m } => match evidence.origin {
+      Absent => ArmUnobserved { attempt: attempt, missing: OriginNotObserved }
+      Present { value: o } => match evidence.seed {
+        Absent => ArmUnobserved { attempt: attempt, missing: SeedBindingNotObserved }
+        Present { value: s } => ArmedVirtualMedia { attempt: attempt, media_observation: m, origin: o, seed: s }
+      }
+    }
+  }
+}
+
+fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
+  match arm {
+    ArmedPxeOrUefiHttp { attempt: a, chainloader: _, firmware: _, origin: _, seed: _ } => a
+    ArmedVirtualMedia { attempt: a, media_observation: _, origin: _, seed: _ } => a
+    ArmUnobserved { attempt: a, missing: _ } => a
+    ArmRefused { attempt: a, cause: _ } => a
+  }
+}
