@@ -22,7 +22,7 @@ module gunbc.host.bmc_control_binding
 
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
-import gunbc.machine_intake.bmc_secure { BmcSecureStanding, BmcSecureOutcome, BmcSecured, BmcSecureRefused, BmcSecureRefusalCause }
+import gunbc.machine_intake.bmc_secure { BmcSecureStanding, BmcSecured, BmcSecureRefused, BmcSecureRefusalCause }
 import gunbc.machine_intake.subject { UnitKey }
 import std.types { NonEmptyStr }
 

@@ -1,21 +1,15 @@
 module extdeps.bmc.megarac
 
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
-import std.nat { Nat }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
   BmcFirmwareReleaseIdentity,
-  BmcFirmwareReleaseCapabilityRow,
-  BmcCapability,
-  CapabilityPowerControl,
-  CapabilityBootSourceOverride,
-  CapabilityOemRemoteMedia,
   bmc_firmware_release_identity_eq,
   bmc_firmware_release_identity_of_wire,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
