@@ -4,6 +4,4 @@ import std.types { Int }
 
 type ArmT = ArmX | ArmY
 
-fn arm_plain_fn(x: Int) -> Int {
-  x
-}
+data arm_plain_data: Int = 7

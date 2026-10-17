@@ -1,9 +1,9 @@
 module test.fixture.imported_arms.relay_plain_fn
 
 import std.types { Int }
-import test.fixture.imported_arms.provider { arm_plain_fn }
+import test.fixture.imported_arms.provider { arm_plain_data }
 
-// Imports a non-coproduct item and declares nothing of its own: the relay for the other_direct_line shape.
+// Imports a data item and declares nothing of its own: the relay for the other_direct_line shape.
 fn arm_relay_plain_fn(x: Int) -> Int {
-  arm_plain_fn(x)
+  x + arm_plain_data
 }
