@@ -18,7 +18,7 @@ import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
 import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
 import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
 import gunbc.machine_intake.host_capture_envelope { KernelBootId }
-import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of }
+import gunbc.runner.runner_host_unit_slot { ServiceBootId, service_boot_id_of, service_slot_population }
 import gunbc.runner.runner_registration_labels { runner_registration_labels }
 import gunbc.github_effect_perform {
   ControllerTokenMinted, ControllerTokenNotMinted, mint_controller_installation_token_with_key,
@@ -29,7 +29,7 @@ import gunbc.runner.runner_jit_deregistration {
   JitRegistration, JitDeregistration, JitRunnerDeregistered, JitDeregistrationRefused, JitDeregistrationRefusal,
   JitSlotExit, SlotLostBoot, ensure_jit_runner_deregistered,
   LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, LostBootSweepRefusal,
-  SweepListingUnreadable, SweepRegistrationRefused, StaleJitRegistration, lost_boot_sweep, jit_runner_deregistered,
+  SweepListingUnreadable, SweepPopulationNotDerived, SweepRegistrationRefused, deregistration_name, lost_boot_sweep, jit_runner_deregistered,
 }
 
 // THE LOST-BOOT SWEEP RUN (fleet-converge mode service_runner_lost_boot_sweep): the production consumer of
@@ -106,9 +106,9 @@ fn deregistration_refusal_text(refusal: JitDeregistrationRefusal) -> String {
 fn deregistration_line(outcome: JitDeregistration) -> String {
   match outcome {
     JitRunnerDeregistered { receipt: r } =>
-      join(["lost-boot-sweep runner=", r.registration.name.value as String, " deregistered=absent-on-readback deletes=", to_string(count(r.deletes))], "")
-    JitDeregistrationRefused { registration: reg, exit: _, refusal: refusal } =>
-      join(["lost-boot-sweep runner=", reg.name.value as String, " refused=", deregistration_refusal_text(refusal: refusal)], "")
+      join(["lost-boot-sweep runner=", deregistration_name(subject: r.subject).value as String, " deregistered=absent-on-readback deletes=", to_string(count(r.deletes))], "")
+    JitDeregistrationRefused { subject: sub, exit: _, refusal: refusal } =>
+      join(["lost-boot-sweep runner=", deregistration_name(subject: sub).value as String, " refused=", deregistration_refusal_text(refusal: refusal)], "")
   }
 }
 
@@ -128,6 +128,7 @@ fn sweep_all_deregistered(outcomes: List<JitDeregistration>) -> Bool {
 fn sweep_refusal_text(refusal: LostBootSweepRefusal) -> String {
   match refusal {
     SweepListingUnreadable { reason: _, cause: c } => concat("lost-boot sweep: listing unreadable: ", c as String)
+    SweepPopulationNotDerived { population: _ } => "lost-boot sweep: the current boot's slot population is not derivable"
     SweepRegistrationRefused { listed: l, refusal: _ } => concat("lost-boot sweep: a listed registration was refused: ", l)
   }
 }
@@ -224,19 +225,19 @@ fn sweep_and_deregister(host: HostIdentity, standing: HostControlStanding, curre
   match lost_boot_sweep(
     organization: organization,
     host: standing,
-    current: current,
+    population: service_slot_population(host: standing, boot: current),
     authority: sweep_authority(),
     registration_labels: runner_registration_labels(host: host),
     listing: list_organization_runners_with(token: token, organization: organization.login),
   ) {
     LostBootSweepRefused { refusal } => exit_failure(reason: sweep_refusal_text(refusal: refusal))
-    LostBootSweepSelected { registrations, untouched } => {
-      let outcomes = registrations |> map(stale => ensure_jit_runner_deregistered(
+    LostBootSweepSelected { subjects, untouched } => {
+      let outcomes = subjects |> map(subject => ensure_jit_runner_deregistered(
         token: token,
         authority: sweep_authority(),
         control_plane: control_plane,
-        registration: stale.registration,
-        exit: SlotLostBoot { stale_boot_id: stale.stale_boot_id },
+        subject: subject,
+        exit: SlotLostBoot { superseded_by: current },
       ))
       let wrote = write_sweep_receipt(lines: sweep_report_lines(outcomes: outcomes, untouched: untouched))
       if sweep_all_deregistered(outcomes: outcomes) { wrote } else { exit_failure(reason: "lost-boot sweep: at least one selected registration was not deregistered; see the receipt") }

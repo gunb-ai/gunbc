@@ -24124,6 +24124,40 @@ macro_rules! v1_builtin_arms {
                 }),
             },
 
+            // ObserveAllocationAtSubject availability: the seed interpreter runs under the default
+            // allocator and selected no counting provider, so the answer is the typed `false`, not a
+            // refusal and not a count (std.realization_measurement allocation_reading).
+            arm "free_call.observed_allocation_available" { "observed_allocation_available" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Ok(Some(Value::Bool(false))),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_available takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_operations" { "observed_allocation_operations" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_operations takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveAllocationAtSubject has no interpreter realization: the seed interpreter runs
+            // under the default allocator, so there is no counter to read. It REFUSES; zero is not a
+            // reading (std.realization_measurement AllocationCounter).
+            arm "free_call.observed_allocation_bytes" { "observed_allocation_bytes" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes: unobservable in the interpreter (no counting allocator); only a native entry that uses AllocationCounter observes it".to_string(),
+                }),
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_allocation_bytes takes exactly one boundary label".to_string(),
+                }),
+            },
+
             arm "free_call.hash_combine" { "hash_combine" } => match $positional.as_slice() {
                 [Value::Str(a), Value::Str(b)] if $positional.len() == 2 => {
                     if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
