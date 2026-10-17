@@ -19,12 +19,22 @@ type FanManagerReadStanding
   = FanManagerUnread { read_obligation: NonEmptyStr }
 
 // EACH POWER-OFF READBACK IS KEPT, for each PowerDown attempt, never only the last.
+// ONE PowerDown ATTEMPT: what ipmitool said (success, stdout, exit code, stderr) and every readback after it.
+// A command that failed outright is therefore on the record next to the readbacks it produced.
+type FanGatePowerDownAttempt {
+  command_success: Bool
+  command_stdout: String
+  command_exit_code: Int
+  command_stderr: String
+  readbacks: List<ChassisPowerObservation>
+}
+
 type FanGateRepeat
   = FanGateRepeatNotNeeded
-  | FanGateRepeated { readbacks: List<ChassisPowerObservation> }
+  | FanGateRepeated { attempt: FanGatePowerDownAttempt }
 
 type FanGateSafeStopReceipt {
-  first_readbacks: List<ChassisPowerObservation>
+  first: FanGatePowerDownAttempt
   repeat: FanGateRepeat
 }
 
@@ -60,12 +70,12 @@ type FanGatePowerState
   | FanGateOffUnconfirmed { last_readback: String }
 
 fn fan_gate_stop_power_state(stop: FanGateSafeStopReceipt) -> FanGatePowerState {
-  if any_readback_off(readbacks: stop.first_readbacks) {
+  if any_readback_off(readbacks: stop.first.readbacks) {
     FanGateOffConfirmed
   } else {
     match stop.repeat {
-      FanGateRepeatNotNeeded => FanGateOffUnconfirmed { last_readback: last_readback(readbacks: stop.first_readbacks) }
-      FanGateRepeated { readbacks: rb } => if any_readback_off(readbacks: rb) { FanGateOffConfirmedAfterRepeat } else { FanGateOffUnconfirmed { last_readback: last_readback(readbacks: rb) } }
+      FanGateRepeatNotNeeded => FanGateOffUnconfirmed { last_readback: last_readback(readbacks: stop.first.readbacks) }
+      FanGateRepeated { attempt: a } => if any_readback_off(readbacks: a.readbacks) { FanGateOffConfirmedAfterRepeat } else { FanGateOffUnconfirmed { last_readback: last_readback(readbacks: a.readbacks) } }
     }
   }
 }
@@ -119,10 +129,14 @@ fn post_power_fan_gate_pre_stop_text(fitted: FittedFanSet, cause: PostPowerFanRe
   join(["post-power-on chassis-fan gate: REFUSED\ncause: ", post_power_fan_refusal_text(cause: cause), "\n", fitted_set_standing_text(fitted: fitted), "\n", fan_manager_standing_text(manager: manager), "\nobservation that stopped the boot:\n", render_round_block(round: observation), "\n"], "")
 }
 
+fn power_down_attempt_text(label: String, attempt: FanGatePowerDownAttempt) -> String {
+  join([label, ": command success=", to_string(attempt.command_success), " exit=", to_string(attempt.command_exit_code), " stdout=[", attempt.command_stdout, "] stderr=[", attempt.command_stderr, "]; readbacks ", to_string(attempt.readbacks.length()), ": ", join(map(attempt.readbacks, r => chassis_observation_text(observation: r) as String), ","), "\n"], "")
+}
+
 fn post_power_fan_gate_stop_section(stop: FanGateSafeStopReceipt) -> String {
-  join(["safe stop: ", fan_gate_power_state_text(state: fan_gate_stop_power_state(stop: stop)), "\nPowerDown readbacks (first): ", to_string(stop.first_readbacks.length()), "; ", join(map(stop.first_readbacks, r => chassis_observation_text(observation: r) as String), ","), match stop.repeat {
-    FanGateRepeatNotNeeded => "\nrepeat: not needed\n"
-    FanGateRepeated { readbacks: rb } => concat("\nrepeat: one repeated PowerDown; readbacks: ", concat(join(map(rb, r => chassis_observation_text(observation: r) as String), ","), "\n"))
+  join(["safe stop: ", fan_gate_power_state_text(state: fan_gate_stop_power_state(stop: stop)), "\n", power_down_attempt_text(label: "PowerDown (first)", attempt: stop.first), match stop.repeat {
+    FanGateRepeatNotNeeded => "repeat: not needed\n"
+    FanGateRepeated { attempt: a } => power_down_attempt_text(label: "PowerDown (repeat)", attempt: a)
   }], "")
 }
 

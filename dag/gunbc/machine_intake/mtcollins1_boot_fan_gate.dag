@@ -11,7 +11,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetOperatorAssumed, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, post_power_fan_verdict }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, observe_fan_round }
-import gunbc.machine_intake.post_power_fan_gate_outcome { any_readback_off, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWrite, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_pre_stop_text, post_power_fan_gate_stop_section, post_power_fan_gate_text, PostPowerFanGateReading, PostPowerFanGateReached }
+import gunbc.machine_intake.post_power_fan_gate_outcome { any_readback_off, FanGatePowerDownAttempt, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWrite, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_pre_stop_text, post_power_fan_gate_stop_section, post_power_fan_gate_text, PostPowerFanGateReading, PostPowerFanGateReached }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_samples, megarac_stale_power_off_interval }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
@@ -49,18 +49,24 @@ fn boot_fan_gate_power_off_poll(username: NonEmptyStr, password_file: NonEmptySt
   if chassis_observation_is_off(observation: sample) || remaining <= 1 { [sample] } else { append([sample], boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: remaining - 1)) }
 }
 
-fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -> List<ChassisPowerObservation>
+fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -> FanGatePowerDownAttempt
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "boot_fan_gate_safe_stop"),
   ]
 {
-  let _down = diagnostic.ipmi.Tool.ChassisPowerControl(
+  let down = diagnostic.ipmi.Tool.ChassisPowerControl(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
     action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
   )
-  boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples)
+  FanGatePowerDownAttempt {
+    command_success: down.success,
+    command_stdout: down.stdout,
+    command_exit_code: down.exit_code,
+    command_stderr: down.transport_stderr,
+    readbacks: boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples),
+  }
 }
 
 // ONE PowerDown + readback; if never read off, ONE repeated PowerDown + readback; never a loop. Both attempts' readbacks are kept.
@@ -70,10 +76,10 @@ fn boot_fan_gate_safe_stop(username: NonEmptyStr, password_file: NonEmptyStr) ->
   ]
 {
   let first = boot_fan_gate_power_down(username: username, password_file: password_file)
-  if any_readback_off(readbacks: first) {
-    FanGateSafeStopReceipt { first_readbacks: first, repeat: FanGateRepeatNotNeeded }
+  if any_readback_off(readbacks: first.readbacks) {
+    FanGateSafeStopReceipt { first: first, repeat: FanGateRepeatNotNeeded }
   } else {
-    FanGateSafeStopReceipt { first_readbacks: first, repeat: FanGateRepeated { readbacks: boot_fan_gate_power_down(username: username, password_file: password_file) } }
+    FanGateSafeStopReceipt { first: first, repeat: FanGateRepeated { attempt: boot_fan_gate_power_down(username: username, password_file: password_file) } }
   }
 }
 
