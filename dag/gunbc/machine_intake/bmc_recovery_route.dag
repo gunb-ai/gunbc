@@ -721,14 +721,17 @@ fn recovery_ledger_admits_password_write(site_ref: DeclarationRef) -> LedgerAdmi
       match site_verdict(row: row) {
         SiteVerdict { site: _, selection: selection, conformance: conformance } =>
           match selection {
-            PatternSelected { pattern: _, receipt: _ } =>
+            // THE PATTERN IS BOUND HERE, where the arm proves one was selected. The disagreement refusal
+            // declares an AuthorizationPattern, and the arms that select nothing refuse under their own
+            // cause -- so there is nothing for an extraction helper to return Absent for.
+            PatternSelected { pattern: p, receipt: _ } =>
               match conformance {
                 Conforms => LedgerConforms { verdict: site_verdict(row: row) }
                 Diverges =>
                   LedgerRefusal {
                     cause: RealizedFieldDisagreesWithSelection {
                       divergence: conformance,
-                      selected: selection_pattern(selection: selection),
+                      selected: p,
                       realized: row.realized,
                     },
                   }
@@ -736,7 +739,7 @@ fn recovery_ledger_admits_password_write(site_ref: DeclarationRef) -> LedgerAdmi
                   LedgerRefusal {
                     cause: RealizedFieldDisagreesWithSelection {
                       divergence: conformance,
-                      selected: selection_pattern(selection: selection),
+                      selected: p,
                       realized: row.realized,
                     },
                   }
@@ -821,19 +824,6 @@ fn recovery_ledger_selects_operator_approval(site_ref: DeclarationRef) -> Ledger
               LedgerRefusal { cause: NoPatternAdmissible { causes: causes, scope: scope } }
           }
       }
-  }
-}
-
-// THE PATTERN THE SELECTION SELECTED, OR NOTHING. A total extraction rather than a default: the arms that
-// select no pattern answer Absent, which is what the refusal above needs to know.
-fn selection_pattern(selection: AuthorizationPatternSelection) -> AuthorizationPattern? {
-  match selection {
-    PatternSelected { pattern: p, receipt: _ } => Present { value: p }
-    ManualStepRequired { step: _, receipt: _ } => Absent
-    NoAdmissiblePattern { causes: _, scope: _ } => Absent
-    PatternSelectionNeedsEvidence { needs: _ } => Absent
-    PatternSelectionNeedsPolicy { survivors: _ } => Absent
-    PatternSelectionRefused { defects: _ } => Absent
   }
 }
 
@@ -1708,8 +1698,19 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
       match c {
         NoRescueHostAddressResponded { address: _, ssh_port: _ } =>
           "bring up the rescue OS on the board (insert the prepared rescue medium, or netboot it once a netboot provider is executed) -- nothing is reachable at the rescue address" as NonEmptyStr
-        RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: _ } =>
-          "the rescue host is up but has no in-band IPMI: load the missing ipmi modules; without /dev/ipmi0 there is no route to the controller from inside the chassis" as NonEmptyStr
+        RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } =>
+          join(["the rescue host is up but has no in-band IPMI: load ",
+                to_string(value: list_length(items: m)),
+                " missing ipmi module(s); without ",
+                ipmi_device_node_canonical_text(node: recovery_ipmi_device_node) as String,
+                " there is no route to the controller from inside the chassis"], "") as NonEmptyStr
+        // A DIFFERENT DRIVER IS BOUND, which is a different fix from a missing one -- hence a sentence of
+        // its own naming both nodes, rather than the module sentence with an empty list in it.
+        RescueHostReachedAtTheWrongDeviceNode { address: _, expected: e, reported: r } =>
+          join(["the rescue host is up but not on the in-band node this route reads: found ",
+                ipmi_device_node_canonical_text(node: r) as String, ", expected ",
+                ipmi_device_node_canonical_text(node: e) as String,
+                " -- check which ipmi driver is bound, not which are missing"], "") as NonEmptyStr
         RescueMediumNotExecuted =>
           "the only rescue provider modelled for this unit is declared and has never been executed; use the executed medium or treat the unit as physical-only" as NonEmptyStr
       }
@@ -2398,8 +2399,6 @@ fn recovery_test_route(reading: IpmiDeviceIdentity) -> RecoveryInBandRoute {
       ssh_port: openssh_standard_port,
       ipmi: recovery_complete_ipmi_presence(),
       medium: recovery_usb_medium(),
-      evidence: recovery_inband_channel_capture_ref,
-      observed_at: recovery_capture_instant(),
     ),
     in_band: InBandChannelObservation {
       subject: recovery_test_subject(),
