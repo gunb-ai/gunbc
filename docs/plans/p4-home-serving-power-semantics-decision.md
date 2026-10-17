@@ -186,14 +186,59 @@ inference is a bet: typed as a bet, neither deleted nor promoted."*
 carrying both facts without conflating them:
 
 ```
+type AppliedPowerLimit                          // makes 'a watt with no provenance' unwritable
+  = AppliedLimitUnread
+  | AppliedLimitGrounded { limit: Watt, standing: CitedFigureStanding }
+
 type HomeServingPowerPolicy
-  = PowerPolicyUnread                                   # neither known: refused, never defaulted
-  | PowerPolicyCited {
-      tdp_watts: Watt                                   # cited ceiling; required, not optional
-      applied_limit: Watt?                              # limit read for THIS run; Absent = unread
-      applied_provenance: AppliedProvenance              # cited | observed | unstated
+  = PowerPolicyUnread { missing: NonEmptyStr }   // neither known: refused, never defaulted
+  | PowerPolicyGrounded {
+      tdp_watts: Watt                            // cited ceiling; required for a candidate
+      tdp_standing: CitedFigureStanding          // which datasheet cites it
+      applied: AppliedPowerLimit
     }
 ```
+
+`AppliedPowerLimit` exists so the bad state is unwritable rather than validated: there is no
+constructor that takes a watt without also taking its standing. That is §5's preference —
+*"Stronger than catching a wrong state is making it **unwritable — correctness by construction, not
+validation.**"* (`DESIGN.md:383`) — and it is the same move P2 made with `ServingSubjectAxisReading`
+(`AxisNotApplicable | AxisUnread | AxisRead`) rather than a pile of optional-presence matches.
+
+Both standing fields reuse `extdeps.external_authority`'s `CitedFigureStanding`
+(`dag/extdeps/external_authority.dag:40`) rather than minting a parallel provenance type. That
+coproduct already answers exactly what these fields ask, with three arms and no more:
+
+```
+type CitedFigureStanding
+  = CitedToAuthority { authority: ExternalAuthority }   # NVIDIA said it (datasheet, kit config)
+  | TranscribedUncited { read_obligation: NonEmptyStr }  # someone said it; nobody cites it
+  | ObservedByReceipt { observed: ObservedReceipt }      # this repo measured it
+```
+
+Reusing it is the §2 requirement ("net concepts must not grow by re-invention"), and it buys three
+things for free: the standing algebra is the one P3 just exercised on the ninfer replay counter, so
+an applied limit read off NVML and a replay counter read off a log carry their epistemic weight the
+same way; `cited_figure_read_obligation` (`:57`) already returns `Absent` for both grounded arms and
+`Present` only for `TranscribedUncited`, so "what must still be read" is answered once; and a
+`TranscribedUncited` applied limit cannot silently act like a cited one, because it must carry its
+read obligation into any refusal it causes.
+
+Value-beside-standing is also how the catalog already does it, so this is not a new shape:
+`GpuModelCatalogRow` carries `tdp_watts: Watt?` (`extdeps/gpu/types.dag:120`) next to
+`figure_citations: List<FactCitation>`, and P1 pairs the CUDA count with
+`rtx_pro_6000_workstation_cuda_core_standing: CitedFigureStanding = CitedToAuthority { authority:
+rtx_pro_6000_workstation_datasheet_authority }` (`extdeps/gpu/nvidia.dag:127`). Candidate identity
+is likewise already solved and must be consumed, not reinvented: `gpu_catalog_row_eq`
+(`extdeps/gpu/types.dag:132`) fixes a row's identity as *cited vendor plus cited SKU name*, with the
+comment warning that *"Package×VRAM×TDP is not enough"*.
+
+Two consequences worth stating rather than discovering later. First, `ObservedByReceipt` is
+admission-gated: `fn observed_receipt` (`:45`) lists its `admit_callers` explicitly, so the first
+home-serving fold that claims an *observed* applied limit is itself an admitting change — a named
+file and a review, not a call. Second, keeping `tdp_standing` beside the number rather than
+assuming it is deliberate: a ceiling without its datasheet is not the same fact as a ceiling with
+it, and P1 already attached the datasheet citation to exactly these rows.
 
 with the relation stated as a rule instead of implied by a shared type: `applied_limit ≤
 tdp_watts`, refused loudly when violated, and `PowerPolicyUnread` refused at the fold — §5: *"A
@@ -204,7 +249,7 @@ capacity (`AxisGap`). The Max-Q / Workstation pair then stops being two unrelate
 one card at two cited ceilings, and sweeping a 600 W card at 400 W becomes expressible without
 pretending NVIDIA published a 400 W card.
 
-Why `tdp_watts` can be **required** in `PowerPolicyCited` while the catalog field is `Watt?`: all
+Why `tdp_watts` can be **required** in `PowerPolicyGrounded` while the catalog field is `Watt?`: all
 four purchase candidates do carry a cited ceiling (600 / 300 / 300 / 300), and the two rows with
 `tdp_watts: none` are exactly `nvidia_b200_sxm_catalog` and `nvidia_b300_sxm_catalog` — the SXM
 rows, which the frontier already designates *references only*, not candidates. So the type is
@@ -215,8 +260,9 @@ at the fold, not a silent `none`.
 
 ## Recommendation
 
-**C**, with the applied arm starting honestly at `applied_provenance: unstated`, and
-`applied_provenance` **required** so no caller can supply a watt without saying where it came from.
+**C**, with the applied arm starting honestly at `AppliedLimitUnread`, and no constructor anywhere
+that accepts a watt without its `CitedFigureStanding` — so a limit cannot enter the fold without
+saying where it came from.
 
 One line each:
 - It is the only option true to what the tree actually holds: a cited ceiling we have, and an
@@ -224,8 +270,8 @@ One line each:
 - It makes "× power limits" add information instead of restating `tdp_watts`.
 - It does not promote an inference to a fact in order to get the fold written (§4d), and keeps the
   two standings from collapsing into the shared `Watt` type that is the root of the ambiguity.
-- It leaves A and B reachable as special cases: A is `applied_limit: Absent`, B is
-  `applied_provenance: observed`. Choosing C now forecloses neither; choosing A or B now forecloses
+- It leaves A and B reachable as special cases: A is `applied: AppliedLimitUnread`, B is
+  `applied: AppliedLimitGrounded { standing: ObservedByReceipt {…} }`. Choosing C now forecloses neither; choosing A or B now forecloses
   the other and re-types every receipt underneath it.
 - The repo already made this call once, in the same vendor's own terms. `extdeps/systems/nvidia.dag:58`
   carries the Spark's 140 W and refuses to let it leak across a type boundary: *"the 140W figure is
@@ -264,3 +310,7 @@ inverted, not a green tick.
 13. `std.decision` ships `RealizationSelectionResult` (`SelectedWithin` / `SelectionNeedsEvidence` / `SelectionNeedsPolicy` / …) at `dag/std/decision.dag:839-844` and `SelectionReceipt { scope, pareto_survivors, policy_authority, selected_identity }` at `:824`. `std.pareto` ships `SelectionAxis` (`:259`) and `ParetoEntry` (`:292`).
 14. §3d hard-constraint and scoped-result quotes — `DESIGN.md:303`–`317`. §5 loud-error — `DESIGN.md:381`. §5 "Done means executed" — `DESIGN.md:389`. §4d symmetric-obligation bullets — `DESIGN.md:367`–`378`.
 15. The Spark 140 W non-misattribution precedent — `extdeps/systems/nvidia.dag:58`, carried as `soc_thermal_design_power: watt(count: 140)` at `:113`.
+16. `CitedFigureStanding` with exactly three arms — `dag/extdeps/external_authority.dag:40-43`; `fn observed_receipt` is `admit_callers`-gated at `:45-46`; `cited_figure_read_obligation` at `:57` returns `Absent` for `CitedToAuthority` and `ObservedByReceipt` and `Present` only for `TranscribedUncited`.
+17. Value-beside-standing is the existing catalog convention — `GpuModelCatalogRow.tdp_watts: Watt?` (`extdeps/gpu/types.dag:120`) beside `figure_citations: List<FactCitation>`; P1's `rtx_pro_6000_workstation_cuda_core_standing: CitedFigureStanding = CitedToAuthority {…}` at `extdeps/gpu/nvidia.dag:127`. Candidate identity is already fixed by `gpu_catalog_row_eq` (`extdeps/gpu/types.dag:132`).
+18. Construction-over-validation — `DESIGN.md:383`: *"Stronger than catching a wrong state is making it **unwritable — correctness by construction, not validation.**"*
+19. All three PRO 6000 rows (Workstation, Max-Q, Server) are `package: PcieAddInCard` in `extdeps/gpu/nvidia.dag`; the two SXM rows carry `tdp_watts: none` and are the reference-only rows.
