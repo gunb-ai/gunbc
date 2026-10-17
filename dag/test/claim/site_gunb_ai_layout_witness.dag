@@ -4,19 +4,19 @@ import std.types { Bool, Int, List, String }
 import std.algebra { string_contains }
 import std.optional { Optional, Absent, Present }
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, serialize_rules }
-import gunbc.design.scale { LengthValue }
 import gunbc.site.gunb_ai_layout {
   BallotRequest, BallotHtml, BallotRefused, tracks_fixed, tracks_single,
   ballot_render, layout_rules, layout_css, layout_scale_tokens,
   FixedColumns,
   grid_flow, grid_fixed_3, grid_autofill, column_count_max,
-  breakpoints_adopt_live, breakpoints_two_tier, breakpoint_lengths,
+  breakpoints_adopt_live, breakpoints_two_tier, breakpoint_conditions,
+  breakpoint_stack, breakpoint_compact,
   scheme_dark_only, scheme_light_alt, day_bindings_complete, day_bindings_rows, day_scope_class,
 }
 import gunbc.site.gunb_ai_layout_review { ballot_entries }
 import gunbc.site.gunb_ai_tokens { token_root_decls, token_swatches }
-import extdeps.languages.css.media_queries { MediaMaxWidth, css_media_rule_wire }
-import extdeps.languages.css.values { css_length_wire }
+import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth, css_media_rule_wire }
+import extdeps.languages.css.values { CssLength, Px }
 import gunbc.design.palette { swatch_paint, swatches_of }
 import gunbc.design.gunb_ai_hues { gunb_ai_hues }
 
@@ -186,20 +186,21 @@ fn all_rule_arms() -> List<BuildRule> {
 // that is not a defect.
 fn row_is_read(name: String) -> Bool {
   let needle = join(["var(--", name, ")"], "")
-  let via_var = fold(all_rule_arms(), init: false, f: (acc, r) => acc || arm_reads(r: r, needle: needle))
-  via_var || via_media_length(name: name)
+  fold(all_rule_arms(), init: false, f: (acc, r) => acc || arm_reads(r: r, needle: needle))
 }
 
-fn via_media_length(name: String) -> Bool {
-  let css = all_rules_css()
-  fold(
-    concat(breakpoint_lengths(choice: breakpoints_adopt_live), breakpoint_lengths(choice: breakpoints_two_tier)),
-    init: false, f: (acc, t) => acc || (t.name == name
-      && match t.value {
-        LengthValue { length: l } => string_contains(s: css, pattern: join(["max-width: ", css_length_wire(l: l)], ""))
-        _ => false
-      }))
+// The exact text the layer owes for one response point: the condition and the
+// single-column body, each assembled by the same upstream wires the page is serialized
+// through (material assembles a MediaRule exactly this way). Never typed by hand.
+fn block_for(condition: MediaCondition) -> String {
+  css_media_rule_wire(condition: condition, body: stacked_block(tracks: tracks_single()))
 }
+
+// A response point NO axis declares, used only as a witness-side probe. It is a test
+// input, never rendered: its block must be ABSENT from every page, which is what makes
+// the positive checks above non-decorative (a page that emitted an unconditional or
+// invented media block is caught even when the expected blocks happen to be present).
+data probe_condition: MediaCondition = MediaMaxWidth { max: CssLength { n: 4199, unit: Px } }
 
 fn all_rules_css() -> String {
   join(map(all_rule_arms(), r => arm_text(rule: r)), "\n")
@@ -213,23 +214,33 @@ fn arm_reads(r: BuildRule, needle: String) -> Bool {
   fold(rule_decl_values(rule: r), init: false, f: (acc, v) => acc || string_contains(s: v, pattern: needle))
 }
 
-// 5. Breakpoints come from the TOKEN rows: each declared breakpoint emits an @media
-//    block whose length is the token's own length, re-derived through the upstream
-//    wire. Deleting a row, or moving a token's px, reddens this — the numbers are never
-//    written here.
-test fn witness_breakpoints_come_from_tokens() -> Bool {
-  all(breakpoint_lengths(choice: breakpoints_adopt_live), t =>
-    match t.value {
-      // The expected text is re-derived through extdeps' OWN wires (media rule and
-      // length), so this asserts the layer used the token's length rather than
-      // retyping a number — and it inherits the wire's zero-is-unitless rule for free.
-      LengthValue { length: l } => string_contains(
-        s: layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only),
-        pattern: css_media_rule_wire(
-          condition: MediaMaxWidth { max: l },
-          body: stacked_block(tracks: tracks_single())))
-      _ => false
-    })
+// 5. The BREAKPOINT AXIS drives the response, and only the axis does. For each choice,
+//    every condition the axis declares has its exact media block in the rendered page
+//    (text re-derived through extdeps' own serializer, so no number is typed here), and
+//    the tiered choice carries the stack block WITHOUT the compact one — so a dropped
+//    tier, an extra tier, a moved length or a broken block all redden this. A probe
+//    condition no axis declares must appear in no page.
+//    RED CONTROLS (three, each run on the runner; each reddens THIS claim only):
+//    1. drop breakpoint_compact from the AdoptLiveBreakpoints arm — the fold over the
+//       axis and the positive check disagree once a tier is missing;
+//    2. make cards_stack_rule emit the wrong tracks (tracks_fixed(count: 3) instead of
+//       tracks_single()) — block_for derives its body from the same upstream wires;
+//    3. make cards_stack_rule ignore its argument and hard-code a MediaMaxWidth of 400px
+//       — the condition no longer comes from the axis.
+//    A control that only removes a field is NOT a control: it fails to typecheck, so no
+//    claim runs and nothing is proven. Each edit below was applied with its pattern
+//    asserted first, and the run's FAIL line read back.
+test fn witness_breakpoints_come_from_the_axis() -> Bool {
+  let live = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_adopt_live, scheme: scheme_dark_only)
+  let tier = layout_css(grid: grid_fixed_3, breakpoints: breakpoints_two_tier, scheme: scheme_dark_only)
+  all(breakpoint_conditions(choice: breakpoints_adopt_live), c =>
+    string_contains(s: live, pattern: block_for(condition: c)))
+    && string_contains(s: live, pattern: block_for(condition: breakpoint_stack))
+    && string_contains(s: live, pattern: block_for(condition: breakpoint_compact))
+    && string_contains(s: tier, pattern: block_for(condition: breakpoint_stack))
+    && !string_contains(s: tier, pattern: block_for(condition: breakpoint_compact))
+    && !string_contains(s: live, pattern: block_for(condition: probe_condition))
+    && !string_contains(s: tier, pattern: block_for(condition: probe_condition))
 }
 
 // The two .cards blocks, assembled from the pieces material assembles them from: the

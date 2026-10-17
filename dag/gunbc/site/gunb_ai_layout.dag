@@ -2,7 +2,6 @@ module gunbc.site.gunb_ai_layout
 
 import std.types { Bool, Int, List, String }
 import std.algebra { string_contains }
-import std.optional { Optional, Absent, Present }
 import std.markup { Fragment, Element, Attribute, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import extdeps.languages.css.values { CssLength, Px, css_length_wire }
@@ -15,8 +14,7 @@ import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoS
 import extdeps.languages.css.media_queries { MediaCondition, MediaMaxWidth }
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, decl, serialize_rules }
 import gunbc.design.scale {
-  ScaleToken, ScaleValue, LengthValue, scale_var, scale_border, scale_decl, border_1,
-  named_length_token,
+  ScaleToken, scale_var, scale_border, scale_decl, border_1, named_length_token,
 }
 import gunbc.site.markup { el, el_class, txt }
 import gunbc.site.gunb_ai_tokens {
@@ -107,8 +105,8 @@ fn grid_choice_admissible(choice: GridChoice) -> Bool {
 // 700 has already stacked (their rules set the same single-column tracks), so the
 // modelled set is the two that change something; the parity audit compares RENDERED
 // pages, not selector counts.
-data breakpoint_stack: ScaleToken = named_length_token(name: "breakpoint-stack", px: 700)
-data breakpoint_compact: ScaleToken = named_length_token(name: "breakpoint-compact", px: 480)
+data breakpoint_stack: MediaCondition = MediaMaxWidth { max: CssLength { n: 700, unit: Px } }
+data breakpoint_compact: MediaCondition = MediaMaxWidth { max: CssLength { n: 480, unit: Px } }
 
 type BreakpointChoice
   = AdoptLiveBreakpoints
@@ -117,32 +115,19 @@ type BreakpointChoice
 data breakpoints_adopt_live: BreakpointChoice = AdoptLiveBreakpoints
 data breakpoints_two_tier: BreakpointChoice = TwoTier
 
-// A breakpoint is a ScaleToken row read as a TYPED LENGTH. extdeps forbids var()
-// inside a media query (no substitution in that grammar), so the literal in the
-// serialized @media is DERIVED from the token row — which stays the single home of the
-// number (the witness re-derives it the same way, never a copied digit).
-fn breakpoint_lengths(choice: BreakpointChoice) -> List<ScaleToken> {
+// The response points, as the TYPED CONDITIONS the rules consume. A breakpoint is not
+// a ScaleToken row: extdeps forbids var() inside a media query (no substitution in that
+// grammar), so a breakpoint is never read as a custom property — only as a condition.
+// Modelling it as the condition itself is what makes "a breakpoint that is not a length"
+// UNWRITABLE (DESIGN §5: correctness by construction, not validation): the axis carries
+// MediaCondition directly, so there is no partial match, no runtime admissibility check
+// over ScaleValue arms, and no fabricated sentinel condition standing in for a case the
+// type already excludes. The number stays one fact: it is named once, in CssLength form,
+// and both the rule and the witness derive their text from it through the upstream wires.
+fn breakpoint_conditions(choice: BreakpointChoice) -> List<MediaCondition> {
   match choice {
     AdoptLiveBreakpoints => [breakpoint_stack, breakpoint_compact]
     TwoTier => [breakpoint_stack]
-  }
-}
-
-// Every declared breakpoint must be a length row, checked at the request boundary so
-// a non-length breakpoint REFUSES the ballot (typed, located) instead of reaching rule
-// construction with a fabricated condition (DESIGN §5: no plausible output fabricated).
-fn breakpoints_admissible(choice: BreakpointChoice) -> Bool {
-  all(breakpoint_lengths(choice: choice), t =>
-    match t.value {
-      LengthValue { length: l } => l.n > 0 && token_name_is_wellformed(name: t.name)
-      _ => false
-    })
-}
-
-fn media_of(t: ScaleToken) -> Optional<MediaCondition> {
-  match t.value {
-    LengthValue { length: l } => Present { value: MediaMaxWidth { max: l } }
-    _ => Absent
   }
 }
 
@@ -228,7 +213,7 @@ fn layout_rules(grid: GridChoice, breakpoints: BreakpointChoice, scheme: SchemeC
   concat(
     concat(
       shell_rules(grid: grid),
-      map(breakpoint_lengths(choice: breakpoints), b => cards_stack_rule(token: b))
+      map(breakpoint_conditions(choice: breakpoints), c => cards_stack_rule(condition: c))
     ),
     scheme_rules(scheme: scheme)
   )
@@ -299,20 +284,13 @@ fn shell_rules(grid: GridChoice) -> List<BuildRule> {
   ]
 }
 
-// Below a breakpoint the card tracks collapse to one column: the response the live
-// site hand-wrote, as a MediaRule over the modelled MediaCondition.
-fn cards_stack_rule(token: ScaleToken) -> BuildRule {
-  let cond = match media_of(t: token) {
-    Present { value: c } => c
-    // Unreachable by construction: ballot_render refuses before this runs when any
-    // breakpoint of the request is not a length row (breakpoints_admissible). The
-    // sentinel that remains is deliberately not a plausible query — a negative length
-    // is invalid CSS, and the witness compares each block against the token-derived
-    // text, so if the guard above ever fails to fire this reds rather than shipping.
-    Absent => MediaMaxWidth { max: CssLength { n: -1, unit: Px } }
-  }
+// Below a response point the card tracks collapse to one column: the response the live
+// site hand-wrote, as a MediaRule over the modelled MediaCondition. The condition is
+// handed in typed, so this rule cannot be given a breakpoint that is not a length — no
+// partial match, no sentinel standing in for a case the type already excludes.
+fn cards_stack_rule(condition: MediaCondition) -> BuildRule {
   MediaRule {
-    condition: cond,
+    condition: condition,
     selector: ClassSelector { name: "cards" },
     decls: [decl(prop: GridTemplateColumns, value: tracks_single())],
   }
@@ -361,8 +339,7 @@ fn auto_wire() -> String {
 // derived from the same rows the rules use, so it cannot drift).
 fn layout_scale_tokens() -> List<ScaleToken> {
   [gunb_measure_page, measure_prose, gap_sm, gap_md, gap_lg, gap_xl,
-   scale_body, scale_heading, scale_label, font_body, border_1, card_min,
-   breakpoint_stack, breakpoint_compact]
+   scale_body, scale_heading, scale_label, font_body, border_1, card_min]
 }
 
 fn token_name_is_wellformed(name: String) -> Bool {
@@ -403,7 +380,7 @@ fn layout_owned_decls() -> List<CssDecl> {
 // The rows this layer mints itself, checked for ownership (not membership by copy) by
 // witness_layer_owns_only_its_own_declarations.
 fn layout_owned_tokens() -> List<ScaleToken> {
-  [card_min, breakpoint_stack, breakpoint_compact]
+  [card_min]
 }
 
 // A page composes the token layer's :root declarations with this layer's own
@@ -428,8 +405,6 @@ fn layout_css(grid: GridChoice, breakpoints: BreakpointChoice, scheme: SchemeCho
 fn ballot_render(req: BallotRequest) -> BallotRender {
   if !grid_choice_admissible(choice: req.grid) {
     BallotRefused { reason: join(["[", req.slug, "] grid choice inadmissible: fixed column count outside 1..", to_string(column_count_max)], "") }
-  } else if !breakpoints_admissible(choice: req.breakpoints) {
-    BallotRefused { reason: join(["[", req.slug, "] breakpoint inadmissible: a breakpoint row is not a positive-length token"], "") }
   } else if !day_bindings_complete() {
     BallotRefused { reason: join(["[", req.slug, "] light variant incomplete: a bound role has no day row"], "") }
   } else {
