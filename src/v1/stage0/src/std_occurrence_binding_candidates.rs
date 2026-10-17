@@ -32,19 +32,20 @@ use self::Section13PopulationLawRosterVerdict::*;
 use self::StructuralBindingIndexRefusal::*;
 use self::StructuralBindingWalk::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_decl_ref::declaration_ref_eq;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
-pub use crate::std_dissolution::unbound_dissolution;
-pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
 pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
 };
-pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding_validated;
-pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::{
     OccurrenceReferenceBindingDecided, OccurrenceReferenceBindingTransportRefused,
+};
+pub use crate::std_occurrence_binding_resolve::{
+    resolve_reference_occurrence_binding_validated, OccurrenceReferenceBindingOutcome,
 };
 use crate::std_occurrence_identity::OccurrenceCategory::TypeOccurrence;
 use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
@@ -58,16 +59,12 @@ pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_before, authored_token_ordinal_eq,
     occurrence_category_clause_e_dependency_inducing_verdict,
     occurrence_containment_path_is_prefix_of, occurrence_id_allocator_initial,
-    occurrence_transport_validate,
-};
-pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
+    occurrence_transport_validate, AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceCategoryClauseEDependencyInducingVerdict, OccurrenceContainmentPath, OccurrenceId,
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
-pub use crate::std_roster_frontier::declaration_ref_eq;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
