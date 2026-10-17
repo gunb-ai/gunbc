@@ -73,7 +73,19 @@ BINS="--bin gunbc"   # measure+closures need only gunbc (the witness runs via gu
 if [ "$MODE" != closures ]; then
   python3 .sdm/hooks.py $SIDE .sdm/gap_block.rs
 fi
-cargo build --release -p v1-compiler $BINS 2>&1 | tail -3
+# A silent action gets cancelled by the gateway, and a client-side death cancels the
+# invocation too. So the build writes to a log while this loop emits a heartbeat: the
+# action keeps producing output, and we still learn the build's real exit code.
+( cargo build --release -p v1-compiler $BINS > /tmp/build.log 2>&1; echo "BUILD_RC=$?" >> /tmp/build.log ) &
+bp=$!
+while kill -0 $bp 2>/dev/null; do
+  sleep 20
+  echo "hb build $(wc -l < /tmp/build.log 2>/dev/null || echo 0) lines $(date -u +%H:%M:%S)"
+done
+wait $bp || true
+tail -4 /tmp/build.log
+grep -q "^BUILD_RC=0$" /tmp/build.log || { echo "BUILD-FAILED"; tail -30 /tmp/build.log; exit 11; }
+echo "build ok $(date -u +%H:%M:%S)"
 ls -la target/release/gunbc | awk '{print "bin",$5,$9}'
 if [ "$MODE" != closures ]; then
   echo "--- measured $(date -u +%H:%M:%S) ---"
