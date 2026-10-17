@@ -14,6 +14,40 @@ if [ ! -x "$BIN" ]; then echo "NO-BINARY at $BIN -- refusing to emit an empty me
 echo "binary=$BIN sha256=$(sha256sum "$BIN" | cut -d' ' -f1)"
 mkdir -p .sdm/run
 fail=0
+# ---- preflight ---------------------------------------------------------------------
+# Several dispatches were burned on rc=1/rc=127 with no stderr shown: the failure branch
+# printed a tail of a file that was empty (stderr went to a different file) and the
+# entry/source-root spelling was assumed rather than learned. So print the real CLI
+# surface, then try the fixture under every (entry-spelling x source-root) combination and
+# adopt the first that compiles, showing each attempt's FULL output. Measurement only.
+echo "@@@ VARIANT=$V PREFLIGHT"
+set +e
+timeout 300 $BIN compile --help > .sdm/run/help_$V.log 2>&1
+echo "help_rc=$?"
+grep -iE "source-root|entry|target|output-dir|claim" .sdm/run/help_$V.log | head -25
+set -e
+cp .sdm/fixtures/gap_depth_2.dag ./gap_depth_2.dag
+ENTRY_KIND=""; SOURCE_ROOT_ARGS=""
+for combo in "root|one" "root|two" "abs|one" "abs|two"; do
+  KIND=${combo%%|*}; SR=${combo##*|}
+  if [ "$KIND" = root ]; then E=gap_depth_2.dag; else E="$PWD/.sdm/fixtures/gap_depth_2.dag"; fi
+  if [ "$SR" = one ]; then set -- --source-root "$PWD"; else set -- --source-root "$PWD" --source-root dag; fi
+  echo "--- attempt entry=$KIND source_roots=$SR ---"
+  set +e
+  timeout 900 $BIN compile "$@" --entry "$E" --target rust \
+    --output-dir .sdm/run/preflight_${KIND}_${SR} > .sdm/run/preflight_${KIND}_${SR}.log 2>&1
+  prc=$?
+  set -e
+  echo "preflight_${KIND}_${SR} rc=$prc"
+  head -40 .sdm/run/preflight_${KIND}_${SR}.log
+  if [ $prc -eq 0 ]; then ENTRY_KIND="$KIND"; SOURCE_ROOT_ARGS="$*"; echo "PREFLIGHT-OK entry=$KIND source_roots=$SR"; break; fi
+done
+rm -f ./gap_depth_2.dag
+if [ -z "$ENTRY_KIND" ]; then
+  echo "PREFLIGHT-FAILED: no entry/source-root spelling compiled the fixture; aborting rather than emitting an empty A/B"
+  exit 14
+fi
+
 for SERIES in gap_depth garr; do
   for d in 1 2 3 4 5 6; do
     f="dag/test/${SERIES}_${d}.dag"
@@ -21,13 +55,16 @@ for SERIES in gap_depth garr; do
     printf "@@@ VARIANT=%s SERIES=%s DEPTH=%s\n" "$V" "$SERIES" "$d"
     set +e
     t0=$(date +%s)
-    $BIN compile --source-root "$PWD" --entry "$f" --target rust \
+    eval $BIN compile ${SOURCE_ROOT_ARGS} --entry "$f" --target rust \
         --output-dir ".sdm/run/out_${V}_${SERIES}_$d" \
         > .sdm/run/o_${V}_${SERIES}_$d.log 2> .sdm/run/e_${V}_${SERIES}_$d.log
     rc=$?
     echo "fixture_elapsed=$(( $(date +%s) - t0 ))s"
     set -e
-    if [ $rc -ne 0 ]; then echo "COMPILE-FAIL rc=$rc"; tail -12 .sdm/run/e_${V}_${SERIES}_$d.log; fail=1; fi
+    if [ $rc -ne 0 ]; then
+      echo "COMPILE-FAIL rc=$rc"; echo "--- stdout ---"; head -30 .sdm/run/o_${V}_${SERIES}_$d.log
+      echo "--- stderr ---"; head -30 .sdm/run/e_${V}_${SERIES}_$d.log; fail=1
+    fi
     line=$(grep -h "generic-arg-pass-excl" .sdm/run/e_${V}_${SERIES}_$d.log || true)
     if [ -z "$line" ]; then echo "NO-INSTRUMENT"; fail=1; else echo "$line"; fi
     mark=$(grep -h "compile.reconcile" .sdm/run/e_${V}_${SERIES}_$d.log | tail -1 || true)
@@ -57,33 +94,39 @@ for SPEC in src/v2/compiler/compile.dag; do
   fi
 done
 
-# ---- the witness claim-run ---------------------------------------------------------
-# Resolved from the TRACKED path (how the floor resolves an entry). A materialised copy
-# under .sdm made source-discovery see the module twice and refuse the compile outright.
+# ---- the witness, run the way claims are ACTUALLY run --------------------------------
+# A `test fn` under dag/test/claim is executed by `claim_batch --entry E --function F`,
+# which prints one PASS/FAIL verdict per function (report_outcome in
+# src/v1/stage0/src/bin/claim_batch.rs). Grep says this witness is cited by NO roster and
+# no workflow, so nothing in CI runs it -- asserting a bare `gunbc run --claim-run` exit
+# code therefore proved nothing about the seven verdicts. Run each test fn by name so a
+# regression names itself, and keep the instrument env armed so the counts and the verdicts
+# come from the same process.
 W=dag/test/claim/generic_argument_recheck_witness.dag
-if [ -f "$W" ]; then
+CB="$CARGO_TARGET_DIR/release/claim_batch"
+if [ -f "$W" ] && [ -x "$CB" ]; then
   echo "@@@ VARIANT=$V WITNESS"
-  set +e
-  t0=$(date +%s)
-  timeout 1500 $BIN run --source-root "$PWD" --entry "$W" --claim-run > .sdm/run/w_$V.log 2>&1
-  echo "witness_rc=$? claim_elapsed=$(( $(date +%s) - t0 ))s"
-  set -e
-  grep -ciE "TypeMismatch" .sdm/run/w_$V.log | sed 's/^/typemismatch_mentions=/'
-  tail -6 .sdm/run/w_$V.log
-  # The strengthened witness must assert the EXACT diagnostic location, and the
-  # location is render_type_to_string(got) -- which is derived, never guessed. So ask
-  # the real compiler for the real diagnostics of the witness body, per variant, and
-  # print them verbatim. This is measurement only; no assertion changes here.
-  set +e
-  timeout 900 $BIN compile --source-root "$PWD" --source-root dag --entry dag/test/claim/generic_argument_recheck_witness.dag \
-    --target rust --output-dir ".sdm/run/out_${V}_witnesscompile" \
-    > .sdm/run/cw_${V}.log 2> .sdm/run/cwe_${V}.log
-  echo "witness_compile_rc=$?"
-  set -e
-  grep -oE "type mismatch: expected [^ ]+ got [^ ]+ at [^ ]+ in [^ ]+" .sdm/run/cwe_${V}.log \
-    | sort | uniq -c | sed "s/^/WITNESS-DIAG $V /" || echo "WITNESS-DIAG $V none"
-  grep -cE "^gunbc: " .sdm/run/cwe_${V}.log | sed "s/^/WITNESS-BLOCKING-LINES $V /"
+  for FN in a_lambda_after_the_argument_that_binds_its_parameter_is_accepted \
+            a_lambda_before_the_argument_that_binds_its_parameter_is_accepted_under_the_final_context \
+            a_nested_left_bound_bind_chain_is_accepted \
+            an_earlier_literal_whose_generic_is_bound_later_is_accepted \
+            an_earlier_record_literal_whose_generic_is_bound_later_is_accepted \
+            a_lambda_return_that_disagrees_with_the_substituted_callable_refuses \
+            an_inner_generic_bound_only_by_the_outer_settlement_is_re_inferred ; do
+    set +e
+    t0=$(date +%s)
+    timeout 900 "$CB" --source-root "$PWD" --entry "$PWD/$W" --function "$FN" \
+      > .sdm/run/fn_${V}_${FN}.log 2>&1
+    rc=$?
+    set -e
+    verdict=$(grep -hoE "^(PASS|FAIL|PANIC)[^ ]*( .*)?" .sdm/run/fn_${V}_${FN}.log | head -1)
+    echo "CLAIMFN $V ${FN} rc=$rc elapsed=$(( $(date +%s) - t0 ))s verdict=${verdict:-NONE}"
+    if [ "$rc" -ne 0 ]; then
+      echo "CLAIMFN-OUTPUT-BEGINS ${FN}"; head -40 .sdm/run/fn_${V}_${FN}.log; echo "CLAIMFN-OUTPUT-ENDS"
+    fi
+  done
 else
-  echo "@@@ VARIANT=$V WITNESS-ABSENT"
+  echo "@@@ VARIANT=$V WITNESS-SKIPPED file=$([ -f "$W" ] && echo yes || echo no) claim_batch=$([ -x "$CB" ] && echo yes || echo no)"
 fi
+
 echo "@@@ VARIANT=$V DONE fail=$fail"

@@ -69,7 +69,7 @@ build() { # dir label
   # BUILD_RC line -- which is exactly what happens when the compiler is SIGKILLed
   # (OOM). So: cap the job count, report the memory envelope, and treat a missing
   # BUILD_RC as a named failure instead of an unexplained exit 1.
-  ( cargo build --release -j 6 -p v1-compiler --bin gunbc > /tmp/build_$V.log 2>&1; echo "BUILD_RC=$?" >> /tmp/build_$V.log ) &
+  ( cargo build --release -j 6 -p v1-compiler --bin gunbc --bin claim_batch > /tmp/build_$V.log 2>&1; echo "BUILD_RC=$?" >> /tmp/build_$V.log ) &
   bp=$!
   while kill -0 $bp 2>/dev/null; do
     sleep 25
