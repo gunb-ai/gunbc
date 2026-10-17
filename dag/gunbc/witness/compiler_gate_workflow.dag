@@ -137,6 +137,14 @@ import gunbc.host.memory_envelope {
   EnvelopeRequirementUnreadable,
   memory_envelope_required_ci_contract,
 }
+import gunbc.parse_verdict_publish {
+  parse_verdict_identity_blob_save_step,
+  parse_verdict_identity_blob_save_step_name,
+  parse_verdict_publish_walk_step,
+  parse_verdict_publish_save_step,
+  parse_verdict_publish_step_name,
+  parse_verdict_save_step_name,
+}
 
 // THE HOSTED BUILD PRELUDE. No job of this workflow uses it: gunbc.instruments.instrument_dispatch_workflow builds
 // `gunbc` on a hosted runner through it. It was the whole job of the `compiler` lane the 2026-09-28
@@ -398,7 +406,9 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // default, and the `gunbc` binary the instruments are invoked through. NO NATIVE PRODUCT STORE STEP:
 // the job-private store root, the read and write federations and the save left with the 2026-10-09
 // ruling (header), because a job that may serve a restored final product cannot claim to have
-// emitted and built it.
+// emitted and built it. The parse-verdict publisher after the subject steps is a different store
+// (extdeps.cache.github_actions): it saves ParseVerdictRequest receipts after a passing live
+// parse-population on main only, via actions/cache/save, and never restores a compiler product.
 //
 // THE CARGO CACHE IS ORDINARY CARGO REUSE, which the same ruling leaves in place: the isolation step
 // wipes the job's CARGO_HOME on every run, so without it the seed build downloads the registry and
@@ -437,11 +447,28 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
     concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
-    [CompilerGateBoundStep {
-      step: compiler_gate_emit_build_notice_step(),
-      role: capability_neutral,
-      step_name: "Why this lane is red, and what would be a real finding",
-    }]
+    [
+      CompilerGateBoundStep {
+        step: parse_verdict_publish_walk_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_publish_step_name,
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_publish_save_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: parse_verdict_identity_blob_save_step(),
+        role: capability_neutral,
+        step_name: parse_verdict_identity_blob_save_step_name(),
+      },
+      CompilerGateBoundStep {
+        step: compiler_gate_emit_build_notice_step(),
+        role: capability_neutral,
+        step_name: "Why this lane is red, and what would be a real finding",
+      }
+    ]
   )
 }
 

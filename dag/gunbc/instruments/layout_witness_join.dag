@@ -942,7 +942,7 @@ fn unread_is_declared(roster: DeclaredRoster, unread: UnreadFile) -> Bool {
 // The declaration is read once into its roster. A declaration that names a module twice has no single
 // answer for it, so it declares nothing: every unread file then stays a red finding.
 fn declared_unread_paths(classes: List<RefusalClass>, unread: List<UnreadFile>) -> List<String> {
-  match population_parse_begin(classes: classes) {
+  match population_parse_begin(classes: classes, compiler: none) {
     PopulationDeclarationDuplicated { keys: _ } => []
     PopulationBegun { tally: tally } =>
       unread |> filter(u => unread_is_declared(roster: tally.roster, unread: u)) |> map(u => u.path)
