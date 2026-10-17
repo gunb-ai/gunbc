@@ -15,7 +15,8 @@ import v2.extdeps.languages.dag {
   import_decl_target_module,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
@@ -25,6 +26,7 @@ import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional }
 import v2.std.node { Atom, Node, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol }
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
+import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.qualified_name { QualifiedName }
 
 // RULING-B ROSTER IMPORT SWEEP (#14003 / #14017), computed from the PARSED program, not from text.
@@ -38,7 +40,7 @@ import v2.std.qualified_name { QualifiedName }
 // construction (the c.dag:866 defect was a spliced block, #14017). Output is rows, never writes:
 //   EDIT <path> <start> <end> <replacement>     replacement has newlines escaped as \n
 //   REFUSE <path> <cause>
-// roster_import_sweep_apply_exit is the committed apply step (compare-and-set, then Filesystem.Write).
+// roster_import_sweep_apply_exit is the committed apply step (stale-read check under an apply lock, then Filesystem.Write).
 // This generator plus its apply step is the wave tool of the NAMESPACE-XL sweeps; the N4/N5 work
 // makes its four-row table row-driven (the HOME TABLE rows) and keeps the tool. Driven as
 //   gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/roster_import_sweep.dag
@@ -105,7 +107,10 @@ fn roster_sweep_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRu
 }
 
 // THE APPLY STEP, in the same entry family as the generator: the file is read, the outcome computed,
-// the file re-read and required byte-identical to what the outcome was computed from (compare-and-set),
+// the file re-read and required byte-identical to what the outcome was computed from (a stale-read check; the apply
+// holds an exclusive create-new lock file for its whole run, so two appliers cannot interleave, but a writer that is
+// not this applier and writes between the re-read and the write is outside the contract: the worktree must be
+// exclusively owned for the run, std.durable_compare_and_set being a generation-slot store that cannot reach a source file),
 // the extent required to hold what the parsed decl said it holds, and only then written with
 // Filesystem.Write. Anything else is a REFUSE row and the file is untouched. Success is silent, so the
 // exit reason is exactly the refusals.
@@ -115,6 +120,17 @@ fn roster_import_sweep_apply_exit(paths_csv: String) -> ProcessExit {
 }
 
 fn roster_apply_for_paths(paths_csv: String) -> String {
+  let lock = Filesystem.WriteCreateNew(path: roster_apply_lock_path, content: "roster_import_sweep_apply\n")
+  if !lock.success {
+    "REFUSE * apply-lock-unavailable\n"
+  } else {
+    let report = roster_apply_locked(paths_csv: paths_csv)
+    let released = Filesystem.Delete(path: roster_apply_lock_path)
+    if released.success { report } else { report + "REFUSE * apply-lock-not-released\n" }
+  }
+}
+
+fn roster_apply_locked(paths_csv: String) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "REFUSE * grammar-unprepared\n"
     Accepted { value: prepared, diagnostics: _ } =>
@@ -126,6 +142,8 @@ fn roster_apply_for_paths(paths_csv: String) -> String {
   }
 }
 
+data roster_apply_lock_path: String = ".roster_import_sweep.lock"
+
 fn roster_apply_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
@@ -133,34 +151,93 @@ fn roster_apply_path(path: String, prepared: PreparedGrammar, lex: PreparedLexRu
       RosterClean => ""
       RosterRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
       RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
-        roster_apply_edit(path: path, before: read.content, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+        roster_apply_edit(path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
     }
   } else {
     "REFUSE " + path + " unreadable\n"
   }
 }
 
-fn roster_apply_edit(path: String, before: String, start: Int, end: Int, replacement: String) -> String {
+fn roster_apply_edit(path: String, before: String, outcome: RosterOutcome) -> String {
   let now = Filesystem.Read(path: path)
   if !now.success || now.content != before {
-    "REFUSE " + path + " cas-mismatch\n"
-  } else if !roster_extent_holds(before: before, start: start, end: end) {
-    "REFUSE " + path + " extent-mismatch\n"
+    "REFUSE " + path + " stale-read\n"
   } else {
-    let wrote = Filesystem.Write(
-      path: path,
-      content: substring(s: before, start: 0, end: start) + replacement + substring(s: before, start: end, end: string_length(s: before))
-    )
-    if wrote.success { "" } else { "REFUSE " + path + " write-failed\n" }
+    match roster_applied(before: before, outcome: outcome) {
+      RosterApplyRefused { cause: cause } => "REFUSE " + path + " " + cause + "\n"
+      RosterApplyWritten { content: content } =>
+        if content == before {
+          ""
+        } else if Filesystem.Write(path: path, content: content).success {
+          ""
+        } else {
+          "REFUSE " + path + " write-failed\n"
+        }
+    }
   }
 }
 
-// A replaced extent is an import of std.algebra; an insertion point is the end of an import block.
+type RosterApplied
+  = RosterApplyWritten { content: String }
+  | RosterApplyRefused { cause: String }
+
+// THE PURE SPLICE the apply step performs, separate from its filesystem effects so the controls run it on text.
+fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
+  match outcome {
+    RosterClean => RosterApplyWritten { content: before }
+    RosterRefused { cause: cause } => RosterApplyRefused { cause: cause }
+    RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
+      roster_splice(before: before, start: start, end: end, replacement: (if own_line { "\n" } else { "" }) + text)
+  }
+}
+
+fn roster_splice(before: String, start: Int, end: Int, replacement: String) -> RosterApplied {
+  let octets = bytes_octets(b: utf8_encode_bytes(s: before))
+  let from = roster_scalar_boundary(octets: octets, byte: start)
+  let to = roster_scalar_boundary(octets: octets, byte: end)
+  if from < 0 || to < from {
+    RosterApplyRefused { cause: "extent-not-on-char-boundary" }
+  } else if !roster_extent_holds(before: before, start: from, end: to) {
+    RosterApplyRefused { cause: "extent-mismatch" }
+  } else if length(xs: split(s: substring(s: before, start: from, end: to), delimiter: "//")) > 1 {
+    RosterApplyRefused { cause: "extent-has-annotation" }
+  } else {
+    RosterApplyWritten { content: substring(s: before, start: 0, end: from) + replacement + substring(s: before, start: to, end: string_length(s: before)) }
+  }
+}
+
+// ByteRange comes from the parser in UTF-8 bytes; substring indexes Unicode scalars. A byte offset converts to the
+// scalar offset that precedes it (the count of non-continuation octets before it) and is valid only when it falls
+// on a scalar boundary; -1 otherwise.
+fn roster_scalar_boundary(octets: List<Int>, byte: Int) -> Int {
+  let total = length(xs: octets)
+  if byte < 0 || byte > total {
+    0 - 1
+  } else if byte == total {
+    roster_scalar_count(octets: take_prefix(xs: octets, n: byte))
+  } else {
+    match list_at_optional(xs: octets, index: byte) {
+      Present { value: o } => if roster_is_continuation(octet: o) { 0 - 1 } else { roster_scalar_count(octets: take_prefix(xs: octets, n: byte)) }
+      Absent => -1
+    }
+  }
+}
+
+fn roster_scalar_count(octets: List<Int>) -> Int {
+  fold_list(xs: octets, empty: 0, cons: fn(n, o) { if roster_is_continuation(octet: o) { n } else { n + 1 } })
+}
+
+fn roster_is_continuation(octet: Int) -> Bool {
+  octet >= 128 && octet < 192
+}
+
+// A replaced extent is a whole std.algebra import declaration (it opens with the keyword and the module and ends at
+// its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
 fn roster_extent_holds(before: String, start: Int, end: Int) -> Bool {
   if start == end {
     substring(s: before, start: start - 1, end: start) == "}"
   } else {
-    substring(s: before, start: start, end: start + 18) == "import std.algebra"
+    substring(s: before, start: start, end: start + 18) == "import std.algebra" && substring(s: before, start: end - 1, end: end) == "}"
   }
 }
 
@@ -189,7 +266,7 @@ fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex:
                     parse_root: artifact.tree,
                     spans: artifact.span_index,
                     normalized_root: scoped.tree.root,
-                    imported: list_map(xs: scoped.tree.import_bindings, f: fn(row) { row.binding })
+                    imported: scoped.tree.import_bindings
                   )
               }
           }
@@ -199,8 +276,8 @@ fn roster_sweep_text(path: String, text: String, prepared: PreparedGrammar, lex:
 // The roster rows whose call head is lexically unbound in this file: the heads ruling B refuses
 // natively without an import. HeadLexicallyUnbound is the collector's own classification, so a local
 // binding, a module-level declaration or an existing import of the same spelling is never swept.
-fn roster_needed_rows(normalized_root: Node, imported: List<Symbol>) -> List<RosterHeadRow> {
-  let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: imported).sites
+fn roster_needed_rows(normalized_root: Node, imported: List<AliasBindingRow>) -> List<RosterHeadRow> {
+  let sites = collect_scoped_module_reference_sites(root: normalized_root, imported: list_map(xs: imported, f: fn(row) { row.binding })).sites
   fold_list(
     xs: roster_head_rows(),
     empty: [],
@@ -216,8 +293,18 @@ fn roster_needed_rows(normalized_root: Node, imported: List<Symbol>) -> List<Ros
 
 // The import binds the SHAPE name, not the call spelling, so the collector keeps classifying the bare call as
 // unbound after the import is present. A row is needed only while its shape name is not yet import-visible.
-fn roster_symbol_imported(imported: List<Symbol>, name: String) -> Bool {
-  fold_list(xs: imported, empty: false, cons: fn(found, s) { found || (symbol_lexeme(sym: s) == name) })
+// The shape counts as imported only when the binding's declaring module is std.algebra: a same-named shape bound
+// from elsewhere (target not std.algebra.<name>) leaves the std.algebra import required.
+fn roster_symbol_imported(imported: List<AliasBindingRow>, name: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, row) { found || (symbol_lexeme(sym: row.binding) == name && roster_target_is_algebra(qn: row.target, name: name)) })
+}
+
+fn roster_target_is_algebra(qn: QualifiedName, name: String) -> Bool {
+  match qn {
+    Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } } =>
+      (symbol_lexeme(sym: a) == "std" && symbol_lexeme(sym: b) == "algebra" && symbol_lexeme(sym: c) == name)
+    _ => false
+  }
 }
 
 fn roster_sites_count(sites: FreeMonoid<ScopedReferenceSite>, call: String) -> Int {
@@ -245,7 +332,7 @@ fn roster_sweep_rows(
   parse_root: Node,
   spans: SpanIndex,
   normalized_root: Node,
-  imported: List<Symbol>
+  imported: List<AliasBindingRow>
 ) -> RosterOutcome {
   let needed = roster_needed_rows(normalized_root: normalized_root, imported: imported)
   if is_empty(xs: needed) {
@@ -401,4 +488,61 @@ fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? 
 
 fn roster_join(xs: List<String>, sep: String) -> String {
   fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + sep + x } })
+}
+
+// THE CONTROLS, run as `gunbc run --entry src/v2/workflow/roster_import_sweep.dag --function roster_import_sweep_controls_exit`.
+// Each case is source text pushed through the same tokenize/parse/normalize route and the same pure splice the apply step
+// performs, so a divergence between parser coordinates and applier coordinates fails here with the case named.
+//   homonym:  a same-named shape imported from another module does not satisfy the std.algebra import (an EDIT, not Clean).
+//   present:  the std.algebra import already carries the shape (Clean).
+//   multibyte: UTF-8 text before and after the import; byte extents must land on scalar boundaries and everything outside
+//             the extent is preserved byte for byte.
+//   annotation: a `//` inside the replaced import would be erased, so the splice refuses.
+fn roster_import_sweep_controls_exit() -> ProcessExit {
+  let report = roster_controls_report()
+  if (report == "") { ExitSuccess } else { exit_failure(reason: report) }
+}
+
+fn roster_controls_report() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
+    Accepted { value: prepared, diagnostics: _ } =>
+      roster_control_homonym(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_present(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_multibyte(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
+  }
+}
+
+fn roster_control_homonym(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/homonym.dag", text: "module c.homonym\n\nimport std.layout { collection_concat_shape }\n\nfn f(xs: List<String>, ys: List<String>) -> List<String> {\n  concat(a: xs, b: ys)\n}\n", prepared: prepared, lex: lex) {
+    RosterEdit { start: _, end: _, text: _, own_line: _ } => ""
+    _ => "CONTROL-FAIL homonym: an unrelated same-named import suppressed the std.algebra import\n"
+  }
+}
+
+fn roster_control_present(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_sweep_text(path: "control/present.dag", text: "module c.present\n\nimport std.algebra { collection_concat_shape }\n\nfn f(xs: List<String>, ys: List<String>) -> List<String> {\n  concat(a: xs, b: ys)\n}\n", prepared: prepared, lex: lex) {
+    RosterClean => ""
+    _ => "CONTROL-FAIL present: an existing std.algebra import was not recognised\n"
+  }
+}
+
+fn roster_control_multibyte(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.multibyte\n\n// 😀 é 日本 before the import\nimport std.algebra { Cons }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n\nfn g() -> String {\n  \"tail 😀 é\"\n}\n"
+  let expected = "module c.multibyte\n\n// 😀 é 日本 before the import\nimport std.algebra { Cons, collection_count_shape }\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n\nfn g() -> String {\n  \"tail 😀 é\"\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/multibyte.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyWritten { content: content } =>
+      if content == expected { "" } else { "CONTROL-FAIL multibyte: spliced text differs from the expected text outside or inside the extent\n" }
+    RosterApplyRefused { cause: cause } => "CONTROL-FAIL multibyte: refused " + cause + "\n"
+  }
+}
+
+fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let before = "module c.annotation\n\nimport std.algebra {\n  // 😀 kept\n  Cons\n}\n\nfn f(xs: List<String>) -> Int {\n  count(xs: xs)\n}\n"
+  match roster_applied(before: before, outcome: roster_sweep_text(path: "control/annotation.dag", text: before, prepared: prepared, lex: lex)) {
+    RosterApplyRefused { cause: cause } =>
+      if cause == "extent-has-annotation" { "" } else { "CONTROL-FAIL annotation: refused for " + cause + "\n" }
+    RosterApplyWritten { content: _ } => "CONTROL-FAIL annotation: the splice erased an annotation\n"
+  }
 }
