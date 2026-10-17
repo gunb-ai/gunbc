@@ -92,8 +92,6 @@ fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainloade
       architecture: Aarch64,
       digest: digest_a,
       installed_filename: "snponly.efi",
-      build_command: "fixture build command",
-      toolchain: "fixture toolchain",
       secure_boot: secure_boot,
     )
   }
