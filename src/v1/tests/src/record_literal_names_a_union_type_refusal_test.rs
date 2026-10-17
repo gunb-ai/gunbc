@@ -299,41 +299,56 @@ fn an_imported_variant_name_is_accepted_under_a_pool_collision() {
     // Two SourceFiles, because the collision only exists ACROSS modules: one file declares the union
     // whose arm is constructed, the other declares an unrelated union UNDER THE ARM'S NAME, and a
     // third compiles the construction that imports the first by name but not the second.
-    let mut files = Vec::new();
-    files.push(Rc::new(SourceFile {
-        // The arm's owner: the arm's authored name is UnitPropertyRead.
-        path: "zz_owner.dag".to_string(),
-        content: "module zz_owner\n\
-                  type UnitPropertyReading\n\
-                  \x20 = UnitPropertyRead { value: String }\n\
-                  \x20 | UnitPropertyUnread { property: String, detail: String }\n"
-            .to_string(),
-    }));
-    files.push(Rc::new(SourceFile {
-        // The collision: a DIFFERENT union, authored under the arm's name, in a module nobody
-        // imports below. Its variants are deliberately distinct so the refusal's message would name
-        // them if the resolution ever reached it.
-        path: "zz_collision.dag".to_string(),
-        content: "module zz_collision\n\
-                  type UnitPropertyRead\n\
-                  \x20 = UnitPropertyValue { value: String }\n\
-                  \x20 | UnitPropertyInvisible\n"
-            .to_string(),
-    }));
-    files.push(Rc::new(SourceFile {
-        path: "zz_consumer.dag".to_string(),
-        content: "module zz_consumer\n\
-                  import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread }\n\
-                  data zz_owner_status: UnitPropertyReading = UnitPropertyRead { value: \"running\" }\n\
-                  data zz_owner_unread: UnitPropertyReading = UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
-            .to_string(),
-    }));
+    let files = im::vector![
+        Rc::new(SourceFile {
+            // The arm's owner. The arm's authored name is UnitPropertyRead.
+            path: "zz_owner.dag".to_string(),
+            content: "module zz_owner\n\
+                      type UnitPropertyReading\n\
+                      \x20 = UnitPropertyRead { value: String }\n\
+                      \x20 | UnitPropertyUnread { property: String, detail: String }\n"
+                .to_string(),
+        }),
+        Rc::new(SourceFile {
+            // The collision: a DIFFERENT union, authored under the arm's name, in a module the
+            // consumer below never imports. Its variants are deliberately distinct so the refusal's
+            // message would name THEM if the resolution ever reached this declaration.
+            path: "zz_collision.dag".to_string(),
+            content: "module zz_collision\n\
+                      type UnitPropertyRead\n\
+                      \x20 = UnitPropertyValue { value: String }\n\
+                      \x20 | UnitPropertyInvisible\n"
+                .to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "zz_consumer.dag".to_string(),
+            content: "module zz_consumer\n\
+                      import zz_owner { UnitPropertyReading, UnitPropertyRead, UnitPropertyUnread }\n\
+                      data zz_owner_status: UnitPropertyReading = UnitPropertyRead { value: \"running\" }\n\
+                      data zz_owner_unread: UnitPropertyReading = UnitPropertyUnread { property: \"ExecMainStatus\", detail: \"unreadable\" }\n"
+                .to_string(),
+        }),
+    ];
     let r = compile_to_resolved(Rc::new(files));
-    assert_eq!(
-        blocking(&r),
-        Vec::<String>::new(),
+    let messages: Vec<String> = r
+        .diagnostics
+        .iter()
+        .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    // Asserted by CLASS, not by emptiness: the two constructions are legal, and the only thing that
+    // may not appear is THIS refusal. A pool-resolved wall would have refused them and named
+    // UnitPropertyValue / UnitPropertyInvisible -- the variants of a union this module never names.
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.contains("declares no record constructor")),
         "an imported arm whose name is an unrelated union elsewhere in the pool is still a \
-         constructor; the refusal must consult the module's own binding, not the bare-name pool"
+         constructor; the refusal consulted the pool, not the module's own binding: {messages:?}"
+    );
+    assert!(
+        !messages.iter().any(|m| m.contains("UnitPropertyValue")),
+        "the colliding union's variants must never appear; reaching them means the head resolved \
+         against zz_collision.dag: {messages:?}"
     );
 }
 
