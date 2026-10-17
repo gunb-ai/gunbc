@@ -66,7 +66,7 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // (DESIGN section 3). The dashboard and belt move onto the same locus under
 // gunbc.plans.deploy_convergence_observed_side (staged release generations), so the name is the
 // locus's own before a second service family reads it.
-data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the approval broker release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
+data release_locus_dir_unbound_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ the release locus was asked for a path under RevisionNotInstalled. A release directory is named by the candidate sha, so there is no directory this could mean; emitting this marker fails the stage rather than installing a release into a path named after a diagnostic (DESIGN section 5)."
 
 // THE ROOT IS THE SERVICE CONFIG'S, NOT host_layout's, READ DIRECTLY. Both name the same directory
 // today, and reading the row here would still be correct -- but it would make the broker's root a
