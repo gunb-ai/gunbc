@@ -151,7 +151,7 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
 }
 
 // THE DEDICATED WORKER ACCOUNT: the identity a dispatched worker's system unit runs as when its
-// instance declares worker_user (gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance). It is a
+// instance declares worker (gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance). It is a
 // member of NO root-equivalent group: not docker, lxd, sudo or adm, and it has no sudoers line, so a
 // process running as it holds no credential that reaches root. Its only supplementary group is the
 // shared attempt group below, which owns the directories the worker writes. The shell is declared

@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import std.measure { kibibyte }
 import extdeps.systemd { systemd_service_unit_name, SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_worker_user,
   HostDashboardInstance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_directory, dashboard_instance_dispatch_attempt_state_directory,
   dashboard_instance_provider_state_directory,
@@ -24,7 +25,7 @@ import gunbc.fleet.fleet_posix_accounts {
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
 // no root-equivalent group; the srv1 lab opts in, prod stays on the service user (the staged form of
-// the replacement migration; see HostDashboardInstance worker_user).
+// the replacement migration; see HostDashboardInstance worker).
 
 fn start_facts(instance: HostDashboardInstance, user: NonEmptyStr) -> AttemptSystemUnitStartFacts? {
   match systemd_service_unit_name(stem: dispatch_attempt_unit_stem(node_id: "n", attempt_key: "k")) {
@@ -67,11 +68,11 @@ fn declared_mode_octal(t: OwnedDirectoryTarget) -> String {
   }
 }
 
-// CLAIM 1 (RED on main: HostDashboardInstance has no worker_user and the lab's unit runs as the service user).
+// CLAIM 1 (RED on main: HostDashboardInstance has no worker and the lab's unit runs as the service user).
 test fn the_lab_worker_unit_runs_as_the_dedicated_account() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  (lab.worker_user.user as String) == (fleet_posix_worker_user.name as String)
-    && (lab.worker_user.user as String) != (lab.directory_owner.user as String)
+  (dashboard_instance_worker_user(instance: lab) as String) == (fleet_posix_worker_user.name as String)
+    && (dashboard_instance_worker_user(instance: lab) as String) != (lab.directory_owner.user as String)
     && admits_user(instance: lab, user: fleet_posix_worker_user.name)
     && !admits_user(instance: lab, user: lab.directory_owner.user)
 }
@@ -79,7 +80,7 @@ test fn the_lab_worker_unit_runs_as_the_dedicated_account() -> Bool {
 // The staged form: prod still derives the owner.
 test fn the_live_worker_unit_still_runs_as_the_service_user() -> Bool {
   let live = srv1_live_dashboard_instance()
-  (live.worker_user.user as String) == (live.directory_owner.user as String)
+  (dashboard_instance_worker_user(instance: live) as String) == (live.directory_owner.user as String)
     && admits_user(instance: live, user: live.directory_owner.user)
     && !admits_user(instance: live, user: fleet_posix_worker_user.name)
 }

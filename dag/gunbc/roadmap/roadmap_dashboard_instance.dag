@@ -245,10 +245,10 @@ type HostDashboardInstance {
   // THE ACCOUNT A DISPATCHED WORKER UNIT RUNS AS. Equal to directory_owner is the STAGED form of a
   // replacement migration (DESIGN section 3, gap-intolerant boundary): the worker as the service user is
   // X, a worker as a dedicated account with no root-equivalent group is Y. Y runs in shadow on the srv1
-  // lab, which opts in; srv1 prod keeps worker_user = directory_owner until an operator qualifies the
+  // lab, which opts in; srv1 prod keeps WorkerIsServiceUser until an operator qualifies the
   // lab and decides the cutover, at which point this field is deleted and the worker is always the
   // dedicated account. The group of a distinct worker_user is the shared attempt group.
-  worker_user: PosixOwnerNames
+  worker: WorkerIdentity
   materialization_store_root: MaterializationStoreRoot?
 }
 
@@ -987,7 +987,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: macbook_local_directory_owner,
-    worker_user: macbook_local_directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: MacbookLocal } },
   }
 }
@@ -1091,7 +1091,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    worker_user: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: DurableHostVolume },
   }
 }
@@ -1153,7 +1153,7 @@ fn isolated_dashboard_instance(
     actuation: actuation, provision_transport: provision_transport,
     admitted_revision: fleet_admitted_revision_source,
     publication_base_branch: "main" as NonEmptyStr,
-    worker_user: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
   )
 }
 
@@ -1172,7 +1172,7 @@ fn isolated_dashboard_instance_admitting(
   provision_transport: DashboardProvisionTransport,
   admitted_revision: DashboardAdmittedRevisionSource,
   publication_base_branch: NonEmptyStr,
-  worker_user: PosixOwnerNames,
+  worker: WorkerIdentity,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1217,7 +1217,7 @@ fn isolated_dashboard_instance_admitting(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    worker_user: worker_user,
+    worker: worker,
     materialization_store_root: none,
   }
 }
@@ -1245,7 +1245,7 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
     admitted_revision: srv1_lab_admitted_revision_source,
     publication_base_branch: srv1_lab_publication_base_branch,
-    worker_user: dedicated_worker_owner_names(),
+    worker: WorkerDedicatedAccount,
   )
 }
 
@@ -1380,7 +1380,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: linux_service_directory_owner(),
-    worker_user: linux_service_directory_owner(),
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: Srv2Deploy } },
   }
 }
@@ -1514,7 +1514,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: fleet_compute_hermetic_directory_owner,
-    worker_user: fleet_compute_hermetic_directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: FrameJobWorkspace { frame: frame } },
   }
 }
@@ -1688,37 +1688,37 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<F
 // empty-directory refusal that guards the source tree (gunbc.live_deploy.emit emit_artifact_teardown).
 data dashboard_dispatch_worktree_member: NonEmptyStr = "dispatch-worktree-root" as NonEmptyStr
 
-// THE DEDICATED WORKER'S OWNER PAIR: the worker account and the shared attempt group the service user
-// also belongs to (gunbc.fleet.fleet_posix_accounts fleet_posix_worker_user).
-fn dedicated_worker_owner_names() -> PosixOwnerNames {
-  PosixOwnerNames {
-    user: fleet_posix_worker_user.name,
-    group: fleet_posix_worker_shared_group_name,
+// THE WORKER'S IDENTITY IS A DECLARED TWO-ARM SUM, NOT A COMPARISON OF USER NAMES. WorkerIsServiceUser is the
+// STAGED form of a replacement migration (DESIGN section 3, gap-intolerant boundary): the worker runs as
+// the instance's service user (X). WorkerDedicatedAccount is Y: gunbc.fleet.fleet_posix_accounts
+// fleet_posix_worker_user in the shared attempt group, both read from that row, so no instance can name a
+// third account or another group. Y runs in shadow on the srv1 lab; the cutover (an operator decision
+// after the lab qualifies) deletes the first arm and this sum with it.
+type WorkerIdentity
+  = WorkerIsServiceUser
+  | WorkerDedicatedAccount
+
+// The account the worker unit runs as, derived from the arm.
+fn dashboard_instance_worker_user(instance: HostDashboardInstance) -> NonEmptyStr {
+  match instance.worker {
+    WorkerIsServiceUser => instance.directory_owner.user
+    WorkerDedicatedAccount => fleet_posix_worker_user.name
   }
 }
 
-// A WORKER THAT IS NOT THE SERVICE USER needs the directories it writes to be shared with it; one that
-// is the service user (the staged form) needs nothing changed.
-fn dashboard_instance_worker_is_dedicated(instance: HostDashboardInstance) -> Bool {
-  (instance.worker_user.user as String) != (instance.directory_owner.user as String)
-}
-
-// OWNER AND MODE OF A DIRECTORY THE WORKER WRITES. The service user keeps ownership; the group becomes the
-// worker's and the mode group-writable setgid. For a worker that is the service user it is the
-// pre-existing pair and mode, `staged`, so prod's directories are unchanged.
+// OWNER OF A DIRECTORY THE WORKER WRITES: the service user keeps ownership; a dedicated worker's group is the
+// shared attempt group. The staged arm keeps the pre-existing pair, so prod's directories are unchanged.
 fn dashboard_instance_worker_writable_owner(instance: HostDashboardInstance) -> PosixOwnerNames {
-  if dashboard_instance_worker_is_dedicated(instance: instance) {
-    PosixOwnerNames { user: instance.directory_owner.user, group: instance.worker_user.group }
-  } else {
-    instance.directory_owner
+  match instance.worker {
+    WorkerIsServiceUser => instance.directory_owner
+    WorkerDedicatedAccount => PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_worker_shared_group_name }
   }
 }
 
 fn dashboard_instance_worker_writable_mode(instance: HostDashboardInstance, staged: DeclaredDirectoryMode) -> DeclaredDirectoryMode {
-  if dashboard_instance_worker_is_dedicated(instance: instance) {
-    DirectoryOwnerGroupWritableSetgid
-  } else {
-    staged
+  match instance.worker {
+    WorkerIsServiceUser => staged
+    WorkerDedicatedAccount => DirectoryOwnerGroupWritableSetgid
   }
 }
 
