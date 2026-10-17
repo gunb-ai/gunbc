@@ -6306,11 +6306,38 @@ pub fn is_type_constant(
     }
 }
 
+pub fn is_clone_allocation_free(
+    summary: Rc<TypeSummary>,
+    recursive_type_set: Rc<BTreeSet<String>>,
+) -> bool {
+    match (*summary.repr.clone()).clone() {
+        TypeRepr::EnumRepr { unit_only: _, .. } => false,
+        TypeRepr::StructRepr => {
+            if ((v1_rt::set_contains(&recursive_type_set, summary.name.clone())
+                || ((summary.generic_param_names.clone().len() as i64) > 0))
+                || summary.has_fn_fields.clone())
+            {
+                false
+            } else {
+                {
+                    let field_count =
+                        (Rc::new(v1_rt::sorted_map_keys(&summary.field_summaries.clone())).len()
+                            as i64);
+                    let ft_count = (Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()))
+                        .len() as i64);
+                    ((field_count.clone() > 0) && (ft_count.clone() >= field_count.clone()))
+                }
+            }
+        }
+    }
+}
+
 pub fn maybe_mark_shared_type(
     acc: Rc<BTreeSet<String>>,
     summary: Rc<TypeSummary>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target_needs_sharing: bool,
+    by_value_records: bool,
 ) -> Rc<BTreeSet<String>> {
     {
         let needs_sharing = (target_needs_sharing.clone()
@@ -6324,8 +6351,10 @@ pub fn maybe_mark_shared_type(
         if summary_declares_grounded_coproduct_native_alias(summary.clone()) {
             acc.clone()
         } else {
-            if (needs_sharing.clone()
+            if ((needs_sharing.clone()
                 && !is_type_constant(summary.clone(), recursive_type_set.clone()))
+                && !(by_value_records.clone()
+                    && is_clone_allocation_free(summary.clone(), recursive_type_set.clone())))
             {
                 v1_rt::rc_set_insert(acc.clone(), summary.name.clone())
             } else {
@@ -6340,6 +6369,7 @@ pub fn shared_by_every_declarer(
     name: String,
     recursive_type_set: Rc<BTreeSet<String>>,
     target_needs_sharing: bool,
+    by_value_records: bool,
 ) -> bool {
     {
         let mut __all = true;
@@ -6360,6 +6390,7 @@ pub fn shared_by_every_declarer(
                         summary.clone(),
                         recursive_type_set.clone(),
                         target_needs_sharing.clone(),
+                        by_value_records.clone(),
                     ),
                     name.clone(),
                 ),
@@ -6377,6 +6408,7 @@ pub fn build_shared_types(
     type_summaries: Rc<TypeSummaryIndex>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target: RenderTarget,
+    by_value_records: bool,
 ) -> Rc<BTreeSet<String>> {
     {
         let sharing = crate::v1_compiler_languages::sharing_for_target(target.clone());
@@ -6392,12 +6424,14 @@ pub fn build_shared_types(
                             summary.name.clone(),
                             recursive_type_set.clone(),
                             sharing.needs_sharing.clone(),
+                            by_value_records.clone(),
                         ) {
                             maybe_mark_shared_type(
                                 acc.clone(),
                                 summary.clone(),
                                 recursive_type_set.clone(),
                                 sharing.needs_sharing.clone(),
+                                by_value_records.clone(),
                             )
                         } else {
                             acc.clone()
@@ -6708,6 +6742,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
+            !compiler_pipeline_entry_is_retained_host(typed.modules.clone()),
         );
         let closure_source_indices = merged_module_source_indices(typed.modules.clone());
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
@@ -8004,6 +8039,7 @@ pub fn emit_module(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
+            false,
         );
         let clone_bounded = crate::v1_compiler_trait_derive_emit::v1_clone_bounded_type_params(
             base_info.type_decl_items.clone(),
@@ -17304,6 +17340,37 @@ pub fn emit_sealed_struct_accessors(
     }
 }
 
+pub fn struct_derives_heap(
+    name: String,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    (v1_rt::set_contains(&shared_types, name.clone()) || {
+        let mut __found = false;
+        for key in crate::v1_compiler_infer_emit_info::type_summary_keys_of_leaf(
+            emit_info.type_summaries.clone(),
+            name.clone(),
+        )
+        .iter()
+        .cloned()
+        {
+            if match crate::v1_compiler_infer_emit_info::type_summary_decided(
+                emit_info.type_summaries.clone(),
+                key.clone(),
+            ) {
+                Some(summary) => {
+                    !is_type_constant(summary.clone(), emit_info.recursive_type_set.clone())
+                }
+                std::option::Option::None => true,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
 pub fn emit_struct_from_children(
     name: String,
     type_params: String,
@@ -17323,7 +17390,7 @@ pub fn emit_struct_from_children(
             env.module_path.clone(),
             name.clone(),
             children.clone(),
-            shared_types.clone(),
+            struct_derives_heap(name.clone(), shared_types.clone(), emit_info.clone()),
             has_fn_fields.clone(),
             v1_rt::set_contains(
                 &emit_info.map_key_required_type_names.clone(),

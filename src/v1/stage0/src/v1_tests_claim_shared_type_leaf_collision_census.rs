@@ -136,6 +136,7 @@ pub fn declaration_would_share(
             summary.clone(),
             recursive_type_set.clone(),
             needs_sharing.clone(),
+            false,
         ),
         summary.name.clone(),
     )
