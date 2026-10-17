@@ -1,0 +1,51 @@
+module test.claim.live_deploy.agent_door_witness
+
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.emit {
+  live_deploy_agent_door_unit_file,
+  LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
+  LiveDeployTailnetDoorUnitOidcReadbackRefused,
+}
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, deployment_agent_door_socket_of, deployment_agent_door_unit_path, deployment_agent_door_steps,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, srv1_live_dashboard_instance, dashboard_instance_agent_door_socket }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now }
+
+fn agent_door_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as CommitSha }
+}
+
+fn agent_door_unit_text(spec: DeploymentSpec) -> String {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now()) {
+    LiveDeployTailnetDoorUnitNotDeployed => ""
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => ""
+    LiveDeployTailnetDoorUnitEmitted { file } => serialize_systemd_unit_file(file: file)
+  }
+}
+
+// THE LAB DEPLOYMENT DERIVES THE AGENT DOOR: one unit member at the unit path, a socket read back
+// from the spec's agent-door directory demand (so unit and directory name one path), launched on the
+// lab's agent-door entry. RED if the lab loses its door, or the unit names another socket or entry.
+test fn the_lab_deployment_derives_one_agent_door_unit_on_the_lab_socket() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let socket = dashboard_instance_agent_door_socket(instance: srv1_lab_dashboard_instance())
+  let text = agent_door_unit_text(spec: lab)
+  deployment_agent_door_socket_of(spec: lab) == Present { value: socket }
+    && count(deployment_agent_door_steps(instance: srv1_lab_dashboard_instance(), names: lab.names)) == 1
+    && string_contains(s: text, pattern: join([" --unix-socket ", socket as String, " "], ""))
+    && string_contains(s: text, pattern: " --function roadmap_serve_handle_srv1_lab_agent_door ")
+}
+
+// CONTROL: PRODUCTION DERIVES NO AGENT DOOR. No directory demand, no step, no socket and no unit
+// text, because the write policy rosters no agent for its deployment. RED if the door is keyed on
+// anything but the policy's answer (a second list of lab deployments) or leaks to prod.
+test fn the_production_deployment_derives_no_agent_door() -> Bool {
+  let prod = deployment_spec_srv1()
+  deployment_agent_door_socket_of(spec: prod) == none
+    && count(deployment_agent_door_steps(instance: srv1_live_dashboard_instance(), names: prod.names)) == 0
+    && agent_door_unit_text(spec: prod) == ""
+}

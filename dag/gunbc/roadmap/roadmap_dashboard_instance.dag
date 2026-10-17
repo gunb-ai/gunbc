@@ -336,6 +336,17 @@ fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> No
   join([owned_directory_path(t: dashboard_instance_tailnet_door_directory(instance: instance)) as String, "/door.sock"], "") as NonEmptyStr
 }
 
+// THE LAB AGENT'S DOOR directory, beside the tailnet door's and with the same traverse-for-all mode:
+// the socket the seed opens to every class is walled by nothing but the kernel peer uid the handler
+// is handed, so the account that connects needs only to reach it.
+fn dashboard_instance_agent_door_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
+  dashboard_instance_shared_directory(instance: instance, member: "agent-door" as NonEmptyStr, child: "agent-door")
+}
+
+fn dashboard_instance_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([owned_directory_path(t: dashboard_instance_agent_door_directory(instance: instance)) as String, "/agent.sock"], "") as NonEmptyStr
+}
+
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root

@@ -438,6 +438,12 @@ fn write_authorization_policy_for(deployment: DeploymentId) -> ServeWriteAuthori
   if deployment == srv1_lab_codex_feedback_deployment { lab_write_authorization_policy } else { tracker_write_authorization_policy }
 }
 
+// Whether a deployment has an agent door at all is this policy's answer: a deployment that rosters
+// no agent principal has nobody the door could admit (gunbc.live_deploy.spec deployment_agent_door_socket).
+fn deployment_admits_agent_peer(deployment: DeploymentId) -> Bool {
+  !(all(write_authorization_policy_for(deployment: deployment).agent_roster, p => false))
+}
+
 // The actions an agent peer may take when its deployment rosters it. Everything else (approval, the
 // browser-only composers, allocations) stays a human act.
 fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
