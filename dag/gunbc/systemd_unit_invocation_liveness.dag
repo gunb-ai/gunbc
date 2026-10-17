@@ -1,0 +1,46 @@
+module gunbc.systemd_unit_invocation_liveness
+
+import std.types { String, NonEmptyStr }
+import std.durable_exclusive_hold {
+  DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+}
+
+// ONE SYSTEMD-UNIT HOLDER OBSERVER, keyed by InvocationID. It answers whether this unit start
+// is still the live holder. It does not yet retire the other spellings; those are residue sites
+// (gunbc.recurring_failure_mode.holds_spools_retry_consolidation_residue):
+//   - gunbc.compute.attempt_lifecycle UnitLifecycle — outcome / seat-freeing, not this question
+//   - gunbc.roadmap_dispatch_actuator AttemptUnitObservation — LoadState/SubState/exit
+//   - gunbc.workspace_acquisition_invocation WorkspacePriorActorStanding — wraps this fold
+//
+// The belt hold has no CasGeneration. InvocationID is that hold's fence: it names one start of
+// the unit. A later start is a different hold, whoever owns the unit name.
+//
+// Recovery is decided by this observation, never by age.
+
+type UnitInvocationObservation
+  = UnitInvocationPresent { invocation_id: NonEmptyStr }
+  | UnitInvocationAbsent
+  | UnitInvocationUnreadable { cause: NonEmptyStr }
+
+fn unit_invocation_holder_liveness(
+  recorded_invocation: NonEmptyStr,
+  observed: UnitInvocationObservation,
+) -> DurableHoldHolderLiveness {
+  match observed {
+    UnitInvocationUnreadable { cause: c } => HolderLivenessUnobservable { cause: c }
+    UnitInvocationAbsent =>
+      HolderObservedDead {
+        evidence: "the unit has no InvocationID; the recorded start is gone" as NonEmptyStr,
+      }
+    UnitInvocationPresent { invocation_id: id } =>
+      if (id as String) == (recorded_invocation as String) {
+        HolderObservedLive {
+          evidence: "InvocationID still matches the recorded start" as NonEmptyStr,
+        }
+      } else {
+        HolderObservedDead {
+          evidence: "InvocationID moved; the recorded start is a different activation" as NonEmptyStr,
+        }
+      }
+  }
+}

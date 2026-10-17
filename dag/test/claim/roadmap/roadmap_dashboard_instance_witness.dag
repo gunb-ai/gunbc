@@ -30,6 +30,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  WorkerIsServiceUser,
   dispatch_base_branch,
   prod_role_realization,
   fleet_admitted_revision_source,
@@ -73,17 +74,21 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instances_listen_endpoints_are_unique,
   dashboard_declared_instance_ids_are_unique,
   dashboard_declared_repo_roots_are_unique,
+  dashboard_declared_instance_roots_are_unique,
   dashboard_host_lookup_subjects_are_unique,
   dashboard_declared_instances_owned_paths_are_pairwise_consistent,
   dashboard_instance_for_host,
   dashboard_instance_for_repo_root,
   dashboard_instance_for_id,
+  dashboard_instance_for_instance_root,
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
   DashboardInstanceForHost,
   DashboardInstanceHostUnknown,
   DashboardInstanceForId,
   DashboardInstanceIdUnknown,
+  DashboardInstanceForInstanceRoot,
+  DashboardInstanceInstanceRootUnknown,
   isolated_dashboard_instance,
   DispatchStateScope,
   DispatchStateHostShared,
@@ -775,6 +780,7 @@ fn witness_production_slot(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: none,
   }
 }
@@ -989,6 +995,7 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
   dashboard_declared_instance_ids_are_unique()
     && dashboard_declared_instances_listen_endpoints_are_unique()
     && dashboard_declared_repo_roots_are_unique()
+    && dashboard_declared_instance_roots_are_unique()
     && dashboard_host_lookup_subjects_are_unique()
     && dashboard_declared_instances_owned_paths_are_pairwise_consistent()
     && roster_has_id(id: srv1_live_dashboard_instance().instance_id)
@@ -1009,6 +1016,13 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
       i => match dashboard_instance_for_id(instance_id: i.instance_id as String) {
         DashboardInstanceForId { instance } => instance.instance_id == i.instance_id
         DashboardInstanceIdUnknown { instance_id: _ } => false
+      },
+    )
+    && all(
+      public_builtin_dashboard_instances(),
+      i => match dashboard_instance_for_instance_root(instance_root: i.instance_root as String) {
+        DashboardInstanceForInstanceRoot { instance } => instance.instance_id == i.instance_id
+        DashboardInstanceInstanceRootUnknown { instance_root: _ } => false
       },
     )
     && match dashboard_instance_for_host(
@@ -1039,6 +1053,11 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
     && match dashboard_instance_for_id(instance_id: "not-an-instance") {
       DashboardInstanceIdUnknown { instance_id } => instance_id == "not-an-instance"
       DashboardInstanceForId { instance: _ } => false
+    }
+    && match dashboard_instance_for_instance_root(instance_root: "/not-a-declared-dashboard-instance") {
+      DashboardInstanceInstanceRootUnknown { instance_root } =>
+        instance_root == "/not-a-declared-dashboard-instance"
+      DashboardInstanceForInstanceRoot { instance: _ } => false
     }
     && match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
       DashboardInstanceRootUnknown { repo_root } => repo_root == "/typo/gunbc"
@@ -1131,6 +1150,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
     directory_owner: live.directory_owner,
+    worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,
   }
 }

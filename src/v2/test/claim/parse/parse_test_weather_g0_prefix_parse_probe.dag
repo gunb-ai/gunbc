@@ -167,11 +167,13 @@ data int_literal_resolve_probe: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-// Discriminates unbound_symbol misattribution: a parsed float is not a name.
-test fn float_literal_resolve_refuses_as_not_lowered_holds() -> Bool {
+// A parsed float is a value, not a name: resolve returns the atom whole, as it does an int. The
+// refusal moved to infer (v2.test.claim.compiler.float_literal_home_unruled): resolve cannot know
+// the literal's home, so refusing there was a stage deciding what a later stage owns.
+test fn float_literal_resolve_accepts_whole_holds() -> Bool {
   match resolve_node(ctx: float_literal_resolve_ctx(), n: float_literal_resolve_probe) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^float_literal_not_lowered
+    Accepted { value: n, diagnostics: _ } => n == float_literal_resolve_probe
+    Rejected { diagnostics: _ } => false
   }
 }
 

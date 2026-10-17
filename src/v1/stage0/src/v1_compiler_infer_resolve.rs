@@ -3,9 +3,8 @@
 
 use self::AliasKind::*;
 use self::KindInhabitance::*;
-pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_decl_ref::{
-    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter,
+    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter, DeclarationRef,
 };
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -14,8 +13,8 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 use crate::std_syntax::LiteralValue::*;
-pub use crate::std_types::container_param_name;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{container_param_name, SourceSpan};
+pub use crate::std_types::{is_container_type, is_kernel_type};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
@@ -23,10 +22,9 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
-};
-pub use crate::v1_compiler_infer_env::{
-    TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
+    lookup_unit_variant_phantom_type, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, UnitVariantContribution,
+    UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -57,21 +55,18 @@ pub use crate::v1_std_core::{
     field_from_key_property_name, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, find_property, foreach_variable_at, generic_param_name_at, intern,
-    is_compiler_error, is_container_type, is_kernel_type, is_local_transport,
-    join_optional_cardinality, kernel_span, let_binding_name_at, local_transport_node,
-    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
-    make_param_node, make_resolved_param_node, make_resource_use_node, make_text_part_node,
-    make_transport_node, map_children, no_span, node_name_span, param_node_default_value,
-    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, resolved_node_is_kernel_identity_for_name, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, type_param_kind_property_name,
-    unit_type, with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, MatchPattern, NewlineIndex, Node, ParsedModuleItemKind,
-    StringPart,
+    is_compiler_error, is_local_transport, join_optional_cardinality, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment,
+    resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
+    string_type, transport_request_body, type_param_kind_property_name, unit_type,
+    with_optional_cardinality, with_required_cardinality, Cardinality, CompilerDiagnostic,
+    Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, InferredNode, MatchPattern,
+    NewlineIndex, Node, ParsedModuleItemKind, StringPart,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -323,6 +318,58 @@ pub fn type_arg_name_is_bound_generic_parameter(name: String, env: Rc<TypeEnv>) 
             Some(inf) => is_type_variable(inf.clone()),
             std::option::Option::None => false,
         },
+    }
+}
+
+pub fn applied_arg_is_width_resolution_position(
+    applied: Rc<Node>,
+    arg: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if !is_user_generic_use_site(applied.clone(), env.clone()) {
+        false
+    } else {
+        {
+            let decl = resolve_generic_use_decl(env.clone(), applied.clone());
+            match crate::v1_compiler_infer_env::width_resolution_declaration(env.clone()) {
+                std::option::Option::None => false,
+                Some(width_decl) => {
+                    match v1_rt::map_get(
+                        &env.symbol_index.clone().file_modules.clone(),
+                        decl.span.clone().file.clone(),
+                    ) {
+                        std::option::Option::None => false,
+                        Some(declaring_module) => {
+                            let mut __found = false;
+                            for pair in Rc::new(
+                                decl.params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .enumerate()
+                                    .map(|(i, v)| (i as i64, v))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
+                                if match applied.children.clone().get((pair.0.clone()) as usize).cloned() {
+    std::option::Option::None => false,
+    Some(supplied) => ((((supplied.span.clone().file.clone() == arg.span.clone().file.clone()) && (supplied.span.clone().start.clone() == arg.span.clone().start.clone())) && (supplied.span.clone().end.clone() == arg.span.clone().end.clone())) && match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
+    std::option::Option::None => false,
+    Some(kind_node) => match crate::v1_compiler_infer_env::symbol_index_lookup(env.symbol_index.clone(), v1_rt::concat(v1_rt::concat(declaring_module.clone(), ".".to_string()), crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()))) {
+    Some(kind_decl) => ((kind_decl.span.clone().file.clone() == width_decl.span.clone().file.clone()) && (kind_decl.span.clone().start.clone() == width_decl.span.clone().start.clone())),
+    std::option::Option::None => false,
+},
+}),
+} { __found = true; break; }
+                            }
+                            __found
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

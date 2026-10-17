@@ -4,12 +4,11 @@
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceReferenceBindingOutcome::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_occurrence_binding::occurrence_binding_from_candidates;
 use crate::std_occurrence_binding::OccurrenceBindingResult::*;
 pub use crate::std_occurrence_binding::{
-    BindingCandidate, BindingOccurrence, ContainmentPath, OccurrenceBindingResult,
+    occurrence_binding_from_candidates, BindingCandidate, BindingOccurrence, ContainmentPath,
+    OccurrenceBindingResult,
 };
-pub use crate::std_occurrence_identity::occurrence_transport_validate;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
     MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
@@ -23,9 +22,10 @@ use crate::std_occurrence_identity::OccurrenceTransportValidation::{
     OccurrenceTransportRefused, OccurrenceTransportValidated,
 };
 pub use crate::std_occurrence_identity::{
-    DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
-    OccurrenceRole, OccurrenceTransport, OccurrenceTransportRefusal, OccurrenceTransportValidation,
-    ReferenceOccurrence, ValidatedOccurrenceTransport,
+    occurrence_transport_validate, DeclarationOccurrence, OccurrenceCategory,
+    OccurrenceContainmentPath, OccurrenceId, OccurrenceRole, OccurrenceTransport,
+    OccurrenceTransportRefusal, OccurrenceTransportValidation, ReferenceOccurrence,
+    ValidatedOccurrenceTransport,
 };
 pub use crate::std_optional::Optional;
 pub use crate::std_types::List;

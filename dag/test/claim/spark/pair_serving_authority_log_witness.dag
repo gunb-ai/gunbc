@@ -8,6 +8,7 @@ import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts, FabricGroup, FabricGroupB, parse_fabric_group }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import product.capacity.lease { LeaseGrant }
+import std.durable_compare_and_set { cas_generation, cas_generation_first }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable, HeadAbsent, HeadAt, HeadExpectation }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
@@ -49,7 +50,7 @@ fn alw_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 
 fn alw_w_lease(h: ContentHash, inaccessible: Bool) -> HeldLease {
   held_lease(
-    epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 3 },
+    epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: match cas_generation(n: 3) { Present { value: g } => g  Absent => cas_generation_first() } },
     observed: if inaccessible { LeaseInaccessible } else { LeaseRunningExpected },
   )
 }

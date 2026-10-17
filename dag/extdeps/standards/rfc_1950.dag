@@ -1,0 +1,51 @@
+module extdeps.standards.rfc_1950
+
+import std.types { Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.standards.rfc_1951 { rfc_1951_fixed_stream }
+
+// RFC 1950, ZLIB Compressed Data Format Specification version 3.3. Cited sections: §2.2 (stream =
+// CMF, FLG, compressed data, ADLER32; multi-octet numbers most significant octet first), §2.2 CMF
+// (CM = 8 is deflate; CINFO = 7 is a 32K window), FLG (FCHECK makes CMF*256 + FLG a multiple of 31;
+// FDICT clear; FLEVEL 0 is "compressor used fastest algorithm", which describes a run-only
+// fixed-Huffman stream honestly), §8.2 (Adler-32: two sums modulo 65521, s2 in the high half).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1950#section-2.2"
+  }
+}
+
+data rfc_1950_adler_base: Int = 65521
+
+// CMF 0x78 (CM 8, CINFO 7) and FLG 0x01: 0x7801 = 30721 = 31 x 991, FDICT 0, FLEVEL 0.
+data rfc_1950_header: List<Int> = [120, 1]
+
+type Rfc1950AdlerSums {
+  s1: Int
+  s2: Int
+}
+
+fn rfc_1950_adler_step(st: Rfc1950AdlerSums, o: Int) -> Rfc1950AdlerSums {
+  let s1 = (st.s1 + o) % rfc_1950_adler_base
+  Rfc1950AdlerSums { s1: s1, s2: (st.s2 + s1) % rfc_1950_adler_base }
+}
+
+fn rfc_1950_adler32(octets: List<Int>) -> Int {
+  let sums = fold(octets, init: Rfc1950AdlerSums { s1: 1, s2: 0 }, f: (st, o) => rfc_1950_adler_step(st: st, o: o))
+  sums.s2 * 65536 + sums.s1
+}
+
+fn rfc_1950_push_word32_be(out: List<Int>, v: Int) -> List<Int> {
+  out
+    |> list_push(v / 16777216)
+    |> list_push((v / 65536) % 256)
+    |> list_push((v / 256) % 256)
+    |> list_push(v % 256)
+}
+
+// The octets as a zlib stream whose compressed data is one DEFLATE fixed-Huffman run block.
+fn rfc_1950_fixed_stream(octets: List<Int>) -> List<Int> {
+  rfc_1950_push_word32_be(out: concat(rfc_1950_header, rfc_1951_fixed_stream(octets: octets)), v: rfc_1950_adler32(octets: octets))
+}

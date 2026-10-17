@@ -78,7 +78,7 @@ import extdeps.tools.e2fsprogs {
 import extdeps.systemd.journalctl
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
   systemd_run_option_words_refused_cause_detail,
 }
@@ -626,7 +626,7 @@ data workflow_effect_sequencing_frontier: DissolutionCondition = unbound_dissolu
 data attempt_invocation_env_key: String = "GUNBC_ATTEMPT_INVOCATION_ID"
 
 fn attempt_invocation_env_setting(invocation_id: NonEmptyStr) -> SystemdRunProperty {
-  SystemdRunProperty {
+  NamedUnitSetting {
     property: EnvironmentProperty,
     value: join([attempt_invocation_env_key, "=", invocation_id as String], "") as NonEmptyStr,
   }

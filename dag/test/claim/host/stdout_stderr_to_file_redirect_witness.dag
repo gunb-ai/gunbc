@@ -1,0 +1,113 @@
+module test.claim.host.stdout_stderr_to_file_redirect_witness
+
+import std.types { String, Bool }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import extdeps.tools.gnu_coreutils { true_command }
+import extdeps.posix.process {
+  PosixProcessStdio,
+  PosixProcessStdioUnchanged,
+  PosixProcessStdoutAndStderrToOneFile,
+  PosixProcessStdoutAndStderrToSeparateFiles,
+  PosixFileTruncate,
+}
+import extdeps.posix.shell_command_language {
+  admit_posix_redirect_pathname,
+  PosixRedirectPathAdmitted,
+  PosixRedirectPathRefused,
+  RedirectPathContainsNul,
+  RedirectPathEmpty,
+}
+import gunbc.remote_shell_command {
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  SimpleCommandArgvRefused,
+  RemoteExecInterpretationUnknown,
+  remote_exec_command_rendered,
+  remote_exec_command_string,
+  PosixShellInterpreted,
+}
+import gunbc.host.host_effect_argv_stdio { host_effect_argv_stdio_remote_command }
+
+fn today_no_redirect() -> String {
+  match remote_exec_command_string(argv: ["true"], interpretation: PosixShellInterpreted) {
+    RemoteExecCommandRefused { cause: _ } => "REFUSED"
+    RemoteExecCommandBuilt { command: c } => remote_exec_command_rendered(command: c) as String
+  }
+}
+
+fn one_file_truncate(path: String) -> Optional<PosixProcessStdio> {
+  match admit_posix_redirect_pathname(path: path) {
+    PosixRedirectPathRefused { cause: _ } => Absent
+    PosixRedirectPathAdmitted { path: p } =>
+      Present { value: PosixProcessStdoutAndStderrToOneFile { path: p, mode: PosixFileTruncate } }
+  }
+}
+
+fn rendered_one_file(path: String) -> String {
+  match one_file_truncate(path: path) {
+    Absent => "REFUSED"
+    Present { value: stdio } =>
+      match host_effect_argv_stdio_remote_command(command: true_command(), stdio: stdio) {
+        RemoteExecCommandRefused { cause: _ } => "REFUSED"
+        RemoteExecCommandBuilt { command: c } => remote_exec_command_rendered(command: c) as String
+      }
+  }
+}
+
+test fn stdout_and_stderr_to_serve_log_is_byte_exact() -> Bool {
+  rendered_one_file(path: "/root/serve/serve.log") == "'true' >|'/root/serve/serve.log' 2>&1"
+}
+
+test fn a_path_that_needs_quoting_renders_safely() -> Bool {
+  rendered_one_file(path: "/root/serve/it's a log.log") == "'true' >|'/root/serve/it'\\''s a log.log' 2>&1"
+}
+
+test fn embedded_nul_path_refuses_typed() -> Bool {
+  match admit_posix_redirect_pathname(path: concat("/root/serve/", concat("\u{0}", "x.log"))) {
+    PosixRedirectPathAdmitted { path: _ } => false
+    PosixRedirectPathRefused { cause: c } => match c {
+      RedirectPathContainsNul => true
+      RedirectPathEmpty => false
+    }
+  }
+}
+
+test fn embedded_newline_path_is_admitted_single_quoted() -> Bool {
+  rendered_one_file(path: "/root/serve/\nlog") == "'true' >|'/root/serve/\nlog' 2>&1"
+}
+
+test fn no_redirect_renders_byte_identical_to_today() -> Bool {
+  match host_effect_argv_stdio_remote_command(command: true_command(), stdio: PosixProcessStdioUnchanged) {
+    RemoteExecCommandRefused { cause: _ } => false
+    RemoteExecCommandBuilt { command: c } =>
+      remote_exec_command_rendered(command: c) as String == today_no_redirect()
+        && today_no_redirect() == "'true'"
+  }
+}
+
+test fn separate_files_are_two_opens_not_a_dup() -> Bool {
+  match admit_posix_redirect_pathname(path: "/root/serve/out.log") {
+    PosixRedirectPathRefused { cause: _ } => false
+    PosixRedirectPathAdmitted { path: out_p } =>
+      match admit_posix_redirect_pathname(path: "/root/serve/err.log") {
+        PosixRedirectPathRefused { cause: _ } => false
+        PosixRedirectPathAdmitted { path: err_p } =>
+          match host_effect_argv_stdio_remote_command(
+            command: true_command(),
+            stdio: PosixProcessStdoutAndStderrToSeparateFiles {
+              stdout_path: out_p,
+              stderr_path: err_p,
+              stdout_mode: PosixFileTruncate,
+              stderr_mode: PosixFileTruncate,
+            },
+          ) {
+            RemoteExecCommandRefused { cause: _ } => false
+            RemoteExecCommandBuilt { command: c } =>
+              let s = remote_exec_command_rendered(command: c) as String
+              s == "'true' >|'/root/serve/out.log' 2>|'/root/serve/err.log'"
+                && !string_contains(s: s, pattern: "2>&1")
+          }
+      }
+  }
+}

@@ -1,0 +1,31 @@
+module extdeps.vendor.alpha_and_omega_semiconductor
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-15 from the company's 5.0SMDJ60A datasheet (Rev.2.2 July 2021), whose notices print
+// the name in capitals as "ALPHA AND OMEGA SEMICONDUCTOR"; the corporate suffix is not printed there.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.aosmd.com/sites/default/files/res/datasheets/5.0SMDJ60A.pdf"
+  }
+}
+
+data alpha_and_omega_semiconductor: Vendor<Hardware> = Vendor { legal_name: "Alpha and Omega Semiconductor" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.alpha_and_omega_semiconductor",
+      decl_name: "alpha_and_omega_semiconductor",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

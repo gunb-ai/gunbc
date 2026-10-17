@@ -1,0 +1,102 @@
+module gunbc.design.brand_mark_assets_cli
+
+import std.types { Int, List, String }
+import std.optional { Absent, Present }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.bytes { octets_bytes }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.w3c.png {
+  PngDimensionOutOfRange, PngIdatUpperBoundExceedsLimit, PngPaletteSize, PngPaletteColorInadmissible, PngPaletteAlphaOutOfRange,
+  PngRowCount, PngRowWidth, PngIndexOutsidePalette,
+}
+import gunbc.design.brand_mark_raster { BrandRasterSizeOutOfRange, BrandRasterCanvasEmpty, BrandRasterMarkOutsideGround }
+import gunbc.design.brand_mark_assets {
+  BrandAssetRefusal, BrandAssetRasterRefused, BrandAssetPngRefused, BrandAssetEncoded, BrandAssetRefused,
+  brand_asset_targets, brand_asset_encode,
+}
+
+// WRITES EVERY gunbc.design.brand_mark_assets FILE UNDER ONE DIRECTORY, as emitted Rust:
+//   gunbc compile --entry dag/gunbc/design/brand_mark_assets_cli.dag --target rust, cargo build, then
+//   <binary> <out-dir>
+// The directory and its subdirectories (gunb.ai/, ios/, github-apps/) must exist. The first refusal
+// or failed write stops the run with exit 1 and names the file; the seed interpreter refuses the
+// byte write, so this program runs only emitted. Its executing control is
+// gunbc.instruments.brand_mark_assets_control.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// A run stops at the first file that is refused or fails to write, keeping that file's cause.
+type BrandAssetsStop
+  = BrandAssetsEncodingRefused { file: String, cause: BrandAssetRefusal }
+  | BrandAssetsWriteFailed { path: String, error: String }
+  | BrandAssetsUsage
+
+type BrandAssetsRun = BrandAssetsWrote { files: List<String> } | BrandAssetsStopped { stop: BrandAssetsStop }
+
+fn brand_assets_write(dir: String) -> BrandAssetsRun {
+  fold(brand_asset_targets(), init: BrandAssetsWrote { files: [] }, f: (run, target) => match run {
+    BrandAssetsStopped { stop: _ } => run
+    BrandAssetsWrote { files } => match brand_asset_encode(target: target) {
+      BrandAssetRefused { file, cause } => BrandAssetsStopped { stop: BrandAssetsEncodingRefused { file: file, cause: cause } }
+      BrandAssetEncoded { file, octets } => {
+        let path = join([dir, "/", file], "")
+        let wrote = Filesystem.WriteBytes(path: path, content: octets_bytes(o: octets))
+        if wrote.success { BrandAssetsWrote { files: concat(files, [path]) } } else { BrandAssetsStopped { stop: BrandAssetsWriteFailed { path: path, error: wrote.error } } }
+      }
+    }
+  })
+}
+
+fn brand_assets_n(v: Int) -> String {
+  to_string(v)
+}
+
+// The cause rendered only here, where the exit is built.
+fn brand_asset_refusal_text(cause: BrandAssetRefusal) -> String {
+  match cause {
+    BrandAssetRasterRefused { cause: r } => match r {
+      BrandRasterSizeOutOfRange { pixels } => join(["raster size ", brand_assets_n(v: pixels), " out of range"], "")
+      BrandRasterCanvasEmpty { canvas, extent } => join(["raster canvas ", brand_assets_n(v: canvas), " or extent ", brand_assets_n(v: extent), " empty"], "")
+      BrandRasterMarkOutsideGround { row, column } => join(["mark outside its ground at row ", brand_assets_n(v: row), " column ", brand_assets_n(v: column)], "")
+    }
+    BrandAssetPngRefused { cause: p } => match p {
+      PngDimensionOutOfRange { axis: _, observed } => join(["PNG dimension ", brand_assets_n(v: observed), " out of range"], "")
+      PngIdatUpperBoundExceedsLimit { upper_bound } => join(["PNG IDAT upper bound of ", brand_assets_n(v: upper_bound), " octets exceeds the chunk limit"], "")
+      PngPaletteSize { entries } => join(["PNG palette of ", brand_assets_n(v: entries), " entries"], "")
+      PngPaletteColorInadmissible { entry, color: _ } => join(["PNG palette entry ", brand_assets_n(v: entry), " colour inadmissible"], "")
+      PngPaletteAlphaOutOfRange { entry, alpha } => join(["PNG palette entry ", brand_assets_n(v: entry), " alpha ", brand_assets_n(v: alpha)], "")
+      PngRowCount { declared, actual } => join(["PNG rows ", brand_assets_n(v: actual), " for height ", brand_assets_n(v: declared)], "")
+      PngRowWidth { row, declared, actual } => join(["PNG row ", brand_assets_n(v: row), " width ", brand_assets_n(v: actual), " for ", brand_assets_n(v: declared)], "")
+      PngIndexOutsidePalette { row, column, index } => join(["PNG index ", brand_assets_n(v: index), " outside the palette at row ", brand_assets_n(v: row), " column ", brand_assets_n(v: column)], "")
+    }
+  }
+}
+
+fn brand_assets_stop_text(stop: BrandAssetsStop) -> String {
+  match stop {
+    BrandAssetsEncodingRefused { file, cause } => join([file, ": ", brand_asset_refusal_text(cause: cause)], "")
+    BrandAssetsWriteFailed { path, error } => join([path, ": ", error], "")
+    BrandAssetsUsage => "usage: brand_mark_assets <out-dir>"
+  }
+}
+
+fn v2_cli_main(argv: List<String>) -> BrandAssetsRun {
+  match get(argv, 0) {
+    Present { value } => brand_assets_write(dir: value)
+    Absent => BrandAssetsStopped { stop: BrandAssetsUsage }
+  }
+}
+
+fn v2_cli_outcome_text(outcome: BrandAssetsRun) -> String {
+  match outcome {
+    BrandAssetsWrote { files } => join(map(files, f => concat("wrote ", f)), "\n")
+    BrandAssetsStopped { stop: _ } => ""
+  }
+}
+
+fn v2_cli_exit(outcome: BrandAssetsRun) -> ProcessExit {
+  match outcome {
+    BrandAssetsWrote { files: _ } => ExitSuccess
+    BrandAssetsStopped { stop } => exit_failure(reason: brand_assets_stop_text(stop: stop))
+  }
+}
