@@ -299,7 +299,11 @@ fn service_slot_population_over(host: HostControlStanding, width: RunnerWidthRes
 }
 
 fn service_slot_indices(from: Int, count: Int) -> List<Int> {
-  if from >= count { [] } else { concat([from], service_slot_indices(from: from + 1, count: count)) }
+  service_slot_indices_down(next: count - 1, floor: from, acc: [])
+}
+
+fn service_slot_indices_down(next: Int, floor: Int, acc: List<Int>) -> List<Int> {
+  if next < floor { acc } else { service_slot_indices_down(next: next - 1, floor: floor, acc: concat([next], acc)) }
 }
 
 // ── the provider guest's slot ───────────────────────────────────────────────────────────────────

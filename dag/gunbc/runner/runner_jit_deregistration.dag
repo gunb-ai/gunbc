@@ -95,7 +95,7 @@ type ListedRegistrationRefusal
 // unchanged and carries no origin; the origin travels beside it.
 type ListedRegistrationOrigin
   = AdmittedBootRegistration { boot: ServiceBootId }
-  | RecoveredReservedServiceRegistration { reason: NonEmptyStr }
+  | RecoveredReservedServiceRegistration
 
 type ListedRegistrationStanding
   = ListedRegistrationAdmitted { registration: JitRegistration, origin: ListedRegistrationOrigin }
@@ -109,7 +109,7 @@ fn jit_registration_of_listed(
   authority: GitHubCredentialAuthority,
   registration_labels: RunnerRegistrationLabelsResolution,
 ) -> ListedRegistrationStanding admit_callers: [
-  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "sweep_over"),
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "sweep_class"),
   decl_ref(module_path: "test.claim.runner.runner_jit_listed_registration_witness", decl_name: "reg_with"),
 ] {
   match host {
@@ -138,7 +138,7 @@ fn jit_registration_of_listed(
                     origin: if (parsed.boot_id as String) == (admitted.boot_id as String) {
                       AdmittedBootRegistration { boot: admitted }
                     } else {
-                      RecoveredReservedServiceRegistration { reason: "canonical name in the fleet-reserved gunbc-service namespace with no admitted boot on record: fleet-owned, so deletable" as NonEmptyStr }
+                      RecoveredReservedServiceRegistration
                     },
                   }
               }
@@ -244,24 +244,37 @@ fn sweep_over(
   registration_labels: RunnerRegistrationLabelsResolution,
   runners: List<OrganizationRunnerWire>,
 ) -> LostBootSweep {
-  fold(runners, init: LostBootSweepSelected { registrations: [], untouched: [] }, f: (acc, r) =>
-    match acc {
-      LostBootSweepRefused { refusal: _ } => acc
-      LostBootSweepSelected { registrations: selected, untouched: untouched } =>
-        match jit_registration_of_listed(organization: organization, host: host, admitted: current, listed: r.name, authority: authority, registration_labels: registration_labels) {
-          ListedRegistrationAdmitted { registration: reg, origin: AdmittedBootRegistration { boot: _ } } =>
-            LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
-          ListedRegistrationAdmitted { registration: reg, origin: RecoveredReservedServiceRegistration { reason: _ } } =>
-            LostBootSweepSelected { registrations: concat(selected, [reg]), untouched: untouched }
-          ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: _ } } =>
-            LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
-          ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: _, rebuilt: _ } } =>
-            LostBootSweepSelected { registrations: selected, untouched: concat(untouched, [r.name]) }
-          ListedRegistrationRefused { refusal: other } =>
-            LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: r.name, refusal: other } }
-        }
-    }
-  )
+  let classes = map(runners, r => sweep_class(organization: organization, host: host, current: current, authority: authority, registration_labels: registration_labels, listed: r.name))
+  match filter(classes, c => match c { SweepClassRefused { listed: _, refusal: _ } => true _ => false }).first() {
+    Present { value: SweepClassRefused { listed: l, refusal: f } } => LostBootSweepRefused { refusal: SweepRegistrationRefused { listed: l, refusal: f } }
+    _ =>
+      LostBootSweepSelected {
+        registrations: reverse(fold(classes, init: [], f: (acc, c) => match c { SweepClassSelected { registration: g } => concat([g], acc) _ => acc })),
+        untouched: reverse(fold(classes, init: [], f: (acc, c) => match c { SweepClassUntouched { listed: l } => concat([l], acc) _ => acc })),
+      }
+  }
+}
+
+type SweepClass
+  = SweepClassSelected { registration: JitRegistration }
+  | SweepClassUntouched { listed: String }
+  | SweepClassRefused { listed: String, refusal: ListedRegistrationRefusal }
+
+fn sweep_class(
+  organization: GitHubOrganizationRef,
+  host: HostControlStanding,
+  current: ServiceBootId,
+  authority: GitHubCredentialAuthority,
+  registration_labels: RunnerRegistrationLabelsResolution,
+  listed: String,
+) -> SweepClass {
+  match jit_registration_of_listed(organization: organization, host: host, admitted: current, listed: listed, authority: authority, registration_labels: registration_labels) {
+    ListedRegistrationAdmitted { registration: _, origin: AdmittedBootRegistration { boot: _ } } => SweepClassUntouched { listed: listed }
+    ListedRegistrationAdmitted { registration: reg, origin: RecoveredReservedServiceRegistration } => SweepClassSelected { registration: reg }
+    ListedRegistrationRefused { refusal: ListedNameOutsideServiceGrammar { listed: _ } } => SweepClassUntouched { listed: listed }
+    ListedRegistrationRefused { refusal: ListedNameDoesNotRoundTrip { listed: _, rebuilt: _ } } => SweepClassUntouched { listed: listed }
+    ListedRegistrationRefused { refusal: other } => SweepClassRefused { listed: listed, refusal: other }
+  }
 }
 
 fn plan_jit_deregistration(listing: JitRunnerListing) -> UpsertDecision<List<Int>> {

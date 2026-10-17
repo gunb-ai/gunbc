@@ -214,7 +214,7 @@ test fn a_listed_name_is_admitted_only_by_exact_round_trip() -> Bool {
     Present { value: m } => {
       let good = unit(m: m, id: "boot-7f-a", index: 12)
       (match reg(m: m, listed: good) {
-        ListedRegistrationAdmitted { registration: r, origin: RecoveredReservedServiceRegistration { reason: _ } } => r.installation == installation
+        ListedRegistrationAdmitted { registration: r, origin: RecoveredReservedServiceRegistration } => r.installation == installation
         _ => false
       })
         && is_no_round_trip(m: m, listed: concat(prefix(m: m), "boot-7f-a-012.service"))
@@ -292,7 +292,7 @@ test fn a_never_observed_canonical_name_is_admitted_only_as_a_reserved_namespace
       let never = unit(m: m, id: "never-observed", index: 0)
       let own = unit(m: m, id: "adm-0", index: 0)
       (match reg(m: m, listed: never) {
-        ListedRegistrationAdmitted { registration: _, origin: RecoveredReservedServiceRegistration { reason: why } } => string_contains((why as String), "no admitted boot on record")
+        ListedRegistrationAdmitted { registration: _, origin: RecoveredReservedServiceRegistration } => true
         _ => false
       }) && (match reg(m: m, listed: own) {
         ListedRegistrationAdmitted { registration: _, origin: AdmittedBootRegistration { boot: _ } } => true
