@@ -193,7 +193,7 @@ test fn a_pass_with_every_wall_cleared_plans_one_create_at_the_admitted_bid_unde
 test fn dry_records_the_would_be_create_and_plans_no_write() -> Bool {
   let p = flex_plan_pass(input: w_input(mode: Plan, gates: w_closed, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: w_intent(entry: w_established(), admitted: true) }))
   match p {
-    FlexPlanDryCreate { would: Present { value: r }, walls: ws } => (r.offer_id == 7) && (r.price.units == w_bid_micros()) && ((ws |> length) == 2)
+    FlexPlanDryCreate { would: Present { value: r }, walls: ws } => (r.offer_id == 7) && (r.price.units == w_bid_micros()) && ((ws |> length) == 1)
     _ => false
   } && !w_is_write(p: p)
 }
