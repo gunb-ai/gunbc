@@ -58,4 +58,5 @@ test fn witness_review_site_shape() -> Bool {
     && string_contains(s: html, pattern: "editorial")
     && string_contains(s: html, pattern: "compact")
     && token_options.length() == 2
+    && string_contains(s: html, pattern: "meta name=\"viewport\" content=\"width=device-width")
 }
