@@ -69,7 +69,6 @@ import extdeps.ebay.marketplace_account_deletion { ebay_account_deletion_frontie
 import gunbc.serving.rented_release { rented_release_frontier_rows }
 import gunbc.serving.rented_ninfer_source { rented_ninfer_source_consumer_frontier_rows }
 import extdeps.posix.process { posix_process_stdio_frontier_rows }
-import gunbc.host.host_effect_argv_stdio { s3c_launch_stdio_file_wiring_frontier_rows }
 import gunbc.serving.serving_artifact_placement { serving_startup_placement_frontier_rows }
 import gunbc.serving.serving_launch { serving_serve_launch_frontier_rows }
 import gunbc.serving.rented_allocation_host_enrollment { rented_allocation_host_enrollment_frontier_rows }
@@ -166,7 +165,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     rented_ninfer_source_consumer_frontier_rows,
     rented_release_frontier_rows,
     posix_process_stdio_frontier_rows,
-    s3c_launch_stdio_file_wiring_frontier_rows,
     serving_startup_placement_frontier_rows,
     serving_serve_launch_frontier_rows,
     rented_allocation_host_enrollment_frontier_rows,

@@ -1,6 +1,7 @@
 module test.claim.serving.rented_allocation_enrollment_seat_witness
 
 import std.types { String, Bool, NonEmptyStr, List }
+import gunbc.serving.serving_artifact_placement { ServingStoreRoots }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_standup { HostStandupStep, HostStandupAssimilationPhase, Assimilation, InferenceServingProvision, ComputeFabricEnroll, RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness }
 import gunbc.host.host_assimilation_program { assimilation_program_for }
@@ -151,7 +152,7 @@ fn s_word_leaks(words: List<String>) -> Bool {
 // THE KEY CANNOT REACH ARGV BY CONSTRUCTION (no key field on the launch or the bound arm); the fixture value is
 // asserted absent from every argv word and the leg text, and the detector is shown to see it when present.
 test fn a_bound_key_refuses_on_missing_delivery_and_the_key_text_is_nowhere() -> Bool {
-  let leg = serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
+  let leg = serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: s_key_binding())
   (match leg { ServingLaunchRefusedKeyNotDelivered { key_grant: _, detach: _ } => true  _ => false })
     && !string_contains(s: serving_launch_leg_text(leg: leg), pattern: s_secret())
     && !s_word_leaks(words: s_argv())
@@ -162,8 +163,16 @@ test fn the_leak_detector_sees_the_value_as_a_positional_key_or_env_word() -> Bo
 }
 
 test fn an_unbound_key_still_refuses() -> Bool {
-  match serving_launch_leg(launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
+  match serving_launch_leg(roots: s_roots(), launch: operator_pod_ninfer_launch, launch_argv: s_argv(), reading: ServingServeNotListening, key: ServingServeKeyUnbound { grant_name: "serve-api-key" as NonEmptyStr }) {
     ServingLaunchRefusedUnmetCauses { key_grant: _, detach: _ } => true
     _ => false
+  }
+}
+
+fn s_roots() -> ServingStoreRoots {
+  ServingStoreRoots {
+    root: "/root/serve/store" as NonEmptyStr,
+    model_link: "/root/serve/model/model.ninfer" as NonEmptyStr,
+    serve_log: "/root/serve/serve.log" as NonEmptyStr,
   }
 }
