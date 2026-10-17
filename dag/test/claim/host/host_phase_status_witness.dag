@@ -9,6 +9,8 @@ import gunbc.host.host_assimilation_program {
   assimilation_program_for,
   fleet_participation_canonical_roster,
   fleet_participation_in_canonical_roster,
+  phases_awaiting_a_real_enrollment,
+  step_phase_awaits_a_real_enrollment,
   program_step_count,
   step_in_program,
   step_serves_participation,
@@ -51,6 +53,8 @@ import gunbc.host.host_standup {
   DeclaredGap,
   ModeledCompose,
   PhaseDisposition,
+  InferenceServingProvision,
+  HostStandupAssimilationPhase,
   host_standup_gap_phase_count,
   host_standup_spine,
 }
@@ -354,8 +358,19 @@ fn step_is_guest_adoption(s: HostStandupStep) -> Bool {
   }
 }
 
+fn step_is_inference_serving_provision(s: HostStandupStep) -> Bool {
+  match s.phase {
+    Prefix { phase: _ } => false
+    Assimilation { phase: InferenceServingProvision } => true
+    Assimilation { phase: _ } => false
+  }
+}
+
+// InferenceServingProvision is owed by inference-serving participation alone, so a CI-runner program is
+// the spine minus guest adoption AND minus that phase. The exclusion is stated here by phase, not
+// derived from step_in_program, so a CI program that wrongly gained the phase makes the claims below red.
 fn owned_bmc_full_program_length() -> Int {
-  filter(host_standup_spine, s => !step_is_guest_adoption(s: s)).length()
+  filter(host_standup_spine, s => !step_is_guest_adoption(s: s) && !step_is_inference_serving_provision(s: s)).length()
 }
 
 // The whole provisioning-plus-roles program is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
@@ -464,12 +479,39 @@ test fn witness_inference_enrollment_carries_no_runner_or_bmc_obligation() -> Bo
 test fn witness_inference_enrollment_keeps_the_shared_obligations() -> Bool {
   let cells = host_phase_cells_for_enrollment(intent: synthetic_inference_enrollment)
   let shared = filter(cells, c => cell_label_is_shared(c: c))
-  shared.length() == 4 && cells.length() == 4
+  let provision = filter(cells, c => c.cell.phase_label == "P4b:inference-serving-provision")
+  shared.length() == 4 && provision.length() == 1 && cells.length() == 5
+}
+
+test fn witness_inference_serving_participation_selects_the_provision_phase() -> Bool {
+  let spine_row = filter(host_standup_spine, s => step_is_inference_serving_provision(s: s))
+  spine_row.length() == 1
+    && any(spine_row, s => step_serves_participation(step: s, wanted: InferenceServingParticipation))
+    && any(assimilation_program_for(intent: synthetic_inference_enrollment).steps, s => step_is_inference_serving_provision(s: s))
+}
+
+test fn witness_ci_only_and_guest_ci_programs_do_not_select_the_provision_phase() -> Bool {
+  !any(assimilation_program_for(intent: synthetic_ci_enrollment).steps, s => step_is_inference_serving_provision(s: s))
+    && !any(filter(host_standup_spine, s => step_is_inference_serving_provision(s: s)), s => step_serves_participation(step: s, wanted: CiRunnerParticipation))
+}
+
+// A step is unclaimed unless some real enrollment's program holds it AND an unclaimed step is admitted
+// only when its phase is named by phases_awaiting_a_real_enrollment (the declared frontier row).
+fn spine_steps_all_claimed(spine: List<HostStandupStep>, enrollments: List<HostEnrollmentIntent>, awaiting: List<HostStandupAssimilationPhase>) -> Bool {
+  let unclaimed = filter(spine, s => !any(enrollments, e => step_in_program(step: s, intent: e)))
+  filter(unclaimed, s => !step_phase_awaits_a_real_enrollment(step: s, awaiting: awaiting)).length() == 0
 }
 
 test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
-  let unclaimed = filter(host_standup_spine, s => !any(fleet_enrollments, e => step_in_program(step: s, intent: e)))
-  unclaimed.length() == 0
+  spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+}
+
+// The admission is keyed on the declared phase: the real spine has an unclaimed step ONLY for the
+// frontier-named phase, and the same spine with the frontier emptied is red.
+test fn witness_unclaimed_step_is_admitted_only_by_a_declared_frontier_phase() -> Bool {
+  !spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: [])
+    && spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+    && !spine_steps_all_claimed(spine: host_standup_spine, enrollments: [], awaiting: phases_awaiting_a_real_enrollment)
 }
 
 // A RENTED GUEST OWES ITS ADOPTION AND ITS ROLES, AND NO BMC OR INSTALL STEP. The CAX guest's program
