@@ -10,6 +10,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 // types live.
 import gunbc.firmware_network_boot_standing {
   FirmwareBootObservation, FirmwareReadRefusal, BootEntry, firmware_boot_observation,
+  BootOrderObservation, BootOptionsObservation, NicsObservation, SecureBootObservation, BiosVersionObservation,
   BootOrderObserved, BootOrderUnobserved, BootOrderRefused,
   BootOptionsObserved, BootOptionsUnobserved, BootOptionsRefused,
   NicsObserved, NicsUnobserved, NicsRefused,
@@ -174,10 +175,14 @@ fn coverage_axis(coverage: AxisCoverage) -> ObservationAxis {
 }
 
 // ONE RESOLUTION FOR ALL FIVE AXES, so the degrade rule exists once.
+// THE DEGRADE RULE LIVES IN resolve_axis ONLY: unanswerable by the row, nothing returned, and a
+// BMC refusal each become one of two axis-agnostic outcomes. The five S0 observation unions are
+// distinct types that this module cannot make generic, so each read_* below only wraps the two
+// shared outcomes in its own constructors and decodes its own payload; it restates no rule.
 type AxisResolution
-  = AxisUnanswerable { reason: NonEmptyStr }
-  | AxisReplied { reply: AxisReply }
-  | AxisNoReply
+  = AxisNotObserved { reason: NonEmptyStr }
+  | AxisRefused { refusal: FirmwareReadRefusal }
+  | AxisPayload { reply: AxisReply }
 
 fn row_coverage_of(row: FirmwareBootFamilyRow, axis: ObservationAxis) -> AxisCoverage? {
   fold(
@@ -205,11 +210,12 @@ fn reply_for_axis(replies: List<AxisReply>, axis: ObservationAxis) -> AxisReply?
 
 fn resolve_axis(row: FirmwareBootFamilyRow, replies: List<AxisReply>, axis: ObservationAxis) -> AxisResolution {
   match route_for(row: row, request: ReadAxisRequest { axis: axis }) {
-    RequestRefused { why: w } => AxisUnanswerable { reason: w }
+    RequestRefused { why: w } => AxisNotObserved { reason: w }
     Routed { route: _ } =>
       match reply_for_axis(replies: replies, axis: axis) {
-        Absent => AxisNoReply
-        Present { value: r } => AxisReplied { reply: r }
+        Absent => AxisNotObserved { reason: no_reply_reason() }
+        Present { value: ReplyRefusedByBmc { axis: _, refusal: f } } => AxisRefused { refusal: f }
+        Present { value: r } => AxisPayload { reply: r }
       }
   }
 }
@@ -224,52 +230,47 @@ fn mismatched_reply_reason() -> NonEmptyStr {
 
 fn read_boot_order(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BootOrderObservation {
   match resolve_axis(row: row, replies: replies, axis: BootOrderAxis) {
-    AxisUnanswerable { reason: r } => BootOrderUnobserved { reason: r }
-    AxisNoReply => BootOrderUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplyBootOrder { devices: d } } => BootOrderObserved { devices: d }
-    AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => BootOrderRefused { refusal: f }
-    AxisReplied { reply: _ } => BootOrderUnobserved { reason: mismatched_reply_reason() }
+    AxisNotObserved { reason: r } => BootOrderUnobserved { reason: r }
+    AxisRefused { refusal: f } => BootOrderRefused { refusal: f }
+    AxisPayload { reply: ReplyBootOrder { devices: d } } => BootOrderObserved { devices: d }
+    AxisPayload { reply: _ } => BootOrderUnobserved { reason: mismatched_reply_reason() }
   }
 }
 
 fn read_boot_options(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BootOptionsObservation {
   match resolve_axis(row: row, replies: replies, axis: BootOptionsAxis) {
-    AxisUnanswerable { reason: r } => BootOptionsUnobserved { reason: r }
-    AxisNoReply => BootOptionsUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplyBootOptions { options: o } } => BootOptionsObserved { options: o }
-    AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => BootOptionsRefused { refusal: f }
-    AxisReplied { reply: _ } => BootOptionsUnobserved { reason: mismatched_reply_reason() }
+    AxisNotObserved { reason: r } => BootOptionsUnobserved { reason: r }
+    AxisRefused { refusal: f } => BootOptionsRefused { refusal: f }
+    AxisPayload { reply: ReplyBootOptions { options: o } } => BootOptionsObserved { options: o }
+    AxisPayload { reply: _ } => BootOptionsUnobserved { reason: mismatched_reply_reason() }
   }
 }
 
 fn read_nics(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> NicsObservation {
   match resolve_axis(row: row, replies: replies, axis: NicsAxis) {
-    AxisUnanswerable { reason: r } => NicsUnobserved { reason: r }
-    AxisNoReply => NicsUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplyNics { nics: n } } => NicsObserved { nics: n }
-    AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => NicsRefused { refusal: f }
-    AxisReplied { reply: _ } => NicsUnobserved { reason: mismatched_reply_reason() }
+    AxisNotObserved { reason: r } => NicsUnobserved { reason: r }
+    AxisRefused { refusal: f } => NicsRefused { refusal: f }
+    AxisPayload { reply: ReplyNics { nics: n } } => NicsObserved { nics: n }
+    AxisPayload { reply: _ } => NicsUnobserved { reason: mismatched_reply_reason() }
   }
 }
 
 fn read_secure_boot(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> SecureBootObservation {
   match resolve_axis(row: row, replies: replies, axis: SecureBootAxis) {
-    AxisUnanswerable { reason: r } => SecureBootUnobserved { reason: r }
-    AxisNoReply => SecureBootUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplySecureBootEnabled } => SecureBootEnabled
-    AxisReplied { reply: ReplySecureBootDisabled } => SecureBootDisabled
-    AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => SecureBootRefused { refusal: f }
-    AxisReplied { reply: _ } => SecureBootUnobserved { reason: mismatched_reply_reason() }
+    AxisNotObserved { reason: r } => SecureBootUnobserved { reason: r }
+    AxisRefused { refusal: f } => SecureBootRefused { refusal: f }
+    AxisPayload { reply: ReplySecureBootEnabled } => SecureBootEnabled
+    AxisPayload { reply: ReplySecureBootDisabled } => SecureBootDisabled
+    AxisPayload { reply: _ } => SecureBootUnobserved { reason: mismatched_reply_reason() }
   }
 }
 
 fn read_bios_version(row: FirmwareBootFamilyRow, replies: List<AxisReply>) -> BiosVersionObservation {
   match resolve_axis(row: row, replies: replies, axis: BiosVersionAxis) {
-    AxisUnanswerable { reason: r } => BiosVersionUnobserved { reason: r }
-    AxisNoReply => BiosVersionUnobserved { reason: no_reply_reason() }
-    AxisReplied { reply: ReplyBiosVersion { version: v } } => BiosVersionObserved { version: v }
-    AxisReplied { reply: ReplyRefusedByBmc { axis: _, refusal: f } } => BiosVersionRefused { refusal: f }
-    AxisReplied { reply: _ } => BiosVersionUnobserved { reason: mismatched_reply_reason() }
+    AxisNotObserved { reason: r } => BiosVersionUnobserved { reason: r }
+    AxisRefused { refusal: f } => BiosVersionRefused { refusal: f }
+    AxisPayload { reply: ReplyBiosVersion { version: v } } => BiosVersionObserved { version: v }
+    AxisPayload { reply: _ } => BiosVersionUnobserved { reason: mismatched_reply_reason() }
   }
 }
 
