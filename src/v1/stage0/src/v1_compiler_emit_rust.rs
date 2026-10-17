@@ -738,6 +738,16 @@ pub fn declaration_is_grounded_coproduct_native_alias(
     }
 }
 
+pub fn name_realizes_as_native_alias(
+    import_module: String,
+    decls: Rc<TypeDeclIndex>,
+    name: String,
+) -> bool {
+    ((declaration_is_grounded_coproduct_native_alias(import_module.clone(), name.clone())
+        || every_declarer_is_grounded_coproduct_native_alias(decls.clone(), name.clone()))
+        || rust_declaration_realizes_as_native_alias(import_module.clone(), name.clone()))
+}
+
 pub fn every_declarer_is_grounded_coproduct_native_alias(
     decls: Rc<TypeDeclIndex>,
     name: String,
@@ -14758,7 +14768,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.iter().cloned() {
-                        __result.extend((*if ((declaration_is_grounded_coproduct_native_alias(import_module.clone(), parent.clone()) || every_declarer_is_grounded_coproduct_native_alias(emit_info.type_decl_items.clone(), parent.clone())) || rust_declaration_realizes_as_native_alias(import_module.clone(), parent.clone())) {
+                        __result.extend((*if name_realizes_as_native_alias(import_module.clone(), emit_info.type_decl_items.clone(), parent.clone()) {
                     Rc::new(vec![])
                 } else {
                     {
@@ -14821,7 +14831,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                     for en in Rc::new({
                         let mut __result = Vec::new();
                         for en in final_imported_enums.iter().cloned() {
-                            if (((({
+                            if ((({
                                 let mut __found = false;
                                 for p in parent_list.iter().cloned() {
                                     if (p.clone() == en.clone()) {
@@ -14831,12 +14841,19 @@ Rc::new(vec![Rc::new(RustUseLine {
                                 }
                                 __found
                             } == false)
-                                && !declaration_is_grounded_coproduct_native_alias(
-                                    import_module.clone(),
-                                    en.clone(),
-                                ))
-                                && !rust_declaration_realizes_as_native_alias(
-                                    import_module.clone(),
+                                && !name_realizes_as_native_alias(
+                                    match reexport_source_module_name(
+                                        en.clone(),
+                                        import_module.clone(),
+                                        typed_modules.clone(),
+                                        export_sets.clone(),
+                                        source_indices.clone(),
+                                        module_index.clone(),
+                                    ) {
+                                        Some(src) => src.clone(),
+                                        None => import_module.clone(),
+                                    },
+                                    emit_info.type_decl_items.clone(),
                                     en.clone(),
                                 ))
                                 && (rust_kernel_grounded_type_decl(
@@ -14852,12 +14869,24 @@ Rc::new(vec![Rc::new(RustUseLine {
                     .iter()
                     .cloned()
                     {
+                        let declaring_mod = graph_type_import_module_filename(
+                            en.clone(),
+                            import_module.clone(),
+                            mod_name.clone(),
+                            typed_modules.clone(),
+                            export_sets.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        );
                         __result.push(Rc::new(RustUseLine {
-                            target_module: mod_name.clone(),
+                            target_module: declaring_mod.clone(),
                             text: v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("use crate::".to_string(), mod_name.clone()),
+                                        v1_rt::concat(
+                                            "use crate::".to_string(),
+                                            declaring_mod.clone(),
+                                        ),
                                         "::".to_string(),
                                     ),
                                     en.clone(),

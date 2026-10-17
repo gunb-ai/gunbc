@@ -1,5 +1,6 @@
 module test.claim.fabric.flex_vast_shadow_witness
 
+import std.apply_mode { Plan, Apply }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool, Int, String }
 import std.nat { Nat }
@@ -35,7 +36,7 @@ import product.fabric.flex_policy {
   FlexPolicy, FlexFleetOccupancy, FlexAcquisitionWindow, FlexMachineKey, FlexBidAttempt,
   FlexScreenedCandidate, FlexBidAdmitted, FlexBidUnchanged, FlexBidRefused,
   FlexNewAcquisition, FlexOnDemandReferenceFresh, FlexOnDemandReferenceStale,
-  FlexOnDemandReferenceMissing, FlexActuationDry, FlexActuationWet,
+  FlexOnDemandReferenceMissing,
   FlexCandidateConsequencesUnestablished,
   flex_machine_key_eq,
 }
@@ -362,8 +363,8 @@ test fn the_cap_authority_discriminates_the_old_ruling() -> Bool {
 
 fn flex_actuation_mode_default_is_dry() -> Bool {
   match flex_trial_policy.actuation {
-    FlexActuationDry => true
-    FlexActuationWet => false
+    Plan => true
+    Apply => false
   }
     && write_gate_conjunction()
     && frontiers_are_unbound()
@@ -375,7 +376,7 @@ fn live_policy() -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationWet,
+    actuation: Apply,
   }
 }
 
@@ -421,7 +422,7 @@ fn eur_live_policy() -> FlexPolicy {
     on_demand_fraction: NonzeroNatFraction { num: 1, denom_predecessor: 0 },
     acquisition_horizon: second(count: 3600),
     owner: flex_owner_label_gunbc_flex,
-    actuation: FlexActuationWet,
+    actuation: Apply,
   }
 }
 
@@ -714,8 +715,8 @@ test fn shadow_bid_records_m0_admission_and_stays_dry() -> Bool {
     && (receipt.offer_key == flex_vast_offer_key(offer: offer))
     && flex_machine_key_eq(left: receipt.machine, right: flex_machine_key_for_offer(account: "vast-account-1", offer: offer))
     && match receipt.actuation {
-      FlexActuationDry => true
-      FlexActuationWet => false
+      Plan => true
+      Apply => false
     }
     && match receipt.candidates {
       VastCandidateConsequencesUnestablished { offer_key: k, missing: ms } =>
