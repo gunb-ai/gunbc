@@ -8,7 +8,7 @@ import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunProperty, NamedUnitSetting, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_system_scope_command,
   systemd_run_option_words_refused_cause_detail,
 }
@@ -111,8 +111,8 @@ fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTargetResolution {
 // joining would split one budget between the running broker and this run and put the broker at risk.
 fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
   [
-    SystemdRunProperty { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
-    SystemdRunProperty { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryMax, value: to_string(byte_size_count(b: approval_broker_slice_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryHigh, value: to_string(byte_size_count(b: approval_broker_slice_memory_high)) as NonEmptyStr },
   ]
 }
 

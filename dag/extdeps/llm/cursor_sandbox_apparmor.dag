@@ -1,0 +1,72 @@
+module extdeps.llm.cursor_sandbox_apparmor
+
+import std.types { String, NonEmptyStr, List }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "downloads.cursor.com/lab/enterprise/cursor-sandbox-apparmor_0.6.2_all.deb"
+  }
+}
+
+// CURSOR'S VENDOR APPARMOR PACKAGE `cursor-sandbox-apparmor`, version 0.6.2, AS UPSTREAM SHIPS IT.
+// This module owns the artifact identity and the rule set the vendor declares its sandbox helper
+// needs. It owns NOTHING about which host loads it, where the helper lives or whether Ubuntu needs it:
+// those are the deployment's facts (gunbc.host.cursor_agent_realization).
+//
+// Read from the package itself (dpkg-deb -x on the pinned digest), not from the install notes. Two
+// profiles ship in /etc/apparmor.d/cursor-sandbox-remote: cursor_sandbox_remote (the IDE server
+// helper) and cursor_sandbox_agent_cli, attached to /home/*/.local/share/cursor-agent/versions/*/
+// cursorsandbox. Only the agent_cli rule set is modeled; the attachment glob is deliberately NOT, it
+// is the deployment's to name. Against 0.6.0 the delta is `flags=(attach_disconnected)` and
+// `network inet dgram` / `network inet6 dgram`. The vendor's postinst (apt source, signing key) and
+// its sysctl drop-in are not modeled and are not used.
+
+data cursor_sandbox_apparmor_package_version: NonEmptyStr = "0.6.2" as NonEmptyStr
+
+data cursor_sandbox_apparmor_package_uri: Uri = Uri {
+  scheme: Https
+  locator: "downloads.cursor.com/lab/enterprise/cursor-sandbox-apparmor_0.6.2_all.deb"
+}
+
+data cursor_sandbox_apparmor_package_sha256: Sha256Digest = Sha256Digest {
+  hex: "ecf9e37182280cb2fa524be6ee337bbcfc2a54a3dd2bbcfea697c2497a1b2e7b" as Sha256DigestHex
+}
+
+data cursor_sandbox_agent_cli_profile_flags: NonEmptyStr = "attach_disconnected" as NonEmptyStr
+
+// The vendor ships `userns,` commented out under "Uncomment this on AppArmor 4.0". That is a fact
+// about the rule's applicability, so it is a typed arm and not a comment: a deployment on AppArmor 4
+// must decide to include it, and cannot do so by forgetting to uncomment anything.
+type CursorSandboxProfileRule
+  = CursorSandboxPlainRule { text: String }
+  | CursorSandboxUsernsRuleAppArmor4 
+
+data cursor_sandbox_agent_cli_rules: List<CursorSandboxProfileRule> = [
+  CursorSandboxPlainRule { text: "file," },
+  CursorSandboxPlainRule { text: "/** ix," },
+  CursorSandboxPlainRule { text: "" },
+  CursorSandboxPlainRule { text: "capability sys_admin," },
+  CursorSandboxPlainRule { text: "capability net_admin," },
+  CursorSandboxPlainRule { text: "capability chown," },
+  CursorSandboxPlainRule { text: "capability setuid," },
+  CursorSandboxPlainRule { text: "capability setgid," },
+  CursorSandboxPlainRule { text: "capability setpcap," },
+  CursorSandboxPlainRule { text: "network unix," },
+  CursorSandboxPlainRule { text: "network inet stream," },
+  CursorSandboxPlainRule { text: "network inet6 stream," },
+  CursorSandboxPlainRule { text: "network inet dgram," },
+  CursorSandboxPlainRule { text: "network inet6 dgram," },
+  CursorSandboxPlainRule { text: "network netlink raw," },
+  CursorSandboxPlainRule { text: "signal (receive) peer=unconfined," },
+  CursorSandboxPlainRule { text: "" },
+  CursorSandboxUsernsRuleAppArmor4,
+  CursorSandboxPlainRule { text: "" },
+  CursorSandboxPlainRule { text: "mount," },
+  CursorSandboxPlainRule { text: "remount," },
+  CursorSandboxPlainRule { text: "umount," },
+  CursorSandboxPlainRule { text: "" },
+]

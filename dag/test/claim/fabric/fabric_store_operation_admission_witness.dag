@@ -114,7 +114,7 @@ test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -
 }
 
 // THE RED: the same protected write with no credential refuses -- a rostered writer holding no
-// approval for the operation is refused at the store (d0_store_operation_wall's trigger).
+// approval for the operation is refused at the store (the store-operation wall (gunbc.fabric.fabric_store_operation_admission)'s trigger).
 test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool {
   match fw_admit(credential: NoOperationCredential) { StoreOperationRefused { operation: _, refusal: ApprovalAbsent } => true  _ => false }
 }

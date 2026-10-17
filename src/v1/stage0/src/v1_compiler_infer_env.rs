@@ -2135,6 +2135,66 @@ pub fn lookup_unit_variant_phantom_type(
     }
 }
 
+pub fn static_width_index_arm_name() -> String {
+    "StaticWidthIndex".to_string()
+}
+
+pub fn width_resolution_qualified_name() -> String {
+    "std.machine_constraints.WidthResolution".to_string()
+}
+
+pub fn width_resolution_declaration(env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    match symbol_index_lookup(env.symbol_index.clone(), width_resolution_qualified_name()) {
+        Some(decl) => {
+            if {
+                let mut __found = false;
+                for v in decl.children.clone().iter().cloned() {
+                    if (is_unit_variant_node(v.clone())
+                        && (crate::v1_std_core::authored_name_at(
+                            env.source_indices.clone(),
+                            v.clone(),
+                        ) == static_width_index_arm_name()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                Some(decl.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn is_static_width_index_arm(
+    env: Rc<TypeEnv>,
+    coproduct: Rc<Node>,
+    variant_name: String,
+) -> bool {
+    ((variant_name.clone() == static_width_index_arm_name())
+        && match width_resolution_declaration(env.clone()) {
+            Some(decl) => {
+                ((decl.span.clone().file.clone() == coproduct.span.clone().file.clone())
+                    && (decl.span.clone().start.clone() == coproduct.span.clone().start.clone()))
+            }
+            std::option::Option::None => false,
+        })
+}
+
+pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
+    match width_resolution_declaration(env.clone()) {
+        Some(decl) => v1_rt::map_get(
+            &env.symbol_index.clone().file_modules.clone(),
+            decl.span.clone().file.clone(),
+        ),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
 pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
         Some(_) => true,

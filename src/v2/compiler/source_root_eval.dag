@@ -142,6 +142,7 @@ import v2.std.provenance {
   span_index_empty,
   span_index_textual_locus_optional,
 }
+import v2.std.sorted_floor { SortedFloorStrides, sorted_floor_position, sorted_floor_strides_empty, sorted_floor_strides_grown }
 import v2.std.source_position {
   SourcePositionIndex,
   source_line_col_in,
@@ -345,6 +346,7 @@ import std.algebra {
   fold_list,
   is_empty,
   length,
+  list_at_optional,
   list_find_first,
   list_map,
   list_reverse,
@@ -697,19 +699,76 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, lines
 // SourcePositionIndex, derived once here, never its text: a demand that re-swept the text paid
 // refusals × bytes, which is what made a 16k-line module with ten thousand refusals take two hours.
 // The stored values are a path, a SpanIndex and a SourcePositionIndex, never a Locus on the census row. Refused parses do not contribute: their ids are reused by the next
-// file (native_test_context_absorb). A colliding id already in `owner` is left as it was (base-wins).
+// file (native_test_context_absorb).
+//
+// WHICH FILE OWNS AN OCCURRENCE IS ONE RANGE PER FILE, NOT ONE ENTRY PER OCCURRENCE. Ids come from the
+// one allocator the ingest threads through every file, so an accepted file's recorded ids lie in its
+// own contiguous span of that allocator, after every earlier accepted file's (a refused parse records
+// nothing, and the next file re-mints from the mark it was handed). The owner of an id is therefore the
+// last file whose first id is at or before it, provided the id is not past that file's last one --
+// a binary search over files (v2.std.sorted_floor) instead of a map holding every occurrence of the
+// whole tree, which cost one persistent-map insert per occurrence at absorb and most of the census's
+// ingest memory. A colliding id stays with the earlier file (base-wins): a range that would overlap
+// its predecessor starts after the predecessor's last id.
 type NativeCensusFileSpans {
   spans: SpanIndex
   lines: SourcePositionIndex
 }
 
+type NativeCensusIdRange {
+  first: Int
+  last: Int
+  path: Symbol
+}
+
 type NativeCensusPositionTable {
-  owner: Map<OccurrenceId, Symbol>
+  owners: FreeMonoid<NativeCensusIdRange>
+  owner_strides: SortedFloorStrides
+  last_owned: Int
   files: Map<Symbol, NativeCensusFileSpans>
 }
 
 fn native_census_position_table_empty() -> NativeCensusPositionTable {
-  NativeCensusPositionTable { owner: empty_map(), files: empty_map() }
+  NativeCensusPositionTable { owners: Empty, owner_strides: sorted_floor_strides_empty(), last_owned: 0 - 1, files: empty_map() }
+}
+
+type NativeCensusIdBounds {
+  first: Int
+  last: Int
+}
+
+fn native_census_id_bounds(spans: SpanIndex) -> Optional<NativeCensusIdBounds> {
+  fold_list(xs: map_keys(spans.entries), empty: optional_absent(), cons: fn(acc, id) {
+    match acc {
+      Absent => optional_present(value: NativeCensusIdBounds { first: id.value, last: id.value })
+      Present { value: b } =>
+        optional_present(value: NativeCensusIdBounds {
+          first: if id.value < b.first { id.value } else { b.first },
+          last: if id.value > b.last { id.value } else { b.last }
+        })
+    }
+  })
+}
+
+// The path owning `id`, or Absent when no accepted file recorded it.
+fn native_census_owner_of(positions: NativeCensusPositionTable, id: OccurrenceId) -> Optional<Symbol> {
+  match sorted_floor_position(
+    strides: positions.owner_strides,
+    key: id.value,
+    key_at: fn(i) {
+      match list_at_optional(xs: positions.owners, index: i) {
+        Present { value: r } => optional_present(value: r.first)
+        Absent => optional_absent()
+      }
+    }
+  ) {
+    Absent => optional_absent()
+    Present { value: at } =>
+      match list_at_optional(xs: positions.owners, index: at) {
+        Present { value: r } => if id.value <= r.last { optional_present(value: r.path) } else { optional_absent() }
+        Absent => optional_absent()
+      }
+  }
 }
 
 // ONE ACCEPTED FILE, RECORDED FOR LATER LOOKUP. Occurrence ids are owned by this path (base-wins);
@@ -721,18 +780,21 @@ fn native_census_positions_absorb_accepted(
   spans: SpanIndex,
   text: String
 ) -> NativeCensusPositionTable {
-  NativeCensusPositionTable {
-    owner: fold_list(
-      xs: map_keys(spans.entries),
-      empty: table.owner,
-      cons: fn(acc, id) {
-        match map_lookup(acc, id) {
-          Present { value: _ } => acc
-          Absent => map_insert(m: acc, key: id, value: path)
+  let files = map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, lines: source_position_index(text: text) })
+  match native_census_id_bounds(spans: spans) {
+    Absent => NativeCensusPositionTable { owners: table.owners, owner_strides: table.owner_strides, last_owned: table.last_owned, files: files }
+    Present { value: b } =>
+      let first = if b.first > table.last_owned { b.first } else { table.last_owned + 1 }
+      if first > b.last {
+        NativeCensusPositionTable { owners: table.owners, owner_strides: table.owner_strides, last_owned: table.last_owned, files: files }
+      } else {
+        NativeCensusPositionTable {
+          owners: list_snoc_item(xs: table.owners, item: NativeCensusIdRange { first: first, last: b.last, path: path }),
+          owner_strides: sorted_floor_strides_grown(s: table.owner_strides),
+          last_owned: b.last,
+          files: files
         }
       }
-    ),
-    files: map_insert(m: table.files, key: path, value: NativeCensusFileSpans { spans: spans, lines: source_position_index(text: text) })
   }
 }
 
@@ -755,7 +817,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
       match native_census_owner_key(node: a.at) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
-          match map_lookup(positions.owner, id) {
+          match native_census_owner_of(positions: positions, id: id) {
             Absent => FileRefusalAtUnresolvedNode
             Present { value: owner_path } =>
               match map_lookup(positions.files, owner_path) {
@@ -2613,7 +2675,7 @@ fn native_node_authored_locus(node: Node, positions: NativeCensusPositionTable) 
   match native_census_owner_key(node: node) {
     Absent => optional_absent()
     Present { value: id } =>
-      match map_lookup(positions.owner, id) {
+      match native_census_owner_of(positions: positions, id: id) {
         Absent => optional_absent()
         Present { value: owner_path } =>
           match map_lookup(positions.files, owner_path) {

@@ -45,7 +45,8 @@ import gunbc.harness.harness_seat {
   harness_bind_seat, AnyAdmittedModel,
 }
 import product.fabric.demand { AdmissionTerms }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import product.capacity.lease { LeasePolicy }
+import std.resource_release_law { QuiescenceRequired }
 import extdeps.tools.hostname
 import gunbc.fabric.fabric_quota { quota_window_start }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }

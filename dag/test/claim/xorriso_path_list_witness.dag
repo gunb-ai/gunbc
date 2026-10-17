@@ -10,7 +10,7 @@ import extdeps.tools.xorriso {
 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_attribute_pins, install_media_remaster_seed_directory_levels }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
-import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -64,8 +64,8 @@ test fn the_long_listing_is_closed_too() -> Bool {
 // seed file and grub.cfg, 0755 on the seed dir.
 test fn the_census_pins_cover_every_mapped_member() -> Bool {
   match mtcollins1_census_image {
-    Mtcollins1CensusImageRefused { reason: _ } => false
-    Mtcollins1CensusImageDerived { input: i } => {
+    CensusImageRefused { reason: _ } => false
+    CensusImageDerived { input: i } => {
       let words = flat_map(install_media_remaster_attribute_pins(input: i), p => xorriso_path_list_words(command: p))
       words == [
         "-chown_r", "0", "/gunbc-census", "/boot/grub/grub.cfg", "--",
@@ -81,8 +81,8 @@ test fn the_census_pins_cover_every_mapped_member() -> Bool {
 // creates (/nocloud, which would otherwise carry the build user), and every level gets a mode.
 test fn nested_seed_directories_pin_owner_from_the_top_and_mode_on_every_level() -> Bool {
   match mtcollins1_census_image {
-    Mtcollins1CensusImageRefused { reason: _ } => false
-    Mtcollins1CensusImageDerived { input: i } => {
+    CensusImageRefused { reason: _ } => false
+    CensusImageDerived { input: i } => {
       let nested = UbuntuSeededInstallMediaBuildInput {
         stock_artifact: i.stock_artifact, nocloud_dir_on_iso: "nocloud/srv3", user_data_body: i.user_data_body, seed_files: [],
         seed_artifacts: [],

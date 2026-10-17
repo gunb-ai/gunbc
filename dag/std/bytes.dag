@@ -71,8 +71,14 @@ fn bytes_qualified_octets(b: Bytes) -> QualifiedOctetsResult {
   uint8_octets_of_ints(values: bytes_octets(b: b))
 }
 
+// A HOST SEAM, rostered beside bytes_octets and utf8_encode_bytes, for the reason utf8_encode_bytes
+// gives: the body was `o as Bytes`, which the interpreter's free_call.octets_bytes arm intercepted,
+// and on the Rust target no cast row realizes List<Int> -> Vec<u8>, so it emitted as a runtime
+// panic ("unsupported cast from Vec<i64> to Vec<u8>", observed in an emitted program writing a
+// PNG). The realization is v1_rt::octets_bytes, which refuses a member outside 0..=255 as the
+// interpreter's arm does rather than truncating it.
 fn octets_bytes(o: List<Int>) -> Bytes {
-  o as Bytes
+  octets_bytes(o: o)
 }
 
 // A HOST SEAM for the same reason bytes_octets is one, and rostered beside it: the interpreter's

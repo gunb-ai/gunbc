@@ -1,0 +1,149 @@
+module gunbc.instruments.brand_mark_assets_control
+
+import std.types { Int, List, String, Bool }
+import std.optional { Absent, Present }
+import std.algebra { skip }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import std.bytes { octets_bytes }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.design.brand_mark { FaceMark }
+import gunbc.design.brand_mark_raster { BrandRasterSizeOutOfRange }
+import gunbc.design.brand_mark_assets {
+  BrandAssetTarget, BrandAssetEncoding, BrandAssetEncoded, BrandAssetRefused, BrandAssetRasterRefused, BrandAssetPngRefused,
+  brand_asset_targets, brand_asset_encode, brand_asset_badge,
+}
+
+// THE EXECUTING CONTROL FOR THE BRAND LOGO FILES: gunbc.design.brand_mark_assets rasterized, encoded
+// and written by EMITTED Rust. `gunbc test //gunbc/instruments:brand-mark-assets` emits this closure,
+// builds it and runs it; nothing here is interpreted, and the byte write (Filesystem.WriteBytes) has
+// no interpreter realization. The pixels' correctness is test.claim.brand_mark_raster_witness and the
+// encoding's is test.claim.png_encoding_witness (published check values and a byte-exact
+// oracle); this program establishes that the same functions, emitted, produce for EVERY file the
+// generator writes a PNG of the declared size, and that the byte route writes exactly those octets.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type BrandAssetCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+data brand_asset_png_signature: List<Int> = [137, 80, 78, 71, 13, 10, 26, 10]
+data brand_asset_png_iend: List<Int> = [0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130]
+
+data brand_asset_control_write_path: String = "target/brand_mark_assets_control.png"
+data brand_asset_control_unwritable_path: String = "target/brand_mark_assets_control_no_such_dir/x.png"
+
+fn brand_asset_octet_at(octets: List<Int>, i: Int) -> Int {
+  match get(octets, i) {
+    Present { value } => value
+    Absent => -1
+  }
+}
+
+fn brand_asset_word_at(octets: List<Int>, i: Int) -> Int {
+  brand_asset_octet_at(octets: octets, i: i) * 16777216 + brand_asset_octet_at(octets: octets, i: i + 1) * 65536 + brand_asset_octet_at(octets: octets, i: i + 2) * 256 + brand_asset_octet_at(octets: octets, i: i + 3)
+}
+
+// The signature first, IHDR's width and height (octets 16 and 20) the target's pixels, IEND last.
+fn brand_asset_png_shaped(octets: List<Int>, pixels: Int) -> Bool {
+  let n = count(octets)
+  take(octets, 8) == brand_asset_png_signature
+    && brand_asset_word_at(octets: octets, i: 16) == pixels
+    && brand_asset_word_at(octets: octets, i: 20) == pixels
+    && skip(octets, n - 12) == brand_asset_png_iend
+}
+
+fn brand_asset_target_case(target: BrandAssetTarget) -> BrandAssetCase {
+  match brand_asset_encode(target: target) {
+    BrandAssetEncoded { file, octets } => BrandAssetCase {
+      identity: file,
+      held: brand_asset_png_shaped(octets: octets, pixels: target.spec.pixels),
+      observed: join([to_string(count(octets)), "_octets"], ""),
+    }
+    BrandAssetRefused { file, cause: _ } => BrandAssetCase { identity: file, held: false, observed: "refused" }
+  }
+}
+
+fn brand_asset_encoded_octets(e: BrandAssetEncoding) -> List<Int> {
+  match e {
+    BrandAssetEncoded { file: _, octets } => octets
+    BrandAssetRefused { file: _, cause: _ } => []
+  }
+}
+
+// THE BYTE ROUTE: the 16-pixel favicon written through Filesystem.WriteBytes reports every octet
+// written, and is deleted again. RED: the same write into a directory that does not exist reports
+// failure rather than success.
+fn brand_asset_write_cases() -> List<BrandAssetCase> {
+  let octets = brand_asset_encoded_octets(e: brand_asset_encode(target: brand_asset_badge(file: "favicon-16", pixels: 16)))
+  let wrote = Filesystem.WriteBytes(path: brand_asset_control_write_path, content: octets_bytes(o: octets))
+  let removed = Filesystem.Delete(path: brand_asset_control_write_path)
+  let refused = Filesystem.WriteBytes(path: brand_asset_control_unwritable_path, content: octets_bytes(o: octets))
+  [
+    BrandAssetCase {
+      identity: "write_bytes_writes_every_octet",
+      held: count(octets) > 0 && wrote.success && wrote.bytes_written == count(octets) && removed.success,
+      observed: join([to_string(wrote.bytes_written), "_of_", to_string(count(octets))], ""),
+    },
+    BrandAssetCase {
+      identity: "write_bytes_red_missing_directory_fails",
+      held: !refused.success,
+      observed: if refused.success { "succeeded" } else { "failed" },
+    },
+  ]
+}
+
+// RED: a target of zero pixels refuses rather than producing a file.
+fn brand_asset_refusal_case() -> BrandAssetCase {
+  match brand_asset_encode(target: brand_asset_badge(file: "zero", pixels: 0)) {
+    BrandAssetRefused { file: _, cause } => match cause {
+      BrandAssetRasterRefused { cause: r } => match r {
+        BrandRasterSizeOutOfRange { pixels } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: pixels == 0, observed: concat("raster_size_out_of_range_", to_string(pixels)) }
+        _ => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "other_raster_refusal" }
+      }
+      BrandAssetPngRefused { cause: _ } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "png_refusal" }
+    }
+    BrandAssetEncoded { file: _, octets: _ } => BrandAssetCase { identity: "red_zero_pixels_refuses", held: false, observed: "encoded" }
+  }
+}
+
+fn brand_asset_cases() -> List<BrandAssetCase> {
+  concat(concat(map(brand_asset_targets(), t => brand_asset_target_case(target: t)), brand_asset_write_cases()), [brand_asset_refusal_case()])
+}
+
+// DECLARED, NOT DERIVED FROM THE CASES: a file the generator stopped writing is a missing row.
+data brand_asset_expected_identities: List<String> = [
+  "gunb.ai/favicon-16.png",
+  "gunb.ai/favicon-32.png",
+  "gunb.ai/favicon-48.png",
+  "gunb.ai/icon-192.png",
+  "gunb.ai/icon-512.png",
+  "gunb.ai/apple-touch-icon.png",
+  "ios/app-icon-1024.png",
+  "github-apps/gunbai-bot.png",
+  "github-apps/gunbai-ci.png",
+  "write_bytes_writes_every_octet",
+  "write_bytes_red_missing_directory_fails",
+  "red_zero_pixels_refuses"
+]
+
+fn brand_asset_case_row(c: BrandAssetCase) -> String {
+  join(["case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n"], "")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = brand_asset_cases()
+  let roster = join(["roster ", join(brand_asset_expected_identities, ","), "\n"], "")
+  let failed = map(filter(cases, c => !c.held), c => c.identity)
+  let terminal = if count(failed) == 0 { brand_asset_held_terminal() } else { brand_asset_not_held_terminal(reason: concat("not held: ", join(failed, ","))) }
+  NativeClaimReport { stdout: concat(roster, join(map(cases, c => brand_asset_case_row(c: c)), "")), terminal: terminal }
+}
+
+fn brand_asset_held_terminal() -> NativeClaimTerminal {
+  NativeClaimHeld
+}
+
+fn brand_asset_not_held_terminal(reason: String) -> NativeClaimTerminal {
+  NativeClaimNotHeld { reason: reason }
+}

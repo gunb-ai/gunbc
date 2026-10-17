@@ -1,0 +1,70 @@
+module test.claim.auth.gcp_operation_wait_witness
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestRefusal, RestTransportRefused }
+import extdeps.cloud.gcp.gcp {
+  GoogleRpcStatus, GcpOperationStanding, OperationRunning, OperationDone, OperationFailed, gcp_operation_standing,
+  WifPoolOperation, WifProviderOperation, WifOperationNamed, WifOperationNameMismatch, wif_operation_name_parse,
+}
+import gunbc.auth.gcp_operation_wait {
+  OperationRead, OperationUnreadable, OperationWaitReturn, OperationWaitSleepAndContinue,
+  OperationWaitDone, OperationWaitFailed, OperationWaitBudgetSpent, OperationWaitUnreadable, OperationWaitIdentityMismatch, OperationWaitPacingRefused, operation_wait_after_pace,
+  operation_wait_step, gcp_operation_poll_ticks, gcp_operation_budget_fits_actuation_allowance,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE STANDING FOLD: absent `done` is proto3 false, so Running; done true is Done; a present error is
+// Failed carrying the upstream code and message, with absent code/message the proto3 zero and empty.
+test fn the_operation_standing_decides_absence_once() -> Bool {
+  let e = GoogleRpcStatus { code: Present { value: 7 }, message: Present { value: "denied" } }
+  (match gcp_operation_standing(done: Absent, error: Absent) { OperationRunning => true  _ => false })
+    && (match gcp_operation_standing(done: Present { value: false }, error: Absent) { OperationRunning => true  _ => false })
+    && (match gcp_operation_standing(done: Present { value: true }, error: Absent) { OperationDone => true  _ => false })
+    && (match gcp_operation_standing(done: Present { value: true }, error: Present { value: e }) { OperationFailed { code: c, message: m } => c == 7 && m == "denied"  _ => false })
+    && (match gcp_operation_standing(done: Absent, error: Present { value: GoogleRpcStatus { code: Absent, message: Absent } }) { OperationFailed { code: c, message: m } => c == 0 && m == ""  _ => false })
+}
+
+// THE STEP AFTER ONE READ.
+test fn the_wait_step_continues_while_ticks_remain_and_never_relabels_a_spent_budget() -> Bool {
+  let running = OperationRead { returned_name: "op", standing: OperationRunning }
+  (match operation_wait_step(operation_name: "op", reading: running, remaining: 3) { OperationWaitSleepAndContinue { next_remaining: n } => n == 2  _ => false })
+    && (match operation_wait_step(operation_name: "op", reading: running, remaining: 0) { OperationWaitReturn { outcome: OperationWaitBudgetSpent { operation_name: n } } => n == "op"  _ => false })
+    && (match operation_wait_step(operation_name: "op", reading: OperationRead { returned_name: "op", standing: OperationDone }, remaining: 0) { OperationWaitReturn { outcome: OperationWaitDone } => true  _ => false })
+    && (match operation_wait_step(operation_name: "op", reading: OperationRead { returned_name: "op", standing: OperationFailed { code: 3, message: "bad" } }, remaining: 5) { OperationWaitReturn { outcome: OperationWaitFailed { operation_name: _, code: c, message: m } } => c == 3 && m == "bad"  _ => false })
+    && (match operation_wait_step(operation_name: "op", reading: OperationUnreadable { refusal: RestTransportRefused { cause: "x" } }, remaining: 5) { OperationWaitReturn { outcome: OperationWaitUnreadable { operation_name: _, refusal: _ } } => true  _ => false })
+}
+
+// THE OPERATION NAME must name the subject just created, with the project NUMBER, as segments.
+test fn the_operation_name_parse_accepts_the_created_subject_and_refuses_any_other() -> Bool {
+  let provider = WifProviderOperation { pool_id: "pool-a", provider_id: "prov-a" }
+  let ok = "projects/123/locations/global/workloadIdentityPools/pool-a/providers/prov-a/operations/op-9"
+  (match wif_operation_name_parse(name: ok, project_number: "123", subject: provider) { WifOperationNamed { operation_id: id } => id == "op-9"  _ => false })
+    && (match wif_operation_name_parse(name: "projects/123/locations/global/workloadIdentityPools/pool-a/operations/op-1", project_number: "123", subject: WifPoolOperation { pool_id: "pool-a" }) { WifOperationNamed { operation_id: id } => id == "op-1"  _ => false })
+    && (match wif_operation_name_parse(name: "projects/123/locations/global/workloadIdentityPools/pool-a/providers/other/operations/op-9", project_number: "123", subject: provider) { WifOperationNameMismatch { reason: _ } => true  _ => false })
+    && (match wif_operation_name_parse(name: ok, project_number: "999", subject: provider) { WifOperationNameMismatch { reason: _ } => true  _ => false })
+    && (match wif_operation_name_parse(name: "projects/123/locations/global/workloadIdentityPools/pool-a/providers/prov-a/operations", project_number: "123", subject: provider) { WifOperationNameMismatch { reason: _ } => true  _ => false })
+}
+
+// THE BUDGET IS DERIVED and fits the apply step's allowance.
+test fn the_poll_budget_derives_its_ticks_and_fits_the_actuation_allowance() -> Bool {
+  gcp_operation_poll_ticks() == 24 && gcp_operation_budget_fits_actuation_allowance()
+}
+
+// A POLL ANSWER MUST NAME THE OPERATION WAITED ON: requested .../operations/op-a, returned op-b with
+// done => a typed identity mismatch, never Done; the same name with done is Done.
+test fn a_poll_answer_naming_another_operation_is_an_identity_mismatch_not_done() -> Bool {
+  let a = "projects/1/locations/global/workloadIdentityPools/p/operations/op-a"
+  let b = "projects/1/locations/global/workloadIdentityPools/p/operations/op-b"
+  (match operation_wait_step(operation_name: a, reading: OperationRead { returned_name: b, standing: OperationDone }, remaining: 5) { OperationWaitReturn { outcome: OperationWaitIdentityMismatch { operation_name: n, returned_name: r } } => n == a && r == b  _ => false })
+    && (match operation_wait_step(operation_name: a, reading: OperationRead { returned_name: a, standing: OperationDone }, remaining: 5) { OperationWaitReturn { outcome: OperationWaitDone } => true  _ => false })
+}
+
+// A FAILED PACE IS NOT ELAPSED TIME: running with ticks remaining, then pacing false, is a pacing
+// refusal and no continue answer; pacing true continues with the budget spent only now.
+test fn a_failed_pace_is_a_pacing_refusal_and_never_a_continue() -> Bool {
+  (match operation_wait_after_pace(operation_name: "op", paced: false, next_remaining: 4) { OperationWaitReturn { outcome: OperationWaitPacingRefused { operation_name: n } } => n == "op"  _ => false })
+    && (match operation_wait_after_pace(operation_name: "op", paced: true, next_remaining: 4) { OperationWaitSleepAndContinue { next_remaining: n } => n == 4  _ => false })
+}

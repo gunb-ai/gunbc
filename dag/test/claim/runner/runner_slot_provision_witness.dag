@@ -74,13 +74,24 @@ import gunbc.runner.runner_slot_retirement {
   SlotRetirementEvidenceAbsent,
   SlotRetirementEvidencePresent,
   RunnerRetirementStanding,
+  RetirementComplete,
+  RetirementPendingDrain,
   runner_retirement_standing,
   retirement_observation_from_readings,
   srv4_transition_interruption_authorization,
   srv1_transition_interruption_authorization,
+  interruption_authorization_for_host,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
+  transition_retirement_admission_over,
   CgroupObservedPopulated,
   CgroupAbsent,
   CgroupUnobserved,
+}
+import gunbc.runner.runner_width_transition {
+  required_retirees_for_host,
+  RetireesKnown,
+  RetireesUnresolved,
 }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
@@ -735,6 +746,74 @@ fn srv1_plan(observed: List<RunnerSlotMember>, evidence: SlotRetirementEvidence)
       )
       concat(plan.retirement_scripts, plan.teardown_scripts)
     }
+  }
+}
+
+fn srv1_07_through_12_units() -> List<String> {
+  [
+    "actions-runner@srv1-07.service",
+    "actions-runner@srv1-08.service",
+    "actions-runner@srv1-09.service",
+    "actions-runner@srv1-10.service",
+    "actions-runner@srv1-11.service",
+    "actions-runner@srv1-12.service",
+  ]
+}
+
+fn srv1_this_run_standings(required: List<NonEmptyStr>) -> List<RunnerRetirementStanding> {
+  required |> map(u =>
+    if any(srv1_07_through_12_units(), x => x == (u as String)) {
+      RetirementComplete { unit: u as String }
+    } else {
+      RetirementPendingDrain { unit: u as String, cause: "this run: still present" }
+    }
+  )
+}
+
+fn line_emits_mask_for(lines: List<String>, unit: String) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "'mask'") && string_contains(s: l, pattern: unit))
+}
+
+// THIS RUN'S READBACK THROUGH THE PRODUCTION PLANNER. 07..12 complete drop out of coverage;
+// 14..50 stay outstanding, the 13..50 grant covers them, admission is Present, and
+// runner_slot_provision_plan (the fleet_converge_slot_family callee) emits masks for 14..50
+// rather than withholding the whole host. 07..12 are refused per unit (outside the grant),
+// not masked or deleted. On main this observation never reaches the planner: admission
+// returned Absent before any read.
+test fn srv1_provision_plan_masks_the_authorized_remainder_when_07_through_12_are_complete() -> Bool {
+  match required_retirees_for_host(host: operator_host_srv1) {
+    RetireesUnresolved { host: _, cause: _ } => false
+    RetireesKnown { units: required } =>
+      match interruption_authorization_for_host(host: operator_host_srv1) {
+        HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+        HostInterruptionAuthorizationPresent { authorization: auth } =>
+          match transition_retirement_admission_over(
+            host: operator_host_srv1,
+            auth: auth,
+            required: required,
+            standings: srv1_this_run_standings(required: required),
+          ) {
+            SlotRetirementEvidenceAbsent { cause: _ } => false
+            SlotRetirementEvidencePresent { authorization: _, standings: ss } => {
+              let lines = srv1_plan(
+                observed: [],
+                evidence: SlotRetirementEvidencePresent { authorization: auth, standings: ss },
+              )
+              line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-14.service")
+                && line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-50.service")
+                && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-07.service")
+                && !line_emits_mask_for(lines: lines, unit: "actions-runner@srv1-12.service")
+                && !any(lines, l =>
+                  string_contains(s: l, pattern: "-rf")
+                    && string_contains(s: l, pattern: "srv1-07")
+                )
+                && !any(lines, l =>
+                  string_contains(s: l, pattern: "__GUNBC_CONVERGE_WITHHELD__")
+                    && string_contains(s: l, pattern: "actions-runner@srv1-14.service")
+                )
+            }
+          }
+      }
   }
 }
 

@@ -10,7 +10,7 @@ import gunbc.generated_artifact { artifact_name, FleetConvergeYamlArtifact }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.auth.branch_dispatch_federation {
-  branch_run_key_variable, parse_branch_run_key, branch_run_key, mode_of_run_title, run_scoped_mode_named,
+  branch_run_key_variable, parse_branch_run_key, branch_run_key, mode_of_run_title, run_scoped_mode_eligible,
 }
 
 // ── THE REQUEST FOR A RUN-SCOPED GRANT, MADE BY MAIN ────────────────────────────────────────────
@@ -32,6 +32,8 @@ data branch_run_grant_executor_host: String = "srv1"
 
 data branch_run_title_variable: NonEmptyStr = "BRANCH_RUN_TITLE"
 
+data branch_run_branch_variable: NonEmptyStr = "BRANCH_RUN_BRANCH"
+
 // THE GRANT RUN'S DISPATCH INPUTS: the mode, the executor that hosts the approval broker, and the run
 // key in the existing transaction_nonce input -- which also puts the key in the grant run's title,
 // where the requesting run finds it.
@@ -49,7 +51,7 @@ fn broker() -> ProcessExit {
   let mode = mode_of_run_title(title: actions_variable_trimmed(name: branch_run_title_variable))
   match parse_branch_run_key(key: actions_variable_trimmed(name: branch_run_key_variable)) {
     Absent => exit_failure(reason: "branch run grant broker: BRANCH_RUN_KEY is not <run id>-<run attempt>; this entry runs only in the broker workflow")
-    Present { value: k } => match run_scoped_mode_named(mode: mode) {
+    Present { value: k } => match run_scoped_mode_eligible(mode: mode, branch: actions_variable_trimmed(name: branch_run_branch_variable)) {
       Absent => ExitSuccess
       Present { value: _ } => match github.Workflows.CreateDispatch(
         owner: gunbc_repository.owner,

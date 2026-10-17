@@ -23,7 +23,8 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, type_ref_measure_binding_authority,
+    lookup_unit_variant_phantom_type, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration,
 };
 pub use crate::v1_compiler_infer_env::{
     TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
@@ -323,6 +324,58 @@ pub fn type_arg_name_is_bound_generic_parameter(name: String, env: Rc<TypeEnv>) 
             Some(inf) => is_type_variable(inf.clone()),
             std::option::Option::None => false,
         },
+    }
+}
+
+pub fn applied_arg_is_width_resolution_position(
+    applied: Rc<Node>,
+    arg: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if !is_user_generic_use_site(applied.clone(), env.clone()) {
+        false
+    } else {
+        {
+            let decl = resolve_generic_use_decl(env.clone(), applied.clone());
+            match crate::v1_compiler_infer_env::width_resolution_declaration(env.clone()) {
+                std::option::Option::None => false,
+                Some(width_decl) => {
+                    match v1_rt::map_get(
+                        &env.symbol_index.clone().file_modules.clone(),
+                        decl.span.clone().file.clone(),
+                    ) {
+                        std::option::Option::None => false,
+                        Some(declaring_module) => {
+                            let mut __found = false;
+                            for pair in Rc::new(
+                                decl.params
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .enumerate()
+                                    .map(|(i, v)| (i as i64, v))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            {
+                                if match applied.children.clone().get((pair.0.clone()) as usize).cloned() {
+    std::option::Option::None => false,
+    Some(supplied) => ((((supplied.span.clone().file.clone() == arg.span.clone().file.clone()) && (supplied.span.clone().start.clone() == arg.span.clone().start.clone())) && (supplied.span.clone().end.clone() == arg.span.clone().end.clone())) && match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
+    std::option::Option::None => false,
+    Some(kind_node) => match crate::v1_compiler_infer_env::symbol_index_lookup(env.symbol_index.clone(), v1_rt::concat(v1_rt::concat(declaring_module.clone(), ".".to_string()), crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone()))) {
+    Some(kind_decl) => ((kind_decl.span.clone().file.clone() == width_decl.span.clone().file.clone()) && (kind_decl.span.clone().start.clone() == width_decl.span.clone().start.clone())),
+    std::option::Option::None => false,
+},
+}),
+} { __found = true; break; }
+                            }
+                            __found
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

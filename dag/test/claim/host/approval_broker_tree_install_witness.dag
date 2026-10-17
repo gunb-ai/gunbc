@@ -1,0 +1,103 @@
+module test.claim.host.approval_broker_tree_install_witness
+
+import gunbc.host.host_effect_realize {
+  TreeFileHash,
+  tree_file_hashes_of_stdout,
+  tree_entries_agree,
+  tree_hash_lines,
+  tree_ancestor_directories,
+  tree_binary_agrees,
+  approval_broker_tree_install,
+  ApprovalBrokerTreeInstallVerdict,
+  TreeInstallRefused,
+  TreeInstallConverged,
+  TreeInstallStep,
+  TreeStepSourceObserve,
+  TreeStepRevision,
+}
+import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED BOUNDARY VALUES: what `find ... -exec sha256sum {} +` prints for a source root and for the
+// installed release directory. No exec; the values are the interface's inputs (DESIGN section 3).
+data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data hex_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data hex_c: String = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+data source_stdout: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /src/dag/gunbc/x.dag\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  /src/dag/y.dag\n"
+
+data installed_same_stdout: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  /opt/r/dag/y.dag\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /opt/r/dag/gunbc/x.dag\n"
+
+data installed_one_differs_stdout: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  /opt/r/dag/y.dag\ncccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  /opt/r/dag/gunbc/x.dag\n"
+
+fn source_entries() -> List<TreeFileHash> {
+  tree_file_hashes_of_stdout(stdout: source_stdout, root: "/src/dag", sub: "dag")
+}
+
+test fn parse_rebases_absolute_paths_onto_the_subdirectory() -> Bool {
+  let es = source_entries()
+  count(es) == 2 && tree_hash_lines(entries: es) == join([hex_a, "  dag/gunbc/x.dag\n", hex_b, "  dag/y.dag\n"], "")
+}
+
+test fn same_content_in_a_different_order_agrees() -> Bool {
+  tree_entries_agree(
+    source: source_entries(),
+    installed: tree_file_hashes_of_stdout(stdout: installed_same_stdout, root: "/opt/r/dag", sub: "dag"),
+  )
+}
+
+// THE DISCRIMINATING RED: one installed file's bytes differ, so the readback must refuse.
+test fn one_installed_file_differing_does_not_agree() -> Bool {
+  !tree_entries_agree(
+    source: source_entries(),
+    installed: tree_file_hashes_of_stdout(stdout: installed_one_differs_stdout, root: "/opt/r/dag", sub: "dag"),
+  )
+}
+
+test fn a_missing_installed_file_does_not_agree() -> Bool {
+  !tree_entries_agree(
+    source: source_entries(),
+    installed: tree_file_hashes_of_stdout(stdout: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  /opt/r/dag/y.dag\n", root: "/opt/r/dag", sub: "dag"),
+  )
+}
+
+test fn directories_are_ancestors_parents_first() -> Bool {
+  tree_ancestor_directories(files: source_entries()) == ["dag", "dag/gunbc"]
+}
+
+fn refused_at(v: ApprovalBrokerTreeInstallVerdict, at: TreeInstallStep) -> Bool {
+  match v {
+    TreeInstallRefused { step: s, reason: _ } => s == at
+    TreeInstallConverged { installed_digest: _, files_installed: _ } => false
+  }
+}
+
+// INHABITANCE CLAIM ON THE REAL ROUTE: the real function runs the real LocalShell find|sha256sum
+// argv against a root that does not exist and must refuse AT the source observation, before any
+// sudo install is attempted. Deleting the observation leg makes this claim fail.
+test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> Bool {
+  refused_at(v: approval_broker_tree_install(
+    owner: "gunbc" as NonEmptyStr,
+    base_root: "/nonexistent-w6-base",
+    source_root: "/nonexistent-w6-source",
+    revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" },
+    transport: LocalShell,
+  ), at: TreeStepSourceObserve)
+}
+
+test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
+  refused_at(v: approval_broker_tree_install(
+    owner: "gunbc" as NonEmptyStr,
+    base_root: "/nonexistent-w6-base",
+    source_root: "/nonexistent-w6-source",
+    revision: RevisionNotInstalled,
+    transport: LocalShell,
+  ), at: TreeStepRevision)
+}
+
+// A binary that cannot be hashed on either side is a disagreement (the real LocalShell sha256sum fails).
+test fn a_binary_with_no_readable_hash_does_not_agree() -> Bool {
+  !tree_binary_agrees(source_path: "/nonexistent-w6-source/a", installed_path: "/nonexistent-w6-base/a", transport: LocalShell)
+}

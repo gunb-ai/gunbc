@@ -20,6 +20,13 @@ import std.resources { Network }
 data git_config_global_null_env: String = "GIT_CONFIG_GLOBAL=/dev/null"
 data git_config_nosystem_env: String = "GIT_CONFIG_NOSYSTEM=1"
 data git_terminal_prompt_disabled_env: String = "GIT_TERMINAL_PROMPT=0"
+data git_worktree_commondir_relative: String = "../.."
+data git_dir_flag_prefix: String = "--git-dir="
+data git_work_tree_flag_prefix: String = "--work-tree="
+
+fn git_untrusted_config_env_words() -> List<String> {
+  [git_config_global_null_env, git_config_nosystem_env]
+}
 
 fn git_isolated_home_netrc_path(home: FilePath) -> FilePath {
   concat(home as String, "/.netrc") as FilePath
@@ -1016,6 +1023,27 @@ type SafeDirectoryGrant {
 }
 
 data git_safe_directory_key: String = "safe.directory"
+
+// GIT'S OWN PARTIAL-CLONE CONFIGURATION KEYS, cited from git-config(1) (git-scm.com/docs/git-config).
+// `extensions.partialClone` names the promisor remote; `remote.<name>.promisor` marks that remote as
+// a promisor; `remote.<name>.partialclonefilter` is the filter-spec (`blob:none` for a clone
+// `--filter=blob:none`). The regexp forms are git config --get-regexp's patterns, not nicknames.
+data git_config_key_extensions_partial_clone: String = "extensions.partialClone"
+
+data git_config_regexp_remote_promisor: String = "remote\\..*\\.promisor"
+
+data git_config_regexp_remote_partialclonefilter: String = "remote\\..*\\.partialclonefilter"
+
+data git_rev_parse_is_shallow_true: String = "true"
+
+// git-upload-pack(1) ENVIRONMENT GIT_NO_LAZY_FETCH (git-scm.com/docs/git-upload-pack):
+// when serving a partial clone, upload-pack internally sets this variable to 1 so it will
+// not lazy-fetch missing objects from the source's promisor remote. GIT_NO_LAZY_FETCH=0 is
+// the documented override. These are git's names; a host's packaged version is a receipt
+// in the observing layer, not a fact of git.
+data git_no_lazy_fetch_environment: String = "GIT_NO_LAZY_FETCH"
+
+data git_no_lazy_fetch_internally_set_value: String = "1"
 
 fn git_safe_directory_override_args(grant: SafeDirectoryGrant) -> List<String> {
   ["-c", join([git_safe_directory_key, "=", grant.path as String], "")]

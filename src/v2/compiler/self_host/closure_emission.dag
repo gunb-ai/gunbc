@@ -325,7 +325,8 @@ fn closure_member_emission(
                 segment: program_segment_whole_program(),
                 target: target,
                 boundary: partition_boundary_fail_closed(),
-                kinds: member.tree.type_declaration_kinds
+                kinds: member.tree.type_declaration_kinds,
+                declarations: resolved.resolved_declarations
               )
             }
           )

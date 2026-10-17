@@ -3,7 +3,7 @@ module gunbc.runner.runner_width_transition
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
-import gunbc.runner.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host, committed_unit_names_at }
+import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, committed_unit_names_at }
 import gunbc.runner.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -42,6 +42,10 @@ import gunbc.runner.runner_slot_allocation {
 // each host was running when the transition opened. Permission is checked separately, as coverage
 // over this set; a required retiree the operator has not authorized is a refusal to act on it, and
 // never its removal from the obligation.
+// prior_width is the committed-population size at open, consumed as
+// committed_unit_names_at(prior_width), not desired_unit_names_range(1, prior_width).
+// Equal prior and target yields an empty required set; that is not completion of
+// transition_id (review 80879).
 type RunnerWidthTransition sole_constructor {
   transition_id: NonEmptyStr
   host: HostIdentity
@@ -50,22 +54,39 @@ type RunnerWidthTransition sole_constructor {
 
 // THE OPEN TRANSITION, ENUMERATED PER HOST.
 //
-// srv3 and srv4 were each admitted 21 slots under the 15 GiB ceiling. The 26/25 GiB sizing makes
-// every one of them CPU-bound at 12, so each carries a nine-slot obligation (13..21). srv1 also
-// commits 12 now, but its live tree population was 50 (the capacity-incident remainder): setting
-// its prior to 21 would leave 22..50 as census surplus outside the obligation, so they could never
-// enter retirement standings and the cap raise would stay withheld after those trees left. srv2 is
-// absent deliberately: its admission REFUSED rather than narrowed, so it has no transition to be in,
-// and `gunbc.fleet.fleet_converge_plan` routes it around membership reconciliation entirely.
+// srv3 and srv4 were each admitted 21 slots; their committed width is still 21, so the prior
+// equals the target and they owe no retirees while those rows stay open. srv1 keeps
+// `runner-slot-26-25-gib` at prior 50 until a typed completion receipt supersedes it; run
+// 38785880931 is cited in the PR body and is not readable evidence here (review 80879). The
+// 12→7 cut is a second open row, and the 7→5 cut (user-work slice to 88 GiB, operator ruling
+// 2026-10-16, gunbc.live_deploy.user_work_pool_slots) a third, and the 5→3 cut (the attempt-worker slice
+// stacked on it, operator decision 2026-10-15 msg_57614325) a fourth. Required is the union:
+// committed(50) minus committed(3) = srv1-03..12 and 14..50 (13 stays). srv2 is absent deliberately.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
-// census again, one indirection further away.
+// census again, one indirection further away. `required_retirees_for_host` unions every open
+// row for the host, so a sibling `transition_id` is not unread.
 data slot_width_transition_26_25: List<RunnerWidthTransition> = [
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,
     host: operator_host_srv1,
     prior_width: 50,
+  },
+  RunnerWidthTransition {
+    transition_id: "runner-slot-width-12-7" as NonEmptyStr,
+    host: operator_host_srv1,
+    prior_width: 12,
+  },
+  RunnerWidthTransition {
+    transition_id: "runner-slot-width-7-5" as NonEmptyStr,
+    host: operator_host_srv1,
+    prior_width: 7,
+  },
+  RunnerWidthTransition {
+    transition_id: "runner-slot-width-5-3" as NonEmptyStr,
+    host: operator_host_srv1,
+    prior_width: 5,
   },
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,
@@ -122,7 +143,7 @@ fn transition_required_retirees_at(t: RunnerWidthTransition, target_width: Runne
     RunnerWidthDerived { slots: target } =>
       RetireesKnown {
         units: prior_minus_committed(
-          prior: desired_unit_names_range(host: t.host, slot: 1, limit: t.prior_width),
+          prior: committed_unit_names_at(host: t.host, committed: t.prior_width),
           committed: committed_unit_names_at(host: t.host, committed: target),
         ) |> map(u => u as NonEmptyStr),
       }
@@ -141,11 +162,35 @@ fn transition_required_retirees(t: RunnerWidthTransition) -> RequiredRetirees {
   transition_required_retirees_at(t: t, target_width: gunbc_runner_committed_width(host: t.host))
 }
 
+fn union_retiree_units(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  concat(a, b |> filter(u => !any(a, x => (x as String) == (u as String))))
+}
+
+fn union_required_retirees(left: RequiredRetirees, right: RequiredRetirees) -> RequiredRetirees {
+  match left {
+    RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
+    RetireesKnown { units: a } =>
+      match right {
+        RetireesUnresolved { host: h, cause: c } => RetireesUnresolved { host: h, cause: c }
+        RetireesKnown { units: b } => RetireesKnown { units: union_retiree_units(a: a, b: b) }
+      }
+  }
+}
+
+fn required_retirees_union_of_rows(rows: List<RunnerWidthTransition>) -> RequiredRetirees {
+  fold(
+    rows,
+    init: RetireesKnown { units: [] },
+    f: (acc, t) => union_required_retirees(left: acc, right: transition_required_retirees(t: t)),
+  )
+}
+
 fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStanding {
   let rows = transition_row_for_host(host: host)
   match rows.first() {
     Absent => HostHasNoOpenTransition { host: host }
-    Present { value: t } => HostTransitionOpen { transition: t, required: transition_required_retirees(t: t) }
+    Present { value: t } =>
+      HostTransitionOpen { transition: t, required: required_retirees_union_of_rows(rows: rows) }
   }
 }
 
@@ -153,7 +198,8 @@ fn host_width_transition_standing(host: HostIdentity) -> HostWidthTransitionStan
 // different fact from a host whose obligation is empty because it has already converged -- and both
 // are different from a host that could not be read. The third is now expressible: an earlier
 // revision of this note said it belonged to the census, which was true only while the width was an
-// Int and "could not be read" had nowhere to live on this side.
+// Int and "could not be read" had nowhere to live on this side. Every open row for the host is
+// joined: a later `transition_id` does not replace an earlier unfinished prior.
 fn required_retirees_for_host(host: HostIdentity) -> RequiredRetirees {
   match host_width_transition_standing(host: host) {
     HostHasNoOpenTransition { host: _ } => RetireesKnown { units: [] }

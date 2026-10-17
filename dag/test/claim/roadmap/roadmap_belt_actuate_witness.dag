@@ -3,7 +3,12 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone, CapacityNotAsked }
-import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_outcome_with_release, belt_commit_git_argv, belt_seat_discharge_pass_outcome_from }
+import gunbc.roadmap.roadmap_belt_actuate {
+  belt_spawn_outcome_with_release, belt_commit_git_argv,
+  belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
+  attempt_process_for_node, BeltAttemptPanesObserved,
+  belt_seat_discharge_pass_outcome_from,
+}
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -11,7 +16,7 @@ import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
-import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
+import gunbc.worker_lifecycle { WorkerProcessEvidence, WorkerProcessAbsent, WorkerProcessExited, WorkerProcessRunning, WorkerProcessSignaled, WorkerProcessUnobserved }
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -3125,9 +3130,65 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
 // `-c core.hooksPath=/dev/null` wins over repository and worktree config (git-config(1)).
 test fn belt_commit_git_does_not_use_a_worker_planted_hooks_path() -> Bool {
   let inst = srv1_live_dashboard_instance()
-  let wire = join(belt_commit_git_argv(instance: inst, args: ["commit", "-q", "-m", "probe"]).args, separator: "\0")
-  string_contains(s: wire, pattern: "core.hooksPath=/dev/null")
+  let git_dir = join([inst.repo_root as String, "/.git/worktrees/probe"], "")
+  let work_tree = "/tmp/probe-wt"
+  let cmd = belt_commit_git_argv(instance: inst, git_dir: git_dir, work_tree: work_tree, args: ["commit", "-q", "-m", "probe"])
+  let wire = join(cmd.args, separator: "\0")
+  cmd.program == "/usr/bin/env"
+    && string_contains(s: wire, pattern: "GIT_CONFIG_NOSYSTEM=1")
+    && string_contains(s: wire, pattern: "GIT_CONFIG_GLOBAL=/dev/null")
+    && string_contains(s: wire, pattern: join(["--git-dir=", git_dir], ""))
+    && string_contains(s: wire, pattern: join(["--work-tree=", work_tree], ""))
+    && string_contains(s: wire, pattern: "core.hooksPath=/dev/null")
     && string_contains(s: wire, pattern: "core.fsmonitor=false")
+}
+
+test fn a_mismatched_gitfile_or_commondir_is_untrusted() -> Bool {
+  let expected_git = "/opt/gunbc/gunbc/.git/worktrees/n-ak"
+  let expected_common = "/opt/gunbc/gunbc/.git"
+  belt_commit_gitfile_points_at(contents: join(["gitdir: ", expected_git, "\n"], ""), expected_git_dir: expected_git)
+    && !belt_commit_gitfile_points_at(contents: "gitdir: /tmp/evil\n", expected_git_dir: expected_git)
+    && belt_commit_commondir_points_at(contents: "../..\n", expected_common: expected_common)
+    && belt_commit_commondir_points_at(contents: expected_common, expected_common: expected_common)
+    && !belt_commit_commondir_points_at(contents: "/tmp/evil\n", expected_common: expected_common)
+}
+
+fn unit_name_overlong_node() -> String {
+  join([
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ], "")
+}
+
+fn belt_unit_process(node_id: String) -> WorkerProcessEvidence {
+  attempt_process_for_node(
+    instance: srv1_live_dashboard_instance(),
+    panes: BeltAttemptPanesObserved { panes: [] },
+    node_id: node_id,
+    attempt_key: "k",
+  )
+}
+
+test fn an_empty_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: "") {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "empty")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
+}
+
+test fn an_overlong_node_id_is_an_unreadable_worker_process_observation() -> Bool {
+  match belt_unit_process(node_id: unit_name_overlong_node()) {
+    WorkerProcessUnobserved { reason } => string_contains(s: reason as String, pattern: "255")
+    WorkerProcessAbsent => false
+    WorkerProcessRunning { command: _ } => false
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessSignaled { signal: _, last_command: _ } => false
+  }
 }
 
 // A SEAT DISCHARGE REACHES THE DURABLE TICK RECEIPT TYPED AND COUNTED: a red is Failed (and outranks a refusal),
