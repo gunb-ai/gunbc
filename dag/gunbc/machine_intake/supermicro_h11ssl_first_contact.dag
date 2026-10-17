@@ -1,6 +1,7 @@
 module gunbc.machine_intake.supermicro_h11ssl_first_contact
 
 import std.types { Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
 import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyUnobserved }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_board_authority }
 import extdeps.board_authority { BoardAuthorityRef }
@@ -13,11 +14,25 @@ import extdeps.board_authority { BoardAuthorityRef }
 // Consumer: arrival intake for this board, via supermicro_h11ssl_first_contact_family_standing,
 // which selects the family-neutral first-contact path (bmc_first_contact_standing) and so refuses
 // to run the OpenBMC factory-login producer against this controller.
-type H11sslRedfishRootObservation
-  = RedfishRootRefusedLicence { message_id: NonEmptyStr }
+type H11sslCredentialTried = FactoryDefaultAdminAdmin | BoardLabelCredential
 
-type H11sslDefaultLoginObservation
-  = DefaultAdminLoginRejected { observed_on: NonEmptyStr }
+type H11sslObservationInstrument = WebLoginCgi | RedfishServiceRoot
+
+type H11sslObservationOutcome
+  = SessionIssued
+  | LoginRejected
+  | ServiceRootRefused { message_id: NonEmptyStr }
+
+// One typed observation per probe: instrument, time, observer, outcome, and whether the probe
+// changed anything on the unit.
+type H11sslObservation {
+  instrument: H11sslObservationInstrument
+  credential: H11sslCredentialTried?
+  observed_on: NonEmptyStr
+  observed_by: NonEmptyStr
+  outcome: H11sslObservationOutcome
+  unit_state_changed: Bool
+}
 
 // A credential is carried ONLY as a reference to the operator-held document that shows it; the
 // value is never stored here. The document is access-restricted to the operator.
@@ -25,7 +40,6 @@ type H11sslCredentialSource
   = BoardLabelPhotoHeldByOperator { document_url: NonEmptyStr }
 
 type H11sslLabelObservation {
-  observed_on: NonEmptyStr
   top_label_serial_barcode: NonEmptyStr
   lan_macs: List<NonEmptyStr>
   jps1_silkscreen: NonEmptyStr
@@ -36,8 +50,7 @@ type H11sslFirstContactReceipt {
   board: BoardAuthorityRef
   bmc_address: NonEmptyStr
   bmc_mac: NonEmptyStr
-  redfish_root: H11sslRedfishRootObservation
-  default_login: H11sslDefaultLoginObservation
+  observations: List<H11sslObservation>
   label: H11sslLabelObservation
 }
 
@@ -45,11 +58,12 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
   board: supermicro_h11ssl_board_authority,
   bmc_address: "192.168.1.252",
   bmc_mac: "AC:1F:6B:E3:F5:7B",
-  // Redfish service root answered Base.v1_4_0.OemLicenseNotPassed, naming the SUM DCMS OOB licences.
-  redfish_root: RedfishRootRefusedLicence { message_id: "Base.v1_4_0.OemLicenseNotPassed" },
-  default_login: DefaultAdminLoginRejected { observed_on: "2026-10-17" },
+  observations: [
+    H11sslObservation { instrument: WebLoginCgi, credential: Present { value: FactoryDefaultAdminAdmin }, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: LoginRejected, unit_state_changed: false },
+    H11sslObservation { instrument: WebLoginCgi, credential: Present { value: BoardLabelCredential }, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: SessionIssued, unit_state_changed: false },
+    H11sslObservation { instrument: RedfishServiceRoot, credential: Absent, observed_on: "2026-10-17", observed_by: "merry-fox-82", outcome: ServiceRootRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed" }, unit_state_changed: false },
+  ],
   label: H11sslLabelObservation {
-    observed_on: "2026-10-17",
     top_label_serial_barcode: "55503A0100160200000EAJ0A1",
     lan_macs: ["AC:1F:6B:E3:F6:B0", "AC:1F:6B:E3:F6:B1"],
     jps1_silkscreen: "JPS1 1-2 Enable LSI SAS3008 (default) / 2-3 Disable",
@@ -57,18 +71,24 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
   },
 }
 
-// Observed 2026-10-17 by merry-fox-82: web login with the label credential succeeded (session
-// issued, logged out, nothing changed). The variant (-i/-C/-NC) is NOT established by any
-// observation here; the FRU is unread.
+// The variant (-i/-C/-NC) is NOT established by any observation here; the FRU is unread.
 
 // A refused Redfish root and a rejected default login identify no firmware family.
 data supermicro_h11ssl_first_contact_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
   discriminator: "Redfish root refused Base.v1_4_0.OemLicenseNotPassed; ADMIN/ADMIN rejected 2026-10-17 (label credential accepted); manual p.15 says only 'ATEN IPMI' on AST2500",
 }
 
-// True when the receipt's login observation permits the factory-default producer: it never does.
-fn supermicro_h11ssl_factory_login_producer_admitted(r: H11sslFirstContactReceipt) -> Bool {
-  match r.default_login {
-    DefaultAdminLoginRejected { observed_on: _ } => false
+fn rejects_factory_default(o: H11sslObservation) -> Bool {
+  match o.outcome {
+    LoginRejected => match o.credential {
+      Present { value: FactoryDefaultAdminAdmin } => true
+      _ => false
+    }
+    _ => false
   }
+}
+
+// The factory-default producer is admitted only if no observation rejected that credential.
+fn supermicro_h11ssl_factory_login_producer_admitted(r: H11sslFirstContactReceipt) -> Bool {
+  !any(r.observations, o => rejects_factory_default(o: o))
 }
