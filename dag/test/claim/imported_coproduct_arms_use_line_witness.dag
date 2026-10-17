@@ -27,11 +27,12 @@ test fn a_relay_importing_the_coproduct_and_its_arms_routes_its_use_line_to_the_
 
 // The corpus specimen: v2.std.logic importing Bool, True, False made v2.compiler.infer emit
 // `use crate::v2_std_logic::Bool::*;`, which rustc refuses with E0432.
+// Bool is realized natively (`pub type Bool = bool`), so no module `Bool` exists to glob at its declarer either.
 test fn a_consumer_of_logic_bool_never_roots_the_variant_glob_at_logic() -> Bool {
   compile_dag_rust_emit_check(
     "module iar_real\n\nimport v2.std.logic \{ Bool, bool_node \}\n\nfn iar_real_use(b: Bool) -> Bool {\n  b\n}\n",
     "src/iar_real.rs",
     [],
-    ["crate::v2_std_logic::Bool"]
+    ["crate::v2_std_logic::Bool", "crate::std_types::Bool::"]
   )
 }
