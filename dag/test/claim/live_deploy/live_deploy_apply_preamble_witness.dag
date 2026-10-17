@@ -371,6 +371,27 @@ test fn a_failed_create_blames_the_act_and_costs_two_calls() -> Bool {
   }
 }
 
+// RED 6b — the same act half, refused by the TRANSPORT instead of exiting non-zero. The two act halves
+// of an Either leg are separate branches in the fold, and covering only the exit branch let a mutation
+// of the transport branch pass the whole witness. A refused create must still blame principal-ensure
+// (NOT the check, which succeeded) and still cost BOTH calls — matching what the impure runner does when
+// the check runs and the act dies.
+test fn a_create_the_transport_refuses_blames_the_act_and_costs_two_calls() -> Bool {
+  let run = w_fold(injected: LegTransportRefused { step: "principal-ensure", reason: "ssh channel closed" })
+  match w_state(run: run) {
+    PreambleLegFailed { step: s, reason: r, consumed: c } =>
+      live_deploy_preamble_step_name(step: s) == "principal-ensure"
+        && c == preamble_leg_count - 1
+        && w_calls(run: run) == preamble_leg_count + 1
+        && string_contains(s: r, pattern: "principal-ensure refused")
+        && string_contains(s: r, pattern: "ssh channel closed")
+        // the create was attempted and refused; it was never a precondition check that could not run
+        && (!string_contains(s: r, pattern: "precondition check could not run"))
+        && (!string_contains(s: r, pattern: "principal-check"))
+    PreambleLegOk { consumed: _ } => false
+  }
+}
+
 // ══ THE TRAP: cleanup runs, and can neither hide a refusal nor be hidden by a success ══════════════
 
 // The scratch dir held root-readable sudoers text. A deploy that refused AND failed to clean up still
