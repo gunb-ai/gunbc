@@ -1,0 +1,19 @@
+module test.gar_right_6
+import std.types { Int }
+fn gar_id<T>(x: T) -> T { x }
+fn gar_app<T, R>(f: fn(T) -> R, x: T) -> R { f(x) }
+fn probe() -> Int {
+  gar_app(f: fn(v1) { 
+    gar_app(f: fn(v2) { 
+      gar_app(f: fn(v3) { 
+        gar_app(f: fn(v4) { 
+          gar_app(f: fn(v5) { 
+            gar_app(f: fn(v6) { 
+              gar_id(x: v1)
+            }, x: 1)
+          }, x: 1)
+        }, x: 1)
+      }, x: 1)
+    }, x: 1)
+  }, x: 1)
+}
