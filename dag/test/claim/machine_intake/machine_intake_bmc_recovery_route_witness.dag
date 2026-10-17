@@ -8,7 +8,7 @@ import extdeps.bmc.ipmi {
   IpmiCompletionCode, ipmi_completion_code_invalid_data_field, ipmi_completion_code_request_data_length_invalid, ipmi_completion_code_eq,
 }
 import extdeps.boards.asrock_rack {
-  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, asrock_altrad8ud_1l2t_inband_device_identity, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_inband_recovery_capture,
+  PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, asrock_altrad8ud_inband_recovery_capture, asrock_altrad8ud_1l2t_inband_device_identity, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_inband_recovery_capture,
 }
 import gunbc.auth.privileged_effect_census {
   SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
@@ -18,9 +18,10 @@ import gunbc.auth.authorization_pattern_selection {
   PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
 }
 import std.decl_ref { declaration_ref_display_key }
+import extdeps.ssh.known_hosts { openssh_standard_port }
 import v2.std.decl_index { DeclFact, decl_facts }
 import gunbc.machine_intake.bmc_recovery_route {
-  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
+  ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_handoff_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
 }
 import gunbc.machine_intake.arrival_converge {
   ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
@@ -49,9 +50,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // generalized are the two ways it has to be refused: a release nobody measured, and a neighbouring
 // completion code.
 
-// THE LOOKUP IS CALLED THROUGH, NOT MERELY DESCRIBED (review 81115 #1: a census/witness that only
-// checks names stays green when the thing it names is absent). The release-keyed lookup answers with an
-// arm of THIS coproduct, so calling it and matching the answer is what makes the "no default" claim real.
+// THE LOOKUP IS CALLED THROUGH, NOT MERELY DESCRIBED. A witness that only checks names stays green when
+// the thing it names is absent; the release-keyed lookup answers with an arm of this coproduct, so calling
+// it and matching the answer is what makes the "no default" claim real.
 test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool {
   let measured = asrock_altrad8ud_published_factory_password_write_policy_for(
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
@@ -59,11 +60,11 @@ test fn a_release_the_catalog_never_measured_refuses_to_ground_a_reset() -> Bool
   let unmeasured = asrock_altrad8ud_published_factory_password_write_policy_for(
     firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
   )
-  // MATCHED AS ARMS, NEVER AS A BOOLEAN (review 81115 #4, and review 81285 for the helper this file then
-  // re-added): the two arms demand opposite actions -- one authorizes a destructive reset, the other
-  // refuses the route -- so a Bool would collapse "measured refusing" and "nobody ever looked" into one
-  // bit a reader cannot interrogate. Matching happens HERE, in the claim, where the arms are visible;
-  // a `_ => false` helper that names one variant true is the same Bool under another name.
+  // MATCHED AS ARMS, NEVER AS A BOOLEAN: the two arms demand opposite actions -- one authorizes a
+  // destructive reset, the other refuses the route -- so a Bool would collapse "measured refusing" and
+  // "nobody ever looked" into one bit a reader cannot interrogate. Matching happens HERE, in the claim,
+  // where the arms are visible; a `_ => false` helper that names one variant true is the same Bool under
+  // another name.
   (match measured {
     FirmwareRefusesPublishedPassword { firmware: _, completion_code: _, capture: _, measured_under: _ } => true
     NotMeasured { firmware: _ } => false
@@ -110,12 +111,10 @@ test fn a_completion_code_beside_the_measured_one_is_not_the_refusal() -> Bool {
     && ipmi_completion_code_eq(a: ipmi_completion_code_invalid_data_field, b: IpmiCompletionCode { code: 203 }) == false
 }
 
-// AN ORACLE WITH SOMETHING TO FAIL AGAINST (review 81238 #2). The assertion this replaces compared
-// ipmi_completion_code_invalid_data_field_text to the literal "Invalid data field in request" -- a data row
-// against a copy of itself, which stays green when the row and the test are edited together and therefore
-// detects nothing. Deleting it rather than re-wording it: that text is the IPMI specification's DESCRIPTION
-// of the code and has no referent inside this repository to check against, and it is not identity (the
-// review that made the code typed established that).
+// AN ORACLE WITH SOMETHING TO FAIL AGAINST. Comparing a data row's text against a literal copy of itself
+// stays green when the row and the test are edited together, so it detects nothing -- and the row's English
+// is the IPMI specification's description of the code, with no referent inside this repository to check it
+// against. So no claim is made about the wording. What CAN be checked is the NUMBER.
 //
 // What CAN be checked against something independent is the NUMBER, because the spec publishes it in hex and
 // hex digits are a DERIVATION rather than a copy: 0xCC is 12*16+12 and 0xC7 is 12*16+7, with C=12 and 7=7
@@ -143,13 +142,13 @@ fn refuses_that_code(policy: PublishedFactoryPasswordWritePolicy) -> Bool {
 
 test fn the_measured_row_is_keyed_by_the_catalog_version_and_not_by_a_rerollable_string() -> Bool {
   match asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy {
-    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, capture: _, measured_under: m } =>
+    FirmwareRefusesPublishedPassword { firmware: f, completion_code: c, capture: cap, measured_under: m } =>
       f.family == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.family
         && f.version.major == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.major
         && f.version.minor == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.minor
         && f.version.patch == asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware.version.patch
         && ipmi_completion_code_eq(a: c, b: ipmi_completion_code_invalid_data_field)
-        && capture == asrock_altrad8ud_inband_recovery_capture
+        && cap == asrock_altrad8ud_inband_recovery_capture
     NotMeasured { firmware: _ } => false
   }
 }
@@ -180,9 +179,9 @@ fn verdict_for(wanted: String) -> SiteVerdict? {
 
 test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
   list_length(items: recovery_site_verdicts()) == 2
-    // Each row's conformance is MATCHED, and the arm that fails is the arm review 81176 made red: a bare
-    // `Diverges` carries no reason, which forks the authority. The claim distinguishes that from a
-    // reasoned divergence rather than flattening both to false, because the two need different fixes.
+    // Each row's conformance is MATCHED. A bare `Diverges` carries no reason, which forks the authority,
+    // so it is refused outright; a reasoned divergence is allowed to pass with its reason attached. The two
+    // need different fixes, so they are not flattened to one false.
     && (match verdict_for(wanted: recovery_in_band_site_name) {
       Present { value: verdict } =>
         match verdict.conformance {
@@ -262,7 +261,11 @@ test fn both_recovery_writes_are_admitted_only_under_an_operator_approved_capabi
       match verdict.selection {
         PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
         PatternSelected { pattern: _, receipt: _ } => false
-        SelectionRefused { cause: _ } => false
+        ManualStepRequired { step: _, receipt: _ } => false
+        NoAdmissiblePattern { causes: _, scope: _ } => false
+        PatternSelectionNeedsEvidence { needs: _ } => false
+        PatternSelectionNeedsPolicy { survivors: _ } => false
+        PatternSelectionRefused { defects: _ } => false
       }
     Absent => false
   })
@@ -271,7 +274,11 @@ test fn both_recovery_writes_are_admitted_only_under_an_operator_approved_capabi
         match verdict.selection {
           PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
           PatternSelected { pattern: _, receipt: _ } => false
-          SelectionRefused { cause: _ } => false
+          ManualStepRequired { step: _, receipt: _ } => false
+          NoAdmissiblePattern { causes: _, scope: _ } => false
+          PatternSelectionNeedsEvidence { needs: _ } => false
+          PatternSelectionNeedsPolicy { survivors: _ } => false
+          PatternSelectionRefused { defects: _ } => false
         }
       Absent => false
     })
@@ -333,8 +340,8 @@ test fn an_executed_write_without_byte_capture_can_prove_an_attempt_but_never_a_
     detail: "the other arm of the same run, presented as the reset",
   }
   recovery_write_was_attempted(record: uncaptured_reset, kind: recovery_reset_actuation())
-    // THE SUCCESS SIDE, MATCHED AS THE ARMS THEY ARE (review 81308). No predicate is consulted: the
-    // claim itself asks which arm can ground a success, and only one can. ExecutedWithoutByteCapture
+    // THE SUCCESS SIDE, MATCHED AS THE ARMS THEY ARE. No predicate is consulted: the claim itself asks
+    // which arm can ground a success, and only one can. ExecutedWithoutByteCapture
     // satisfies "was this attempted, against the arm the route names" and must NEVER satisfy "this
     // happened and was recorded", which is the distinction the field exists to keep.
     && (match uncaptured_reset {
@@ -438,14 +445,12 @@ test fn access_discover_produces_the_locked_credential_arm_when_an_in_band_route
     ) == false
 }
 
-// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS (DESIGN §3: "a stale symbol
-// is decidable from the `Node` tree"; review 81115 #1 was exactly this defect on the census rows). Each
-// step is a DeclarationRef, and a ref naming nothing is indistinguishable from one naming a function until
-// somebody calls it. So every ref in BOTH rosters is asked of the live tree, one at a time -- a single miss
-// fails the claim. The rosters were rewritten to name the module's actual decision points
-// (recovery_host_refusal, in_band_channel_admits, the two gates, recovery_readback_proves_reset,
-// recovery_standing_handed_off) after the original six named only themselves, with no declaration behind
-// them: the same class of defect the census rows had.
+// THE CONVERGENCE-STEP ROSTER NAMES DECLARATIONS THE TREE ACTUALLY CONTAINS. §3: "a stale symbol is
+// decidable from the `Node` tree." A ref naming nothing is indistinguishable from one naming a function
+// until somebody calls it, so every ref in BOTH rosters is asked of the live tree, one at a time -- a
+// single miss fails the claim. A roster that names the module's own decision points (the two gates, the
+// host refusal, the channel admission, the readback mint, the fold) is the one worth checking, because
+// those are the declarations a consumer could be pointed at and fail to find.
 test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() -> Bool {
   all(recovery_convergence_steps(), fn(step) {
     any(xs: recovery_live_decl_facts, predicate: fn(d) {
@@ -470,18 +475,26 @@ test fn every_convergence_step_names_a_declaration_the_tree_actually_contains() 
 // asserted in prose, and the refusals are built with the same constructors the route builds them with -- so
 // renaming an arm, or copying one string into two arms, fails here.
 test fn each_recovery_refusal_carries_its_own_next_action() -> Bool {
-  let actions = [
-    recovery_route_next_action(unavailable: NoReachableRescueHost { cause: NoRescueHostAddressResponded }),
-    recovery_route_next_action(unavailable: RecoveryControllerNeverMeasured { observed: recovery_measured_identity() }),
-    recovery_route_next_action(unavailable: RecoveryCatalogIndexesDisagree {
-      firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
-      observed: recovery_measured_identity(),
-    }),
-    recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { detail: "no body was saved" }),
-  ]
+  let host = recovery_route_next_action(unavailable: NoReachableRescueHost {
+    cause: NoRescueHostAddressResponded { address: recovery_rescue_host_address(), ssh_port: openssh_standard_port },
+  })
+  let measure = recovery_route_next_action(unavailable: RecoveryControllerNeverMeasured { observed: recovery_measured_identity() })
+  let filing = recovery_route_next_action(unavailable: RecoveryCatalogIndexesDisagree {
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+    observed: recovery_measured_identity(),
+  })
+  let readback = recovery_route_next_action(unavailable: RecoveryReadbackInconclusive { detail: "no body was saved" })
   // each refusal yields advice
-  && all(actions, fn(a) { string_length(a) > 0 })
+  && string_length(s: host) > 0
+  && string_length(s: measure) > 0
+  && string_length(s: filing) > 0
+  && string_length(s: readback) > 0
   // and all four differ: "go measure this controller" cannot be the sentence you give someone whose own
   // filing is broken -- different people, different work
-  && all(actions, fn(a) { count(filter(actions, x => x == a)) == 1 })
+  && host != measure
+  && host != filing
+  && host != readback
+  && measure != filing
+  && measure != readback
+  && filing != readback
 }

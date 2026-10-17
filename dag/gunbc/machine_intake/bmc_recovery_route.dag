@@ -26,13 +26,13 @@ import extdeps.boards.asrock_rack {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogIndexesDisagree, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
-// THE PRIVILEGE FACT IS NOT RE-MINTED HERE (review 81334, DESIGN 2: "Decomposing a leaf by minting a
-// fresh authority for a concept that already exists is a failed decomposition"). This module already took
-// IpmiUserId and IpmiChannelNumber from extdeps.bmc.ipmi_channel; it stopped one field short and stored
-// `privilege_is_administrator: Bool` in place of the module's own IpmiChannelPrivilegeLimit, which lost
-// the reading (NO ACCESS and OPERATOR both printed as `false`) and needed a validator to check what the
-// type could have carried. The carrier below embeds IpmiUserChannelAccess -- the same file's existing
-// {channel, user, privilege} triple -- rather than re-declaring its three fields.
+// THE PRIVILEGE FACT IS NOT RE-MINTED HERE. §2: "Decomposing a leaf by minting a fresh authority for a
+// concept that already exists is a failed decomposition." extdeps.bmc.ipmi_channel already publishes
+// IpmiChannelPrivilegeLimit and the {channel, user, privilege} triple IpmiUserChannelAccess, and this
+// module already takes IpmiUserId and IpmiChannelNumber from there. A Bool would collapse six published
+// privilege levels into one bit -- NO ACCESS and OPERATOR indistinguishable -- and then need a validator
+// for what the type could have carried. The carrier below embeds the triple rather than re-declaring its
+// three fields.
 import extdeps.bmc.ipmi_channel {
   IpmiUserId, IpmiChannelNumber, IpmiChannelPrivilegeLimit, IpmiPrivilegeAdministrator,
   IpmiUserChannelAccess, ipmi_user_channel_access,
@@ -155,10 +155,9 @@ data recovery_ipmi_kernel_modules: List<LinuxKernelModuleName> = [
 ]
 
 // The device the in-band channel is read through, as the TYPE the upstream plugins imply: open.c builds
-// "/dev/ipmi%d" from a device NUMBER, so this is the closed set extdeps.bmc.ipmi owns. It used to be a
-// NonEmptyStr compared against a copy of itself -- safe (a wrong spelling failed closed) but a second,
-// string-shaped home for a fact ipmi already carries (review 81285, DESIGN 2 "a String leaf hiding named
-// parts"). The arm is named, and the comparison below is on arms.
+// "/dev/ipmi%d" from a device NUMBER, so this is the closed set extdeps.bmc.ipmi owns. §2 rules out the
+// alternative -- a string leaf hiding named parts, in a second home for a fact ipmi already carries. The
+// arm is named, and the comparison below is on arms.
 data recovery_ipmi_device_node: IpmiDeviceNode = IpmiDevIpmiNode { device_number: 0 }
 
 type InBandIpmiPresence {
@@ -215,11 +214,11 @@ fn recovery_host_refusal(reachability: RescueHostReachability) -> RecoveryRequir
 // caller typed an address is the assertion this whole step exists to refuse, so nothing constructs
 // RescueHostReachable except here -- and here the constructor checks its own inputs: the medium must
 // be an executed one and the driver stack must actually be the one claimed. The port is NOT range-checked
-// here (review 81294): its type is std.types.Port, `Int where range(min: 1, max: 65535)`, which the tree
-// already declares and this module already imports. Checking it here would have been a second
-// representation of a constraint the model carries (DESIGN 5), and it also misreported: a value outside
-// the range became RescueHostUnreachable/NoRescueHostAddressResponded, telling an operator a host "did not
-// respond" for an address that was never dialed -- a fabricated observation about a network.
+// here: its type is std.types.Port, `Int where range(min: 1, max: 65535)`, which the tree already declares
+// and this module already imports, so a check here would be a second representation of a constraint the
+// model carries (§5). It would also misreport: an out-of-range value arriving as RescueHostUnreachable /
+// NoRescueHostAddressResponded tells an operator a host "did not respond" for an address that was never
+// dialed -- a fabricated observation about a network.
 // The executed check happens twice by design (here, and again in recovery_host_refusal) because the
 // second is the one the standing reads, and a reader of the standing must not have to know how the
 // value was built.
@@ -263,13 +262,12 @@ fn rescue_host_reachable(
 // board with an unknown password is reachable: the host-to-BMC interface inside the chassis
 // authenticates by PHYSICAL POSITION, not by a secret. So the fact is not a comment beside a
 // function -- it is a type, and it is the type the route admits on.
-// WHY THE CREDENTIAL QUESTION IS IN THE ARMS AND NOT IN A CHECK (review 81285). The previous shape put
-// `argv_credential_words: List<String>` INSIDE the passwordless arm and asked a Bool, on every call site,
-// whether the list happened to be empty. That is a type that can hold "passwordless, with -P 0penBmc on
-// the argv", and the destructive ResetAll gate trusted whoever remembered to call the check -- exactly the
-// failure this module already removed for the transport, where the note in extdeps/bmc/ipmi.dag says a
-// consumer that forgot to ask "failed OPEN". DESIGN 5: "Stronger than catching a wrong state is making it
-// UNWRITABLE -- correctness by construction, not validation."
+// WHY THE CREDENTIAL QUESTION IS IN THE ARMS AND NOT IN A CHECK. A passwordless arm carrying a credential
+// word list is a type that can hold "passwordless, with -P 0penBmc on the argv", and every consumer would
+// have to remember to ask -- including the destructive ResetAll gate. The transport side of this same
+// question was decided the same way, for the same reason: extdeps/bmc/ipmi.dag records that a consumer
+// which forgot to ask "failed OPEN". §5: "Stronger than catching a wrong state is making it UNWRITABLE --
+// correctness by construction, not validation."
 //
 // So the credential-bearing command line is now its OWN arm, and the argv is decided ONCE by
 // in_band_channel_from_argv: words containing -U/-P (ipmitool's user-name and password options,
@@ -312,7 +310,7 @@ fn in_band_channel_from_argv(
 ) -> InBandAccessWithoutCredential {
   match ipmi_command_interface_from_wire(wire: interface_name) {
     // Not a wire name ipmitool knows: there is no transport to stand on, so nothing is admitted. Refused,
-    // never defaulted -- the reason review 81235 gave for the same rule on the transport side.
+    // never defaulted, the same rule the transport arms follow.
     IpmiCommandInterfaceUnrecognized { wire: _ } =>
       InBandChannelNotObserved { detail: "the -I name is not one ipmitool implements" }
     IpmiCommandInterfaceParsed { wire: _, transport: NotInBandHostTransport { transport: _, why_not_in_band: why } } =>
@@ -372,9 +370,9 @@ type InBandAdministratorAccount {
   evidence: EvidenceRef
 }
 
-// WHAT THE ACCOUNT LINE REPORTED, AS A SUM RATHER THAN A YES/NO (review 81334).
+// WHAT THE ACCOUNT LINE REPORTED, AS A SUM RATHER THAN A YES/NO.
 //
-// Two defects in the Bool this replaces, both from §5's "a check restating a constraint the model already
+// Two reasons a Bool cannot carry this, both from §5's "a check restating a constraint the model already
 // carries is a second representation of it":
 //   * `privilege_is_administrator` collapsed six published privilege levels into one bit, so a controller
 //     that answered NO ACCESS and one that answered OPERATOR produced the same value and the reading was
@@ -425,9 +423,8 @@ fn in_band_channel_admits(
   match reachability {
     RescueHostReachable { address: a, ssh_port: _, ipmi: ipmi, medium: _, evidence: _, observed_at: _ } =>
       // THE CHANNEL IS MATCHED, NOT ASKED A QUESTION. Only the credential-free arm can carry an
-      // observation forward; the other two arms each name why they cannot, and there is no Bool in
-      // between that a call site could forget (review 81285). The arm that is matched here has no field a
-      // credential could have been written into, so nothing has to be re-checked about it.
+      // observation forward; the other two arms each name why they cannot. The arm matched as admissible
+      // has no field a credential could have been written into, so nothing about it has to be re-checked.
       (match observation.channel {
         InBandChannelPasswordless { transport: _ } => true
         InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => false
@@ -471,18 +468,15 @@ fn in_band_channel_admits(
 // from extdeps.bmc.redfish, where the DMTF enum is declared with its citation: this module's judgement is
 // WHICH arm clears the user table, not what the enum contains.
 
-// WHAT EACH PUBLISHED ARM DOES TO THE USER TABLE, AS TWO ARMS RATHER THAN A YES/NO (review 81308).
+// WHAT EACH PUBLISHED ARM DOES TO THE USER TABLE, AS TWO ARMS RATHER THAN A YES/NO.
 //
-// This used to be `reset_to_defaults_clears_unknown_credential(kind) -> Bool`, and the module's OWN note
-// on extdeps.bmc.ipmi's IpmiCommandTransport is the argument against it: a true/false function over a
-// closed sum "put the decision OUTSIDE the data ... a consumer that forgot to ask failed OPEN", against
-// DESIGN 5's "making it UNWRITABLE". The transport got sums; this one stayed a Bool, which is the same
-// shape carrying the same risk one file over.
+// A true/false function over a closed sum puts the decision outside the data, and extdeps/bmc/ipmi.dag
+// records what that costs on the transport side: "a consumer that forgot to ask failed OPEN". §5.
 //
-// The two arms also keep the reason the gentler ones fail, which a Bool discarded: ResetRestore keeps the
-// user table (the table holding the password we do not know) and ResetNetwork likewise, so a reader told
-// "not that one" can see WHY and not reach for it as a milder default -- the exact mistake the previous
-// comment warned about while implementing it as one bit. Decided once, here; consumers match.
+// The second arm also carries the reason the gentler resets fail, which is the part an operator needs:
+// ResetRestore keeps the user table (the table holding the password we do not know) and ResetNetwork
+// likewise. Told only "not that one", the reader reaches for a milder default; told what survives, they
+// don't. Decided once, here; consumers match the arm.
 type ResetToDefaultsUserTableDisposition
   = ClearsUserTableIncludingUnknownCredential { kind: RedfishResetToDefaultsType }
   | LeavesUserTableIntact { kind: RedfishResetToDefaultsType, what_survives: NonEmptyStr }
@@ -507,14 +501,12 @@ type RecoveryActuationKind
   = InBandTemporaryAdministratorPassword
   | RedfishManagerResetToDefaults { reset_type: RedfishResetToDefaultsType }
 
-// WHY THERE IS NO `is_destructive` HERE (review 81285). A Bool over this sum would be a second
-// representation of a fact the arms already carry: the DMTF arm names which ResetToDefaultsType was sent,
-// and extdeps.bmc.redfish's own predicate over THAT upstream enum is the single place clearing-the-user-
-// table is defined -- which is the question the reset gate actually asks, asked of the arm it read off the
-// write record. The password arm needs no such answer because its gate never consults destructiveness: the
-// two writes have separate gates and separate authorization types, so "is this one destructive?" is never
-// posed at a call site. A true/false-per-variant helper here would be reachable only from a test, which is
-// how it read as "used".
+// NO DESTRUCTIVENESS PREDICATE LIVES ON THIS SUM. The DMTF arm already names which ResetToDefaultsType
+// was sent, and extdeps.bmc.redfish is the single place clearing-the-user-table is defined -- which is the
+// question the reset gate asks, asked of the arm it read off the write record. The password arm needs no
+// such answer because its gate never consults destructiveness: the two writes have separate gates and
+// separate authorization types, so "is this one destructive?" is never posed at a call site. A
+// true/false-per-variant helper here would be reachable only from a test.
 fn recovery_reset_actuation() -> RecoveryActuationKind {
   RedfishManagerResetToDefaults { reset_type: ResetAll }
 }
@@ -598,13 +590,11 @@ fn recovery_write_was_attempted(record: RecoveryWriteRecord, kind: RecoveryActua
   recovery_write_record_names_kind(record: record, kind: kind)
 }
 
-// WHY THERE IS NO `recovery_write_grounds_success` (review 81308). The Bool existed, and NO PRODUCTION
-// CALL SITE EVER ASKED IT: the fold gates on recovery_write_was_attempted and on the readback, and the
-// success arm is chosen by which branch it lands in, not by consulting a predicate. What "grounds
-// success" means is therefore carried by the arms themselves -- ExecutedWithCapturedExchange is the only
-// arm whose bytes can ground anything -- and a true/false-per-arm helper was reachable only from a test,
-// which is how it read as used. The witness now matches the three arms where they are visible; a `_ =>
-// false` helper would be the same Bool wearing the claim's clothes.
+// NOTHING ASKS "DOES THIS RECORD GROUND SUCCESS". The fold gates on recovery_write_was_attempted and on
+// the readback, and picks its success arm by which branch it lands in. What grounds success is carried by
+// the arms -- ExecutedWithCapturedExchange is the only arm whose bytes can ground anything -- so the
+// witness matches the three arms where they are visible rather than through a helper, which would be a
+// Bool wearing the claim's clothes.
 
 // WHY THERE ARE NO `*_admission_issued_by` PREDICATES. Checking WHICH GATE issued an admission is a
 // legitimate question -- it compares two declarations -- but it does not need a helper: each admitted arm
@@ -736,7 +726,7 @@ fn admit_recovery_in_band_password_write(
     PasswordWriteRefused { cause: "the census verdict at this site does not select a pattern that conforms to what the effect's classification forces" as NonEmptyStr }
   } else if match route.in_band.channel {
     // Matched, not queried: a channel that carried its credential on the argv, or was never read, has an
-    // arm and that arm refuses. Review 81285 -- the check used to be a Bool a call site had to remember.
+    // arm, and that arm says so here rather than in a predicate the call site has to remember.
     InBandChannelPasswordless { transport: _ } => false
     InBandChannelCredentialCarriedOnArgv { transport: _, credential_option: _ } => true
     InBandChannelNotObserved { detail: _ } => true
@@ -852,19 +842,15 @@ fn recovery_write_reset_arm(record: RecoveryWriteRecord) -> RedfishResetToDefaul
 
 // IS THE RESET WARRANTED ON THIS CONTROLLER, AS A SUM WITH NO ARM TO LIE IN.
 //
-// This used to be `recovery_reset_refusal_cause(sighting) -> NonEmptyStr`, which had to answer for ALL
-// THREE sighting arms including the one where nothing is refused -- and it answered it by inventing text:
-// `"unreachable: a measured refusal was sighted, so the reset is warranted"`. A function whose job is to
-// produce a refusal cause, producing a believable refusal cause for the case where there is no refusal,
-// is §5's "no plausible output is fabricated" in its purest form: the string can never be read (the gate
-// only calls it on the two refusal arms), so it can never be checked, so it can never be found wrong. And
-// because the cause was a free NonEmptyStr, nothing in the type stopped it.
+// A function returning a refusal cause has to answer for the case where nothing was refused, and an
+// unrunnable branch invites a plausible string there -- §5's "no plausible output is fabricated". The
+// string would never be read (the gate consults it only on the two refusal arms), so it could never be
+// checked, so it could never be found wrong.
 //
-// A sum makes the question answerable only in the cases that have answers. WarrantedOnMeasuredRefusal
-// carries the measurement it rests on, so an auditor can ask WHICH refusal on WHICH controller licensed
-// the wipe; the two refusal arms each carry what was seen. There is no arm that has to speak for a state
-// the model says cannot arise, so there is nothing to fabricate -- which is §5's "unwritable, not
-// validated" applied to a diagnostic rather than to a state.
+// A sum makes the question answerable only where it has answers. WarrantedOnMeasuredRefusal carries the
+// measurement it rests on, so an auditor can ask WHICH refusal on WHICH controller licensed the wipe; the
+// two refusal arms each carry what was seen. No arm has to speak for a state the model says cannot arise,
+// so there is nothing to fabricate -- §5's "unwritable, not validated", applied to a diagnostic.
 type RecoveryResetWarrant
   = WarrantedOnMeasuredRefusal {
       refusal: PublishedFactoryPasswordWritePolicy
@@ -1061,11 +1047,11 @@ fn recovery_readback_proves_reset(readback: RecoveryFactoryCredentialReadback) -
   }
 }
 
-// SEALED: ONE MINT, IN THIS MODULE (see recovery_readback_proves_reset). Its existence is what makes
-// InBandRecoveryOutcome's hand-off arm unwritable with an unproven readback, which is what let
-// recovery_standing_handed_off be deleted (review 81308: "make the handed-off arm require a readback type
-// that only a proving PasswordChangeRequired readback can construct"). A value of this type IS the
-// evidence -- message identity, the EvidenceRef that recorded it, the instant, and the capture digest.
+// SEALED: ONE MINT, IN THIS MODULE (see recovery_readback_proves_reset). Its existence is what makes the
+// hand-off arm unwritable without a readback that proves the reset: §5's "require a readback type that only
+// a proving PasswordChangeRequired readback can construct", rather than a predicate asking afterwards. A
+// value of this type IS the evidence -- message identity, the EvidenceRef that recorded it, the instant, and
+// the capture digest.
 type ProvenResetReadback sole_constructor {
   message_id: NonEmptyStr
   evidence: EvidenceRef
@@ -1098,9 +1084,8 @@ fn recovery_readback_of(body: String, evidence: EvidenceRef, observed_at: EpochM
 // a bare endpoint would be a second, unchecked copy of a fact whose owner is elsewhere, which is the
 // reflash-staleness defect cut 2 just deleted.
 //
-// WHY THE WRITE POLICY IS NOT A FIELD. It used to be, and that was the hole: a caller handed the route a
-// PublishedFactoryPasswordWritePolicy, so a route standing in front of any board could carry ASRock's
-// measured refusal and pass the gate on a destructive ResetAll with it. A policy that justifies wiping a
+// WHY THE WRITE POLICY IS NOT A FIELD. A field is a slot a caller fills: a route standing in front of any
+// board could carry ASRock's measured refusal and pass the gate on a destructive ResetAll with it. A policy that justifies wiping a
 // chassis has to be a function of the controller that is actually there, so the record carries the
 // IN-BAND IDENTITY INSTEAD -- the Get Device ID answer the run read for itself over /dev/ipmi0, which is
 // what a locked BMC will answer without a credential -- and every gate derives the policy from it,
@@ -1126,13 +1111,11 @@ type RecoveryInBandRoute {
 type InBandRecoveryOutcome
   = RecoveryHandedToOnboarding {
       controller: BmcAccessObservation
-      // SEALED, AND MINTED ONLY FROM A READBACK THAT PROVES THE RESET (review 81308's requested fix). This
-      // used to be a bare RecoveryFactoryCredentialReadback plus recovery_standing_handed_off re-checking
-      // it on every call -- validation standing where construction was available (§5), and the reason a
-      // hand-off could be BUILT around a ReadbackInconclusive. The arm is now unwritable with an unproven
-      // readback: the only mint of ProvenResetReadback is recovery_readback_proves_reset, it answers
-      // Absent unless the message identity matches, and the type is sole_constructor so nothing outside
-      // this module can build one. The Bool is deleted; consumers match the arm.
+      // SEALED, AND MINTED ONLY FROM A READBACK THAT PROVES THE RESET. The only mint of
+      // ProvenResetReadback is recovery_readback_proves_reset, it answers Absent unless the message identity
+      // matches, and the type is sole_constructor so nothing outside this module can build one. A hand-off
+      // around a ReadbackInconclusive is therefore not a value to be caught, it is a value that cannot be
+      // written -- §5's construction over validation, applied to the arm rather than to a check on it.
       proven: ProvenResetReadback
       writes: List<RecoveryWriteRecord>
     }
@@ -1153,14 +1136,12 @@ type InBandRecoveryStanding sole_constructor {
   outcome: InBandRecoveryOutcome
 }
 
-// WHY THERE IS NO `recovery_standing_handed_off` (review 81308; the fix review 81285 asked for). It was a
-// Bool over the whole outcome sum -- one arm true, five false -- whose ONLY real work was re-asking the
-// readback question the hand-off arm should never have been writable without. Both halves were wrong: the
-// Bool is the predicate-dissolution shape this module's own transport note argues against, and the re-ask
-// is §5's "validation stood where construction was available". Neither survives. The arm now carries
-// ProvenResetReadback, which has exactly one mint, so the question cannot be posed wrongly; consumers
-// match the outcome arms where they are visible (recovery_route_unavailability, the access_discover seam,
-// and the claims below). A `_ => false` helper would be the deleted Bool wearing the claim's clothes.
+// THE HAND-OFF PROOF IS AN ARM'S FIELD, NOT A PREDICATE OVER THE OUTCOME. A Bool over the outcome sum that
+// re-asks the readback question is validation standing where construction was available (§5), and a
+// true/false-per-arm helper is the shape this module's transport note argues against. The arm carries
+// ProvenResetReadback, which has exactly one mint, so the question cannot be posed wrongly; consumers match
+// the outcome arms where they are visible (recovery_route_unavailability, the access_discover seam, and the
+// claims below). A `_ => false` helper would be a Bool wearing the claim's clothes.
 
 // ── THE CONVERGENCE STEPS ──────────────────────────────────────────────────────────────────────
 //
@@ -1193,10 +1174,9 @@ data recovery_factory_credential_readback_step: DeclarationRef = decl_ref(
   decl_name: "recovery_readback_proves_reset",
 )
 
-// The hand-off step names the fold, because the fold is the declaration that WRITES the hand-off arm --
-// and it can only write it holding a ProvenResetReadback. It used to name recovery_standing_handed_off,
-// a Bool re-checking the readback after the fact; that declaration is deleted (review 81308), and naming
-// a step after a predicate rather than after the actuation that performs it was already the wrong shape.
+// The hand-off step names the fold, because the fold is the declaration that WRITES the hand-off arm -- and
+// it can only write it holding a ProvenResetReadback. A step named after a predicate would point at a check
+// that performs nothing; this one points at the actuation that performs it.
 data recovery_onboard_handoff_step: DeclarationRef = decl_ref(
   module_path: "gunbc.machine_intake.bmc_recovery_route",
   decl_name: "converge_in_band_recovery",
@@ -1364,7 +1344,7 @@ fn converge_after_admissions(
         // ask, no arm that could hold a hand-off without a proof. Absent has nowhere to go but the refusal
         // arm; the hand-off arm below is the only place ProvenResetReadback is ever consumed, and nothing
         // outside this module can build one (type ProvenResetReadback sole_constructor), so the value in
-        // it is this mint's answer about THIS readback and nothing else (review 81308).
+        // it is this mint's answer about THIS readback and nothing else.
         match recovery_readback_proves_reset(readback: readback) {
           Absent =>
             InBandRecoveryStanding {
@@ -1405,15 +1385,14 @@ fn recovery_policy_firmware(policy: PublishedFactoryPasswordWritePolicy) -> BmcF
 // demand opposite repairs. Every consumer now matches the arms of PublishedPasswordWritePolicySighting
 // directly, which is the same question asked without discarding the answer's content.
 
-// THE HANDOFF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. It used to be a fourth type carrying
-// subject + controller + a BmcSecureStanding, plus a predicate comparing it to the route, and nothing
-// constructed either: the standing's own RecoveryHandedToOnboarding { controller, readback, writes } arm
-// already IS the handoff -- sealed to its subject, naming the controller it was observed at and the readback
-// that proved it. A second container for the same facts is a second representation of them (§2), free to
-// disagree with the arm about which controller was recovered -- which is how the reflash-staleness defect
-// gets built. And a predicate over a value nobody constructs is a declaration with a hypothetical consumer
-// (§3c). The existing onboard path builds whatever it needs from the standing it is handed; this module's
-// dependency stays one-way (it -> BmcSecureStanding -> the control-route join) and it mints neither.
+// THE HANDOFF IS AN OUTCOME ARM, NOT A RECORD THIS MODULE BUILDS. The standing's own
+// RecoveryHandedToOnboarding { controller, readback, writes } arm already IS the handoff -- sealed to its
+// subject, naming the controller it was observed at and the readback that proved it. A second container for
+// the same facts is a second representation of them (§2), free to disagree with the arm about which
+// controller was recovered -- which is how a reflash-staleness defect gets built. And a predicate over a
+// value nobody constructs is a declaration with a hypothetical consumer (§3c). The existing onboard path
+// builds whatever it needs from the standing it is handed; this module's dependency stays one-way (it ->
+// BmcSecureStanding -> the control-route join) and it mints neither.
 
 // THE ROUTE'S REFUSAL, AS ONE CAUSE THE CONSUMER CAN BRANCH ON -- carried on the AccessDiscover arm
 // in gunbc.machine_intake.arrival_converge. RecoveryRouteUnavailable is deliberately NOT
@@ -1433,9 +1412,8 @@ type RecoveryRouteUnavailable
   | RecoveryCatalogIndexesDisagree { firmware: BmcFirmwareVersion, observed: IpmiDeviceIdentity }
   | RecoveryReadbackInconclusive { detail: NonEmptyStr }
 
-// (no recovery_route_is_available: it was a SECOND NAME for recovery_standing_handed_off, and a second
-// name for one question is a second representation of it, free to disagree. Every consumer calls the
-// standing's own predicate.)
+// THERE IS NO `recovery_route_is_available`. One question about a standing gets one name; a second name
+// for it is a second representation, free to disagree with the first. Consumers match the outcome arms.
 
 // The next PHYSICAL action, spelled out of the named cause. Two of these need nobody at the machine
 // and one does; the consumer tells them apart only because the cause is named rather than collapsed
@@ -1603,13 +1581,13 @@ test fn a_channel_carried_in_from_another_host_admits_nothing() -> Bool {
       }
 }
 
-// THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. This is
-// review 81285's fix made executable. Three parts, each a different way the old type could be wrong:
+// THE CREDENTIAL DECISION IS MADE BY THE PARSE, AND THE ADMITTED ARM CANNOT HOLD A CREDENTIAL. Three parts,
+// each a different way this could be wrong:
 //   - an argv that passed -P lands on the credential-bearing arm, naming WHICH option, and the same argv
 //     with no credential option lands on the admitted arm -- both through in_band_channel_from_argv, so
 //     the side is decided once, at the parse, not at each consumer;
-//   - the admitted arm has NO field that could hold a credential, which makes the old broken value
-//     (passwordless + ["-P","0penBmc"]) unconstructible: this claim no longer needs a case for it, and
+//   - the admitted arm has NO field that could hold a credential, which makes "passwordless, with
+//     -P 0penBmc" unconstructible: this claim has no case for it, and
 //     neither does any gate;
 //   - an out-of-band -I name cannot reach either arm, so there is no channel value to hand the password
 //     gate that would admit a write over a transport requiring a secret.
@@ -1718,9 +1696,9 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
     // THE ADMITTED RESET ARM IS MATCHED ONCE, and everything it must carry is read out of that match: the
     // arm it cleared, the gate that issued it, and the ruling it stands under. There is no Bool asked first
     // and no `_ => false` standing in for "impossible" -- with one type per write, the only arms that exist
-    // here are this write's admitted and refused, so a match with two arms IS total. What used to be
-    // writable (a ResetAll carried as non-destructive, or admitted without a ruling, or a password
-    // admission wearing the reset's arm) has no constructor.
+    // here are this write's admitted and refused, so a match with two arms IS total. A ResetAll carried as
+    // non-destructive, an admission without a ruling, and a password admission wearing the reset's arm all
+    // have no constructor.
     && (match recovery_admitted_reset_write() {
           ResetWriteAdmitted { reset_type: rt, authorized_by: issuer, operator_ruling: r } =>
             rt == ResetAll
@@ -1729,7 +1707,7 @@ test fn a_reset_arm_that_keeps_the_user_table_is_never_a_recovery() -> Bool {
           ResetWriteRefused { cause: _ } => false
         })
     // ...and the password write's admission is its OWN type: it cannot even be asked whether it stands
-    // under the reset's gate, which is the check that used to be a runtime refusal.
+    // under the reset's gate, so no refusal has to be written for that question.
     && (match recovery_admitted_in_band_write() {
           PasswordWriteAdmitted { authorized_by: issuer } =>
             declaration_ref_eq(a: issuer, b: recovery_in_band_password_write_site())
