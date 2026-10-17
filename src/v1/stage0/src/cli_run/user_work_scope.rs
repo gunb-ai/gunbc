@@ -624,14 +624,14 @@ fn live_enclosing_bound_in(
         let dir = format!("{}{current}", sysfs_root.display());
         if let Ok(max) = std::fs::read_to_string(format!("{dir}/memory.max")) {
             any_read = true;
-            match max.trim().parse::<u64>() {
-                // 0 parses as a finite limit and stays the tightest: the check names it
-                // MemoryMaxZero rather than treating it as no limit.
-                Ok(n) => match &tightest {
+            // A non-numeric reading (`max`, or out of u64 range) is not a limit and is skipped; 0
+            // PARSES and so stays the tightest, which is how the check gets to name it MemoryMaxZero
+            // rather than treating it as no limit.
+            if let Ok(n) = max.trim().parse::<u64>() {
+                match &tightest {
                     Some((_, best)) if *best <= n => {}
                     _ => tightest = Some((dir.clone(), n)),
-                },
-                Err(_) => {}
+                }
             }
         }
         if let Ok(swap) = std::fs::read_to_string(format!("{dir}/memory.swap.max")) {
