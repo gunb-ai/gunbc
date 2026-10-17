@@ -179,7 +179,7 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
     Absent => none
     Present { value: m } =>
       if m.main_route == MainUsesFleetIdentity && branch == (gunbc_default_branch_name as String) { none }
-      else if mode != (mtcollins1_boot_mode_name as String) { Present { value: m } } else {
+      else if m.main_route != MainUsesSelectedSource { Present { value: m } } else {
         match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none

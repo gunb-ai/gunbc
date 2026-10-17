@@ -1,0 +1,64 @@
+module test.claim.fleet_converge_run_scoped_coverage_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import gunbc.auth.branch_dispatch_federation { run_scoped_mode_named }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire, expected_fleet_converge_yml,
+  FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
+  fleet_converge_run_scoped_step_if, fleet_converge_branch_account_expression,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn rendered() -> String {
+  match expected_fleet_converge_yml() {
+    FleetConvergeYamlGenerated { content } => content
+    FleetConvergeYamlGenerationRefused { reason: _ } => ""
+  }
+}
+
+type ModeCoverage = Covered | MainOnly
+
+// THE CENSUS: every fleet-converge mode classified by executing the relation the generator reads.
+fn coverage_of(mode: String) -> ModeCoverage {
+  match run_scoped_mode_named(mode: mode) { Present { value: _ } => Covered  Absent => MainOnly }
+}
+
+fn covered_wires() -> List<String> {
+  filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => coverage_of(mode: w) == Covered)
+}
+
+fn uncovered_wires() -> List<String> {
+  filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => coverage_of(mode: w) == MainOnly)
+}
+
+// POSITIVE: the three requested modes are covered, and the census partitions every mode.
+test fn plan_apply_dashboard_deploy_are_covered_and_the_census_partitions_every_mode() -> Bool {
+  covered_wires().contains("plan") && covered_wires().contains("apply") && covered_wires().contains("dashboard_deploy")
+    && covered_wires().length() + uncovered_wires().length() == fleet_converge_workflow_modes.length()
+}
+
+// POSITIVE, ON THE EMITTED WORKFLOW: the grant-wait step and the branch-pool sign-in exist, and the
+// sign-in's branch arm is guarded by the off-main condition over exactly the covered fleet-identity
+// modes while its main arm is the main pool.
+test fn the_emitted_workflow_has_grant_wait_and_branch_pool_signin_for_covered_modes() -> Bool {
+  let y = rendered()
+  y.contains("id: branch_run_grant_await")
+    && y.contains("id: wif_auth\n")
+    && all(["plan", "apply", "dashboard_deploy"], m => y.contains(join(["github.event.inputs.mode == '", m, "'"], "")))
+    && y.contains("github.ref != 'refs/heads/main'")
+    && y.contains("github-fleet-converge-dispatch")
+    && y.contains("github-fleet-convergence")
+}
+
+// RED: a mode outside the relation is named in neither the generator's grant-wait/branch-pool condition
+// nor the branch account expression, so it keeps the main-only sign-in. The two are the only places the
+// branch pool is selected, and both are derived from the relation.
+test fn a_mode_outside_the_relation_gets_no_branch_pool_signin() -> Bool {
+  uncovered_wires().length() > 0
+    && all(uncovered_wires(), w =>
+      !fleet_converge_run_scoped_step_if.contains(join(["github.event.inputs.mode == '", w, "'"], ""))
+        && !fleet_converge_branch_account_expression().contains(join(["github.event.inputs.mode == '", w, "'"], "")))
+}
