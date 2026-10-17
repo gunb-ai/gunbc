@@ -7,7 +7,7 @@ module test.claim.firmware_network_boot_standing_witness
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { uri_https }
 import extdeps.provisioning.network_boot { UefiPxe, UefiHttpBoot }
 import gunbc.network_boot_delivery { BootControlUnobserved }
@@ -159,7 +159,7 @@ test fn the_happy_unit_is_ready_and_carries_every_ready_field() -> Bool {
           match proto {
             ProtocolDhcpProxy =>
               nic == "eth0"
-                && match evidence_observation(ev) {
+                && match ev.observation.bios_version {
                      BiosVersionObserved { version: v } => v == "1.08"
                      _ => false
                    }
@@ -363,6 +363,7 @@ fn route_has_authority(row: RouteAuthority) -> Bool {
   match row.authority {
     CitedToAuthority { authority: _ } => true
     TranscribedUncited { read_obligation: _ } => true
+    ObservedByReceipt { observed: _ } => true
   }
 }
 
@@ -406,12 +407,9 @@ test fn ready_evidence_preserves_the_observation_it_was_computed_from() -> Bool 
   ) {
     Ready { firmware_mode: UefiHttpBoot, network_interface: _, protocol: ProtocolHttpBoot, evidence: ev } =>
       ev.observed_at == witness_epoch
-        && match evidence_observation(ev) {
-             FirmwareBootObservation { boot_order: _, boot_options: _, nics: _, secure_boot: _, bios_version: b } =>
-               match b {
-                 BiosVersionObserved { version: v } => v == "1.08"
-                 _ => false
-               }
+        && match ev.observation.bios_version {
+             BiosVersionObserved { version: v } => v == "1.08"
+             _ => false
            }
     _ => false
   }
