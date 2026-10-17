@@ -6,6 +6,16 @@ import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.uri { Uri }
 import extdeps.access.posix { FileMode, FileOwnership, file_mode_octal }
 import std.types { path_segment_is_safe }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand }
+import gunbc.cursor_harness_credential {
+  CursorSandboxPreflightReading,
+  CursorSandboxReady,
+  CursorSandboxUnavailable,
+  CursorSandboxNotEntered,
+  CursorSandboxPreflightUnreadable,
+  cursor_sandbox_discriminating_preflight_command,
+}
 import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.llm.cursor_agent_distribution {
   cursor_agent_linux_arm64_tarball_uri,
@@ -206,6 +216,9 @@ type CursorAgentReadbackFailure
   | InstallEntriesNotRootOwned
   | InstallEntriesWritable
   | InstallSymlinkEscapes
+  | PreflightSandboxUnavailable
+  | PreflightSandboxNotEntered
+  | PreflightUnreadable
 
 type CursorAgentReadback
   = CursorAgentReadbackHolds
@@ -315,5 +328,50 @@ fn cursor_agent_realization_readback(
       a: readback_loaded_profile(observed: loaded),
       b: readback_install_tree(observed: tree),
     ),
+  )
+}
+
+// THE EXACT EXECUTABLE AS A PROGRAM IDENTITY. The invocation is the admitted absolute path, never the
+// PATH name, so the preflight below runs the root-owned pinned binary and no other. Minting is a
+// sealed review event (extdeps.exec.program uncataloged_program lists this row): the program is not
+// yet carried by a CliTool row.
+fn cursor_agent_pinned_program() -> ProgramIdentity {
+  uncataloged_program(invocation: cursor_agent_executable_path(version: cursor_agent_pinned_version) as NonEmptyStr)
+}
+
+// THE FREE PREFLIGHT, RUN WITH THE PINNED IDENTITY. This is warm-crane-219's discriminating command
+// (gunbc.cursor_harness_credential), not a second preflight: it sets the outer CURSOR_SANDBOX sentinel
+// so an inherited `native` cannot read Ready over an unsandboxed run.
+fn cursor_agent_preflight_command() -> ArgvCommand {
+  cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program())
+}
+
+type PreflightObservation
+  = PreflightObserved { reading: CursorSandboxPreflightReading }
+  | PreflightUnobserved { reason: String }
+
+fn readback_preflight(observed: PreflightObservation) -> CursorAgentReadback {
+  match observed {
+    PreflightUnobserved { reason: r } => CursorAgentReadbackUnobserved { reason: r }
+    PreflightObserved { reading: CursorSandboxReady } => CursorAgentReadbackHolds
+    PreflightObserved { reading: CursorSandboxUnavailable { detail: _ } } =>
+      CursorAgentReadbackFails { cause: PreflightSandboxUnavailable }
+    PreflightObserved { reading: CursorSandboxNotEntered { detail: _ } } =>
+      CursorAgentReadbackFails { cause: PreflightSandboxNotEntered }
+    PreflightObserved { reading: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } =>
+      CursorAgentReadbackFails { cause: PreflightUnreadable }
+  }
+}
+
+// THE FULL READBACK: host legs plus the preflight, whose Ready arm this readback is what makes inhabited.
+fn cursor_agent_full_readback(
+  profile_file: ProfileFileObservation,
+  loaded: LoadedProfilesObservation,
+  tree: InstallTreeObservation,
+  preflight: PreflightObservation,
+) -> CursorAgentReadback {
+  combine_cursor_agent_readbacks(
+    a: cursor_agent_realization_readback(profile_file: profile_file, loaded: loaded, tree: tree),
+    b: readback_preflight(observed: preflight),
   )
 }

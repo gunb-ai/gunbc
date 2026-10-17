@@ -37,7 +37,23 @@ import gunbc.host.cursor_agent_realization {
   InstallSymlinkEscapes,
   cursor_agent_realization_readback,
   readback_install_tree,
+  PreflightObserved,
+  PreflightObservation,
+  PreflightUnobserved,
+  PreflightSandboxUnavailable,
+  PreflightSandboxNotEntered,
+  PreflightUnreadable,
+  cursor_agent_full_readback,
+  cursor_agent_preflight_command,
 }
+import gunbc.cursor_harness_credential {
+  CursorSandboxReady,
+  CursorSandboxUnavailable,
+  CursorSandboxNotEntered,
+  CursorSandboxPreflightUnreadable,
+  cursor_sandbox_preflight_reading,
+}
+import extdeps.exec.command { argv_words }
 import extdeps.access.posix { FileOwnership, file_mode_of_octal_text }
 
 // SUPPLIED VALUES AT ONE INTERFACE. The expected profile below is typed out, not derived, so a renderer
@@ -215,4 +231,31 @@ test fn a_lookalike_profile_name_is_not_the_pinned_profile() -> Bool {
       loaded: LoadedProfilesObserved { profiles: "gunbc_cursor_sandbox_agent_cli_old (enforce)\n" },
       tree: good_tree(),
     ) { CursorAgentReadbackFails { cause: ProfileNotLoaded } => true, _ => false })
+}
+
+fn full(preflight: PreflightObservation) -> CursorAgentReadback {
+  cursor_agent_full_readback(
+    profile_file: good_file(),
+    loaded: LoadedProfilesObserved { profiles: good_profiles },
+    tree: good_tree(),
+    preflight: preflight,
+  )
+}
+
+// The preflight reading is folded through warm-crane-219's own reading fn, so the route from stdout to
+// the readback leg is executed, not supplied as a verdict.
+test fn the_preflight_leg_holds_only_on_native_and_each_other_reading_fails_with_its_own_cause() -> Bool {
+  (match full(preflight: PreflightObserved { reading: cursor_sandbox_preflight_reading(exit_code: 0, stdout: "native\n", stderr: "") }) { CursorAgentReadbackHolds => true, _ => false })
+    && (match full(preflight: PreflightObserved { reading: cursor_sandbox_preflight_reading(exit_code: 0, stdout: "gunbc-outside-the-cursor-sandbox\n", stderr: "") }) { CursorAgentReadbackFails { cause: PreflightSandboxNotEntered } => true, _ => false })
+    && (match full(preflight: PreflightObserved { reading: cursor_sandbox_preflight_reading(exit_code: 1, stdout: "", stderr: "x") }) { CursorAgentReadbackFails { cause: PreflightUnreadable } => true, _ => false })
+    && (match full(preflight: PreflightObserved { reading: cursor_sandbox_preflight_reading(exit_code: 1, stdout: "SandboxUnsupportedError: no", stderr: "") }) { CursorAgentReadbackFails { cause: PreflightSandboxUnavailable } => true, _ => false })
+    && (match full(preflight: PreflightUnobserved { reason: "no ssh" }) { CursorAgentReadbackUnobserved { reason: _ } => true, _ => false })
+}
+
+// The command runs the pinned exact path under the discriminating sentinel, never the PATH name.
+test fn the_preflight_command_runs_the_pinned_exact_path_under_the_sentinel() -> Bool {
+  let words = argv_words(command: cursor_agent_preflight_command())
+  any(words, w => w == "/opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent")
+    && any(words, w => string_contains(s: w, pattern: "CURSOR_SANDBOX=gunbc-outside-the-cursor-sandbox"))
+    && !any(words, w => w == "cursor-agent")
 }
