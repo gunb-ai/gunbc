@@ -78,3 +78,6 @@ test fn wlr_real_uint8_300_refuses() -> Bool { wlr_has(literal: "300", reason: ^
 test fn wlr_probe_300_accepted() -> Bool { wlr_has(literal: "300", reason: ^accepted) }
 test fn wlr_probe_300_grounding() -> Bool { wlr_has(literal: "300", reason: ^infer_grounding_not_derived) }
 test fn wlr_probe_300_inhabit() -> Bool { wlr_has(literal: "300", reason: ^application_argument_does_not_inhabit) }
+test fn wlr_probe_255_inhabit() -> Bool { wlr_has(literal: "255", reason: ^application_argument_does_not_inhabit) }
+test fn wlr_probe_255_grounding() -> Bool { wlr_has(literal: "255", reason: ^infer_grounding_not_derived) }
+test fn wlr_probe_true_inhabit() -> Bool { wlr_has(literal: "true", reason: ^application_argument_does_not_inhabit) }
