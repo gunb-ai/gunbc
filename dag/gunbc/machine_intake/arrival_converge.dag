@@ -666,6 +666,14 @@ fn access_discover(
   // AccessObserveRefusal, whose arms are all capture-reading faults). So the caller supplies what was
   // actually observed by the in-band route, and if it observed nothing the step behaves exactly as before.
   // A standing that completed hands off `none` here, and the out-of-band path is taken on its merits.
+  // CLASSIFIED, NOT HIDDEN (section 3c: "consumed by a named later change"): EVERY CALLER IN THE PRODUCT
+  // passes `locked: none` today, and the only caller that supplies a real standing is
+  // machine_intake_bmc_recovery_route_witness. That is honest rather than dangling -- the one unit whose
+  // locked-BMC recovery is actually captured (the specimen under
+  // artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/) is not the unit these arrival entries run,
+  // so a live caller would have to invent a board that was never observed. When that specimen gets its own
+  // arrival entry, its standing goes in at this parameter; until then the seam is exercised only by the
+  // named witness, which is what the classification is for.
   match access_discover_refusal_for_locked_credential(key: key, standing: locked) {
     Present { value: refusal } => StepRefused { key: key, cause: refusal }
     Absent => access_discover_from_read(key: key, read: read)
