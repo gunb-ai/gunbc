@@ -15,7 +15,7 @@ import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.optional { Absent, Present }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan }
-import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text, apply_empty_host_effects, claim_oidc_now }
+import test.claim.live_deploy.apply_emission_projection { pipeline_step_text, pipeline_steps_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   apply_intent_from_effects,
@@ -271,6 +271,7 @@ fn apply_step_texts_for(access: DeployAccess) -> List<String> {
       plan: deploy_witness_full_install_plan(spec: spec),
       cap_authorization: CapConvergeWithheld { cause: "the principal claims are not about the cap step" },
       oidc_now: claim_oidc_now(),
+      object_source_serve: apply_complete_object_source_serve(),
     ).steps,
     st => pipeline_step_text(st: st)
   )

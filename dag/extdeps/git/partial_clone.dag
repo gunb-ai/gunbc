@@ -1,0 +1,247 @@
+module extdeps.git.partial_clone
+
+import std.types { FilePath, Int, List, String }
+import std.algebra { trim }
+import std.optional { Absent, Optional, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.git {
+  git_config_key_extensions_partial_clone,
+  git_config_regexp_remote_promisor,
+  git_config_regexp_remote_partialclonefilter,
+  git_rev_parse_is_shallow_true,
+  git_no_lazy_fetch_environment,
+  git_no_lazy_fetch_internally_set_value,
+  git_repository_unusable_exit_code,
+}
+import extdeps.git.inspect {
+  ConfigReading,
+  ConfigSet,
+  ConfigUnset,
+  ConfigUnreadable,
+  config_reading,
+  git_config_get_in_repo_tail,
+  git_config_get_regexp_in_repo_tail,
+  git_rev_parse_is_shallow_in_repo_tail,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-config"
+  }
+}
+
+// A REPOSITORY'S PARTIAL-CLONE STANDING IS GIT'S OWN CONFIGURATION AND SHALLOW FILE, not a
+// nickname this repository invents for "has the objects we want". git-config(1) names
+// extensions.partialClone, remote.<name>.promisor and remote.<name>.partialclonefilter.
+// git-rev-parse(1) `--is-shallow-repository` answers the `.git/shallow` file. git-upload-pack(1)
+// ENVIRONMENT GIT_NO_LAZY_FETCH: upload-pack internally sets it to 1, so a source that still
+// lists those keys cannot serve pack-objects the blobs the transfer needs. Shallow without
+// promisor keys is an observed reading, not a refuse.
+
+type ShallowRepositoryReading
+  = ShallowRepositoryYes
+  | ShallowRepositoryNo
+  | ShallowRepositoryUnreadable { exit_code: Int, stderr: String }
+
+fn shallow_repository_reading(exit_code: Int, stdout: String, stderr: String) -> ShallowRepositoryReading {
+  if exit_code == git_repository_unusable_exit_code {
+    ShallowRepositoryUnreadable { exit_code: exit_code, stderr: stderr }
+  } else {
+    if exit_code == 0 && trim(s: stdout) == git_rev_parse_is_shallow_true {
+      ShallowRepositoryYes
+    } else {
+      if exit_code == 0 {
+        ShallowRepositoryNo
+      } else {
+        ShallowRepositoryUnreadable { exit_code: exit_code, stderr: stderr }
+      }
+    }
+  }
+}
+
+type PartialCloneStanding
+  = ObjectStoreComplete
+  | PartialClonePromisor { detail: String }
+  | PartialCloneFilter { detail: String }
+  | ShallowClone
+  | PartialCloneUnreadable { detail: String }
+
+type ConfigSetKind
+  = SetMeansPromisor
+  | SetMeansFilter
+
+type ObjectSourceServeProbe
+  = ProbeConfigGet { key: String, set_kind: ConfigSetKind }
+  | ProbeConfigGetRegexp { pattern: String, set_kind: ConfigSetKind }
+  | ProbeShallow
+
+data object_source_serve_probes: List<ObjectSourceServeProbe> = [
+  ProbeConfigGet { key: git_config_key_extensions_partial_clone, set_kind: SetMeansPromisor },
+  ProbeConfigGetRegexp { pattern: git_config_regexp_remote_promisor, set_kind: SetMeansPromisor },
+  ProbeConfigGetRegexp { pattern: git_config_regexp_remote_partialclonefilter, set_kind: SetMeansFilter },
+  ProbeShallow,
+]
+
+fn standing_for_config_set(set_kind: ConfigSetKind, detail: String) -> PartialCloneStanding {
+  match set_kind {
+    SetMeansPromisor => PartialClonePromisor { detail: detail }
+    SetMeansFilter => PartialCloneFilter { detail: detail }
+  }
+}
+
+fn object_source_serve_probe_git_tail(probe: ObjectSourceServeProbe) -> List<String> {
+  match probe {
+    ProbeConfigGet { key: k, set_kind: _ } => git_config_get_in_repo_tail(key: k)
+    ProbeConfigGetRegexp { pattern: p, set_kind: _ } => git_config_get_regexp_in_repo_tail(pattern: p)
+    ProbeShallow => git_rev_parse_is_shallow_in_repo_tail()
+  }
+}
+
+fn object_source_serve_probe_set_standing(probe: ObjectSourceServeProbe) -> PartialCloneStanding {
+  match probe {
+    ProbeConfigGet { key: k, set_kind: sk } => standing_for_config_set(set_kind: sk, detail: k)
+    ProbeConfigGetRegexp { pattern: p, set_kind: sk } => standing_for_config_set(set_kind: sk, detail: p)
+    ProbeShallow => ShallowClone
+  }
+}
+
+fn object_source_serve_probe_unreadable_detail(probe: ObjectSourceServeProbe) -> String {
+  match probe {
+    ProbeConfigGet { key: k, set_kind: _ } =>
+      join(["git config --local --get ", k, " exited neither 0 nor 1"], "")
+    ProbeConfigGetRegexp { pattern: p, set_kind: _ } =>
+      join(["git config --local --get-regexp ", p, " exited neither 0 nor 1"], "")
+    ProbeShallow =>
+      "git rev-parse --is-shallow-repository exited non-zero"
+  }
+}
+
+type ProbeObservation
+  = ObservedConfig { set_kind: ConfigSetKind, label: String, reading: ConfigReading }
+  | ObservedShallow { reading: ShallowRepositoryReading }
+
+fn standing_from_observation(obs: ProbeObservation) -> Optional<PartialCloneStanding> {
+  match obs {
+    ObservedConfig { set_kind: sk, label: label, reading: reading } =>
+      match reading {
+        ConfigSet { value: v } =>
+          Present { value: standing_for_config_set(set_kind: sk, detail: join([label, "=", trim(s: v)], "")) }
+        ConfigUnset => Absent
+        ConfigUnreadable { exit_code: c, stderr: e } =>
+          Present {
+            value: PartialCloneUnreadable {
+              detail: join(["git config ", label, " exited ", to_string(value: c), ": ", e], ""),
+            },
+          }
+      }
+    ObservedShallow { reading: reading } =>
+      match reading {
+        ShallowRepositoryUnreadable { exit_code: c, stderr: e } =>
+          Present {
+            value: PartialCloneUnreadable {
+              detail: join(["git rev-parse --is-shallow-repository exited ", to_string(value: c), ": ", e], ""),
+            },
+          }
+        ShallowRepositoryYes => Present { value: ShallowClone }
+        ShallowRepositoryNo => Present { value: ObjectStoreComplete }
+      }
+  }
+}
+
+fn partial_clone_standing_of_observations(observations: List<ProbeObservation>) -> PartialCloneStanding {
+  match fold(observations, init: Absent, f: (acc, obs) => match acc {
+    Present { value: s } => Present { value: s }
+    Absent => standing_from_observation(obs: obs)
+  }) {
+    Present { value: s } => s
+    Absent => ObjectStoreComplete
+  }
+}
+
+fn observe_one_probe(probe: ObjectSourceServeProbe, repository_path: FilePath) -> ProbeObservation {
+  match probe {
+    ProbeConfigGet { key: k, set_kind: sk } => {
+      let r = git.Inspect.ConfigGetInRepo(repository_path: repository_path, key: k)
+      ObservedConfig {
+        set_kind: sk,
+        label: k,
+        reading: config_reading(exit_code: r.exit_code, stdout: r.value, stderr: r.stderr),
+      }
+    }
+    ProbeConfigGetRegexp { pattern: p, set_kind: sk } => {
+      let r = git.Inspect.ConfigGetRegexpInRepo(repository_path: repository_path, pattern: p)
+      ObservedConfig {
+        set_kind: sk,
+        label: p,
+        reading: config_reading(exit_code: r.exit_code, stdout: r.value, stderr: r.stderr),
+      }
+    }
+    ProbeShallow => {
+      let r = git.Inspect.IsShallowRepository(repository_path: repository_path)
+      ObservedShallow {
+        reading: shallow_repository_reading(exit_code: r.exit_code, stdout: r.answer, stderr: r.stderr),
+      }
+    }
+  }
+}
+
+fn observe_partial_clone_observations(repository_path: FilePath) -> List<ProbeObservation> {
+  map(object_source_serve_probes, p => observe_one_probe(probe: p, repository_path: repository_path))
+}
+
+type ObjectSourceServeAdmission
+  = ObjectSourceCanServe { source: String }
+  | ObjectSourceCannotServe { source: String, cause: String }
+  | ObjectSourceServeDecideAtApplyPwd
+
+// THE CAUSE EXISTS ONLY WHERE THE SOURCE CANNOT SERVE (review 81028): each refusing standing builds its
+// own cause inside the admission, so a CannotServe with an empty cause has no constructor and the
+// admitting standings carry no cause at all.
+fn upload_pack_lazy_fetch_consequence() -> String {
+  join([
+    "; git-upload-pack(1) sets ",
+    git_no_lazy_fetch_environment,
+    "=",
+    git_no_lazy_fetch_internally_set_value,
+    " by default, so pack-objects dies reading blobs the source does not hold",
+  ], "")
+}
+
+fn object_source_serve_admission(source: String, standing: PartialCloneStanding) -> ObjectSourceServeAdmission {
+  match standing {
+    ObjectStoreComplete => ObjectSourceCanServe { source: source }
+    ShallowClone => ObjectSourceCanServe { source: source }
+    PartialClonePromisor { detail: d } =>
+      ObjectSourceCannotServe { source: source, cause: join(["it is a promisor (partial) clone (", d, ")", upload_pack_lazy_fetch_consequence()], "") }
+    PartialCloneFilter { detail: d } =>
+      ObjectSourceCannotServe { source: source, cause: join(["it has a partialclonefilter (", d, ")", upload_pack_lazy_fetch_consequence()], "") }
+    PartialCloneUnreadable { detail: d } =>
+      ObjectSourceCannotServe { source: source, cause: join(["the repository's partial-clone standing could not be read: ", d], "") }
+  }
+}
+
+// ONE SENTENCE, TWO RENDERINGS (review 81028): the in-process refusal and the emitted $PWD probe's printf
+// format are both rendered from object_source_serve_refusal_sentence, so they cannot drift apart.
+fn object_source_serve_refusal_sentence(source: String, cause: String) -> String {
+  join(["the object source `", source, "` cannot serve the objects this transfer needs: ", cause], "")
+}
+
+data object_source_serve_refusal_printf_format: String = join([object_source_serve_refusal_sentence(source: "%s", cause: "%s"), "\n"], "")
+
+fn object_source_serve_refusal_text(admission: ObjectSourceServeAdmission) -> String {
+  match admission {
+    ObjectSourceCanServe { source: _ } => ""
+    ObjectSourceServeDecideAtApplyPwd => ""
+    ObjectSourceCannotServe { source: s, cause: c } =>
+      object_source_serve_refusal_sentence(source: s, cause: c)
+  }
+}
+
+fn observe_object_source_serve(source: String) -> ObjectSourceServeAdmission {
+  object_source_serve_admission(
+    source: source,
+    standing: partial_clone_standing_of_observations(observations: observe_partial_clone_observations(repository_path: source as FilePath)),
+  )
+}
