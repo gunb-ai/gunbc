@@ -16,19 +16,22 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // ============================================================================================
 //
 // WHAT WAS ENFORCED, AND WHERE, WITH COMMITS. At `1f6b4107a0^` (B0/#13932's parent) the chain was
-// live production code: `src/v1/stage0/src/bin/claim_executor.rs:1059` and `:1486` called
+// live production code: `claim_executor`'s `run` ran the required-CI floor phase (the
+// `required_ci_phase_selected(RequiredCiPhase::Floor, ..)` arm, alongside its `floor_seam` seam)
+// and, under `required_floor_mode`, ran the standalone floor entry; both called
 // `v1_compiler::cli_run::run_required_floor`, whose body ran a phase calling
-// `non_fold_residue_diff_verdict` (at `cli_run/required_floor_runner.rs:8763`). The verdict read
+// `non_fold_residue_diff_verdict` (`required_floor_runner`). The verdict read
 // the diff's touched and planned `.dag` modules through the parsed program, not through text, and
 // REFUSED a claim whose diff flipped a rostered closed-coproduct match to a non-structural
 // wildcard arm, or added an unrostered flip -- a top-level wildcard arm outside the foldable
 // accumulator shape, off the frontier. That is rung 2 by the ladder's own words: mechanically
 // preventable -- a violating diff could not complete its claim.
 //
-// THE TWO STEPS THAT LOWERED IT, AND WHY THE FIRST EXCUSES NOBODY. B0 deleted
-// `claim_executor.rs`, the verdict's only caller, and marked the runner dead
-// (`#[allow(dead_code)] // B1 residue: reachable only from the deleted run_required_floor`) --
-// after B0 the check executed on NO path but was still a file. #13971 then deleted
+// THE TWO STEPS THAT LOWERED IT, AND WHY THE FIRST EXCUSES NOBODY. B0 deleted the floor modes
+// above -- the two `run_required_floor` calls inside `claim_executor`'s `run`, an 1802-line
+// shrink that left the executor living on its other modes -- so after B0 the verdict executed on
+// NO path but was still a file, marked dead (`#[allow(dead_code)] // B1 residue: reachable only
+// from the deleted run_required_floor`). #13971 then deleted
 // `src/v1/stage0/src/cli_run/non_fold_residue.rs`'s verdict (with `run_required_floor`'s residue,
 // `class_b_census.rs`'s census half and `compile_clean_whole_tree_hard_diagnostics.rs`), rewrote
 // the failure-mode row's RUNG from 2 to 1 in the same commit, and landed with a rung-drop

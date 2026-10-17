@@ -8,19 +8,7 @@ import gunbc.compile_clean_diagnostic_policy {
   Enforced
 }
 
-// THE AGREEMENT IS CARRIED BY THE THREE PREDICATES BELOW AND NOTHING ELSE (DESIGN §4c: a String
-// declaration whose only purpose is commentary is commentary). A `cli_floor_agreement_note: String`
-// stood here until the B1 follow-up pass deleted it: its sole consumer was a witness test grepping
-// the note for the text "issue 11" -- commentary about commentary, which any edit to the prose
-// would have broken without falsifying a single claim about the policy row. What the note SAID is
-// here in typed form: both realizations read
-// `gunbc.compile_clean_diagnostic_policy.compile_clean_unlisted_import_use_enforcement` (one import,
-// one row, `witness_policy_row_drives_predicate`), the fork is a declared counted frontier rather
-// than two silent opposites (`witness_policy_row_is_floor_not_yet`), and promoting the row to
-// `Enforced` moves both consumers together (`witness_enforced_flip_red_control`, the RED control).
-// The note's closing sentence recorded that the host builtin comparing two compile verdicts was
-// deleted once the emit oracle left -- history, and it lives in the deletion's commit, not in a
-// data row.
+// The three predicates below carry the CLI-vs-floor agreement and nothing else does (DESIGN §4c).
 
 fn witness_policy_row_is_floor_not_yet() -> Bool {
   compile_clean_unlisted_import_use_enforcement == FloorNotYet
