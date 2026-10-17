@@ -1,6 +1,13 @@
 #![allow(clippy::all, dead_code, unused_imports)]
+// TEMPORARY parse bisector (deleted before merge): the seed grammar rejected my helper twice via CI
+// heal (`parse-failed at src/v1/04_infer.dag:10774:29: expected expression, found Eq`), and CI is a
+// 7-minute round trip. This prints, in one cargo run, whether the whole seed file parses and which
+// of the arm spellings the parser accepts. `include_str!` embeds the seed at COMPILE time so the
+// runner's working directory cannot make the measurement silently unavailable (the first version read
+// it from disk and panicked before printing anything).
 use crate::helpers::parse_source_named;
-use std::rc::Rc;
+
+const SEED: &str = include_str!("../../04_infer.dag");
 
 fn report(label: &str, source: &str) {
     let r = parse_source_named("snippet.dag", source);
@@ -13,38 +20,46 @@ fn report(label: &str, source: &str) {
     }
 }
 
+const PRELUDE: &str = "module zz.probe\ntype Node { connective: Int, children: List<Int>, inferred: Int }\ntype InferScope { type_env: Int, module_name: String }\nenum Connective { Disj, NoConnective }\ntype TypeEnv { a: Int }\ntype NodeResolveResult { resolved: Node }\nfn lookup_type_by_name(env: Int, name: String) -> Node? { none }\nfn expand_type_for_field_access(n: Node, env: Int, module_name: String) -> NodeResolveResult { NodeResolveResult { resolved: Node { connective: 1, children: [], inferred: 0 } } }\n";
+
 #[test]
 fn zz_tmp_parse_seed() {
-    let whole = std::fs::read_to_string("src/v1/04_infer.dag").expect("read seed infer");
-    report("whole-04_infer", &whole);
+    report("whole-04_infer", SEED);
 
-    let all = std::fs::read_to_string("src/v1/04_infer.dag").unwrap();
-    let start = all
+    let start = SEED
         .find("fn record_lit_name_declares_union")
-        .expect("helper");
-    let end = all[start..]
+        .expect("helper present");
+    let end = SEED[start..]
         .find("\n}\n")
         .map(|e| start + e + 3)
-        .unwrap_or(all.len());
-    let helper = all[start..end].to_string();
-    println!("HELPER_TEXT_START");
-    for (i, l) in helper.lines().enumerate() {
-        println!("{:02}: {}", i, l);
-    }
-    println!("HELPER_TEXT_END");
-    let prelude = "module zz.probe\ntype Node { a: Int }\ntype InferScope { a: Int }\ntype TypeEnv { a: Int }\ntype NodeResolveResult { resolved: Node }\nfn lookup_type_by_name(env: TypeEnv, name: String) -> Node? { none }\nfn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult { NodeResolveResult { resolved: Node { a: 1 } } }\n";
-    // the helper alone, with stubs for its dependencies
-    report("helper-alone", &format!("{prelude}{helper}\n"));
+        .unwrap_or(SEED.len());
+    let helper = SEED[start..end].to_string();
+    println!("HELPER_START");
+    println!("{helper}");
+    println!("HELPER_END");
+    report("helper-with-stubs", &format!("{PRELUDE}{helper}"));
 
-    // variants to bisect the construct
-    let v1 = "fn zz_f(type_name: String, scope: InferScope) -> Node? {\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {\n    Present { value: decl } =>\n      let x = if decl.connective == NoConnective {\n        decl\n      } else { decl }\n      if x.connective == Disj { Present { value: x } } else { none }\n    Absent => none\n  }\n}\n";
-    report("v1-let-then-if", v1);
-    let v2 = "fn zz_f(type_name: String, scope: InferScope) -> Node? {\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {\n    Present { value: decl } =>\n      if decl.connective == Disj { Present { value: decl } } else { none }\n    Absent => none\n  }\n}\n";
-    report("v2-simple-arm", v2);
-    let v3 = "fn zz_f(type_name: String, scope: InferScope) -> Node? {\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {\n    Present { value: decl } =>\n      let to_expand = if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {\n        match decl.inferred {\n          Present { value: Resolved { node: target } } => target\n          _ => decl\n        }\n      } else { decl }\n      if to_expand.connective == Disj { Present { value: to_expand } } else { none }\n    Absent => none\n  }\n}\n";
-    report("v3-nested-match-in-let-if", v3);
-    let v4 = "fn zz_f(type_name: String, scope: InferScope) -> Node? {\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {\n    Present { value: decl } =>\n      let a = decl\n      let expanded_result = expand_type_for_field_access(n: a, env: scope.type_env, module_name: scope.module_name)\n      let expanded = expanded_result.resolved\n      if expanded.connective == Disj { Present { value: expanded } } else { none }\n    Absent => none\n  }\n}\n";
-    report("v4-lets-then-if", v4);
-    let v5 = "fn zz_f(type_name: String, scope: InferScope) -> Node? {\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {\n    Present { value: decl } =>\n      if decl.connective == Disj {\n        Present { value: decl }\n      } else if decl.connective == NoConnective {\n        let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)\n        let expanded = expanded_result.resolved\n        if expanded.connective == Disj { Present { value: expanded } } else { none }\n      } else { none }\n    Absent => none\n  }\n}\n";
-    report("v5-if-else-if-with-lets", v5);
+    // A: the arm body on the SAME line as `=>` (the shape used throughout the seed's own code)
+    report(
+        "A-same-line-arm",
+        &format!(
+            "{PRELUDE}fn zz_a(type_name: String, scope: InferScope) -> Node? {{\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {{\n    Absent => none\n    Present {{ value: decl }} => if decl.connective == Disj {{\n      Present {{ value: decl }}\n    }} else if decl.connective == NoConnective {{\n      let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)\n      let expanded = expanded_result.resolved\n      if expanded.connective == Disj {{ Present {{ value: expanded }} }} else {{ none }}\n    }} else {{ none }}\n  }}\n}}\n"
+        ),
+    );
+
+    // B: the arm body on the line AFTER `=>`, an if-expression (what CI refused)
+    report(
+        "B-next-line-if",
+        &format!(
+            "{PRELUDE}fn zz_b(type_name: String, scope: InferScope) -> Node? {{\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {{\n    Present {{ value: decl }} =>\n      if decl.connective == Disj {{\n        Present {{ value: decl }}\n      }} else {{ none }}\n    Absent => none\n  }}\n}}\n"
+        ),
+    );
+
+    // C: the arm body on the line after `=>`, with `let`s then an if (the block-body shape)
+    report(
+        "C-next-line-lets",
+        &format!(
+            "{PRELUDE}fn zz_c(type_name: String, scope: InferScope) -> Node? {{\n  match lookup_type_by_name(env: scope.type_env, name: type_name) {{\n    Present {{ value: decl }} =>\n      let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)\n      let expanded = expanded_result.resolved\n      if expanded.connective == Disj {{ Present {{ value: expanded }} }} else {{ none }}\n    Absent => none\n  }}\n}}\n"
+        ),
+    );
 }

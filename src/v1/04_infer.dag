@@ -10767,15 +10767,14 @@ fn record_lit_alias_struct_expansion(type_name: String, scope: InferScope) -> No
 // bodies hold the lets, the shape every other function in this file uses.)
 fn record_lit_name_declares_union(type_name: String, scope: InferScope) -> Node? {
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
-    Present { value: decl } =>
-      if decl.connective == Disj {
-        Present { value: decl }
-      } else if decl.connective == NoConnective {
-        let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
-        let expanded = expanded_result.resolved
-        if expanded.connective == Disj { Present { value: expanded } } else { none }
-      } else { none }
     Absent => none
+    Present { value: decl } => if decl.connective == Disj {
+      Present { value: decl }
+    } else if decl.connective == NoConnective {
+      let expanded_result = expand_type_for_field_access(n: decl, env: scope.type_env, module_name: scope.module_name)
+      let expanded = expanded_result.resolved
+      if expanded.connective == Disj { Present { value: expanded } } else { none }
+    } else { none }
   }
 }
 
