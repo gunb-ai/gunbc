@@ -11,7 +11,7 @@ import extdeps.languages.css.values {
 }
 import extdeps.languages.css.properties {
   Background, Border, BorderBottom, BorderCollapse,
-  Color, Display, FontFamily, FontSize, LetterSpacing, MarginBottom, MarginLeft,
+  Color, Display, FontFamily, FontSize, Height, LetterSpacing, MarginBottom, MarginLeft,
   MarginRight, MarginTop, MaxWidth, Padding, VerticalAlign, Width, CustomProperty,
 }
 import extdeps.languages.css.selectors { ElementSelector, ClassSelector, PseudoSuffix }
@@ -281,7 +281,7 @@ fn review_rules() -> List<BuildRule> {
           decl(prop: FontSize, value: scale_var(t: scale_body)),
         ], margin_four(top: zero_length(), right: zero_length(), bottom: zero_length(), left: zero_length())) },
         StaticRule { selector: ElementSelector { tag: "main" }, decls: concat([
-          decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+          decl(prop: MaxWidth, value: scale_var(t: gunb_measure_page)),
           decl(prop: Padding, value: scale_var(t: gap_lg)),
         ], margin_four(top: zero_length(), right: "auto", bottom: zero_length(), left: "auto")) },
         StaticRule { selector: ElementSelector { tag: "h1" }, decls: [

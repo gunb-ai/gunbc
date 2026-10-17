@@ -49,6 +49,17 @@ test fn witness_rendered_root_is_bound_output() -> Bool {
         // reference, so a literal colour in the site layer goes red against upstream.
         && string_contains(s: h, pattern: "body { ")
         && string_contains(s: h, pattern: "background: var(--canvas)")
+        // Token references must point at THIS site's declared rows. RED control that
+        // earns its keep (review 81513): the main container once read scale_var(t:
+        // measure_page) — an unimported name the resolver satisfied AMBIENTLY with
+        // gunbc.design.scale.measure_page (the workspace site's row, name "measure").
+        // This site's :root never declared --measure, so the reference dangled: the
+        // container silently lost its width cap, every other claim stayed green, and
+        // the render showed nothing. A presence check cannot see a wrong-but-plausible
+        // reference, so the name is asserted here and the foreign custom property
+        // (closing paren included, which exempts --measure-prose) is asserted absent.
+        && string_contains(s: h, pattern: "max-width: var(--gunb-measure-page)")
+        && !string_contains(s: h, pattern: "max-width: var(--measure)")
     ReviewEmitRefused { reason: r } => false
   }
 }
