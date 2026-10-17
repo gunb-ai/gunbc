@@ -2,7 +2,6 @@
 // Source module: v1.tests.claim.production_fed_exposure_discrimination_control_test
 
 use self::ExposureOutcome::*;
-pub use crate::std_occurrence_binding_candidates::resolve_type_reference_containment_binding;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{
     CrossFileProviderExportedExposure, ModuleLocalMemberExposure,
 };
@@ -10,20 +9,19 @@ use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionBound, ReferenceBindingProjectionUnbound,
 };
 pub use crate::std_occurrence_binding_candidates::{
-    DeclarationExposureGrounding, OccurrenceBindingCandidateInputs, OccurrenceModulePathRow,
-    ReferenceBindingProjection,
+    resolve_type_reference_containment_binding, DeclarationExposureGrounding,
+    OccurrenceBindingCandidateInputs, OccurrenceModulePathRow, ReferenceBindingProjection,
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceId, OccurrenceTransport, ReferenceOccurrence,
 };
 pub use crate::std_types::{Bool, List, NonEmptyStr};
-pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
 };
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{
     declarations_named, occurrence_binding_inputs_from_transport,
-    parse_authored_occurrence_binding_source, reference_named,
+    parse_authored_occurrence_binding_source, reference_named, ParsedOccurrenceBindingSource,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
