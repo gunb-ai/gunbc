@@ -4677,9 +4677,8 @@ pub fn kernel_value_declared_type_mismatch_bounded(
         } else {
             peel_where_refinement_base(actual.clone(), type_env.clone())
         };
-        if (((formal.connective.clone() == Connective::Arrow)
+        if ((formal.connective.clone() == Connective::Arrow)
             || (actual.connective.clone() == Connective::Arrow))
-            || ((actual_base.children.clone().len() as i64) > 0))
         {
             break false;
         } else {
