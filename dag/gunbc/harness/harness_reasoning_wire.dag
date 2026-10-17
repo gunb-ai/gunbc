@@ -19,7 +19,7 @@ import gunbc.spark.serving_arm {
 import extdeps.ninfer.ninfer_serve { ninfer_message_reasoning_field, ninfer_inline_think_end_token }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
-import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
+import extdeps.pool.pool_front { pool_front_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -444,7 +444,11 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
     Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
     NemotronUltraFreeOnOpenRouter => Present { value: ParsedReasoningField { field: openrouter_message_reasoning_field } }
     Qwen3_8_27bOnNinfer => Present { value: ParsedReasoningField { field: ninfer_message_reasoning_field } }
-    Qwen38FlashNextOnPoolFront => Present { value: ParsedReasoningField { field: pool_front_message_reasoning_field } }
+    Qwen38FlashNextOnPoolFront =>
+      match pool_front_figure_read(figure: pool_front_message_reasoning_field) {
+        Present { value: f } => Present { value: ParsedReasoningField { field: f } }
+        Absent => none
+      }
   }
 }
 
@@ -475,7 +479,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
     Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
     NemotronUltraFreeOnOpenRouter => openrouter_message_reasoning_field
     Qwen3_8_27bOnNinfer => ninfer_message_reasoning_field
-    Qwen38FlashNextOnPoolFront => pool_front_message_reasoning_field
+    Qwen38FlashNextOnPoolFront => pool_front_message_reasoning_field.value
   }
 }
 
@@ -565,7 +569,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
     Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
     Qwen3_8_27bOnNinfer => ninfer_inline_think_end_token.token
-    Qwen38FlashNextOnPoolFront => pool_front_thinking_end_token
+    Qwen38FlashNextOnPoolFront => pool_front_thinking_end_token.value
   }
 }
 

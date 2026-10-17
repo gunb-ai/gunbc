@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.nat { Nat }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.http.header_dump { http_ascii_fold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -60,10 +60,30 @@ data pool_front_session_header_name: NonEmptyStr = "x-pool-session" as NonEmptyS
 // cards_concurrency_low..cards_concurrency_high requests at once.
 data pool_front_max_context_tokens: Nat = 262144
 data pool_front_max_output_tokens: Int = 32768
-// Where the front's reply carries reasoning and how it closes it: the statement names neither, so these are
-// the OpenAI-compatible spellings, an unread assumption (pool_front_contract_standing) the lab qualification reads first.
-data pool_front_message_reasoning_field: NonEmptyStr = "reasoning_content" as NonEmptyStr
-data pool_front_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+// A FIGURE CARRIES ITS OWN STANDING (DESIGN 4d). The front's statement names neither where a reply carries
+// reasoning nor how it closes it; these are the OpenAI-compatible spellings, a bet typed as a bet. A consumer
+// takes the value through pool_front_figure_read, which answers only for a figure that was cited or observed.
+type PoolFrontFigure {
+  value: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn pool_front_figure_read(figure: PoolFrontFigure) -> NonEmptyStr? {
+  match figure.standing {
+    CitedToAuthority { authority: _ } => Present { value: figure.value }
+    ObservedByReceipt { observed: _ } => Present { value: figure.value }
+    TranscribedUncited { read_obligation: _ } => none
+  }
+}
+
+data pool_front_message_reasoning_field: PoolFrontFigure = PoolFrontFigure {
+  value: "reasoning_content" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the member a pool card's reply carries reasoning in, from a live reply" as NonEmptyStr },
+}
+data pool_front_thinking_end_token: PoolFrontFigure = PoolFrontFigure {
+  value: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the token a pool card closes inline thinking with, from a live reply" as NonEmptyStr },
+}
 
 data pool_front_card_concurrency_low: Nat = 5
 data pool_front_card_concurrency_high: Nat = 7

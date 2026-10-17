@@ -19,6 +19,7 @@ import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, B
 import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
+  harness_unit_reasoning_projection,
   Qwen38FlashNextOnPoolFront, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_unit_reasoning_field, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
@@ -26,7 +27,7 @@ import gunbc.harness.harness_reasoning_wire {
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
-import extdeps.pool.pool_front { pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
+import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_figure_read, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_certificate, pool_front_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
 import extdeps.http.header_dump { HeaderDumpRead }
@@ -315,4 +316,12 @@ test fn a_unit_with_no_stated_output_cap_is_not_capped() -> Bool {
 // declared ceiling; the ceiling is the front's stated maximum context.
 test fn the_pool_units_context_ceiling_is_the_fronts_max_context() -> Bool {
   token_count_value(t: harness_unit_declared_context_ceiling(unit: Qwen38FlashNextOnPoolFront)) == pool_front_max_context_tokens
+}
+
+// An uncited guess is not consumed as a read fact: while the figures are TranscribedUncited the pool unit
+// parses no reasoning member (the projection is absent) and the figure reads refuse.
+test fn an_uncited_pool_figure_is_not_read_and_the_projection_parses_nothing() -> Bool {
+  (match pool_front_figure_read(figure: pool_front_message_reasoning_field) { Present { value: _ } => false  Absent => true })
+    && (match pool_front_figure_read(figure: pool_front_thinking_end_token) { Present { value: _ } => false  Absent => true })
+    && (match harness_unit_reasoning_projection(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
 }
