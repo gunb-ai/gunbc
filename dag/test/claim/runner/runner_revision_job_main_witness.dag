@@ -2,8 +2,9 @@ module test.claim.runner.runner_revision_job_main_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.runner.runner_revision_job_main {
-  RevisionJobOutcome, RevisionJobSpecNotAdmitted, RevisionJobSlotNotDeclared, revision_job_run,
+  RevisionJobOutcome, RevisionJobSpecNotAdmitted, RevisionJobSlotNotDeclared, revision_job_run, revision_job_admit_image,
 }
+import gunbc.runner.runner_revision_job_image { RevisionJobImageNotAdmitted, RevisionJobImageVerified }
 import test.claim.runner.runner_revision_job_spec_witness { spec }
 
 // THE JOB'S PRE-VM WALLS, BY EXECUTION OF THE ENTRY ITSELF: a malformed spec is refused before anything
@@ -12,7 +13,7 @@ import test.claim.runner.runner_revision_job_spec_witness { spec }
 // job stops here -- which is the control that no job can start on an undeclared slot.
 
 fn run(text: String, slot: String) -> String {
-  match revision_job_run(spec_text: text, slot_instance: slot, release_dir: "/nonexistent", image_dir: "/nonexistent",
+  match revision_job_run(spec_text: text, slot_instance: slot, release_dir: "/nonexistent", image_dir: "/nonexistent", image_sha256: "",
     cache_dir: "/nonexistent", work_dir: "/nonexistent", store_root: "/nonexistent", invocation_id: "witness", vcpus: hardware_thread_count(count: 2), now: "2026-10-15T00:00:00Z") {
     RevisionJobSpecNotAdmitted { refusal: _ } => "spec-not-admitted"
     RevisionJobSlotNotDeclared { instance: i } => concat("slot-not-declared:", i)
@@ -24,4 +25,20 @@ test fn the_job_refuses_a_malformed_spec_and_an_undeclared_slot_before_any_effec
   run(text: "not json", slot: "srv1-14") == "spec-not-admitted"
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-14") == "slot-not-declared:srv1-14"
     && run(text: spec(claims: "[\"//gunbc/instruments:self-host\"]", extra: ""), slot: "srv1-13") == "slot-not-declared:srv1-13"
+}
+
+// THE IMAGE WALL, CLAIMED DIRECTLY (the entry checks the slot first and the declared list is empty, so
+// the run above never reaches it): no pinned identity admits nothing, and a pinned identity over a
+// directory that holds no installed image is refused by the verifier, not waved through.
+fn admitted(image_sha256: String) -> String {
+  match revision_job_admit_image(image_dir: "/nonexistent", image_sha256: image_sha256) {
+    RevisionJobImageNotAdmitted { reason: r } => r
+    RevisionJobImageVerified { image: _ } => "verified"
+  }
+}
+
+test fn no_pinned_image_identity_and_an_uninstalled_image_are_both_refused() -> Bool {
+  admitted(image_sha256: "") == "no image identity is pinned for this job"
+    && admitted(image_sha256: "0000000000000000000000000000000000000000000000000000000000000000") != "no image identity is pinned for this job"
+    && admitted(image_sha256: "0000000000000000000000000000000000000000000000000000000000000000") != "verified"
 }
