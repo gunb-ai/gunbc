@@ -119,6 +119,7 @@ import gunbc.provisioning.altra_autoinstall_seed {
   install_driver_list_diagnostic,
   loadable_module_list_diagnostic,
   late_driver_list_diagnostic,
+  ArchiveMirrorAbsent,
   PackagePromptingUnclassified,
   AltraLoadableModule,
   audit_altra_autoinstall_seed,
@@ -565,6 +566,39 @@ test fn absent_mirror_refuses_the_seed() -> Bool {
   match build_seed_fixture( network: posture_no_mirror, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// THE MIRROR REFUSAL IS THE MIRROR'S OWN, not one of the other three causes wearing its clothes. "Refuse" is
+// cheap and four causes are available: swapping ArchiveMirrorAbsent for any sibling leaves a witness that only
+// asks "was it refused?" completely green, and the operator is sent to fix addressing when the archive is what
+// is missing. The cause arm is the diagnosis, so the diagnosis is what is asserted.
+test fn the_mirror_refusal_names_the_mirror_as_its_cause() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_altra_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+        SeedRefused { cause: ArchiveMirrorAbsent } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE ENTRYPOINT TOKEN DISTINGUISHES THE TWO POSTURES A SEED CAN ACTUALLY INHABIT. The token table has exactly
+// two rows because the third (no key AND a locked console) is unnameable; this asserts both rows are observable
+// and that they say different things, which is what keeps a swap of the two tokens from surviving. It also
+// asserts the key count rides in the token, so dropping an authorized key moves the render.
+test fn the_entrypoint_token_distinguishes_the_two_reachable_postures() -> Bool {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+    Present { value: via_console } =>
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        Present { value: via_keys } => entrypoint_tokens_are_distinguishable(
+          console_seed: via_console,
+          keys_seed: via_keys,
+        )
+        Absent => false
+      }
+    Absent => false
   }
 }
 
@@ -1208,6 +1242,23 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
       }
     Absent => false
   }
+}
+
+// THE TWO REACHABLE ENTRYPOINT POSTURES, RENDERED. Kept as a function of the two seeds so the lets sit at the
+// top of a body (the form this dialect allows) and the assertions read as one claim: the tokens differ, each
+// says what it means, and the digests follow.
+fn entrypoint_tokens_are_distinguishable(
+  console_seed: AltraAutoinstallSeed,
+  keys_seed: AltraAutoinstallSeed,
+) -> Bool {
+  let console_render = render_altra_autoinstall_seed(seed: console_seed)
+  let keys_render = render_altra_autoinstall_seed(seed: keys_seed)
+  console_render.contains("console=unlocked,keys=0")
+    && keys_render.contains("console=locked,keys=1")
+    && !content_hash_eq_structural(
+      left: altra_autoinstall_seed_digest(seed: console_seed),
+      right: altra_autoinstall_seed_digest(seed: keys_seed),
+    )
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {

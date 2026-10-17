@@ -1406,14 +1406,17 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // THE CONSOLE TOKEN IS DERIVED FROM THE CONSUMER'S OWN SUM TYPE, not from a Bool beside it. The key count is
 // rendered in every case — including 0 — because "keys=0,console=unlocked" and "keys=1,console=unlocked" are
 // different postures and a digest that flattened them would hide a dropped authorized key.
+// TWO ROWS, BECAUSE THE TYPE CAN ONLY INHABIT TWO STATES. A first version carried a third row
+// ("keys=0,console=locked") that no seed could ever render: admit_admin_access_authorisation refuses that
+// combination outright, so the row was a phantom in the token table — a spelling for a state the constructor
+// makes unnameable, which is the kind of decoration a reader later mistakes for reachability. The key count is
+// rendered in BOTH rows, so dropping an authorized key still moves the digest, and the console story is stated
+// by matching the consumer's own sum type rather than by a Bool beside it.
 fn entrypoint_diagnostic(entry: AdminAccessAuthorisation) -> NonEmptyStr {
-  match authorised_key_count(authorisation: entry) {
-    0 =>
-      match entry.console_entry {
-        ConsoleEntryUnlocked { reason: _ } => "keys=0,console=unlocked"
-        ConsoleEntryLocked => "keys=0,console=locked"
-      }
-    n => concat(concat("keys=", to_string(n) as NonEmptyStr), ",console=irrelevant") as NonEmptyStr
+  let keys = to_string(authorised_key_count(authorisation: entry)) as NonEmptyStr
+  match entry.console_entry {
+    ConsoleEntryUnlocked { reason: _ } => concat("console=unlocked,keys=", keys) as NonEmptyStr
+    ConsoleEntryLocked => concat("console=locked,keys=", keys) as NonEmptyStr
   }
 }
 
