@@ -55,7 +55,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launcher_busy_exit, attempt_system_unit_launcher_flock_wait,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed, AttemptHandInEntryDecoded,
   AttemptProcessExitedWith,
 }
 import gunbc.host.host_layout {
@@ -457,6 +457,7 @@ fn launcher_exit_record_is_expanded(name: String) -> Bool {
   !string_contains(s: name, pattern: unexpanded)
     && match attempt_exit_entry_decode(entry_name: name) {
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
       AttemptExitEntryDecoded { record } =>
         string_length(s: record.invocation_id) == 32
           && !string_contains(s: record.invocation_id, pattern: unexpanded)
