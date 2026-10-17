@@ -40,12 +40,17 @@ import product.fabric.flex_vast_loop {
   flex_plan_pass, flex_created_outcome, flex_reconcile_ours, flex_reconciled_allocation,
   flex_acquired_allocation, flex_release_card, flex_ours_roster, flex_provider_declaration, flex_vast_disk_gigabytes,
   flex_wet_gate_wall, flex_create_walls, flex_create_request,
+  FlexPassStep, FlexPassDone, FlexPassDestroyDue, flex_pass_step,
 }
 import gunbc.fleet.host_credential_custody_converge { CustodyHeld, CustodyNotHeld }
 import gunbc.serving.rented_allocation {
   RentedServingAllocation, RentedAllocationAcquired, RentedContractUnread, rented_allocation_identity,
 }
-import gunbc.serving.rented_release { RentedReleasePlanned, RentedReleaseGone }
+import gunbc.serving.rented_release {
+  RentedReleasePlanned, RentedReleaseGone, RentedReleaseHeld, RentedReleaseDestroyRefused, RentedReleaseReadings,
+  RentedHostReading, RentedHostSilent, RentedVantageReached, RentedVantageNotReached, RentedVantageUnread,
+  RentedLegDrain, RentedLegOutcomeNotPerformedHostSilent, RentedInstanceReading, RentedInstanceAbsent, RentedAnchorAbsent,
+}
 import test.claim.fabric.flex_vast_shadow_witness { wire_offer, inst_labelled, exhausted, t_charge }
 import test.claim.fabric.flex_bid_admission_witness {
   t_policy, t_attempt, t_account, t_window, empty_occupancy, t_machine, one_dollar_wire, one_ten, usd_hour,
@@ -496,4 +501,82 @@ fn w_placement_refusal() -> FlexPassRefusal? {
   let i = w_intent(entry: w_established(), admitted: true)
   let intent = FlexCreateIntent { offer: i.offer, entry: i.entry, quote: i.quote, admission: i.admission, placement: FlexPlacementUnread { obligation: "host and route unread" as NonEmptyStr } }
   w_refusal_of(p: flex_plan_pass(input: w_input(mode: Apply, gates: w_open, roster: w_under_roster(), charges: w_charges(units: 10), intent: Present { value: intent })))
+}
+
+// ---- THE RELEASE LEG IS GATED ON S5b's TYPED OUTCOMES, not on a wall. The pass step is pure: it names the
+// one destroy the pass would perform, and only when S5b's receipt reports the bound card still listed.
+fn w_destroy_due_input() -> FlexPassInput {
+  let observation = FlexPassObservation { roster: exhausted(rows: [w_ours(id: 1001, dollars: 2), w_ours(id: 1002, dollars: 2)]), charges: w_charges(units: 1) }
+  let base = w_input(mode: Apply, gates: w_open, roster: observation.roster, charges: observation.charges, intent: none)
+  FlexPassInput {
+    policy: base.policy, gates: w_open, now: base.now, cooldown: none, observation: observation,
+    cards: w_two_cards(), allocations: [w_acquired()], intent: none, template_hashes: w_hashes, no_room: false, replacement_serving: true,
+  }
+}
+
+fn w_release_readings(host: RentedHostReading, before: RentedInstanceReading, after: RentedInstanceReading) -> RentedReleaseReadings {
+  RentedReleaseReadings { host: host, authorizations: [], anchor: RentedAnchorAbsent, before: before, after: after }
+}
+
+fn w_listed(id: Int) -> RentedInstanceReading {
+  RentedInstanceObserved { instance: w_instance(id: id, label: Present { value: "gunbc-flex" }) }
+}
+
+fn w_step(readings: RentedReleaseReadings) -> FlexPassStep {
+  flex_pass_step(input: w_destroy_due_input(), roots: w_roots, protected: w_protected, readings: readings)
+}
+
+// A never-started card (host silent, control reached): the on-card legs are NotPerformed, the id-guarded
+// destroy is due, and nothing strands the paid card.
+test fn a_never_started_silent_card_is_released_with_its_destroy_due() -> Bool {
+  match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageReached }, before: w_listed(id: 1001), after: w_listed(id: 1001))) {
+    FlexPassDestroyDue { receipt: r, request: q } =>
+      (q.instance_id == 1001) && match r.drain {
+        RentedLegOutcomeNotPerformedHostSilent => true
+        _ => false
+      } && match r.clean {
+        RentedLegOutcomeNotPerformedHostSilent => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The same card, already gone on the later read, is released with no destroy left to perform.
+test fn a_never_started_silent_card_gone_on_readback_has_no_destroy_left() -> Bool {
+  match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageReached }, before: w_listed(id: 1001), after: RentedInstanceAbsent)) {
+    FlexPassDone { outcome: FlexPassReleased { receipt: r, destroy_status: none } } =>
+      match r.outcome {
+        RentedReleaseGone => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Ambiguous silence refuses at the drain leg and no destroy is due.
+test fn ambiguous_silence_refuses_the_release_and_destroys_nothing() -> Bool {
+  match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageNotReached }, before: w_listed(id: 1001), after: w_listed(id: 1001))) {
+    FlexPassDone { outcome: FlexPassReleased { receipt: r, destroy_status: none } } =>
+      match r.outcome {
+        RentedReleaseHeld { leg: RentedLegDrain, reason: _ } => true
+        _ => false
+      }
+    _ => false
+  } && match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageUnread { cause: "dns failed" as NonEmptyStr } }, before: w_listed(id: 1001), after: w_listed(id: 1001))) {
+    FlexPassDone { outcome: FlexPassReleased { receipt: _, destroy_status: none } } => true
+    _ => false
+  }
+}
+
+// An id that is not the allocation's bound id is never destroyed, even silent and Apply.
+test fn an_unbound_instance_id_is_never_destroyed() -> Bool {
+  match w_step(readings: w_release_readings(host: RentedHostSilent { control: RentedVantageReached }, before: w_listed(id: 2002), after: w_listed(id: 2002))) {
+    FlexPassDone { outcome: FlexPassReleased { receipt: r, destroy_status: none } } =>
+      match r.outcome {
+        RentedReleaseDestroyRefused { decision: _ } => true
+        _ => false
+      }
+    _ => false
+  }
 }
