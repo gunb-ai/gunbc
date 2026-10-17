@@ -8,7 +8,6 @@ import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.provisioning.ubuntu_seeded_install_media { seed_artifact_digest_algorithm_token }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -21,8 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // identity is the digest of bytes WE built, so it carries a build key and a published name. A
 // network origin is bytes CANONICAL publishes and a mirror serves: nothing here is built, so the
 // identity is a pin (a digest and a size per artefact) plus a verdict on whether what a mirror
-// served equals it. The transport-neutral vocabulary is reused as-is (extdeps.crypto.hash Digest,
-// and the algorithm token that module already keys on); the media-shaped parts (NoCloud seed dir,
+// served equals it. The transport-neutral vocabulary is reused as-is (extdeps.crypto.hash Digest); the media-shaped parts (NoCloud seed dir,
 // volume id, pinned dates, grub cmdline) are deliberately absent, because the seed arrives over
 // HTTP via the kernel command line, not on the medium.
 //
@@ -157,7 +155,7 @@ type OriginVerification
   | OriginMismatch { role: OriginArtefactRole, expected: PinnedArtefact, actual: ArtefactReading }
 
 fn origin_digest_equal(a: Digest, b: Digest) -> Bool {
-  seed_artifact_digest_algorithm_token(digest: a) == seed_artifact_digest_algorithm_token(digest: b) && a.hex == b.hex
+  a == b
 }
 
 fn origin_reading_mismatches(pin: PinnedArtefact, reading: ArtefactReading) -> Bool {
