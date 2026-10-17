@@ -1,0 +1,243 @@
+module gunbc.site.gunb_ai_tokens
+
+import std.types { Int, List, String }
+import std.optional { Absent, Present }
+import std.markup { Fragment, Element, attr }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.languages.css.values { css_ch }
+import extdeps.languages.css.properties { css_property_wire, CustomProperty }
+import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100 }
+import gunbc.design.material { CssDecl, decl }
+import gunbc.design.palette { Swatch, swatches_of, swatch_paint }
+import gunbc.design.gunb_ai_hues {
+  gunb_ai_hues, near_black, soot, graphite, sand, taupe, umber, warm_white, off_white,
+  moss, moss_deep, clay, clay_deep, brass, brass_deep,
+}
+import gunbc.design.scale { ScaleToken, LengthValue, scale_decl, named_length_token }
+import gunbc.site.markup { txt, el, el_class }
+
+// THE TOKEN BINDING for the generated gunb.ai — the tokens layer of the projection
+// (operator picks 2026-10-16, carrier gunbc.plans.gunb_ai_projection_plan §6: colours
+// are swatches from gunbc.design.palette through gunbc.design.gunb_ai_hues, pick A).
+// DESIGN §3: one upstream per fact — this module BINDS site roles to swatches and
+// never re-values them; a consumer reads a TokenSwatch here and resolves through to
+// palette. Nothing in the site layer writes an hsl/hex literal.
+//
+// Measures and the gap rhythm carry the live page's own values as ScaleToken rows
+// (named_length_token, px); the type scale is this layer's first proposal, rendered to
+// the review site as options for the operator pick. The live page hand-wrote these as
+// px/rem literals in assets/site.css with no .dag home — the inventory's gap row;
+// they are modelled here instead of transcribed.
+//
+// Consumers (DESIGN §3c): gunbc.test.claim.site_gunb_ai_tokens_witness (claim-run:
+// binding completeness + contrast floors), gunbc.site.gunb_ai_tokens_review (renders
+// review_html() to the srv1 review directory).
+
+type TokenSwatch = TokenSwatch {
+  // The site-vocabulary role name (custom property --role). This module is its home.
+  role: String
+  // The palette swatch it resolves to; the swatch is the ONLY value home.
+  swatch: Swatch
+}
+
+data token_canvas: TokenSwatch = TokenSwatch { role: "canvas", swatch: near_black }
+data token_canvas_raised: TokenSwatch = TokenSwatch { role: "canvas-raised", swatch: soot }
+data token_canvas_raised2: TokenSwatch = TokenSwatch { role: "canvas-raised-2", swatch: graphite }
+data token_border: TokenSwatch = TokenSwatch { role: "border", swatch: umber }
+data token_border_strong: TokenSwatch = TokenSwatch { role: "border-strong", swatch: taupe }
+data token_text: TokenSwatch = TokenSwatch { role: "text", swatch: warm_white }
+// The live page's default body colour is warm-white-dim (assets/site.css body rule),
+// a step below `text` — the table would lie if it dropped it.
+data token_text_body: TokenSwatch = TokenSwatch { role: "text-body", swatch: off_white }
+data token_text_dim: TokenSwatch = TokenSwatch { role: "text-dim", swatch: sand }
+data token_text_faint: TokenSwatch = TokenSwatch { role: "text-faint", swatch: taupe }
+data token_accent: TokenSwatch = TokenSwatch { role: "accent", swatch: moss }
+data token_accent_deep: TokenSwatch = TokenSwatch { role: "accent-deep", swatch: moss_deep }
+data token_callout: TokenSwatch = TokenSwatch { role: "callout", swatch: clay }
+data token_callout_deep: TokenSwatch = TokenSwatch { role: "callout-deep", swatch: clay_deep }
+data token_highlight: TokenSwatch = TokenSwatch { role: "highlight", swatch: brass }
+data token_highlight_deep: TokenSwatch = TokenSwatch { role: "highlight-deep", swatch: brass_deep }
+
+data token_swatches: List<TokenSwatch> = [
+  token_canvas, token_canvas_raised, token_canvas_raised2, token_border, token_border_strong,
+  token_text, token_text_body, token_text_dim, token_text_faint,
+  token_accent, token_accent_deep, token_callout, token_callout_deep,
+  token_highlight, token_highlight_deep,
+]
+
+fn swatch_bound(swatch: Swatch) -> Bool {
+  fold(token_swatches, init: false, f: (acc, t) => acc || t.swatch.name == swatch.name)
+}
+
+// The binding is complete when every hue-set swatch is claimed by at least one site
+// role. The witness pins the counts too (a dropped role goes red here, not silently).
+fn token_binding_complete() -> Bool {
+  all(swatches_of(s: gunb_ai_hues), sw => swatch_bound(swatch: sw))
+    && token_swatches.length() == 15
+    && swatches_of(s: gunb_ai_hues).length() == 14
+}
+
+// Measures — the live page's values, typed. named_length_token because the name is
+// semantic (page/wide/prose/title), not a magnitude encoding (scale.dag's D3 rule).
+data measure_page: ScaleToken = named_length_token(name: "measure-page", px: 896)
+data measure_wide: ScaleToken = named_length_token(name: "measure-wide", px: 992)
+data measure_prose: ScaleToken = named_length_token(name: "measure-prose", px: 672)
+data measure_title: ScaleToken = ScaleToken { name: "measure-title", value: LengthValue { length: css_ch(n: 16) } }
+
+data gap_xs: ScaleToken = named_length_token(name: "gap-xs", px: 6)
+data gap_sm: ScaleToken = named_length_token(name: "gap-sm", px: 14)
+data gap_md: ScaleToken = named_length_token(name: "gap-md", px: 20)
+data gap_lg: ScaleToken = named_length_token(name: "gap-lg", px: 40)
+data gap_xl: ScaleToken = named_length_token(name: "gap-xl", px: 64)
+
+data scale_display: ScaleToken = named_length_token(name: "display", px: 52)
+data scale_heading: ScaleToken = named_length_token(name: "heading", px: 24)
+data scale_body: ScaleToken = named_length_token(name: "body", px: 17)
+data scale_small: ScaleToken = named_length_token(name: "small", px: 14)
+data scale_label: ScaleToken = named_length_token(name: "label", px: 12)
+
+data gap_tokens: List<ScaleToken> = [gap_xs, gap_sm, gap_md, gap_lg, gap_xl]
+data measure_tokens: List<ScaleToken> = [measure_page, measure_wide, measure_prose, measure_title]
+data type_scale_tokens: List<ScaleToken> = [scale_display, scale_heading, scale_body, scale_small, scale_label]
+
+fn token_scale_tokens() -> List<ScaleToken> {
+  concat(gap_tokens, concat(measure_tokens, type_scale_tokens))
+}
+
+// The whole token layer as :root declarations: swatch paints through
+// gunbc.design.palette.swatch_paint (the hex lives there, once) and scale wires
+// through gunbc.design.scale.scale_decl. No literal colour appears below.
+fn token_root_decls() -> List<CssDecl> {
+  concat(
+    map(token_swatches, t => decl(prop: CustomProperty { name: t.role }, value: swatch_paint(sw: t.swatch))),
+    map(token_scale_tokens(), t => scale_decl(t: t))
+  )
+}
+
+// Contrast floors on the night canvas, in x100 (the unit
+// extdeps.accessibility.wcag_contrast reports). A refusal reads Absent and counts as
+// 0 — fail-closed, a bad channel never passes. Pinned from the current values; when
+// pick-A values move in the redesign, the witness moves with them deliberately.
+fn contrast_x100(a: Swatch, b: Swatch) -> Int {
+  match srgb8_contrast_ratio_x100(a: a.color, b: b.color) {
+    Present { value: r } => r
+    Absent => 0
+  }
+}
+
+fn token_contrast_floors_hold() -> Bool {
+  contrast_x100(a: warm_white, b: near_black) >= 1700
+    && contrast_x100(a: sand, b: near_black) >= 1100
+    && contrast_x100(a: moss, b: near_black) >= 600
+    && contrast_x100(a: brass, b: near_black) >= 700
+    && contrast_x100(a: moss, b: soot) >= 600
+    && contrast_x100(a: clay, b: near_black) >= 360
+}
+
+// --- review surface ----------------------------------------------------------
+// Renders the token layer for the operator pick: every hue-set swatch as a named
+// chip (proving the value's one home), the full role table, and one specimen per
+// type-scale option. Options differ ONLY in the type scale — the swatches and role
+// bindings are fixed by pick A and are not on the ballot.
+
+type TokenOption = TokenOption {
+  id: String
+  title: String
+  note: String
+  display: Int
+  heading: Int
+  body: Int
+  small: Int
+  label: Int
+}
+
+data option_editorial: TokenOption = TokenOption {
+  id: "editorial",
+  title: "Option A — editorial (the live page's ratios)",
+  note: "display 52px ≈ 3× body; keeps what gunb.ai shows today.",
+  display: 52, heading: 24, body: 17, small: 14, label: 12,
+}
+
+data option_compact: TokenOption = TokenOption {
+  id: "compact",
+  title: "Option B — compact",
+  note: "display 40px ≈ 2.4× body; denser masthead, fits above the fold at 800px.",
+  display: 40, heading: 22, body: 16, small: 13, label: 11,
+}
+
+data token_options: List<TokenOption> = [option_editorial, option_compact]
+
+fn swatch_chip(sw: Swatch) -> Fragment {
+  el_class("div", "chip", [
+    Element { tag: "i", attributes: [
+      attr(name: "style", value: join(["background: ", swatch_paint(sw: sw), "; border: 1px solid #fff3;"], "")),
+    ], children: [] },
+    el("code", [ txt(join([sw.name, "  ", swatch_paint(sw: sw)], "")) ]),
+  ])
+}
+
+fn role_row(t: TokenSwatch) -> Fragment {
+  el("tr", [
+    el("td", [ txt(join(["--", t.role], "")) ]),
+    el("td", [ txt(t.swatch.name) ]),
+    el("td", [ el_class("code", "hex", [ txt(swatch_paint(sw: t.swatch)) ]) ]),
+  ])
+}
+
+fn review_css_text() -> String {
+  join(map(token_root_decls(), d => join([css_decl_wire(d), ";"], "")), " ")
+}
+
+fn css_decl_wire(d: CssDecl) -> String {
+  join([css_property_wire(p: d.prop), ": ", d.value], "")
+}
+
+fn review_page() -> Fragment {
+  Element { tag: "html", attributes: [ attr(name: "lang", value: "en") ], children: [
+    el("head", [
+      Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8") ], children: [] },
+      Element { tag: "meta", attributes: [
+        attr(name: "viewport", value: "width=device-width, initial-scale=1"),
+      ], children: [] },
+      el("title", [ txt("gunb.ai tokens — operator pick") ]),
+      el("style", [ txt(join([
+        review_css_text(),
+        " body\{background:var(--canvas);color:var(--text);font-family:system-ui,sans-serif;font-size:17px;margin:0\}",
+        " main\{max-width:var(--measure-page);margin:0 auto;padding:var(--gap-lg)\}",
+        " h1\{font-size:var(--display)\} h2\{font-size:var(--heading);color:var(--text-dim)\}",
+        " .chip\{display:inline-block;margin:0 var(--gap-xs) var(--gap-xs) 0;padding:var(--gap-xs);background:var(--canvas-raised);border:1px solid var(--border)\}",
+        " .chip i\{display:inline-block;width:28px;height:28px;vertical-align:middle;margin-right:6px\}",
+        " table\{border-collapse:collapse;width:100%\} td\{border-bottom:1px solid var(--border);padding:6px;color:var(--text-dim)\}",
+        " .hex\{color:var(--highlight)\} .note\{color:var(--text-faint)\} .meta\{color:var(--accent);font-size:var(--small)\}",
+        " .specimen\{border:1px solid var(--border);padding:var(--gap-md);margin:var(--gap-md) 0;background:var(--canvas-raised-2)\}",
+        " a\{color:var(--accent)\} .dim\{color:var(--text-dim);max-width:var(--measure-prose)\}",
+      ], "")) ]),
+    ]),
+    el("body", [
+      el("main", [
+        el("h1", [ txt("gunb.ai — tokens layer") ]),
+        el_class("p", "dim", [ txt("Every colour is a gunbc.design.gunb_ai_hues swatch bound to a site role here (operator pick A: gunbc.design.palette is the only colour authority). The swatches and bindings are fixed; the ballot is the type-scale option.") ]),
+        el("h2", [ txt("the hue set — value lives once, in palette") ]),
+        el("div", map(swatches_of(s: gunb_ai_hues), swatch_chip)),
+        el("h2", [ txt("site role → swatch bindings") ]),
+        el("table", map(token_swatches, role_row)),
+        el("h2", [ txt("type-scale options — pick one") ]),
+        el_class("div", "specimen", [
+          el("p", [ txt(join(["A · editorial — display ", to_string(value: option_editorial.display), "px, body ", to_string(value: option_editorial.body), "px — the live page's ratios"], "")) ]),
+          el_class("p", "note", [ txt(option_editorial.note) ]),
+        ]),
+        el_class("div", "specimen", [
+          el("p", [ txt(join(["B · compact — display ", to_string(value: option_compact.display), "px, body ", to_string(value: option_compact.body), "px — fits the hero above the fold at 800px"], "")) ]),
+          el_class("p", "note", [ txt(option_compact.note) ]),
+        ]),
+      ]),
+    ]),
+  ] }
+}
+
+fn review_html() -> String {
+  match try_serialize_html_source(node: review_page()) {
+    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    EmitRejected { reason: r } => concat("GUNB_AI_TOKENS REVIEW EMIT REJECTED: ", r)
+  }
+}

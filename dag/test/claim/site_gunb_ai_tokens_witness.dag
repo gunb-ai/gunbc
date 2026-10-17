@@ -1,0 +1,61 @@
+module gunbc.test.claim.site_gunb_ai_tokens_witness
+
+import std.types { Bool }
+import std.algebra { string_contains }
+import gunbc.design.material { CssDecl }
+import extdeps.languages.css.properties { CustomProperty }
+import gunbc.design.gunb_ai_hues { gunb_ai_hues_admissible, gunb_ai_hue_count }
+import gunbc.site.gunb_ai_tokens {
+  token_binding_complete, token_contrast_floors_hold, token_swatches, token_root_decls,
+  review_html, token_options,
+}
+
+// Renders-and-checks the tokens layer (DESIGN §5: a witness goes RED when the layer
+// breaks; each claim is a property of the RENDERED artifact, not of a type).
+// Consumer: claim-run — `gunbc run --source-root dag --entry
+// dag/test/claim/site_gunb_ai_tokens_witness.dag --claim-run`, alongside the other
+// site witnesses on the compiler gate.
+
+// 1. The hue set enters palette the way every other set must.
+test fn witness_hue_set_admissible() -> Bool {
+  gunb_ai_hues_admissible()
+    && gunb_ai_hue_count() == 14
+}
+
+// 2. The binding is total: every hue-set swatch is claimed by a site role and the
+//    role table has the pinned width — a dropped role or swatch goes red, not silent.
+test fn witness_binding_total() -> Bool {
+  token_binding_complete()
+}
+
+// 3. The rendered page carries every token as `--role: <swatch paint>`: the emitted
+//    text is compared against what palette/scale themselves emit, so a hand-copied
+//    literal in the site layer cannot pass (it would differ from upstream's wire).
+test fn witness_rendered_root_is_bound_output() -> Bool {
+  let html = review_html()
+  all(token_root_decls(), d => string_contains(s: html, pattern: decl_wire(d: d)))
+    && token_swatches.length() == 15
+}
+
+fn decl_wire(d: CssDecl) -> String {
+  match d.prop {
+    CustomProperty { name: n } => join(["--", n, ": ", d.value], "")
+    _ => "PROPERTY-CHANNEL-MISMATCH-MUST-FAIL"
+  }
+}
+
+// 4. Contrast floors hold on the night canvas (fail-closed: a refused channel is 0).
+test fn witness_contrast_floors() -> Bool {
+  token_contrast_floors_hold()
+}
+
+// 5. Fail closed on emit: a rejected render never becomes a silent page, and both
+//    ballot options actually render.
+test fn witness_review_site_shape() -> Bool {
+  let html = review_html()
+  starts_with(s: html, prefix: "<!DOCTYPE html>")
+    && !string_contains(s: html, pattern: "EMIT REJECTED")
+    && string_contains(s: html, pattern: "editorial")
+    && string_contains(s: html, pattern: "compact")
+    && token_options.length() == 2
+}
