@@ -501,6 +501,6 @@ data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_card_hourly"),
     reason: "serving_card_hourly, serving_cost_per_million_tokens, serving_cache_bytes and serving_recipes_interchangeable are called only by test.claim.fabric.serving_recipe_witness. The Vast shadow field (flex_offer_in_shadow_field) screens by recipe but does not yet price a card's disk or quote it to select_supply, and nothing yet reads cache sizes or recipe interchangeability. Disk-in-cost is therefore a witnessed model, not an executing route.",
-    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_wet_create_release_consumer_frontier), and a consumer reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
+    dissolution: unbound_dissolution(description: "the flex M3 wet loop quoting each shadow-field offer through serving_card_hourly into product.fabric.selection select_supply (flex_select_supply_consumer_frontier), and a consumer reading serving_cache_bytes. SUFFICIENT FOR deleting this row."),
   ),
 ]
