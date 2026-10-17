@@ -173,14 +173,6 @@ fn smpro_pass_subject(host: HostIdentity, endpoint: BmcControllerEndpoint, site:
   }
 }
 
-fn smpro_pass_subject_refusal_text(s: SmproPassSubjectStanding) -> String? {
-  match s {
-    SmproPassSubjectBound { subject: _ } => none
-    SmproPassSiteRefused { cause: c } => Present { value: concat("the SMpro site is not admitted: ", smpro_site_refusal_text(c: c)) }
-    SmproPassEndpointMismatch { bound: b, site: t } => Present { value: concat("the SMpro site names controller ", t.host as String, " but the host is bound to ", b.host as String) }
-  }
-}
-
 // THE PASS'S RESULT, never outcomes without the subject they were read for.
 type SmproPassObservation sole_constructor {
   subject: SmproPassSubject

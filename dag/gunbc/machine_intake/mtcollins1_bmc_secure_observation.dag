@@ -252,7 +252,7 @@ fn mtcollins1_bmc_secure_standing() -> BmcSecureStanding? {
 }
 
 // WET FETCH OF THE MANAGED SECRET IS THE NEXT CONSUMER. The username every controller write uses is
-// the bound managed host's account (gunbc.host.managed_host ManagedHostBinding account, which this module's
+// the bound managed host's account (gunbc.host.bmc_control_binding bmc_control_route_account, which this module's
 // BmcSecured standing feeds through managed_hosts). Boot CLI names stay mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff; they still take
 // password as a caller-supplied path. Wiring fetch_secret_ref_credential over
 // mtcollins1_managed_credential.secret is a separate change (needs token + Network, the srv3

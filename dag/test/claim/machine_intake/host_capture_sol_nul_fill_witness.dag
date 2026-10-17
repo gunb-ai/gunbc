@@ -14,6 +14,7 @@ import gunbc.host.boot_medium { BootMedium }
 import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcollins1_census_image_stem, mtcollins1_census_volume_id }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -21,7 +22,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the medium the claim needs; there is no other mint (gunbc.host.managed_host_boot AdmittedBootSubject is
 // sole_constructor). Absent fails the claim that asked for it.
 fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
-  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  match boot_subject_admission_for(evidence: megarac_operation_evidence(), host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }

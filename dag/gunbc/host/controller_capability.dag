@@ -1,0 +1,94 @@
+// THE CONTROLLER'S CAPABILITIES, PROJECTION.
+//
+// The bound controller's capability row (extdeps.bmc.capability) is the raw fact: a list of
+// BmcCapability values, observed against the controller's identity and firmware. This module projects
+// that raw row into the capabilities the controller machinery consumes — each named for the fact it
+// proves. It is a pure projection of the existing values; it does not mint a new capability enum and
+// does not edit extdeps.bmc.capability. The extdeps row stays the source of truth; this is the
+// consumer-facing shape.
+//
+// A capability that the existing BmcCapability values cannot distinguish is typed UNESTABLISHED,
+// never defaulted to Present: the IPMI row has no value that separates a persistent boot selection
+// from a one-shot one, and none that names a graphical (KVM) console. Those are unestablished on the
+// projection, and the consumer that needs one must refuse or fall back — it must not assume present.
+//
+// pxe_selection is named for what it proves: that the PXE device is SELECTABLE THROUGH the boot-source
+// override. It is not a claim that PXE boot works — PXE boot also needs a network delivery path, a
+// delivery-strategy fact for a later cut. It rides on CapabilityBootSourceOverride, since selecting
+// the PXE boot device IS a boot-source override.
+module gunbc.host.controller_capability
+
+import extdeps.bmc.capability {
+  BmcCapability, BmcFirmwareReleaseCapabilityRow, release_row_has_capability,
+  CapabilityBootSourceOverride, CapabilityNbdProxyVirtualMedia, CapabilityOemRemoteMedia,
+  CapabilityPowerControl, CapabilitySerialConsole, CapabilityVirtualMedia,
+}
+
+// A PROJECTED CONTROLLER CAPABILITY: Present when the row carries the value(s) that establish it,
+// Unestablished when the row cannot distinguish it from its absence. Unestablished is the typed
+// answer that lets a consumer refuse; it is never a silent default to Present.
+type CapabilityFactStanding
+  = CapabilityEstablished
+  | CapabilityUnestablished
+
+// THE CONTROLLER'S CAPABILITIES, as the controller machinery consumes them. Each field is the
+// standing of one projected capability, derived from the raw row by controller_capability.
+type ControllerCapability sole_constructor {
+  // POWER READ/WRITE: the controller can read and drive the machine's power state.
+  power_read_write: CapabilityFactStanding
+  // ONE-SHOT BOOT SELECTION: the controller can override the boot source for the NEXT boot only.
+  one_shot_boot_selection: CapabilityFactStanding
+  // PERSISTENT BOOT SELECTION: the controller can set a boot source that STICKS across reboots.
+  // Unestablished: the IPMI row has no BmcCapability value that separates the persistent bit from
+  // the one-shot override, so the projection cannot establish it and does not default it to present.
+  persistent_boot_selection: CapabilityFactStanding
+  // VIRTUAL MEDIA: the controller can attach a medium through its media surface. Present when the
+  // row carries any virtual-media capability (Redfish VM, NBD-proxy VM, or OEM remote media — all
+  // media-attach surfaces). This is the surface a virtual-media boot attaches its image through.
+  virtual_media: CapabilityFactStanding
+  // PXE SELECTION: the PXE boot device is SELECTABLE THROUGH the boot-source override. Named for
+  // what it proves (the PXE device is selectable), not that PXE boot works — a network delivery
+  // path is a later delivery-strategy fact. Rides on CapabilityBootSourceOverride.
+  pxe_selection: CapabilityFactStanding
+  // SERIAL CONSOLE: the controller serves a serial console.
+  serial_console: CapabilityFactStanding
+  // GRAPHICAL CONSOLE: the controller serves a graphical (KVM) console. Unestablished: no
+  // BmcCapability value names a graphical console, so the projection cannot establish it.
+  graphical_console: CapabilityFactStanding
+}
+
+// THE PROJECTION: derive the controller's capabilities from its raw capability row. The
+// virtual-media fact is the only one that disjunctions across more than one value, so it is
+// factored into its own helper (virtual_media_established) rather than an inline multi-line
+// argument.
+fn controller_capability(row: BmcFirmwareReleaseCapabilityRow) -> ControllerCapability {
+  ControllerCapability {
+    power_read_write: standing_of(present: release_row_has_capability(row: row, cap: CapabilityPowerControl)),
+    one_shot_boot_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
+    persistent_boot_selection: CapabilityUnestablished,
+    virtual_media: standing_of(present: virtual_media_established(row: row)),
+    pxe_selection: standing_of(present: release_row_has_capability(row: row, cap: CapabilityBootSourceOverride)),
+    serial_console: standing_of(present: release_row_has_capability(row: row, cap: CapabilitySerialConsole)),
+    graphical_console: CapabilityUnestablished,
+  }
+}
+
+// THE VIRTUAL-MEDIA FACT: the row establishes a media-attach surface when it carries ANY of the
+// virtual-media values — Redfish virtual media, NBD-proxy virtual media, or OEM remote media. All
+// three are media-attach surfaces; any one of them can carry the boot image a virtual-media boot
+// attaches.
+fn virtual_media_established(row: BmcFirmwareReleaseCapabilityRow) -> Bool {
+  release_row_has_capability(row: row, cap: CapabilityVirtualMedia)
+  || release_row_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia)
+  || release_row_has_capability(row: row, cap: CapabilityOemRemoteMedia)
+}
+
+// A BOOLEAN "IS THE VALUE PRESENT" INTO A STANDING: Present maps to established, absent maps to
+// unestablished. The one-line bridge between the raw row's values and the projected standings.
+fn standing_of(present: Bool) -> CapabilityFactStanding {
+  if present {
+    CapabilityEstablished
+  } else {
+    CapabilityUnestablished
+  }
+}

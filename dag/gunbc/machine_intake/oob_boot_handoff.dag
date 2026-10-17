@@ -35,8 +35,13 @@ import extdeps.bmc.capability {
   BmcFirmwareReleaseIdentity,
   CapabilityBootSourceOverride,
   CapabilityPowerControl,
-  bmc_firmware_release_identity_eq,
   release_row_has_capability,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityKnown,
+  MegaRacReleaseCapabilityUncatalogued,
+  MegaRacReleaseCapabilityAmbiguous,
+  megarac_release_capability_row_for,
 }
 
 // THE OUT-OF-BAND BOOT HANDOFF: the operation a converge program performs against a host it cannot
@@ -71,7 +76,8 @@ type OobBootHandoffAdmission
   | OobHandoffRouteUnobserved
   | OobHandoffBootSourceOverrideUnavailable
   | OobHandoffPowerControlUnavailable
-  | OobHandoffFirmwareMismatch { observed: BmcFirmwareReleaseIdentity, capability: BmcFirmwareReleaseIdentity }
+  | OobHandoffRowUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+  | OobHandoffRowAmbiguous { firmware: BmcFirmwareReleaseIdentity, count: Int }
 
 // The first boot-control route the observation carries, as an Option. The list is folded rather than
 // pattern-matched because the surface grammar admits no list patterns — measured, not assumed: a
@@ -95,13 +101,14 @@ fn first_observed_boot_control_route(observation: BmcAccessObservation) -> BmcAc
 // probed this controller yet and the repair is an intake attempt, not a catalog edit. Collapsing
 // them would be the state-space conflation DESIGN's failure-mode list names — one symbol standing
 // for conditions whose remedies point at different people.
-fn oob_boot_handoff_admission(
+// The fold over an ALREADY-RESOLVED release capability row. Split out from the public admission so the
+// discriminating probe can drive the same fold with a deliberately empty row; it takes the row the
+// catalog holds for the observed build, so there is no separate per-unit row to drift from.
+fn oob_boot_handoff_admission_for_row(
   observation: BmcAccessObservation,
   capability_row: BmcFirmwareReleaseCapabilityRow,
 ) -> OobBootHandoffAdmission {
-  if bmc_firmware_release_identity_eq(a: observation.identity.firmware, b: capability_row.firmware) == false {
-    OobHandoffFirmwareMismatch { observed: observation.identity.firmware, capability: capability_row.firmware }
-  } else if release_row_has_capability(row: capability_row, cap: CapabilityBootSourceOverride) == false {
+  if release_row_has_capability(row: capability_row, cap: CapabilityBootSourceOverride) == false {
     OobHandoffBootSourceOverrideUnavailable
   } else {
     if release_row_has_capability(row: capability_row, cap: CapabilityPowerControl) == false {
@@ -115,6 +122,26 @@ fn oob_boot_handoff_admission(
   }
 }
 
+// The public admission: the row is RESOLVED from the release the controller REPORTED, never handed in.
+// The old OobHandoffFirmwareMismatch arm existed because a per-unit row could describe a build other
+// than the one observed -- the reflash-staleness defect, and resolving the row from this same
+// observation removes the HAND-IN path for it. The other half of that defect -- a catalog entry keyed to
+// one build while its evidence read another -- is closed by construction rather than by a refusal here:
+// the catalog derives each entry's release identity from the artifact the entry carries
+// (gunbc.host.bmc_release_capability_catalog.megarac_version_establishment), so there is no such entry to
+// refuse. An entry whose artifact establishes no release matches nothing, which arrives below as
+// Uncatalogued: the repair is to go read the build, which is the repair that actually applies. A build
+// the catalog has not read is a typed unresolved refusal, never a default row.
+fn oob_boot_handoff_admission(observation: BmcAccessObservation) -> OobBootHandoffAdmission {
+  match megarac_release_capability_row_for(firmware: observation.identity.firmware) {
+    MegaRacReleaseCapabilityKnown { row: row } => oob_boot_handoff_admission_for_row(
+      observation: observation, capability_row: row,
+    )
+    MegaRacReleaseCapabilityUncatalogued { firmware: firmware } => OobHandoffRowUncatalogued { firmware: firmware }
+    MegaRacReleaseCapabilityAmbiguous { firmware: firmware, count: count } => OobHandoffRowAmbiguous { firmware: firmware, count: count }
+  }
+}
+
 // WHETHER AN ADMISSION ADMITS, as its own fn so the handoff's guard is one named question rather
 // than a match inlined into an effect sequence.
 fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
@@ -123,7 +150,8 @@ fn oob_handoff_is_admitted(admission: OobBootHandoffAdmission) -> Bool {
     OobHandoffRouteUnobserved => false
     OobHandoffBootSourceOverrideUnavailable => false
     OobHandoffPowerControlUnavailable => false
-    OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+    OobHandoffRowUncatalogued { firmware: _ } => false
+    OobHandoffRowAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -486,7 +514,6 @@ fn oob_power_actuate_and_read_back(
 // is rotated DURING converge, so the value behind this path changes mid-program while the path does not.
 fn oob_boot_handoff(
   observation: BmcAccessObservation,
-  capability_row: BmcFirmwareReleaseCapabilityRow,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   selection: IpmiBootSelection,
@@ -496,7 +523,7 @@ fn oob_boot_handoff(
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_issue_and_watch"),
   ]
 {
-  let admission = oob_boot_handoff_admission(observation: observation, capability_row: capability_row)
+  let admission = oob_boot_handoff_admission(observation: observation)
   if oob_handoff_is_admitted(admission: admission) == false {
     return BootHandoffNotAdmitted { admission: admission }
   }
